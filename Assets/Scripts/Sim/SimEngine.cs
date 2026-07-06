@@ -14,6 +14,7 @@ namespace CityFlow.Sim
         readonly FlowSolver _solver;
         readonly ArrivalEmitter _arrivals;
         readonly BurstDetector _bursts;
+        readonly CongestionNotifier _congestion;
         readonly SimStats _stats = new SimStats();
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
@@ -30,6 +31,7 @@ namespace CityFlow.Sim
             _solver = new FlowSolver(config.GridWidth, config.GridHeight);
             _arrivals = new ArrivalEmitter(config.GridWidth, config.GridHeight);
             _bursts = new BurstDetector(config.GridWidth, config.GridHeight);
+            _congestion = new CongestionNotifier(config.GridWidth, config.GridHeight);
             _events = new SimEventBuffer(hub);   // 계산 중 발행 금지 — 큐/Drain으로 재진입 차단
         }
 
@@ -63,6 +65,7 @@ namespace CityFlow.Sim
 
             _solver.Assign(_demand, _network, _config);   // ① 수요→세그먼트 흐름 배정
             _solver.Resolve(_config);                     // ② 혼잡·병목·delivered
+            _congestion.Scan(_solver, _events, _config);  // ②' 레벨 전이만 이벤트로
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
             _stats.Update(_solver, _demand, _config);     // ⑤ 안정도 집계
