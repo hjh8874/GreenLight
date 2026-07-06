@@ -89,5 +89,23 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1, arrivals);
             Assert.AreEqual(1, coins);
         }
+
+        [Test]
+        public void EndToEnd_JamCity_StabilityDrops()
+        {
+            // 계획 8을 파사드로: 수요 15/용량 10 → E 0.6 → Stability01 = 9/15 = 0.6
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            c.DemandPerHouse = 15f; c.RoadCapacity = 10f;
+            var e = new SimEngine(c, new SimEventHub());
+
+            for (int x = 0; x <= 4; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(0, 1), TileType.House);
+            e.Place(V(4, 1), TileType.Office);
+
+            e.Tick(0.25f);
+
+            Assert.AreEqual(0.6f, e.Stability01, 1e-3f);
+        }
     }
 }

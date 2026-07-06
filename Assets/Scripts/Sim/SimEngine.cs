@@ -14,6 +14,7 @@ namespace CityFlow.Sim
         readonly FlowSolver _solver;
         readonly ArrivalEmitter _arrivals;
         readonly BurstDetector _bursts;
+        readonly SimStats _stats = new SimStats();
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
 
@@ -64,7 +65,7 @@ namespace CityFlow.Sim
             _solver.Resolve(_config);                     // ② 혼잡·병목·delivered
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
-            // ponytail: ⑤ SimStats는 D5(안정도·롤링 평균)에서.
+            _stats.Update(_solver, _demand, _config);     // ⑤ 안정도 집계
             _events.Drain();                              // ⑥ 모인 이벤트 일괄 발행 (항상 마지막!)
         }
 
@@ -74,7 +75,7 @@ namespace CityFlow.Sim
         public bool Remove(Vector2Int tile) => _grid.Remove(tile);
 
         // ── IReadOnlyTileData: solver/grid에 위임 ──
-        public float Stability01 => 1f;   // ponytail: SimStats(D4) 전까지 항상 안정
+        public float Stability01 => _stats.Stability01;
         public CongestionLevel GetCongestion(Vector2Int tile) => _solver.GetCongestion(tile);
         public float GetDensity01(Vector2Int tile) => Mathf.Clamp01(_solver.GetRatio(tile));
         public TileType GetTileType(Vector2Int tile) => _grid.GetTile(tile);
