@@ -69,10 +69,22 @@ namespace CityFlow.Sim
             _events.Drain();                              // ⑥ 모인 이벤트 일괄 발행 (항상 마지막!)
         }
 
-        // ── IPlacementService: CityGrid에 위임 ──
+        // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
         public bool CanPlace(Vector2Int tile, TileType type) => _grid.CanPlace(tile, type);
-        public bool Place(Vector2Int tile, TileType type) => _grid.Place(tile, type);
-        public bool Remove(Vector2Int tile) => _grid.Remove(tile);
+
+        public bool Place(Vector2Int tile, TileType type)
+        {
+            if (!_grid.Place(tile, type)) return false;
+            _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false));
+            return true;
+        }
+
+        public bool Remove(Vector2Int tile)
+        {
+            if (!_grid.TryRemove(tile, out var removed)) return false;
+            _events.QueuePlaced(new PlacedEvent(tile, removed, isRemove: true));
+            return true;
+        }
 
         // ── IReadOnlyTileData: solver/grid에 위임 ──
         public float Stability01 => _stats.Stability01;

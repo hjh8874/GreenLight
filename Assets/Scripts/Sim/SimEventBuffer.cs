@@ -11,6 +11,7 @@ namespace CityFlow.Sim
         readonly SimEventHub _hub;
         readonly List<ArrivalEvent> _arrivals = new(64);   // 선할당(GC 회피)
         readonly List<FlowBurstEvent> _bursts = new(16);
+        readonly List<PlacedEvent> _placed = new(16);
 
         public SimEventBuffer(SimEventHub hub)
         {
@@ -20,10 +21,16 @@ namespace CityFlow.Sim
         // 계산 중: 발행하지 않고 큐에만.
         internal void QueueArrival(in ArrivalEvent e) => _arrivals.Add(e);
         internal void QueueBurst(in FlowBurstEvent e) => _bursts.Add(e);
+        internal void QueuePlaced(in PlacedEvent e) => _placed.Add(e);
 
         // 틱 끝: 큐에 쌓인 순서대로 SimEventHub에 일괄 발행하고 비운다.
+        // 발행 순서: 배치(원인) → 도착·버스트(결과) — 구독자가 인과 순서로 받게.
         internal void Drain()
         {
+            for (int i = 0; i < _placed.Count; i++)
+                _hub.Publish(_placed[i]);
+            _placed.Clear();
+
             for (int i = 0; i < _arrivals.Count; i++)
                 _hub.Publish(_arrivals[i]);
             _arrivals.Clear();

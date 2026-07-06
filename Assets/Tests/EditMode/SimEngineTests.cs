@@ -107,5 +107,48 @@ namespace CityFlow.Sim.Tests
 
             Assert.AreEqual(0.6f, e.Stability01, 1e-3f);
         }
+
+        [Test]
+        public void PlaceAndRemove_PublishPlacedEvents_OnTickDrain()
+        {
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            var hub = new SimEventHub();
+            var placed = new System.Collections.Generic.List<PlacedEvent>();
+            hub.Placed += ev => placed.Add(ev);
+            var e = new SimEngine(c, hub);
+
+            e.Place(V(1, 0), TileType.Road);
+            e.Place(V(1, 0), TileType.Road);       // 중복 배치 실패 → 이벤트 없어야 함
+            Assert.AreEqual(0, placed.Count);      // 즉시 발행 금지 — 틱 끝 Drain에서만
+
+            e.Tick(0.25f);
+            Assert.AreEqual(1, placed.Count);
+            Assert.AreEqual(V(1, 0), placed[0].Tile);
+            Assert.AreEqual(TileType.Road, placed[0].Type);
+            Assert.IsFalse(placed[0].IsRemove);
+
+            e.Remove(V(1, 0));
+            e.Tick(0.25f);
+            Assert.AreEqual(2, placed.Count);
+            Assert.AreEqual(TileType.Road, placed[1].Type);   // 뭘 지웠는지도 담아서
+            Assert.IsTrue(placed[1].IsRemove);
+        }
+
+        [Test]
+        public void Remove_OutOfBounds_ReturnsFalse_NoCrash_NoEvent()
+        {
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            var hub = new SimEventHub();
+            int placed = 0;
+            hub.Placed += _ => placed++;
+            var e = new SimEngine(c, hub);
+
+            Assert.IsFalse(e.Remove(V(-1, 0)));
+            Assert.IsFalse(e.Remove(V(0, 99)));
+            e.Tick(0.25f);
+            Assert.AreEqual(0, placed);
+        }
     }
 }
