@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using CityFlow.Contracts;
 
@@ -70,6 +71,27 @@ namespace CityFlow.Sim
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
             _stats.Update(_solver, _demand, _config);     // ⑤ 안정도 집계
             _events.Drain();                              // ⑥ 모인 이벤트 일괄 발행 (항상 마지막!)
+        }
+
+        // 복귀 정산: 마지막 도시 상태의 처리량으로 경과시간을 적분(상한 OfflineCapHours).
+        // 세이브 시스템(한준희)이 앱 복귀 시 호출 → SettlementEvent로 결과 발행.
+        public void SettleOffline(double elapsedSeconds)
+        {
+            // 마지막 배치가 아직 시뮬에 반영 전이면 반영부터(정산은 최신 도시 기준).
+            if (_grid.TopologyDirty)
+            {
+                _network.Rebuild();
+                _demand.Reassign(_grid);
+                _grid.ClearTopologyDirty();
+            }
+            _solver.Assign(_demand, _network, _config);
+            _solver.Resolve(_config);
+
+            double capped = Math.Min(elapsedSeconds, _config.OfflineCapHours * 3600.0);
+            long coins = _arrivals.SettleOffline(_solver, capped, _config);
+
+            _events.QueueSettlement(new SettlementEvent(capped / 60.0, coins));
+            _events.Drain();
         }
 
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
