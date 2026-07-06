@@ -58,6 +58,26 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void AccessRoad_PicksFirstNeighborInScanOrder()
+        {
+            // 건물(2,2)의 이웃 중 상(2,3)·우(3,2)가 도로. 스캔 순서(상·우·하·좌)상 상이 먼저.
+            var g = GridWithRoads(5, 5, V(2, 3), V(3, 2));
+            var net = new RoadNetwork(g);
+
+            Assert.IsTrue(net.TryGetAccessRoad(V(2, 2), out var road));
+            Assert.AreEqual(V(2, 3), road);
+        }
+
+        [Test]
+        public void AccessRoad_NoAdjacentRoad_ReturnsFalse()
+        {
+            var g = GridWithRoads(5, 5, V(0, 0)); // (3,3) 주변엔 도로 없음
+            var net = new RoadNetwork(g);
+
+            Assert.IsFalse(net.TryGetAccessRoad(V(3, 3), out _));
+        }
+
+        [Test]
         public void TopologyChange_InvalidatesCache()
         {
             var g = GridWithRoads(5, 5, V(0, 0), V(1, 0), V(3, 0), V(4, 0)); // (2,0) 빔

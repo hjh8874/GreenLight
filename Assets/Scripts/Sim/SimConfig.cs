@@ -10,8 +10,9 @@ namespace CityFlow.Sim
         public float TickInterval;      // 시뮬 1스텝(초). blueprint §3 = 0.1
         public int   MaxStepsPerFrame;  // 누산기 while 폭주 방지 캡
 
-        // ── 도로 처리량 ─────────────────────────
-        public float RoadCapacity;      // 대/틱, 도로 등급별(지금 단일) 🔓
+        // ── 흐름 rate (단위 통일: 대/초 — 도착 누산기가 rate×TickInterval 전제) ──
+        public float RoadCapacity;      // 대/초, 도로 등급별(지금 단일) 🔓
+        public float DemandPerHouse;    // 수요 1건(집→수요처)당 가상 차량 rate 🔓
 
         // ── 혼잡 임계 (ratio = flow/capacity) ────
         public float SlowRatio;         // <0.7 Free / 0.7~1.0 Slow / >1.0 Jam
@@ -45,6 +46,7 @@ namespace CityFlow.Sim
             TickInterval = 0.1f,
             MaxStepsPerFrame = 5,
             RoadCapacity = 10f,
+            DemandPerHouse = 1f,
             SlowRatio = 0.7f,
             JamRatio = 1.0f,
             EfficiencyMin = 0.2f,
