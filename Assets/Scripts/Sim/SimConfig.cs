@@ -21,9 +21,9 @@ namespace CityFlow.Sim
         public float EfficiencyMin;      // 바닥값 = 0.2
         public float EfficiencyMinRatio; // E가 바닥에 닿는 ratio = 2.0 (Free 1.0 → 2.0서 0.2)
 
-        // ── 목적지 용량 캡 (가구 수, 미팅 결정③) ──
-        public int   CompanyCapacity;   // 회사 20
-        public int   SchoolCapacity;    // 학교 10
+        // ── 수요처 용량 캡 (가구 수) ──
+        // 확장: 수요처 종류 추가 시 여기 SchoolCapacity 등 한 줄 + DemandMap.CapacityFor.
+        public int   OfficeCapacity;    // 회사(Office) 20
 
         // ── 보상(코인) 원료 ────────────────────
         public float CoinBase;          // 🔓 공식 형태·가중치 잠정
@@ -49,8 +49,7 @@ namespace CityFlow.Sim
             JamRatio = 1.0f,
             EfficiencyMin = 0.2f,
             EfficiencyMinRatio = 2.0f,
-            CompanyCapacity = 20,
-            SchoolCapacity = 10,
+            OfficeCapacity = 20,
             CoinBase = 1f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,

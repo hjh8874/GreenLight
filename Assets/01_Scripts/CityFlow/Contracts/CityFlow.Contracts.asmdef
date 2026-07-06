@@ -1,9 +1,7 @@
 {
-    "name": "CityFlow.Sim",
-    "rootNamespace": "CityFlow",
-    "references": [
-        "CityFlow.Contracts"
-    ],
+    "name": "CityFlow.Contracts",
+    "rootNamespace": "CityFlow.Contracts",
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

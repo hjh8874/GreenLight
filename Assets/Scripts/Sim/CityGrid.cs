@@ -1,10 +1,11 @@
 using UnityEngine;
+using CityFlow.Contracts;
 
 namespace CityFlow.Sim
 {
-    // 도시 타일의 유일한 상태 저장소.
-    // 2차원 배열 대신 flat 배열(index = y*W+x): 캐시 친화 + 직렬화 쉬움(blueprint §2).
-    internal sealed class CityGrid
+    // 도시 타일의 유일한 상태 저장소. flat 배열(index = y*W+x).
+    // 주석님 IPlacementService 구현 — 배치/제거의 실제 창구.
+    internal sealed class CityGrid : IPlacementService
     {
         readonly TileType[] _tiles;   // new 시 전부 0 = TileType.Empty → "빈 도시" 공짜
         readonly int _width;
@@ -25,10 +26,13 @@ namespace CityFlow.Sim
             _tiles = new TileType[width * height];
         }
 
+        // flat 인덱스. 주석님 GridUtil엔 Index가 없어 여기서 직접(index = y*W+x).
+        int Index(Vector2Int t) => t.y * _width + t.x;
+
         bool InBounds(Vector2Int t) =>
             t.x >= 0 && t.x < _width && t.y >= 0 && t.y < _height;
 
-        public TileType GetTile(Vector2Int t) => _tiles[GridUtil.Index(t.x, t.y, _width)];
+        public TileType GetTile(Vector2Int t) => _tiles[Index(t)];
 
         // 범위 안 + 진짜 타일 + 빈 칸일 때만 배치 가능.
         public bool CanPlace(Vector2Int t, TileType type)
@@ -41,7 +45,7 @@ namespace CityFlow.Sim
         public bool Place(Vector2Int t, TileType type)
         {
             if (!CanPlace(t, type)) return false;
-            _tiles[GridUtil.Index(t.x, t.y, _width)] = type;
+            _tiles[Index(t)] = type;
             MarkDirty();
             return true;
         }
@@ -50,7 +54,7 @@ namespace CityFlow.Sim
         {
             if (!InBounds(t)) return false;
             if (GetTile(t) == TileType.Empty) return false;   // 지울 게 없음
-            _tiles[GridUtil.Index(t.x, t.y, _width)] = TileType.Empty;
+            _tiles[Index(t)] = TileType.Empty;
             MarkDirty();
             return true;
         }

@@ -3,6 +3,7 @@
     "rootNamespace": "CityFlow.Sim.Tests",
     "references": [
         "CityFlow.Sim",
+        "CityFlow.Contracts",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

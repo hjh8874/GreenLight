@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using UnityEngine;
+using CityFlow.Contracts;
 
 namespace CityFlow.Sim.Tests
 {
@@ -14,11 +15,10 @@ namespace CityFlow.Sim.Tests
             return g;
         }
 
-        static SimConfig Caps(int company, int school)
+        static SimConfig OfficeCap(int cap)
         {
             var c = SimConfig.Default();
-            c.CompanyCapacity = company;
-            c.SchoolCapacity = school;
+            c.OfficeCapacity = cap;
             return c;
         }
 
@@ -30,17 +30,17 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void AssignsHouseToNearestCompany()
+        public void AssignsHouseToNearestOffice()
         {
             var g = MakeGrid(8, 1,
                 (V(0, 0), TileType.House),
-                (V(2, 0), TileType.Company),
-                (V(5, 0), TileType.Company));
+                (V(2, 0), TileType.Office),
+                (V(5, 0), TileType.Office));
             var dm = new DemandMap(SimConfig.Default());
             dm.Reassign(g);
 
-            Assert.AreEqual(1, dm.Demands.Count);        // 학교 없음 → 회사 1건만
-            Assert.IsTrue(Has(dm, V(0, 0), V(2, 0)));    // 더 가까운 (2,0)
+            Assert.AreEqual(1, dm.Demands.Count);
+            Assert.IsTrue(Has(dm, V(0, 0), V(2, 0))); // 더 가까운 (2,0)
         }
 
         [Test]
@@ -49,54 +49,36 @@ namespace CityFlow.Sim.Tests
             var g = MakeGrid(8, 2,
                 (V(0, 0), TileType.House),
                 (V(0, 1), TileType.House),
-                (V(1, 0), TileType.Company),   // 두 집 모두에 가장 가까움
-                (V(7, 1), TileType.Company));  // 먼 대안
-            var dm = new DemandMap(Caps(company: 1, school: 10));
+                (V(1, 0), TileType.Office),   // 두 집 모두에 가장 가까움
+                (V(7, 1), TileType.Office));  // 먼 대안
+            var dm = new DemandMap(OfficeCap(1));
             dm.Reassign(g);
 
-            Assert.IsTrue(Has(dm, V(0, 0), V(1, 0)));  // 첫 집: 가까운 회사가 받음
-            Assert.IsTrue(Has(dm, V(0, 1), V(7, 1)));  // 둘째 집: 만석 → 먼 회사로
+            Assert.IsTrue(Has(dm, V(0, 0), V(1, 0))); // 첫 집: 가까운 곳
+            Assert.IsTrue(Has(dm, V(0, 1), V(7, 1))); // 둘째 집: 만석 → 먼 곳
         }
 
         [Test]
-        public void MultiDestination_CompanyAndSchool()
+        public void NoOffice_NoDemand()
         {
-            var g = MakeGrid(5, 5,
-                (V(0, 0), TileType.House),
-                (V(2, 0), TileType.Company),
-                (V(0, 2), TileType.School));
+            var g = MakeGrid(5, 5, (V(0, 0), TileType.House)); // 수요처 없음
             var dm = new DemandMap(SimConfig.Default());
             dm.Reassign(g);
 
-            Assert.AreEqual(2, dm.Demands.Count);
-            Assert.IsTrue(Has(dm, V(0, 0), V(2, 0)));  // 회사 통근
-            Assert.IsTrue(Has(dm, V(0, 0), V(0, 2)));  // 학교 통근
+            Assert.AreEqual(0, dm.Demands.Count);
         }
 
         [Test]
-        public void NoSinkOfType_NoDemandOfType()
-        {
-            var g = MakeGrid(5, 5,
-                (V(0, 0), TileType.House),
-                (V(2, 0), TileType.Company)); // 학교 없음
-            var dm = new DemandMap(SimConfig.Default());
-            dm.Reassign(g);
-
-            Assert.AreEqual(1, dm.Demands.Count);
-            Assert.IsTrue(Has(dm, V(0, 0), V(2, 0)));
-        }
-
-        [Test]
-        public void EquidistantSinks_PicksLowerFlatIndex()
+        public void EquidistantOffices_PicksLowerFlatIndex()
         {
             var g = MakeGrid(5, 1,
                 (V(2, 0), TileType.House),
-                (V(0, 0), TileType.Company),   // flat 0, 거리 2
-                (V(4, 0), TileType.Company));  // flat 4, 거리 2 (동점)
+                (V(0, 0), TileType.Office),   // flat 0, 거리 2
+                (V(4, 0), TileType.Office));  // flat 4, 거리 2 (동점)
             var dm = new DemandMap(SimConfig.Default());
             dm.Reassign(g);
 
-            Assert.IsTrue(Has(dm, V(2, 0), V(0, 0)));   // 동점 → 낮은 인덱스
+            Assert.IsTrue(Has(dm, V(2, 0), V(0, 0))); // 동점 → 낮은 인덱스
             Assert.IsFalse(Has(dm, V(2, 0), V(4, 0)));
         }
     }

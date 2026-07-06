@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using UnityEngine;
+using CityFlow.Contracts;
 
 namespace CityFlow.Sim.Tests
 {

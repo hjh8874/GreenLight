@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using CityFlow.Contracts;
 
 namespace CityFlow.Sim
 {
-    // 통근 수요 1건: 수요원(집) → 수요처(회사/학교).
+    // 통근 수요 1건: 수요원(집) → 수요처(Office 등).
     // ponytail: demandRate는 나중(FlowSolver)에서 SimConfig로. 지금은 배정 관계만.
     internal struct Demand
     {
@@ -12,16 +13,18 @@ namespace CityFlow.Sim
         public Vector2Int Sink;
     }
 
-    // 집을 가장 가까운 회사·학교에 배정한다. topology 변경 시에만 재배정.
-    // ponytail: 최근접 = 맨해튼 거리. 도로거리(RoadNetwork 경유) 배정은 후순위.
+    // 집(House)을 가장 가까운 수요처에 배정. 맨해튼 최근접 + 용량 캡 + 차순위. topology 변경 시에만.
+    // 확장: 수요처 종류 추가 = SinkTypes 배열 + CapacityFor + SimConfig 용량 한 줄. 로직 불변.
     internal sealed class DemandMap
     {
+        // 수요처 종류 목록. 지금은 Office 하나 — School 등 추가하면 다목적지로 자동 확장.
+        static readonly TileType[] SinkTypes = { TileType.Office };
+
         readonly SimConfig _config;
 
         // 선할당 재사용 버퍼(재배정은 드물지만 습관).
         readonly List<Vector2Int> _houses = new(64);
-        readonly List<Vector2Int> _companies = new(16);
-        readonly List<Vector2Int> _schools = new(16);
+        readonly List<Vector2Int> _sinks = new(16);
         readonly List<Demand> _demands = new(128);
 
         public IReadOnlyList<Demand> Demands => _demands;
@@ -35,28 +38,35 @@ namespace CityFlow.Sim
         {
             _demands.Clear();
             _houses.Clear();
-            _companies.Clear();
-            _schools.Clear();
+            Collect(grid, TileType.House, _houses);
 
-            // flat 순서(y, x)로 수집 → 이후 배정·tie-break가 결정론적.
+            // 다목적지: 집마다 각 수요처 종류로 1건씩.
+            foreach (var sinkType in SinkTypes)
+            {
+                _sinks.Clear();
+                Collect(grid, sinkType, _sinks);
+                AssignType(_houses, _sinks, CapacityFor(sinkType));
+            }
+        }
+
+        // flat 순서(y, x)로 특정 종류 타일 수집 → 배정·tie-break가 결정론적.
+        static void Collect(CityGrid grid, TileType type, List<Vector2Int> into)
+        {
             for (int y = 0; y < grid.Height; y++)
             {
                 for (int x = 0; x < grid.Width; x++)
                 {
                     var v = new Vector2Int(x, y);
-                    switch (grid.GetTile(v))
-                    {
-                        case TileType.House: _houses.Add(v); break;
-                        case TileType.Company: _companies.Add(v); break;
-                        case TileType.School: _schools.Add(v); break;
-                    }
+                    if (grid.GetTile(v) == type) into.Add(v);
                 }
             }
-
-            // 다목적지: 집마다 회사 1건 + 학교 1건.
-            AssignType(_houses, _companies, _config.CompanyCapacity);
-            AssignType(_houses, _schools, _config.SchoolCapacity);
         }
+
+        int CapacityFor(TileType sinkType) => sinkType switch
+        {
+            TileType.Office => _config.OfficeCapacity,
+            _ => 0,
+        };
 
         // 각 집을 '남은 용량이 있는 가장 가까운' sink에 배정. 꽉 차면 다음 가까운 곳(차순위).
         void AssignType(List<Vector2Int> sources, List<Vector2Int> sinks, int capPerSink)
