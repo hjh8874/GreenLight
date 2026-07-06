@@ -12,20 +12,25 @@ namespace CityFlow.Sim
         readonly RoadNetwork _network;
         readonly DemandMap _demand;
         readonly FlowSolver _solver;
+        readonly ArrivalEmitter _arrivals;
+        readonly BurstDetector _bursts;
+        readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
 
         // 테스트 관찰용 seam. internal이라 테스트 어셈블리만 봄(InternalsVisibleTo).
         internal int StepCount { get; private set; }
 
-        public SimEngine(SimConfig config)
+        public SimEngine(SimConfig config, SimEventHub hub)
         {
             _config = config;
             _grid = new CityGrid(config.GridWidth, config.GridHeight);
             _network = new RoadNetwork(_grid);
             _demand = new DemandMap(config);
             _solver = new FlowSolver(config.GridWidth, config.GridHeight);
+            _arrivals = new ArrivalEmitter(config.GridWidth, config.GridHeight);
+            _bursts = new BurstDetector(config.GridWidth, config.GridHeight);
+            _events = new SimEventBuffer(hub);   // 계산 중 발행 금지 — 큐/Drain으로 재진입 차단
         }
-        // ponytail: SimEventBuffer 주입은 발행자(ArrivalEmitter, D4)가 생길 때.
 
         // 고정 틱 누산기: 프레임 dt가 들쭉날쭉해도 Step은 정확히 TickInterval마다 1번.
         public void Tick(float deltaTime)
@@ -57,7 +62,10 @@ namespace CityFlow.Sim
 
             _solver.Assign(_demand, _network, _config);   // ① 수요→세그먼트 흐름 배정
             _solver.Resolve(_config);                     // ② 혼잡·병목·delivered
-            // ponytail: ③Arrival ④Burst ⑤Stats ⑥Drain은 D4에서 이 뒤에 이어 붙임.
+            _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
+            _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
+            // ponytail: ⑤ SimStats는 D5(안정도·롤링 평균)에서.
+            _events.Drain();                              // ⑥ 모인 이벤트 일괄 발행 (항상 마지막!)
         }
 
         // ── IPlacementService: CityGrid에 위임 ──

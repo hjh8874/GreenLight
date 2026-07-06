@@ -18,6 +18,8 @@ namespace CityFlow.Sim
 
         // 이번 틱에 실제로 흐른 경로들. RoadNetwork 캐시의 참조만 담음(소유 X, 틱 중 new 0).
         readonly List<List<Vector2Int>> _routes = new(128);
+        readonly List<Vector2Int> _routeSinks = new(128);   // 경로별 도착 건물 타일(_routes와 나란히)
+        readonly float[] _deliveredToSink;                  // 수요처 타일별 이번 틱 처리량(대/초)
 
         public float DeliveredTotal { get; private set; }   // 이번 틱 총 처리량(대/초)
 
@@ -29,6 +31,7 @@ namespace CityFlow.Sim
             _ratio = new float[n];
             _level = new CongestionLevel[n];
             _pendingReward = new float[n];
+            _deliveredToSink = new float[n];
         }
 
         int Index(Vector2Int t) => t.y * _w + t.x;
@@ -37,6 +40,7 @@ namespace CityFlow.Sim
         {
             Array.Clear(_flow, 0, _flow.Length);
             _routes.Clear();
+            _routeSinks.Clear();
 
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
@@ -50,6 +54,7 @@ namespace CityFlow.Sim
                 for (int p = 0; p < path.Count; p++)
                     _flow[Index(path[p])] += cfg.DemandPerHouse;
                 _routes.Add(path);
+                _routeSinks.Add(demands[i].Sink);
             }
         }
 
@@ -66,6 +71,7 @@ namespace CityFlow.Sim
 
             // ② 경로별: 병목(최대 ratio) → E → delivered + 잃은 만큼 병목 타일에 pending 적립
             DeliveredTotal = 0f;
+            Array.Clear(_deliveredToSink, 0, _deliveredToSink.Length);
             for (int r = 0; r < _routes.Count; r++)
             {
                 var path = _routes[r];
@@ -79,6 +85,7 @@ namespace CityFlow.Sim
 
                 float e = Efficiency(bottleneck, cfg);
                 DeliveredTotal += cfg.DemandPerHouse * e;
+                _deliveredToSink[Index(_routeSinks[r])] += cfg.DemandPerHouse * e;
 
                 // 잃은 처리량(rate×틱=대수)을 병목에 적립 — 나중에 그 타일을 고치면 Burst 보상의 원료.
                 if (e < 1f && bottleneckIdx >= 0)
@@ -90,7 +97,15 @@ namespace CityFlow.Sim
 
         public float GetRatio(Vector2Int t) => _ratio[Index(t)];
 
+        // ArrivalEmitter용 — flat 인덱스로 수요처 처리량 조회(전 타일 순회 전제).
+        public float GetDeliveredToSink(int flatIndex) => _deliveredToSink[flatIndex];
+
         public float GetPendingReward(Vector2Int t) => _pendingReward[Index(t)];
+
+        // BurstDetector용 flat 인덱스 접근(전 타일 순회 전제).
+        public float GetRatio(int flatIndex) => _ratio[flatIndex];
+        public float GetPendingReward(int flatIndex) => _pendingReward[flatIndex];
+        public void ClearPendingReward(int flatIndex) => _pendingReward[flatIndex] = 0f;   // Burst가 소비
 
         // E(병목): ratio ≤ JamRatio → 1(자유 흐름), EfficiencyMinRatio까지 선형 하락, 이후 바닥.
         internal static float Efficiency(float ratio, in SimConfig cfg)
