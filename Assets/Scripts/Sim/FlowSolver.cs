@@ -88,6 +88,8 @@ namespace CityFlow.Sim
 
         public CongestionLevel GetCongestion(Vector2Int t) => _level[Index(t)];
 
+        public float GetRatio(Vector2Int t) => _ratio[Index(t)];
+
         public float GetPendingReward(Vector2Int t) => _pendingReward[Index(t)];
 
         // E(병목): ratio ≤ JamRatio → 1(자유 흐름), EfficiencyMinRatio까지 선형 하락, 이후 바닥.

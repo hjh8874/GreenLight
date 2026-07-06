@@ -17,8 +17,8 @@ namespace CityFlow.Sim
     // 확장: 수요처 종류 추가 = SinkTypes 배열 + CapacityFor + SimConfig 용량 한 줄. 로직 불변.
     internal sealed class DemandMap
     {
-        // 수요처 종류 목록. 지금은 Office 하나 — School 등 추가하면 다목적지로 자동 확장.
-        static readonly TileType[] SinkTypes = { TileType.Office };
+        // 수요처 종류 목록. 종류 추가 = 여기 한 줄 + CapacityFor + SimConfig 용량.
+        static readonly TileType[] SinkTypes = { TileType.Office, TileType.School };
 
         readonly SimConfig _config;
 
@@ -65,6 +65,7 @@ namespace CityFlow.Sim
         int CapacityFor(TileType sinkType) => sinkType switch
         {
             TileType.Office => _config.OfficeCapacity,
+            TileType.School => _config.SchoolCapacity,
             _ => 0,
         };
 
