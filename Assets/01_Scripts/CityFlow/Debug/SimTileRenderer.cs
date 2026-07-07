@@ -36,7 +36,9 @@ namespace CityFlow.DebugTools
         private CarPose[] _poses = new CarPose[0];
         private const float MinGap = 0.68f;      // 앞차와 최소 간격(타일). 차 길이(7px≈0.58)보다 약간 크게
         private const float LaneTolerance = 0.15f; // 같은 차선 판정 폭(타일)
-        private const float CrossGap = 0.55f;     // 교차로 양보 반경(타일) — 방향 무관, 앞이 점유돼 있으면 대기
+        private const int CarStride = 2;          // N경로당 차 1대 (과포화·클러터 완화)
+        private readonly HashSet<Vector2Int> _signalSet = new();
+        private readonly Dictionary<Vector2Int, int> _occupant = new();   // 교차로 타일 → 점유 차 인덱스
 
         public void Initialize(CityFlowServices services)
         {
@@ -108,11 +110,21 @@ namespace CityFlow.DebugTools
                 _poses = new CarPose[routes.Count];
             }
 
-            // 1패스: 모든 차의 현재 포즈 계산(간격 판정 기준은 전부 '이번 프레임 시작 위치')
+            // 1패스: 포즈 계산 + 교차로 점유 맵(교차로당 차 1대만 → box-blocking 방지).
+            // CarStride로 일부 경로만 차를 그림 — 과포화·클러터 완화(경로 겹침 많아 절반이면 충분).
+            _signalSet.Clear();
+            foreach (var t in _engine.SignalTiles) _signalSet.Add(t);
+            _occupant.Clear();
             for (int r = 0; r < routes.Count; r++)
+            {
+                if (r % CarStride != 0) { _poses[r] = default; continue; }
                 _poses[r] = PoseOf(routes[r], r);
+                if (!_poses[r].Valid) continue;
+                var tile = new Vector2Int(Mathf.FloorToInt(_poses[r].Pos.x), Mathf.FloorToInt(_poses[r].Pos.y));
+                if (_signalSet.Contains(tile)) _occupant[tile] = r;   // 교차로 위에 있는 차
+            }
 
-            // 2패스: 앞차 없으면 전진, 있으면 대기 → 병목 뒤로 줄이 생김
+            // 2패스: 앞차·교차로 없으면 전진, 있으면 대기 → 신호 뒤로 줄이 생김
             float dt = Time.deltaTime;
             for (int r = 0; r < routes.Count; r++)
             {
@@ -123,11 +135,9 @@ namespace CityFlow.DebugTools
                 float p = Fold(_carPhase[r], segs, segs * 2);
                 int at = Mathf.Clamp((int)p, 0, segs);
                 float speed = CarSpeed * Mathf.Lerp(1f, 0.25f, _data.GetDensity01(path[at]));
-                if (IsBlocked(r)) speed = 0f;               // 같은 차선 앞차 → 정지(대기)
-                if (RedLightAhead(r)) speed = 0f;           // 빨간불 교차로 진입 직전 → 정지
+                if (IsBlocked(r) || IntersectionBlocked(r)) speed = 0f;   // 앞차 대기 / 교차로 진입 불가
                 _carPhase[r] += speed * dt;
 
-                // 갱신된 위치로 그림
                 var pose = PoseOf(path, r);
                 DrawCar((int)(pose.Pos.x * CellPx), (int)(pose.Pos.y * CellPx), pose.Horizontal, Car);
             }
@@ -161,18 +171,22 @@ namespace CityFlow.DebugTools
             };
         }
 
-        // 진입하려는 다음 타일이 빨간불 교차로인가. 이미 교차로 안이면 통과(교차로 안에서 안 멈춤).
-        private bool RedLightAhead(int r)
+        // 교차로 진입 불가 조건: 다음 타일이 교차로인데 ①내 방향이 빨간불 이거나 ②이미 다른 차가 점유 중.
+        // 이미 교차로 안(cur=교차로)이면 통과 — 안에서 멈추지 않고 빠져나감.
+        private bool IntersectionBlocked(int r)
         {
             var me = _poses[r];
             var cur = new Vector2Int(Mathf.FloorToInt(me.Pos.x), Mathf.FloorToInt(me.Pos.y));
             var next = new Vector2Int(
                 Mathf.FloorToInt(me.Pos.x + me.Dir.x * 0.6f),
                 Mathf.FloorToInt(me.Pos.y + me.Dir.y * 0.6f));
-            return next != cur && !_engine.IsSignalGreen(next);   // 비신호 타일은 항상 초록 취급
+            if (next == cur || !_signalSet.Contains(next)) return false;   // 교차로 진입 아님
+
+            if (!_engine.IsSignalGreen(next, me.Horizontal)) return true;  // 내 방향 빨간불
+            return _occupant.TryGetValue(next, out int occ) && occ != r;   // 이미 점유(box-blocking 방지)
         }
 
-        // 전진 가능? 두 규칙: ①같은 차선 앞차(추종) ②교차로 몸통 점유(방향 무관 양보).
+        // 같은 차선(횡오차 작음) 진행선상 앞쪽 MinGap 안에 다른 차가 있나(추종).
         private bool IsBlocked(int r)
         {
             var me = _poses[r];
@@ -181,20 +195,9 @@ namespace CityFlow.DebugTools
                 if (s == r || !_poses[s].Valid) continue;
                 Vector2 rel = _poses[s].Pos - me.Pos;
                 float ahead = Vector2.Dot(rel, me.Dir);
-                if (ahead <= 0.02f) continue;                             // 뒤차 무시(0.02=동일점 상호봉쇄 방지)
-
+                if (ahead <= 0.02f || ahead >= MinGap) continue;          // 뒤차/멀리는 무시
                 float lateral = Mathf.Abs(rel.x * me.Dir.y - rel.y * me.Dir.x);
-                bool sameLane = ahead < MinGap && lateral < LaneTolerance; // ① 추종
-                bool crossing = rel.sqrMagnitude < CrossGap * CrossGap;    // ② 교차 차량이 코앞
-                if (!sameLane && !crossing) continue;
-
-                if (crossing && !sameLane)
-                {
-                    // 서로가 서로를 양보하는 교착 방지: 상호 상황이면 낮은 인덱스가 우선권(먼저 지나감).
-                    float aheadOther = Vector2.Dot(-rel, _poses[s].Dir);
-                    if (aheadOther > 0.02f && r < s) continue;
-                }
-                return true;
+                if (lateral < LaneTolerance) return true;                 // 같은 차선 앞차
             }
             return false;
         }

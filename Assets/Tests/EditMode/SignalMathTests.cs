@@ -41,6 +41,21 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void GreenForAxis_AlternatesAndNeverBothGreen()
+        {
+            var s = new Signal { CycleSlots = 12 };   // 6초 주기, 절반 3초
+            // 전반부: 가로 초록·세로 빨강
+            Assert.IsTrue(SignalMath.IsGreenForAxis(s, 0.0, true));
+            Assert.IsFalse(SignalMath.IsGreenForAxis(s, 0.0, false));
+            // 후반부: 세로 초록·가로 빨강
+            Assert.IsFalse(SignalMath.IsGreenForAxis(s, 3.5, true));
+            Assert.IsTrue(SignalMath.IsGreenForAxis(s, 3.5, false));
+            // 어느 순간에도 두 방향 동시 초록 없음(교차 충돌 구조적 방지)
+            for (double t = 0; t < 6.0; t += 0.25)
+                Assert.IsFalse(SignalMath.IsGreenForAxis(s, t, true) && SignalMath.IsGreenForAxis(s, t, false));
+        }
+
+        [Test]
         public void GreenWave_PerfectOffset_FullEfficiency()
         {
             // 오프셋 차이(4) == 이동시간(4슬롯) → 흐름이 B 초록에 정확히 도착 → 효율 1

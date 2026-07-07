@@ -23,6 +23,18 @@ namespace CityFlow.Sim
             return t < s.GreenSlots * SlotSeconds;
         }
 
+        // 방향 교대 신호: 가로는 주기 전반, 세로는 후반이 초록(오프셋만큼 이동).
+        // 둘이 동시에 초록인 적이 없어 → 교차로에서 두 방향이 만나는 충돌·데드락이 구조적으로 사라짐.
+        public static bool IsGreenForAxis(Signal s, double time, bool horizontal)
+        {
+            double cycle = s.CycleSlots * SlotSeconds;
+            if (cycle <= 0) return true;
+            double t = (time + s.OffsetSlots * SlotSeconds) % cycle;
+            if (t < 0) t += cycle;
+            bool firstHalf = t < cycle * 0.5;
+            return horizontal ? firstHalf : !firstHalf;
+        }
+
         // 초록 시간 비율(duty cycle) ∈ [0,1]. 유효 용량 = RoadCapacity × 이 값.
         // 오프셋과 무관(비율은 오프셋에 안 변함) — 오프셋은 그린웨이브 조율에서만 의미.
         public static float GreenRatio(Signal s)

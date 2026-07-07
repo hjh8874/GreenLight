@@ -140,6 +140,10 @@ namespace CityFlow.Sim
         public bool IsSignalGreen(Vector2Int tile) =>
             !_signals.TryGet(tile, out var s) || SignalMath.IsGreen(s, _simTime);
 
+        // 뷰용: 이 교차로가 이 방향(가로/세로)에 지금 초록인가. 방향 교대 = 교차 충돌·데드락 방지.
+        public bool IsSignalGreen(Vector2Int tile, bool horizontal) =>
+            !_signals.TryGet(tile, out var s) || SignalMath.IsGreenForAxis(s, _simTime, horizontal);
+
         // ── IReadOnlyTileData: solver/grid에 위임 ──
         public float Stability01 => _stats.Stability01;
         public CongestionLevel GetCongestion(Vector2Int tile) => _solver.GetCongestion(tile);
