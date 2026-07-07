@@ -10,9 +10,11 @@ namespace CityFlow.Sim
     // ponytail: 별도 인접 그래프 없이 BFS가 grid를 직접 읽음(20×20엔 충분). 느려지면 인접리스트.
     internal sealed class RoadNetwork
     {
-        // 이웃 4방을 항상 같은 순서로 훑는다(상·우·하·좌) → 결정론.
-        static readonly int[] DX = { 0, 1, 0, -1 };
-        static readonly int[] DY = { 1, 0, -1, 0 };
+        // 이웃 8방을 항상 같은 순서로: 상·우·하·좌(직각) + 우상·우하·좌하·좌상(대각) → 결정론.
+        // 대각을 뒤에 붙여 동률 경로에선 직각이 이김(기존 직선 경로·신호 통과 보존).
+        // 코너컷 허용(A): 두 도로 타일이 대각으로만 붙어도(사이 직각 칸 비어도) 연결로 침 — "대각 연결 당연히".
+        static readonly int[] DX = { 0, 1, 0, -1, 1, 1, -1, -1 };
+        static readonly int[] DY = { 1, 0, -1, 0, 1, -1, -1, 1 };
 
         readonly CityGrid _grid;
         readonly int _w, _h;
@@ -44,11 +46,11 @@ namespace CityFlow.Sim
             _cachedVersion = _grid.TopologyVersion;
         }
 
-        // 건물(집·회사)의 접점 = 인접 4방 중 첫 도로 타일.
-        // BFS와 같은 스캔 순서(상·우·하·좌) → 어느 도로가 접점인지 결정론적.
+        // 건물(집·회사)의 접점 = 인접 8방 중 첫 도로 타일(직각 먼저, 그다음 대각).
+        // BFS와 같은 스캔 순서 → 어느 도로가 접점인지 결정론적. 대각 접점도 연결.
         public bool TryGetAccessRoad(Vector2Int building, out Vector2Int road)
         {
-            for (int d = 0; d < 4; d++)
+            for (int d = 0; d < DX.Length; d++)
             {
                 var v = new Vector2Int(building.x + DX[d], building.y + DY[d]);
                 if (IsRoad(v)) { road = v; return true; }
@@ -92,7 +94,7 @@ namespace CityFlow.Sim
             {
                 int cur = _queue[head++];
                 int cx = cur % _w, cy = cur / _w;   // flat → (x,y) 역변환
-                for (int d = 0; d < 4; d++)
+                for (int d = 0; d < DX.Length; d++)
                 {
                     int nx = cx + DX[d], ny = cy + DY[d];
                     if (nx < 0 || nx >= _w || ny < 0 || ny >= _h) continue;
