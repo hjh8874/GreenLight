@@ -146,7 +146,7 @@ namespace CityFlow.DebugTools
                 _carPhase[r] += speed * dt;
 
                 var pose = PoseOf(path, r);
-                DrawCar((int)(pose.Pos.x * CellPx), (int)(pose.Pos.y * CellPx), pose.Horizontal, Car);
+                DrawCar((int)(pose.Pos.x * CellPx), (int)(pose.Pos.y * CellPx), pose.Dir, Car);
             }
         }
 
@@ -226,14 +226,22 @@ namespace CityFlow.DebugTools
                     _px[py * _w + px] = col;
         }
 
-        // 차 = 진행 방향으로 길쭉한 사각(가로 7x3 / 세로 3x7).
-        private void DrawCar(int px, int py, bool horizontal, Color32 col)
+        // 차 = 진행 방향으로 길쭉한 사각을 방향 벡터로 회전 래스터화 → 대각·회전도 자연스럽게.
+        private void DrawCar(int cx, int cy, Vector2 dir, Color32 col)
         {
-            int hx = horizontal ? 3 : 1;
-            int hy = horizontal ? 1 : 3;
-            for (int j = py - hy; j <= py + hy; j++)
-                for (int k = px - hx; k <= px + hx; k++)
-                    if (k >= 0 && k < _w && j >= 0 && j < _w) _px[j * _w + k] = col;
+            Vector2 f = dir.sqrMagnitude > 1e-6f ? dir.normalized : Vector2.right;
+            Vector2 s = new Vector2(-f.y, f.x);         // 폭(수직) 방향
+            const float halfLen = 3.5f, halfWid = 1.3f; // 길이 7 / 폭 ~3px
+            const int rad = 4;                           // 탐색 반경(halfLen 이상)
+            for (int j = -rad; j <= rad; j++)
+                for (int k = -rad; k <= rad; k++)
+                {
+                    float along = k * f.x + j * f.y;     // 진행축 투영
+                    float perp = k * s.x + j * s.y;      // 폭축 투영
+                    if (Mathf.Abs(along) > halfLen || Mathf.Abs(perp) > halfWid) continue;
+                    int x = cx + k, y = cy + j;
+                    if (x >= 0 && x < _w && y >= 0 && y < _w) _px[y * _w + x] = col;
+                }
         }
     }
 }
