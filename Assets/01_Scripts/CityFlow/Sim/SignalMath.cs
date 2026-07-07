@@ -74,21 +74,26 @@ namespace CityFlow.Sim
             return r > 1f ? 1f : r < 0f ? 0f : r;           // [0,1] 클램프(오설정 방어)
         }
 
-        // 그린웨이브 효율 ∈ [floor, 1]. 인접 신호쌍의 오프셋이 이동시간에 맞으면 1(연쇄 초록),
-        // 반 주기 어긋나면 floor(흐름이 빨강에 도착 → 대기). 오프셋이 처리량을 바꾸는 유일한 지점.
-        // 🔓 1차 제안 공식(형태는 제안, floor·곡선은 팀 튜닝). ponytail: 같은 주기 가정 — 다르면 확장.
+        // 그린웨이브 효율 ∈ [floor, 1]. 상류 초록 선두에 출발한 흐름이 travelSlots 뒤 하류
+        // 초록창에 안착하면 1(플래토 — 초록 어디든 완전 통과), 반대편 한복판이면 floor.
+        // 뷰(PhaseForAxis)와 같은 GreenWindowFor에서 파생 → 화면과 처리량이 못 갈라짐.
+        // 🔓 floor·곡선은 팀 튜닝. ponytail: 같은 주기 가정 + 인접 교차로 회전(축 바뀜)은 도착
+        // 축으로 근사 — 직선 경로에선 축이 상쇄돼 무해, 정밀 회전 위상은 2차.
         public static float GreenWaveEfficiency(Signal from, Signal to, int travelSlots, float floor)
         {
-            int cycle = from.CycleSlots;
-            if (cycle <= 0) return 1f;   // 주기 이상 → 페널티 없음(방어)
-
-            // 이상적 오프셋차 = 이동시간. 실제와의 오차를 주기로 접어 [0, cycle)로.
-            int actual = to.OffsetSlots - from.OffsetSlots;
-            int misalign = (((actual - travelSlots) % cycle) + cycle) % cycle;
-            // 주기는 원형이라 반대쪽으로 접어 [0, cycle/2]로: 0=완벽 정렬, cycle/2=최악(반주기 어긋남)
-            int phaseErr = misalign < cycle - misalign ? misalign : cycle - misalign;
-            float norm = phaseErr / (cycle / 2f);   // [0,1]
-            return 1f - norm * (1f - floor);        // 완벽 1 → 최악 floor 선형
+            double cycle = from.CycleSlots * SlotSeconds;
+            if (cycle <= 0) return 1f;                                     // 주기 이상 → 페널티 없음
+            var (openFrom, _)      = GreenWindowFor(from, true);           // 축 무관(상쇄) → true 대표
+            var (openTo, greenLen) = GreenWindowFor(to, true);
+            double arrive = (openFrom + travelSlots * SlotSeconds) % cycle;
+            double delta  = (arrive - openTo) % cycle;
+            if (delta < 0) delta += cycle;
+            if (delta < greenLen) return 1f;                              // 하류 초록 안착 = 완전 통과
+            double gap    = System.Math.Min(delta - greenLen, cycle - delta);  // 초록창까지 원형 최단
+            double maxGap = (cycle - greenLen) * 0.5;                     // 최악(반대편 한복판)
+            double norm   = maxGap <= 0 ? 0.0 : gap / maxGap;
+            if (norm < 0) norm = 0; else if (norm > 1) norm = 1;
+            return (float)(1.0 - norm * (1.0 - floor));                   // 1 → floor 선형
         }
     }
 }

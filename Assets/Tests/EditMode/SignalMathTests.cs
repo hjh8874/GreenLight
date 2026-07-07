@@ -74,26 +74,25 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void GreenWave_HalfCycleOff_HitsFloor()
+        public void GreenWave_ArrivalInsideGreen_IsPlateauOne()
         {
-            // 반 주기(6슬롯) 어긋남 = 최악 → floor
+            // 도착이 하류 초록창 안이면(정렬 포함) 1.0 — 초록 어디 잡아도 완전 통과(플래토)
             var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
-            var b = new Signal { CycleSlots = 12, OffsetSlots = 0 };
-            Assert.AreEqual(0.5f, SignalMath.GreenWaveEfficiency(a, b, travelSlots: 6, floor: 0.5f), 1e-4f);
+            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 4 }, 4, 0.5f), 1e-4f); // δ=0
+            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 2 }, 4, 0.5f), 1e-4f); // δ=1.0 < 1.95
         }
 
         [Test]
-        public void GreenWave_OffsetIsTheLever_MonotonicWithMisalignment()
+        public void GreenWave_ArrivalPastGreen_FallsMonotonicToFloor()
         {
-            // 같은 신호쌍·이동시간, 오프셋만 바꿔 정렬을 좋게/나쁘게 → 효율이 달라져야(노브가 살아있음)
+            // 도착이 초록창 뒤로 점점 깊어질수록 효율 감소, 반대편 한복판 ≈ floor.
             var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
-            float good = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 4 }, 4, 0.5f);
-            float mid  = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 2 }, 4, 0.5f);
-            float bad  = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 10 }, 4, 0.5f);
-            Assert.AreEqual(1f, good, 1e-4f);
-            Assert.Greater(good, mid);
-            Assert.Greater(mid, bad);
-            Assert.AreEqual(0.5f, bad, 1e-4f);
+            float d2 = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 0  }, 4, 0.5f); // δ=2.0
+            float d3 = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 10 }, 4, 0.5f); // δ=3.0
+            float d4 = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 8  }, 4, 0.5f); // δ=4.0(≈최악)
+            Assert.Greater(d2, d3);
+            Assert.Greater(d3, d4);
+            Assert.AreEqual(0.5f, d4, 0.02f);   // 최악 ≈ floor
         }
 
         [Test]
