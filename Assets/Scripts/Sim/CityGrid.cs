@@ -50,10 +50,15 @@ namespace CityFlow.Sim
             return true;
         }
 
-        public bool Remove(Vector2Int t)
+        public bool Remove(Vector2Int t) => TryRemove(t, out _);
+
+        // 범위 검사 + "뭘 지웠나"를 한 곳에서 — 호출자가 GetTile을 따로 부르다 범위 밖에서 터지는 일 방지.
+        public bool TryRemove(Vector2Int t, out TileType removed)
         {
+            removed = TileType.Empty;
             if (!InBounds(t)) return false;
-            if (GetTile(t) == TileType.Empty) return false;   // 지울 게 없음
+            removed = GetTile(t);
+            if (removed == TileType.Empty) return false;   // 지울 게 없음
             _tiles[Index(t)] = TileType.Empty;
             MarkDirty();
             return true;

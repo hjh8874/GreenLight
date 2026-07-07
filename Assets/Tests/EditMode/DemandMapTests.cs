@@ -69,6 +69,22 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void MultiSink_HouseCommutesToOfficeAndSchool()
+        {
+            // 계획 2c: 집 1채 → 수요처 종류마다 1건씩 = 회사·학교 수요 총 2건.
+            var g = MakeGrid(5, 1,
+                (V(0, 0), TileType.House),
+                (V(2, 0), TileType.Office),
+                (V(4, 0), TileType.School));
+            var dm = new DemandMap(SimConfig.Default());
+            dm.Reassign(g);
+
+            Assert.AreEqual(2, dm.Demands.Count);
+            Assert.IsTrue(Has(dm, V(0, 0), V(2, 0)));
+            Assert.IsTrue(Has(dm, V(0, 0), V(4, 0)));
+        }
+
+        [Test]
         public void EquidistantOffices_PicksLowerFlatIndex()
         {
             var g = MakeGrid(5, 1,

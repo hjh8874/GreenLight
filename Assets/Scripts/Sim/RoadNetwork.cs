@@ -44,6 +44,19 @@ namespace CityFlow.Sim
             _cachedVersion = _grid.TopologyVersion;
         }
 
+        // 건물(집·회사)의 접점 = 인접 4방 중 첫 도로 타일.
+        // BFS와 같은 스캔 순서(상·우·하·좌) → 어느 도로가 접점인지 결정론적.
+        public bool TryGetAccessRoad(Vector2Int building, out Vector2Int road)
+        {
+            for (int d = 0; d < 4; d++)
+            {
+                var v = new Vector2Int(building.x + DX[d], building.y + DY[d]);
+                if (IsRoad(v)) { road = v; return true; }
+            }
+            road = default;
+            return false;
+        }
+
         public List<Vector2Int> FindPath(Vector2Int from, Vector2Int to)
         {
             // 안전장치: Rebuild를 안 불렀어도 버전 어긋나면 자동 무효화.
