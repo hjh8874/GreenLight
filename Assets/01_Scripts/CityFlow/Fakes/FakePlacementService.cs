@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
@@ -8,6 +9,7 @@ namespace CityFlow.Fakes
     {
         private readonly int width;
         private readonly int height;
+        private readonly Dictionary<Vector2Int, TileType> placedTypes = new Dictionary<Vector2Int, TileType>();
         private CityFlowServices services;
 
         public FakePlacementService(int width, int height)
@@ -34,6 +36,7 @@ namespace CityFlow.Fakes
             }
 
             services?.Events.Publish(new PlacedEvent(tile, type, false));
+            placedTypes[tile] = type;
             return true;
         }
 
@@ -44,7 +47,9 @@ namespace CityFlow.Fakes
                 return false;
             }
 
-            services?.Events.Publish(new PlacedEvent(tile, TileType.Empty, true));
+            placedTypes.TryGetValue(tile, out TileType removed);
+            placedTypes.Remove(tile);
+            services?.Events.Publish(new PlacedEvent(tile, removed, true));
             return true;
         }
     }

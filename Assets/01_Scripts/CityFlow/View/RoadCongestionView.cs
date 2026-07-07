@@ -15,10 +15,13 @@ namespace CityFlow.View
         private IReadOnlyTileData tileData;
         private Renderer cachedRenderer;
         private MaterialPropertyBlock propertyBlock;
+        private CityFlowServices services;
 
         public void Initialize(CityFlowServices services)
         {
+            this.services = services;
             tileData = services.TileData;
+            services.Events.CongestionChanged += OnCongestionChanged;
             Refresh();
         }
 
@@ -26,11 +29,25 @@ namespace CityFlow.View
         {
             cachedRenderer = GetComponent<Renderer>();
             propertyBlock = new MaterialPropertyBlock();
+            Refresh();
         }
 
-        private void Update()
+        private void OnDestroy()
         {
-            Refresh();
+            if (services != null)
+            {
+                services.Events.CongestionChanged -= OnCongestionChanged;
+            }
+        }
+
+        private void OnCongestionChanged(CongestionEvent e)
+        {
+            if (e.Tile != tile)
+            {
+                return;
+            }
+
+            ApplyColor(e.Level);
         }
 
         private void Refresh()
@@ -40,7 +57,17 @@ namespace CityFlow.View
                 return;
             }
 
-            Color color = tileData.GetCongestion(tile) switch
+            ApplyColor(tileData.GetCongestion(tile));
+        }
+
+        private void ApplyColor(CongestionLevel level)
+        {
+            if (cachedRenderer == null)
+            {
+                return;
+            }
+
+            Color color = level switch
             {
                 CongestionLevel.Jam => jamColor,
                 CongestionLevel.Slow => slowColor,
