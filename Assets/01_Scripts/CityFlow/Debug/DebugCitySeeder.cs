@@ -4,9 +4,9 @@ using UnityEngine;
 
 namespace CityFlow.DebugTools
 {
-    // 개발/QA용: MM 방식 — 실제로 '집↔회사'를 잇는 관통 도로들이 교차. 막다른 스텁 없음.
-    // 가로 2 × 세로 2 도로가 교차하는 4곳이 자연스럽게 신호가 됨. 차는 실제 도로를 따라
-    // 직각으로 꺾어 출발지→목적지→출발지 왕복. (엔진 그리드는 4방향 연결 = 진짜 대각선은 계단식 근사.)
+    // 개발/QA용: '대각 도로' 데모 — (2,2)→(17,17) 한 칸씩 대각으로만 이어진 길.
+    // 8방향 연결 덕에 차가 이 대각 도로를 그대로 따라 집(좌하)→회사(우상)→집 왕복.
+    // (SignalMap은 4방향이라 순수 대각 도로엔 신호 없음 — 경로 추종 확인용.)
     public sealed class DebugCitySeeder : MonoBehaviour, ICityFlowServiceConsumer
     {
         [SerializeField] private int size = 20;
@@ -14,26 +14,18 @@ namespace CityFlow.DebugTools
         public void Initialize(CityFlowServices services)
         {
             var p = services.Placement;
-            int n = size;
-            int[] rows = { 6, 13 };    // 가로 관통 도로 y
-            int[] cols = { 6, 13 };    // 세로 관통 도로 x  → 교차점 4곳 = 신호
 
-            // 1. 관통 도로(끝에서 끝까지 = 스텁 없음). 교차점이 이웃 4 → 신호.
-            foreach (int ry in rows) for (int x = 1; x < n - 1; x++) p.Place(new Vector2Int(x, ry), TileType.Road);
-            foreach (int cx in cols) for (int y = 1; y < n - 1; y++) p.Place(new Vector2Int(cx, y), TileType.Road);
+            for (int i = 2; i <= 17; i++) p.Place(new Vector2Int(i, i), TileType.Road);   // 대각 도로
 
-            // 2. 집(좌측, 가로 도로 접점) → 회사(상단, 세로 도로 접점) : 통근이 격자를 가로질러 꺾임
-            p.Place(new Vector2Int(1, rows[0] - 1), TileType.House);
-            p.Place(new Vector2Int(1, rows[0] + 1), TileType.House);
-            p.Place(new Vector2Int(1, rows[1] - 1), TileType.House);
-            p.Place(new Vector2Int(1, rows[1] + 1), TileType.House);
+            // 집(좌하, 대각 접점) → 회사(우상, 대각 접점)
+            p.Place(new Vector2Int(1, 1), TileType.House);
+            p.Place(new Vector2Int(3, 1), TileType.House);
+            p.Place(new Vector2Int(1, 3), TileType.House);
+            p.Place(new Vector2Int(18, 18), TileType.Office);
+            p.Place(new Vector2Int(16, 18), TileType.Office);
+            p.Place(new Vector2Int(18, 16), TileType.Office);
 
-            p.Place(new Vector2Int(cols[1] - 1, n - 1 - 1), TileType.Office);
-            p.Place(new Vector2Int(cols[1] + 1, n - 1 - 1), TileType.Office);
-            p.Place(new Vector2Int(cols[0] - 1, n - 1 - 1), TileType.Office);
-            p.Place(new Vector2Int(cols[0] + 1, n - 1 - 1), TileType.Office);
-
-            Debug.Log($"[DebugCitySeeder] MM 격자 — 가로 y={rows[0]},{rows[1]} × 세로 x={cols[0]},{cols[1]}, 교차 신호 4개(스텁 없음), 좌 집→상 회사");
+            Debug.Log("[DebugCitySeeder] 대각 도로 데모 — (2,2)→(17,17) 대각선, 집(좌하)→회사(우상), 차가 대각 경로 왕복");
         }
     }
 }
