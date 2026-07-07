@@ -114,5 +114,14 @@ namespace CityFlow.Sim.Tests
             var s = new Signal { CycleSlots = 12, OffsetSlots = 2 };   // +1.0s
             Assert.AreEqual(1.0, SignalMath.GreenWindowFor(s, true).open, 1e-9);
         }
+
+        [Test]
+        public void PhaseForAxis_OffsetDelaysGreen_UnifiedSign()
+        {
+            // 오프셋 2슬롯(+1.0s) → 가로 초록창이 [1.0, 2.95)로 밀림: t=0.5 아직 빨강, t=1.5 초록
+            var s = new Signal { CycleSlots = 12, OffsetSlots = 2 };
+            Assert.AreEqual(SignalPhase.Red,   SignalMath.PhaseForAxis(s, 0.5, true));
+            Assert.AreEqual(SignalPhase.Green, SignalMath.PhaseForAxis(s, 1.5, true));
+        }
     }
 }

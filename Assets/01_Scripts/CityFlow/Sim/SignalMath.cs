@@ -21,7 +21,8 @@ namespace CityFlow.Sim
         public static bool IsGreen(Signal s, double time)
         {
             double cycle = s.CycleSlots * SlotSeconds;
-            double t = (time + s.OffsetSlots * SlotSeconds) % cycle;
+            if (cycle <= 0) return true;                         // 주기 0 → 항상 통과
+            double t = (time - s.OffsetSlots * SlotSeconds) % cycle;   // 부호 통일(오프셋↑=늦게)
             if (t < 0) t += cycle;   // 음수 시간 방어(정산 역산 등)
             return t < s.GreenSlots * SlotSeconds;
         }
@@ -52,18 +53,16 @@ namespace CityFlow.Sim
         {
             double cycle = s.CycleSlots * SlotSeconds;
             if (cycle <= 0) return SignalPhase.Green;
-            double t = (time + s.OffsetSlots * SlotSeconds) % cycle;
-            if (t < 0) t += cycle;
-
             double half = cycle * 0.5;
-            double green = half * (1f - YellowFrac - ClearFrac);
-            double yellowEnd = half * (1f - ClearFrac);
+            var (open, greenLen) = GreenWindowFor(s, horizontal);   // 뷰·엔진 공용 창
+            double yellowLen = half * YellowFrac;
 
-            double local = horizontal ? t : t - half;   // 이 방향 창 안에서의 시각
-            if (local < 0 || local >= half) return SignalPhase.Red;   // 반대 방향 창 = 빨강
-            if (local < green) return SignalPhase.Green;
-            if (local < yellowEnd) return SignalPhase.Yellow;
-            return SignalPhase.Red;                       // 전적색(정리)
+            double local = (time - open) % cycle;         // 이 축 창 열림 기준 경과
+            if (local < 0) local += cycle;
+            if (local >= half) return SignalPhase.Red;    // 반대 축 창 = 빨강
+            if (local < greenLen) return SignalPhase.Green;
+            if (local < greenLen + yellowLen) return SignalPhase.Yellow;
+            return SignalPhase.Red;                        // 전적색(정리)
         }
 
         // 초록 시간 비율(duty cycle) ∈ [0,1]. 유효 용량 = RoadCapacity × 이 값.
