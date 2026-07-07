@@ -4,10 +4,9 @@ using UnityEngine;
 
 namespace CityFlow.DebugTools
 {
-    // 개발/QA용: 'ㄱ자(L)' 코리도어 — 집(좌하) →가로 간선→ 코너 →세로 간선→ 회사(우상).
-    // 통근 경로가 꺾여 흐르고(MM 방식: 차는 실제 도로를 따라 출발→목적, 목적→출발 왕복),
-    // 신호 4개(가로 축 2 + 세로 축 2)를 순서대로 통과. 코너는 이웃 2 = 신호 없음(꺾임만).
-    // 그린웨이브 판단은 같은 다리(가로끼리/세로끼리)에서 정확 — 코너 넘는 쌍은 회전 근사(2차).
+    // 개발/QA용: MM 방식 — 실제로 '집↔회사'를 잇는 관통 도로들이 교차. 막다른 스텁 없음.
+    // 가로 2 × 세로 2 도로가 교차하는 4곳이 자연스럽게 신호가 됨. 차는 실제 도로를 따라
+    // 직각으로 꺾어 출발지→목적지→출발지 왕복. (엔진 그리드는 4방향 연결 = 진짜 대각선은 계단식 근사.)
     public sealed class DebugCitySeeder : MonoBehaviour, ICityFlowServiceConsumer
     {
         [SerializeField] private int size = 20;
@@ -15,34 +14,26 @@ namespace CityFlow.DebugTools
         public void Initialize(CityFlowServices services)
         {
             var p = services.Placement;
+            int n = size;
+            int[] rows = { 6, 13 };    // 가로 관통 도로 y
+            int[] cols = { 6, 13 };    // 세로 관통 도로 x  → 교차점 4곳 = 신호
 
-            const int hy = 4;               // 가로 간선 y
-            const int vx = 15;              // 세로 간선 x (코너 = (vx,hy))
-            const int hx0 = 2, hxEnd = 15;  // 가로 간선 x 범위
-            const int vy0 = 4, vyEnd = 17;  // 세로 간선 y 범위
+            // 1. 관통 도로(끝에서 끝까지 = 스텁 없음). 교차점이 이웃 4 → 신호.
+            foreach (int ry in rows) for (int x = 1; x < n - 1; x++) p.Place(new Vector2Int(x, ry), TileType.Road);
+            foreach (int cx in cols) for (int y = 1; y < n - 1; y++) p.Place(new Vector2Int(cx, y), TileType.Road);
 
-            // 1. 가로 다리(집 쪽) + 세로 다리(회사 쪽) — (vx,hy)에서 직각으로 꺾임
-            for (int x = hx0; x <= hxEnd; x++) p.Place(new Vector2Int(x, hy), TileType.Road);
-            for (int y = vy0; y <= vyEnd; y++) p.Place(new Vector2Int(vx, y), TileType.Road);
+            // 2. 집(좌측, 가로 도로 접점) → 회사(상단, 세로 도로 접점) : 통근이 격자를 가로질러 꺾임
+            p.Place(new Vector2Int(1, rows[0] - 1), TileType.House);
+            p.Place(new Vector2Int(1, rows[0] + 1), TileType.House);
+            p.Place(new Vector2Int(1, rows[1] - 1), TileType.House);
+            p.Place(new Vector2Int(1, rows[1] + 1), TileType.House);
 
-            // 2. 신호 만들 교차 스텁 — 가로 다리엔 세로 스텁, 세로 다리엔 가로 스텁.
-            //    스텁 끝은 이웃 1, 중간 2 → 신호는 간선 교차점에만.
-            foreach (int cx in new[] { 6, 10 })          // 가로 축 신호 2개
-                foreach (int dy in new[] { -2, -1, 1, 2 })
-                    p.Place(new Vector2Int(cx, hy + dy), TileType.Road);
-            foreach (int cy in new[] { 8, 12 })          // 세로 축 신호 2개
-                foreach (int dx in new[] { -2, -1, 1, 2 })
-                    p.Place(new Vector2Int(vx + dx, cy), TileType.Road);
+            p.Place(new Vector2Int(cols[1] - 1, n - 1 - 1), TileType.Office);
+            p.Place(new Vector2Int(cols[1] + 1, n - 1 - 1), TileType.Office);
+            p.Place(new Vector2Int(cols[0] - 1, n - 1 - 1), TileType.Office);
+            p.Place(new Vector2Int(cols[0] + 1, n - 1 - 1), TileType.Office);
 
-            // 3. 집(가로 다리 좌측 시작) · 회사(세로 다리 상단) — 통근이 ㄱ자를 관통
-            p.Place(new Vector2Int(hx0, hy - 1), TileType.House);
-            p.Place(new Vector2Int(hx0, hy + 1), TileType.House);
-            p.Place(new Vector2Int(hx0 + 1, hy - 1), TileType.House);
-            p.Place(new Vector2Int(vx - 1, vyEnd), TileType.Office);
-            p.Place(new Vector2Int(vx + 1, vyEnd), TileType.Office);
-            p.Place(new Vector2Int(vx - 1, vyEnd - 1), TileType.Office);
-
-            Debug.Log($"[DebugCitySeeder] ㄱ자 코리도어 — 코너({vx},{hy}), 신호 4개[가로 x=6,10 / 세로 y=8,12], 집(좌하)→회사(우상)");
+            Debug.Log($"[DebugCitySeeder] MM 격자 — 가로 y={rows[0]},{rows[1]} × 세로 x={cols[0]},{cols[1]}, 교차 신호 4개(스텁 없음), 좌 집→상 회사");
         }
     }
 }
