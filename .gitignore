@@ -108,3 +108,9 @@ InitTestScene*.unity*
 
 # JetBrains IDE
 .idea/
+
+# Debug screenshots (transient)
+Assets/Screenshots/
+Assets/Screenshots.meta
+# Rider stray folder meta
+Assets/Scripts.meta
