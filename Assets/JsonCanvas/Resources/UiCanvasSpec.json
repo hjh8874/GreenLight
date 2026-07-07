@@ -1,0 +1,362 @@
+{
+  "appVersion": "0.1.0",
+  "sceneBakerUsage": {
+    "bakerType": "UnityEditorSceneBaker",
+    "runtimeGeneration": false,
+    "unityEditorMenu": "Tools/Json Canvas/Open Scene Baker",
+    "defaultJsonPath": "Assets/JsonCanvas/Resources/UiCanvasSpec.json",
+    "editorScriptPath": "Assets/JsonCanvas/Editor/JsonCanvasSceneBakerWindow.cs",
+    "targetSceneSelectionRequired": true,
+    "saveSceneAfterBakeSupported": true,
+    "createsRealSceneGameObjects": true,
+    "visibleBeforePlayMode": true,
+    "persistsInUnitySceneFile": true,
+    "doNotEditUnityYamlDirectly": true,
+    "doNotUseRuntimeResourcesLoadAsPrimaryFlow": true,
+    "doNotAttachRuntimeBuilderToBootstrap": true
+  },
+  "sceneBakeTarget": {
+    "targetSceneInput": "Assets\\Scenes\\structure-test.unity",
+    "targetSceneRequired": true,
+    "allowAutoSceneGuess": false,
+    "abortIfSceneNotFound": true,
+    "abortIfMultipleScenesMatched": true,
+    "sceneSelectionFallback": "ManualSelectionInEditorBaker"
+  },
+  "implementationRules": [
+    "Do not build a runtime JSON UI generator.",
+    "Do not create UI only during Play Mode.",
+    "Do not rely on Resources.Load during Play Mode as the primary flow.",
+    "Do not attach a runtime builder to a Bootstrap GameObject and stop there.",
+    "Do not edit .unity YAML as raw text.",
+    "Build or update a UnityEditor API based Editor Scene Baker.",
+    "Target Scene is required.",
+    "The generated Unity Editor Scene Baker must not guess the scene.",
+    "If the specified scene does not exist, abort.",
+    "If multiple scenes match the given name, abort.",
+    "Only bake into the exact scene specified by the user or into a scene manually selected by the user in the Baker window.",
+    "The exported JSON is the single source of truth for the Baker.",
+    "Save this JSON to Assets/JsonCanvas/Resources/UiCanvasSpec.json.",
+    "Add or update Assets/JsonCanvas/Editor/JsonCanvasSceneBakerWindow.cs.",
+    "Provide the Unity menu Tools/Json Canvas/Open Scene Baker.",
+    "The Baker must let the user select JSON Spec and Target Scene.",
+    "The Baker must let the user select Canvas Target Mode: UseExistingCanvas, DeleteExistingAndCreateNew, CreateNewCanvas, AbortIfCanvasExists.",
+    "The Baker must let the user select Existing SafeAreaRoot Handling: ReuseExisting, DeleteAndRecreate, AbortIfExists.",
+    "Bake Canvas To Scene must create real UGUI GameObjects in the selected Unity scene hierarchy.",
+    "Generated UI must be visible in the Hierarchy before Play Mode.",
+    "Call EditorSceneManager.MarkSceneDirty after Bake.",
+    "If Save Scene After Bake is enabled, call EditorSceneManager.SaveScene.",
+    "panel.id is data only and must not be used as a Unity GameObject name.",
+    "Unity GameObject names must use panel.hierarchyName.",
+    "Create hierarchy from panel.hierarchyPath and generatedUnityRectTransform.resolvedHierarchyPath.",
+    "In SplitGameViewAndCanvas mode, prefer resolvedHierarchyPath.",
+    "Canvas name is Canvas_Main when a new Canvas is created.",
+    "Create SafeAreaRoot under Canvas_Main or the selected Canvas.",
+    "CanvasScaler must use Scale With Screen Size for newly created Canvas objects.",
+    "If viewportSettings.mode is SplitGameViewAndCanvas, create GameViewRoot and OverlayRoot.",
+    "Place GameViewRoot using viewportSettings.gameViewRect.",
+    "OverlayRoot must fill the full Canvas.",
+    "Panels with viewportSpace GameView go under GameViewRoot.",
+    "Panels with viewportSpace Canvas go under OverlayRoot.",
+    "Initial layout must use generatedUnityRectTransform entries matching selectedScreenMode.",
+    "Apply unityRectTransform.authoritative.anchorMin, anchorMax, pivot, offsetMin, offsetMax.",
+    "Do not use debugPreview as actual RectTransform values.",
+    "Do not use anchoredPosition or sizeDelta for panel placement.",
+    "Do not reinterpret RectTransform from anchorPreset names.",
+    "layoutByMode is source data for mode switching; authoritative RectTransform wins for initial Bake.",
+    "If uiScaleSettings.applyTo.panelRects is false, do not apply UI Scale to GameViewRoot, OverlayRoot, or Panel RectTransforms.",
+    "UI Scale applies to internal UI elements only.",
+    "SlotGroup cell, spacing, and padding must prefer computedSlotLayout.",
+    "Each Panel must receive a CanvasGroup.",
+    "visibleCondition controls initial CanvasGroup alpha, interactable, and blocksRaycasts.",
+    "zIndex controls sibling order under the same parent.",
+    "If slotGroups is empty, do not instantiate SlotTemplates.",
+    "slotTemplates are global definitions and are instantiated only when a SlotGroup references them.",
+    "If slotGroup.layoutType is Grid, use GridLayoutGroup.",
+    "If slotGroup.layoutType is Horizontal, use HorizontalLayoutGroup and LayoutElement preferred sizes on slots.",
+    "If slotGroup.layoutType is Vertical, use VerticalLayoutGroup and LayoutElement preferred sizes on slots.",
+    "If slotGroup.scrollable is true, create ScrollRect, Viewport, and Content.",
+    "slotTemplateId must exactly match slotTemplates.id."
+  ],
+  "validationWarnings": [],
+  "selectedScreenPreset": {
+    "id": "compact-window",
+    "name": "960x540 Compact Window",
+    "width": 960,
+    "height": 540,
+    "category": "PC",
+    "description": "Small window layout"
+  },
+  "selectedScreenMode": "MobilePortraitMode",
+  "referenceResolution": {
+    "width": 1920,
+    "height": 1080
+  },
+  "viewportSettings": {
+    "mode": "SplitGameViewAndCanvas",
+    "canvasResolution": {
+      "width": 1920,
+      "height": 1080
+    },
+    "gameViewRect": {
+      "x": 0,
+      "y": 0.7222222222,
+      "width": 1,
+      "height": 0.2777777778
+    },
+    "gameViewPixelRect": {
+      "x": 0,
+      "y": 780,
+      "width": 1920,
+      "height": 300
+    },
+    "gameViewAnchor": "BottomStretch",
+    "allowUiOutsideGameView": true
+  },
+  "currentUiScale": 0.8,
+  "uiScaleSettings": {
+    "mode": "PerScreenPreset",
+    "globalScale": 1,
+    "minScale": 0.75,
+    "maxScale": 1.25,
+    "applyTo": {
+      "slotGroups": true,
+      "text": true,
+      "icons": true,
+      "panelRects": false
+    },
+    "scaleByScreenPreset": {
+      "pc-qhd": 1,
+      "pc-fhd": 1,
+      "pc-hd": 0.9,
+      "pc-window": 0.95,
+      "compact-window": 0.8,
+      "floating-wide": 0.75,
+      "floating-compact": 0.7,
+      "mobile-portrait": 1.1,
+      "mobile-landscape": 1
+    }
+  },
+  "screenPresets": [
+    {
+      "id": "pc-hd",
+      "name": "1280x720 PC HD",
+      "width": 1280,
+      "height": 720,
+      "category": "PC",
+      "description": "HD desktop reference"
+    },
+    {
+      "id": "pc-fhd",
+      "name": "1920x1080 PC FHD",
+      "width": 1920,
+      "height": 1080,
+      "category": "PC",
+      "description": "Full HD desktop reference"
+    },
+    {
+      "id": "pc-qhd",
+      "name": "2560x1440 PC QHD",
+      "width": 2560,
+      "height": 1440,
+      "category": "PC",
+      "description": "QHD desktop reference"
+    },
+    {
+      "id": "pc-window",
+      "name": "1600x900 PC Window",
+      "width": 1600,
+      "height": 900,
+      "category": "PC",
+      "description": "Windowed desktop layout"
+    },
+    {
+      "id": "compact-window",
+      "name": "960x540 Compact Window",
+      "width": 960,
+      "height": 540,
+      "category": "PC",
+      "description": "Small window layout"
+    },
+    {
+      "id": "floating-wide",
+      "name": "1600x300 Bottom Floating",
+      "width": 1600,
+      "height": 300,
+      "category": "Floating",
+      "description": "Idle bottom floating strip"
+    },
+    {
+      "id": "floating-compact",
+      "name": "1280x240 Bottom Floating",
+      "width": 1280,
+      "height": 240,
+      "category": "Floating",
+      "description": "Compact idle strip"
+    },
+    {
+      "id": "mobile-portrait",
+      "name": "1080x1920 Mobile Portrait",
+      "width": 1080,
+      "height": 1920,
+      "category": "Mobile",
+      "description": "Portrait mobile safe area test"
+    },
+    {
+      "id": "mobile-landscape",
+      "name": "1920x1080 Mobile Landscape",
+      "width": 1920,
+      "height": 1080,
+      "category": "Mobile",
+      "description": "Landscape mobile safe area test"
+    }
+  ],
+  "screenModes": [
+    "FullViewMode",
+    "IdleFloatingMode",
+    "CompactHUDMode",
+    "DriveViewMode",
+    "RadioFocusMode",
+    "MobilePortraitMode",
+    "MobileLandscapeMode"
+  ],
+  "panels": [
+    {
+      "id": "DebugPanel_86399",
+      "displayName": "Debug Panel",
+      "hierarchyName": "Panel_Debug",
+      "hierarchyPath": "Canvas_Main/SafeAreaRoot/Debug/Panel_Debug",
+      "category": "Debug",
+      "uiType": "Panel",
+      "visibleCondition": "DebugMode",
+      "dataSource": "None",
+      "priority": "Medium",
+      "infoDensity": "Debug",
+      "responsiveBehavior": "Fixed",
+      "viewportSpace": "Canvas",
+      "anchorPreset": "TopLeft",
+      "safeArea": true,
+      "zIndex": 20,
+      "layoutByMode": {
+        "FullViewMode": {
+          "x": 0.02,
+          "y": 0.72,
+          "width": 0.24,
+          "height": 0.22
+        },
+        "IdleFloatingMode": {
+          "x": 0.02,
+          "y": 0.72,
+          "width": 0.24,
+          "height": 0.22
+        },
+        "CompactHUDMode": {
+          "x": 0.02,
+          "y": 0.72,
+          "width": 0.24,
+          "height": 0.22
+        },
+        "DriveViewMode": {
+          "x": 0.02,
+          "y": 0.72,
+          "width": 0.24,
+          "height": 0.22
+        },
+        "RadioFocusMode": {
+          "x": 0.02,
+          "y": 0.72,
+          "width": 0.24,
+          "height": 0.22
+        },
+        "MobilePortraitMode": {
+          "x": 0,
+          "y": 0,
+          "width": 0.2,
+          "height": 0.5
+        },
+        "MobileLandscapeMode": {
+          "x": 0.02,
+          "y": 0.72,
+          "width": 0.24,
+          "height": 0.22
+        }
+      },
+      "notes": ""
+    }
+  ],
+  "slotGroups": [],
+  "slotTemplates": [],
+  "generatedUnityRectTransform": [
+    {
+      "panelId": "DebugPanel_86399",
+      "hierarchyName": "Panel_Debug",
+      "hierarchyPath": "Canvas_Main/SafeAreaRoot/Debug/Panel_Debug",
+      "resolvedHierarchyPath": "Canvas_Main/SafeAreaRoot/OverlayRoot/Debug/Panel_Debug",
+      "viewportSpace": "Canvas",
+      "screenMode": "MobilePortraitMode",
+      "generationScope": "selectedScreenModeInitialLayout",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "width": 0.2,
+        "height": 0.5
+      },
+      "layoutInterpretation": "1920x1080 Canvas 기준 좌측 상단에 위치하며, 약 384px x 540px 크기입니다. 전체 폭이 아니라 일부 영역만 차지합니다. 현재 rect 기준으로는 TopLeft 배치에 가깝습니다.",
+      "unityRectTransform": {
+        "authoritative": {
+          "anchorMin": {
+            "x": 0,
+            "y": 0.5
+          },
+          "anchorMax": {
+            "x": 0.2,
+            "y": 1
+          },
+          "pivot": {
+            "x": 0.5,
+            "y": 0.5
+          },
+          "offsetMin": {
+            "x": 0,
+            "y": 0
+          },
+          "offsetMax": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        "debugPreview": {
+          "anchoredPosition": {
+            "x": -768,
+            "y": 270
+          },
+          "sizeDelta": {
+            "x": 384,
+            "y": 540
+          },
+          "pixelRect": {
+            "x": 0,
+            "y": 0,
+            "width": 384,
+            "height": 540
+          },
+          "legacyOffsetMin": {
+            "x": 0,
+            "y": 540
+          },
+          "legacyOffsetMax": {
+            "x": -1536,
+            "y": 1080
+          }
+        },
+        "metadata": {
+          "anchorPreset": "TopLeft",
+          "inferredAnchorPreset": "TopLeft",
+          "anchorPresetMismatch": false,
+          "anchorPresetNote": "anchorPreset matches the current normalized rect: TopLeft."
+        },
+        "note": "Use authoritative values for implementation. debugPreview values are for validation only."
+      }
+    }
+  ]
+}
