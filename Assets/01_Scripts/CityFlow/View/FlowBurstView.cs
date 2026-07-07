@@ -11,14 +11,25 @@ namespace CityFlow.View
         [SerializeField] private float maxScale = 1.5f;
 
         private float hideAtTime;
+        private CityFlowServices services;
 
         public void Initialize(CityFlowServices services)
         {
+            this.services = services;
             services.Events.FlowBurst += OnFlowBurst;
 
             if (burstMarker != null)
             {
                 burstMarker.gameObject.SetActive(false);
+            }
+        }
+
+        private void OnDestroy()
+        {
+            // 구독했으면 파괴 시 반드시 해제 — 좀비 호출·메모리 누수 방지.
+            if (services != null)
+            {
+                services.Events.FlowBurst -= OnFlowBurst;
             }
         }
 
