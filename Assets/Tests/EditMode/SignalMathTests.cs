@@ -122,5 +122,24 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(SignalPhase.Red,   SignalMath.PhaseForAxis(s, 0.5, true));
             Assert.AreEqual(SignalPhase.Green, SignalMath.PhaseForAxis(s, 1.5, true));
         }
+
+        [Test]
+        public void SignalModels_Agree_EfficiencyMatchesViewGreen()
+        {
+            // 통합 불변식: 엔진이 "완전 통과(1.0)"면 뷰도 그 도착 순간 초록. 어긋나면 둘 다 손실/빨강.
+            // 두 모델이 다시 갈라지면 이 테스트가 빨개진다(anti-drift 못).
+            var from = new Signal { CycleSlots = 12, OffsetSlots = 0 };
+            var to   = new Signal { CycleSlots = 12, OffsetSlots = 4 };   // 정렬(offsetTo-offsetFrom=travel)
+            const int travel = 4;
+            double open = SignalMath.GreenWindowFor(from, true).open;
+            double arrive = open + travel * SignalMath.SlotSeconds;       // 상류 초록 선두 출발 → 도착
+
+            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(from, to, travel, 0.5f), 1e-4f);   // 엔진: 통과
+            Assert.AreEqual(SignalPhase.Green, SignalMath.PhaseForAxis(to, arrive, true));         // 뷰: 초록 ← 일치
+
+            to.OffsetSlots = 8;                                            // 어긋남
+            Assert.Less(SignalMath.GreenWaveEfficiency(from, to, travel, 0.5f), 1f);               // 엔진: 손실
+            Assert.AreNotEqual(SignalPhase.Green, SignalMath.PhaseForAxis(to, arrive, true));      // 뷰: 초록 아님 ← 일치
+        }
     }
 }
