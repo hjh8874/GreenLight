@@ -7,8 +7,8 @@ namespace CityFlow.Sim
     // ponytail: NodeId·차선 등은 FlowSolver 통합 결정 후. 지금은 순수 수학용 최소 필드.
     internal sealed class Signal
     {
-        public int CycleSlots = 12;   // 주기(슬롯). 12슬롯 = 6초
-        public int GreenSlots = 6;    // 초록 길이(슬롯)
+        public int CycleSlots = 16;   // 주기(슬롯). 16슬롯 = 8초 (관찰·QA용으로 길게, 🔓 밸런스)
+        public int GreenSlots = 8;    // 초록 길이(슬롯, 레거시 IsGreen용) — 주기의 절반 유지
         public int OffsetSlots = 0;   // 주기 시작을 미는 양 = 유저 조작 대상
     }
 

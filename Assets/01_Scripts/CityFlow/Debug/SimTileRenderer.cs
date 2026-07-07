@@ -13,7 +13,7 @@ namespace CityFlow.DebugTools
     {
         [SerializeField] private int size = 20;
         private const int CellPx = 12;
-        private const float CarSpeed = 1.1f;   // 타일/초
+        private const float CarSpeed = 2f;   // 타일/초 — 엔진 1타일=SlotSeconds(0.5s)=2타일/초에 맞춤(화면 이동시간=엔진 travelSlots → 그린웨이브 일치)
 
         private static readonly Color32 Cream  = new Color32(238, 232, 210, 255);
         private static readonly Color32 Road   = new Color32(150, 150, 156, 255);
