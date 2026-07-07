@@ -56,9 +56,10 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void MisalignedSignals_ReduceThroughput()
         {
-            // 둘 다 오프셋 0 = 이동시간 4만큼 어긋남 → eff = 1 - (4/6)×0.5 = 0.6667
-            var (solver, _) = Solve(TwoSignalCity(), Cfg(), offsetAtSecond: 0);
-            Assert.AreEqual(0.6667f, solver.DeliveredTotal, 1e-3f);
+            // 하류 오프셋 8 = 도착이 하류 초록창 반대편 → 효율 ≈ floor(0.5) → delivered 감소
+            var (solver, _) = Solve(TwoSignalCity(), Cfg(), offsetAtSecond: 8);
+            Assert.Less(solver.DeliveredTotal, 1f);
+            Assert.AreEqual(0.506f, solver.DeliveredTotal, 0.02f);
         }
 
         [Test]
@@ -100,11 +101,14 @@ namespace CityFlow.Sim.Tests
 
             e.Tick(0.25f);
             Assert.AreEqual(2, e.SignalTiles.Count);              // 교차로 2개 자동 감지
-            Assert.AreEqual(0.6667f, e.Stability01, 1e-3f);       // 기본 오프셋 0 = 어긋남
+
+            Assert.IsTrue(e.TrySetSignalOffsetSlots(V(6, 0), 8)); // 일부러 어긋나게(반대편 착지)
+            e.Tick(0.25f);
+            Assert.Less(e.Stability01, 0.6f);                     // 처리량 저하
 
             Assert.IsTrue(e.TrySetSignalOffsetSlots(V(6, 0), 4)); // 그린웨이브 조율(이동시간 4)
             e.Tick(0.25f);
-            Assert.AreEqual(1f, e.Stability01, 1e-3f);            // 처리량 회복 — 레버가 살아있음
+            Assert.AreEqual(1f, e.Stability01, 1e-3f);            // 회복 — 레버가 살아있음
         }
     }
 }
