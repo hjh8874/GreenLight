@@ -24,13 +24,33 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void LShaped_TurnsCorner()
+        public void LShaped_TakesDiagonalShortcut()
         {
+            // 8방향: 안쪽 코너를 대각으로 가로질러 (0,1)→(1,2) → 5타일 L이 아니라 4타일 지름길.
             var g = GridWithRoads(5, 5, V(0, 0), V(0, 1), V(0, 2), V(1, 2), V(2, 2));
             var net = new RoadNetwork(g);
             Assert.AreEqual(
-                new[] { V(0, 0), V(0, 1), V(0, 2), V(1, 2), V(2, 2) },
+                new[] { V(0, 0), V(0, 1), V(1, 2), V(2, 2) },
                 net.FindPath(V(0, 0), V(2, 2)));
+        }
+
+        [Test]
+        public void DiagonalStaircase_ConnectsViaCornerCut()
+        {
+            // 코너컷 허용(A): 사이 직각 칸((1,0)·(0,1))이 비어도 대각 인접 도로는 연결.
+            var g = GridWithRoads(5, 5, V(0, 0), V(1, 1), V(2, 2));
+            var net = new RoadNetwork(g);
+            Assert.AreEqual(new[] { V(0, 0), V(1, 1), V(2, 2) }, net.FindPath(V(0, 0), V(2, 2)));
+        }
+
+        [Test]
+        public void AccessRoad_DiagonalNeighbor_Connects()
+        {
+            // 8방향: 건물(0,0)의 직각 이웃엔 도로 없고 대각(1,1)만 도로 → 대각 접점으로 연결.
+            var g = GridWithRoads(5, 5, V(1, 1));
+            var net = new RoadNetwork(g);
+            Assert.IsTrue(net.TryGetAccessRoad(V(0, 0), out var road));
+            Assert.AreEqual(V(1, 1), road);
         }
 
         [Test]

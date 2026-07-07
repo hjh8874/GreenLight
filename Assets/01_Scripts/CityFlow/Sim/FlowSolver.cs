@@ -23,6 +23,9 @@ namespace CityFlow.Sim
 
         public float DeliveredTotal { get; private set; }   // 이번 틱 총 처리량(대/초)
 
+        // 이번 틱에 흐른 실제 경로들(뷰가 차를 이 위에 그림). 읽기 전용.
+        public IReadOnlyList<List<Vector2Int>> Routes => _routes;
+
         public FlowSolver(int width, int height)
         {
             _w = width;
@@ -58,7 +61,11 @@ namespace CityFlow.Sim
             }
         }
 
-        public void Resolve(in SimConfig cfg)
+        // 신호 없는 호출(기존 테스트·정산 경로 호환) — factor 항상 1.
+        public void Resolve(in SimConfig cfg) => Resolve(cfg, null);
+
+        // 신호 포함 Resolve: delivered = 수요 × E(혼잡 병목) × SignalFactor(그린웨이브 조율).
+        public void Resolve(in SimConfig cfg, SignalMap signals)
         {
             // ① 타일별 혼잡: <Slow Free / Slow~Jam Slow / >Jam Jam (SimConfig 주석 규약)
             for (int i = 0; i < _flow.Length; i++)
@@ -84,13 +91,38 @@ namespace CityFlow.Sim
                 }
 
                 float e = Efficiency(bottleneck, cfg);
-                DeliveredTotal += cfg.DemandPerHouse * e;
-                _deliveredToSink[Index(_routeSinks[r])] += cfg.DemandPerHouse * e;
+                float delivered = cfg.DemandPerHouse * e * SignalFactor(path, signals, cfg);
+                DeliveredTotal += delivered;
+                _deliveredToSink[Index(_routeSinks[r])] += delivered;
 
                 // 잃은 처리량(rate×틱=대수)을 병목에 적립 — 나중에 그 타일을 고치면 Burst 보상의 원료.
+                // 신호 손실은 pending에 안 넣음: 조율의 보상은 Burst가 아니라 그린웨이브 처리량 자체(설계 §2).
                 if (e < 1f && bottleneckIdx >= 0)
                     _pendingReward[bottleneckIdx] += cfg.DemandPerHouse * (1f - e) * cfg.TickInterval;
             }
+        }
+
+        // 경로가 지나는 인접 신호쌍들의 그린웨이브 효율을 min으로 합성(설계 §4 — 병목 철학과 동일).
+        // 신호 0~1개면 조율할 짝이 없으니 1. travelSlots = 신호 사이 타일 거리(1타일=1슬롯, MVP §3).
+        static float SignalFactor(List<Vector2Int> path, SignalMap signals, in SimConfig cfg)
+        {
+            if (signals == null) return 1f;
+
+            float factor = 1f;
+            Signal prev = null;
+            int prevIdx = 0;
+            for (int p = 0; p < path.Count; p++)
+            {
+                if (!signals.TryGet(path[p], out var sig)) continue;
+                if (prev != null)
+                {
+                    float e = SignalMath.GreenWaveEfficiency(prev, sig, p - prevIdx, cfg.GreenWaveFloor);
+                    if (e < factor) factor = e;
+                }
+                prev = sig;
+                prevIdx = p;
+            }
+            return factor;
         }
 
         public CongestionLevel GetCongestion(Vector2Int t) => _level[Index(t)];
