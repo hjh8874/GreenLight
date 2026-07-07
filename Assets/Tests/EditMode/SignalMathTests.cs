@@ -41,18 +41,27 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void GreenForAxis_AlternatesAndNeverBothGreen()
+        public void PhaseForAxis_GreenYellowRed_WithClearanceAndNoOverlap()
         {
-            var s = new Signal { CycleSlots = 12 };   // 6초 주기, 절반 3초
-            // 전반부: 가로 초록·세로 빨강
-            Assert.IsTrue(SignalMath.IsGreenForAxis(s, 0.0, true));
-            Assert.IsFalse(SignalMath.IsGreenForAxis(s, 0.0, false));
-            // 후반부: 세로 초록·가로 빨강
-            Assert.IsFalse(SignalMath.IsGreenForAxis(s, 3.5, true));
-            Assert.IsTrue(SignalMath.IsGreenForAxis(s, 3.5, false));
-            // 어느 순간에도 두 방향 동시 초록 없음(교차 충돌 구조적 방지)
-            for (double t = 0; t < 6.0; t += 0.25)
-                Assert.IsFalse(SignalMath.IsGreenForAxis(s, t, true) && SignalMath.IsGreenForAxis(s, t, false));
+            var s = new Signal { CycleSlots = 12 };   // 6초 주기, 절반 3초: 초록1.95·노랑0.6·전적색0.45
+            // 전반부 초록: 가로 Green·세로 Red
+            Assert.AreEqual(SignalPhase.Green, SignalMath.PhaseForAxis(s, 0.0, true));
+            Assert.AreEqual(SignalPhase.Red,   SignalMath.PhaseForAxis(s, 0.0, false));
+            // 초록 끝(~2.2s) = 노랑
+            Assert.AreEqual(SignalPhase.Yellow, SignalMath.PhaseForAxis(s, 2.2, true));
+            // 전적색(~2.8s) = 양방향 빨강(교차로 정리)
+            Assert.AreEqual(SignalPhase.Red, SignalMath.PhaseForAxis(s, 2.8, true));
+            Assert.AreEqual(SignalPhase.Red, SignalMath.PhaseForAxis(s, 2.8, false));
+            // 후반부: 세로 Green·가로 Red
+            Assert.AreEqual(SignalPhase.Green, SignalMath.PhaseForAxis(s, 3.5, false));
+            Assert.AreEqual(SignalPhase.Red,   SignalMath.PhaseForAxis(s, 3.5, true));
+            // 어느 순간에도 두 방향이 동시에 통행(초록/노랑) 아님
+            for (double t = 0; t < 6.0; t += 0.1)
+            {
+                bool hGo = SignalMath.PhaseForAxis(s, t, true) != SignalPhase.Red;
+                bool vGo = SignalMath.PhaseForAxis(s, t, false) != SignalPhase.Red;
+                Assert.IsFalse(hGo && vGo);
+            }
         }
 
         [Test]

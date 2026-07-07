@@ -1,5 +1,8 @@
 namespace CityFlow.Sim
 {
+    // 신호 3상태(뷰가 차 진입 판정에 씀). SimEngine이 public로 노출하므로 public.
+    public enum SignalPhase { Green, Yellow, Red }
+
     // 교차로 신호 하나. 유저가 조작하는 노브 = OffsetSlots(그린웨이브의 핵심).
     // ponytail: NodeId·차선 등은 FlowSolver 통합 결정 후. 지금은 순수 수학용 최소 필드.
     internal sealed class Signal
@@ -23,16 +26,29 @@ namespace CityFlow.Sim
             return t < s.GreenSlots * SlotSeconds;
         }
 
-        // 방향 교대 신호: 가로는 주기 전반, 세로는 후반이 초록(오프셋만큼 이동).
-        // 둘이 동시에 초록인 적이 없어 → 교차로에서 두 방향이 만나는 충돌·데드락이 구조적으로 사라짐.
-        public static bool IsGreenForAxis(Signal s, double time, bool horizontal)
+        // 노란불·전적색 비율(각 방향 창의 절반 기준). 🔓 튜닝값.
+        public const float YellowFrac = 0.2f;   // 초록 뒤 노란불(진입 금지, 정리 준비)
+        public const float ClearFrac  = 0.15f;  // 전적색(양방향 빨강 = 교차로 비우기)
+
+        // 방향 교대 신호의 3상태: 가로는 주기 전반, 세로는 후반이 활성(오프셋만큼 이동).
+        // 각 방향 창 = 초록 → 노랑 → 전적색(정리). 두 방향이 동시에 초록/노랑인 적 없음 →
+        // 전환 순간 교차로가 비워진 뒤에야 반대 방향 초록 → 낀 차 없음, 예측 가능.
+        public static SignalPhase PhaseForAxis(Signal s, double time, bool horizontal)
         {
             double cycle = s.CycleSlots * SlotSeconds;
-            if (cycle <= 0) return true;
+            if (cycle <= 0) return SignalPhase.Green;
             double t = (time + s.OffsetSlots * SlotSeconds) % cycle;
             if (t < 0) t += cycle;
-            bool firstHalf = t < cycle * 0.5;
-            return horizontal ? firstHalf : !firstHalf;
+
+            double half = cycle * 0.5;
+            double green = half * (1f - YellowFrac - ClearFrac);
+            double yellowEnd = half * (1f - ClearFrac);
+
+            double local = horizontal ? t : t - half;   // 이 방향 창 안에서의 시각
+            if (local < 0 || local >= half) return SignalPhase.Red;   // 반대 방향 창 = 빨강
+            if (local < green) return SignalPhase.Green;
+            if (local < yellowEnd) return SignalPhase.Yellow;
+            return SignalPhase.Red;                       // 전적색(정리)
         }
 
         // 초록 시간 비율(duty cycle) ∈ [0,1]. 유효 용량 = RoadCapacity × 이 값.

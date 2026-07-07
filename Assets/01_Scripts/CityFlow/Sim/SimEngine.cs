@@ -140,9 +140,13 @@ namespace CityFlow.Sim
         public bool IsSignalGreen(Vector2Int tile) =>
             !_signals.TryGet(tile, out var s) || SignalMath.IsGreen(s, _simTime);
 
-        // 뷰용: 이 교차로가 이 방향(가로/세로)에 지금 초록인가. 방향 교대 = 교차 충돌·데드락 방지.
+        // 뷰용: 이 교차로의 이 방향 신호 3상태(초록/노랑/적색). 신호 없으면 항상 초록.
+        public SignalPhase GetSignalPhase(Vector2Int tile, bool horizontal) =>
+            _signals.TryGet(tile, out var s) ? SignalMath.PhaseForAxis(s, _simTime, horizontal) : SignalPhase.Green;
+
+        // 진입 허가 = 초록만(노랑·적색은 진입 금지).
         public bool IsSignalGreen(Vector2Int tile, bool horizontal) =>
-            !_signals.TryGet(tile, out var s) || SignalMath.IsGreenForAxis(s, _simTime, horizontal);
+            GetSignalPhase(tile, horizontal) == SignalPhase.Green;
 
         // ── IReadOnlyTileData: solver/grid에 위임 ──
         public float Stability01 => _stats.Stability01;

@@ -21,8 +21,9 @@ namespace CityFlow.DebugTools
         private static readonly Color32 House   = new Color32( 90, 150, 220, 255);
         private static readonly Color32 Office  = new Color32(235, 150,  60, 255);
         private static readonly Color32 School  = new Color32(170, 110, 210, 255);
-        private static readonly Color32 SigGreen = new Color32( 40, 200,  70, 255); // 신호 초록
-        private static readonly Color32 SigRed   = new Color32(230,  50,  50, 255); // 신호 빨강
+        private static readonly Color32 SigGreen  = new Color32( 40, 200,  70, 255); // 신호 초록
+        private static readonly Color32 SigYellow = new Color32(240, 200,  40, 255); // 신호 노랑
+        private static readonly Color32 SigRed    = new Color32(230,  50,  50, 255); // 신호 빨강
 
         private IReadOnlyTileData _data;
         private SimEngine _engine;   // 실제 경로를 읽기 위해(디버그 캐스트)
@@ -88,7 +89,13 @@ namespace CityFlow.DebugTools
             if (_engine == null) return;
             foreach (var t in _engine.SignalTiles)
             {
-                var col = _engine.IsSignalGreen(t) ? SigGreen : SigRed;
+                // 두 방향 중 더 통행 우선(초록>노랑>적색)으로 마커 색 — 일반 신호등처럼 G→Y→R 순환
+                var h = _engine.GetSignalPhase(t, true);
+                var v = _engine.GetSignalPhase(t, false);
+                var best = (h == SignalPhase.Green || v == SignalPhase.Green) ? SignalPhase.Green
+                         : (h == SignalPhase.Yellow || v == SignalPhase.Yellow) ? SignalPhase.Yellow
+                         : SignalPhase.Red;
+                var col = best == SignalPhase.Green ? SigGreen : best == SignalPhase.Yellow ? SigYellow : SigRed;
                 int x0 = t.x * CellPx + CellPx - 5, y0 = t.y * CellPx + CellPx - 5;   // 우상단 모서리
                 for (int py = y0; py < y0 + 4; py++)
                     for (int px = x0; px < x0 + 4; px++)
