@@ -31,5 +31,22 @@ namespace CityFlow.Sim
             float r = (float)s.GreenSlots / s.CycleSlots;
             return r > 1f ? 1f : r < 0f ? 0f : r;           // [0,1] 클램프(오설정 방어)
         }
+
+        // 그린웨이브 효율 ∈ [floor, 1]. 인접 신호쌍의 오프셋이 이동시간에 맞으면 1(연쇄 초록),
+        // 반 주기 어긋나면 floor(흐름이 빨강에 도착 → 대기). 오프셋이 처리량을 바꾸는 유일한 지점.
+        // 🔓 1차 제안 공식(형태는 제안, floor·곡선은 팀 튜닝). ponytail: 같은 주기 가정 — 다르면 확장.
+        public static float GreenWaveEfficiency(Signal from, Signal to, int travelSlots, float floor)
+        {
+            int cycle = from.CycleSlots;
+            if (cycle <= 0) return 1f;   // 주기 이상 → 페널티 없음(방어)
+
+            // 이상적 오프셋차 = 이동시간. 실제와의 오차를 주기로 접어 [0, cycle)로.
+            int actual = to.OffsetSlots - from.OffsetSlots;
+            int misalign = (((actual - travelSlots) % cycle) + cycle) % cycle;
+            // 주기는 원형이라 반대쪽으로 접어 [0, cycle/2]로: 0=완벽 정렬, cycle/2=최악(반주기 어긋남)
+            int phaseErr = misalign < cycle - misalign ? misalign : cycle - misalign;
+            float norm = phaseErr / (cycle / 2f);   // [0,1]
+            return 1f - norm * (1f - floor);        // 완벽 1 → 최악 floor 선형
+        }
     }
 }

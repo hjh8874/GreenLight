@@ -39,5 +39,37 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1f, SignalMath.GreenRatio(new Signal { CycleSlots = 6, GreenSlots = 99 }), 1e-4f);
             Assert.AreEqual(0f, SignalMath.GreenRatio(new Signal { CycleSlots = 0, GreenSlots = 6 }), 1e-4f);
         }
+
+        [Test]
+        public void GreenWave_PerfectOffset_FullEfficiency()
+        {
+            // 오프셋 차이(4) == 이동시간(4슬롯) → 흐름이 B 초록에 정확히 도착 → 효율 1
+            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
+            var b = new Signal { CycleSlots = 12, OffsetSlots = 4 };
+            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, b, travelSlots: 4, floor: 0.5f), 1e-4f);
+        }
+
+        [Test]
+        public void GreenWave_HalfCycleOff_HitsFloor()
+        {
+            // 반 주기(6슬롯) 어긋남 = 최악 → floor
+            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
+            var b = new Signal { CycleSlots = 12, OffsetSlots = 0 };
+            Assert.AreEqual(0.5f, SignalMath.GreenWaveEfficiency(a, b, travelSlots: 6, floor: 0.5f), 1e-4f);
+        }
+
+        [Test]
+        public void GreenWave_OffsetIsTheLever_MonotonicWithMisalignment()
+        {
+            // 같은 신호쌍·이동시간, 오프셋만 바꿔 정렬을 좋게/나쁘게 → 효율이 달라져야(노브가 살아있음)
+            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
+            float good = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 4 }, 4, 0.5f);
+            float mid  = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 2 }, 4, 0.5f);
+            float bad  = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 10 }, 4, 0.5f);
+            Assert.AreEqual(1f, good, 1e-4f);
+            Assert.Greater(good, mid);
+            Assert.Greater(mid, bad);
+            Assert.AreEqual(0.5f, bad, 1e-4f);
+        }
     }
 }
