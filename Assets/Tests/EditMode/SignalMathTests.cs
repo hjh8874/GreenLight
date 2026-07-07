@@ -95,5 +95,24 @@ namespace CityFlow.Sim.Tests
             Assert.Greater(mid, bad);
             Assert.AreEqual(0.5f, bad, 1e-4f);
         }
+
+        [Test]
+        public void GreenWindowFor_AxesSeparatedByHalfCycle_SameLength()
+        {
+            var s = new Signal { CycleSlots = 12 };   // cycle 6s, half 3s
+            var (openH, lenH) = SignalMath.GreenWindowFor(s, true);
+            var (openV, lenV) = SignalMath.GreenWindowFor(s, false);
+            Assert.AreEqual(0.0, openH, 1e-9);
+            Assert.AreEqual(3.0, openV, 1e-9);          // 세로는 반주기 뒤에 열림
+            Assert.AreEqual(1.95, lenH, 1e-6);          // half(3)·0.65
+            Assert.AreEqual(lenH, lenV, 1e-9);
+        }
+
+        [Test]
+        public void GreenWindowFor_OffsetDelaysOpen()   // 부호 통일: 오프셋↑ = 늦게 열림(직관)
+        {
+            var s = new Signal { CycleSlots = 12, OffsetSlots = 2 };   // +1.0s
+            Assert.AreEqual(1.0, SignalMath.GreenWindowFor(s, true).open, 1e-9);
+        }
     }
 }

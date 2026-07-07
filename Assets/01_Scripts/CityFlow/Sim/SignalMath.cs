@@ -30,6 +30,21 @@ namespace CityFlow.Sim
         public const float YellowFrac = 0.2f;   // 초록 뒤 노란불(진입 금지, 정리 준비)
         public const float ClearFrac  = 0.15f;  // 전적색(양방향 빨강 = 교차로 비우기)
 
+        // 한 축(가로/세로)의 초록창: 열리는 시각(주기 내, 초)과 길이. 뷰(PhaseForAxis)와
+        // 엔진(GreenWaveEfficiency)이 공유하는 단일 타이밍 — 여기서 파생하면 못 갈라짐.
+        // 통일 부호: 오프셋↑ = 초록 늦게 열림(하류를 이동시간만큼 미뤄 그린웨이브 = 직관).
+        public static (double open, double greenLen) GreenWindowFor(Signal s, bool horizontal)
+        {
+            double cycle = s.CycleSlots * SlotSeconds;
+            if (cycle <= 0) return (0.0, 0.0);                 // 주기 0 방어
+            double half = cycle * 0.5;
+            double greenLen = half * (1f - YellowFrac - ClearFrac);
+            double axisStart = horizontal ? 0.0 : half;        // 세로는 반주기 뒤
+            double open = (axisStart + s.OffsetSlots * SlotSeconds) % cycle;
+            if (open < 0) open += cycle;
+            return (open, greenLen);
+        }
+
         // 방향 교대 신호의 3상태: 가로는 주기 전반, 세로는 후반이 활성(오프셋만큼 이동).
         // 각 방향 창 = 초록 → 노랑 → 전적색(정리). 두 방향이 동시에 초록/노랑인 적 없음 →
         // 전환 순간 교차로가 비워진 뒤에야 반대 방향 초록 → 낀 차 없음, 예측 가능.
