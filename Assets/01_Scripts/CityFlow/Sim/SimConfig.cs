@@ -26,6 +26,9 @@ namespace CityFlow.Sim
         public float EfficiencyMin;      // 바닥값 = 0.2
         public float EfficiencyMinRatio; // E가 바닥에 닿는 ratio = 2.0 (Free 1.0 → 2.0서 0.2)
 
+        // ── 신호 그린웨이브 ─────────────────────
+        public float GreenWaveFloor;     // 오프셋 최악(반주기 어긋남) 시 효율 바닥 🔓
+
         // ── 수요처 용량 캡 (가구 수) ──
         // 확장: 수요처 종류 추가 시 여기 SchoolCapacity 등 한 줄 + DemandMap.CapacityFor.
         public int   OfficeCapacity;    // 회사(Office) 20
@@ -58,6 +61,7 @@ namespace CityFlow.Sim
             JamRatio = 1.0f,
             EfficiencyMin = 0.2f,
             EfficiencyMinRatio = 2.0f,
+            GreenWaveFloor = 0.5f,
             OfficeCapacity = 20,
             SchoolCapacity = 10,
             CoinBase = 1f,
