@@ -121,6 +121,9 @@ namespace CityFlow.Sim
         // 뷰 연동: 엔진이 이번 틱 계산한 실제 통근 경로들. 차를 이 위에 그리면 라우팅을 눈으로 검증.
         // ponytail: 지금은 디버그 뷰용 public. 진짜 View 붙을 때 Contracts로 승격.
         public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _solver.Routes;
+        
+        // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게 
+        public float DeliveredTotal => _solver.DeliveredTotal;
 
         // ── 신호 조작 창구 — 유저(UI)가 오프셋을 돌리는 유일한 레버. 자동/수동 모두 이 값 하나.
         // ponytail: ISignalControl로 Contracts 승격은 주석님·김건 합의 후(설계 §5).
