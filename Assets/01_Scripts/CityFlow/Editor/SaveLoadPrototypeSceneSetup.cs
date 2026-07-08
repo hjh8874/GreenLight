@@ -13,6 +13,7 @@ namespace CityFlow.EditorTools
         private const string ScenePath = "Assets/00_Scenes/UI_Proto_SaveTest.unity";
         private const string PanelName = "SaveLoad_TestPanel";
 
+        [MenuItem("CityFlow/Setup SaveLoad Panel")]
         public static void Setup()
         {
             Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);

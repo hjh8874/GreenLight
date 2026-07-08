@@ -28,14 +28,14 @@ namespace CityFlow.Save
             ProgressionSaveSource = progressionSaveSource;
         }
 
-        public GameSaveData CreateSnapshot(int gridWidth, int gridHeight)
+        public GameSaveData CreateSnapshot()
         {
             return new GameSaveData
             {
                 SaveVersion = SaveConstants.CurrentSaveVersion,
                 SavedAtUtcTicks = Clock.UtcNow.Ticks,
-                GridWidth = gridWidth,
-                GridHeight = gridHeight,
+                GridWidth = SimSaveSource?.GridWidth ?? 0,
+                GridHeight = SimSaveSource?.GridHeight ?? 0,
                 Simulation = SimSaveSource?.CreateSnapshot(),
                 Economy = EconomySaveSource?.CreateSnapshot(),
                 Research = ResearchSaveSource?.CreateSnapshot(),
@@ -48,6 +48,13 @@ namespace CityFlow.Save
             if (saveData == null)
             {
                 Debug.LogWarning("Save restore skipped because save data is null.");
+                return;
+            }
+
+            if (saveData.SaveVersion != SaveConstants.CurrentSaveVersion)
+            {
+                Debug.LogWarning(
+                    $"Save restore skipped because version {saveData.SaveVersion} is not supported. Current version is {SaveConstants.CurrentSaveVersion}.");
                 return;
             }
 
@@ -72,10 +79,10 @@ namespace CityFlow.Save
             }
         }
 
-        public void Save(int gridWidth, int gridHeight)
+        public bool Save()
         {
-            GameSaveData saveData = CreateSnapshot(gridWidth, gridHeight);
-            Repository.Save(saveData);
+            GameSaveData saveData = CreateSnapshot();
+            return Repository.TrySave(saveData);
         }
 
         public bool TryLoadAndRestore()
@@ -83,6 +90,13 @@ namespace CityFlow.Save
             if (!Repository.TryLoad(out GameSaveData saveData))
             {
                 Debug.LogWarning("Save restore skipped because no save data could be loaded.");
+                return false;
+            }
+
+            if (saveData.SaveVersion != SaveConstants.CurrentSaveVersion)
+            {
+                Debug.LogWarning(
+                    $"Save restore skipped because version {saveData.SaveVersion} is not supported. Current version is {SaveConstants.CurrentSaveVersion}.");
                 return false;
             }
 

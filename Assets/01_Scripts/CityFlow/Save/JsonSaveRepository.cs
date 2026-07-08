@@ -26,29 +26,38 @@ namespace CityFlow.Save
             return File.Exists(FilePath);
         }
 
-        public void Save(GameSaveData data)
+        public bool TrySave(GameSaveData data)
         {
             if (data == null)
             {
                 Debug.LogWarning("Save skipped because save data is null.");
-                return;
+                return false;
             }
 
-            string directoryPath = Path.GetDirectoryName(FilePath);
-
-            if (!string.IsNullOrEmpty(directoryPath))
+            try
             {
-                Directory.CreateDirectory(directoryPath);
-            }
+                string directoryPath = Path.GetDirectoryName(FilePath);
 
-            if (File.Exists(FilePath))
+                if (!string.IsNullOrEmpty(directoryPath))
+                {
+                    Directory.CreateDirectory(directoryPath);
+                }
+
+                if (File.Exists(FilePath))
+                {
+                    File.Copy(FilePath, BackupFilePath, true);
+                }
+
+                string json = JsonUtility.ToJson(data, true);
+                File.WriteAllText(FilePath, json, Encoding.UTF8);
+                Debug.Log($"Game saved to {FilePath}");
+                return true;
+            }
+            catch (System.Exception exception)
             {
-                File.Copy(FilePath, BackupFilePath, true);
+                Debug.LogWarning($"Save file could not be written: {FilePath}\n{exception.Message}");
+                return false;
             }
-
-            string json = JsonUtility.ToJson(data, true);
-            File.WriteAllText(FilePath, json, Encoding.UTF8);
-            Debug.Log($"Game saved to {FilePath}");
         }
 
         public bool TryLoad(out GameSaveData data)
@@ -82,8 +91,16 @@ namespace CityFlow.Save
                 return false;
             }
 
-            string json = File.ReadAllText(filePath, Encoding.UTF8);
-            data = JsonUtility.FromJson<GameSaveData>(json);
+            try
+            {
+                string json = File.ReadAllText(filePath, Encoding.UTF8);
+                data = JsonUtility.FromJson<GameSaveData>(json);
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning($"Save file could not be loaded: {filePath}\n{exception.Message}");
+                return false;
+            }
 
             if (data == null)
             {

@@ -1,5 +1,4 @@
 using CityFlow.Bootstrap;
-using CityFlow.Contracts;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,8 +10,6 @@ namespace CityFlow.UI
         [SerializeField] private Button saveButton;
         [SerializeField] private Button loadButton;
         [SerializeField] private TMP_Text statusText;
-        [SerializeField] private int gridWidth = GridUtil.DefaultWidth;
-        [SerializeField] private int gridHeight = GridUtil.DefaultHeight;
 
         private CityFlowServices services;
 
@@ -63,8 +60,8 @@ namespace CityFlow.UI
                 return;
             }
 
-            services.Save.Save(gridWidth, gridHeight);
-            SetStatus("Save request sent.");
+            bool saved = services.Save.Save();
+            SetStatus(saved ? "Save completed." : "Save failed.");
         }
 
         public void OnLoadClicked()
