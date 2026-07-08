@@ -64,6 +64,13 @@ namespace CityFlow.Sim
             return true;
         }
 
+        // 세이브 복원용 seam: 도시를 통째로 비운다(복원 = Clear → 저장 타일 재배치).
+        public void Clear()
+        {
+            System.Array.Clear(_tiles, 0, _tiles.Length);
+            MarkDirty();
+        }
+
         public void ClearTopologyDirty() => TopologyDirty = false;
 
         void MarkDirty()
