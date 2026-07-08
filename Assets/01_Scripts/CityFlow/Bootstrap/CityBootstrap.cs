@@ -1,5 +1,7 @@
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using CityFlow.Fakes;
+using CityFlow.Save;
 using CityFlow.Sim;
 using UnityEngine;
 
@@ -17,6 +19,7 @@ namespace CityFlow.Bootstrap
         private FakeFlowReader fakeFlowReader;
         private FakePlacementService fakePlacementService;
         private SimEngine simEngine;
+        private SaveService saveService;
 
         private void Awake()
         {
@@ -28,7 +31,8 @@ namespace CityFlow.Bootstrap
                 Services = new CityFlowServices(
                     new SimEventHub(),
                     fakeFlowReader,
-                    fakePlacementService);
+                    fakePlacementService,
+                    CreateSaveService(null));
 
                 fakePlacementService.Initialize(Services);
             }
@@ -42,7 +46,12 @@ namespace CityFlow.Bootstrap
 
                 var hub = new SimEventHub();
                 simEngine = new SimEngine(config, hub);
-                Services = new CityFlowServices(hub, simEngine, simEngine);
+                Services = new CityFlowServices(
+                    hub,
+                    simEngine,
+                    simEngine,
+                    // TODO: This becomes non-null after SimEngine implements ISimSaveSource.
+                    CreateSaveService((simEngine as object) as ISimSaveSource));
             }
 
             InstallServices();
@@ -78,6 +87,16 @@ namespace CityFlow.Bootstrap
                     consumer.Initialize(Services);
                 }
             }
+        }
+
+        private SaveService CreateSaveService(ISimSaveSource simSaveSource)
+        {
+            saveService = new SaveService(
+                simSaveSource,
+                new JsonSaveRepository(),
+                new SystemSaveClock());
+
+            return saveService;
         }
     }
 }
