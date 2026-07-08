@@ -5,7 +5,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace CityFlow.UI.Geon
+namespace CityFlow.UI
 {
     public class AnalysisCardController : MonoBehaviour, ICityFlowServiceConsumer
     {

@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.EventSystems; // UI 클릭 감지용
 using UnityEngine.InputSystem;
 
-namespace CityFlow.UI.Geon
+namespace CityFlow.UI
 {
     public class PlacementController : MonoBehaviour, ICityFlowServiceConsumer
     {
@@ -25,6 +25,7 @@ namespace CityFlow.UI.Geon
         public bool IsBuildingMode => _isBuildingMode;
         
         private TileType _currentType = TileType.Road; 
+        private Vector2Int? _lastPlacedCoord = null;
 
         /// <summary>
         /// 건설 패널(BuildPanelController) 등에서 타일 타입을 변경할 때 호출합니다.
@@ -72,10 +73,24 @@ namespace CityFlow.UI.Geon
             bool canPlace = CheckCanPlace(gridCoord);
             ghostRenderer.color = canPlace ? colorValid : colorInvalid;
 
-            // 5. 마우스 좌클릭 시 최종 건설 명령 하달
-            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame && canPlace)
+            // 5. 마우스 좌클릭 시 최종 건설 명령 하달 (드래그 연속 건설 지원)
+            if (Mouse.current != null)
             {
-                PlaceInfrastructure(gridCoord);
+                if (Mouse.current.leftButton.isPressed && canPlace)
+                {
+                    // 동일 타일에 중복 건설을 막기 위한 방어 로직
+                    if (_lastPlacedCoord == null || _lastPlacedCoord.Value != gridCoord)
+                    {
+                        PlaceInfrastructure(gridCoord);
+                        _lastPlacedCoord = gridCoord;
+                    }
+                }
+
+                // 마우스를 떼면 마지막 설치 좌표 초기화
+                if (Mouse.current.leftButton.wasReleasedThisFrame)
+                {
+                    _lastPlacedCoord = null;
+                }
             }
         }
 

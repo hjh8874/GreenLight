@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace CityFlow.UI.Geon
+namespace CityFlow.UI
 {
     public class SettingsPanelController : MonoBehaviour
     {

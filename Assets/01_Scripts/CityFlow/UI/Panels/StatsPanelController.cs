@@ -4,7 +4,7 @@ using CityFlow.Contracts;
 using TMPro;
 using UnityEngine;
 
-namespace CityFlow.UI.Geon
+namespace CityFlow.UI
 {
     public class StatsPanelController : MonoBehaviour, ICityFlowServiceConsumer
     {
