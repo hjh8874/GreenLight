@@ -82,6 +82,21 @@ namespace CityFlow.DebugTools
             _tex.SetPixels32(_px);
             _tex.Apply(false);
         }
+        
+        //신호 상태 (초록 / 노랑 / 빨강) 을 색으로 변환하는 도우미
+        private static Color32 PhaseColor(SignalPhase p) =>
+            p == SignalPhase.Green ? SigGreen : p == SignalPhase.Yellow ? SigYellow : SigRed;
+        
+        //픽셀 사각형을 색으로 채우는 도우미 
+        private void FillRect(int x0, int y0, int x1, int y1, Color32 col)
+        {
+            for (int py = y0; py <= y1; py++)
+                for ( int px = x0; px <= x1; px++)
+                    if(px >=0 && px < _w && py >= 0 && py < _w) _px[py * _w + px] = col;
+        }
+        
+        
+        
 
         // 신호 = 교차로 타일 모서리의 작은 등. 엔진이 자동 감지한 교차로에만 뜬다.
         private void DrawSignals()
@@ -89,18 +104,14 @@ namespace CityFlow.DebugTools
             if (_engine == null) return;
             foreach (var t in _engine.SignalTiles)
             {
-                // 두 방향 중 더 통행 우선(초록>노랑>적색)으로 마커 색 — 일반 신호등처럼 G→Y→R 순환
-                var h = _engine.GetSignalPhase(t, true);
-                var v = _engine.GetSignalPhase(t, false);
-                var best = (h == SignalPhase.Green || v == SignalPhase.Green) ? SignalPhase.Green
-                         : (h == SignalPhase.Yellow || v == SignalPhase.Yellow) ? SignalPhase.Yellow
-                         : SignalPhase.Red;
-                var col = best == SignalPhase.Green ? SigGreen : best == SignalPhase.Yellow ? SigYellow : SigRed;
-                int x0 = t.x * CellPx + CellPx - 5, y0 = t.y * CellPx + CellPx - 5;   // 우상단 모서리
-                for (int py = y0; py < y0 + 4; py++)
-                    for (int px = x0; px < x0 + 4; px++)
-                        if (px >= 0 && px < _w && py >= 0 && py < _w) _px[py * _w + px] = col;
+                int cx = t.x * CellPx + CellPx / 2;   // 교차로 중심 픽셀
+                int cy = t.y * CellPx + CellPx / 2;
+                // 가로 막대(좌우로 길쭉) = 가로축 신호 색
+                FillRect(cx - 4, cy - 1, cx + 4, cy + 1, PhaseColor(_engine.GetSignalPhase(t, true)));
+                // 세로 막대(위아래로 길쭉) = 세로축 신호 색
+                FillRect(cx - 1, cy - 4, cx + 1, cy + 4, PhaseColor(_engine.GetSignalPhase(t, false)));
             }
+
         }
 
         // 경로마다 차 1대: 왕복(삼각파) + 차간 간격 유지 — 같은 차선 앞에 차가 있으면 멈춰서 줄을 섬.
