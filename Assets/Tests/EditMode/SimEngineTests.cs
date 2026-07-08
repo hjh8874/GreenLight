@@ -135,6 +135,80 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(placed[1].IsRemove);
         }
 
+        // ── StabilityChanged: 바뀐 틱에 이번 틱의 진짜 값을, 안 바뀌면 침묵 ──
+
+        // 정체 도시(수요 15/용량 10 → 0.6, JamCity 테스트와 동일 레시피)를 짓고 hub 구독을 연결.
+        static (SimEngine engine, System.Collections.Generic.List<float> got) JamCityWithStabilityLog()
+        {
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            c.DemandPerHouse = 15f; c.RoadCapacity = 10f;
+
+            var hub = new SimEventHub();
+            var got = new System.Collections.Generic.List<float>();
+            hub.StabilityChanged += ev => got.Add(ev.Stability01);
+            var e = new SimEngine(c, hub);
+
+            for (int x = 0; x <= 4; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(0, 1), TileType.House);
+            e.Place(V(4, 1), TileType.Office);
+            return (e, got);
+        }
+
+        [Test]
+        public void StabilityChanged_FirstTick_PublishesCurrentStability()
+        {
+            // 첫 틱 이벤트는 초기값(1.0)이 아니라 이번 틱 계산값(0.6)을 실어야 한다.
+            // 세이브 로드 복원 직후에도 구독자(해금 시스템)가 첫 틱부터 진짜 값을 받는 계약.
+            var (e, got) = JamCityWithStabilityLog();
+
+            e.Tick(0.25f);
+
+            Assert.AreEqual(1, got.Count);
+            Assert.AreEqual(0.6f, got[0], 1e-3f);
+        }
+
+        [Test]
+        public void StabilityChanged_UnchangedStability_NoRepublish()
+        {
+            // 안정도가 그대로면 이후 틱은 침묵(스팸 방지) — 첫 발행 1회로 끝.
+            var (e, got) = JamCityWithStabilityLog();
+
+            for (int i = 0; i < 10; i++) e.Tick(0.25f);
+
+            Assert.AreEqual(1, got.Count);
+        }
+
+        [Test]
+        public void StabilityChanged_RepublishesOnChange_SameTick()
+        {
+            // 자유 흐름(1.0) → 도로 절단(수요 미배달 → 0.0). 바뀐 '그' 틱에 새 값이 나가야 한다.
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            c.DemandPerHouse = 1f; c.RoadCapacity = 10f;
+
+            var hub = new SimEventHub();
+            var got = new System.Collections.Generic.List<float>();
+            hub.StabilityChanged += ev => got.Add(ev.Stability01);
+            var e = new SimEngine(c, hub);
+
+            for (int x = 0; x <= 4; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(0, 1), TileType.House);
+            e.Place(V(4, 1), TileType.Office);
+
+            e.Tick(0.25f);                       // 자유 흐름 → 1.0 발행
+            Assert.AreEqual(1, got.Count);
+            Assert.AreEqual(1f, got[0], 1e-3f);
+
+            e.Remove(V(2, 0));                   // 유일 경로 절단 → delivered 0
+            e.Tick(0.25f);                       // 바뀐 틱에 즉시 재발행
+            Assert.AreEqual(2, got.Count);
+            Assert.AreEqual(0f, got[1], 1e-3f);
+
+            for (int i = 0; i < 5; i++) e.Tick(0.25f);   // 이후 변화 없음 → 침묵
+            Assert.AreEqual(2, got.Count);
+        }
+
         [Test]
         public void Remove_OutOfBounds_ReturnsFalse_NoCrash_NoEvent()
         {
