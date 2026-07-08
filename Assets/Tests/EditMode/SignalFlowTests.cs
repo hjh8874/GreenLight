@@ -109,5 +109,69 @@ namespace CityFlow.Sim.Tests
             e.Tick(0.25f);
             Assert.AreEqual(1f, e.Stability01, 1e-3f);            // 회복 — 레버가 살아있음
         }
+
+        // ── GreenRatio(초록 길이) 레버: 신호 타일 유효 용량 = RoadCapacity × 듀티 ──
+
+        // 직선 도로 + 곁가지 (4,1) → (4,0) 교차로 하나. 신호 1개 = 그린웨이브 factor 1 보장.
+        static CityGrid OneSignalCity()
+        {
+            var g = new CityGrid(9, 2);
+            for (int x = 0; x <= 8; x++) g.Place(V(x, 0), TileType.Road);
+            g.Place(V(4, 1), TileType.Road);
+            g.Place(V(0, 1), TileType.House);
+            g.Place(V(8, 1), TileType.Office);
+            return g;
+        }
+
+        static (FlowSolver solver, SignalMap signals) SolveCity(
+            CityGrid g, in SimConfig cfg, System.Action<SignalMap> tune = null)
+        {
+            var dm = new DemandMap(cfg); dm.Reassign(g);
+            var net = new RoadNetwork(g);
+            var signals = new SignalMap(); signals.Rebuild(g);
+            tune?.Invoke(signals);
+            var solver = new FlowSolver(g.Width, g.Height);
+            solver.Assign(dm, net, cfg);
+            solver.Resolve(cfg, signals);
+            return (solver, signals);
+        }
+
+        [Test]
+        public void SignalTile_JamsAtEffectiveCapacity_NormalRoadStaysFree()
+        {
+            // 수요 6/용량 10: 일반 도로 ratio 0.6(Free), 신호 타일은 유효 용량 5(듀티 0.5) → 1.2(Jam).
+            // 빨간불 동안 큐가 쌓이는 걸 용량 감소로 근사 — 신호가 '먼저' 병목이 된다.
+            var cfg = Cfg(); cfg.DemandPerHouse = 6f;
+            var (solver, _) = SolveCity(OneSignalCity(), cfg);
+
+            Assert.AreEqual(CongestionLevel.Free, solver.GetCongestion(V(2, 0)));
+            Assert.AreEqual(CongestionLevel.Jam, solver.GetCongestion(V(4, 0)));
+        }
+
+        [Test]
+        public void SignalBottleneck_ReducesDelivered()
+        {
+            // 신호 타일 ratio 1.2 → E = 1 - 0.2×0.8 = 0.84 → delivered = 6 × 0.84 = 5.04
+            var cfg = Cfg(); cfg.DemandPerHouse = 6f;
+            var (solver, _) = SolveCity(OneSignalCity(), cfg);
+
+            Assert.AreEqual(5.04f, solver.DeliveredTotal, 1e-3f);
+        }
+
+        [Test]
+        public void GreenSlots_IsAThroughputLever()
+        {
+            // 같은 도시에서 초록만 늘리면(듀티 0.5 → 1.0) 처리량이 회복돼야 레버다.
+            var cfg = Cfg(); cfg.DemandPerHouse = 6f;
+            var (shortGreen, _) = SolveCity(OneSignalCity(), cfg);
+            var (fullGreen, _) = SolveCity(OneSignalCity(), cfg, sm =>
+            {
+                sm.TryGet(V(4, 0), out var s);
+                s.GreenSlots = s.CycleSlots;   // 듀티 1.0 → 유효 용량 = RoadCapacity
+            });
+
+            Assert.Less(shortGreen.DeliveredTotal, fullGreen.DeliveredTotal);
+            Assert.AreEqual(6f, fullGreen.DeliveredTotal, 1e-3f);   // ratio 0.6 Free → 수요 그대로
+        }
     }
 }
