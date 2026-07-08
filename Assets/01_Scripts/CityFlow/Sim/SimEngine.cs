@@ -22,6 +22,7 @@ namespace CityFlow.Sim
         readonly SimStats _stats = new SimStats();
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
+        float _lastStability = -1f;   // 직전 발행한 안정도(-1=아직 없음 → 첫 틱은 무조건 발행)
 
         // 테스트 관찰용 seam. internal이라 테스트 어셈블리만 봄(InternalsVisibleTo).
         internal int StepCount { get; private set; }
@@ -76,6 +77,13 @@ namespace CityFlow.Sim
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
             _stats.Update(_solver, _demand, _config);     // ⑤ 안정도 집계
+            // ⑤' 안정도가 바뀐 틱만 이벤트로(매 틱 스팸 방지 — 혼잡 diff와 같은 철학).
+            // Update 뒤에 체크해야 첫 틱·복원 직후에도 이번 틱의 진짜 값이 나간다.
+            if (Mathf.Abs(_stats.Stability01 - _lastStability) > 0.001f)
+            {
+                _lastStability = _stats.Stability01;
+                _events.QueueStability(new StabilityEvent(_stats.Stability01));
+            }
             _events.Drain();                              // ⑥ 모인 이벤트 일괄 발행 (항상 마지막!)
         }
 
