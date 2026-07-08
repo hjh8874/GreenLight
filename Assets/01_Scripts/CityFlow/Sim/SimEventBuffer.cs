@@ -14,6 +14,7 @@ namespace CityFlow.Sim
         readonly List<PlacedEvent> _placed = new(16);
         readonly List<CongestionEvent> _congestion = new(64);
         readonly List<SettlementEvent> _settlements = new(2);
+        private readonly List<StabilityEvent> _stability = new(2);
 
         public SimEventBuffer(SimEventHub hub)
         {
@@ -25,6 +26,7 @@ namespace CityFlow.Sim
         internal void QueueBurst(in FlowBurstEvent e) => _bursts.Add(e);
         internal void QueuePlaced(in PlacedEvent e) => _placed.Add(e);
         internal void QueueCongestion(in CongestionEvent e) => _congestion.Add(e);
+        internal void QueueStability(in StabilityEvent e) => _stability.Add(e);
         internal void QueueSettlement(in SettlementEvent e) => _settlements.Add(e);
 
         // 틱 끝: 큐에 쌓인 순서대로 SimEventHub에 일괄 발행하고 비운다.
@@ -50,6 +52,9 @@ namespace CityFlow.Sim
             for (int i = 0; i < _settlements.Count; i++)
                 _hub.Publish(_settlements[i]);
             _settlements.Clear();
+            for (int i = 0; i < _stability.Count; i++)
+                _hub.Publish(_stability[i]);
+            _stability.Clear();
         }
     }
 }
