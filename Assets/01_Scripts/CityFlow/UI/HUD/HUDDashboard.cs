@@ -33,6 +33,24 @@ namespace CityFlow.UI
         private long _currentCoins;
         private float _currentStability01 = 1f;
 
+        public void Configure(
+            TextMeshProUGUI time,
+            TextMeshProUGUI vehicleCount,
+            TextMeshProUGUI coin,
+            TextMeshProUGUI efficiency,
+            Slider congestion,
+            Image congestionFill,
+            GameObject burstEffect)
+        {
+            timeText = time;
+            vehicleCountText = vehicleCount;
+            coinText = coin;
+            efficiencyText = efficiency;
+            congestionSlider = congestion;
+            congestionImageFill = congestionFill;
+            flowBurstEffect = burstEffect;
+        }
+
         public void Initialize(CityFlowServices services)
         {
             _services = services;

@@ -9,6 +9,12 @@ namespace CityFlow.UI
         [SerializeField] private Toggle tglMuteAudio;
         [SerializeField] private Button btnQuitGame;
 
+        public void Configure(Toggle muteAudio, Button quitGame)
+        {
+            tglMuteAudio = muteAudio;
+            btnQuitGame = quitGame;
+        }
+
         private void Start()
         {
             // 뮤트 톳글 이벤트 바인딩

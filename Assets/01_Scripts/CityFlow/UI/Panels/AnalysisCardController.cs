@@ -34,6 +34,28 @@ namespace CityFlow.UI
         private float _currentWaitTime = 0f;
         private Vector2Int _currentTile;
 
+        public void Configure(
+            TMP_Text title,
+            TMP_Text tileCoord,
+            TMP_Text vehicleId,
+            TMP_Text vehicleType,
+            TMP_Text waitTime,
+            Image congestionFill,
+            Button resolveJam,
+            Button upgrade,
+            bool fakeMode)
+        {
+            txtTitle = title;
+            txtTileCoord = tileCoord;
+            txtVehicleId = vehicleId;
+            txtVehicleType = vehicleType;
+            txtWaitTime = waitTime;
+            imgCongestionFill = congestionFill;
+            btnResolveJam = resolveJam;
+            btnUpgrade = upgrade;
+            useFakeMode = fakeMode;
+        }
+
         public void Initialize(CityFlowServices services)
         {
             _services = services;

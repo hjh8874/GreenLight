@@ -17,6 +17,11 @@ namespace CityFlow.DebugTools
 
         public void Initialize(CityFlowServices services)
         {
+            if (!isActiveAndEnabled)
+            {
+                return;
+            }
+
             _engine = services.Placement as SimEngine;
             _data = services.TileData;
         }
