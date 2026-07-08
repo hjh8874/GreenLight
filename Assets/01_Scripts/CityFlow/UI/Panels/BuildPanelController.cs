@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using CityFlow.Contracts;
 
-namespace CityFlow.UI.Geon
+namespace CityFlow.UI
 {
     public class BuildPanelController : MonoBehaviour
     {

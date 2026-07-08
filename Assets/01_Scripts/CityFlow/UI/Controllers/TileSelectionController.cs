@@ -3,7 +3,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using CityFlow.Contracts;
 
-namespace CityFlow.UI.Geon
+namespace CityFlow.UI
 {
     public class TileSelectionController : MonoBehaviour
     {

@@ -2,9 +2,9 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using CityFlow.UI.Geon;
+using CityFlow.UI;
 
-namespace CityFlow.UI.Geon.Editor
+namespace CityFlow.UI.Editor
 {
     public static class UIGenerator
     {
