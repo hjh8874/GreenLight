@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 
 namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
-    // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 두 인터페이스만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData
+    // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, ISimSaveSource
     {
         readonly SimConfig _config;
         readonly CityGrid _grid;
@@ -158,6 +159,48 @@ namespace CityFlow.Sim
         // 진입 허가 = 초록만(노랑·적색은 진입 금지).
         public bool IsSignalGreen(Vector2Int tile, bool horizontal) =>
             GetSignalPhase(tile, horizontal) == SignalPhase.Green;
+
+        // ── ISimSaveSource(한준희 세이브 계약): 배치 타일 + 신호 오프셋만 저장, 계산값은 로드 후 재계산 ──
+        public int GridWidth => _grid.Width;
+        public int GridHeight => _grid.Height;
+
+        public SimSaveData CreateSnapshot()
+        {
+            var tiles = new List<TileSaveData>();
+            for (int y = 0; y < _grid.Height; y++)              // flat(y,x) 순서 = 결정론
+                for (int x = 0; x < _grid.Width; x++)
+                {
+                    var type = _grid.GetTile(new Vector2Int(x, y));
+                    if (type == TileType.Empty) continue;       // 계약: Empty 미저장
+                    tiles.Add(new TileSaveData { X = x, Y = y, Type = type });
+                }
+
+            // 모든 신호를 오프셋 0 포함해 저장 — 복원 시 덮어쓰기만으로 이전 조율 잔존을 지운다.
+            var signals = new List<SignalSaveData>();
+            foreach (var t in _signals.Tiles)
+                signals.Add(new SignalSaveData { X = t.x, Y = t.y, OffsetSlots = GetSignalOffsetSlots(t) });
+
+            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray() };
+        }
+
+        public void RestoreSnapshot(SimSaveData snapshot)
+        {
+            if (snapshot == null) return;                        // SaveService도 거르지만 방어 한 겹
+
+            // 복원 = 전체 교체: 비우고 → 재배치 → 교차로 재감지 → 조율 복원 (PR#8 합의 흐름)
+            _grid.Clear();
+            if (snapshot.PlacedTiles != null)
+                foreach (var t in snapshot.PlacedTiles)
+                    _grid.Place(new Vector2Int(t.X, t.Y), t.Type);   // OOB·중복은 Place가 거름(무사고)
+            // 참고: PlacedEvent는 안 쏨 — 복원은 '건설'이 아니고, 뷰는 폴링이라 다음 프레임 자동 갱신.
+
+            // 오프셋 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).
+            _signals.Rebuild(_grid);
+            if (snapshot.SignalOffsets != null)
+                foreach (var s in snapshot.SignalOffsets)
+                    TrySetSignalOffsetSlots(new Vector2Int(s.X, s.Y), s.OffsetSlots);
+            // TopologyDirty는 남긴다: 다음 Step/SettleOffline이 경로·수요 재구축(Rebuild가 오프셋 보존).
+        }
 
         // ── IReadOnlyTileData: solver/grid에 위임 ──
         public float Stability01 => _stats.Stability01;

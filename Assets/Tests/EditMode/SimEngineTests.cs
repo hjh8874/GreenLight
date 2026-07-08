@@ -209,6 +209,102 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2, got.Count);
         }
 
+        // ── ISimSaveSource(한준희 세이브 계약): 스냅샷 → 복원 왕복 ──
+
+        [Test]
+        public void SaveSource_ExposesGridSize()
+        {
+            // 소프트캐스트가 아니라 컴파일 타임 보장: SimEngine이 인터페이스를 직접 구현.
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            CityFlow.Contracts.Save.ISimSaveSource src = Engine(c);
+            Assert.AreEqual(9, src.GridWidth);
+            Assert.AreEqual(2, src.GridHeight);
+        }
+
+        [Test]
+        public void CreateSnapshot_StoresOnlyPlacedTiles()
+        {
+            // 계약: Empty 타일은 저장하지 않는다(naming-contract §SimSaveData).
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            var e = Engine(c);
+            e.Place(V(0, 0), TileType.Road);
+            e.Place(V(4, 1), TileType.School);
+
+            var snap = ((CityFlow.Contracts.Save.ISimSaveSource)e).CreateSnapshot();
+
+            Assert.AreEqual(2, snap.PlacedTiles.Length);   // 나머지 8칸(Empty) 미저장
+        }
+
+        [Test]
+        public void SaveRoundtrip_RestoresTiles_Signals_AndThroughput()
+        {
+            // 진짜 계약은 "도시가 똑같이 동작한다": 조율된 두 신호 도시를 스냅샷 →
+            // 다른 도시가 그려진 엔진에 복원 → 타일·오프셋·처리량까지 원본과 동일.
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            c.DemandPerHouse = 1f; c.RoadCapacity = 10f;
+
+            var a = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 8; x++) a.Place(V(x, 0), TileType.Road);
+            a.Place(V(2, 1), TileType.Road);
+            a.Place(V(6, 1), TileType.Road);
+            a.Place(V(0, 1), TileType.House);
+            a.Place(V(8, 1), TileType.Office);
+            a.Tick(0.25f);                                          // 교차로 2개 감지
+            Assert.IsTrue(a.TrySetSignalOffsetSlots(V(6, 0), 4));   // 그린웨이브 조율
+            a.Tick(0.25f);
+            float originalDelivered = a.DeliveredTotal;
+
+            var snapshot = ((CityFlow.Contracts.Save.ISimSaveSource)a).CreateSnapshot();
+
+            var b = new SimEngine(c, new SimEventHub());
+            b.Place(V(1, 1), TileType.House);                        // 스냅샷과 무관한 잔여 도시
+            b.Place(V(3, 0), TileType.Road);
+            b.Tick(0.25f);
+
+            ((CityFlow.Contracts.Save.ISimSaveSource)b).RestoreSnapshot(snapshot);
+            b.Tick(0.25f);                                           // 복원 후 첫 틱: 재구축+계산
+
+            for (int y = 0; y < 2; y++)
+                for (int x = 0; x < 9; x++)
+                    Assert.AreEqual(a.GetTileType(V(x, y)), b.GetTileType(V(x, y)), $"타일 불일치 ({x},{y})");
+            Assert.AreEqual(2, b.SignalTiles.Count);
+            Assert.AreEqual(4, b.GetSignalOffsetSlots(V(6, 0)));     // 유저 조율 복원
+            Assert.AreEqual(originalDelivered, b.DeliveredTotal, 1e-3f);   // 조율 효과까지 동일
+        }
+
+        [Test]
+        public void RestoreSnapshot_NullAndOutOfBounds_AreSafe()
+        {
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            var e = Engine(c);
+            e.Place(V(1, 0), TileType.Road);
+
+            ((CityFlow.Contracts.Save.ISimSaveSource)e).RestoreSnapshot(null);   // null → 무시
+            Assert.AreEqual(TileType.Road, e.GetTileType(V(1, 0)));              // 기존 상태 유지
+
+            var bad = new CityFlow.Contracts.Save.SimSaveData
+            {
+                PlacedTiles = new[]
+                {
+                    new CityFlow.Contracts.Save.TileSaveData { X = 99, Y = 99, Type = TileType.Road },  // OOB
+                    new CityFlow.Contracts.Save.TileSaveData { X = 1, Y = 1, Type = TileType.House },
+                },
+                SignalOffsets = new[]
+                {
+                    new CityFlow.Contracts.Save.SignalSaveData { X = 50, Y = 50, OffsetSlots = 3 },     // OOB
+                },
+            };
+            ((CityFlow.Contracts.Save.ISimSaveSource)e).RestoreSnapshot(bad);    // OOB 조용히 스킵
+            e.Tick(0.25f);
+
+            Assert.AreEqual(TileType.House, e.GetTileType(V(1, 1)));   // 유효분 반영
+            Assert.AreEqual(TileType.Empty, e.GetTileType(V(1, 0)));   // 복원 = 전체 교체(잔존 없음)
+        }
+
         [Test]
         public void Remove_OutOfBounds_ReturnsFalse_NoCrash_NoEvent()
         {
