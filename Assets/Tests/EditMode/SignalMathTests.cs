@@ -141,5 +141,63 @@ namespace CityFlow.Sim.Tests
             Assert.Less(SignalMath.GreenWaveEfficiency(from, to, travel, 0.5f), 1f);               // 엔진: 손실
             Assert.AreNotEqual(SignalPhase.Green, SignalMath.PhaseForAxis(to, arrive, true));      // 뷰: 초록 아님 ← 일치
         }
+
+        // ── 공식 가정 검증(갭 3의 솔로 반쪽): 경계 입력에서도 공식이 안 깨지는지 고정 ──
+
+        [Test]
+        public void GreenWave_OffsetWrapsAroundCycle()
+        {
+            // 튜너를 계속/거꾸로 돌려도 같은 조율: 오프셋 k ≡ k±주기(슬롯).
+            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
+            float baseline = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 4 }, 4, 0.5f);
+            Assert.AreEqual(baseline, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 16 }, 4, 0.5f), 1e-4f); // +주기
+            Assert.AreEqual(baseline, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = -8 }, 4, 0.5f), 1e-4f); // -주기
+        }
+
+        [Test]
+        public void GreenWave_TravelBeyondCycle_LandsNextGreenWindow()
+        {
+            // 먼 신호쌍: 이동시간이 주기를 넘어도 '다음 주기' 초록 안착이면 그린웨이브 유지.
+            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
+            var b = new Signal { CycleSlots = 12, OffsetSlots = 4 };
+            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, b, travelSlots: 4 + 12, floor: 0.5f), 1e-4f);
+            Assert.AreEqual(
+                SignalMath.GreenWaveEfficiency(a, b, 8, 0.5f),
+                SignalMath.GreenWaveEfficiency(a, b, 8 + 12, 0.5f), 1e-4f);   // 어긋난 정도도 주기 등가
+        }
+
+        [Test]
+        public void GreenWave_MismatchedCycles_StaysInRange()
+        {
+            // 같은 주기 가정의 안전망: 주기가 다르면 수치 의미는 미정의(2차)지만
+            // 어떤 travel에서도 [floor, 1] 범위·NaN 없음은 보장돼야 엔진이 안 깨진다.
+            var a = new Signal { CycleSlots = 12 };
+            var b = new Signal { CycleSlots = 8, OffsetSlots = 3 };
+            for (int travel = 0; travel <= 24; travel++)
+            {
+                float e = SignalMath.GreenWaveEfficiency(a, b, travel, 0.5f);
+                Assert.IsFalse(float.IsNaN(e), $"travel={travel}: NaN");
+                Assert.GreaterOrEqual(e, 0.5f, $"travel={travel}: floor 아래");
+                Assert.LessOrEqual(e, 1f, $"travel={travel}: 1 초과");
+            }
+        }
+
+        [Test]
+        public void GreenWave_ExtremeFloorAndZeroCycle_AreSafe()
+        {
+            // 튜닝 실수 방어: floor=1이면 항상 1(페널티 무력화), floor=0도 [0,1] 유지.
+            // 주기 0 신호는 규약대로 페널티 없음(상류) / 범위 유지(하류).
+            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
+            var worst = new Signal { CycleSlots = 12, OffsetSlots = 8 };   // δ=4.0 ≈ 최악
+
+            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, worst, 4, floor: 1f), 1e-4f);
+            float e0 = SignalMath.GreenWaveEfficiency(a, worst, 4, floor: 0f);
+            Assert.GreaterOrEqual(e0, 0f); Assert.LessOrEqual(e0, 1f);
+
+            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(new Signal { CycleSlots = 0 }, worst, 4, 0.5f), 1e-4f); // 상류 주기 0 = 통과
+            float eTo = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 0 }, 4, 0.5f);                     // 하류 주기 0
+            Assert.IsFalse(float.IsNaN(eTo));
+            Assert.GreaterOrEqual(eTo, 0.5f); Assert.LessOrEqual(eTo, 1f);
+        }
     }
 }
