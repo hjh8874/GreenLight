@@ -12,6 +12,9 @@ namespace CityFlow.Bootstrap
         [SerializeField] private int mapWidth = GridUtil.DefaultWidth;
         [SerializeField] private int mapHeight = GridUtil.DefaultHeight;
 
+        [Header("Real Engine")]
+        [SerializeField] private Configs.SimConfigAsset simConfig;   // 비우면 SimConfig.Default()
+
         public CityFlowServices Services { get; private set; }
 
         private FakeFlowReader fakeFlowReader;
@@ -35,8 +38,9 @@ namespace CityFlow.Bootstrap
             else
             {
                 // 진짜 엔진: SimEngine이 TileData·Placement를 동시에 구현.
-                // ponytail: 밸런스는 SimConfig.Default() — 이진우 EconomyConfig(SO) 주입은 D7.
-                var config = SimConfig.Default();
+                // 밸런스는 SO 에셋(인스펙터 튜닝) 우선, 비어 있으면 Default() 폴백.
+                // 그리드 크기는 부트스트랩 필드가 계속 오너(이중 오너 충돌 방지).
+                var config = simConfig != null ? simConfig.Value : SimConfig.Default();
                 config.GridWidth = mapWidth;
                 config.GridHeight = mapHeight;
 

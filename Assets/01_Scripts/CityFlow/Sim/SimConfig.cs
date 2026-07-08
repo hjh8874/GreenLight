@@ -4,6 +4,7 @@ namespace CityFlow.Sim
     // blueprint §0: const 금지(런타임·툴에서 튜닝 가능해야) → 전부 필드.
     // 실제로는 이진우의 EconomyConfig(ScriptableObject) → Bootstrap이 변환해 주입.
     // ponytail: 지금은 임시값. 밸런싱 전이라 틀려도 됨 — "그릇"만 확정.
+    [System.Serializable]   // SimConfigAsset(SO)이 인스펙터에 노출하기 위해
     public struct SimConfig
     {
         // ── 고정 틱 ─────────────────────────────
