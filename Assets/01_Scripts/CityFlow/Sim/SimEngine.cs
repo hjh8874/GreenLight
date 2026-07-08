@@ -8,7 +8,7 @@ namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, ISimSaveSource
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, ISimSaveSource, ISignalControl
     {
         readonly SimConfig _config;
         readonly CityGrid _grid;
@@ -134,8 +134,8 @@ namespace CityFlow.Sim
         // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게 
         public float DeliveredTotal => _solver.DeliveredTotal;
 
-        // ── 신호 조작 창구 — 유저(UI)가 오프셋을 돌리는 유일한 레버. 자동/수동 모두 이 값 하나.
-        // ponytail: ISignalControl로 Contracts 승격은 주석님·김건 합의 후(설계 §5).
+        // ── ISignalControl(신호 조작 창구): 유저가 교차로를 조율하는 두 레버 — 오프셋·초록 길이 ──
+        // 제안 단계: 계약으로 승격(설계 §5), 최종 확정은 주석·김건 합의. 김건 Game뷰 UI가 이 계약에 붙음.
         public IReadOnlyList<Vector2Int> SignalTiles => _signals.Tiles;
 
         public int GetSignalOffsetSlots(Vector2Int tile) =>
@@ -145,6 +145,17 @@ namespace CityFlow.Sim
         {
             if (!_signals.TryGet(tile, out var s)) return false;
             s.OffsetSlots = slots;   // 다음 Resolve부터 반영(topology 재계산 불필요)
+            return true;
+        }
+
+        public int GetSignalGreenSlots(Vector2Int tile) =>
+            _signals.TryGet(tile, out var s) ? s.GreenSlots : 0;
+
+        public bool TrySetSignalGreenSlots(Vector2Int tile, int slots)
+        {
+            if (!_signals.TryGet(tile, out var s)) return false;
+            // 초록은 [0, 주기]만 의미 — UI 입력은 트러스트 경계라 클램프(0=상시적색, 주기=상시초록).
+            s.GreenSlots = Mathf.Clamp(slots, 0, s.CycleSlots);   // 다음 Resolve의 GreenRatio에 반영
             return true;
         }
 
