@@ -13,6 +13,11 @@ namespace CityFlow.DebugTools
 
         public void Initialize(CityFlowServices services)
         {
+            if (!isActiveAndEnabled)
+            {
+                return;
+            }
+
             var p = services.Placement;
 
             for (int i = 2; i <= 17; i++) p.Place(new Vector2Int(i, i), TileType.Road);   // 대각 도로

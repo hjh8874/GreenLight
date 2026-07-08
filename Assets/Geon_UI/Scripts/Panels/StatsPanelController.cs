@@ -15,6 +15,12 @@ namespace CityFlow.UI.Geon
         private CityFlowServices _services;
         private Coroutine _updateRoutine;
 
+        public void Configure(TMP_Text jamCount, TMP_Text coinsPerMinute)
+        {
+            txtJamCount = jamCount;
+            txtCoinsPerMinute = coinsPerMinute;
+        }
+
         public void Initialize(CityFlowServices services)
         {
             _services = services;

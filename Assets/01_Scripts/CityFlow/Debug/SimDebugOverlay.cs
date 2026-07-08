@@ -25,6 +25,11 @@ namespace CityFlow.DebugTools
 
         public void Initialize(CityFlowServices services)
         {
+            if (!isActiveAndEnabled)
+            {
+                return;
+            }
+
             this.services = services;
             services.Events.FlowBurst += OnFlowBurst;
         }

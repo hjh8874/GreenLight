@@ -3,6 +3,7 @@ using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.Sim;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace CityFlow.DebugTools
 {
@@ -12,11 +13,15 @@ namespace CityFlow.DebugTools
     public sealed class SimTileRenderer : MonoBehaviour, ICityFlowServiceConsumer
     {
         [SerializeField] private int size = 20;
+        [SerializeField] private bool runSandboxSmokeIfNeeded = true;
+        [SerializeField] private float sandboxRelieveAfterSeconds = 3f;
         private const int CellPx = 12;
         private const float CarSpeed = 2f;   // 타일/초 — 엔진 1타일=SlotSeconds(0.5s)=2타일/초에 맞춤(화면 이동시간=엔진 travelSlots → 그린웨이브 일치)
 
         private static readonly Color32 Cream  = new Color32(238, 232, 210, 255);
-        private static readonly Color32 Road   = new Color32(150, 150, 156, 255);
+        private static readonly Color32 RoadFree = new Color32( 90, 175, 105, 255);
+        private static readonly Color32 RoadSlow = new Color32(225, 185,  55, 255);
+        private static readonly Color32 RoadJam  = new Color32(225,  70,  60, 255);
         private static readonly Color32 Car    = new Color32( 30,  30,  40, 255);
         private static readonly Color32 House   = new Color32( 90, 150, 220, 255);
         private static readonly Color32 Office  = new Color32(235, 150,  60, 255);
@@ -26,6 +31,7 @@ namespace CityFlow.DebugTools
         private static readonly Color32 SigRed    = new Color32(230,  50,  50, 255); // 신호 빨강
 
         private IReadOnlyTileData _data;
+        private CityFlowServices _services;
         private SimEngine _engine;   // 실제 경로를 읽기 위해(디버그 캐스트)
         private Texture2D _tex;
         private Color32[] _px;
@@ -40,9 +46,18 @@ namespace CityFlow.DebugTools
         private const int CarStride = 2;          // N경로당 차 1대 (과포화·클러터 완화)
         private readonly HashSet<Vector2Int> _signalSet = new();
         private readonly Dictionary<Vector2Int, int> _occupant = new();   // 교차로 타일 → 점유 차 인덱스
+        private float _sandboxElapsed;
+        private bool _sandboxSmokeActive;
+        private bool _sandboxRelieved;
 
         public void Initialize(CityFlowServices services)
         {
+            if (!isActiveAndEnabled)
+            {
+                return;
+            }
+
+            _services = services;
             _data = services.TileData;
             _engine = services.Placement as SimEngine;   // 진짜 엔진일 때만 차 그림(Fake면 null)
             _w = size * CellPx;
@@ -52,11 +67,15 @@ namespace CityFlow.DebugTools
             var sr = gameObject.AddComponent<SpriteRenderer>();
             sr.sprite = Sprite.Create(_tex, new Rect(0, 0, _w, _w), Vector2.zero, CellPx);
             transform.position = Vector3.zero;
+
+            StartSandboxSmokeIfNeeded();
         }
 
         private void Update()
         {
             if (_data == null) return;
+
+            TickSandboxSmoke();
 
             for (int i = 0; i < _px.Length; i++) _px[i] = Cream;
 
@@ -66,7 +85,7 @@ namespace CityFlow.DebugTools
                 {
                     switch (_data.GetTileType(new Vector2Int(x, y)))
                     {
-                        case TileType.Road:   FillCell(x, y, 0, Road);   break;
+                        case TileType.Road:   FillCell(x, y, 0, RoadColor(new Vector2Int(x, y)));   break;
                         case TileType.House:  FillCell(x, y, 3, House);  break;
                         case TileType.Office: FillCell(x, y, 3, Office); break;
                         case TileType.School: FillCell(x, y, 3, School); break;
@@ -81,6 +100,85 @@ namespace CityFlow.DebugTools
 
             _tex.SetPixels32(_px);
             _tex.Apply(false);
+        }
+
+        private void StartSandboxSmokeIfNeeded()
+        {
+            if (!runSandboxSmokeIfNeeded || _services == null)
+            {
+                return;
+            }
+
+            if (!SceneManager.GetActiveScene().name.Contains("CityFlowSandbox"))
+            {
+                return;
+            }
+
+            if (CityFlowSandboxScenario_cmt.HasSeeded)
+            {
+                return;
+            }
+
+            CityFlowSandboxScenario_cmt.BuildFlowBurstSmoke(_services.Placement);
+            CityFlowSandboxScenario_cmt.MarkSeeded();
+            _services.Events.FlowBurst += OnSandboxFlowBurst;
+            _services.Events.Arrival += OnSandboxArrival;
+            _sandboxSmokeActive = true;
+            Debug.Log("[SANDBOX] SimTileRenderer fallback 배치 완료 - 3초 뒤 일부 주거지를 제거합니다.");
+        }
+
+        private void TickSandboxSmoke()
+        {
+            if (!_sandboxSmokeActive || _sandboxRelieved || CityFlowSandboxScenario_cmt.HasRelieved)
+            {
+                return;
+            }
+
+            _sandboxElapsed += Time.deltaTime;
+            if (_sandboxElapsed < sandboxRelieveAfterSeconds)
+            {
+                return;
+            }
+
+            _sandboxRelieved = true;
+
+            for (int x = 0; x <= 6; x++)
+            {
+                _services.Placement.Remove(new Vector2Int(x, 0));
+            }
+
+            Debug.Log("[SANDBOX] SimTileRenderer fallback 집 7채 철거 - 곧 FlowBurst가 1번 떠야 정상");
+        }
+
+        private void OnDestroy()
+        {
+            if (_services == null || !_sandboxSmokeActive)
+            {
+                return;
+            }
+
+            _services.Events.FlowBurst -= OnSandboxFlowBurst;
+            _services.Events.Arrival -= OnSandboxArrival;
+        }
+
+        private static void OnSandboxFlowBurst(FlowBurstEvent e)
+        {
+            Debug.Log($"[SANDBOX] FlowBurst! tile={e.Tile} reward={e.Reward}");
+        }
+
+        private static void OnSandboxArrival(ArrivalEvent e)
+        {
+            Debug.Log($"[SANDBOX] Arrival at {e.Destination} +{e.Coins}coin");
+        }
+
+        private Color32 RoadColor(Vector2Int tile)
+        {
+            return _data.GetCongestion(tile) switch
+            {
+                CongestionLevel.Jam => RoadJam,
+                CongestionLevel.Slow => RoadSlow,
+                _ => RoadFree
+            };
         }
 
         // 신호 = 교차로 타일 모서리의 작은 등. 엔진이 자동 감지한 교차로에만 뜬다.

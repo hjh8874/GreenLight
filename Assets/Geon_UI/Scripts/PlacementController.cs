@@ -40,6 +40,20 @@ namespace CityFlow.UI.Geon
             _services = services;
         }
 
+        public void ConfigureGhost(SpriteRenderer renderer)
+        {
+            ghostRenderer = renderer;
+            if (ghostRenderer != null)
+            {
+                ghostRenderer.gameObject.SetActive(_isBuildingMode);
+            }
+        }
+
+        public void SetFakeMode(bool isOn)
+        {
+            useFakeMode = isOn;
+        }
+
         /// <summary>
         /// 도크의 '건설' 버튼 등을 눌렀을 때 외부(UIDockController)에서 호출하여 모드를 켭니다.
         /// </summary>

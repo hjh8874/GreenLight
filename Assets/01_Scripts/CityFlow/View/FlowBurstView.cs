@@ -15,8 +15,14 @@ namespace CityFlow.View
 
         public void Initialize(CityFlowServices services)
         {
+            if (!isActiveAndEnabled)
+            {
+                return;
+            }
+
             this.services = services;
             services.Events.FlowBurst += OnFlowBurst;
+            EnsureBurstMarker();
 
             if (burstMarker != null)
             {
@@ -51,6 +57,8 @@ namespace CityFlow.View
 
         private void OnFlowBurst(FlowBurstEvent e)
         {
+            EnsureBurstMarker();
+
             if (burstMarker == null)
             {
                 return;
@@ -60,6 +68,32 @@ namespace CityFlow.View
             burstMarker.localScale = Vector3.one * maxScale;
             burstMarker.gameObject.SetActive(true);
             hideAtTime = Time.time + visibleSeconds;
+        }
+
+        private void EnsureBurstMarker()
+        {
+            if (burstMarker != null)
+            {
+                return;
+            }
+
+            GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            marker.name = "FlowBurstMarker";
+            marker.transform.SetParent(transform, false);
+
+            Collider markerCollider = marker.GetComponent<Collider>();
+            if (markerCollider != null)
+            {
+                Destroy(markerCollider);
+            }
+
+            Renderer markerRenderer = marker.GetComponent<Renderer>();
+            if (markerRenderer != null)
+            {
+                markerRenderer.material.color = new Color(1f, 0.9f, 0.15f, 0.85f);
+            }
+
+            burstMarker = marker.transform;
         }
     }
 }

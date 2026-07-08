@@ -15,6 +15,16 @@ namespace CityFlow.UI.Geon
         [Tooltip("타일을 선택했을 때 바닥에 표시될 강조(하이라이트) 박스")]
         [SerializeField] private GameObject highlightBox; 
 
+        public void Configure(
+            AnalysisCardController analysis,
+            PlacementController placement,
+            GameObject highlight)
+        {
+            analysisCard = analysis;
+            placementController = placement;
+            highlightBox = highlight;
+        }
+
         private void Start()
         {
             // 시작 시 상세 카드와 하이라이트 박스는 숨겨둡니다.

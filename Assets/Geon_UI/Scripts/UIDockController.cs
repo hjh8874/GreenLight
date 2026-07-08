@@ -23,17 +23,52 @@ namespace CityFlow.UI.Geon
         [SerializeField] private PlacementController placementController;
 
         private MenuType _currentMenu = MenuType.None;
+        private bool _isBound;
+
+        public void Configure(
+            Button build,
+            Button research,
+            Button stats,
+            Button settings,
+            GameObject buildPanel,
+            GameObject researchPanel,
+            GameObject statsPanel,
+            GameObject settingsPanel,
+            PlacementController placement)
+        {
+            btnBuild = build;
+            btnResearch = research;
+            btnStats = stats;
+            btnSettings = settings;
+            panelBuild = buildPanel;
+            panelResearch = researchPanel;
+            panelStats = statsPanel;
+            panelSettings = settingsPanel;
+            placementController = placement;
+            BindButtons();
+        }
 
         private void Start()
         {
             // 버튼 클릭 이벤트 코드로 자동 바인딩
+            BindButtons();
+
+            // 시작 시 모든 패널 닫기
+            CloseAllPanels();
+        }
+
+        private void BindButtons()
+        {
+            if (_isBound)
+            {
+                return;
+            }
+
             if (btnBuild != null) btnBuild.onClick.AddListener(() => ToggleMenu(MenuType.Build));
             if (btnResearch != null) btnResearch.onClick.AddListener(() => ToggleMenu(MenuType.Research));
             if (btnStats != null) btnStats.onClick.AddListener(() => ToggleMenu(MenuType.Stats));
             if (btnSettings != null) btnSettings.onClick.AddListener(() => ToggleMenu(MenuType.Settings));
-
-            // 시작 시 모든 패널 닫기
-            CloseAllPanels();
+            _isBound = true;
         }
 
         /// <summary>

@@ -8,11 +8,30 @@ namespace CityFlow.UI.Geon
         [Header("Research Buttons")]
         [SerializeField] private Button btnUpgradeSpeed;
         [SerializeField] private Button btnReduceCooldown;
+        private bool _isBound;
+
+        public void Configure(Button upgradeSpeed, Button reduceCooldown)
+        {
+            btnUpgradeSpeed = upgradeSpeed;
+            btnReduceCooldown = reduceCooldown;
+            BindButtons();
+        }
 
         private void Start()
         {
+            BindButtons();
+        }
+
+        private void BindButtons()
+        {
+            if (_isBound)
+            {
+                return;
+            }
+
             if (btnUpgradeSpeed != null) btnUpgradeSpeed.onClick.AddListener(OnUpgradeSpeedClicked);
             if (btnReduceCooldown != null) btnReduceCooldown.onClick.AddListener(OnReduceCooldownClicked);
+            _isBound = true;
         }
 
         private void OnUpgradeSpeedClicked()
