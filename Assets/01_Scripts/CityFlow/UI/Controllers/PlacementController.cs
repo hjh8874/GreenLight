@@ -16,6 +16,7 @@ namespace CityFlow.UI
         public Vector2Int Coord;
         public TileType PreviousType;
         public TileType NewType;
+        public long Cost; // 추후 경제(환불) 시스템 연동을 위한 필드
     }
 
     public class PlacementController : MonoBehaviour, ICityFlowServiceConsumer
@@ -89,22 +90,15 @@ namespace CityFlow.UI
             {
                 if (action.ActionType == PlacementActionType.Place)
                 {
-                    // 건설한 걸 되돌리기 -> 철거. 단, 이전에 무언가 있었다면 복구
-                    if (action.PreviousType == TileType.Empty)
-                    {
-                        _services.Placement.Remove(action.Coord);
-                    }
-                    else
-                    {
-                        _services.Placement.Place(action.Coord, action.PreviousType);
-                    }
-                    Debug.Log($"[Undo] Place 취소됨: {action.Coord}");
+                    // 건설한 걸 되돌리기 -> 빈칸에서만 건설이 가능하므로 항상 철거(Remove) 수행
+                    _services.Placement.Remove(action.Coord);
+                    Debug.Log($"[Undo] Place 취소됨 (철거 수행): {action.Coord}");
                 }
                 else if (action.ActionType == PlacementActionType.Remove)
                 {
-                    // 철거한 걸 되돌리기 -> 다시 건설
+                    // 철거한 걸 되돌리기 -> 다시 원래 건물로 건설
                     _services.Placement.Place(action.Coord, action.PreviousType);
-                    Debug.Log($"[Undo] Remove 취소됨: {action.Coord}");
+                    Debug.Log($"[Undo] Remove 취소됨 (복구 수행): {action.Coord}");
                 }
             }
         }
@@ -239,17 +233,21 @@ namespace CityFlow.UI
 
                 if (_currentType == TileType.Empty)
                 {
-                    // 철거
-                    _services.Placement.Remove(coord);
-                    _undoStack.Push(new PlacementAction { ActionType = PlacementActionType.Remove, Coord = coord, PreviousType = previousType, NewType = TileType.Empty });
-                    Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 철거 명령 전달 완료.");
+                    // 철거 시도 및 성공 여부 확인
+                    if (_services.Placement.Remove(coord))
+                    {
+                        _undoStack.Push(new PlacementAction { ActionType = PlacementActionType.Remove, Coord = coord, PreviousType = previousType, NewType = TileType.Empty, Cost = 0 });
+                        Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 철거 명령 전달 및 Undo 기록 완료.");
+                    }
                 }
                 else
                 {
-                    // 건설
-                    _services.Placement.Place(coord, _currentType);
-                    _undoStack.Push(new PlacementAction { ActionType = PlacementActionType.Place, Coord = coord, PreviousType = previousType, NewType = _currentType });
-                    Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 {_currentType} 건설 명령 전달 완료.");
+                    // 건설 시도 및 성공 여부 확인
+                    if (_services.Placement.Place(coord, _currentType))
+                    {
+                        _undoStack.Push(new PlacementAction { ActionType = PlacementActionType.Place, Coord = coord, PreviousType = previousType, NewType = _currentType, Cost = 0 });
+                        Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 {_currentType} 건설 명령 전달 및 Undo 기록 완료.");
+                    }
                 }
             }
         }

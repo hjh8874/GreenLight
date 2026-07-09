@@ -39,6 +39,10 @@ namespace CityFlow.UI
         // Display state for DOTween
         private float _displayedCoins;
         private float _displayedVehicles;
+        
+        // Cache for DOTween target values
+        private int _lastTargetVehicles = -1;
+        private long _lastTargetCoins = -1;
 
         public void Configure(
             TextMeshProUGUI time,
@@ -238,23 +242,31 @@ namespace CityFlow.UI
                 // 안정도와 코인을 적절히 섞어 유저가 변화를 느낄 수 있는 가짜 데이터를 만듭니다.
                 int targetVehicleCount = (int)(_currentStability01 * 500) + (int)(_currentCoins / 10);
                 
-                vehicleCountText.DOKill();
-                DOTween.To(() => _displayedVehicles, x => 
+                if (targetVehicleCount != _lastTargetVehicles)
                 {
-                    _displayedVehicles = x;
-                    vehicleCountText.text = $"[Cars] {Mathf.RoundToInt(_displayedVehicles):N0}";
-                }, targetVehicleCount, updateInterval).SetEase(Ease.Linear).SetTarget(vehicleCountText);
+                    _lastTargetVehicles = targetVehicleCount;
+                    vehicleCountText.DOKill();
+                    DOTween.To(() => _displayedVehicles, x => 
+                    {
+                        _displayedVehicles = x;
+                        vehicleCountText.text = $"[Cars] {Mathf.RoundToInt(_displayedVehicles):N0}";
+                    }, targetVehicleCount, updateInterval).SetEase(Ease.Linear).SetTarget(vehicleCountText);
+                }
             }
 
             // 3. 코인 지갑
             if (coinText != null)
             {
-                coinText.DOKill();
-                DOTween.To(() => _displayedCoins, x => 
+                if (_currentCoins != _lastTargetCoins)
                 {
-                    _displayedCoins = x;
-                    coinText.text = $"[Coins] {Mathf.RoundToInt(_displayedCoins):N0}";
-                }, _currentCoins, updateInterval).SetEase(Ease.Linear).SetTarget(coinText);
+                    _lastTargetCoins = _currentCoins;
+                    coinText.DOKill();
+                    DOTween.To(() => _displayedCoins, x => 
+                    {
+                        _displayedCoins = x;
+                        coinText.text = $"[Coins] {Mathf.RoundToInt(_displayedCoins):N0}";
+                    }, _currentCoins, updateInterval).SetEase(Ease.Linear).SetTarget(coinText);
+                }
             }
 
             // 4. 효율 (%)
