@@ -28,6 +28,11 @@ namespace CityFlow.Save
             ProgressionSaveSource = progressionSaveSource;
         }
 
+        public void RegisterEconomySaveSource(IEconomySaveSource economySaveSource)
+        {
+            EconomySaveSource = economySaveSource;
+        }
+
         public GameSaveData CreateSnapshot()
         {
             return new GameSaveData

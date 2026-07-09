@@ -27,6 +27,7 @@ namespace CityFlow.UI
         [SerializeField] private float updateInterval = 0.2f;
 
         private CityFlowServices _services;
+        private IEconomyService _economy;
         private float _updateTimer;
         
         // Cached state from events
@@ -57,8 +58,17 @@ namespace CityFlow.UI
 
             // 이벤트 구독 (구독해야 코어 엔진에서 데이터가 날아옵니다)
             _services.Events.StabilityChanged += OnStabilityChanged;
-            _services.Events.Arrival += OnArrival;
             _services.Events.FlowBurst += OnFlowBurst;
+            _services.EconomyRegistered += OnEconomyRegistered;
+
+            if (_services.Economy != null)
+            {
+                BindEconomy(_services.Economy);
+            }
+            else
+            {
+                _services.Events.Arrival += OnArrival;
+            }
 
             // 초기 UI 갱신
             UpdateUI();
@@ -72,6 +82,12 @@ namespace CityFlow.UI
                 _services.Events.StabilityChanged -= OnStabilityChanged;
                 _services.Events.Arrival -= OnArrival;
                 _services.Events.FlowBurst -= OnFlowBurst;
+                _services.EconomyRegistered -= OnEconomyRegistered;
+            }
+
+            if (_economy != null)
+            {
+                _economy.CoinsChanged -= OnCoinsChanged;
             }
         }
 
@@ -83,6 +99,35 @@ namespace CityFlow.UI
         private void OnArrival(ArrivalEvent e)
         {
             _currentCoins += e.Coins;
+        }
+
+        private void OnEconomyRegistered(IEconomyService economy)
+        {
+            BindEconomy(economy);
+        }
+
+        private void BindEconomy(IEconomyService economy)
+        {
+            if (_economy == economy)
+            {
+                return;
+            }
+
+            if (_economy != null)
+            {
+                _economy.CoinsChanged -= OnCoinsChanged;
+            }
+
+            _services.Events.Arrival -= OnArrival;
+            _economy = economy;
+            _economy.CoinsChanged += OnCoinsChanged;
+            OnCoinsChanged(_economy.Coins);
+        }
+
+        private void OnCoinsChanged(long coins)
+        {
+            _currentCoins = coins;
+            UpdateUI();
         }
 
         private void OnFlowBurst(FlowBurstEvent e)
