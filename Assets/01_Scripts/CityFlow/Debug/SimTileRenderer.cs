@@ -40,7 +40,7 @@ namespace CityFlow.DebugTools
         private float[] _carPhase = new float[0];   // 경로별 차 진행 위상(왕복·감속 누적)
 
         // 차간 간격 체크용 현재 프레임 포즈(위치+진행방향)
-        private struct CarPose { public Vector2 Pos; public Vector2 Dir; public bool Valid; public bool Horizontal; }
+        private struct CarPose { public Vector2 Pos; public Vector2 Dir; public bool Valid; public bool Horizontal; public Vector2Int NextTile; }
         private CarPose[] _poses = new CarPose[0];
         private const float MinGap = 0.68f;      // 앞차와 최소 간격(타일). 차 길이(7px≈0.58)보다 약간 크게
         private const float LaneTolerance = 0.15f; // 같은 차선 판정 폭(타일)
@@ -169,7 +169,11 @@ namespace CityFlow.DebugTools
                 int at = Mathf.Clamp((int)p, 0, segs);
                 float speed = CarSpeed * Mathf.Lerp(1f, 0.25f, _data.GetDensity01(path[at]));
                 if (IsBlocked(r) || IntersectionBlocked(r)) speed = 0f;   // 앞차 대기 / 교차로 진입 불가
-                _carPhase[r] += speed * dt;
+                // 위상 단위 = 세그먼트 1칸. 대각 세그먼트(길이 √2)는 그만큼 오래 걸리게
+                // 거리로 정규화 — 안 하면 대각 차가 1.4배 빨라짐(대각 치팅).
+                int seg = Mathf.Min(at, segs - 1);
+                float segLen = ((Vector2)(path[seg + 1] - path[seg])).magnitude;
+                _carPhase[r] += speed * dt / segLen;
 
                 var pose = PoseOf(path, r);
                 DrawCar((int)(pose.Pos.x * CellPx), (int)(pose.Pos.y * CellPx), pose.Dir, rcol);
@@ -201,31 +205,35 @@ namespace CityFlow.DebugTools
                 Dir = dir,
                 Valid = true,
                 Horizontal = Mathf.Abs(path[i + 1].x - path[i].x) >= Mathf.Abs(path[i + 1].y - path[i].y),
+                NextTile = forward ? path[i + 1] : path[i],   // 경로상 진짜 다음 타일(진행 방향 기준)
             };
         }
 
         // 교차로 진입 불가 조건: 다음 타일이 교차로인데 ①내 방향이 빨간불 이거나 ②이미 다른 차가 점유 중.
         // 이미 교차로 안(cur=교차로)이면 통과 — 안에서 멈추지 않고 빠져나감.
+        // next는 공간 투영이 아니라 경로에서 직접 읽음 — 대각(코너컷) 차가 남의 신호 타일을
+        // 스칠 때 자기 경로에 없는 신호에 잡히는 오탐 방지.
         private bool IntersectionBlocked(int r)
         {
             var me = _poses[r];
             var cur = new Vector2Int(Mathf.FloorToInt(me.Pos.x), Mathf.FloorToInt(me.Pos.y));
-            var next = new Vector2Int(
-                Mathf.FloorToInt(me.Pos.x + me.Dir.x * 0.6f),
-                Mathf.FloorToInt(me.Pos.y + me.Dir.y * 0.6f));
+            var next = me.NextTile;
             if (next == cur || !_signalSet.Contains(next)) return false;   // 교차로 진입 아님
 
             if (!_engine.IsSignalGreen(next, me.Horizontal)) return true;  // 내 방향 빨간불
             return _occupant.TryGetValue(next, out int occ) && occ != r;   // 이미 점유(box-blocking 방지)
         }
 
-        // 같은 차선(횡오차 작음) 진행선상 앞쪽 MinGap 안에 다른 차가 있나(추종).
+        // 같은 차선(횡오차 작음) 진행선상 앞쪽 MinGap 안에 '같은 방향' 차가 있나(추종).
+        // 같은 방향만 보는 이유: 교차·대향 차까지 양보하면 서로가 서로의 "앞차"가 되어
+        // 상호 양보 데드락(교차로 물림). 교차 흐름 조율은 IntersectionBlocked(점유 1대)가 담당.
         private bool IsBlocked(int r)
         {
             var me = _poses[r];
             for (int s = 0; s < _poses.Length; s++)
             {
                 if (s == r || !_poses[s].Valid) continue;
+                if (Vector2.Dot(me.Dir, _poses[s].Dir) < 0.5f) continue;   // 교차·대향 차는 추종 대상 아님
                 Vector2 rel = _poses[s].Pos - me.Pos;
                 float ahead = Vector2.Dot(rel, me.Dir);
                 if (ahead <= 0.02f || ahead >= MinGap) continue;          // 뒤차/멀리는 무시
