@@ -18,6 +18,13 @@ namespace CityFlow.DebugTools
         private static readonly Color32 Cream  = new Color32(238, 232, 210, 255);
         private static readonly Color32 Road   = new Color32(150, 150, 156, 255);
         private static readonly Color32 Car    = new Color32( 30,  30,  40, 255);
+        // 경로별 구분용 팔레트 — 차와 그 경로 트레일을 같은 색으로 그려 "이 차=이 집→이 회사" 추적.
+        private static readonly Color32[] RouteColors =
+        {
+            new Color32(220,  60,  60, 255), new Color32( 55, 120, 225, 255), new Color32( 55, 180,  95, 255),
+            new Color32(235, 150,  40, 255), new Color32(160,  90, 215, 255), new Color32( 40, 180, 195, 255),
+            new Color32(225,  90, 170, 255), new Color32(120, 170,  50, 255),
+        };
         private static readonly Color32 House   = new Color32( 90, 150, 220, 255);
         private static readonly Color32 Office  = new Color32(235, 150,  60, 255);
         private static readonly Color32 School  = new Color32(170, 110, 210, 255);
@@ -155,6 +162,9 @@ namespace CityFlow.DebugTools
                 var path = routes[r];
                 int segs = path.Count - 1;
 
+                // 경로별 색: 차를 그리는 경로(CarStride)마다 팔레트를 순서대로 → 차마다 다른 색으로 추적.
+                Color32 rcol = RouteColors[(r / CarStride) % RouteColors.Length];
+
                 float p = Fold(_carPhase[r], segs, segs * 2);
                 int at = Mathf.Clamp((int)p, 0, segs);
                 float speed = CarSpeed * Mathf.Lerp(1f, 0.25f, _data.GetDensity01(path[at]));
@@ -162,7 +172,7 @@ namespace CityFlow.DebugTools
                 _carPhase[r] += speed * dt;
 
                 var pose = PoseOf(path, r);
-                DrawCar((int)(pose.Pos.x * CellPx), (int)(pose.Pos.y * CellPx), pose.Dir, Car);
+                DrawCar((int)(pose.Pos.x * CellPx), (int)(pose.Pos.y * CellPx), pose.Dir, rcol);
             }
         }
 
