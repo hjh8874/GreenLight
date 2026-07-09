@@ -1,4 +1,5 @@
 using CityFlow.Contracts.Save;
+using CityFlow.Contracts;
 using UnityEngine;
 
 namespace CityFlow.Save
@@ -106,8 +107,48 @@ namespace CityFlow.Save
             }
 
             RestoreSnapshot(saveData);
+            SettleOfflineProgress(saveData);
             Debug.Log("Game save loaded and restored.");
             return true;
+        }
+
+        private void SettleOfflineProgress(GameSaveData saveData)
+        {
+            if (saveData == null || saveData.SavedAtUtcTicks <= 0L)
+            {
+                return;
+            }
+
+            if (!(SimSaveSource is IOfflineSettlementSource offlineSettlementSource))
+            {
+                return;
+            }
+
+            System.DateTime savedAtUtc;
+
+            try
+            {
+                savedAtUtc = new System.DateTime(saveData.SavedAtUtcTicks, System.DateTimeKind.Utc);
+            }
+            catch (System.ArgumentOutOfRangeException)
+            {
+                Debug.LogWarning("Offline settlement skipped because saved UTC ticks are invalid.");
+                return;
+            }
+
+            double elapsedSeconds = (Clock.UtcNow - savedAtUtc).TotalSeconds;
+
+            if (elapsedSeconds <= 0.0)
+            {
+                return;
+            }
+
+            offlineSettlementSource.SettleOffline(elapsedSeconds);
+
+            bool savedAfterSettlement = Save();
+            Debug.Log(savedAfterSettlement
+                ? $"Offline settlement completed and saved for {elapsedSeconds:0.##} seconds."
+                : $"Offline settlement completed for {elapsedSeconds:0.##} seconds, but the updated save could not be written.");
         }
     }
 }

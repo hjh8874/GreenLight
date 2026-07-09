@@ -28,6 +28,7 @@ namespace CityFlow.UI
 
         private CityFlowServices _services;
         private IEconomyService _economy;
+        private IGameCalendarService _gameCalendar;
         private float _updateTimer;
         
         // Cached state from events
@@ -60,6 +61,7 @@ namespace CityFlow.UI
             _services.Events.StabilityChanged += OnStabilityChanged;
             _services.Events.FlowBurst += OnFlowBurst;
             _services.EconomyRegistered += OnEconomyRegistered;
+            _services.GameCalendarRegistered += OnGameCalendarRegistered;
 
             if (_services.Economy != null)
             {
@@ -68,6 +70,11 @@ namespace CityFlow.UI
             else
             {
                 _services.Events.Arrival += OnArrival;
+            }
+
+            if (_services.GameCalendar != null)
+            {
+                BindGameCalendar(_services.GameCalendar);
             }
 
             // 초기 UI 갱신
@@ -83,11 +90,19 @@ namespace CityFlow.UI
                 _services.Events.Arrival -= OnArrival;
                 _services.Events.FlowBurst -= OnFlowBurst;
                 _services.EconomyRegistered -= OnEconomyRegistered;
+                _services.GameCalendarRegistered -= OnGameCalendarRegistered;
             }
 
             if (_economy != null)
             {
                 _economy.CoinsChanged -= OnCoinsChanged;
+            }
+
+            if (_gameCalendar != null)
+            {
+                _gameCalendar.HourChanged -= OnCalendarChanged;
+                _gameCalendar.DayChanged -= OnCalendarChanged;
+                _gameCalendar.MonthChanged -= OnCalendarChanged;
             }
         }
 
@@ -122,6 +137,37 @@ namespace CityFlow.UI
             _economy = economy;
             _economy.CoinsChanged += OnCoinsChanged;
             OnCoinsChanged(_economy.Coins);
+        }
+
+        private void OnGameCalendarRegistered(IGameCalendarService gameCalendar)
+        {
+            BindGameCalendar(gameCalendar);
+        }
+
+        private void BindGameCalendar(IGameCalendarService gameCalendar)
+        {
+            if (_gameCalendar == gameCalendar)
+            {
+                return;
+            }
+
+            if (_gameCalendar != null)
+            {
+                _gameCalendar.HourChanged -= OnCalendarChanged;
+                _gameCalendar.DayChanged -= OnCalendarChanged;
+                _gameCalendar.MonthChanged -= OnCalendarChanged;
+            }
+
+            _gameCalendar = gameCalendar;
+            _gameCalendar.HourChanged += OnCalendarChanged;
+            _gameCalendar.DayChanged += OnCalendarChanged;
+            _gameCalendar.MonthChanged += OnCalendarChanged;
+            UpdateUI();
+        }
+
+        private void OnCalendarChanged(int _)
+        {
+            UpdateUI();
         }
 
         private void OnCoinsChanged(long coins)
@@ -164,9 +210,16 @@ namespace CityFlow.UI
             // 1. 시간 표시 (00:00 포맷)
             if (timeText != null)
             {
-                int minutes = Mathf.FloorToInt(Time.time / 60f);
-                int seconds = Mathf.FloorToInt(Time.time % 60f);
-                timeText.text = $"{minutes:00}:{seconds:00}";
+                if (_gameCalendar != null)
+                {
+                    timeText.text = $"Y{_gameCalendar.Year} M{_gameCalendar.Month:00} D{_gameCalendar.Day:00} {_gameCalendar.Hour:00}:00";
+                }
+                else
+                {
+                    int minutes = Mathf.FloorToInt(Time.time / 60f);
+                    int seconds = Mathf.FloorToInt(Time.time % 60f);
+                    timeText.text = $"{minutes:00}:{seconds:00}";
+                }
             }
 
             // 2. 가짜 차량 수 조립 (On-the-fly 합성 규칙 적용)
