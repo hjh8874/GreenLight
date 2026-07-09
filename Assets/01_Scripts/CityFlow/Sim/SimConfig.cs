@@ -84,7 +84,9 @@ namespace CityFlow.Sim
             DemandChoicePool = 3,
             RushAmplitude = 0f,        // 기본 오프 — SimDebug 씬은 SO 에셋으로 켠다
             DayLengthSeconds = 120f,
-            OverrideDurationSeconds = 10f,
+            // 20s = 주기(8s) 2.5바퀴 — 관성 때문에 대기열 후미가 출발하기까지 파동 지연(~수 초)이
+            // 있어서, 10s면 "썼는데 벌써 끝남" 체감. 스킬감은 보장 시간에서 나온다 🔓
+            OverrideDurationSeconds = 20f,
             OverrideCooldownSeconds = 30f,
             CoinBase = 1f,
             BurstJamEnterRatio = 1.0f,
