@@ -14,6 +14,9 @@ namespace CityFlow.Sim
     }
 
     // 집(House)을 가장 가까운 수요처에 배정. 맨해튼 최근접 + 용량 캡 + 차순위. topology 변경 시에만.
+    // 도달성: 같은 도로 섬(RoadNetwork.RegionOf)의 수요처를 우선 — 길이 끊긴 섬에 수요를 주고
+    // 흐름이 증발하는 것 방지. 도달 가능한 곳이 없으면 기존 최근접 폴백(흐름 0 = 안정도
+    // 페널티 유지 → 유저에게 "길 고쳐라" 신호).
     // 확장: 수요처 종류 추가 = SinkTypes 배열 + CapacityFor + SimConfig 용량 한 줄. 로직 불변.
     internal sealed class DemandMap
     {
@@ -34,7 +37,7 @@ namespace CityFlow.Sim
             _config = config;
         }
 
-        public void Reassign(CityGrid grid)
+        public void Reassign(CityGrid grid, RoadNetwork net)
         {
             _demands.Clear();
             _houses.Clear();
@@ -45,7 +48,7 @@ namespace CityFlow.Sim
             {
                 _sinks.Clear();
                 Collect(grid, sinkType, _sinks);
-                AssignType(_houses, _sinks, CapacityFor(sinkType));
+                AssignType(_houses, _sinks, CapacityFor(sinkType), net);
             }
         }
 
@@ -69,25 +72,40 @@ namespace CityFlow.Sim
             _ => 0,
         };
 
-        // 각 집을 '남은 용량이 있는 가장 가까운' sink에 배정. 꽉 차면 다음 가까운 곳(차순위).
-        void AssignType(List<Vector2Int> sources, List<Vector2Int> sinks, int capPerSink)
+        // 각 집을 '남은 용량이 있는, 도달 가능한(같은 섬), 가장 가까운' sink에 배정.
+        // 꽉 차면 다음 가까운 곳(차순위). 도달 가능한 곳이 하나도 없으면 최근접 폴백(흐름 0).
+        void AssignType(List<Vector2Int> sources, List<Vector2Int> sinks, int capPerSink, RoadNetwork net)
         {
             if (sinks.Count == 0) return;
 
             var remaining = new int[sinks.Count]; // ponytail: 재배정 드물어 지역 할당 OK
-            for (int i = 0; i < sinks.Count; i++) remaining[i] = capPerSink;
+            var sinkRegion = new int[sinks.Count];   // 수요처 접점 도로의 섬 id(-1 = 접점 없음)
+            for (int i = 0; i < sinks.Count; i++)
+            {
+                remaining[i] = capPerSink;
+                sinkRegion[i] = net.TryGetAccessRoad(sinks[i], out var road) ? net.RegionOf(road) : -1;
+            }
 
             for (int h = 0; h < sources.Count; h++)
             {
                 var house = sources[h];
-                int best = -1, bestDist = int.MaxValue;
+                int houseRegion = net.TryGetAccessRoad(house, out var hr) ? net.RegionOf(hr) : -1;
+
+                int best = -1, bestDist = int.MaxValue;         // 같은 섬(도달 가능) 최근접
+                int bestAny = -1, bestAnyDist = int.MaxValue;   // 섬 무관 최근접(폴백)
                 for (int i = 0; i < sinks.Count; i++)
                 {
                     if (remaining[i] <= 0) continue;
                     int d = Manhattan(house, sinks[i]);
-                    if (d < bestDist) { bestDist = d; best = i; } // strict < → 동점 시 낮은 인덱스 유지
+                    if (d < bestAnyDist) { bestAnyDist = d; bestAny = i; } // strict < → 동점 시 낮은 인덱스 유지
+                    if (houseRegion >= 0 && sinkRegion[i] == houseRegion && d < bestDist)
+                    {
+                        bestDist = d;
+                        best = i;
+                    }
                 }
-                if (best < 0) continue; // 모든 sink 만석 → 이 집은 이 종류 수요 없음
+                if (best < 0) best = bestAny;   // 도달 가능한 수요처 0개 → 기존 동작(배정하되 흐름 0)
+                if (best < 0) continue;         // 모든 sink 만석 → 이 집은 이 종류 수요 없음
 
                 remaining[best]--;
                 _demands.Add(new Demand { Source = house, Sink = sinks[best] });

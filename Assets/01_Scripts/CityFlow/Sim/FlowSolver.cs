@@ -120,27 +120,36 @@ namespace CityFlow.Sim
         }
 
         // 경로가 지나는 인접 신호쌍들의 그린웨이브 효율을 min으로 합성(설계 §4 — 병목 철학과 동일).
-        // 신호 0~1개면 조율할 짝이 없으니 1. travelSlots = 신호 사이 타일 거리(1타일=1슬롯, MVP §3).
+        // 신호 0~1개면 조율할 짝이 없으니 1. travelSlots = 신호 사이 물리 거리(직각 1슬롯,
+        // 대각 √2슬롯) — 인덱스 거리로 세면 대각 경로가 실제보다 빨리 도착한 걸로 계산돼
+        // 그린웨이브 조율이 어긋남(대각 치팅).
         static float SignalFactor(List<Vector2Int> path, SignalMap signals, in SimConfig cfg)
         {
             if (signals == null) return 1f;
 
             float factor = 1f;
             Signal prev = null;
-            int prevIdx = 0;
+            float slots = 0f, prevSlots = 0f;   // 누적 이동 슬롯(물리 거리)
             for (int p = 0; p < path.Count; p++)
             {
+                if (p > 0)
+                {
+                    var step = path[p] - path[p - 1];
+                    slots += (step.x != 0 && step.y != 0) ? Sqrt2 : 1f;
+                }
                 if (!signals.TryGet(path[p], out var sig)) continue;
                 if (prev != null)
                 {
-                    float e = SignalMath.GreenWaveEfficiency(prev, sig, p - prevIdx, cfg.GreenWaveFloor);
+                    float e = SignalMath.GreenWaveEfficiency(prev, sig, slots - prevSlots, cfg.GreenWaveFloor);
                     if (e < factor) factor = e;
                 }
                 prev = sig;
-                prevIdx = p;
+                prevSlots = slots;
             }
             return factor;
         }
+
+        const float Sqrt2 = 1.4142135f;   // 대각 스텝의 물리 거리(타일)
 
         public CongestionLevel GetCongestion(Vector2Int t) => _level[Index(t)];
 

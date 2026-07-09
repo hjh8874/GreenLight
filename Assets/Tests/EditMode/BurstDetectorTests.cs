@@ -45,7 +45,7 @@ namespace CityFlow.Sim.Tests
             // 금액 = round(0.6×5) = 3, 위치 = 병목 타일.
             var g = StraightCity();
             var cfg = BurstCfg();
-            var dm = new DemandMap(cfg); dm.Reassign(g);
+            var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
             var solver = new FlowSolver(g.Width, g.Height);
             var detector = new BurstDetector(g.Width, g.Height);
@@ -74,7 +74,7 @@ namespace CityFlow.Sim.Tests
             // → 히스테리시스가 전이를 막아 Burst 0회.
             var g = StraightCity();
             var cfg = BurstCfg();
-            var dm = new DemandMap(cfg); dm.Reassign(g);
+            var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
             var solver = new FlowSolver(g.Width, g.Height);
             var detector = new BurstDetector(g.Width, g.Height);

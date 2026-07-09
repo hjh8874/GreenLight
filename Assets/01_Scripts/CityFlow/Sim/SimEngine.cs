@@ -67,7 +67,7 @@ namespace CityFlow.Sim
             if (_grid.TopologyDirty)
             {
                 _network.Rebuild();
-                _demand.Reassign(_grid);
+                _demand.Reassign(_grid, _network);        // 도달성(같은 섬) 우선 배정
                 _signals.Rebuild(_grid);                  // 교차로 재감지(살아남은 신호 오프셋 보존)
                 _grid.ClearTopologyDirty();
             }
@@ -96,7 +96,7 @@ namespace CityFlow.Sim
             if (_grid.TopologyDirty)
             {
                 _network.Rebuild();
-                _demand.Reassign(_grid);
+                _demand.Reassign(_grid, _network);
                 _signals.Rebuild(_grid);
                 _grid.ClearTopologyDirty();
             }
@@ -154,8 +154,9 @@ namespace CityFlow.Sim
         public bool TrySetSignalGreenSlots(Vector2Int tile, int slots)
         {
             if (!_signals.TryGet(tile, out var s)) return false;
-            // 초록은 [0, 주기]만 의미 — UI 입력은 트러스트 경계라 클램프(0=상시적색, 주기=상시초록).
-            s.GreenSlots = Mathf.Clamp(slots, 0, s.CycleSlots);   // 다음 Resolve의 GreenRatio에 반영
+            // 최소 통과 보장(Hard limit): 초록 0슬롯이면 그 축이 영원히 빨강 = 신호 데드락.
+            // 반대 축(주기-초록)도 같은 이유로 최소 1슬롯 → [1, 주기-1] 클램프.
+            s.GreenSlots = Mathf.Clamp(slots, 1, Mathf.Max(1, s.CycleSlots - 1));
             return true;
         }
 

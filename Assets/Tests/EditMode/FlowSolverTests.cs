@@ -30,7 +30,7 @@ namespace CityFlow.Sim.Tests
         static FlowSolver Solve(CityGrid g, in SimConfig cfg)
         {
             var dm = new DemandMap(cfg);
-            dm.Reassign(g);
+            dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
             var solver = new FlowSolver(g.Width, g.Height);
             solver.Assign(dm, net, cfg);

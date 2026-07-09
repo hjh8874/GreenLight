@@ -325,11 +325,11 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1, ctl.SignalTiles.Count);
             float choked = e.DeliveredTotal;
 
-            Assert.IsTrue(ctl.TrySetSignalGreenSlots(V(4, 0), 999));   // 초록 최대(주기로 클램프) → 듀티 1.0
+            Assert.IsTrue(ctl.TrySetSignalGreenSlots(V(4, 0), 999));   // 초록 최대(주기-1로 클램프) → 듀티 15/16
             e.Tick(0.25f);
 
             Assert.Greater(e.DeliveredTotal, choked);        // 레버가 살아있음
-            Assert.AreEqual(6f, e.DeliveredTotal, 1e-3f);    // 완전 회복(ratio 0.6 Free)
+            Assert.AreEqual(6f, e.DeliveredTotal, 1e-3f);    // 완전 회복(ratio 0.64 ≤ Jam)
         }
 
         [Test]
@@ -355,9 +355,9 @@ namespace CityFlow.Sim.Tests
 
             ISignalControl ctl = e;
             ctl.TrySetSignalGreenSlots(V(4, 0), -5);
-            Assert.AreEqual(0, ctl.GetSignalGreenSlots(V(4, 0)));    // 음수 → 0
+            Assert.AreEqual(1, ctl.GetSignalGreenSlots(V(4, 0)));    // 음수 → 최소 초록 1슬롯(신호 데드락 방지)
             ctl.TrySetSignalGreenSlots(V(4, 0), 999);
-            Assert.AreEqual(16, ctl.GetSignalGreenSlots(V(4, 0)));   // 주기(기본 16) 초과 → 주기
+            Assert.AreEqual(15, ctl.GetSignalGreenSlots(V(4, 0)));   // 주기 초과 → 주기-1(반대 축 최소 보장)
         }
 
         [Test]
