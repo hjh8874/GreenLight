@@ -71,9 +71,26 @@ namespace CityFlow.Sim
             for (int i = 0; i < _flow.Length; i++)
             {
                 _ratio[i] = _flow[i] / cfg.RoadCapacity;
-                _level[i] = _ratio[i] > cfg.JamRatio ? CongestionLevel.Jam
-                          : _ratio[i] >= cfg.SlowRatio ? CongestionLevel.Slow
-                          : CongestionLevel.Free;
+                _level[i] = Classify(_ratio[i], cfg);
+            }
+
+            // ①' 신호 타일만 유효 용량 = RoadCapacity × GreenRatio(듀티)로 재계산.
+            // 빨간불 동안 큐가 쌓이는 걸 용량 감소로 근사 — 여유 있으면 무손실, 부하 오르면
+            // 신호가 먼저 병목이 되고, 초록을 늘리면(GreenSlots↑) 풀린다 = 두 번째 유저 레버.
+            // ponytail: 축별 초록 분배(가로/세로 나눠먹기)는 2차 — 타일 flow가 축 미구분이라 듀티만.
+            if (signals != null)
+            {
+                var tiles = signals.Tiles;
+                for (int k = 0; k < tiles.Count; k++)
+                {
+                    if (!signals.TryGet(tiles[k], out var s)) continue;
+                    if (s.CycleSlots <= 0) continue;   // 주기 0 = 항상 초록(IsGreen과 같은 규약)
+                    float g = SignalMath.GreenRatio(s);
+                    int i = Index(tiles[k]);
+                    _ratio[i] = g > 0f ? _flow[i] / (cfg.RoadCapacity * g)
+                              : _flow[i] > 0f ? cfg.EfficiencyMinRatio : 0f;   // 초록 0 = 흐르면 최악 병목
+                    _level[i] = Classify(_ratio[i], cfg);
+                }
             }
 
             // ② 경로별: 병목(최대 ratio) → E → delivered + 잃은 만큼 병목 타일에 pending 적립
@@ -138,6 +155,11 @@ namespace CityFlow.Sim
         public float GetRatio(int flatIndex) => _ratio[flatIndex];
         public float GetPendingReward(int flatIndex) => _pendingReward[flatIndex];
         public void ClearPendingReward(int flatIndex) => _pendingReward[flatIndex] = 0f;   // Burst가 소비
+
+        static CongestionLevel Classify(float ratio, in SimConfig cfg) =>
+            ratio > cfg.JamRatio ? CongestionLevel.Jam
+            : ratio >= cfg.SlowRatio ? CongestionLevel.Slow
+            : CongestionLevel.Free;
 
         // E(병목): ratio ≤ JamRatio → 1(자유 흐름), EfficiencyMinRatio까지 선형 하락, 이후 바닥.
         internal static float Efficiency(float ratio, in SimConfig cfg)

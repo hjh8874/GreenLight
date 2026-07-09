@@ -4,28 +4,43 @@ using UnityEngine;
 
 namespace CityFlow.DebugTools
 {
-    // 개발/QA용: '대각 도로' 데모 — (2,2)→(17,17) 한 칸씩 대각으로만 이어진 길.
-    // 8방향 연결 덕에 차가 이 대각 도로를 그대로 따라 집(좌하)→회사(우상)→집 왕복.
-    // (SignalMap은 4방향이라 순수 대각 도로엔 신호 없음 — 경로 추종 확인용.)
+    // 개발/QA용: 확장 테스트 도시 — 신호 1개(중앙 십자 7,7) + 집 5가구 → 회사 3곳.
+    // 대각·직교 접근 섞어서 여러 경로가 그 하나의 신호를 통과.
     public sealed class DebugCitySeeder : MonoBehaviour, ICityFlowServiceConsumer
     {
-        [SerializeField] private int size = 20;
+        [SerializeField] private int size = 16;
 
         public void Initialize(CityFlowServices services)
         {
+            if (!isActiveAndEnabled)
+            {
+                return;
+            }
+
             var p = services.Placement;
+            void Road(int x, int y) => p.Place(new Vector2Int(x, y), TileType.Road);
+            void House(int x, int y) => p.Place(new Vector2Int(x, y), TileType.House);
+            void Office(int x, int y) => p.Place(new Vector2Int(x, y), TileType.Office);
 
-            for (int i = 2; i <= 17; i++) p.Place(new Vector2Int(i, i), TileType.Road);   // 대각 도로
+            // 1. 중앙 십자 = 유일한 신호 (7,7)
+            for (int x = 2; x <= 12; x++) Road(x, 7);   // 가로팔
+            for (int y = 2; y <= 12; y++) Road(7, y);   // 세로팔
 
-            // 집(좌하, 대각 접점) → 회사(우상, 대각 접점)
-            p.Place(new Vector2Int(1, 1), TileType.House);
-            p.Place(new Vector2Int(3, 1), TileType.House);
-            p.Place(new Vector2Int(1, 3), TileType.House);
-            p.Place(new Vector2Int(18, 18), TileType.Office);
-            p.Place(new Vector2Int(16, 18), TileType.Office);
-            p.Place(new Vector2Int(18, 16), TileType.Office);
+            // 2. 대각 접근로 (신호 안 만듦 — 8방향으로만 연결)
+            Road(1, 6); Road(0, 5);      // 좌하 대각 (가로팔 왼끝 2,7에서)
+            Road(13, 8); Road(14, 9);    // 우상 대각 (가로팔 오른끝 12,7에서)
 
-            Debug.Log("[DebugCitySeeder] 대각 도로 데모 — (2,2)→(17,17) 대각선, 집(좌하)→회사(우상), 차가 대각 경로 왕복");
+            // 3. 집 5가구 (좌·하, 대각+직교 접근 섞음)
+            House(0, 4); House(0, 6);    // 좌하 대각 접근
+            House(2, 8);                 // 가로팔 왼쪽 직교 접근
+            House(6, 2); House(8, 2);    // 세로팔 아래 직교 접근
+
+            // 4. 회사 3곳 (우·상) — 도로 옆(대각/직교 접근)
+            Office(14, 8);   // 우상 대각(13,8·14,9) 접점
+            Office(12, 6);   // 가로팔 오른쪽 직교 접점
+            Office(7, 13);   // 세로팔 위 직교 접점
+
+            Debug.Log("[DebugCitySeeder] 확장 도시 — 신호 1개(7,7), 집 5 → 회사 3, 대각·직교 혼합");
         }
     }
 }

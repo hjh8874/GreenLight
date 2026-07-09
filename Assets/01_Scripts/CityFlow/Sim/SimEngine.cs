@@ -2,12 +2,13 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 
 namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
-    // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 두 인터페이스만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData
+    // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, ISimSaveSource, ISignalControl
     {
         readonly SimConfig _config;
         readonly CityGrid _grid;
@@ -22,6 +23,7 @@ namespace CityFlow.Sim
         readonly SimStats _stats = new SimStats();
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
+        float _lastStability = -1f;   // 직전 발행한 안정도(-1=아직 없음 → 첫 틱은 무조건 발행)
 
         // 테스트 관찰용 seam. internal이라 테스트 어셈블리만 봄(InternalsVisibleTo).
         internal int StepCount { get; private set; }
@@ -76,6 +78,13 @@ namespace CityFlow.Sim
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
             _stats.Update(_solver, _demand, _config);     // ⑤ 안정도 집계
+            // ⑤' 안정도가 바뀐 틱만 이벤트로(매 틱 스팸 방지 — 혼잡 diff와 같은 철학).
+            // Update 뒤에 체크해야 첫 틱·복원 직후에도 이번 틱의 진짜 값이 나간다.
+            if (Mathf.Abs(_stats.Stability01 - _lastStability) > 0.001f)
+            {
+                _lastStability = _stats.Stability01;
+                _events.QueueStability(new StabilityEvent(_stats.Stability01));
+            }
             _events.Drain();                              // ⑥ 모인 이벤트 일괄 발행 (항상 마지막!)
         }
 
@@ -121,9 +130,12 @@ namespace CityFlow.Sim
         // 뷰 연동: 엔진이 이번 틱 계산한 실제 통근 경로들. 차를 이 위에 그리면 라우팅을 눈으로 검증.
         // ponytail: 지금은 디버그 뷰용 public. 진짜 View 붙을 때 Contracts로 승격.
         public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _solver.Routes;
+        
+        // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게 
+        public float DeliveredTotal => _solver.DeliveredTotal;
 
-        // ── 신호 조작 창구 — 유저(UI)가 오프셋을 돌리는 유일한 레버. 자동/수동 모두 이 값 하나.
-        // ponytail: ISignalControl로 Contracts 승격은 주석님·김건 합의 후(설계 §5).
+        // ── ISignalControl(신호 조작 창구): 유저가 교차로를 조율하는 두 레버 — 오프셋·초록 길이 ──
+        // 제안 단계: 계약으로 승격(설계 §5), 최종 확정은 주석·김건 합의. 김건 Game뷰 UI가 이 계약에 붙음.
         public IReadOnlyList<Vector2Int> SignalTiles => _signals.Tiles;
 
         public int GetSignalOffsetSlots(Vector2Int tile) =>
@@ -133,6 +145,17 @@ namespace CityFlow.Sim
         {
             if (!_signals.TryGet(tile, out var s)) return false;
             s.OffsetSlots = slots;   // 다음 Resolve부터 반영(topology 재계산 불필요)
+            return true;
+        }
+
+        public int GetSignalGreenSlots(Vector2Int tile) =>
+            _signals.TryGet(tile, out var s) ? s.GreenSlots : 0;
+
+        public bool TrySetSignalGreenSlots(Vector2Int tile, int slots)
+        {
+            if (!_signals.TryGet(tile, out var s)) return false;
+            // 초록은 [0, 주기]만 의미 — UI 입력은 트러스트 경계라 클램프(0=상시적색, 주기=상시초록).
+            s.GreenSlots = Mathf.Clamp(slots, 0, s.CycleSlots);   // 다음 Resolve의 GreenRatio에 반영
             return true;
         }
 
@@ -147,6 +170,48 @@ namespace CityFlow.Sim
         // 진입 허가 = 초록만(노랑·적색은 진입 금지).
         public bool IsSignalGreen(Vector2Int tile, bool horizontal) =>
             GetSignalPhase(tile, horizontal) == SignalPhase.Green;
+
+        // ── ISimSaveSource(한준희 세이브 계약): 배치 타일 + 신호 오프셋만 저장, 계산값은 로드 후 재계산 ──
+        public int GridWidth => _grid.Width;
+        public int GridHeight => _grid.Height;
+
+        public SimSaveData CreateSnapshot()
+        {
+            var tiles = new List<TileSaveData>();
+            for (int y = 0; y < _grid.Height; y++)              // flat(y,x) 순서 = 결정론
+                for (int x = 0; x < _grid.Width; x++)
+                {
+                    var type = _grid.GetTile(new Vector2Int(x, y));
+                    if (type == TileType.Empty) continue;       // 계약: Empty 미저장
+                    tiles.Add(new TileSaveData { X = x, Y = y, Type = type });
+                }
+
+            // 모든 신호를 오프셋 0 포함해 저장 — 복원 시 덮어쓰기만으로 이전 조율 잔존을 지운다.
+            var signals = new List<SignalSaveData>();
+            foreach (var t in _signals.Tiles)
+                signals.Add(new SignalSaveData { X = t.x, Y = t.y, OffsetSlots = GetSignalOffsetSlots(t) });
+
+            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray() };
+        }
+
+        public void RestoreSnapshot(SimSaveData snapshot)
+        {
+            if (snapshot == null) return;                        // SaveService도 거르지만 방어 한 겹
+
+            // 복원 = 전체 교체: 비우고 → 재배치 → 교차로 재감지 → 조율 복원 (PR#8 합의 흐름)
+            _grid.Clear();
+            if (snapshot.PlacedTiles != null)
+                foreach (var t in snapshot.PlacedTiles)
+                    _grid.Place(new Vector2Int(t.X, t.Y), t.Type);   // OOB·중복은 Place가 거름(무사고)
+            // 참고: PlacedEvent는 안 쏨 — 복원은 '건설'이 아니고, 뷰는 폴링이라 다음 프레임 자동 갱신.
+
+            // 오프셋 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).
+            _signals.Rebuild(_grid);
+            if (snapshot.SignalOffsets != null)
+                foreach (var s in snapshot.SignalOffsets)
+                    TrySetSignalOffsetSlots(new Vector2Int(s.X, s.Y), s.OffsetSlots);
+            // TopologyDirty는 남긴다: 다음 Step/SettleOffline이 경로·수요 재구축(Rebuild가 오프셋 보존).
+        }
 
         // ── IReadOnlyTileData: solver/grid에 위임 ──
         public float Stability01 => _stats.Stability01;

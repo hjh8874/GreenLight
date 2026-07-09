@@ -135,6 +135,231 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(placed[1].IsRemove);
         }
 
+        // ── StabilityChanged: 바뀐 틱에 이번 틱의 진짜 값을, 안 바뀌면 침묵 ──
+
+        // 정체 도시(수요 15/용량 10 → 0.6, JamCity 테스트와 동일 레시피)를 짓고 hub 구독을 연결.
+        static (SimEngine engine, System.Collections.Generic.List<float> got) JamCityWithStabilityLog()
+        {
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            c.DemandPerHouse = 15f; c.RoadCapacity = 10f;
+
+            var hub = new SimEventHub();
+            var got = new System.Collections.Generic.List<float>();
+            hub.StabilityChanged += ev => got.Add(ev.Stability01);
+            var e = new SimEngine(c, hub);
+
+            for (int x = 0; x <= 4; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(0, 1), TileType.House);
+            e.Place(V(4, 1), TileType.Office);
+            return (e, got);
+        }
+
+        [Test]
+        public void StabilityChanged_FirstTick_PublishesCurrentStability()
+        {
+            // 첫 틱 이벤트는 초기값(1.0)이 아니라 이번 틱 계산값(0.6)을 실어야 한다.
+            // 세이브 로드 복원 직후에도 구독자(해금 시스템)가 첫 틱부터 진짜 값을 받는 계약.
+            var (e, got) = JamCityWithStabilityLog();
+
+            e.Tick(0.25f);
+
+            Assert.AreEqual(1, got.Count);
+            Assert.AreEqual(0.6f, got[0], 1e-3f);
+        }
+
+        [Test]
+        public void StabilityChanged_UnchangedStability_NoRepublish()
+        {
+            // 안정도가 그대로면 이후 틱은 침묵(스팸 방지) — 첫 발행 1회로 끝.
+            var (e, got) = JamCityWithStabilityLog();
+
+            for (int i = 0; i < 10; i++) e.Tick(0.25f);
+
+            Assert.AreEqual(1, got.Count);
+        }
+
+        [Test]
+        public void StabilityChanged_RepublishesOnChange_SameTick()
+        {
+            // 자유 흐름(1.0) → 도로 절단(수요 미배달 → 0.0). 바뀐 '그' 틱에 새 값이 나가야 한다.
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            c.DemandPerHouse = 1f; c.RoadCapacity = 10f;
+
+            var hub = new SimEventHub();
+            var got = new System.Collections.Generic.List<float>();
+            hub.StabilityChanged += ev => got.Add(ev.Stability01);
+            var e = new SimEngine(c, hub);
+
+            for (int x = 0; x <= 4; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(0, 1), TileType.House);
+            e.Place(V(4, 1), TileType.Office);
+
+            e.Tick(0.25f);                       // 자유 흐름 → 1.0 발행
+            Assert.AreEqual(1, got.Count);
+            Assert.AreEqual(1f, got[0], 1e-3f);
+
+            e.Remove(V(2, 0));                   // 유일 경로 절단 → delivered 0
+            e.Tick(0.25f);                       // 바뀐 틱에 즉시 재발행
+            Assert.AreEqual(2, got.Count);
+            Assert.AreEqual(0f, got[1], 1e-3f);
+
+            for (int i = 0; i < 5; i++) e.Tick(0.25f);   // 이후 변화 없음 → 침묵
+            Assert.AreEqual(2, got.Count);
+        }
+
+        // ── ISimSaveSource(한준희 세이브 계약): 스냅샷 → 복원 왕복 ──
+
+        [Test]
+        public void SaveSource_ExposesGridSize()
+        {
+            // 소프트캐스트가 아니라 컴파일 타임 보장: SimEngine이 인터페이스를 직접 구현.
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            CityFlow.Contracts.Save.ISimSaveSource src = Engine(c);
+            Assert.AreEqual(9, src.GridWidth);
+            Assert.AreEqual(2, src.GridHeight);
+        }
+
+        [Test]
+        public void CreateSnapshot_StoresOnlyPlacedTiles()
+        {
+            // 계약: Empty 타일은 저장하지 않는다(naming-contract §SimSaveData).
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            var e = Engine(c);
+            e.Place(V(0, 0), TileType.Road);
+            e.Place(V(4, 1), TileType.School);
+
+            var snap = ((CityFlow.Contracts.Save.ISimSaveSource)e).CreateSnapshot();
+
+            Assert.AreEqual(2, snap.PlacedTiles.Length);   // 나머지 8칸(Empty) 미저장
+        }
+
+        [Test]
+        public void SaveRoundtrip_RestoresTiles_Signals_AndThroughput()
+        {
+            // 진짜 계약은 "도시가 똑같이 동작한다": 조율된 두 신호 도시를 스냅샷 →
+            // 다른 도시가 그려진 엔진에 복원 → 타일·오프셋·처리량까지 원본과 동일.
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            c.DemandPerHouse = 1f; c.RoadCapacity = 10f;
+
+            var a = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 8; x++) a.Place(V(x, 0), TileType.Road);
+            a.Place(V(2, 1), TileType.Road);
+            a.Place(V(6, 1), TileType.Road);
+            a.Place(V(0, 1), TileType.House);
+            a.Place(V(8, 1), TileType.Office);
+            a.Tick(0.25f);                                          // 교차로 2개 감지
+            Assert.IsTrue(a.TrySetSignalOffsetSlots(V(6, 0), 4));   // 그린웨이브 조율
+            a.Tick(0.25f);
+            float originalDelivered = a.DeliveredTotal;
+
+            var snapshot = ((CityFlow.Contracts.Save.ISimSaveSource)a).CreateSnapshot();
+
+            var b = new SimEngine(c, new SimEventHub());
+            b.Place(V(1, 1), TileType.House);                        // 스냅샷과 무관한 잔여 도시
+            b.Place(V(3, 0), TileType.Road);
+            b.Tick(0.25f);
+
+            ((CityFlow.Contracts.Save.ISimSaveSource)b).RestoreSnapshot(snapshot);
+            b.Tick(0.25f);                                           // 복원 후 첫 틱: 재구축+계산
+
+            for (int y = 0; y < 2; y++)
+                for (int x = 0; x < 9; x++)
+                    Assert.AreEqual(a.GetTileType(V(x, y)), b.GetTileType(V(x, y)), $"타일 불일치 ({x},{y})");
+            Assert.AreEqual(2, b.SignalTiles.Count);
+            Assert.AreEqual(4, b.GetSignalOffsetSlots(V(6, 0)));     // 유저 조율 복원
+            Assert.AreEqual(originalDelivered, b.DeliveredTotal, 1e-3f);   // 조율 효과까지 동일
+        }
+
+        [Test]
+        public void RestoreSnapshot_NullAndOutOfBounds_AreSafe()
+        {
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            var e = Engine(c);
+            e.Place(V(1, 0), TileType.Road);
+
+            ((CityFlow.Contracts.Save.ISimSaveSource)e).RestoreSnapshot(null);   // null → 무시
+            Assert.AreEqual(TileType.Road, e.GetTileType(V(1, 0)));              // 기존 상태 유지
+
+            var bad = new CityFlow.Contracts.Save.SimSaveData
+            {
+                PlacedTiles = new[]
+                {
+                    new CityFlow.Contracts.Save.TileSaveData { X = 99, Y = 99, Type = TileType.Road },  // OOB
+                    new CityFlow.Contracts.Save.TileSaveData { X = 1, Y = 1, Type = TileType.House },
+                },
+                SignalOffsets = new[]
+                {
+                    new CityFlow.Contracts.Save.SignalSaveData { X = 50, Y = 50, OffsetSlots = 3 },     // OOB
+                },
+            };
+            ((CityFlow.Contracts.Save.ISimSaveSource)e).RestoreSnapshot(bad);    // OOB 조용히 스킵
+            e.Tick(0.25f);
+
+            Assert.AreEqual(TileType.House, e.GetTileType(V(1, 1)));   // 유효분 반영
+            Assert.AreEqual(TileType.Empty, e.GetTileType(V(1, 0)));   // 복원 = 전체 교체(잔존 없음)
+        }
+
+        // ── ISignalControl(신호 조작 계약): 오프셋에 이어 초록 길이도 엔진 밖에서 조작 ──
+
+        [Test]
+        public void SignalControl_GreenLever_ChangesThroughput()
+        {
+            // 초록을 늘리면 그 교차로 유효 용량↑ → 막혔던 처리량 회복. #11 레버의 손잡이(setter).
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            c.DemandPerHouse = 6f; c.RoadCapacity = 10f;   // 신호 타일 유효용량 5(듀티 0.5) → Jam
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 8; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(4, 1), TileType.Road);               // (4,0)이 교차로
+            e.Place(V(0, 1), TileType.House);
+            e.Place(V(8, 1), TileType.Office);
+            e.Tick(0.25f);
+
+            ISignalControl ctl = e;                        // 계약으로만 조작
+            Assert.AreEqual(1, ctl.SignalTiles.Count);
+            float choked = e.DeliveredTotal;
+
+            Assert.IsTrue(ctl.TrySetSignalGreenSlots(V(4, 0), 999));   // 초록 최대(주기로 클램프) → 듀티 1.0
+            e.Tick(0.25f);
+
+            Assert.Greater(e.DeliveredTotal, choked);        // 레버가 살아있음
+            Assert.AreEqual(6f, e.DeliveredTotal, 1e-3f);    // 완전 회복(ratio 0.6 Free)
+        }
+
+        [Test]
+        public void TrySetSignalGreenSlots_NonSignalTile_ReturnsFalse()
+        {
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            var e = Engine(c);
+            e.Place(V(1, 0), TileType.Road);
+            e.Tick(0.25f);
+            Assert.IsFalse(((ISignalControl)e).TrySetSignalGreenSlots(V(1, 0), 4));   // 직선 도로 = 신호 없음
+        }
+
+        [Test]
+        public void TrySetSignalGreenSlots_ClampsToCycleRange()
+        {
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 8; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(4, 1), TileType.Road);
+            e.Tick(0.25f);
+
+            ISignalControl ctl = e;
+            ctl.TrySetSignalGreenSlots(V(4, 0), -5);
+            Assert.AreEqual(0, ctl.GetSignalGreenSlots(V(4, 0)));    // 음수 → 0
+            ctl.TrySetSignalGreenSlots(V(4, 0), 999);
+            Assert.AreEqual(16, ctl.GetSignalGreenSlots(V(4, 0)));   // 주기(기본 16) 초과 → 주기
+        }
+
         [Test]
         public void Remove_OutOfBounds_ReturnsFalse_NoCrash_NoEvent()
         {

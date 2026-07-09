@@ -107,5 +107,24 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2, g.TopologyVersion);
             Assert.IsFalse(g.TopologyDirty);
         }
+
+        [Test]
+        public void Clear_EmptiesAllTiles_MarksDirty_BumpsVersion()
+        {
+            // 세이브 복원용 seam: 저장된 타일 재배치 전에 도시를 통째로 비운다.
+            var g = NewGrid();
+            g.Place(new Vector2Int(0, 0), TileType.Road);
+            g.Place(new Vector2Int(4, 3), TileType.House);   // 양 끝 모서리 — 전체 범위 확인
+            g.ClearTopologyDirty();
+            int versionBefore = g.TopologyVersion;
+
+            g.Clear();
+
+            for (int y = 0; y < 4; y++)
+                for (int x = 0; x < 5; x++)
+                    Assert.AreEqual(TileType.Empty, g.GetTile(new Vector2Int(x, y)));
+            Assert.IsTrue(g.TopologyDirty);                       // 다음 Step이 경로·수요·신호 재구축
+            Assert.Greater(g.TopologyVersion, versionBefore);     // RoadNetwork 캐시 무효화 키 갱신
+        }
     }
 }
