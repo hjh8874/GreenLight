@@ -9,21 +9,21 @@ namespace CityFlow.UI
         [SerializeField] private Toggle tglMuteAudio;
         [SerializeField] private Button btnQuitGame;
 
-        private bool _isBound; // [add]
+        private bool _isBound;
 
         public void Configure(Toggle muteAudio, Button quitGame)
         {
             tglMuteAudio = muteAudio;
             btnQuitGame = quitGame;
-            BindButtons(); // [add]
+            BindButtons();
         }
 
         private void Start()
         {
-            BindButtons(); // [add]
+            BindButtons();
         }
 
-        private void BindButtons() // [add]
+        private void BindButtons()
         {
             // 뮤트 톳글 이벤트 바인딩
             if (_isBound)

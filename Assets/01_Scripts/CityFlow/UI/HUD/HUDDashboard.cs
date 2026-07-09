@@ -1,6 +1,7 @@
 using System;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Sim;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -28,6 +29,7 @@ namespace CityFlow.UI
         [SerializeField] private float updateInterval = 0.2f;
 
         private CityFlowServices _services;
+        private SimEngine _simEngine;
         private IEconomyService _economy;
         private IGameCalendarService _gameCalendar;
         private float _updateTimer;
@@ -65,6 +67,8 @@ namespace CityFlow.UI
         public void Initialize(CityFlowServices services)
         {
             _services = services;
+            _simEngine = services.Placement as SimEngine;
+            NormalizeHeaderLayout();
 
             // 이벤트 구독 (구독해야 코어 엔진에서 데이터가 날아옵니다)
             _services.Events.StabilityChanged += OnStabilityChanged;
@@ -203,7 +207,36 @@ namespace CityFlow.UI
 
         private void Start()
         {
+            NormalizeHeaderLayout();
             UpdateUI(); // UI 씬 단독 테스트 시에도 초기 텍스트 포맷을 잡아주기 위함
+        }
+
+        private void NormalizeHeaderLayout()
+        {
+            ConfigureHeaderText(timeText, new Vector2(16f, -14f), new Vector2(210f, 30f));
+            ConfigureHeaderText(vehicleCountText, new Vector2(240f, -14f), new Vector2(150f, 30f));
+            ConfigureHeaderText(coinText, new Vector2(410f, -14f), new Vector2(150f, 30f));
+            ConfigureHeaderText(efficiencyText, new Vector2(580f, -14f), new Vector2(150f, 30f));
+        }
+
+        private static void ConfigureHeaderText(TextMeshProUGUI text, Vector2 anchoredPosition, Vector2 sizeDelta)
+        {
+            if (text == null)
+            {
+                return;
+            }
+
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = sizeDelta;
+
+            text.alignment = TextAlignmentOptions.Left;
+            text.fontSize = 18f;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
+            text.overflowMode = TextOverflowModes.Overflow;
         }
 
         private void Update()
@@ -239,8 +272,7 @@ namespace CityFlow.UI
             // 2. 가짜 차량 수 조립 (On-the-fly 합성 규칙 적용)
             if (vehicleCountText != null)
             {
-                // 안정도와 코인을 적절히 섞어 유저가 변화를 느낄 수 있는 가짜 데이터를 만듭니다.
-                int targetVehicleCount = (int)(_currentStability01 * 500) + (int)(_currentCoins / 10);
+                int targetVehicleCount = _simEngine != null ? _simEngine.ActiveRoutes.Count : 0;
                 
                 if (targetVehicleCount != _lastTargetVehicles)
                 {

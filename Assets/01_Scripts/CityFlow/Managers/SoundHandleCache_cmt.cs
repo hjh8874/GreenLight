@@ -6,12 +6,12 @@ using UnityEngine.ResourceManagement.AsyncOperations;
 
 namespace CityFlow.Managers
 {
-    public sealed class SoundHandleCache
+    public sealed class SoundHandleCache_cmt
     {
         private readonly Dictionary<string, AsyncOperationHandle<AudioClip>> loadedHandles = new();
         private readonly Dictionary<string, Task<AudioClip>> loadingTasks = new();
 
-        public Task<AudioClip> LoadAsync(SoundCatalog.SoundEntry sound)
+        public Task<AudioClip> LoadAsync(SoundCatalog_cmt.SoundEntry sound)
         {
             if (sound == null || string.IsNullOrWhiteSpace(sound.Id))
             {
@@ -71,7 +71,7 @@ namespace CityFlow.Managers
             loadingTasks.Clear();
         }
 
-        private async Task<AudioClip> LoadInternalAsync(SoundCatalog.SoundEntry sound)
+        private async Task<AudioClip> LoadInternalAsync(SoundCatalog_cmt.SoundEntry sound)
         {
             AssetReferenceT<AudioClip> reference = sound.Clip;
 

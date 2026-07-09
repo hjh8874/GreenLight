@@ -30,6 +30,7 @@ namespace CityFlow.UI
         [Header("Debug / Testing")]
         [Tooltip("월~화 코어엔진 미연동 시 UI 단독 테스트를 위한 강제 성공 모드")]
         [SerializeField] private bool useFakeMode = false; // 코어 연동을 위해 끕니다.
+        [SerializeField] private bool useXYPlane = false;
         
         [Header("UI References")]
         [SerializeField] private ConfirmPopupController confirmPopup;
@@ -70,6 +71,11 @@ namespace CityFlow.UI
         public void SetFakeMode(bool isOn)
         {
             useFakeMode = isOn;
+        }
+
+        public void SetUseXYPlane(bool isOn)
+        {
+            useXYPlane = isOn;
         }
 
         /// <summary>
@@ -159,7 +165,9 @@ namespace CityFlow.UI
             
             // 3. 고스트 위치 스냅 (일단 바닥이 없으므로 허공(XZ평면 혹은 XY평면)에 딱딱 맞춰 이동시킵니다)
             // 3D 쿼터뷰(Y=0 바닥) 기준 맵핑. 만약 2D 게임이라면 y대신 z를 0으로 주고 세팅합니다.
-            ghostRenderer.transform.position = new Vector3(gridCoord.x, 0, gridCoord.y);
+            ghostRenderer.transform.position = useXYPlane
+                ? new Vector3(gridCoord.x + 0.5f, gridCoord.y + 0.5f, -0.6f)
+                : new Vector3(gridCoord.x, 0, gridCoord.y);
 
             // 4. 건설 유효성 검증 (엔진 디커플링 통신)
             bool canPlace = CheckCanPlace(gridCoord);
@@ -189,6 +197,13 @@ namespace CityFlow.UI
         private Vector2Int GetMouseGridCoordinate()
         {
             Vector2 mousePos = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
+
+            if (useXYPlane && Camera.main != null)
+            {
+                float distance = Mathf.Abs(Camera.main.transform.position.z);
+                Vector3 worldPos = Camera.main.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, distance));
+                return new Vector2Int(Mathf.FloorToInt(worldPos.x), Mathf.FloorToInt(worldPos.y));
+            }
             // 화면 좌표를 평면(Y=0)에 투사하여 정수형 그리드 좌표로 뽑아냅니다.
             Ray ray = Camera.main.ScreenPointToRay(mousePos);
             Plane groundPlane = new Plane(Vector3.up, Vector3.zero); // Y가 0인 가상의 바닥 평면
@@ -200,8 +215,8 @@ namespace CityFlow.UI
             }
             
             // (Fallback) 만약 2D 세팅일 경우를 위한 안전장치
-            Vector3 worldPos = Camera.main.ScreenToWorldPoint(mousePos);
-            return new Vector2Int(Mathf.RoundToInt(worldPos.x), Mathf.RoundToInt(worldPos.y));
+            Vector3 fallbackWorldPos = Camera.main.ScreenToWorldPoint(mousePos);
+            return new Vector2Int(Mathf.RoundToInt(fallbackWorldPos.x), Mathf.RoundToInt(fallbackWorldPos.y));
         }
 
         private bool CheckCanPlace(Vector2Int coord)
