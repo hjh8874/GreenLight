@@ -27,6 +27,7 @@ namespace CityFlow.Managers
         private readonly SoundHandleCache handleCache = new();
         private bool isMuted;
         private string currentBgmId;
+        private int bgmRequestVersion;
 
         public float BgmVolume => bgmVolume;
         public float SfxVolume => sfxVolume;
@@ -83,9 +84,10 @@ namespace CityFlow.Managers
                 return;
             }
 
+            int requestVersion = ++bgmRequestVersion;
             AudioClip clip = await LoadClipAsync(sound);
 
-            if (clip == null)
+            if (clip == null || requestVersion != bgmRequestVersion)
             {
                 return;
             }
@@ -112,6 +114,8 @@ namespace CityFlow.Managers
 
         public void StopBgm()
         {
+            bgmRequestVersion++;
+
             if (bgmSource == null)
             {
                 return;
