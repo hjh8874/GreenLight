@@ -4,6 +4,7 @@ using CityFlow.Contracts;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using DG.Tweening;
 
 namespace CityFlow.UI
 {
@@ -33,6 +34,10 @@ namespace CityFlow.UI
         // Cached state from events
         private long _currentCoins;
         private float _currentStability01 = 1f;
+
+        // Display state for DOTween
+        private float _displayedCoins;
+        private float _displayedVehicles;
 
         public void Configure(
             TextMeshProUGUI time,
@@ -146,9 +151,14 @@ namespace CityFlow.UI
                 flowBurstEffect.SetActive(false);
         }
 
+        private void Start()
+        {
+            UpdateUI(); // UI 씬 단독 테스트 시에도 초기 텍스트 포맷을 잡아주기 위함
+        }
+
         private void Update()
         {
-            if (_services == null) return;
+            // UI 씬 단독 테스트 시 타이머라도 돌아가게 _services null 체크 제거
 
             // 0.2초 스로틀링 (가비지 컬렉션 및 리빌드 방지)
             _updateTimer += Time.deltaTime;
@@ -166,28 +176,39 @@ namespace CityFlow.UI
             {
                 int minutes = Mathf.FloorToInt(Time.time / 60f);
                 int seconds = Mathf.FloorToInt(Time.time % 60f);
-                timeText.text = $"{minutes:00}:{seconds:00}";
+                timeText.text = $"[Time] {minutes:00}:{seconds:00}";
             }
 
             // 2. 가짜 차량 수 조립 (On-the-fly 합성 규칙 적용)
             if (vehicleCountText != null)
             {
                 // 안정도와 코인을 적절히 섞어 유저가 변화를 느낄 수 있는 가짜 데이터를 만듭니다.
-                int mockVehicleCount = (int)(_currentStability01 * 500) + (int)(_currentCoins / 10);
-                vehicleCountText.text = mockVehicleCount.ToString("N0"); // 천단위 콤마 표시
+                int targetVehicleCount = (int)(_currentStability01 * 500) + (int)(_currentCoins / 10);
+                
+                vehicleCountText.DOKill();
+                DOTween.To(() => _displayedVehicles, x => 
+                {
+                    _displayedVehicles = x;
+                    vehicleCountText.text = $"[Cars] {Mathf.RoundToInt(_displayedVehicles):N0}";
+                }, targetVehicleCount, updateInterval).SetEase(Ease.Linear).SetTarget(vehicleCountText);
             }
 
             // 3. 코인 지갑
             if (coinText != null)
             {
-                coinText.text = _currentCoins.ToString("N0");
+                coinText.DOKill();
+                DOTween.To(() => _displayedCoins, x => 
+                {
+                    _displayedCoins = x;
+                    coinText.text = $"[Coins] {Mathf.RoundToInt(_displayedCoins):N0}";
+                }, _currentCoins, updateInterval).SetEase(Ease.Linear).SetTarget(coinText);
             }
 
             // 4. 효율 (%)
             if (efficiencyText != null)
             {
                 int efficiencyPercent = Mathf.RoundToInt(_currentStability01 * 100f);
-                efficiencyText.text = $"{efficiencyPercent}%";
+                efficiencyText.text = $"[Eff] {efficiencyPercent}%";
             }
 
             // 5. 혼잡도 바 (혼잡도는 1 - 효율 로 계산)
