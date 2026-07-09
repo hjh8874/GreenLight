@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace CityFlow.Managers
@@ -13,15 +13,10 @@ namespace CityFlow.Managers
         [Tooltip("SFX 재생용 AudioSource. 비워두면 자동 생성됩니다.")]
         [SerializeField] private AudioSource sfxSource;
 
-        [Header("Music Clips")]
-        [Tooltip("팀원이 고른 배경음악 클립을 여기에 등록합니다.")]
-        [SerializeField] private List<AudioClip> bgmClips = new();
+        [Header("Catalog")]
+        [SerializeField] private SoundCatalog soundCatalog;
         [SerializeField] private bool playOnStart = true;
-        [SerializeField] private int startBgmIndex;
-
-        [Header("SFX Clips")]
-        [Tooltip("버튼, 알림, 효과음 클립을 여기에 등록합니다.")]
-        [SerializeField] private List<AudioClip> sfxClips = new();
+        [SerializeField] private string startBgmId;
 
         [Header("Volume")]
         [Range(0f, 1f)]
@@ -29,9 +24,9 @@ namespace CityFlow.Managers
         [Range(0f, 1f)]
         [SerializeField] private float sfxVolume = 1f;
 
-        private readonly Dictionary<string, AudioClip> bgmByName = new();
-        private readonly Dictionary<string, AudioClip> sfxByName = new();
+        private readonly SoundHandleCache handleCache = new();
         private bool isMuted;
+        private string currentBgmId;
 
         public float BgmVolume => bgmVolume;
         public float SfxVolume => sfxVolume;
@@ -57,39 +52,46 @@ namespace CityFlow.Managers
             bgmSource = EnsureAudioSource(bgmSource, "BGM Source", true);
             sfxSource = EnsureAudioSource(sfxSource, "SFX Source", false);
 
-            CacheClips();
             ApplyVolume();
         }
 
         private void Start()
         {
+            PreloadMarkedSounds();
+
             if (playOnStart)
             {
-                PlayBgm(startBgmIndex);
+                PlayBgm(startBgmId);
             }
         }
 
-        public void PlayBgm(int index)
+        private void OnDestroy()
         {
-            if (!TryGetClip(bgmClips, index, out AudioClip clip))
+            if (Instance != this)
+            {
+                return;
+            }
+
+            handleCache.ReleaseAll();
+            Instance = null;
+        }
+
+        public async void PlayBgm(string soundId)
+        {
+            if (!TryGetSound(soundId, SoundType.Bgm, out SoundCatalog.SoundEntry sound))
+            {
+                return;
+            }
+
+            AudioClip clip = await LoadClipAsync(sound);
+
+            if (clip == null)
             {
                 return;
             }
 
             PlayBgm(clip);
-        }
-
-        public void PlayBgm(string clipName)
-        {
-            if (string.IsNullOrWhiteSpace(clipName))
-            {
-                return;
-            }
-
-            if (bgmByName.TryGetValue(clipName, out AudioClip clip))
-            {
-                PlayBgm(clip);
-            }
+            currentBgmId = sound.Id;
         }
 
         public void PlayBgm(AudioClip clip)
@@ -119,6 +121,13 @@ namespace CityFlow.Managers
             bgmSource.clip = null;
         }
 
+        public void ReleaseCurrentBgm()
+        {
+            StopBgm();
+            handleCache.Release(currentBgmId);
+            currentBgmId = null;
+        }
+
         public void PauseBgm()
         {
             bgmSource?.Pause();
@@ -129,37 +138,26 @@ namespace CityFlow.Managers
             bgmSource?.UnPause();
         }
 
-        public void PlaySfx(int index)
+        public void PlaySfx(string soundId)
         {
-            PlaySfx(index, 1f);
+            PlaySfx(soundId, 1f);
         }
 
-        public void PlaySfx(int index, float volumeScale)
+        public async void PlaySfx(string soundId, float volumeScale)
         {
-            if (!TryGetClip(sfxClips, index, out AudioClip clip))
+            if (!TryGetSound(soundId, SoundType.Sfx, out SoundCatalog.SoundEntry sound))
             {
                 return;
             }
 
-            PlaySfx(clip, volumeScale);
-        }
+            AudioClip clip = await LoadClipAsync(sound);
 
-        public void PlaySfx(string clipName)
-        {
-            PlaySfx(clipName, 1f);
-        }
-
-        public void PlaySfx(string clipName, float volumeScale)
-        {
-            if (string.IsNullOrWhiteSpace(clipName))
+            if (clip == null)
             {
                 return;
             }
 
-            if (sfxByName.TryGetValue(clipName, out AudioClip clip))
-            {
-                PlaySfx(clip, volumeScale);
-            }
+            PlaySfx(clip, volumeScale * sound.VolumeScale);
         }
 
         public void PlaySfx(AudioClip clip)
@@ -190,6 +188,18 @@ namespace CityFlow.Managers
             }
 
             AudioSource.PlayClipAtPoint(clip, position, sfxVolume * Mathf.Clamp01(volumeScale));
+        }
+
+        public void ReleaseSound(string soundId)
+        {
+            handleCache.Release(soundId);
+        }
+
+        public void ReleaseAllLoadedSounds()
+        {
+            StopBgm();
+            currentBgmId = null;
+            handleCache.ReleaseAll();
         }
 
         public void SetBgmVolume(float volume)
@@ -229,41 +239,38 @@ namespace CityFlow.Managers
             return source;
         }
 
-        private void CacheClips()
+        private async void PreloadMarkedSounds()
         {
-            bgmByName.Clear();
-            sfxByName.Clear();
-
-            AddClipsToCache(bgmClips, bgmByName);
-            AddClipsToCache(sfxClips, sfxByName);
-        }
-
-        private void AddClipsToCache(List<AudioClip> clips, Dictionary<string, AudioClip> cache)
-        {
-            for (int i = 0; i < clips.Count; i++)
+            if (soundCatalog == null)
             {
-                AudioClip clip = clips[i];
+                return;
+            }
 
-                if (clip == null || cache.ContainsKey(clip.name))
+            for (int i = 0; i < soundCatalog.Sounds.Count; i++)
+            {
+                SoundCatalog.SoundEntry sound = soundCatalog.Sounds[i];
+
+                if (sound == null || !sound.Preload)
                 {
                     continue;
                 }
 
-                cache.Add(clip.name, clip);
+                await LoadClipAsync(sound);
             }
         }
 
-        private bool TryGetClip(List<AudioClip> clips, int index, out AudioClip clip)
+        private bool TryGetSound(string soundId, SoundType expectedType, out SoundCatalog.SoundEntry sound)
         {
-            clip = null;
+            sound = null;
 
-            if (index < 0 || index >= clips.Count)
-            {
-                return false;
-            }
+            return soundCatalog != null
+                && soundCatalog.TryGetSound(soundId, out sound)
+                && sound.Type == expectedType;
+        }
 
-            clip = clips[index];
-            return clip != null;
+        private Task<AudioClip> LoadClipAsync(SoundCatalog.SoundEntry sound)
+        {
+            return handleCache.LoadAsync(sound);
         }
 
         private void ApplyVolume()
