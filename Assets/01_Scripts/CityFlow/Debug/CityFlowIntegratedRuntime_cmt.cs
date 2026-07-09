@@ -271,10 +271,9 @@ namespace CityFlow.DebugTools
             Button buildHouse = CreateTmpButton(buildPanel.transform, "House", new Vector2(96f, -12f), new Vector2(76f, 32f));
             Button buildOffice = CreateTmpButton(buildPanel.transform, "Office", new Vector2(180f, -12f), new Vector2(76f, 32f));
             Button buildRemove = CreateTmpButton(buildPanel.transform, "Remove", new Vector2(264f, -12f), new Vector2(76f, 32f));
-            Button buildSchool = CreateTmpButton(buildPanel.transform, "School*", new Vector2(12f, -52f), new Vector2(76f, 32f));
-            buildSchool.onClick.AddListener(() => SetMode(TileType.School, "School"));
+            Button buildSchool = CreateTmpButton(buildPanel.transform, "School", new Vector2(12f, -52f), new Vector2(76f, 32f));
             BuildPanelController buildController = buildPanel.AddComponent<BuildPanelController>();
-            buildController.Configure(placementController, buildRoad, buildHouse, buildOffice, buildRemove);
+            buildController.Configure(placementController, buildRoad, buildHouse, buildOffice, buildRemove, buildSchool);
 
             GameObject researchPanel = CreatePanel(canvas, "ResearchPanel", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 212f), new Vector2(360f, 96f));
             Button upgradeSpeed = CreateTmpButton(researchPanel.transform, "Speed Up", new Vector2(12f, -12f), new Vector2(156f, 32f));
@@ -292,8 +291,6 @@ namespace CityFlow.DebugTools
             GameObject settingsPanel = CreatePanel(canvas, "SettingsPanel", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 212f), new Vector2(360f, 96f));
             Toggle muteToggle = CreateToggle(settingsPanel.transform, "Mute", new Vector2(12f, -12f));
             Button quitButton = CreateTmpButton(settingsPanel.transform, "Stop Play", new Vector2(180f, -12f), new Vector2(156f, 32f));
-            muteToggle.onValueChanged.AddListener(isMuted => AudioListener.volume = isMuted ? 0f : 1f);
-            quitButton.onClick.AddListener(StopPlayMode);
             settingsPanel.AddComponent<SettingsPanelController>().Configure(muteToggle, quitButton);
 
             GameObject analysisPanel = CreatePanel(canvas, "AnalysisCard", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(16f, -60f), new Vector2(260f, 246f));
@@ -402,15 +399,6 @@ namespace CityFlow.DebugTools
             currentMode = "Select";
             lastEvent = "Mode: Select tile";
             RefreshHud();
-        }
-
-        private void StopPlayMode()
-        {
-#if UNITY_EDITOR
-            UnityEditor.EditorApplication.isPlaying = false;
-#else
-            Application.Quit();
-#endif
         }
 
         private void OnPlaced(PlacedEvent placed)

@@ -14,6 +14,7 @@ namespace CityFlow.UI
         [SerializeField] private Button btnRoad;
         [SerializeField] private Button btnHouse;
         [SerializeField] private Button btnOffice;
+        [SerializeField] private Button btnSchool; // [add] School button
         [SerializeField] private Button btnRemove; // 철거 버튼
 
         private bool _isBound;
@@ -25,11 +26,23 @@ namespace CityFlow.UI
             Button office,
             Button remove)
         {
+            Configure(placement, road, house, office, remove, null);
+        }
+
+        public void Configure(
+            PlacementController placement,
+            Button road,
+            Button house,
+            Button office,
+            Button remove,
+            Button school)
+        {
             placementController = placement;
             btnRoad = road;
             btnHouse = house;
             btnOffice = office;
             btnRemove = remove;
+            btnSchool = school; // [add]
             BindButtons();
         }
 
@@ -55,6 +68,7 @@ namespace CityFlow.UI
             if (btnRoad != null) btnRoad.onClick.AddListener(() => placementController.SetBuildType(TileType.Road));
             if (btnHouse != null) btnHouse.onClick.AddListener(() => placementController.SetBuildType(TileType.House));
             if (btnOffice != null) btnOffice.onClick.AddListener(() => placementController.SetBuildType(TileType.Office));
+            if (btnSchool != null) btnSchool.onClick.AddListener(() => placementController.SetBuildType(TileType.School)); // [add]
             
             // 철거 기능은 Empty 타일 타입으로 전달
             if (btnRemove != null) btnRemove.onClick.AddListener(() => placementController.SetBuildType(TileType.Empty)); 
