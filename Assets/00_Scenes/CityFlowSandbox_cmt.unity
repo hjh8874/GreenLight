@@ -1,4 +1,4 @@
-﻿%YAML 1.1
+%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!29 &1
 OcclusionCullingSettings:
@@ -186,6 +186,7 @@ MonoBehaviour:
   useFakeServices: 0
   mapWidth: 20
   mapHeight: 20
+  simConfig: {fileID: 0}
 --- !u!4 &111543631
 Transform:
   m_ObjectHideFlags: 0
@@ -214,8 +215,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.SimTileRenderer
   size: 20
-  runSandboxSmokeIfNeeded: 1
-  sandboxRelieveAfterSeconds: 3
 --- !u!114 &111543633
 MonoBehaviour:
   m_ObjectHideFlags: 0
