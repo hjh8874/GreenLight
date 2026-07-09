@@ -4,6 +4,7 @@ using CityFlow.Contracts;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using DG.Tweening;
 
 namespace CityFlow.UI
 {
@@ -28,11 +29,20 @@ namespace CityFlow.UI
 
         private CityFlowServices _services;
         private IEconomyService _economy;
+        private IGameCalendarService _gameCalendar;
         private float _updateTimer;
         
         // Cached state from events
         private long _currentCoins;
         private float _currentStability01 = 1f;
+
+        // Display state for DOTween
+        private float _displayedCoins;
+        private float _displayedVehicles;
+        
+        // Cache for DOTween target values
+        private int _lastTargetVehicles = -1;
+        private long _lastTargetCoins = -1;
 
         public void Configure(
             TextMeshProUGUI time,
@@ -60,6 +70,7 @@ namespace CityFlow.UI
             _services.Events.StabilityChanged += OnStabilityChanged;
             _services.Events.FlowBurst += OnFlowBurst;
             _services.EconomyRegistered += OnEconomyRegistered;
+            _services.GameCalendarRegistered += OnGameCalendarRegistered;
 
             if (_services.Economy != null)
             {
@@ -68,6 +79,11 @@ namespace CityFlow.UI
             else
             {
                 _services.Events.Arrival += OnArrival;
+            }
+
+            if (_services.GameCalendar != null)
+            {
+                BindGameCalendar(_services.GameCalendar);
             }
 
             // 초기 UI 갱신
@@ -83,11 +99,19 @@ namespace CityFlow.UI
                 _services.Events.Arrival -= OnArrival;
                 _services.Events.FlowBurst -= OnFlowBurst;
                 _services.EconomyRegistered -= OnEconomyRegistered;
+                _services.GameCalendarRegistered -= OnGameCalendarRegistered;
             }
 
             if (_economy != null)
             {
                 _economy.CoinsChanged -= OnCoinsChanged;
+            }
+
+            if (_gameCalendar != null)
+            {
+                _gameCalendar.HourChanged -= OnCalendarChanged;
+                _gameCalendar.DayChanged -= OnCalendarChanged;
+                _gameCalendar.MonthChanged -= OnCalendarChanged;
             }
         }
 
@@ -124,6 +148,37 @@ namespace CityFlow.UI
             OnCoinsChanged(_economy.Coins);
         }
 
+        private void OnGameCalendarRegistered(IGameCalendarService gameCalendar)
+        {
+            BindGameCalendar(gameCalendar);
+        }
+
+        private void BindGameCalendar(IGameCalendarService gameCalendar)
+        {
+            if (_gameCalendar == gameCalendar)
+            {
+                return;
+            }
+
+            if (_gameCalendar != null)
+            {
+                _gameCalendar.HourChanged -= OnCalendarChanged;
+                _gameCalendar.DayChanged -= OnCalendarChanged;
+                _gameCalendar.MonthChanged -= OnCalendarChanged;
+            }
+
+            _gameCalendar = gameCalendar;
+            _gameCalendar.HourChanged += OnCalendarChanged;
+            _gameCalendar.DayChanged += OnCalendarChanged;
+            _gameCalendar.MonthChanged += OnCalendarChanged;
+            UpdateUI();
+        }
+
+        private void OnCalendarChanged(int _)
+        {
+            UpdateUI();
+        }
+
         private void OnCoinsChanged(long coins)
         {
             _currentCoins = coins;
@@ -146,9 +201,14 @@ namespace CityFlow.UI
                 flowBurstEffect.SetActive(false);
         }
 
+        private void Start()
+        {
+            UpdateUI(); // UI 씬 단독 테스트 시에도 초기 텍스트 포맷을 잡아주기 위함
+        }
+
         private void Update()
         {
-            if (_services == null) return;
+            // UI 씬 단독 테스트 시 타이머라도 돌아가게 _services null 체크 제거
 
             // 0.2초 스로틀링 (가비지 컬렉션 및 리빌드 방지)
             _updateTimer += Time.deltaTime;
@@ -161,33 +221,59 @@ namespace CityFlow.UI
 
         private void UpdateUI()
         {
-            // 1. 시간 표시 (00:00 포맷)
+            // 1. 시간 표시 (00:00 포맷 및 게임 달력 연동)
             if (timeText != null)
             {
-                int minutes = Mathf.FloorToInt(Time.time / 60f);
-                int seconds = Mathf.FloorToInt(Time.time % 60f);
-                timeText.text = $"{minutes:00}:{seconds:00}";
+                if (_gameCalendar != null)
+                {
+                    timeText.text = $"[Time] Y{_gameCalendar.Year} M{_gameCalendar.Month:00} D{_gameCalendar.Day:00} {_gameCalendar.Hour:00}:00";
+                }
+                else
+                {
+                    int minutes = Mathf.FloorToInt(Time.time / 60f);
+                    int seconds = Mathf.FloorToInt(Time.time % 60f);
+                    timeText.text = $"[Time] {minutes:00}:{seconds:00}";
+                }
             }
 
             // 2. 가짜 차량 수 조립 (On-the-fly 합성 규칙 적용)
             if (vehicleCountText != null)
             {
                 // 안정도와 코인을 적절히 섞어 유저가 변화를 느낄 수 있는 가짜 데이터를 만듭니다.
-                int mockVehicleCount = (int)(_currentStability01 * 500) + (int)(_currentCoins / 10);
-                vehicleCountText.text = mockVehicleCount.ToString("N0"); // 천단위 콤마 표시
+                int targetVehicleCount = (int)(_currentStability01 * 500) + (int)(_currentCoins / 10);
+                
+                if (targetVehicleCount != _lastTargetVehicles)
+                {
+                    _lastTargetVehicles = targetVehicleCount;
+                    vehicleCountText.DOKill();
+                    DOTween.To(() => _displayedVehicles, x => 
+                    {
+                        _displayedVehicles = x;
+                        vehicleCountText.text = $"[Cars] {Mathf.RoundToInt(_displayedVehicles):N0}";
+                    }, targetVehicleCount, updateInterval).SetEase(Ease.Linear).SetTarget(vehicleCountText);
+                }
             }
 
             // 3. 코인 지갑
             if (coinText != null)
             {
-                coinText.text = _currentCoins.ToString("N0");
+                if (_currentCoins != _lastTargetCoins)
+                {
+                    _lastTargetCoins = _currentCoins;
+                    coinText.DOKill();
+                    DOTween.To(() => _displayedCoins, x => 
+                    {
+                        _displayedCoins = x;
+                        coinText.text = $"[Coins] {Mathf.RoundToInt(_displayedCoins):N0}";
+                    }, _currentCoins, updateInterval).SetEase(Ease.Linear).SetTarget(coinText);
+                }
             }
 
             // 4. 효율 (%)
             if (efficiencyText != null)
             {
                 int efficiencyPercent = Mathf.RoundToInt(_currentStability01 * 100f);
-                efficiencyText.text = $"{efficiencyPercent}%";
+                efficiencyText.text = $"[Eff] {efficiencyPercent}%";
             }
 
             // 5. 혼잡도 바 (혼잡도는 1 - 효율 로 계산)

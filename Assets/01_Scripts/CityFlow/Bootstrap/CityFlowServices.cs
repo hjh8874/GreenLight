@@ -12,8 +12,10 @@ namespace CityFlow.Bootstrap
         public IPlacementService Placement { get; }
         public SaveService Save { get; }
         public IEconomyService Economy { get; private set; }
+        public IGameCalendarService GameCalendar { get; private set; }
 
         public event Action<IEconomyService> EconomyRegistered;
+        public event Action<IGameCalendarService> GameCalendarRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -44,6 +46,17 @@ namespace CityFlow.Bootstrap
             }
 
             EconomyRegistered?.Invoke(economy);
+        }
+
+        public void RegisterGameCalendar(IGameCalendarService gameCalendar)
+        {
+            if (gameCalendar == null)
+            {
+                return;
+            }
+
+            GameCalendar = gameCalendar;
+            GameCalendarRegistered?.Invoke(gameCalendar);
         }
     }
 }

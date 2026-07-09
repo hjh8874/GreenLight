@@ -8,7 +8,7 @@ namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, ISimSaveSource, ISignalControl
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, ISimSaveSource, ISignalControl, IOfflineSettlementSource
     {
         readonly SimConfig _config;
         readonly CityGrid _grid;
@@ -218,10 +218,17 @@ namespace CityFlow.Sim
                     tiles.Add(new TileSaveData { X = x, Y = y, Type = type });
                 }
 
-            // 모든 신호를 오프셋 0 포함해 저장 — 복원 시 덮어쓰기만으로 이전 조율 잔존을 지운다.
+            // 모든 신호를 두 레버(오프셋·초록) 다 저장 — 복원 시 덮어쓰기만으로 이전 조율 잔존을 지운다.
+            // 오버라이드는 초 단위 일시 상태라 저장 안 함(로드 시 자연 소멸이 옳음).
             var signals = new List<SignalSaveData>();
             foreach (var t in _signals.Tiles)
-                signals.Add(new SignalSaveData { X = t.x, Y = t.y, OffsetSlots = GetSignalOffsetSlots(t) });
+                signals.Add(new SignalSaveData
+                {
+                    X = t.x,
+                    Y = t.y,
+                    OffsetSlots = GetSignalOffsetSlots(t),
+                    GreenSlots = GetSignalGreenSlots(t),
+                });
 
             return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray() };
         }
@@ -237,11 +244,16 @@ namespace CityFlow.Sim
                     _grid.Place(new Vector2Int(t.X, t.Y), t.Type);   // OOB·중복은 Place가 거름(무사고)
             // 참고: PlacedEvent는 안 쏨 — 복원은 '건설'이 아니고, 뷰는 폴링이라 다음 프레임 자동 갱신.
 
-            // 오프셋 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).
+            // 조율 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).
             _signals.Rebuild(_grid);
             if (snapshot.SignalOffsets != null)
                 foreach (var s in snapshot.SignalOffsets)
-                    TrySetSignalOffsetSlots(new Vector2Int(s.X, s.Y), s.OffsetSlots);
+                {
+                    var tile = new Vector2Int(s.X, s.Y);
+                    TrySetSignalOffsetSlots(tile, s.OffsetSlots);
+                    // 구세이브 호환: GreenSlots 필드 없던 세이브는 0으로 옴 → 기본 초록 유지(안 덮음).
+                    if (s.GreenSlots > 0) TrySetSignalGreenSlots(tile, s.GreenSlots);
+                }
             // TopologyDirty는 남긴다: 다음 Step/SettleOffline이 경로·수요 재구축(Rebuild가 오프셋 보존).
         }
 

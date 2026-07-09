@@ -2,6 +2,8 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
+using DG.Tweening;
+using CityFlow.Configs;
 
 namespace CityFlow.UI
 {
@@ -9,17 +11,28 @@ namespace CityFlow.UI
     {
         [Header("UI References")]
         [SerializeField] private TextMeshProUGUI txtName;
+        [SerializeField] private TextMeshProUGUI txtCategory;
         [SerializeField] private TextMeshProUGUI txtCost;
+        [SerializeField] private TextMeshProUGUI txtIncome;
+        [SerializeField] private TextMeshProUGUI txtEffect;
         [SerializeField] private TextMeshProUGUI txtDescription;
 
         [Header("Settings")]
         [Tooltip("마우스 커서 위치에서 툴팁을 얼마나 떨어뜨릴지 결정합니다.")]
-        [SerializeField] private Vector2 offset = new Vector2(20f, 20f);
+        [SerializeField] private Vector2 offset = new Vector2(30f, 30f);
 
         private void Awake()
         {
+            // 화면 하단에서 툴팁이 잘리지 않도록 기준점(Pivot)을 좌하단(0, 0)으로 강제 고정
+            RectTransform rect = GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                rect.pivot = new Vector2(0f, 0f);
+            }
+
             // 기본적으로 숨겨둠
             gameObject.SetActive(false);
+            transform.localScale = Vector3.zero;
         }
 
         private void Update()
@@ -32,24 +45,38 @@ namespace CityFlow.UI
             }
         }
 
-        public void ShowTooltip(string name, int cost, string description)
+        public void ShowTooltip(TileDataSO tileData)
         {
+            if (tileData == null) return;
+            
             gameObject.SetActive(true);
             
-            if (txtName != null) txtName.text = name;
-            if (txtCost != null) txtCost.text = $"{cost} Coins";
-            if (txtDescription != null) txtDescription.text = description;
+            if (txtName != null) txtName.text = tileData.BuildingName;
+            if (txtCategory != null) txtCategory.text = $"Category: {tileData.Category}";
+            if (txtCost != null) txtCost.text = $"Cost: {tileData.BuildCost} Coins";
+            if (txtIncome != null) txtIncome.text = $"Income: +{tileData.DailyCoinValue}/min";
+            if (txtEffect != null) txtEffect.text = $"Stability: +{tileData.ProsperityValue}";
+            if (txtDescription != null) txtDescription.text = tileData.BuildingDescription;
 
             // 켜지는 순간 랙 방지를 위해 즉시 위치 동기화
             if (Mouse.current != null)
             {
                 transform.position = Mouse.current.position.ReadValue() + offset;
             }
+
+            // DOTween 팝업 애니메이션
+            transform.DOKill();
+            transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutBack);
         }
 
         public void HideTooltip()
         {
-            gameObject.SetActive(false);
+            // 부드럽게 축소 후 비활성화
+            transform.DOKill();
+            transform.DOScale(Vector3.zero, 0.15f).SetEase(Ease.InBack).OnComplete(() => 
+            {
+                gameObject.SetActive(false);
+            });
         }
     }
 }

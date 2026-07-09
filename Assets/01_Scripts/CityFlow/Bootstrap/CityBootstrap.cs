@@ -23,7 +23,7 @@ namespace CityFlow.Bootstrap
         private FakePlacementService fakePlacementService;
         private SimEngine simEngine;
         private SaveService saveService;
-        private bool servicesInstalled; // [add]
+        private bool servicesInstalled;
 
         private void Awake()
         {
@@ -60,7 +60,7 @@ namespace CityFlow.Bootstrap
             }
         }
 
-        private void Start() // [add]
+        private void Start()
         {
             InstallServices();
         }
@@ -79,7 +79,7 @@ namespace CityFlow.Bootstrap
 
         private void InstallServices()
         {
-            if (servicesInstalled) // [add]
+            if (servicesInstalled)
             {
                 return;
             }
@@ -101,7 +101,7 @@ namespace CityFlow.Bootstrap
                 }
             }
 
-            servicesInstalled = true; // [add]
+            servicesInstalled = true;
         }
 
         private SaveService CreateSaveService(ISimSaveSource simSaveSource)
