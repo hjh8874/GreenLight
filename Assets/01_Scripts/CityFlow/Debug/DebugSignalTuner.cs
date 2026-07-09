@@ -6,8 +6,9 @@ using UnityEngine.InputSystem;   // 프로젝트가 new Input System 사용
 
 namespace CityFlow.DebugTools
 {
-    // QA용: 신호 오프셋을 런타임에 돌려 "보는 것 = 버는 것"을 검증. 화면에 안정도 + 선택 신호 표시.
-    //  Tab=다음 신호 선택, ,/.=선택 신호 오프셋 -/+, R=전체 오프셋 0.
+    // QA용: 신호 두 레버(오프셋·초록 길이)를 런타임에 돌려 "보는 것 = 버는 것"을 검증. 화면에 처리량·안정도·선택 신호 표시.
+    //  Tab=다음 신호 선택, ,/.=오프셋 -/+, [/]=초록 길이 -/+, R=전체 오프셋 0.
+    // 두 레버 모두 ISignalControl 계약 메서드(SimEngine 구현)로 조작 — 김건 Game뷰 UI가 붙을 창구와 동일.
     // ponytail: 김건 Game뷰 UI 나오면 폐기 — 디버그 전용 임시 도구.
     public sealed class DebugSignalTuner : MonoBehaviour, ICityFlowServiceConsumer
     {
@@ -43,6 +44,11 @@ namespace CityFlow.DebugTools
             int off = _engine.GetSignalOffsetSlots(t);
             if (kb.commaKey.wasPressedThisFrame)  _engine.TrySetSignalOffsetSlots(t, off - 1);
             if (kb.periodKey.wasPressedThisFrame) _engine.TrySetSignalOffsetSlots(t, off + 1);
+
+            int green = _engine.GetSignalGreenSlots(t);                              // 초록 길이 레버(듀티=유효 용량)
+            if (kb.leftBracketKey.wasPressedThisFrame)  _engine.TrySetSignalGreenSlots(t, green - 1);
+            if (kb.rightBracketKey.wasPressedThisFrame) _engine.TrySetSignalGreenSlots(t, green + 1);   // 엔진이 [0,주기]로 클램프
+
             if (kb.rKey.wasPressedThisFrame)
                 foreach (var s in tiles) _engine.TrySetSignalOffsetSlots(s, 0);
         }
@@ -60,9 +66,9 @@ namespace CityFlow.DebugTools
                 if (_sel >= tiles.Count) _sel = 0;
                 var t = tiles[_sel];
                 GUI.Label(new Rect(12, 40, 700, 30),
-                    $"선택 신호 [{_sel + 1}/{tiles.Count}] {t}  오프셋 {_engine.GetSignalOffsetSlots(t)}슬롯", style);
+                    $"선택 신호 [{_sel + 1}/{tiles.Count}] {t}  오프셋 {_engine.GetSignalOffsetSlots(t)}슬롯  초록 {_engine.GetSignalGreenSlots(t)}슬롯", style);
             }
-            GUI.Label(new Rect(12, 70, 700, 30), "Tab=다음신호   ,/. = 오프셋 -/+   R=전체리셋", style);
+            GUI.Label(new Rect(12, 70, 700, 30), "Tab=다음신호   ,/. = 오프셋 -/+   [/] = 초록 -/+   R=전체리셋", style);
         }
     }
 }
