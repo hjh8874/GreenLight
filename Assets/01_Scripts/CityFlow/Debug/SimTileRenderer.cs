@@ -18,6 +18,13 @@ namespace CityFlow.DebugTools
         private static readonly Color32 Cream  = new Color32(238, 232, 210, 255);
         private static readonly Color32 Road   = new Color32(150, 150, 156, 255);
         private static readonly Color32 Car    = new Color32( 30,  30,  40, 255);
+        // 경로별 구분용 팔레트 — 차와 그 경로 트레일을 같은 색으로 그려 "이 차=이 집→이 회사" 추적.
+        private static readonly Color32[] RouteColors =
+        {
+            new Color32(220,  60,  60, 255), new Color32( 55, 120, 225, 255), new Color32( 55, 180,  95, 255),
+            new Color32(235, 150,  40, 255), new Color32(160,  90, 215, 255), new Color32( 40, 180, 195, 255),
+            new Color32(225,  90, 170, 255), new Color32(120, 170,  50, 255),
+        };
         private static readonly Color32 House   = new Color32( 90, 150, 220, 255);
         private static readonly Color32 Office  = new Color32(235, 150,  60, 255);
         private static readonly Color32 School  = new Color32(170, 110, 210, 255);
@@ -33,13 +40,34 @@ namespace CityFlow.DebugTools
         private float[] _carPhase = new float[0];   // 경로별 차 진행 위상(왕복·감속 누적)
 
         // 차간 간격 체크용 현재 프레임 포즈(위치+진행방향)
-        private struct CarPose { public Vector2 Pos; public Vector2 Dir; public bool Valid; public bool Horizontal; }
+        private struct CarPose { public Vector2 Pos; public Vector2 Dir; public bool Valid; public bool Horizontal; public Vector2Int NextTile; }
         private CarPose[] _poses = new CarPose[0];
         private const float MinGap = 0.68f;      // 앞차와 최소 간격(타일). 차 길이(7px≈0.58)보다 약간 크게
         private const float LaneTolerance = 0.15f; // 같은 차선 판정 폭(타일)
-        private const int CarStride = 2;          // N경로당 차 1대 (과포화·클러터 완화)
+        private const int CarStride = 1;          // 경로마다 차 1대 (집 수 = 차 수. 과포화 시 2로)
         private readonly HashSet<Vector2Int> _signalSet = new();
         private readonly Dictionary<Vector2Int, int> _occupant = new();   // 교차로 타일 → 점유 차 인덱스
+
+        // 교차로 선착순 예약(프레임 넘어 유지): 점유 맵은 프레임 시작 스냅샷이라
+        // 두 차가 같은 프레임에 "비었네" 판정받고 동시 진입(겹침)하는 레이스가 있었다.
+        private readonly Dictionary<Vector2Int, int> _claims = new();
+        private readonly List<Vector2Int> _claimRelease = new();
+
+        // 관성: 즉시 0↔풀스피드 대신 가속은 굼뜨고 브레이크는 급하게(비대칭) —
+        // 앞차의 살짝 감속이 뒤로 갈수록 증폭되는 유령 정체(파동)의 재료.
+        private float[] _carSpeed = new float[0];
+        private const float Accel = 2.2f;          // 타일/s²
+        private const float Decel = 9f;
+        private const float TurnSpeedMul = 0.45f;  // 회전 마찰: 꺾임 구간 감속(기획 §1)
+
+        // Flow Burst 연출: 병목이 뚫린 타일 주변 차들이 한 번에 우르르 가속 + 타일 펄스.
+        private struct BurstFx { public Vector2Int Tile; public float Until; }
+        private readonly List<BurstFx> _bursts = new();
+        private const float BurstFxSeconds = 2.5f;
+        private const float BurstSpeedMul = 1.6f;
+        private const float BurstAccelMul = 3f;    // 뚫리는 순간은 로켓 가속(대비가 손맛)
+        private const int BurstRadius = 3;
+        private static readonly Color32 BurstGold = new Color32(255, 205, 60, 255);
 
         public void Initialize(CityFlowServices services)
         {
@@ -50,6 +78,8 @@ namespace CityFlow.DebugTools
 
             _data = services.TileData;
             _engine = services.Placement as SimEngine;   // 진짜 엔진일 때만 차 그림(Fake면 null)
+            services.Events.FlowBurst += e =>
+                _bursts.Add(new BurstFx { Tile = e.Tile, Until = Time.time + BurstFxSeconds });
             _w = size * CellPx;
             _tex = new Texture2D(_w, _w, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
             _px = new Color32[_w * _w];
@@ -78,10 +108,13 @@ namespace CityFlow.DebugTools
                     }
                 }
 
-            // 2) 엔진 실제 경로 위를 달리는 차
+            // 2) Burst 펄스(뚫린 타일 금색 점멸) — 차보다 아래에 깔리게 먼저
+            DrawBursts();
+
+            // 3) 엔진 실제 경로 위를 달리는 차
             DrawRouteCars();
 
-            // 3) 교차로 신호 마커(엔진 시뮬 시간 기준 초록/빨강)
+            // 4) 교차로 신호 마커(엔진 시뮬 시간 기준 초록/빨강)
             DrawSignals();
 
             _tex.SetPixels32(_px);
@@ -129,6 +162,7 @@ namespace CityFlow.DebugTools
             {
                 int old = _carPhase.Length;
                 System.Array.Resize(ref _carPhase, routes.Count);
+                System.Array.Resize(ref _carSpeed, routes.Count);
                 for (int k = old; k < routes.Count; k++) _carPhase[k] = k * 0.618f;
                 _poses = new CarPose[routes.Count];
             }
@@ -147,6 +181,18 @@ namespace CityFlow.DebugTools
                 if (_signalSet.Contains(tile)) _occupant[tile] = r;   // 교차로 위에 있는 차
             }
 
+            // 예약 정리: 주인이 그 교차로 위에 있지도, 그리로 향하지도 않으면 반납.
+            _claimRelease.Clear();
+            foreach (var kv in _claims)
+            {
+                int owner = kv.Value;
+                bool keep = owner < _poses.Length && _poses[owner].Valid &&
+                            (new Vector2Int(Mathf.FloorToInt(_poses[owner].Pos.x), Mathf.FloorToInt(_poses[owner].Pos.y)) == kv.Key ||
+                             _poses[owner].NextTile == kv.Key);
+                if (!keep) _claimRelease.Add(kv.Key);
+            }
+            foreach (var k in _claimRelease) _claims.Remove(k);
+
             // 2패스: 앞차·교차로 없으면 전진, 있으면 대기 → 신호 뒤로 줄이 생김
             float dt = Time.deltaTime;
             for (int r = 0; r < routes.Count; r++)
@@ -155,14 +201,37 @@ namespace CityFlow.DebugTools
                 var path = routes[r];
                 int segs = path.Count - 1;
 
+                // 경로별 색: 차를 그리는 경로(CarStride)마다 팔레트를 순서대로 → 차마다 다른 색으로 추적.
+                Color32 rcol = RouteColors[(r / CarStride) % RouteColors.Length];
+
                 float p = Fold(_carPhase[r], segs, segs * 2);
                 int at = Mathf.Clamp((int)p, 0, segs);
-                float speed = CarSpeed * Mathf.Lerp(1f, 0.25f, _data.GetDensity01(path[at]));
-                if (IsBlocked(r) || IntersectionBlocked(r)) speed = 0f;   // 앞차 대기 / 교차로 진입 불가
-                _carPhase[r] += speed * dt;
+                int seg = Mathf.Min(at, segs - 1);
+
+                float target = CarSpeed * Mathf.Lerp(1f, 0.25f, _data.GetDensity01(path[at]));
+
+                // 회전 마찰: 코너에 붙은 세그먼트는 감속 — 이 찰나가 뒤차로 전파되며 꼬리가 생긴다.
+                bool bend = (seg + 2 <= segs && path[seg + 1] - path[seg] != path[seg + 2] - path[seg + 1]) ||
+                            (seg >= 1 && path[seg] - path[seg - 1] != path[seg + 1] - path[seg]);
+                if (bend) target *= TurnSpeedMul;
+
+                // Burst 부스트: 방금 뚫린 구간은 일시적으로 한계 속도·가속 상승(카타르시스).
+                bool boosted = InBurstZone(path[at]);
+                if (boosted) target *= BurstSpeedMul;
+
+                if (IsBlocked(r) || IntersectionBlocked(r)) target = 0f;   // 앞차 대기 / 교차로 진입 불가
+
+                // 관성: 가속은 굼뜨고 브레이크는 급하게(비대칭) → stop-and-go 파동(유령 정체).
+                float rate = target < _carSpeed[r] ? Decel : Accel * (boosted ? BurstAccelMul : 1f);
+                _carSpeed[r] = Mathf.MoveTowards(_carSpeed[r], target, rate * dt);
+
+                // 위상 단위 = 세그먼트 1칸. 대각 세그먼트(길이 √2)는 그만큼 오래 걸리게
+                // 거리로 정규화 — 안 하면 대각 차가 1.4배 빨라짐(대각 치팅).
+                float segLen = ((Vector2)(path[seg + 1] - path[seg])).magnitude;
+                _carPhase[r] += _carSpeed[r] * dt / segLen;
 
                 var pose = PoseOf(path, r);
-                DrawCar((int)(pose.Pos.x * CellPx), (int)(pose.Pos.y * CellPx), pose.Dir, Car);
+                DrawCar((int)(pose.Pos.x * CellPx), (int)(pose.Pos.y * CellPx), pose.Dir, rcol);
             }
         }
 
@@ -191,31 +260,62 @@ namespace CityFlow.DebugTools
                 Dir = dir,
                 Valid = true,
                 Horizontal = Mathf.Abs(path[i + 1].x - path[i].x) >= Mathf.Abs(path[i + 1].y - path[i].y),
+                NextTile = forward ? path[i + 1] : path[i],   // 경로상 진짜 다음 타일(진행 방향 기준)
             };
         }
 
         // 교차로 진입 불가 조건: 다음 타일이 교차로인데 ①내 방향이 빨간불 이거나 ②이미 다른 차가 점유 중.
         // 이미 교차로 안(cur=교차로)이면 통과 — 안에서 멈추지 않고 빠져나감.
+        // next는 공간 투영이 아니라 경로에서 직접 읽음 — 대각(코너컷) 차가 남의 신호 타일을
+        // 스칠 때 자기 경로에 없는 신호에 잡히는 오탐 방지.
         private bool IntersectionBlocked(int r)
         {
             var me = _poses[r];
             var cur = new Vector2Int(Mathf.FloorToInt(me.Pos.x), Mathf.FloorToInt(me.Pos.y));
-            var next = new Vector2Int(
-                Mathf.FloorToInt(me.Pos.x + me.Dir.x * 0.6f),
-                Mathf.FloorToInt(me.Pos.y + me.Dir.y * 0.6f));
+            var next = me.NextTile;
             if (next == cur || !_signalSet.Contains(next)) return false;   // 교차로 진입 아님
 
             if (!_engine.IsSignalGreen(next, me.Horizontal)) return true;  // 내 방향 빨간불
-            return _occupant.TryGetValue(next, out int occ) && occ != r;   // 이미 점유(box-blocking 방지)
+            if (_occupant.TryGetValue(next, out int occ) && occ != r) return true;   // 이미 점유(box-blocking 방지)
+            if (_claims.TryGetValue(next, out int owner) && owner != r) return true; // 남이 먼저 예약
+
+            _claims[next] = r;   // 선착순 예약 — 같은 프레임 동시 진입(겹침) 차단
+            return false;
         }
 
-        // 같은 차선(횡오차 작음) 진행선상 앞쪽 MinGap 안에 다른 차가 있나(추종).
+        // 활성 Burst 반경 안인가(만료분은 여기서 청소). 뷰 연출 전용 — 시뮬 수치와 무관.
+        private bool InBurstZone(Vector2Int tile)
+        {
+            for (int i = _bursts.Count - 1; i >= 0; i--)
+            {
+                if (Time.time > _bursts[i].Until) { _bursts.RemoveAt(i); continue; }
+                var d = tile - _bursts[i].Tile;
+                if (Mathf.Abs(d.x) <= BurstRadius && Mathf.Abs(d.y) <= BurstRadius) return true;
+            }
+            return false;
+        }
+
+        // 뚫린 타일 금색 점멸(수명 다하면 자연 소멸). 이펙트·사운드 전 프로토 손맛.
+        private void DrawBursts()
+        {
+            for (int i = _bursts.Count - 1; i >= 0; i--)
+            {
+                if (Time.time > _bursts[i].Until) { _bursts.RemoveAt(i); continue; }
+                if (Mathf.PingPong((_bursts[i].Until - Time.time) * 5f, 1f) > 0.4f)
+                    FillCell(_bursts[i].Tile.x, _bursts[i].Tile.y, 2, BurstGold);
+            }
+        }
+
+        // 같은 차선(횡오차 작음) 진행선상 앞쪽 MinGap 안에 '같은 방향' 차가 있나(추종).
+        // 같은 방향만 보는 이유: 교차·대향 차까지 양보하면 서로가 서로의 "앞차"가 되어
+        // 상호 양보 데드락(교차로 물림). 교차 흐름 조율은 IntersectionBlocked(점유 1대)가 담당.
         private bool IsBlocked(int r)
         {
             var me = _poses[r];
             for (int s = 0; s < _poses.Length; s++)
             {
                 if (s == r || !_poses[s].Valid) continue;
+                if (Vector2.Dot(me.Dir, _poses[s].Dir) < 0.5f) continue;   // 교차·대향 차는 추종 대상 아님
                 Vector2 rel = _poses[s].Pos - me.Pos;
                 float ahead = Vector2.Dot(rel, me.Dir);
                 if (ahead <= 0.02f || ahead >= MinGap) continue;          // 뒤차/멀리는 무시

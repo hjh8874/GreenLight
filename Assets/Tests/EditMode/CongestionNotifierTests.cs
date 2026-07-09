@@ -24,7 +24,7 @@ namespace CityFlow.Sim.Tests
             var g = StraightCity();
             var cfg = SimConfig.Default();       // Slow 0.7 / Jam 1.0
             cfg.RoadCapacity = 10f;
-            var dm = new DemandMap(cfg); dm.Reassign(g);
+            var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
             var solver = new FlowSolver(g.Width, g.Height);
             var notifier = new CongestionNotifier(g.Width, g.Height);

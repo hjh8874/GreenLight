@@ -26,6 +26,11 @@ MonoBehaviour:
     GreenWaveFloor: 0.5
     OfficeCapacity: 20
     SchoolCapacity: 10
+    DemandChoicePool: 3
+    RushAmplitude: 0.6
+    DayLengthSeconds: 120
+    OverrideDurationSeconds: 20
+    OverrideCooldownSeconds: 30
     CoinBase: 1
     BurstJamEnterRatio: 1
     BurstFreeReturnRatio: 0.6

@@ -43,7 +43,7 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void PhaseForAxis_GreenYellowRed_WithClearanceAndNoOverlap()
         {
-            var s = new Signal { CycleSlots = 12 };   // 6초 주기, 절반 3초: 초록1.95·노랑0.6·전적색0.45
+            var s = new Signal { CycleSlots = 12, GreenSlots = 6 };   // 6초 주기, 절반 3초: 초록1.95·노랑0.6·전적색0.45
             // 전반부 초록: 가로 Green·세로 Red
             Assert.AreEqual(SignalPhase.Green, SignalMath.PhaseForAxis(s, 0.0, true));
             Assert.AreEqual(SignalPhase.Red,   SignalMath.PhaseForAxis(s, 0.0, false));
@@ -68,8 +68,8 @@ namespace CityFlow.Sim.Tests
         public void GreenWave_PerfectOffset_FullEfficiency()
         {
             // 오프셋 차이(4) == 이동시간(4슬롯) → 흐름이 B 초록에 정확히 도착 → 효율 1
-            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
-            var b = new Signal { CycleSlots = 12, OffsetSlots = 4 };
+            var a = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 0 };
+            var b = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 4 };
             Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, b, travelSlots: 4, floor: 0.5f), 1e-4f);
         }
 
@@ -77,19 +77,19 @@ namespace CityFlow.Sim.Tests
         public void GreenWave_ArrivalInsideGreen_IsPlateauOne()
         {
             // 도착이 하류 초록창 안이면(정렬 포함) 1.0 — 초록 어디 잡아도 완전 통과(플래토)
-            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
-            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 4 }, 4, 0.5f), 1e-4f); // δ=0
-            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 2 }, 4, 0.5f), 1e-4f); // δ=1.0 < 1.95
+            var a = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 0 };
+            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 4 }, 4, 0.5f), 1e-4f); // δ=0
+            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 2 }, 4, 0.5f), 1e-4f); // δ=1.0 < 1.95
         }
 
         [Test]
         public void GreenWave_ArrivalPastGreen_FallsMonotonicToFloor()
         {
             // 도착이 초록창 뒤로 점점 깊어질수록 효율 감소, 반대편 한복판 ≈ floor.
-            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
-            float d2 = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 0  }, 4, 0.5f); // δ=2.0
-            float d3 = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 10 }, 4, 0.5f); // δ=3.0
-            float d4 = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 8  }, 4, 0.5f); // δ=4.0(≈최악)
+            var a = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 0 };
+            float d2 = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 0  }, 4, 0.5f); // δ=2.0
+            float d3 = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 10 }, 4, 0.5f); // δ=3.0
+            float d4 = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 8  }, 4, 0.5f); // δ=4.0(≈최악)
             Assert.Greater(d2, d3);
             Assert.Greater(d3, d4);
             Assert.AreEqual(0.5f, d4, 0.02f);   // 최악 ≈ floor
@@ -98,7 +98,7 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void GreenWindowFor_AxesSeparatedByHalfCycle_SameLength()
         {
-            var s = new Signal { CycleSlots = 12 };   // cycle 6s, half 3s
+            var s = new Signal { CycleSlots = 12, GreenSlots = 6 };   // cycle 6s, half 3s
             var (openH, lenH) = SignalMath.GreenWindowFor(s, true);
             var (openV, lenV) = SignalMath.GreenWindowFor(s, false);
             Assert.AreEqual(0.0, openH, 1e-9);
@@ -110,7 +110,7 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void GreenWindowFor_OffsetDelaysOpen()   // 부호 통일: 오프셋↑ = 늦게 열림(직관)
         {
-            var s = new Signal { CycleSlots = 12, OffsetSlots = 2 };   // +1.0s
+            var s = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 2 };   // +1.0s
             Assert.AreEqual(1.0, SignalMath.GreenWindowFor(s, true).open, 1e-9);
         }
 
@@ -118,7 +118,7 @@ namespace CityFlow.Sim.Tests
         public void PhaseForAxis_OffsetDelaysGreen_UnifiedSign()
         {
             // 오프셋 2슬롯(+1.0s) → 가로 초록창이 [1.0, 2.95)로 밀림: t=0.5 아직 빨강, t=1.5 초록
-            var s = new Signal { CycleSlots = 12, OffsetSlots = 2 };
+            var s = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 2 };
             Assert.AreEqual(SignalPhase.Red,   SignalMath.PhaseForAxis(s, 0.5, true));
             Assert.AreEqual(SignalPhase.Green, SignalMath.PhaseForAxis(s, 1.5, true));
         }
@@ -128,8 +128,8 @@ namespace CityFlow.Sim.Tests
         {
             // 통합 불변식: 엔진이 "완전 통과(1.0)"면 뷰도 그 도착 순간 초록. 어긋나면 둘 다 손실/빨강.
             // 두 모델이 다시 갈라지면 이 테스트가 빨개진다(anti-drift 못).
-            var from = new Signal { CycleSlots = 12, OffsetSlots = 0 };
-            var to   = new Signal { CycleSlots = 12, OffsetSlots = 4 };   // 정렬(offsetTo-offsetFrom=travel)
+            var from = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 0 };
+            var to   = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 4 };   // 정렬(offsetTo-offsetFrom=travel)
             const int travel = 4;
             double open = SignalMath.GreenWindowFor(from, true).open;
             double arrive = open + travel * SignalMath.SlotSeconds;       // 상류 초록 선두 출발 → 도착
@@ -148,18 +148,18 @@ namespace CityFlow.Sim.Tests
         public void GreenWave_OffsetWrapsAroundCycle()
         {
             // 튜너를 계속/거꾸로 돌려도 같은 조율: 오프셋 k ≡ k±주기(슬롯).
-            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
-            float baseline = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 4 }, 4, 0.5f);
-            Assert.AreEqual(baseline, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = 16 }, 4, 0.5f), 1e-4f); // +주기
-            Assert.AreEqual(baseline, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, OffsetSlots = -8 }, 4, 0.5f), 1e-4f); // -주기
+            var a = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 0 };
+            float baseline = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 4 }, 4, 0.5f);
+            Assert.AreEqual(baseline, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 16 }, 4, 0.5f), 1e-4f); // +주기
+            Assert.AreEqual(baseline, SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = -8 }, 4, 0.5f), 1e-4f); // -주기
         }
 
         [Test]
         public void GreenWave_TravelBeyondCycle_LandsNextGreenWindow()
         {
             // 먼 신호쌍: 이동시간이 주기를 넘어도 '다음 주기' 초록 안착이면 그린웨이브 유지.
-            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
-            var b = new Signal { CycleSlots = 12, OffsetSlots = 4 };
+            var a = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 0 };
+            var b = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 4 };
             Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, b, travelSlots: 4 + 12, floor: 0.5f), 1e-4f);
             Assert.AreEqual(
                 SignalMath.GreenWaveEfficiency(a, b, 8, 0.5f),
@@ -171,7 +171,7 @@ namespace CityFlow.Sim.Tests
         {
             // 같은 주기 가정의 안전망: 주기가 다르면 수치 의미는 미정의(2차)지만
             // 어떤 travel에서도 [floor, 1] 범위·NaN 없음은 보장돼야 엔진이 안 깨진다.
-            var a = new Signal { CycleSlots = 12 };
+            var a = new Signal { CycleSlots = 12, GreenSlots = 6 };
             var b = new Signal { CycleSlots = 8, OffsetSlots = 3 };
             for (int travel = 0; travel <= 24; travel++)
             {
@@ -187,8 +187,8 @@ namespace CityFlow.Sim.Tests
         {
             // 튜닝 실수 방어: floor=1이면 항상 1(페널티 무력화), floor=0도 [0,1] 유지.
             // 주기 0 신호는 규약대로 페널티 없음(상류) / 범위 유지(하류).
-            var a = new Signal { CycleSlots = 12, OffsetSlots = 0 };
-            var worst = new Signal { CycleSlots = 12, OffsetSlots = 8 };   // δ=4.0 ≈ 최악
+            var a = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 0 };
+            var worst = new Signal { CycleSlots = 12, GreenSlots = 6, OffsetSlots = 8 };   // δ=4.0 ≈ 최악
 
             Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, worst, 4, floor: 1f), 1e-4f);
             float e0 = SignalMath.GreenWaveEfficiency(a, worst, 4, floor: 0f);
@@ -198,6 +198,27 @@ namespace CityFlow.Sim.Tests
             float eTo = SignalMath.GreenWaveEfficiency(a, new Signal { CycleSlots = 0 }, 4, 0.5f);                     // 하류 주기 0
             Assert.IsFalse(float.IsNaN(eTo));
             Assert.GreaterOrEqual(eTo, 0.5f); Assert.LessOrEqual(eTo, 1f);
+        }
+
+        [Test]
+        public void PhaseForAxis_RespectsGreenSlotsDuty()
+        {
+            // 초록 레버가 화면 신호에도 반영: 가로 창 = 주기×듀티, 세로 창 = 나머지.
+            var s = new Signal { CycleSlots = 16, GreenSlots = 12 };   // 주기 8초 → 가로 창 6초 / 세로 창 2초
+            Assert.AreEqual(SignalPhase.Green, SignalMath.PhaseForAxis(s, 3.0, true));   // 50/50이면 이미 노랑(창 4초)
+            Assert.AreEqual(SignalPhase.Red, SignalMath.PhaseForAxis(s, 3.0, false));
+            Assert.AreEqual(SignalPhase.Green, SignalMath.PhaseForAxis(s, 6.5, false));  // 세로 창(6~8초) 초입
+            Assert.AreEqual(SignalPhase.Red, SignalMath.PhaseForAxis(s, 6.5, true));
+        }
+
+        [Test]
+        public void GreenWave_FractionalTravelSlots_ShiftArrival()
+        {
+            // 대각 경로(스텝당 √2슬롯) 지원: 같은 칸 수라도 물리 거리가 길면 도착 위상이 밀린다.
+            var a = new Signal();   // 기본 16주기, 오프셋 0
+            var b = new Signal();
+            Assert.AreEqual(1f, SignalMath.GreenWaveEfficiency(a, b, 16f, 0.3f), 1e-4f);          // 정확히 한 주기 → 초록 안착
+            Assert.Less(SignalMath.GreenWaveEfficiency(a, b, 16f * 1.4142135f, 0.3f), 1f);        // 같은 칸 수의 대각 → 어긋남
         }
     }
 }

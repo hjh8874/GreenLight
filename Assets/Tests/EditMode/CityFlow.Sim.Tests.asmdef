@@ -4,6 +4,7 @@
     "references": [
         "CityFlow.Sim",
         "CityFlow.Contracts",
+        "CityFlow.Authoring",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

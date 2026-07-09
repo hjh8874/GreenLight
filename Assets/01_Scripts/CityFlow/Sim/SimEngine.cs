@@ -67,13 +67,14 @@ namespace CityFlow.Sim
             if (_grid.TopologyDirty)
             {
                 _network.Rebuild();
-                _demand.Reassign(_grid);
+                _demand.Reassign(_grid, _network);        // 도달성(같은 섬) 우선 배정
                 _signals.Rebuild(_grid);                  // 교차로 재감지(살아남은 신호 오프셋 보존)
                 _grid.ClearTopologyDirty();
             }
 
-            _solver.Assign(_demand, _network, _config);   // ① 수요→세그먼트 흐름 배정
-            _solver.Resolve(_config, _signals);           // ② 혼잡·병목·그린웨이브·delivered
+            // ① 수요→세그먼트 흐름 배정 (러시아워 맥동 배율 반영 — 기획 §1 '수요의 맥동')
+            _solver.Assign(_demand, _network, _config, SimConfig.DemandPulse(_simTime, _config));
+            _solver.Resolve(_config, _signals, _simTime); // ② 혼잡·병목·그린웨이브·오버라이드·delivered
             _congestion.Scan(_solver, _events, _config);  // ②' 레벨 전이만 이벤트로
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
@@ -96,12 +97,12 @@ namespace CityFlow.Sim
             if (_grid.TopologyDirty)
             {
                 _network.Rebuild();
-                _demand.Reassign(_grid);
+                _demand.Reassign(_grid, _network);
                 _signals.Rebuild(_grid);
                 _grid.ClearTopologyDirty();
             }
-            _solver.Assign(_demand, _network, _config);
-            _solver.Resolve(_config, _signals);   // 오프라인도 신호 조율 상태 그대로 반영
+            _solver.Assign(_demand, _network, _config);   // 정산은 평균 수요(맥동 무시 = 공정)
+            _solver.Resolve(_config, _signals, _simTime); // 오프라인도 신호 조율 상태 그대로 반영
 
             double capped = Math.Min(elapsedSeconds, _config.OfflineCapHours * 3600.0);
             long coins = _arrivals.SettleOffline(_solver, capped, _config);
@@ -154,18 +155,49 @@ namespace CityFlow.Sim
         public bool TrySetSignalGreenSlots(Vector2Int tile, int slots)
         {
             if (!_signals.TryGet(tile, out var s)) return false;
-            // 초록은 [0, 주기]만 의미 — UI 입력은 트러스트 경계라 클램프(0=상시적색, 주기=상시초록).
-            s.GreenSlots = Mathf.Clamp(slots, 0, s.CycleSlots);   // 다음 Resolve의 GreenRatio에 반영
+            // 최소 통과 보장(Hard limit): 초록 0슬롯이면 그 축이 영원히 빨강 = 신호 데드락.
+            // 반대 축(주기-초록)도 같은 이유로 최소 1슬롯 → [1, 주기-1] 클램프.
+            s.GreenSlots = Mathf.Clamp(slots, 1, Mathf.Max(1, s.CycleSlots - 1));
             return true;
         }
 
         // 뷰용: 이 교차로가 지금 초록인가(시뮬 시간 기준). 신호 없으면 항상 초록 취급.
         public bool IsSignalGreen(Vector2Int tile) =>
-            !_signals.TryGet(tile, out var s) || SignalMath.IsGreen(s, _simTime);
+            !_signals.TryGet(tile, out var s) || s.OverrideUntil > _simTime || SignalMath.IsGreen(s, _simTime);
 
         // 뷰용: 이 교차로의 이 방향 신호 3상태(초록/노랑/적색). 신호 없으면 항상 초록.
-        public SignalPhase GetSignalPhase(Vector2Int tile, bool horizontal) =>
-            _signals.TryGet(tile, out var s) ? SignalMath.PhaseForAxis(s, _simTime, horizontal) : SignalPhase.Green;
+        // 오버라이드 중엔 지정 축만 초록, 반대 축은 적색(교차 충돌 방지).
+        public SignalPhase GetSignalPhase(Vector2Int tile, bool horizontal)
+        {
+            if (!_signals.TryGet(tile, out var s)) return SignalPhase.Green;
+            if (s.OverrideUntil > _simTime)
+                return horizontal == s.OverrideHorizontal ? SignalPhase.Green : SignalPhase.Red;
+            return SignalMath.PhaseForAxis(s, _simTime, horizontal);
+        }
+
+        // ── 오버라이드 스킬(기획 §2-D): duration초 한 방향 강제 초록 + 엔진 강제 쿨다운 ──
+        // 능동 개입의 손맛 레버. 쿨다운을 엔진이 들고 있는 이유: UI는 트러스트 경계 밖.
+        readonly Dictionary<Vector2Int, double> _overrideReadyAt = new();
+
+        public bool TryOverrideSignal(Vector2Int tile, bool horizontal)
+        {
+            if (!_signals.TryGet(tile, out var s)) return false;
+            if (_overrideReadyAt.TryGetValue(tile, out var ready) && _simTime < ready) return false;
+
+            s.OverrideUntil = _simTime + _config.OverrideDurationSeconds;
+            s.OverrideHorizontal = horizontal;
+            _overrideReadyAt[tile] = s.OverrideUntil + _config.OverrideCooldownSeconds;
+            return true;
+        }
+
+        // 뷰용: 오버라이드 남은 시간(0 = 비활성) / 쿨다운 남은 시간(0 = 사용 가능).
+        public float GetOverrideSecondsLeft(Vector2Int tile) =>
+            _signals.TryGet(tile, out var s) && s.OverrideUntil > _simTime
+                ? (float)(s.OverrideUntil - _simTime) : 0f;
+
+        public float GetOverrideCooldownLeft(Vector2Int tile) =>
+            _overrideReadyAt.TryGetValue(tile, out var ready) && ready > _simTime
+                ? (float)(ready - _simTime) : 0f;
 
         // 진입 허가 = 초록만(노랑·적색은 진입 금지).
         public bool IsSignalGreen(Vector2Int tile, bool horizontal) =>
@@ -186,10 +218,17 @@ namespace CityFlow.Sim
                     tiles.Add(new TileSaveData { X = x, Y = y, Type = type });
                 }
 
-            // 모든 신호를 오프셋 0 포함해 저장 — 복원 시 덮어쓰기만으로 이전 조율 잔존을 지운다.
+            // 모든 신호를 두 레버(오프셋·초록) 다 저장 — 복원 시 덮어쓰기만으로 이전 조율 잔존을 지운다.
+            // 오버라이드는 초 단위 일시 상태라 저장 안 함(로드 시 자연 소멸이 옳음).
             var signals = new List<SignalSaveData>();
             foreach (var t in _signals.Tiles)
-                signals.Add(new SignalSaveData { X = t.x, Y = t.y, OffsetSlots = GetSignalOffsetSlots(t) });
+                signals.Add(new SignalSaveData
+                {
+                    X = t.x,
+                    Y = t.y,
+                    OffsetSlots = GetSignalOffsetSlots(t),
+                    GreenSlots = GetSignalGreenSlots(t),
+                });
 
             return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray() };
         }
@@ -205,11 +244,16 @@ namespace CityFlow.Sim
                     _grid.Place(new Vector2Int(t.X, t.Y), t.Type);   // OOB·중복은 Place가 거름(무사고)
             // 참고: PlacedEvent는 안 쏨 — 복원은 '건설'이 아니고, 뷰는 폴링이라 다음 프레임 자동 갱신.
 
-            // 오프셋 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).
+            // 조율 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).
             _signals.Rebuild(_grid);
             if (snapshot.SignalOffsets != null)
                 foreach (var s in snapshot.SignalOffsets)
-                    TrySetSignalOffsetSlots(new Vector2Int(s.X, s.Y), s.OffsetSlots);
+                {
+                    var tile = new Vector2Int(s.X, s.Y);
+                    TrySetSignalOffsetSlots(tile, s.OffsetSlots);
+                    // 구세이브 호환: GreenSlots 필드 없던 세이브는 0으로 옴 → 기본 초록 유지(안 덮음).
+                    if (s.GreenSlots > 0) TrySetSignalGreenSlots(tile, s.GreenSlots);
+                }
             // TopologyDirty는 남긴다: 다음 Step/SettleOffline이 경로·수요 재구축(Rebuild가 오프셋 보존).
         }
 

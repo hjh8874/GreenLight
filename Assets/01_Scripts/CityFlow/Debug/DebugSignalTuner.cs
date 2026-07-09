@@ -58,7 +58,11 @@ namespace CityFlow.DebugTools
 
             int green = _engine.GetSignalGreenSlots(t);                              // 초록 길이 레버(듀티=유효 용량)
             if (kb.leftBracketKey.wasPressedThisFrame)  _engine.TrySetSignalGreenSlots(t, green - 1);
-            if (kb.rightBracketKey.wasPressedThisFrame) _engine.TrySetSignalGreenSlots(t, green + 1);   // 엔진이 [0,주기]로 클램프
+            if (kb.rightBracketKey.wasPressedThisFrame) _engine.TrySetSignalGreenSlots(t, green + 1);   // 엔진이 [1,주기-1]로 클램프
+
+            // 오버라이드 스킬(기획 §2-D): 한 방향 강제 초록으로 체증 세척. 쿨다운은 엔진이 거절.
+            if (kb.gKey.wasPressedThisFrame) _engine.TryOverrideSignal(t, horizontal: true);
+            if (kb.vKey.wasPressedThisFrame) _engine.TryOverrideSignal(t, horizontal: false);
 
             if (kb.rKey.wasPressedThisFrame)
                 foreach (var s in tiles) _engine.TrySetSignalOffsetSlots(s, 0);
@@ -76,10 +80,13 @@ namespace CityFlow.DebugTools
             {
                 if (_sel >= tiles.Count) _sel = 0;
                 var t = tiles[_sel];
-                GUI.Label(new Rect(12, 40, 700, 30),
-                    $"선택 신호 [{_sel + 1}/{tiles.Count}] {t}  오프셋 {_engine.GetSignalOffsetSlots(t)}슬롯  초록 {_engine.GetSignalGreenSlots(t)}슬롯", style);
+                float ovr = _engine.GetOverrideSecondsLeft(t);
+                float cd = _engine.GetOverrideCooldownLeft(t);
+                string ovrText = ovr > 0f ? $"  ⚡오버라이드 {ovr:F0}s" : cd > 0f ? $"  쿨다운 {cd:F0}s" : "";
+                GUI.Label(new Rect(12, 40, 900, 30),
+                    $"선택 신호 [{_sel + 1}/{tiles.Count}] {t}  오프셋 {_engine.GetSignalOffsetSlots(t)}슬롯  초록 {_engine.GetSignalGreenSlots(t)}슬롯{ovrText}", style);
             }
-            GUI.Label(new Rect(12, 70, 700, 30), "좌클릭/Tab=신호선택   ,/. = 오프셋 -/+   [/] = 초록 -/+   R=전체리셋", style);
+            GUI.Label(new Rect(12, 70, 900, 30), "좌클릭/Tab=신호선택   ,/. = 오프셋   [/] = 초록   G/V=오버라이드(가로/세로)   R=리셋", style);
         }
     }
 }

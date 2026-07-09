@@ -24,7 +24,7 @@ namespace CityFlow.Sim.Tests
 
         static (FlowSolver solver, SignalMap signals) Solve(CityGrid g, in SimConfig cfg, int offsetAtSecond)
         {
-            var dm = new DemandMap(cfg); dm.Reassign(g);
+            var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
             var signals = new SignalMap();
             signals.Rebuild(g);
@@ -72,7 +72,7 @@ namespace CityFlow.Sim.Tests
             g.Place(V(8, 1), TileType.Office);
 
             var cfg = Cfg();
-            var dm = new DemandMap(cfg); dm.Reassign(g);
+            var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
             var signals = new SignalMap(); signals.Rebuild(g);
             var solver = new FlowSolver(g.Width, g.Height);
@@ -126,7 +126,7 @@ namespace CityFlow.Sim.Tests
         static (FlowSolver solver, SignalMap signals) SolveCity(
             CityGrid g, in SimConfig cfg, System.Action<SignalMap> tune = null)
         {
-            var dm = new DemandMap(cfg); dm.Reassign(g);
+            var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
             var signals = new SignalMap(); signals.Rebuild(g);
             tune?.Invoke(signals);

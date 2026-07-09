@@ -28,6 +28,11 @@ namespace CityFlow.Sim
         readonly Dictionary<(Vector2Int, Vector2Int), List<Vector2Int>> _cache = new();
         int _cachedVersion = -1;
 
+        // 연결 요소(Region) 캐시: 같은 섬의 도로는 같은 id. 수요 배정이 "도달 가능한가"를
+        // BFS 없이 O(1)로 묻는 용도. topology 버전이 바뀐 뒤 첫 조회 때만 flood fill(O(n)).
+        readonly int[] _region;
+        int _regionVersion = -1;
+
         public RoadNetwork(CityGrid grid)
         {
             _grid = grid;
@@ -37,6 +42,51 @@ namespace CityFlow.Sim
             _visited = new bool[n];
             _cameFrom = new int[n];
             _queue = new int[n];   // 각 칸 최대 1번 인큐 → n칸이면 충분
+            _region = new int[n];
+        }
+
+        // 이 도로 타일이 속한 섬 id(-1 = 도로 아님). BFS와 같은 8방 연결 규칙 →
+        // "같은 Region = FindPath 가능"이 항상 성립.
+        public int RegionOf(Vector2Int roadTile)
+        {
+            if (!IsRoad(roadTile)) return -1;
+            EnsureRegions();
+            return _region[roadTile.y * _w + roadTile.x];
+        }
+
+        void EnsureRegions()
+        {
+            if (_regionVersion == _grid.TopologyVersion) return;
+            _regionVersion = _grid.TopologyVersion;
+
+            for (int i = 0; i < _region.Length; i++) _region[i] = -1;
+
+            int nextId = 0;
+            for (int start = 0; start < _region.Length; start++)   // flat 순서 → id 부여 결정론
+            {
+                if (_region[start] != -1) continue;
+                if (_grid.GetTile(new Vector2Int(start % _w, start / _w)) != TileType.Road) continue;
+
+                int id = nextId++;
+                int head = 0, tail = 0;
+                _queue[tail++] = start;
+                _region[start] = id;
+                while (head < tail)
+                {
+                    int cur = _queue[head++];
+                    int cx = cur % _w, cy = cur / _w;
+                    for (int d = 0; d < DX.Length; d++)
+                    {
+                        int nx = cx + DX[d], ny = cy + DY[d];
+                        if (nx < 0 || nx >= _w || ny < 0 || ny >= _h) continue;
+                        int ni = ny * _w + nx;
+                        if (_region[ni] != -1) continue;
+                        if (_grid.GetTile(new Vector2Int(nx, ny)) != TileType.Road) continue;
+                        _region[ni] = id;
+                        _queue[tail++] = ni;
+                    }
+                }
+            }
         }
 
         // topology 변경 시 호출: 캐시 통째 무효화 + 현재 버전 기록.

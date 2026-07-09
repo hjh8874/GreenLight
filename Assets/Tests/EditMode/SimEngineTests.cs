@@ -253,7 +253,8 @@ namespace CityFlow.Sim.Tests
             a.Place(V(0, 1), TileType.House);
             a.Place(V(8, 1), TileType.Office);
             a.Tick(0.25f);                                          // 교차로 2개 감지
-            Assert.IsTrue(a.TrySetSignalOffsetSlots(V(6, 0), 4));   // 그린웨이브 조율
+            Assert.IsTrue(a.TrySetSignalOffsetSlots(V(6, 0), 4));   // 그린웨이브 조율(오프셋 레버)
+            Assert.IsTrue(a.TrySetSignalGreenSlots(V(2, 0), 4));    // 초록 길이 조율(듀티 레버)
             a.Tick(0.25f);
             float originalDelivered = a.DeliveredTotal;
 
@@ -271,8 +272,47 @@ namespace CityFlow.Sim.Tests
                 for (int x = 0; x < 9; x++)
                     Assert.AreEqual(a.GetTileType(V(x, y)), b.GetTileType(V(x, y)), $"타일 불일치 ({x},{y})");
             Assert.AreEqual(2, b.SignalTiles.Count);
-            Assert.AreEqual(4, b.GetSignalOffsetSlots(V(6, 0)));     // 유저 조율 복원
-            Assert.AreEqual(originalDelivered, b.DeliveredTotal, 1e-3f);   // 조율 효과까지 동일
+            Assert.AreEqual(4, b.GetSignalOffsetSlots(V(6, 0)));     // 오프셋 레버 복원
+            Assert.AreEqual(4, b.GetSignalGreenSlots(V(2, 0)));      // 초록 길이 레버 복원
+            Assert.AreEqual(originalDelivered, b.DeliveredTotal, 1e-3f);   // 두 레버 효과까지 동일
+        }
+
+        [Test]
+        public void RestoreSnapshot_LegacySaveWithoutGreenSlots_KeepsDefaultGreen()
+        {
+            // 구세이브 호환: GreenSlots 필드가 없던 세이브는 역직렬화 시 0으로 옴.
+            // 0을 "미저장"으로 보고 기본 초록을 덮지 않아야 한다(0=상시적색으로 오해 금지).
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 8; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(4, 1), TileType.Road);
+            e.Tick(0.25f);
+            int defaultGreen = e.GetSignalGreenSlots(V(4, 0));       // 기본 초록(주기 절반)
+            Assert.Greater(defaultGreen, 0);
+
+            var tiles = new System.Collections.Generic.List<CityFlow.Contracts.Save.TileSaveData>
+            {
+                new CityFlow.Contracts.Save.TileSaveData { X = 4, Y = 1, Type = TileType.Road },
+            };
+            for (int x = 0; x <= 8; x++)
+                tiles.Add(new CityFlow.Contracts.Save.TileSaveData { X = x, Y = 0, Type = TileType.Road });
+
+            var legacy = new CityFlow.Contracts.Save.SimSaveData
+            {
+                PlacedTiles = tiles.ToArray(),
+                SignalOffsets = new[]
+                {
+                    // GreenSlots 미지정 = 0 (구세이브 모사)
+                    new CityFlow.Contracts.Save.SignalSaveData { X = 4, Y = 0, OffsetSlots = 2 },
+                },
+            };
+
+            ((CityFlow.Contracts.Save.ISimSaveSource)e).RestoreSnapshot(legacy);
+            e.Tick(0.25f);
+
+            Assert.AreEqual(2, e.GetSignalOffsetSlots(V(4, 0)));     // 오프셋은 복원
+            Assert.AreEqual(defaultGreen, e.GetSignalGreenSlots(V(4, 0)));  // 초록은 기본 유지(0으로 안 덮음)
         }
 
         [Test]
@@ -325,11 +365,11 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1, ctl.SignalTiles.Count);
             float choked = e.DeliveredTotal;
 
-            Assert.IsTrue(ctl.TrySetSignalGreenSlots(V(4, 0), 999));   // 초록 최대(주기로 클램프) → 듀티 1.0
+            Assert.IsTrue(ctl.TrySetSignalGreenSlots(V(4, 0), 999));   // 초록 최대(주기-1로 클램프) → 듀티 15/16
             e.Tick(0.25f);
 
             Assert.Greater(e.DeliveredTotal, choked);        // 레버가 살아있음
-            Assert.AreEqual(6f, e.DeliveredTotal, 1e-3f);    // 완전 회복(ratio 0.6 Free)
+            Assert.AreEqual(6f, e.DeliveredTotal, 1e-3f);    // 완전 회복(ratio 0.64 ≤ Jam)
         }
 
         [Test]
@@ -355,9 +395,34 @@ namespace CityFlow.Sim.Tests
 
             ISignalControl ctl = e;
             ctl.TrySetSignalGreenSlots(V(4, 0), -5);
-            Assert.AreEqual(0, ctl.GetSignalGreenSlots(V(4, 0)));    // 음수 → 0
+            Assert.AreEqual(1, ctl.GetSignalGreenSlots(V(4, 0)));    // 음수 → 최소 초록 1슬롯(신호 데드락 방지)
             ctl.TrySetSignalGreenSlots(V(4, 0), 999);
-            Assert.AreEqual(16, ctl.GetSignalGreenSlots(V(4, 0)));   // 주기(기본 16) 초과 → 주기
+            Assert.AreEqual(15, ctl.GetSignalGreenSlots(V(4, 0)));   // 주기 초과 → 주기-1(반대 축 최소 보장)
+        }
+
+        [Test]
+        public void OverrideSignal_ForcesAxisGreen_ThenCooldownAndExpiry()
+        {
+            // 오버라이드 스킬: 지정 축 강제 초록 + 반대 축 적색, 쿨다운 중 재사용 거절, 만료 후 복귀.
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            c.OverrideDurationSeconds = 0.5f;   // 테스트용 짧게
+            c.OverrideCooldownSeconds = 1f;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 8; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(4, 1), TileType.Road);
+            e.Tick(0.25f);                       // 교차로 감지
+
+            Assert.IsFalse(e.TryOverrideSignal(V(1, 0), true));                    // 신호 없는 타일 거절
+            Assert.IsTrue(e.TryOverrideSignal(V(4, 0), horizontal: false));
+            Assert.AreEqual(SignalPhase.Green, e.GetSignalPhase(V(4, 0), false));  // 지정 축 초록
+            Assert.AreEqual(SignalPhase.Red, e.GetSignalPhase(V(4, 0), true));     // 반대 축 적색(충돌 방지)
+            Assert.IsFalse(e.TryOverrideSignal(V(4, 0), false));                   // 지속+쿨다운 중 거절
+            Assert.Greater(e.GetOverrideSecondsLeft(V(4, 0)), 0f);
+
+            for (int i = 0; i < 8; i++) e.Tick(0.25f);                             // 2s 경과 = 만료+쿨다운 해제
+            Assert.AreEqual(0f, e.GetOverrideSecondsLeft(V(4, 0)));
+            Assert.IsTrue(e.TryOverrideSignal(V(4, 0), true));                     // 재사용 가능
         }
 
         [Test]

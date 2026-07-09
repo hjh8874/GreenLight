@@ -11,7 +11,9 @@ namespace CityFlow.Sim
         // ponytail: 정산용 롤링 평균은 D7(정산 공식)에서. 지금은 안정도만.
         public void Update(FlowSolver solver, DemandMap demand, in SimConfig cfg)
         {
-            float totalDemand = demand.Demands.Count * cfg.DemandPerHouse;
+            // 분모도 이번 틱의 맥동 반영 수요율(solver.DemandRate) — 러시아워라고
+            // 처리만 잘 되면 안정도가 1을 넘거나 억울하게 깎이는 일이 없게.
+            float totalDemand = demand.Demands.Count * solver.DemandRate;
             Stability01 = totalDemand <= 0f
                 ? 1f   // 수요 없는 도시는 불안정할 것도 없음(0 나누기 방지)
                 : Mathf.Clamp01(solver.DeliveredTotal / totalDemand);
