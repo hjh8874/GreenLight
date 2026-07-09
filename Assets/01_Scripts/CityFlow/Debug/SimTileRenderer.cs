@@ -44,7 +44,7 @@ namespace CityFlow.DebugTools
         private CarPose[] _poses = new CarPose[0];
         private const float MinGap = 0.68f;      // 앞차와 최소 간격(타일). 차 길이(7px≈0.58)보다 약간 크게
         private const float LaneTolerance = 0.15f; // 같은 차선 판정 폭(타일)
-        private const int CarStride = 2;          // N경로당 차 1대 (과포화·클러터 완화)
+        private const int CarStride = 1;          // 경로마다 차 1대 (집 수 = 차 수. 과포화 시 2로)
         private readonly HashSet<Vector2Int> _signalSet = new();
         private readonly Dictionary<Vector2Int, int> _occupant = new();   // 교차로 타일 → 점유 차 인덱스
 

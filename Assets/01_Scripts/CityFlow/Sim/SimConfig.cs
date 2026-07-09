@@ -35,6 +35,11 @@ namespace CityFlow.Sim
         public int   OfficeCapacity;    // 회사(Office) 20
         public int   SchoolCapacity;    // 학교(School) 10
 
+        // ── 수요 배정 다양성 ──
+        // 집이 '가까운 K곳' 중 하나로 출근(좌표 해시로 결정론적 선택). 1 = 항상 최근접.
+        // 3이면 통근 동선이 흩어져 도시가 살아 보임 🔓
+        public int   DemandChoicePool;
+
         // ── 보상(코인) 원료 ────────────────────
         public float CoinBase;          // 🔓 공식 형태·가중치 잠정
 
@@ -65,6 +70,7 @@ namespace CityFlow.Sim
             GreenWaveFloor = 0.5f,
             OfficeCapacity = 20,
             SchoolCapacity = 10,
+            DemandChoicePool = 3,
             CoinBase = 1f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,

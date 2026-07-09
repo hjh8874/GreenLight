@@ -72,8 +72,9 @@ namespace CityFlow.Sim
             _ => 0,
         };
 
-        // 각 집을 '남은 용량이 있는, 도달 가능한(같은 섬), 가장 가까운' sink에 배정.
-        // 꽉 차면 다음 가까운 곳(차순위). 도달 가능한 곳이 하나도 없으면 최근접 폴백(흐름 0).
+        // 각 집을 '남은 용량이 있는, 도달 가능한(같은 섬)' sink 중 가까운 K곳(DemandChoicePool)
+        // 하나에 배정 — 좌표 해시로 결정론적 선택(같은 도시 = 같은 배정, 세이브·테스트 안전).
+        // K=1이면 항상 최근접. 도달 가능한 곳이 하나도 없으면 최근접 폴백(흐름 0).
         void AssignType(List<Vector2Int> sources, List<Vector2Int> sinks, int capPerSink, RoadNetwork net)
         {
             if (sinks.Count == 0) return;
@@ -86,31 +87,47 @@ namespace CityFlow.Sim
                 sinkRegion[i] = net.TryGetAccessRoad(sinks[i], out var road) ? net.RegionOf(road) : -1;
             }
 
+            int pool = Mathf.Max(1, _config.DemandChoicePool);
+            var candidates = new List<(int idx, int dist)>(sinks.Count);   // 같은 섬 + 용량 남은 곳
+
             for (int h = 0; h < sources.Count; h++)
             {
                 var house = sources[h];
                 int houseRegion = net.TryGetAccessRoad(house, out var hr) ? net.RegionOf(hr) : -1;
 
-                int best = -1, bestDist = int.MaxValue;         // 같은 섬(도달 가능) 최근접
+                candidates.Clear();
                 int bestAny = -1, bestAnyDist = int.MaxValue;   // 섬 무관 최근접(폴백)
                 for (int i = 0; i < sinks.Count; i++)
                 {
                     if (remaining[i] <= 0) continue;
                     int d = Manhattan(house, sinks[i]);
                     if (d < bestAnyDist) { bestAnyDist = d; bestAny = i; } // strict < → 동점 시 낮은 인덱스 유지
-                    if (houseRegion >= 0 && sinkRegion[i] == houseRegion && d < bestDist)
-                    {
-                        bestDist = d;
-                        best = i;
-                    }
+                    if (houseRegion >= 0 && sinkRegion[i] == houseRegion)
+                        candidates.Add((i, d));
                 }
-                if (best < 0) best = bestAny;   // 도달 가능한 수요처 0개 → 기존 동작(배정하되 흐름 0)
-                if (best < 0) continue;         // 모든 sink 만석 → 이 집은 이 종류 수요 없음
+
+                int best;
+                if (candidates.Count > 0)
+                {
+                    // 거리순(동점은 flat 인덱스순) 상위 pool곳 중 집 좌표 해시로 택1.
+                    candidates.Sort((a, b) => a.dist != b.dist ? a.dist - b.dist : a.idx - b.idx);
+                    int span = Mathf.Min(pool, candidates.Count);
+                    best = candidates[HashPick(house, span)].idx;
+                }
+                else
+                {
+                    best = bestAny;   // 도달 가능한 수요처 0개 → 기존 동작(배정하되 흐름 0)
+                    if (best < 0) continue;   // 모든 sink 만석 → 이 집은 이 종류 수요 없음
+                }
 
                 remaining[best]--;
                 _demands.Add(new Demand { Source = house, Sink = sinks[best] });
             }
         }
+
+        // 좌표 기반 결정론 난수(SampleDailyVisits와 같은 프라임 해시) — 프레임·순서 무관.
+        static int HashPick(Vector2Int house, int count) =>
+            count <= 1 ? 0 : (((house.x * 73856093) ^ (house.y * 19349663)) & int.MaxValue) % count;
 
         static int Manhattan(Vector2Int a, Vector2Int b) =>
             Math.Abs(a.x - b.x) + Math.Abs(a.y - b.y);
