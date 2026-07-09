@@ -12,6 +12,11 @@ namespace CityFlow.DebugTools
 
         public void Initialize(CityFlowServices services)
         {
+            if (!isActiveAndEnabled)
+            {
+                return;
+            }
+
             var p = services.Placement;
             void Road(int x, int y) => p.Place(new Vector2Int(x, y), TileType.Road);
             void House(int x, int y) => p.Place(new Vector2Int(x, y), TileType.House);

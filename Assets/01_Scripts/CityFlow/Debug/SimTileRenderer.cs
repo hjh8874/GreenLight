@@ -43,6 +43,11 @@ namespace CityFlow.DebugTools
 
         public void Initialize(CityFlowServices services)
         {
+            if (!isActiveAndEnabled)
+            {
+                return;
+            }
+
             _data = services.TileData;
             _engine = services.Placement as SimEngine;   // 진짜 엔진일 때만 차 그림(Fake면 null)
             _w = size * CellPx;

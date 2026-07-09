@@ -16,6 +16,23 @@ namespace CityFlow.UI
         [SerializeField] private Button btnOffice;
         [SerializeField] private Button btnRemove; // 철거 버튼
 
+        private bool _isBound;
+
+        public void Configure(
+            PlacementController placement,
+            Button road,
+            Button house,
+            Button office,
+            Button remove)
+        {
+            placementController = placement;
+            btnRoad = road;
+            btnHouse = house;
+            btnOffice = office;
+            btnRemove = remove;
+            BindButtons();
+        }
+
         private void Start()
         {
             if (placementController == null)
@@ -25,12 +42,23 @@ namespace CityFlow.UI
             }
 
             // 버튼 클릭 시 타일 타입 변경 함수 자동 바인딩
+            BindButtons();
+        }
+
+        private void BindButtons()
+        {
+            if (_isBound || placementController == null)
+            {
+                return;
+            }
+
             if (btnRoad != null) btnRoad.onClick.AddListener(() => placementController.SetBuildType(TileType.Road));
             if (btnHouse != null) btnHouse.onClick.AddListener(() => placementController.SetBuildType(TileType.House));
             if (btnOffice != null) btnOffice.onClick.AddListener(() => placementController.SetBuildType(TileType.Office));
             
             // 철거 기능은 Empty 타일 타입으로 전달
             if (btnRemove != null) btnRemove.onClick.AddListener(() => placementController.SetBuildType(TileType.Empty)); 
+            _isBound = true;
         }
     }
 }
