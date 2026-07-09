@@ -23,6 +23,10 @@ namespace CityFlow.Sim
 
         public float DeliveredTotal { get; private set; }   // 이번 틱 총 처리량(대/초)
 
+        // 이번 틱의 가구당 수요율(대/초) = DemandPerHouse × 맥동 배율. Assign이 기록,
+        // Resolve·SimStats가 같은 값을 쓴다 — 분자·분모가 못 갈라짐.
+        public float DemandRate { get; private set; }
+
         // 이번 틱에 흐른 실제 경로들(뷰가 차를 이 위에 그림). 읽기 전용.
         public IReadOnlyList<List<Vector2Int>> Routes => _routes;
 
@@ -39,11 +43,13 @@ namespace CityFlow.Sim
 
         int Index(Vector2Int t) => t.y * _w + t.x;
 
-        public void Assign(DemandMap demand, RoadNetwork net, in SimConfig cfg)
+        // demandScale: 이번 틱 수요 맥동 배율(SimConfig.DemandPulse). 1 = 균일(기존 동작).
+        public void Assign(DemandMap demand, RoadNetwork net, in SimConfig cfg, float demandScale = 1f)
         {
             Array.Clear(_flow, 0, _flow.Length);
             _routes.Clear();
             _routeSinks.Clear();
+            DemandRate = cfg.DemandPerHouse * demandScale;
 
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
@@ -55,7 +61,7 @@ namespace CityFlow.Sim
                 if (path == null) continue;
 
                 for (int p = 0; p < path.Count; p++)
-                    _flow[Index(path[p])] += cfg.DemandPerHouse;
+                    _flow[Index(path[p])] += DemandRate;
                 _routes.Add(path);
                 _routeSinks.Add(demands[i].Sink);
             }
@@ -65,7 +71,8 @@ namespace CityFlow.Sim
         public void Resolve(in SimConfig cfg) => Resolve(cfg, null);
 
         // 신호 포함 Resolve: delivered = 수요 × E(혼잡 병목) × SignalFactor(그린웨이브 조율).
-        public void Resolve(in SimConfig cfg, SignalMap signals)
+        // simTime: 오버라이드 스킬 만료 판정용(기본 0 = 오버라이드 없음, 기존 호출 호환).
+        public void Resolve(in SimConfig cfg, SignalMap signals, double simTime = 0)
         {
             // ① 타일별 혼잡: <Slow Free / Slow~Jam Slow / >Jam Jam (SimConfig 주석 규약)
             for (int i = 0; i < _flow.Length; i++)
@@ -85,7 +92,8 @@ namespace CityFlow.Sim
                 {
                     if (!signals.TryGet(tiles[k], out var s)) continue;
                     if (s.CycleSlots <= 0) continue;   // 주기 0 = 항상 초록(IsGreen과 같은 규약)
-                    float g = SignalMath.GreenRatio(s);
+                    // 오버라이드 스킬 활성 중엔 한 방향 상시 초록 = 유효 용량 풀(듀티 1).
+                    float g = s.OverrideUntil > simTime ? 1f : SignalMath.GreenRatio(s);
                     int i = Index(tiles[k]);
                     _ratio[i] = g > 0f ? _flow[i] / (cfg.RoadCapacity * g)
                               : _flow[i] > 0f ? cfg.EfficiencyMinRatio : 0f;   // 초록 0 = 흐르면 최악 병목
@@ -108,14 +116,14 @@ namespace CityFlow.Sim
                 }
 
                 float e = Efficiency(bottleneck, cfg);
-                float delivered = cfg.DemandPerHouse * e * SignalFactor(path, signals, cfg);
+                float delivered = DemandRate * e * SignalFactor(path, signals, cfg);
                 DeliveredTotal += delivered;
                 _deliveredToSink[Index(_routeSinks[r])] += delivered;
 
                 // 잃은 처리량(rate×틱=대수)을 병목에 적립 — 나중에 그 타일을 고치면 Burst 보상의 원료.
                 // 신호 손실은 pending에 안 넣음: 조율의 보상은 Burst가 아니라 그린웨이브 처리량 자체(설계 §2).
                 if (e < 1f && bottleneckIdx >= 0)
-                    _pendingReward[bottleneckIdx] += cfg.DemandPerHouse * (1f - e) * cfg.TickInterval;
+                    _pendingReward[bottleneckIdx] += DemandRate * (1f - e) * cfg.TickInterval;
             }
         }
 

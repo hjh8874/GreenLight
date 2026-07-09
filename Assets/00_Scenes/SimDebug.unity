@@ -171,7 +171,7 @@ MonoBehaviour:
   useFakeServices: 0
   mapWidth: 20
   mapHeight: 20
-  simConfig: {fileID: 0}
+  simConfig: {fileID: 11400000, guid: 77d8fda261844470987a32a13bd0df52, type: 2}
 --- !u!4 &111543631
 Transform:
   m_ObjectHideFlags: 0

@@ -72,8 +72,9 @@ namespace CityFlow.Sim
                 _grid.ClearTopologyDirty();
             }
 
-            _solver.Assign(_demand, _network, _config);   // ① 수요→세그먼트 흐름 배정
-            _solver.Resolve(_config, _signals);           // ② 혼잡·병목·그린웨이브·delivered
+            // ① 수요→세그먼트 흐름 배정 (러시아워 맥동 배율 반영 — 기획 §1 '수요의 맥동')
+            _solver.Assign(_demand, _network, _config, SimConfig.DemandPulse(_simTime, _config));
+            _solver.Resolve(_config, _signals, _simTime); // ② 혼잡·병목·그린웨이브·오버라이드·delivered
             _congestion.Scan(_solver, _events, _config);  // ②' 레벨 전이만 이벤트로
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
@@ -100,8 +101,8 @@ namespace CityFlow.Sim
                 _signals.Rebuild(_grid);
                 _grid.ClearTopologyDirty();
             }
-            _solver.Assign(_demand, _network, _config);
-            _solver.Resolve(_config, _signals);   // 오프라인도 신호 조율 상태 그대로 반영
+            _solver.Assign(_demand, _network, _config);   // 정산은 평균 수요(맥동 무시 = 공정)
+            _solver.Resolve(_config, _signals, _simTime); // 오프라인도 신호 조율 상태 그대로 반영
 
             double capped = Math.Min(elapsedSeconds, _config.OfflineCapHours * 3600.0);
             long coins = _arrivals.SettleOffline(_solver, capped, _config);
@@ -162,11 +163,41 @@ namespace CityFlow.Sim
 
         // 뷰용: 이 교차로가 지금 초록인가(시뮬 시간 기준). 신호 없으면 항상 초록 취급.
         public bool IsSignalGreen(Vector2Int tile) =>
-            !_signals.TryGet(tile, out var s) || SignalMath.IsGreen(s, _simTime);
+            !_signals.TryGet(tile, out var s) || s.OverrideUntil > _simTime || SignalMath.IsGreen(s, _simTime);
 
         // 뷰용: 이 교차로의 이 방향 신호 3상태(초록/노랑/적색). 신호 없으면 항상 초록.
-        public SignalPhase GetSignalPhase(Vector2Int tile, bool horizontal) =>
-            _signals.TryGet(tile, out var s) ? SignalMath.PhaseForAxis(s, _simTime, horizontal) : SignalPhase.Green;
+        // 오버라이드 중엔 지정 축만 초록, 반대 축은 적색(교차 충돌 방지).
+        public SignalPhase GetSignalPhase(Vector2Int tile, bool horizontal)
+        {
+            if (!_signals.TryGet(tile, out var s)) return SignalPhase.Green;
+            if (s.OverrideUntil > _simTime)
+                return horizontal == s.OverrideHorizontal ? SignalPhase.Green : SignalPhase.Red;
+            return SignalMath.PhaseForAxis(s, _simTime, horizontal);
+        }
+
+        // ── 오버라이드 스킬(기획 §2-D): duration초 한 방향 강제 초록 + 엔진 강제 쿨다운 ──
+        // 능동 개입의 손맛 레버. 쿨다운을 엔진이 들고 있는 이유: UI는 트러스트 경계 밖.
+        readonly Dictionary<Vector2Int, double> _overrideReadyAt = new();
+
+        public bool TryOverrideSignal(Vector2Int tile, bool horizontal)
+        {
+            if (!_signals.TryGet(tile, out var s)) return false;
+            if (_overrideReadyAt.TryGetValue(tile, out var ready) && _simTime < ready) return false;
+
+            s.OverrideUntil = _simTime + _config.OverrideDurationSeconds;
+            s.OverrideHorizontal = horizontal;
+            _overrideReadyAt[tile] = s.OverrideUntil + _config.OverrideCooldownSeconds;
+            return true;
+        }
+
+        // 뷰용: 오버라이드 남은 시간(0 = 비활성) / 쿨다운 남은 시간(0 = 사용 가능).
+        public float GetOverrideSecondsLeft(Vector2Int tile) =>
+            _signals.TryGet(tile, out var s) && s.OverrideUntil > _simTime
+                ? (float)(s.OverrideUntil - _simTime) : 0f;
+
+        public float GetOverrideCooldownLeft(Vector2Int tile) =>
+            _overrideReadyAt.TryGetValue(tile, out var ready) && ready > _simTime
+                ? (float)(ready - _simTime) : 0f;
 
         // 진입 허가 = 초록만(노랑·적색은 진입 금지).
         public bool IsSignalGreen(Vector2Int tile, bool horizontal) =>

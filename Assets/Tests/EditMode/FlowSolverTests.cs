@@ -88,5 +88,35 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0f, solver.DeliveredTotal, 1e-4f);
             Assert.AreEqual(CongestionLevel.Free, solver.GetCongestion(V(2, 0)));
         }
+
+        [Test]
+        public void DemandPulse_TwoHumpsPerDay_AmplitudeZeroIsFlat()
+        {
+            var c = SimConfig.Default();   // 기본 진폭 0 = 항상 균일(기존 동작 보존)
+            Assert.AreEqual(1f, SimConfig.DemandPulse(0, c), 1e-4f);
+            Assert.AreEqual(1f, SimConfig.DemandPulse(37.7, c), 1e-4f);
+
+            c.RushAmplitude = 0.6f; c.DayLengthSeconds = 120f;
+            Assert.AreEqual(1.6f, SimConfig.DemandPulse(15, c), 1e-3f);   // 아침 봉우리(T/8)
+            Assert.AreEqual(1f, SimConfig.DemandPulse(45, c), 1e-3f);     // 낮(사인 음수 구간 = 평시)
+            Assert.AreEqual(1.6f, SimConfig.DemandPulse(75, c), 1e-3f);   // 저녁 봉우리(5T/8)
+            Assert.AreEqual(SimConfig.DemandPulse(15, c), SimConfig.DemandPulse(135, c), 1e-4f); // 다음날 동일(결정론)
+        }
+
+        [Test]
+        public void DemandScale_ScalesDeliveredAndStats()
+        {
+            // 러시아워 배율 1.5 → 여유 용량에선 delivered도 1.5배, 안정도 분모(DemandRate)도 함께.
+            var g = StraightCity();
+            var cfg = Cfg(demand: 1f, capacity: 10f);
+            var dm = new DemandMap(cfg);
+            dm.Reassign(g, new RoadNetwork(g));
+            var solver = new FlowSolver(g.Width, g.Height);
+            solver.Assign(dm, new RoadNetwork(g), cfg, demandScale: 1.5f);
+            solver.Resolve(cfg);
+
+            Assert.AreEqual(1.5f, solver.DeliveredTotal, 1e-3f);
+            Assert.AreEqual(1.5f, solver.DemandRate, 1e-4f);
+        }
     }
 }

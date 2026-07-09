@@ -361,6 +361,31 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void OverrideSignal_ForcesAxisGreen_ThenCooldownAndExpiry()
+        {
+            // 오버라이드 스킬: 지정 축 강제 초록 + 반대 축 적색, 쿨다운 중 재사용 거절, 만료 후 복귀.
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            c.OverrideDurationSeconds = 0.5f;   // 테스트용 짧게
+            c.OverrideCooldownSeconds = 1f;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 8; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(4, 1), TileType.Road);
+            e.Tick(0.25f);                       // 교차로 감지
+
+            Assert.IsFalse(e.TryOverrideSignal(V(1, 0), true));                    // 신호 없는 타일 거절
+            Assert.IsTrue(e.TryOverrideSignal(V(4, 0), horizontal: false));
+            Assert.AreEqual(SignalPhase.Green, e.GetSignalPhase(V(4, 0), false));  // 지정 축 초록
+            Assert.AreEqual(SignalPhase.Red, e.GetSignalPhase(V(4, 0), true));     // 반대 축 적색(충돌 방지)
+            Assert.IsFalse(e.TryOverrideSignal(V(4, 0), false));                   // 지속+쿨다운 중 거절
+            Assert.Greater(e.GetOverrideSecondsLeft(V(4, 0)), 0f);
+
+            for (int i = 0; i < 8; i++) e.Tick(0.25f);                             // 2s 경과 = 만료+쿨다운 해제
+            Assert.AreEqual(0f, e.GetOverrideSecondsLeft(V(4, 0)));
+            Assert.IsTrue(e.TryOverrideSignal(V(4, 0), true));                     // 재사용 가능
+        }
+
+        [Test]
         public void Remove_OutOfBounds_ReturnsFalse_NoCrash_NoEvent()
         {
             var c = Cfg(0.25f);

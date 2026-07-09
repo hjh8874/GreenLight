@@ -40,6 +40,17 @@ namespace CityFlow.Sim
         // 3이면 통근 동선이 흩어져 도시가 살아 보임 🔓
         public int   DemandChoicePool;
 
+        // ── 수요 맥동(러시아워) ──
+        // 하루 두 봉우리(출근·퇴근)로 수요가 뭉쳐 나와 병목이 자연스럽게 '빌드업'된다(기획 §1).
+        // 0 = 균일(기존 동작·테스트 그대로). 배율은 DemandPulse() 참조 🔓
+        public float RushAmplitude;      // 봉우리에서 수요가 몇 배 더해지나 (0.6 = 최대 1.6배)
+        public float DayLengthSeconds;   // 시뮬 하루 길이(초)
+
+        // ── 신호 오버라이드 스킬(기획 §2-D) ──
+        // 탭 = 한 방향 강제 초록으로 체증 세척. 쿨다운은 엔진이 강제(트러스트 경계) 🔓
+        public float OverrideDurationSeconds;
+        public float OverrideCooldownSeconds;
+
         // ── 보상(코인) 원료 ────────────────────
         public float CoinBase;          // 🔓 공식 형태·가중치 잠정
 
@@ -71,6 +82,10 @@ namespace CityFlow.Sim
             OfficeCapacity = 20,
             SchoolCapacity = 10,
             DemandChoicePool = 3,
+            RushAmplitude = 0f,        // 기본 오프 — SimDebug 씬은 SO 에셋으로 켠다
+            DayLengthSeconds = 120f,
+            OverrideDurationSeconds = 10f,
+            OverrideCooldownSeconds = 30f,
             CoinBase = 1f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,
@@ -79,5 +94,15 @@ namespace CityFlow.Sim
             BurstRewardMultiplier = 2f,
             OfflineCapHours = 8f,
         };
+
+        // 수요 맥동 배율(순수 함수 — 결정론·세이브 안전). sin(4πt/T)의 양수 구간만 취해
+        // 하루에 두 번(출근·퇴근) 수요가 부풀었다 가라앉는다. 진폭 0이면 항상 1.
+        public static float DemandPulse(double simTime, in SimConfig cfg)
+        {
+            if (cfg.RushAmplitude <= 0f || cfg.DayLengthSeconds <= 0f) return 1f;
+            float t01 = (float)(simTime % cfg.DayLengthSeconds / cfg.DayLengthSeconds);
+            float s = UnityEngine.Mathf.Sin(4f * UnityEngine.Mathf.PI * t01);
+            return 1f + cfg.RushAmplitude * UnityEngine.Mathf.Max(0f, s);
+        }
     }
 }
