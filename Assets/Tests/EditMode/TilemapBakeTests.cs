@@ -47,9 +47,10 @@ namespace CityFlow.Authoring.Tests
             map.SetTile(new Vector3Int(3, 4, 0), MakeTile(TileType.House));
             var rec = new RecordingPlacement(20, 20);
 
-            int placed = TilemapBake.Bake(map, rec);
+            var result = TilemapBake.Bake(map, rec);
 
-            Assert.AreEqual(2, placed);
+            Assert.AreEqual(2, result.Placed);
+            Assert.AreEqual(0, result.Skipped);
             Assert.AreEqual(TileType.Road, rec.Placed[new Vector2Int(1, 2)]);   // 셀=그리드 좌표
             Assert.AreEqual(TileType.House, rec.Placed[new Vector2Int(3, 4)]);
             Object.DestroyImmediate(root);
@@ -65,9 +66,10 @@ namespace CityFlow.Authoring.Tests
 
             var rec = new RecordingPlacement(20, 20);
 
-            int placed = TilemapBake.Bake(map, rec);
+            var result = TilemapBake.Bake(map, rec);
 
-            Assert.AreEqual(1, placed);
+            Assert.AreEqual(1, result.Placed);
+            Assert.AreEqual(1, result.Skipped);   // 격자 밖 CityTile 1개(99,99)가 스킵으로 집계
             Assert.AreEqual(TileType.Office, rec.Placed[new Vector2Int(5, 5)]);
             Assert.IsFalse(rec.Placed.ContainsKey(new Vector2Int(99, 99)));
             Object.DestroyImmediate(root);
