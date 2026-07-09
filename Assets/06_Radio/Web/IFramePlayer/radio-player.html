@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GreenLight Radio Player</title>
+    <link rel="stylesheet" href="radio-player.css">
+</head>
+<body>
+    <main class="radio-shell">
+        <button id="drag-handle" class="drag-handle" type="button" aria-label="Move radio player"></button>
+
+        <section class="player-frame" aria-label="YouTube radio player">
+            <div id="youtube-player"></div>
+        </section>
+
+        <section class="status-panel" aria-live="polite">
+            <p class="eyebrow">GreenLight Radio</p>
+            <h1 id="track-title">Waiting for track</h1>
+            <p id="player-status">IFrame Player API is loading.</p>
+        </section>
+    </main>
+
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="radio-player.js"></script>
+</body>
+</html>

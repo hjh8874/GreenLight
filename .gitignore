@@ -114,3 +114,6 @@ Assets/Screenshots/
 Assets/Screenshots.meta
 # Rider stray folder meta
 Assets/Scripts.meta
+
+# Third-party source archives kept locally for radio WebView evaluation
+Assets/06_Radio/ThirdParty/gree-unity-webview~/

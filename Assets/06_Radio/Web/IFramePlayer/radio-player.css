@@ -1,0 +1,95 @@
+:root {
+    color-scheme: dark;
+    --bg: #050708;
+    --panel: #10161a;
+    --line: #2b3940;
+    --text: #eef5f7;
+    --muted: #9baeb5;
+    --accent: #61d6b2;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.radio-shell {
+    display: grid;
+    grid-template-rows: 22px minmax(120px, 1fr) auto;
+    width: 100%;
+    height: 100%;
+    min-height: 180px;
+}
+
+.drag-handle {
+    width: 100%;
+    height: 22px;
+    margin: 0;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background:
+        radial-gradient(circle, var(--muted) 1px, transparent 2px) center / 8px 8px,
+        #0b1114;
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+}
+
+.drag-handle:active {
+    background:
+        radial-gradient(circle, var(--accent) 1px, transparent 2px) center / 8px 8px,
+        #0f1a1d;
+}
+
+.player-frame {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 120px;
+    background: #000;
+    border-bottom: 1px solid var(--line);
+}
+
+#youtube-player,
+#youtube-player iframe {
+    width: 100%;
+    height: 100%;
+    min-height: 120px;
+}
+
+.status-panel {
+    padding: 8px 10px 10px;
+    background: var(--panel);
+}
+
+.eyebrow {
+    margin: 0 0 4px;
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+h1 {
+    margin: 0 0 4px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.3;
+}
