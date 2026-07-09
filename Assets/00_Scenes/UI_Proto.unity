@@ -1169,6 +1169,7 @@ MonoBehaviour:
   colorValid: {r: 0, g: 1, b: 0, a: 0.5}
   colorInvalid: {r: 1, g: 0, b: 0, a: 0.5}
   useFakeMode: 1
+  confirmPopup: {fileID: 0}
 --- !u!4 &492217482
 Transform:
   m_ObjectHideFlags: 0
@@ -1639,7 +1640,7 @@ GameObject:
   - component: {fileID: 751416399}
   - component: {fileID: 751416398}
   m_Layer: 0
-  m_Name: Btn_Bulldozer
+  m_Name: Undo_Button
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1804,9 +1805,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Remove
-
-'
+  m_text: Undo
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -1833,7 +1832,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 18
+  m_fontSize: 25
   m_fontSizeBase: 24
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -4406,8 +4405,8 @@ RectTransform:
   - {fileID: 1677934652}
   - {fileID: 194899728}
   - {fileID: 1632904240}
-  - {fileID: 1773685975}
   - {fileID: 3480583}
+  - {fileID: 1773685975}
   m_Father: {fileID: 1594220675}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -5352,7 +5351,7 @@ MonoBehaviour:
   placementController: {fileID: 492217481}
   tooltipController: {fileID: 1562082669}
   buildSlots: []
-  btnRemove: {fileID: 751416398}
+  btnUndo: {fileID: 0}
   categoryTabs:
   - {fileID: 1678380914}
   - {fileID: 1582465997}

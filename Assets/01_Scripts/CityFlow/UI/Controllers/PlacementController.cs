@@ -4,9 +4,20 @@ using CityFlow.Contracts;
 using UnityEngine;
 using UnityEngine.EventSystems; // UI 클릭 감지용
 using UnityEngine.InputSystem;
+using System.Collections.Generic;
 
 namespace CityFlow.UI
 {
+    public enum PlacementActionType { Place, Remove }
+
+    public struct PlacementAction
+    {
+        public PlacementActionType ActionType;
+        public Vector2Int Coord;
+        public TileType PreviousType;
+        public TileType NewType;
+    }
+
     public class PlacementController : MonoBehaviour, ICityFlowServiceConsumer
     {
         [Header("Ghost Settings")]
@@ -19,8 +30,13 @@ namespace CityFlow.UI
         [Tooltip("월~화 코어엔진 미연동 시 UI 단독 테스트를 위한 강제 성공 모드")]
         [SerializeField] private bool useFakeMode = false; // 코어 연동을 위해 끕니다.
         
+        [Header("UI References")]
+        [SerializeField] private ConfirmPopupController confirmPopup;
+        
         private CityFlowServices _services;
         private bool _isBuildingMode = false;
+        
+        private Stack<PlacementAction> _undoStack = new Stack<PlacementAction>();
         
         public bool IsBuildingMode => _isBuildingMode;
         
@@ -64,8 +80,76 @@ namespace CityFlow.UI
             if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(isOn);
         }
 
+        public void UndoLastAction()
+        {
+            if (_undoStack.Count == 0) return;
+
+            var action = _undoStack.Pop();
+            if (_services != null && _services.Placement != null)
+            {
+                if (action.ActionType == PlacementActionType.Place)
+                {
+                    // 건설한 걸 되돌리기 -> 철거. 단, 이전에 무언가 있었다면 복구
+                    if (action.PreviousType == TileType.Empty)
+                    {
+                        _services.Placement.Remove(action.Coord);
+                    }
+                    else
+                    {
+                        _services.Placement.Place(action.Coord, action.PreviousType);
+                    }
+                    Debug.Log($"[Undo] Place 취소됨: {action.Coord}");
+                }
+                else if (action.ActionType == PlacementActionType.Remove)
+                {
+                    // 철거한 걸 되돌리기 -> 다시 건설
+                    _services.Placement.Place(action.Coord, action.PreviousType);
+                    Debug.Log($"[Undo] Remove 취소됨: {action.Coord}");
+                }
+            }
+        }
+
         private void Update()
         {
+            // 6. 마우스 우클릭 시 철거 확인창 호출 (건설 모드 여부와 상관없이 항상 동작)
+            if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
+            {
+                // 마우스가 UI 패널 위에 있으면 씬 클릭 무시
+                if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
+                {
+                    Vector2Int rightClickCoord = GetMouseGridCoordinate();
+                        TileType currentTileType = TileType.Empty;
+                        if (useFakeMode)
+                        {
+                            currentTileType = TileType.Road; // UI 단독 테스트 시에는 아무 바닥이나 Road가 있다고 가정
+                        }
+                        else if (_services != null && _services.TileData != null)
+                        {
+                            currentTileType = _services.TileData.GetTileType(rightClickCoord);
+                        }
+
+                        if (currentTileType != TileType.Empty)
+                        {
+                            if (confirmPopup != null)
+                            {
+                                confirmPopup.Show("Demolish this tile?", () => 
+                                {
+                                    TileType oldType = _currentType;
+                                    _currentType = TileType.Empty; 
+                                    PlaceInfrastructure(rightClickCoord);
+                                    _currentType = oldType; 
+                                });
+                            }
+                            else
+                            {
+                                TileType oldType = _currentType;
+                                _currentType = TileType.Empty; 
+                                PlaceInfrastructure(rightClickCoord);
+                                _currentType = oldType;
+                            }
+                        }
+                    }
+                }
             if (!_isBuildingMode || ghostRenderer == null) return;
 
             // 1. 방어 로직: 마우스가 UI(버튼, 패널) 위에 있으면 바닥 클릭(건설)을 방지합니다.
@@ -149,18 +233,22 @@ namespace CityFlow.UI
                 return;
             }
 
-            if (_services != null && _services.Placement != null)
+            if (_services != null && _services.Placement != null && _services.TileData != null)
             {
+                TileType previousType = _services.TileData.GetTileType(coord);
+
                 if (_currentType == TileType.Empty)
                 {
                     // 철거
                     _services.Placement.Remove(coord);
+                    _undoStack.Push(new PlacementAction { ActionType = PlacementActionType.Remove, Coord = coord, PreviousType = previousType, NewType = TileType.Empty });
                     Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 철거 명령 전달 완료.");
                 }
                 else
                 {
                     // 건설
                     _services.Placement.Place(coord, _currentType);
+                    _undoStack.Push(new PlacementAction { ActionType = PlacementActionType.Place, Coord = coord, PreviousType = previousType, NewType = _currentType });
                     Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 {_currentType} 건설 명령 전달 완료.");
                 }
             }

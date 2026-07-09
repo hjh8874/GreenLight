@@ -16,9 +16,9 @@ namespace CityFlow.UI
         [Tooltip("하단 수평 패널에 배치된 슬롯들 연결 (인스펙터 할당 또는 자동 검색)")]
         [SerializeField] private BuildSlotController[] buildSlots;
 
-        [Header("Remove Action")]
-        [Tooltip("철거 기능은 데이터(SO)가 없으므로 별도의 버튼으로 유지")]
-        [SerializeField] private Button btnRemove;
+        [Header("Undo Action")]
+        [Tooltip("최근 건설/철거 작업을 되돌리는 버튼")]
+        [SerializeField] private Button btnUndo;
 
         [Header("Categories")]
         [Tooltip("카테고리 탭 버튼들 (인프라, 주거, 상업, 공공 순서 권장)")]
@@ -42,11 +42,11 @@ namespace CityFlow.UI
             Button road,
             Button house,
             Button office,
-            Button remove,
+            Button undo,
             Button school)
         {
             placementController = placement;
-            btnRemove = remove;
+            btnUndo = undo;
 
             // 테스트 씬용 임시 런타임 버튼 연결 (우리 1차 빌드 본 게임 UI와는 별개로 동작)
             if (road != null) road.onClick.AddListener(() => placementController.SetBuildType(TileType.Road));
@@ -120,8 +120,8 @@ namespace CityFlow.UI
             {
                 return;
             }
-            // 철거 기능은 Empty 타일 타입으로 전달
-            if (btnRemove != null) btnRemove.onClick.AddListener(() => placementController.SetBuildType(TileType.Empty));
+            // 철거 버튼 ➡️ 되돌리기(Undo) 기능으로 변경
+            if (btnUndo != null) btnUndo.onClick.AddListener(() => placementController.UndoLastAction());
             _isBound = true;
         }
     }
