@@ -3186,7 +3186,6 @@ RectTransform:
   - {fileID: 90152824}
   - {fileID: 2043607317}
   - {fileID: 978758737}
-  - {fileID: 2053103797}
   m_Father: {fileID: 1594220675}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0}
@@ -3516,6 +3515,7 @@ GameObject:
   - component: {fileID: 1518630938}
   - component: {fileID: 1518630937}
   - component: {fileID: 1518630936}
+  - component: {fileID: 1518630939}
   m_Layer: 0
   m_Name: Road
   m_TagString: Untagged
@@ -3625,6 +3625,21 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1518630934}
   m_CullTransparentMesh: 1
+--- !u!114 &1518630939
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1518630934}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ed82f2fae860b9646a4389fdc5d42e47, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.BuildSlotController
+  tileData: {fileID: 11400000, guid: 893ad82746881f349a13799ce7aafd4a, type: 2}
+  iconImage: {fileID: 0}
+  costText: {fileID: 0}
 --- !u!1 &1562082667
 GameObject:
   m_ObjectHideFlags: 0
@@ -3637,13 +3652,14 @@ GameObject:
   - component: {fileID: 1562082671}
   - component: {fileID: 1562082670}
   - component: {fileID: 1562082669}
+  - component: {fileID: 1562082672}
   m_Layer: 0
   m_Name: ToolTip_Panel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1562082668
 RectTransform:
   m_ObjectHideFlags: 0
@@ -3720,6 +3736,18 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1562082667}
   m_CullTransparentMesh: 1
+--- !u!225 &1562082672
+CanvasGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1562082667}
+  m_Enabled: 1
+  m_Alpha: 1
+  m_Interactable: 1
+  m_BlocksRaycasts: 0
+  m_IgnoreParentGroups: 0
 --- !u!1 &1580388747
 GameObject:
   m_ObjectHideFlags: 0
@@ -3947,6 +3975,7 @@ RectTransform:
   - {fileID: 1454290744}
   - {fileID: 1632095788}
   - {fileID: 1562082668}
+  - {fileID: 2053103797}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -3972,7 +4001,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1632095788
 RectTransform:
   m_ObjectHideFlags: 0
@@ -4149,7 +4178,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Geon.BuildPanelController
   placementController: {fileID: 492217481}
-  tooltipController: {fileID: 0}
+  tooltipController: {fileID: 1562082669}
   buildSlots: []
   btnRemove: {fileID: 1077947416}
 --- !u!1 &1673251727
@@ -4579,6 +4608,7 @@ GameObject:
   - component: {fileID: 1815985355}
   - component: {fileID: 1815985354}
   - component: {fileID: 1815985353}
+  - component: {fileID: 1815985356}
   m_Layer: 0
   m_Name: House
   m_TagString: Untagged
@@ -4688,6 +4718,21 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1815985351}
   m_CullTransparentMesh: 1
+--- !u!114 &1815985356
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1815985351}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ed82f2fae860b9646a4389fdc5d42e47, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.BuildSlotController
+  tileData: {fileID: 11400000, guid: fe5e54d79e293ab40befa0564254f6cc, type: 2}
+  iconImage: {fileID: 0}
+  costText: {fileID: 0}
 --- !u!1 &1859367251
 GameObject:
   m_ObjectHideFlags: 0
@@ -4976,6 +5021,7 @@ GameObject:
   - component: {fileID: 1943634061}
   - component: {fileID: 1943634060}
   - component: {fileID: 1943634059}
+  - component: {fileID: 1943634062}
   m_Layer: 0
   m_Name: Office
   m_TagString: Untagged
@@ -5085,6 +5131,21 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1943634057}
   m_CullTransparentMesh: 1
+--- !u!114 &1943634062
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1943634057}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ed82f2fae860b9646a4389fdc5d42e47, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.BuildSlotController
+  tileData: {fileID: 11400000, guid: 90598d14bc57fc548b1a1d7ec2a7b93f, type: 2}
+  iconImage: {fileID: 0}
+  costText: {fileID: 0}
 --- !u!1 &1985872338
 GameObject:
   m_ObjectHideFlags: 0
@@ -5767,7 +5828,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &2053103797
 RectTransform:
   m_ObjectHideFlags: 0
@@ -5783,12 +5844,12 @@ RectTransform:
   - {fileID: 1021120905}
   - {fileID: 1286276731}
   - {fileID: 430970949}
-  m_Father: {fileID: 1454290744}
+  m_Father: {fileID: 1594220675}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0}
   m_AnchorMax: {x: 1, y: 0}
-  m_AnchoredPosition: {x: -80, y: 0}
-  m_SizeDelta: {x: 300, y: 400}
+  m_AnchoredPosition: {x: -100, y: 20}
+  m_SizeDelta: {x: 200, y: 240}
   m_Pivot: {x: 1, y: 0}
 --- !u!1 &2089938034
 GameObject:

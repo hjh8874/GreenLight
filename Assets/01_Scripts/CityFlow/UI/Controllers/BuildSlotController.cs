@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using CityFlow.Contracts;
+using CityFlow.Configs;
 using TMPro;
 
 namespace CityFlow.UI
@@ -26,14 +27,14 @@ namespace CityFlow.UI
             // UI 초기화
             if (tileData != null)
             {
-                if (iconImage != null && tileData.buildingIcon != null)
+                if (iconImage != null && tileData.BuildingIcon != null)
                 {
-                    iconImage.sprite = tileData.buildingIcon;
+                    iconImage.sprite = tileData.BuildingIcon;
                 }
                 
                 if (costText != null)
                 {
-                    costText.text = tileData.buildCost.ToString();
+                    costText.text = tileData.BuildCost.ToString();
                 }
             }
         }
@@ -42,7 +43,7 @@ namespace CityFlow.UI
         {
             if (_tooltipController != null && tileData != null)
             {
-                _tooltipController.ShowTooltip(tileData.buildingName, tileData.buildCost, tileData.buildingDescription);
+                _tooltipController.ShowTooltip(tileData.BuildingName, tileData.BuildCost, tileData.BuildingDescription);
             }
         }
 
@@ -58,8 +59,8 @@ namespace CityFlow.UI
         {
             if (_placementController != null && tileData != null)
             {
-                _placementController.SetBuildType(tileData.category);
-                Debug.Log($"[BuildSlot] {tileData.buildingName} 건설 모드 활성화");
+                _placementController.SetBuildType(tileData.Category);
+                Debug.Log($"[BuildSlot] {tileData.BuildingName} 건설 모드 활성화");
             }
         }
     }

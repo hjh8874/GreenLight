@@ -37,7 +37,7 @@ namespace CityFlow.UI
             gameObject.SetActive(true);
             
             if (txtName != null) txtName.text = name;
-            if (txtCost != null) txtCost.text = $"{cost} 코인";
+            if (txtCost != null) txtCost.text = $"{cost} Coins";
             if (txtDescription != null) txtDescription.text = description;
 
             // 켜지는 순간 랙 방지를 위해 즉시 위치 동기화

@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 using CityFlow.Contracts;
+using CityFlow.Configs;
 using System.IO;
 
 namespace CityFlow.Editor
@@ -21,15 +22,15 @@ namespace CityFlow.Editor
             if (!AssetDatabase.IsValidFolder(folderPath))
                 AssetDatabase.CreateFolder("Assets/05_ScriptableObjects/CityFlow", "TileData");
 
-            // 기획 명세에 맞춘 3가지 기본 타일 데이터 자동 생성
-            CreateData(folderPath, "RoadData", "road_001", "도로", TileType.Road, 50, 0, 0, "도시의 혈관이 되는 튼튼한 도로입니다.");
-            CreateData(folderPath, "HouseData", "house_001", "집", TileType.House, 100, 10, 1, "인구가 유입되고 세금(코인)을 창출하는 주거 구역입니다.");
-            CreateData(folderPath, "OfficeData", "office_001", "상업 시설", TileType.Office, 200, 30, 2, "더 많은 일자리와 수익을 내는 상업/사무 시설입니다.");
+            // Generate 3 basic tile data based on design specifications
+            CreateData(folderPath, "RoadData", "road_001", "Road", TileType.Road, 10, 0, 0, "Basic road for vehicles to travel.");
+            CreateData(folderPath, "HouseData", "house_001", "House", TileType.House, 50, 5, 1, "Provides housing and generates traffic.");
+            CreateData(folderPath, "OfficeData", "office_001", "Office", TileType.Office, 100, 20, 2, "Acts as a destination and generates coins.");
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             
-            Debug.Log($"[CityFlow] 데이터 생성 완료! 생성 위치: {folderPath}");
+            Debug.Log($"[CityFlow] Data generation complete! Location: {folderPath}");
         }
 
         private static void CreateData(string path, string assetName, string id, string name, TileType type, int cost, int coin, int prosperity, string desc)
@@ -44,13 +45,9 @@ namespace CityFlow.Editor
             }
 
             TileDataSO newData = ScriptableObject.CreateInstance<TileDataSO>();
-            newData.buildingId = id;
-            newData.buildingName = name;
-            newData.category = type;
-            newData.buildCost = cost;
-            newData.dailyCoinValue = coin;
-            newData.prosperityValue = prosperity;
-            newData.buildingDescription = desc;
+            
+            // 캡슐화 규칙(1차 빌드 피드백)에 따라 퍼블릭 변수 직접 접근 대신 Initialize 메서드를 사용합니다.
+            newData.Initialize(id, name, type, cost, coin, prosperity, desc);
 
             AssetDatabase.CreateAsset(newData, fullPath);
         }
