@@ -305,6 +305,61 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(TileType.Empty, e.GetTileType(V(1, 0)));   // 복원 = 전체 교체(잔존 없음)
         }
 
+        // ── ISignalControl(신호 조작 계약): 오프셋에 이어 초록 길이도 엔진 밖에서 조작 ──
+
+        [Test]
+        public void SignalControl_GreenLever_ChangesThroughput()
+        {
+            // 초록을 늘리면 그 교차로 유효 용량↑ → 막혔던 처리량 회복. #11 레버의 손잡이(setter).
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            c.DemandPerHouse = 6f; c.RoadCapacity = 10f;   // 신호 타일 유효용량 5(듀티 0.5) → Jam
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 8; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(4, 1), TileType.Road);               // (4,0)이 교차로
+            e.Place(V(0, 1), TileType.House);
+            e.Place(V(8, 1), TileType.Office);
+            e.Tick(0.25f);
+
+            ISignalControl ctl = e;                        // 계약으로만 조작
+            Assert.AreEqual(1, ctl.SignalTiles.Count);
+            float choked = e.DeliveredTotal;
+
+            Assert.IsTrue(ctl.TrySetSignalGreenSlots(V(4, 0), 999));   // 초록 최대(주기로 클램프) → 듀티 1.0
+            e.Tick(0.25f);
+
+            Assert.Greater(e.DeliveredTotal, choked);        // 레버가 살아있음
+            Assert.AreEqual(6f, e.DeliveredTotal, 1e-3f);    // 완전 회복(ratio 0.6 Free)
+        }
+
+        [Test]
+        public void TrySetSignalGreenSlots_NonSignalTile_ReturnsFalse()
+        {
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            var e = Engine(c);
+            e.Place(V(1, 0), TileType.Road);
+            e.Tick(0.25f);
+            Assert.IsFalse(((ISignalControl)e).TrySetSignalGreenSlots(V(1, 0), 4));   // 직선 도로 = 신호 없음
+        }
+
+        [Test]
+        public void TrySetSignalGreenSlots_ClampsToCycleRange()
+        {
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 8; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(4, 1), TileType.Road);
+            e.Tick(0.25f);
+
+            ISignalControl ctl = e;
+            ctl.TrySetSignalGreenSlots(V(4, 0), -5);
+            Assert.AreEqual(0, ctl.GetSignalGreenSlots(V(4, 0)));    // 음수 → 0
+            ctl.TrySetSignalGreenSlots(V(4, 0), 999);
+            Assert.AreEqual(16, ctl.GetSignalGreenSlots(V(4, 0)));   // 주기(기본 16) 초과 → 주기
+        }
+
         [Test]
         public void Remove_OutOfBounds_ReturnsFalse_NoCrash_NoEvent()
         {
