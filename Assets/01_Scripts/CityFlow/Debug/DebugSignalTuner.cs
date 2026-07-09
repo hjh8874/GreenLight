@@ -7,7 +7,7 @@ using UnityEngine.InputSystem;   // 프로젝트가 new Input System 사용
 namespace CityFlow.DebugTools
 {
     // QA용: 신호 두 레버(오프셋·초록 길이)를 런타임에 돌려 "보는 것 = 버는 것"을 검증. 화면에 처리량·안정도·선택 신호 표시.
-    //  Tab=다음 신호 선택, ,/.=오프셋 -/+, [/]=초록 길이 -/+, R=전체 오프셋 0.
+    //  마우스 좌클릭 또는 Tab=신호 선택, ,/.=오프셋 -/+, [/]=초록 길이 -/+, R=전체 오프셋 0.
     // 두 레버 모두 ISignalControl 계약 메서드(SimEngine 구현)로 조작 — 김건 Game뷰 UI가 붙을 창구와 동일.
     // ponytail: 김건 Game뷰 UI 나오면 폐기 — 디버그 전용 임시 도구.
     public sealed class DebugSignalTuner : MonoBehaviour, ICityFlowServiceConsumer
@@ -34,11 +34,22 @@ namespace CityFlow.DebugTools
             if (tiles.Count == 0) return;
             if (_sel >= tiles.Count) _sel = 0;
 
+            // 마우스 좌클릭으로 신호 선택: 클릭 지점을 월드→타일로 환산해, 그 타일이 신호면 선택.
+            // 렌더러가 타일 1칸=월드 1유닛(원점 기준)으로 그리므로 floor로 타일 좌표가 나온다.
+            var mouse = Mouse.current;
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame && Camera.main != null)
+            {
+                Vector3 wp = Camera.main.ScreenToWorldPoint(mouse.position.ReadValue());
+                var clicked = new Vector2Int(Mathf.FloorToInt(wp.x), Mathf.FloorToInt(wp.y));
+                for (int i = 0; i < tiles.Count; i++)
+                    if (tiles[i] == clicked) { _sel = i; break; }
+            }
+
             var kb = Keyboard.current;
             if (kb == null) return;
 
             if (kb.tabKey.wasPressedThisFrame)
-                _sel = (_sel + 1) % tiles.Count;                   // 다음 신호
+                _sel = (_sel + 1) % tiles.Count;                   // 다음 신호(마우스 대안)
 
             var t = tiles[_sel];
             int off = _engine.GetSignalOffsetSlots(t);
@@ -68,7 +79,7 @@ namespace CityFlow.DebugTools
                 GUI.Label(new Rect(12, 40, 700, 30),
                     $"선택 신호 [{_sel + 1}/{tiles.Count}] {t}  오프셋 {_engine.GetSignalOffsetSlots(t)}슬롯  초록 {_engine.GetSignalGreenSlots(t)}슬롯", style);
             }
-            GUI.Label(new Rect(12, 70, 700, 30), "Tab=다음신호   ,/. = 오프셋 -/+   [/] = 초록 -/+   R=전체리셋", style);
+            GUI.Label(new Rect(12, 70, 700, 30), "좌클릭/Tab=신호선택   ,/. = 오프셋 -/+   [/] = 초록 -/+   R=전체리셋", style);
         }
     }
 }
