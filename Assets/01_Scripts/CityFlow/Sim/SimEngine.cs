@@ -8,7 +8,7 @@ namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, ISimSaveSource, ISignalControl
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, ISimSaveSource, ISignalControl, IOfflineSettlementSource
     {
         readonly SimConfig _config;
         readonly CityGrid _grid;

@@ -23,6 +23,7 @@ namespace CityFlow.Bootstrap
         private FakePlacementService fakePlacementService;
         private SimEngine simEngine;
         private SaveService saveService;
+        private bool servicesInstalled;
 
         private void Awake()
         {
@@ -57,7 +58,10 @@ namespace CityFlow.Bootstrap
                     // TODO: This becomes non-null after SimEngine implements ISimSaveSource.
                     CreateSaveService((simEngine as object) as ISimSaveSource));
             }
+        }
 
+        private void Start()
+        {
             InstallServices();
         }
 
@@ -75,6 +79,11 @@ namespace CityFlow.Bootstrap
 
         private void InstallServices()
         {
+            if (servicesInstalled)
+            {
+                return;
+            }
+
             MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>(
                 FindObjectsInactive.Include,
                 FindObjectsSortMode.None);
@@ -91,6 +100,8 @@ namespace CityFlow.Bootstrap
                     consumer.Initialize(Services);
                 }
             }
+
+            servicesInstalled = true;
         }
 
         private SaveService CreateSaveService(ISimSaveSource simSaveSource)
