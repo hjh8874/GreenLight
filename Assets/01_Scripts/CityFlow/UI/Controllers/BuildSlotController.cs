@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using CityFlow.Contracts;
 using CityFlow.Configs;
 using TMPro;
+using DG.Tweening;
 
 namespace CityFlow.UI
 {
@@ -15,6 +16,7 @@ namespace CityFlow.UI
         [Header("UI References (Self)")]
         [SerializeField] private Image iconImage;
         [SerializeField] private TextMeshProUGUI costText;
+        [SerializeField] private Button btnBuy;
 
         private PlacementController _placementController;
         private TooltipController _tooltipController;
@@ -37,18 +39,32 @@ namespace CityFlow.UI
                     costText.text = tileData.BuildCost.ToString();
                 }
             }
+
+            if (btnBuy != null)
+            {
+                btnBuy.onClick.RemoveAllListeners();
+                btnBuy.onClick.AddListener(OnBuyClicked);
+            }
         }
 
         public void OnPointerEnter(PointerEventData eventData)
         {
+            // DOTween Hover Animation
+            transform.DOKill();
+            transform.DOScale(1.1f, 0.2f).SetEase(Ease.OutBack);
+
             if (_tooltipController != null && tileData != null)
             {
-                _tooltipController.ShowTooltip(tileData.BuildingName, tileData.BuildCost, tileData.BuildingDescription);
+                _tooltipController.ShowTooltip(tileData);
             }
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
+            // DOTween Hover Reset
+            transform.DOKill();
+            transform.DOScale(1f, 0.15f).SetEase(Ease.OutQuad);
+
             if (_tooltipController != null)
             {
                 _tooltipController.HideTooltip();
@@ -57,6 +73,25 @@ namespace CityFlow.UI
 
         public void OnPointerClick(PointerEventData eventData)
         {
+            // 전체 슬롯 클릭 시 가벼운 선택 애니메이션 (실제 건설은 btnBuy가 담당)
+            transform.DOKill();
+            transform.localScale = Vector3.one; 
+            transform.DOPunchScale(new Vector3(-0.05f, -0.05f, 0f), 0.15f, 2, 0.5f);
+
+            // 만약 별도의 구매 버튼(btnBuy)이 연결되지 않은 기존 프리팹이라면 호환성을 위해 여기서 처리합니다.
+            if (btnBuy == null)
+            {
+                OnBuyClicked();
+            }
+        }
+
+        private void OnBuyClicked()
+        {
+            if (btnBuy != null)
+            {
+                btnBuy.transform.DOPunchScale(new Vector3(-0.2f, -0.2f, 0f), 0.2f, 5, 1f);
+            }
+
             if (_placementController != null && tileData != null)
             {
                 _placementController.SetBuildType(tileData.Category);

@@ -4,6 +4,7 @@ using CityFlow.Contracts;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using DG.Tweening;
 
 namespace CityFlow.UI
 {
@@ -33,6 +34,7 @@ namespace CityFlow.UI
         private Coroutine _updateRoutine;
         private float _currentWaitTime = 0f;
         private Vector2Int _currentTile;
+        private bool _isClosing = false;
 
         public void Configure(
             TMP_Text title,
@@ -79,8 +81,16 @@ namespace CityFlow.UI
 
         public void OpenCard(Vector2Int tile)
         {
+            if (gameObject.activeSelf && _currentTile == tile && !_isClosing) return; // 이미 열려있으면 무시
+            
+            _isClosing = false;
             _currentTile = tile;
             gameObject.SetActive(true);
+
+            // DOTween 팝업 애니메이션
+            transform.DOKill();
+            transform.localScale = Vector3.zero;
+            transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
             
             // 1. 타일 좌표 기반 가짜 데이터 조립 (팩토리 패턴 적용) 및 타일 종류(이름) 설정
             SynthesizeFakeVehicleData(tile);
@@ -93,8 +103,16 @@ namespace CityFlow.UI
 
         public void CloseCard()
         {
+            if (_isClosing || !gameObject.activeSelf) return;
+            _isClosing = true;
+
             if (_updateRoutine != null) StopCoroutine(_updateRoutine);
-            gameObject.SetActive(false);
+            
+            // DOTween 닫기 애니메이션
+            transform.DOKill();
+            transform.DOScale(Vector3.zero, 0.2f).SetEase(Ease.InBack).OnComplete(() => {
+                gameObject.SetActive(false);
+            });
         }
 
         private void SynthesizeFakeVehicleData(Vector2Int tile)
