@@ -13,5 +13,6 @@ namespace CityFlow.Contracts.Save
         public EconomySaveData Economy;
         public ResearchSaveData Research;
         public ProgressionSaveData Progression;
+        public GameCalendarSaveData Calendar;
     }
 }

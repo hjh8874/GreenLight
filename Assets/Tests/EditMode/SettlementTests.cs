@@ -53,8 +53,9 @@ namespace CityFlow.Sim.Tests
         {
             // 상한 1시간: 2시간 방치해도 3600초만 정산 = 코인 1800, Minutes도 상한 기준 60
             var eng = BuildCity(out var settlements, out _, capHours: 1f);
-            eng.SettleOffline(7200.0);
+            double settledSeconds = eng.SettleOffline(7200.0);
 
+            Assert.AreEqual(3600.0, settledSeconds, 1e-9);
             Assert.AreEqual(1800L, settlements[0].Coins);
             Assert.AreEqual(60.0, settlements[0].Minutes, 1e-9);
         }

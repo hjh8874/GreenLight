@@ -10,8 +10,12 @@ namespace CityFlow.Save
         public IEconomySaveSource EconomySaveSource { get; private set; }
         public IResearchSaveSource ResearchSaveSource { get; private set; }
         public IProgressionSaveSource ProgressionSaveSource { get; private set; }
+        public IGameCalendarSaveSource GameCalendarSaveSource { get; private set; }
+        public IOfflineCalendarProgressionSource OfflineCalendarProgressionSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
         public ISaveClock Clock { get; private set; }
+        public bool IsRestoring { get; private set; }
+        public bool IsSavingEnabled { get; private set; } = true;
 
         public SaveService(
             ISimSaveSource simSaveSource,
@@ -34,6 +38,12 @@ namespace CityFlow.Save
             EconomySaveSource = economySaveSource;
         }
 
+        public void RegisterGameCalendarSaveSource(IGameCalendarSaveSource gameCalendarSaveSource)
+        {
+            GameCalendarSaveSource = gameCalendarSaveSource;
+            OfflineCalendarProgressionSource = gameCalendarSaveSource as IOfflineCalendarProgressionSource;
+        }
+
         public GameSaveData CreateSnapshot()
         {
             return new GameSaveData
@@ -45,7 +55,8 @@ namespace CityFlow.Save
                 Simulation = SimSaveSource?.CreateSnapshot(),
                 Economy = EconomySaveSource?.CreateSnapshot(),
                 Research = ResearchSaveSource?.CreateSnapshot(),
-                Progression = ProgressionSaveSource?.CreateSnapshot()
+                Progression = ProgressionSaveSource?.CreateSnapshot(),
+                Calendar = GameCalendarSaveSource?.CreateSnapshot()
             };
         }
 
@@ -83,12 +94,39 @@ namespace CityFlow.Save
             {
                 ProgressionSaveSource?.RestoreSnapshot(saveData.Progression);
             }
+
+            if (saveData.Calendar != null)
+            {
+                GameCalendarSaveSource?.RestoreSnapshot(saveData.Calendar);
+            }
         }
 
         public bool Save()
         {
+            if (!IsSavingEnabled)
+            {
+                Debug.Log("Game save skipped because saving is disabled for the current session.");
+                return false;
+            }
+
             GameSaveData saveData = CreateSnapshot();
             return Repository.TrySave(saveData);
+        }
+
+        public bool DeleteSaveAndSuspend()
+        {
+            try
+            {
+                Repository.DeleteSave();
+                IsSavingEnabled = false;
+                Debug.Log("Game save data deleted. Saving is disabled until the next game session.");
+                return true;
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning($"Game save data could not be deleted.\n{exception.Message}");
+                return false;
+            }
         }
 
         public bool TryLoadAndRestore()
@@ -106,8 +144,18 @@ namespace CityFlow.Save
                 return false;
             }
 
-            RestoreSnapshot(saveData);
-            SettleOfflineProgress(saveData);
+            IsRestoring = true;
+
+            try
+            {
+                RestoreSnapshot(saveData);
+                SettleOfflineProgress(saveData);
+            }
+            finally
+            {
+                IsRestoring = false;
+            }
+
             Debug.Log("Game save loaded and restored.");
             return true;
         }
@@ -143,12 +191,13 @@ namespace CityFlow.Save
                 return;
             }
 
-            offlineSettlementSource.SettleOffline(elapsedSeconds);
+            double settledSeconds = offlineSettlementSource.SettleOffline(elapsedSeconds);
+            OfflineCalendarProgressionSource?.AdvanceOffline(settledSeconds);
 
             bool savedAfterSettlement = Save();
             Debug.Log(savedAfterSettlement
-                ? $"Offline settlement completed and saved for {elapsedSeconds:0.##} seconds."
-                : $"Offline settlement completed for {elapsedSeconds:0.##} seconds, but the updated save could not be written.");
+                ? $"Offline settlement completed and saved for {settledSeconds:0.##} of {elapsedSeconds:0.##} elapsed seconds."
+                : $"Offline settlement completed for {settledSeconds:0.##} of {elapsedSeconds:0.##} elapsed seconds, but the updated save could not be written.");
         }
     }
 }

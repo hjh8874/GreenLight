@@ -2,6 +2,6 @@ namespace CityFlow.Contracts
 {
     public interface IOfflineSettlementSource
     {
-        void SettleOffline(double elapsedSeconds);
+        double SettleOffline(double elapsedSeconds);
     }
 }
