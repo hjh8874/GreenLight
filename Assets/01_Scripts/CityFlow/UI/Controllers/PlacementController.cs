@@ -287,13 +287,21 @@ namespace CityFlow.UI
         {
             if (useFakeMode) return true; // UI 독립 테스트를 위해 무조건 초록색(건설 가능) 반환
             
-            if (_services != null && _services.Placement != null)
+            if (_services != null && _services.Placement != null && _services.TileData != null)
             {
                 if (!GridUtil.IsInside(coord)) return false; // 맵 밖은 건설/선택 불가
 
-                // 실제 연산은 코어 모듈(IPlacementService)에 완벽히 위임합니다!
-                // 철거 모드(Empty)일 때는 유효성 검사 생략(항상 true) 하거나 별도 로직 태움
-                return _currentType == TileType.Empty ? true : _services.Placement.CanPlace(coord, _currentType); 
+                if (_currentType == TileType.Empty) return true;
+
+                // 덮어쓰기 허용 로직: 만약 현재 마우스 위치에 '다른 건물'이 있다면 건설(덮어쓰기)이 가능하다고 판단
+                TileType previousType = _services.TileData.GetTileType(coord);
+                if (previousType != TileType.Empty && previousType != _currentType)
+                {
+                    return true;
+                }
+
+                // 빈 땅이거나 그 외의 경우는 코어 엔진의 기본 룰(CanPlace)을 따름
+                return _services.Placement.CanPlace(coord, _currentType); 
             }
             return false;
         }
