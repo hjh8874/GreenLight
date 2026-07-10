@@ -13,7 +13,7 @@ namespace CityFlow.DebugTools
 {
     // CityFlowIntegrated_cmt ?꾩슜 ?듯빀 寃利??꾧뎄.
     // ?ㅼ젣 UI ?낅젰 -> PlacementController -> SimEngine -> ????쇱옟/李⑤웾/HUD ?쇰뱶諛??먮쫫?????ъ뿉???뺤씤?쒕떎.
-    public sealed class CityFlowIntegratedRuntime_cmt : MonoBehaviour, ICityFlowServiceConsumer
+    public sealed class CityFlowIntegratedRuntime : MonoBehaviour, ICityFlowServiceConsumer
     {
         [Header("Board")]
         [SerializeField] private int width = GridUtil.DefaultWidth;

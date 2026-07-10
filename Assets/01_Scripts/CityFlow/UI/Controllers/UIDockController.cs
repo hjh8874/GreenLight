@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 namespace CityFlow.UI
 {
@@ -21,6 +22,7 @@ namespace CityFlow.UI
 
         [Header("System Sync")]
         [SerializeField] private PlacementController placementController;
+        [SerializeField] private bool normalizeLayoutOnStart;
 
         private MenuType _currentMenu = MenuType.None;
         private bool _isBound;
@@ -50,11 +52,48 @@ namespace CityFlow.UI
 
         private void Start()
         {
-            // 버튼 클릭 이벤트 코드로 자동 바인딩
             BindButtons();
 
-            // 시작 시 모든 패널 닫기
+            if (normalizeLayoutOnStart)
+            {
+                NormalizeDockLayout();
+            }
+
             CloseAllPanels();
+        }
+
+        private void NormalizeDockLayout()
+        {
+            ConfigureDockButton(btnBuild, new Vector2(-24f, 114f));
+            ConfigureDockButton(btnResearch, new Vector2(-24f, 72f));
+            ConfigureDockButton(btnStats, new Vector2(-24f, 30f));
+            ConfigureDockButton(btnSettings, new Vector2(-24f, -12f));
+        }
+
+        private static void ConfigureDockButton(Button button, Vector2 anchoredPosition)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            RectTransform rect = button.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(1f, 0.5f);
+            rect.anchorMax = new Vector2(1f, 0.5f);
+            rect.pivot = new Vector2(1f, 0.5f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = new Vector2(120f, 34f);
+
+            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+            if (label == null)
+            {
+                return;
+            }
+
+            label.alignment = TextAlignmentOptions.Center;
+            label.fontSize = 16f;
+            label.textWrappingMode = TextWrappingModes.NoWrap;
+            label.overflowMode = TextOverflowModes.Overflow;
         }
 
         private void BindButtons()

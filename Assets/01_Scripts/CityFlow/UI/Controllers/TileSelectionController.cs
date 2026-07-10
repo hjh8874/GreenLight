@@ -14,6 +14,7 @@ namespace CityFlow.UI
         [Header("Visuals")]
         [Tooltip("타일을 선택했을 때 바닥에 표시될 강조(하이라이트) 박스")]
         [SerializeField] private GameObject highlightBox; 
+        [SerializeField] private bool useXYPlane = false;
 
         public void Configure(
             AnalysisCardController analysis,
@@ -23,6 +24,11 @@ namespace CityFlow.UI
             analysisCard = analysis;
             placementController = placement;
             highlightBox = highlight;
+        }
+
+        public void SetUseXYPlane(bool isOn)
+        {
+            useXYPlane = isOn;
         }
 
         private void Start()
@@ -63,6 +69,14 @@ namespace CityFlow.UI
         private Vector2Int? TryGetGridCoordinate()
         {
             Vector2 mousePos = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
+
+            if (useXYPlane && Camera.main != null)
+            {
+                float distance = Mathf.Abs(Camera.main.transform.position.z);
+                Vector3 worldPos = Camera.main.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, distance));
+                return new Vector2Int(Mathf.FloorToInt(worldPos.x), Mathf.FloorToInt(worldPos.y));
+            }
+
             Ray ray = Camera.main.ScreenPointToRay(mousePos);
             Plane groundPlane = new Plane(Vector3.up, Vector3.zero); // Y=0 바닥
             
@@ -80,7 +94,9 @@ namespace CityFlow.UI
             if (highlightBox != null)
             {
                 highlightBox.SetActive(true);
-                highlightBox.transform.position = new Vector3(coord.x, 0, coord.y);
+                highlightBox.transform.position = useXYPlane
+                    ? new Vector3(coord.x + 0.5f, coord.y + 0.5f, -0.55f)
+                    : new Vector3(coord.x, 0, coord.y);
             }
 
             // 상세 분석 카드 열기

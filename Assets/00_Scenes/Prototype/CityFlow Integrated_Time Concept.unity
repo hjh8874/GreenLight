@@ -240,7 +240,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 38bc641ef7d44bb4b9914d81e6a49722, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.CityFlowSandboxScenario_cmt
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.CityFlowSandboxScenario
   mode: 0
   relieveAfterSeconds: 3
   logEvents: 1
@@ -270,7 +270,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9bdff4f9f65544a0b0a2b80879227287, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.CityFlowIntegratedRuntime_cmt
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.CityFlowIntegratedRuntime
   width: 20
   height: 20
   tileSize: 1

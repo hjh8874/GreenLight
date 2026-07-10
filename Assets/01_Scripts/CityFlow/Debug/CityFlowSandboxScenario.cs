@@ -6,7 +6,7 @@ namespace CityFlow.DebugTools
 {
     // CityFlowSandbox_cmt test scenario.
     // Seeds repeatable real-SimEngine layouts for FlowBurst and view checks.
-    public sealed class CityFlowSandboxScenario_cmt : MonoBehaviour, ICityFlowServiceConsumer
+    public sealed class CityFlowSandboxScenario : MonoBehaviour, ICityFlowServiceConsumer
     {
         private enum ScenarioMode
         {
