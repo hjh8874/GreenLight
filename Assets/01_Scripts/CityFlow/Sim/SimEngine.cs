@@ -101,8 +101,13 @@ namespace CityFlow.Sim
                 _signals.Rebuild(_grid);
                 _grid.ClearTopologyDirty();
             }
+            // 정산은 평상 신호 기준 = 공정(맥동 무시와 같은 철학). 복귀 시 잔여 오버라이드는 소멸 —
+            // 시뮬 시간이 멈춰 있어 그대로 두면 최대 8h가 강제초록 처리량으로 정산되는 누수.
+            foreach (var t in _signals.Tiles)
+                if (_signals.TryGet(t, out var sig)) sig.OverrideUntil = 0;
+
             _solver.Assign(_demand, _network, _config);   // 정산은 평균 수요(맥동 무시 = 공정)
-            _solver.Resolve(_config, _signals, _simTime); // 오프라인도 신호 조율 상태 그대로 반영
+            _solver.Resolve(_config, _signals, _simTime); // 오프라인도 신호 조율(오프셋·초록)은 그대로 반영
 
             double capped = Math.Min(elapsedSeconds, _config.OfflineCapHours * 3600.0);
             long coins = _arrivals.SettleOffline(_solver, capped, _config);
@@ -281,6 +286,8 @@ namespace CityFlow.Sim
             return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray() };
         }
 
+        // 주의: _overrideReadyAt은 복원해도 유지(의도) — 세이브 로드로 쿨다운을 리셋하는 악용 방지.
+        // _simTime도 리셋하지 않으므로 잔여 쿨다운은 자연 만료로 수렴(무한 잠금 없음).
         public void RestoreSnapshot(SimSaveData snapshot)
         {
             if (snapshot == null) return;                        // SaveService도 거르지만 방어 한 겹

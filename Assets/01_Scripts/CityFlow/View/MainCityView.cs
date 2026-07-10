@@ -507,6 +507,8 @@ namespace CityFlow.View
             speed *= Mathf.Lerp(1f, 0.25f, tileData.GetDensity01(currentTile));
 
             // 오버라이드 라인 가속: 이 차가 향하는 다음 신호가 오버라이드 중이면 시각 속도↑(순수 연출).
+            // 주의: 전방 신호가 오버라이드여도 이 차의 축이 적색(수직축)일 수 있음 — 그 경우는
+            // 바로 아래 blockedBySignal 체크가 speed=0으로 덮어 교정(이 순서가 깨지면 오판정).
             if (signalControl != null && TryGetNextSignalTile(route, vehicle.Phase, out _, out Vector2Int aheadSignal)
                 && signalControl.GetOverrideSecondsLeft(aheadSignal) > 0f)
             {

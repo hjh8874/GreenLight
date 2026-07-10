@@ -38,7 +38,9 @@ namespace CityFlow.View
             Camera cam = Camera.main;
             if (cam != null)
             {
-                cam.transform.DOKill();
+                // complete:true 필수 — 진행 중 셰이크를 원점 복귀시키고 죽인다. 기본 DOKill은
+                // 흔들린 중간 위치에 카메라를 남겨 다음 셰이크가 거기를 기준점 삼음 → 누적 드리프트.
+                cam.transform.DOKill(complete: true);
                 cam.transform.DOShakePosition(shakeDuration, ShakeStrengthFor(e.Reward))
                     .SetUpdate(true);
             }
