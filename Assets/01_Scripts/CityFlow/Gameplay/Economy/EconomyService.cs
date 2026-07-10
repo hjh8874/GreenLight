@@ -106,7 +106,7 @@ namespace CityFlow.Gameplay.Economy
             AddCoins(e.Coins, "offline settlement");
         }
 
-        private void AddCoins(long amount, string reason)
+        public void AddCoins(long amount, string reason)
         {
             if (amount <= 0L)
             {
