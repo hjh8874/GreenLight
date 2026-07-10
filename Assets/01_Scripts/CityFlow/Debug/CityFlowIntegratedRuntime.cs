@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.Sim;
@@ -299,11 +299,10 @@ namespace CityFlow.DebugTools
             TextMeshProUGUI vehicleId = CreateTmpText(analysisPanel.transform, "VehicleId", "ID", new Vector2(12f, -68f), new Vector2(232f, 22f), 15);
             TextMeshProUGUI vehicleType = CreateTmpText(analysisPanel.transform, "VehicleType", "Type", new Vector2(12f, -94f), new Vector2(232f, 22f), 15);
             TextMeshProUGUI wait = CreateTmpText(analysisPanel.transform, "Wait", "0.0s", new Vector2(12f, -120f), new Vector2(232f, 22f), 15);
-            Image localCongestion = CreateFillImage(analysisPanel.transform, "LocalCongestionFill", new Vector2(12f, -150f), new Vector2(232f, 18f));
             Button resolve = CreateTmpButton(analysisPanel.transform, "Resolve Jam", new Vector2(12f, -182f), new Vector2(108f, 32f));
             Button upgrade = CreateTmpButton(analysisPanel.transform, "Upgrade", new Vector2(136f, -182f), new Vector2(108f, 32f));
             AnalysisCardController analysis = analysisPanel.AddComponent<AnalysisCardController>();
-            analysis.Configure(title, coord, vehicleId, vehicleType, wait, localCongestion, resolve, upgrade, false);
+            analysis.Configure(title, coord, vehicleId, vehicleType, wait, resolve, upgrade, false);
             analysis.Initialize(services);
 
             GameObject highlight = GameObject.CreatePrimitive(PrimitiveType.Cube);
