@@ -717,12 +717,12 @@ namespace CityFlow.View
 
         public void OverrideSelectedSignal(bool horizontal)
         {
-            if (simEngine == null || !TryGetSelectedSignal(out Vector2Int selected))
+            if (signalControl == null || !TryGetSelectedSignal(out Vector2Int selected))
             {
                 return;
             }
 
-            simEngine.TryOverrideSignal(selected, horizontal);
+            signalControl.TryOverrideSignal(selected, horizontal);
         }
 
         private bool TryGetSelectedSignal(out Vector2Int selected)
