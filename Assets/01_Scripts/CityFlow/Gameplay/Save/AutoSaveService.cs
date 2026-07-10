@@ -70,6 +70,12 @@ namespace CityFlow.Gameplay.Save
                 return;
             }
 
+            if (services?.Save?.IsRestoring == true)
+            {
+                Debug.Log("[AutoSaveService] Month auto save skipped while save data is being restored.");
+                return;
+            }
+
             if (services?.Save == null)
             {
                 Debug.LogWarning("[AutoSaveService] Month auto save skipped because SaveService is not connected.");

@@ -23,7 +23,7 @@ namespace CityFlow.Save
 
         public bool HasSave()
         {
-            return File.Exists(FilePath);
+            return File.Exists(FilePath) || File.Exists(BackupFilePath);
         }
 
         public bool TrySave(GameSaveData data)

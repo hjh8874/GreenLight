@@ -91,8 +91,13 @@ namespace CityFlow.Sim
 
         // 복귀 정산: 마지막 도시 상태의 처리량으로 경과시간을 적분(상한 OfflineCapHours).
         // 세이브 시스템(한준희)이 앱 복귀 시 호출 → SettlementEvent로 결과 발행.
-        public void SettleOffline(double elapsedSeconds)
+        public double SettleOffline(double elapsedSeconds)
         {
+            if (elapsedSeconds <= 0.0)
+            {
+                return 0.0;
+            }
+
             // 마지막 배치가 아직 시뮬에 반영 전이면 반영부터(정산은 최신 도시 기준).
             if (_grid.TopologyDirty)
             {
@@ -104,11 +109,13 @@ namespace CityFlow.Sim
             _solver.Assign(_demand, _network, _config);   // 정산은 평균 수요(맥동 무시 = 공정)
             _solver.Resolve(_config, _signals, _simTime); // 오프라인도 신호 조율 상태 그대로 반영
 
-            double capped = Math.Min(elapsedSeconds, _config.OfflineCapHours * 3600.0);
+            double capSeconds = Math.Max(0.0, _config.OfflineCapHours * 3600.0);
+            double capped = Math.Min(elapsedSeconds, capSeconds);
             long coins = _arrivals.SettleOffline(_solver, capped, _config);
 
             _events.QueueSettlement(new SettlementEvent(capped / 60.0, coins));
             _events.Drain();
+            return capped;
         }
 
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──

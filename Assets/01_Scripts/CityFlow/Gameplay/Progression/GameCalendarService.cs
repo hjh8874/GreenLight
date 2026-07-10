@@ -1,11 +1,17 @@
 using System;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using UnityEngine;
 
 namespace CityFlow.Gameplay.Progression
 {
-    public sealed class GameCalendarService : MonoBehaviour, ICityFlowServiceConsumer, IGameCalendarService
+    public sealed class GameCalendarService :
+        MonoBehaviour,
+        ICityFlowServiceConsumer,
+        IGameCalendarService,
+        IGameCalendarSaveSource,
+        IOfflineCalendarProgressionSource
     {
         [Header("Prototype Time Scale")]
         [Tooltip("Prototype default: 1 real second equals 1 game hour.")]
@@ -67,6 +73,108 @@ namespace CityFlow.Gameplay.Progression
             Day = Mathf.Clamp(startDay, 1, Mathf.Max(1, daysPerMonth));
             Hour = Mathf.Clamp(startHour, 0, Mathf.Max(1, hoursPerDay) - 1);
             TotalMonths = ((Year - 1) * Mathf.Max(1, monthsPerYear)) + Month;
+        }
+
+        public GameCalendarSaveData CreateSnapshot()
+        {
+            return new GameCalendarSaveData
+            {
+                Year = Year,
+                Month = Month,
+                Day = Day,
+                Hour = Hour,
+                TotalMonths = TotalMonths,
+                AccumulatedRealSeconds = accumulatedRealSeconds
+            };
+        }
+
+        public void RestoreSnapshot(GameCalendarSaveData snapshot)
+        {
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            int validHoursPerDay = Mathf.Max(1, hoursPerDay);
+            int validDaysPerMonth = Mathf.Max(1, daysPerMonth);
+            int validMonthsPerYear = Mathf.Max(1, monthsPerYear);
+            float secondsPerHour = Mathf.Max(0.01f, realSecondsPerGameHour);
+
+            Year = Mathf.Max(1, snapshot.Year);
+            Month = Mathf.Clamp(snapshot.Month, 1, validMonthsPerYear);
+            Day = Mathf.Clamp(snapshot.Day, 1, validDaysPerMonth);
+            Hour = Mathf.Clamp(snapshot.Hour, 0, validHoursPerDay - 1);
+            TotalMonths = Mathf.Max(1, snapshot.TotalMonths);
+            accumulatedRealSeconds = Mathf.Clamp(snapshot.AccumulatedRealSeconds, 0f, secondsPerHour);
+
+            PublishRestoredDate();
+            Debug.Log($"[GameCalendarService] Calendar restored to Y{Year} M{Month} D{Day} {Hour:00}:00.");
+        }
+
+        public void AdvanceOffline(double settledRealSeconds)
+        {
+            if (settledRealSeconds <= 0.0)
+            {
+                return;
+            }
+
+            double secondsPerHour = Math.Max(0.01, realSecondsPerGameHour);
+            double totalRealSeconds = accumulatedRealSeconds + settledRealSeconds;
+            long gameHours = (long)Math.Floor(totalRealSeconds / secondsPerHour);
+            accumulatedRealSeconds = (float)(totalRealSeconds - (gameHours * secondsPerHour));
+
+            if (gameHours <= 0L)
+            {
+                return;
+            }
+
+            AdvanceHoursWithoutIntermediateEvents(gameHours);
+            Debug.Log($"[GameCalendarService] Offline calendar advanced by {gameHours} game hours to Y{Year} M{Month} D{Day} {Hour:00}:00.");
+        }
+
+        private void AdvanceHoursWithoutIntermediateEvents(long gameHours)
+        {
+            int validHoursPerDay = Mathf.Max(1, hoursPerDay);
+            int validDaysPerMonth = Mathf.Max(1, daysPerMonth);
+            int validMonthsPerYear = Mathf.Max(1, monthsPerYear);
+
+            long totalHours = Hour + gameHours;
+            long addedDays = totalHours / validHoursPerDay;
+            Hour = (int)(totalHours % validHoursPerDay);
+
+            long totalDays = (Day - 1L) + addedDays;
+            long addedMonths = totalDays / validDaysPerMonth;
+            Day = (int)(totalDays % validDaysPerMonth) + 1;
+
+            long totalMonthIndex = (Month - 1L) + addedMonths;
+            long addedYears = totalMonthIndex / validMonthsPerYear;
+            Month = (int)(totalMonthIndex % validMonthsPerYear) + 1;
+            Year = ClampToPositiveInt((long)Year + addedYears);
+            TotalMonths = ClampToPositiveInt((long)TotalMonths + addedMonths);
+
+            HourChanged?.Invoke(Hour);
+
+            if (addedDays > 0L)
+            {
+                DayChanged?.Invoke(Day);
+            }
+
+            if (addedMonths > 0L)
+            {
+                MonthChanged?.Invoke(TotalMonths);
+            }
+        }
+
+        private void PublishRestoredDate()
+        {
+            HourChanged?.Invoke(Hour);
+            DayChanged?.Invoke(Day);
+            MonthChanged?.Invoke(TotalMonths);
+        }
+
+        private static int ClampToPositiveInt(long value)
+        {
+            return (int)Math.Max(1L, Math.Min(int.MaxValue, value));
         }
 
         private void AdvanceHour()

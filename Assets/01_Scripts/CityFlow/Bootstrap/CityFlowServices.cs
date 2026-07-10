@@ -59,6 +59,12 @@ namespace CityFlow.Bootstrap
             }
 
             GameCalendar = gameCalendar;
+
+            if (gameCalendar is IGameCalendarSaveSource gameCalendarSaveSource)
+            {
+                Save?.RegisterGameCalendarSaveSource(gameCalendarSaveSource);
+            }
+
             GameCalendarRegistered?.Invoke(gameCalendar);
         }
     }
