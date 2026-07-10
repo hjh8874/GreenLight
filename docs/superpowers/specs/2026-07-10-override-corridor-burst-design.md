@@ -26,7 +26,7 @@
 - 선택 축 방향으로만 걷는다: `horizontal=true` → anchor.y 행을 x±로, `false` → anchor.x 열을 y±로.
 - anchor에서 **연속 도로 타일**을 따라 양방향으로 걸으며, 만나는 **교차로 신호**(SignalMap에 있는 타일)를 수집. 도로가 끊기면 그 방향 종료.
 - 직각으로 꺾인 도로의 신호는 제외 — 오직 그 라인 위 직진으로 이어진 신호만("최근접 대신 직진만").
-- anchor 포함 **최근접 순 최대 N=3개**. 라인에 2개뿐이면 2, anchor뿐이면 1(우아한 축소).
+- anchor 포함 **최대 N=3개** — 탭한 신호 중심으로 **양방향 번갈아 한 개씩**(각 방향 가까운 것부터) 수집. 비대칭 라인에선 좌우 균형이 순수 거리순보다 우선(환 결정 2026-07-10). 라인에 2개뿐이면 2, anchor뿐이면 1(우아한 축소).
 - 결정론: grid walk가 고정 순서(x/y 증가) + 거리순 → 같은 배치·같은 탭 = 같은 집합.
 
 **적용**: 수집된 모든 신호에 `OverrideUntil = simTime + OverrideDurationSeconds`, 동일 `OverrideHorizontal = horizontal`. 쿨다운은 멤버 각자 `_overrideReadyAt` 설정. **게이트는 anchor 기준**(anchor가 쿨다운 중이면 탭 거절; 코리도어 멤버 개별 쿨다운은 재수집을 막지 않되 자기 탭의 게이트로만 작동).
@@ -72,6 +72,7 @@ FlowSolver·GetSignalPhase·IsSignalGreen은 이미 **신호별** `OverrideUntil
 ## 검증 계획
 
 - **엔진 결정론 테스트(신설 1종)**: 같은 배치(라인에 교차로 3개)에서 anchor 탭 → 코리도어가 정확히 3개(또는 라인 사정에 맞게) 오버라이드, 직각 신호는 제외됨, 같은 입력 = 같은 delivered/해시.
+- **오프라인 정산은 오버라이드 무시**: 정산은 평상 신호 기준(공정), 복귀 시 잔여 오버라이드는 소멸.
 - **기존 테스트 불변**: `OverrideSignal_ForcesAxisGreen_ThenCooldownAndExpiry`는 고립 단일 교차로라 코리도어=1 → assertion 그대로 통과. 전체 EditMode 회귀 없음(현재 baseline 99).
 - **플레이 검증(SimDebug/통합 씬)**: ①오버라이드 탭 → 라인 신호 3개 동시 초록 ~3초 ②그 라인 차량 눈에 띄게 빨라짐 + FX ③쿨다운 60초 동안 재탭 거절 ④FlowBurst 시 비프(카탈로그에 클립 있을 때)+카메라 톡, Reward 클수록 세게.
 

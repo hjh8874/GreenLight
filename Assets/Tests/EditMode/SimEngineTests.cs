@@ -463,7 +463,105 @@ namespace CityFlow.Sim.Tests
 
             Assert.IsTrue(e.TryOverrideSignal(V(4, 0), horizontal: true));
             Assert.Greater(e.GetOverrideSecondsLeft(V(4, 0)), 0f);
-            Assert.AreEqual(0f, e.GetOverrideSecondsLeft(V(0, 0)));   // 신호 아님 → 0
+            Assert.AreEqual(1, e.SignalTiles.Count);                  // 라인에 신호가 anchor뿐 → 코리도어=1(우아한 축소)
+            Assert.AreEqual(0f, e.GetOverrideSecondsLeft(V(0, 0)));   // 신호 없는 도로 타일은 항상 0(방어 확인)
+        }
+
+        [Test]
+        public void OverrideSignal_Corridor_CapsAtConfigCount_AlternatingBothDirections()
+        {
+            // 라인에 신호 4개(x=2,5,8,11), anchor=(8,2) 탭 → anchor + 전방(11,2) + 후방(5,2)로 N=3 마감.
+            // 4번째 후보 (2,2)는 캡에 잘려야 한다 — "양방향 번갈아 한 개씩" 정책 고정(환 결정 2026-07-10).
+            var c = Cfg(0.25f);
+            c.GridWidth = 16; c.GridHeight = 5;
+            c.OverrideDurationSeconds = 0.5f;
+            c.OverrideCooldownSeconds = 1f;
+            c.OverrideCorridorSignals = 3;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 15; x++) e.Place(V(x, 2), TileType.Road);   // 가로 간선
+            e.Place(V(2, 3), TileType.Road);    // (2,2)를 교차로로
+            e.Place(V(5, 3), TileType.Road);    // (5,2)
+            e.Place(V(8, 3), TileType.Road);    // (8,2)
+            e.Place(V(11, 3), TileType.Road);   // (11,2)
+            e.Tick(0.25f);                      // 교차로 감지
+
+            Assert.IsTrue(e.TryOverrideSignal(V(8, 2), horizontal: true));
+            Assert.Greater(e.GetOverrideSecondsLeft(V(8, 2)), 0f);    // anchor
+            Assert.Greater(e.GetOverrideSecondsLeft(V(11, 2)), 0f);   // 전방 첫 신호
+            Assert.Greater(e.GetOverrideSecondsLeft(V(5, 2)), 0f);    // 후방 첫 신호
+            Assert.AreEqual(0f, e.GetOverrideSecondsLeft(V(2, 2)));   // 4번째 후보 → 캡 3에 잘림
+        }
+
+        [Test]
+        public void OverrideSignal_Corridor_StopsAtRoadGap()
+        {
+            // 도로가 끊기면 코리도어에 자리가 남아도 그 방향 걷기 종료 — 건너편 섬의 신호는 미포함.
+            var c = Cfg(0.25f);
+            c.GridWidth = 14; c.GridHeight = 5;
+            c.OverrideDurationSeconds = 0.5f;
+            c.OverrideCooldownSeconds = 1f;
+            c.OverrideCorridorSignals = 3;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 6; x++) e.Place(V(x, 2), TileType.Road);    // 서쪽 섬(x=0..6)
+            e.Place(V(2, 3), TileType.Road);    // (2,2)를 교차로로
+            e.Place(V(4, 3), TileType.Road);    // (4,2)
+            for (int x = 8; x <= 12; x++) e.Place(V(x, 2), TileType.Road);   // 동쪽 섬(x=8..12) — (7,2)는 빈칸
+            e.Place(V(10, 3), TileType.Road);   // (10,2)를 교차로로
+            e.Tick(0.25f);
+
+            Assert.IsTrue(e.TryOverrideSignal(V(4, 2), horizontal: true));
+            Assert.Greater(e.GetOverrideSecondsLeft(V(4, 2)), 0f);    // anchor
+            Assert.Greater(e.GetOverrideSecondsLeft(V(2, 2)), 0f);    // 같은 섬 후방 신호
+            Assert.AreEqual(0f, e.GetOverrideSecondsLeft(V(10, 2)));  // (7,2) 끊김 너머 → 자리 남아도 제외
+        }
+
+        [Test]
+        public void OverrideSignal_Corridor_ExcludesPerpendicularAxisSignals()
+        {
+            // 십자 도시: 가로 y=5 + 세로 x=5 → 교차로 (5,5). 세로 라인 위에 신호 (5,2) 추가.
+            // (5,5)를 '가로' 탭 → 코리도어는 가로 라인만 걷는다 — 수직 축 신호 (5,2)는 제외.
+            var c = Cfg(0.25f);
+            c.GridWidth = 11; c.GridHeight = 11;
+            c.OverrideDurationSeconds = 0.5f;
+            c.OverrideCooldownSeconds = 1f;
+            c.OverrideCorridorSignals = 3;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 10; x++) e.Place(V(x, 5), TileType.Road);   // 가로 도로
+            for (int y = 0; y <= 10; y++) e.Place(V(5, y), TileType.Road);   // 세로 도로((5,5)는 중복 → no-op)
+            e.Place(V(4, 2), TileType.Road);    // (5,2)를 세로 라인 교차로로(이웃 3: (5,1)(5,3)(4,2))
+            e.Tick(0.25f);
+
+            Assert.IsTrue(e.TryOverrideSignal(V(5, 5), horizontal: true));
+            Assert.Greater(e.GetOverrideSecondsLeft(V(5, 5)), 0f);    // anchor만
+            Assert.AreEqual(0f, e.GetOverrideSecondsLeft(V(5, 2)));   // 수직 축 신호 → 제외("직진만")
+        }
+
+        [Test]
+        public void OverrideSignal_CorridorMember_CooldownGatesDirectTap()
+        {
+            // 코리도어 멤버로 강제 초록된 신호도 자기 쿨다운이 찍힌다:
+            // 만료 후·쿨다운 중엔 그 멤버 직접 탭도 거절, 쿨다운이 다 지나면 재사용 가능.
+            var c = Cfg(0.25f);
+            c.GridWidth = 12; c.GridHeight = 5;
+            c.OverrideDurationSeconds = 0.5f;
+            c.OverrideCooldownSeconds = 1f;
+            c.OverrideCorridorSignals = 3;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 10; x++) e.Place(V(x, 2), TileType.Road);
+            e.Place(V(2, 3), TileType.Road);   // (2,2)
+            e.Place(V(5, 3), TileType.Road);   // (5,2)
+            e.Place(V(8, 3), TileType.Road);   // (8,2)
+            e.Tick(0.25f);                     // simTime 0.25 — 교차로 감지
+
+            Assert.IsTrue(e.TryOverrideSignal(V(5, 2), horizontal: true));   // until 0.75, ready 1.75
+            Assert.Greater(e.GetOverrideSecondsLeft(V(2, 2)), 0f);           // 멤버로 포함됨
+
+            for (int i = 0; i < 3; i++) e.Tick(0.25f);                       // simTime 1.0: 만료 후·쿨다운 중
+            Assert.AreEqual(0f, e.GetOverrideSecondsLeft(V(2, 2)));
+            Assert.IsFalse(e.TryOverrideSignal(V(2, 2), true));              // 멤버도 쿨다운 게이트에 걸림
+
+            for (int i = 0; i < 4; i++) e.Tick(0.25f);                       // simTime 2.0 ≥ ready 1.75
+            Assert.IsTrue(e.TryOverrideSignal(V(2, 2), true));               // 쿨다운 해제 → 재사용
         }
 
         [Test]
