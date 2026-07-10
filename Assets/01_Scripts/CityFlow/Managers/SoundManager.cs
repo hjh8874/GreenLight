@@ -3,9 +3,9 @@ using UnityEngine;
 
 namespace CityFlow.Managers
 {
-    public sealed class SoundManager_cmt : MonoBehaviour
+    public sealed class SoundManager : MonoBehaviour
     {
-        public static SoundManager_cmt Instance { get; private set; }
+        public static SoundManager Instance { get; private set; }
 
         [Header("Audio Sources")]
         [Tooltip("BGM 재생용 AudioSource. 비워두면 자동 생성됩니다.")]
@@ -14,7 +14,7 @@ namespace CityFlow.Managers
         [SerializeField] private AudioSource sfxSource;
 
         [Header("Catalog")]
-        [SerializeField] private SoundCatalog_cmt soundCatalog;
+        [SerializeField] private SoundCatalog soundCatalog;
         [SerializeField] private bool playOnStart = true;
         [SerializeField] private string startBgmId;
 
@@ -24,7 +24,7 @@ namespace CityFlow.Managers
         [Range(0f, 1f)]
         [SerializeField] private float sfxVolume = 1f;
 
-        private readonly SoundHandleCache_cmt handleCache = new();
+        private readonly SoundHandleCache handleCache = new();
         private bool isMuted;
         private string currentBgmId;
         private int bgmRequestVersion;
@@ -79,7 +79,7 @@ namespace CityFlow.Managers
 
         public async void PlayBgm(string soundId)
         {
-            if (!TryGetSound(soundId, SoundType.Bgm, out SoundCatalog_cmt.SoundEntry sound))
+            if (!TryGetSound(soundId, SoundType.Bgm, out SoundCatalog.SoundEntry sound))
             {
                 return;
             }
@@ -149,7 +149,7 @@ namespace CityFlow.Managers
 
         public async void PlaySfx(string soundId, float volumeScale)
         {
-            if (!TryGetSound(soundId, SoundType.Sfx, out SoundCatalog_cmt.SoundEntry sound))
+            if (!TryGetSound(soundId, SoundType.Sfx, out SoundCatalog.SoundEntry sound))
             {
                 return;
             }
@@ -252,7 +252,7 @@ namespace CityFlow.Managers
 
             for (int i = 0; i < soundCatalog.Sounds.Count; i++)
             {
-                SoundCatalog_cmt.SoundEntry sound = soundCatalog.Sounds[i];
+                SoundCatalog.SoundEntry sound = soundCatalog.Sounds[i];
 
                 if (sound == null || !sound.Preload)
                 {
@@ -263,7 +263,7 @@ namespace CityFlow.Managers
             }
         }
 
-        private bool TryGetSound(string soundId, SoundType expectedType, out SoundCatalog_cmt.SoundEntry sound)
+        private bool TryGetSound(string soundId, SoundType expectedType, out SoundCatalog.SoundEntry sound)
         {
             sound = null;
 
@@ -272,7 +272,7 @@ namespace CityFlow.Managers
                 && sound.Type == expectedType;
         }
 
-        private Task<AudioClip> LoadClipAsync(SoundCatalog_cmt.SoundEntry sound)
+        private Task<AudioClip> LoadClipAsync(SoundCatalog.SoundEntry sound)
         {
             return handleCache.LoadAsync(sound);
         }

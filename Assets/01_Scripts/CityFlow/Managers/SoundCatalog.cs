@@ -5,8 +5,8 @@ using UnityEngine.AddressableAssets;
 
 namespace CityFlow.Managers
 {
-    [CreateAssetMenu(fileName = "SoundCatalog_cmt", menuName = "CityFlow/Sound Catalog cmt")]
-    public sealed class SoundCatalog_cmt : ScriptableObject
+    [CreateAssetMenu(fileName = "SoundCatalog", menuName = "CityFlow/Sound Catalog")]
+    public sealed class SoundCatalog : ScriptableObject
     {
         [SerializeField] private List<SoundEntry> sounds = new();
 

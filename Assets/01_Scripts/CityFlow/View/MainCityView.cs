@@ -8,7 +8,7 @@ using UnityEngine.InputSystem;
 
 namespace CityFlow.View
 {
-    public sealed class MainCityView_cmt : MonoBehaviour, ICityFlowServiceConsumer
+    public sealed class MainCityView : MonoBehaviour, ICityFlowServiceConsumer
     {
         [Header("Grid")]
         [SerializeField] private int width = GridUtil.DefaultWidth;

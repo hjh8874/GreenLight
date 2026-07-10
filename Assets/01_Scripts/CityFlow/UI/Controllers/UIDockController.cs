@@ -22,6 +22,7 @@ namespace CityFlow.UI
 
         [Header("System Sync")]
         [SerializeField] private PlacementController placementController;
+        [SerializeField] private bool normalizeLayoutOnStart;
 
         private MenuType _currentMenu = MenuType.None;
         private bool _isBound;
@@ -52,7 +53,12 @@ namespace CityFlow.UI
         private void Start()
         {
             BindButtons();
-            NormalizeDockLayout();
+
+            if (normalizeLayoutOnStart)
+            {
+                NormalizeDockLayout();
+            }
+
             CloseAllPanels();
         }
 

@@ -449,7 +449,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a6f872d13c2a4dd9a96d49dfaf1f70e2, type: 3}
   m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.MainCityView_cmt
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.MainCityView
   width: 20
   height: 20
   tileSize: 1
@@ -2990,90 +2990,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 698743327}
   m_CullTransparentMesh: 1
---- !u!1 &712000001
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 712000002}
-  - component: {fileID: 712000003}
-  - component: {fileID: 712000004}
-  - component: {fileID: 712000005}
-  m_Layer: 0
-  m_Name: Radio
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &712000002
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 712000001}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &712000003
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 712000001}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8f5c1e487c80488d8e5504a473dbcb0a, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::GreenLight.Radio.Runtime.RadioService
-  initialSlotCount: 3
-  slots: []
---- !u!114 &712000004
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 712000001}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 55f57ce2115343a48e17f09dbe849677, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::GreenLight.Radio.Runtime.RadioUnlockService
-  unlockOnFirstFlowBurst: 1
-  flowBurstUnlockSlotIndex: 0
---- !u!114 &712000005
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 712000001}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 28c05776890746039393bd76bf77b3d5, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::GreenLight.Radio.Runtime.RadioGreeWebViewPlayer
-  radioService: {fileID: 712000003}
-  initializeOnStart: 0
-  visibleOnStart: 0
-  anchor: 1
-  playerSize: {x: 360, y: 220}
-  screenPadding: {x: 24, y: 24}
-  volume: 80
-  servePlayerFromLocalhost: 1
-  localServerPort: 18496
-  allowDragFromWebPlayer: 1
 --- !u!1 &713000001
 GameObject:
   m_ObjectHideFlags: 0
@@ -3085,7 +3001,7 @@ GameObject:
   - component: {fileID: 713000002}
   - component: {fileID: 713000003}
   m_Layer: 0
-  m_Name: SoundManager_cmt
+  m_Name: SoundManager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -3117,7 +3033,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e0137aa97ee84f59afbfae60ec54258e, type: 3}
   m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Managers.SoundManager_cmt
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Managers.SoundManager
   bgmSource: {fileID: 0}
   sfxSource: {fileID: 0}
   soundCatalog: {fileID: 0}
@@ -5129,6 +5045,7 @@ MonoBehaviour:
   colorJam: {r: 1, g: 0, b: 0, a: 1}
   flowBurstEffect: {fileID: 796081842}
   updateInterval: 0.2
+  normalizeLayoutOnStart: 1
 --- !u!114 &1293339701
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5670,6 +5587,7 @@ MonoBehaviour:
   panelStats: {fileID: 1286276730}
   panelSettings: {fileID: 430970948}
   placementController: {fileID: 492217481}
+  normalizeLayoutOnStart: 1
 --- !u!114 &1454290746
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9403,7 +9321,6 @@ SceneRoots:
   - {fileID: 1805909348}
   - {fileID: 111543631}
   - {fileID: 315876904}
-  - {fileID: 712000002}
   - {fileID: 713000002}
   - {fileID: 1594220675}
   - {fileID: 2147085613}

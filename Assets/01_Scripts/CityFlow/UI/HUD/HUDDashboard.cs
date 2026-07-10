@@ -1,7 +1,6 @@
 using System;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
-using CityFlow.Sim;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -27,9 +26,10 @@ namespace CityFlow.UI
 
         [Header("Settings")]
         [SerializeField] private float updateInterval = 0.2f;
+        [SerializeField] private bool normalizeLayoutOnStart;
 
         private CityFlowServices _services;
-        private SimEngine _simEngine;
+        private IReadOnlyCityStats _cityStats;
         private IEconomyService _economy;
         private IGameCalendarService _gameCalendar;
         private float _updateTimer;
@@ -67,8 +67,12 @@ namespace CityFlow.UI
         public void Initialize(CityFlowServices services)
         {
             _services = services;
-            _simEngine = services.Placement as SimEngine;
-            NormalizeHeaderLayout();
+            _cityStats = services.Stats;
+
+            if (normalizeLayoutOnStart)
+            {
+                NormalizeHeaderLayout();
+            }
 
             // 이벤트 구독 (구독해야 코어 엔진에서 데이터가 날아옵니다)
             _services.Events.StabilityChanged += OnStabilityChanged;
@@ -207,7 +211,11 @@ namespace CityFlow.UI
 
         private void Start()
         {
-            NormalizeHeaderLayout();
+            if (normalizeLayoutOnStart)
+            {
+                NormalizeHeaderLayout();
+            }
+
             UpdateUI(); // UI 씬 단독 테스트 시에도 초기 텍스트 포맷을 잡아주기 위함
         }
 
@@ -269,10 +277,10 @@ namespace CityFlow.UI
                 }
             }
 
-            // 2. 가짜 차량 수 조립 (On-the-fly 합성 규칙 적용)
+            // 2. 계약 계층에서 제공하는 실제 활성 차량 수
             if (vehicleCountText != null)
             {
-                int targetVehicleCount = _simEngine != null ? _simEngine.ActiveRoutes.Count : 0;
+                int targetVehicleCount = _cityStats?.ActiveVehicleCount ?? 0;
                 
                 if (targetVehicleCount != _lastTargetVehicles)
                 {

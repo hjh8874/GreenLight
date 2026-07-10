@@ -10,6 +10,7 @@ namespace CityFlow.Bootstrap
         public SimEventHub Events { get; }
         public IReadOnlyTileData TileData { get; }
         public IPlacementService Placement { get; }
+        public IReadOnlyCityStats Stats { get; }
         public SaveService Save { get; }
         public IEconomyService Economy { get; private set; }
         public IGameCalendarService GameCalendar { get; private set; }
@@ -22,11 +23,13 @@ namespace CityFlow.Bootstrap
             IReadOnlyTileData tileData,
             IPlacementService placement,
             SaveService save = null,
-            IEconomyService economy = null)
+            IEconomyService economy = null,
+            IReadOnlyCityStats stats = null)
         {
             Events = events;
             TileData = tileData;
             Placement = placement;
+            Stats = stats;
             Save = save;
             RegisterEconomy(economy);
         }
