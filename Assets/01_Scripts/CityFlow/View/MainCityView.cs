@@ -31,6 +31,8 @@ namespace CityFlow.View
         [SerializeField] private float signalZ = -0.45f;
         [SerializeField] private float burstSeconds = 0.8f;
         [SerializeField] private float gridLineThickness = 0.045f;
+        [SerializeField] private float overrideSpeedMul = 2.2f;    // 오버라이드 라인 차량 속도 배율
+        [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
 
         [Header("Colors")]
         [SerializeField] private Color boardColor = new Color(0.78f, 0.82f, 0.78f);
@@ -407,6 +409,13 @@ namespace CityFlow.View
                 visual.SelectionRenderer.gameObject.SetActive(selected);
                 ApplyRendererColor(visual.SelectionRenderer, selectedSignalColor, visual.SelectionBlock);
             }
+
+            // 오버라이드 특수효과: 코리도어 신호를 초록 방향으로 스케일 펄스(폴링 — 뷰가 매 프레임 갱신).
+            bool overridden = signalControl != null && signalControl.GetOverrideSecondsLeft(tile) > 0f;
+            float pulse = overridden
+                ? 1f + overridePulseAmp * Mathf.Abs(Mathf.Sin(Time.time * 8f))
+                : 1f;
+            visual.Root.transform.localScale = Vector3.one * pulse;
         }
 
         private Color GetSignalColor(Vector2Int tile, bool horizontal)
@@ -497,6 +506,13 @@ namespace CityFlow.View
             Vector2Int currentTile = route[Mathf.Clamp(Mathf.FloorToInt(vehicle.Phase) % route.Count, 0, route.Count - 1)];
             speed *= Mathf.Lerp(1f, 0.25f, tileData.GetDensity01(currentTile));
 
+            // 오버라이드 라인 가속: 이 차가 향하는 다음 신호가 오버라이드 중이면 시각 속도↑(순수 연출).
+            if (signalControl != null && TryGetNextSignalTile(route, vehicle.Phase, out _, out Vector2Int aheadSignal)
+                && signalControl.GetOverrideSecondsLeft(aheadSignal) > 0f)
+            {
+                speed *= overrideSpeedMul;
+            }
+
             bool blockedBySignal = IsRouteVehicleBlocked(route, vehicle.Phase);
 
             if (blockedBySignal)
@@ -537,28 +553,31 @@ namespace CityFlow.View
 
         private bool IsRouteVehicleBlocked(List<Vector2Int> route, float phase)
         {
-            if (simEngine == null || route == null || route.Count < 2)
-            {
-                return false;
-            }
-
-            int segmentCount = route.Count - 1;
-            float cycle = segmentCount * 2f;
-            float p = Mathf.Repeat(phase, cycle);
-            bool forward = p <= segmentCount;
-            float folded = forward ? p : cycle - p;
-            int index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
-
-            Vector2Int current = forward ? route[index] : route[index + 1];
-            Vector2Int next = forward ? route[index + 1] : route[index];
-
-            if (current == next || !IsSignalTile(next))
+            if (simEngine == null || !TryGetNextSignalTile(route, phase, out Vector2Int current, out Vector2Int next))
             {
                 return false;
             }
 
             bool horizontal = current.y == next.y;
             return !simEngine.IsSignalGreen(next, horizontal);
+        }
+
+        // 차의 현재 위상에서 진행 방향의 현재/다음 타일. 다음 타일이 신호일 때만 true — 부스트·블록 판정 공용.
+        private bool TryGetNextSignalTile(List<Vector2Int> route, float phase, out Vector2Int current, out Vector2Int next)
+        {
+            current = default;
+            next = default;
+            if (route == null || route.Count < 2) return false;
+            int segmentCount = route.Count - 1;
+            float cycle = segmentCount * 2f;
+            float p = Mathf.Repeat(phase, cycle);
+            bool forward = p <= segmentCount;
+            float folded = forward ? p : cycle - p;
+            int index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
+            current = forward ? route[index] : route[index + 1];
+            next = forward ? route[index + 1] : route[index];
+            if (current == next || !IsSignalTile(next)) return false;
+            return true;
         }
 
         private bool IsSignalTile(Vector2Int tile)
