@@ -48,6 +48,7 @@ namespace CityFlow.UI
         
         private TileType _currentType = TileType.Road; 
         private Vector2Int? _lastPlacedCoord = null;
+        private Vector2Int? _lastRemovedCoord = null;
 
         /// <summary>
         /// 건설 패널(BuildPanelController) 등에서 타일 타입을 변경할 때 호출합니다.
@@ -167,53 +168,75 @@ namespace CityFlow.UI
 
         private void Update()
         {
-            // 6. 마우스 우클릭 시 철거 확인창 호출 (건설 모드 여부와 상관없이 항상 동작)
-            if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
+            // 6. 마우스 우클릭 시 철거 확인창 호출 (도로는 드래그 즉시 철거 지원)
+            if (Mouse.current != null)
             {
-                // 마우스가 UI 패널 위에 있으면 씬 클릭 무시
-                if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
-                {
-                    Vector2Int rightClickCoord = GetMouseGridCoordinate();
-                        TileType currentTileType = TileType.Empty;
-                        if (useFakeMode)
-                        {
-                            currentTileType = TileType.Road; // UI 단독 테스트 시에는 아무 바닥이나 Road가 있다고 가정
-                        }
-                        else if (_services != null && _services.TileData != null)
-                        {
-                            currentTileType = _services.TileData.GetTileType(rightClickCoord);
-                        }
+                bool rightPressed = Mouse.current.rightButton.isPressed;
+                bool rightPressedThisFrame = Mouse.current.rightButton.wasPressedThisFrame;
 
-                        if (currentTileType != TileType.Empty)
+                if (rightPressed)
+                {
+                    // 마우스가 UI 패널 위에 있으면 씬 클릭 무시
+                    if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
+                    {
+                        Vector2Int rightClickCoord = GetMouseGridCoordinate();
+
+                        // 중복 철거(드래그 중 같은 타일 반복 철거) 방지
+                        if (_lastRemovedCoord == null || _lastRemovedCoord.Value != rightClickCoord)
                         {
-                            // 도로(Road)인 경우 팝업 없이 즉시 철거
-                            if (currentTileType == TileType.Road)
+                            TileType currentTileType = TileType.Empty;
+                            if (useFakeMode)
                             {
-                                TileType oldType = _currentType;
-                                _currentType = TileType.Empty; 
-                                PlaceInfrastructure(rightClickCoord);
-                                _currentType = oldType;
+                                currentTileType = TileType.Road;
                             }
-                            else if (confirmPopup != null)
+                            else if (_services != null && _services.TileData != null)
                             {
-                                confirmPopup.Show("Demolish this tile?", () => 
+                                currentTileType = _services.TileData.GetTileType(rightClickCoord);
+                            }
+
+                            if (currentTileType != TileType.Empty)
+                            {
+                                if (currentTileType == TileType.Road)
                                 {
+                                    // 도로(Road)인 경우 드래그로 팝업 없이 즉시 철거
+                                    _lastRemovedCoord = rightClickCoord;
                                     TileType oldType = _currentType;
                                     _currentType = TileType.Empty; 
                                     PlaceInfrastructure(rightClickCoord);
-                                    _currentType = oldType; 
-                                });
-                            }
-                            else
-                            {
-                                TileType oldType = _currentType;
-                                _currentType = TileType.Empty; 
-                                PlaceInfrastructure(rightClickCoord);
-                                _currentType = oldType;
+                                    _currentType = oldType;
+                                }
+                                else if (rightPressedThisFrame)
+                                {
+                                    // 도로가 아닌 경우(건물 등) 단일 클릭일 때만 철거 팝업
+                                    _lastRemovedCoord = rightClickCoord;
+                                    if (confirmPopup != null)
+                                    {
+                                        confirmPopup.Show("Demolish this tile?", () => 
+                                        {
+                                            TileType oldType = _currentType;
+                                            _currentType = TileType.Empty; 
+                                            PlaceInfrastructure(rightClickCoord);
+                                            _currentType = oldType; 
+                                        });
+                                    }
+                                    else
+                                    {
+                                        TileType oldType = _currentType;
+                                        _currentType = TileType.Empty; 
+                                        PlaceInfrastructure(rightClickCoord);
+                                        _currentType = oldType;
+                                    }
+                                }
                             }
                         }
                     }
                 }
+
+                if (Mouse.current.rightButton.wasReleasedThisFrame)
+                {
+                    _lastRemovedCoord = null;
+                }
+            }
             if (!_isBuildingMode || ghostRenderer == null) return;
 
             // 1. 방어 로직: 마우스가 UI(버튼, 패널) 위에 있으면 바닥 클릭(건설)을 방지합니다.

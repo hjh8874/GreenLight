@@ -44,14 +44,33 @@ namespace CityFlow.UI
             {
                 btnBuy.onClick.RemoveAllListeners();
                 btnBuy.onClick.AddListener(OnBuyClicked);
+
+                // Add EventTrigger for DOTween Hover on btnBuy only
+                EventTrigger trigger = btnBuy.gameObject.GetComponent<EventTrigger>();
+                if (trigger == null) trigger = btnBuy.gameObject.AddComponent<EventTrigger>();
+                trigger.triggers.Clear();
+                
+                EventTrigger.Entry enterEntry = new EventTrigger.Entry();
+                enterEntry.eventID = EventTriggerType.PointerEnter;
+                enterEntry.callback.AddListener((data) => {
+                    btnBuy.transform.DOKill();
+                    btnBuy.transform.DOScale(1.1f, 0.2f).SetEase(Ease.OutBack);
+                });
+                trigger.triggers.Add(enterEntry);
+
+                EventTrigger.Entry exitEntry = new EventTrigger.Entry();
+                exitEntry.eventID = EventTriggerType.PointerExit;
+                exitEntry.callback.AddListener((data) => {
+                    btnBuy.transform.DOKill();
+                    btnBuy.transform.DOScale(1f, 0.15f).SetEase(Ease.OutQuad);
+                });
+                trigger.triggers.Add(exitEntry);
             }
         }
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            // DOTween Hover Animation
-            transform.DOKill();
-            transform.DOScale(1.1f, 0.2f).SetEase(Ease.OutBack);
+            // Tooltip 표시 (DOTween 애니메이션은 btnBuy의 EventTrigger로 이동)
 
             if (_tooltipController != null && tileData != null)
             {
@@ -61,9 +80,7 @@ namespace CityFlow.UI
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            // DOTween Hover Reset
-            transform.DOKill();
-            transform.DOScale(1f, 0.15f).SetEase(Ease.OutQuad);
+            // Tooltip 숨기기 (DOTween 애니메이션은 btnBuy의 EventTrigger로 이동)
 
             if (_tooltipController != null)
             {
