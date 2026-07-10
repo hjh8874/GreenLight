@@ -18,13 +18,13 @@ namespace CityFlow.Gameplay.Economy
         private CityFlowServices services;
 
         /// <summary>
-        /// í”Œë ˆì´ì–´ê°€ ì‹¤ì œë¡œ ë³´ìœ í•˜ê³  ìˆëŠ” ì½”ì¸ì…ë‹ˆë‹¤.
-        /// HUD, ì €ì¥ ì‹œìŠ¤í…œ, êµ¬ë§¤ ì‹œìŠ¤í…œì€ ì´ ê°’ì„ ê¸°ì¤€ìœ¼ë¡œ ì‚¬ìš©í•©ë‹ˆë‹¤.
+        /// ÇÃ·¹ÀÌ¾î°¡ ½ÇÁ¦·Î º¸À¯ÇÏ°í ÀÖ´Â ÄÚÀÎÀÔ´Ï´Ù.
+        /// HUD, ÀúÀå ½Ã½ºÅÛ, ±¸¸Å ½Ã½ºÅÛÀº ÀÌ °ªÀ» ±âÁØÀ¸·Î »ç¿ëÇÕ´Ï´Ù.
         /// </summary>
         public long Coins { get; private set; }
 
         /// <summary>
-        /// ì½”ì¸ì´ ë³€ê²½ë˜ì—ˆì„ ë•Œ HUD ë“±ì— í˜„ì¬ ì½”ì¸ì„ ì „ë‹¬í•©ë‹ˆë‹¤.
+        /// ÄÚÀÎÀÌ º¯°æµÇ¾úÀ» ¶§ HUD µî¿¡ ÇöÀç ÄÚÀÎÀ» Àü´ŞÇÕ´Ï´Ù.
         /// </summary>
         public event Action<long> CoinsChanged;
 
@@ -68,10 +68,10 @@ namespace CityFlow.Gameplay.Economy
         }
 
         /// <summary>
-        /// ì½”ì¸ì„ ì¶”ê°€í•©ë‹ˆë‹¤.
+        /// ÄÚÀÎÀ» Ãß°¡ÇÕ´Ï´Ù.
         ///
-        /// ì°¨ëŸ‰ ë„ì°©, Flow Burst, ì˜¤í”„ë¼ì¸ ì •ì‚°ë¿ë§Œ ì•„ë‹ˆë¼
-        /// BasicEconomySystemì˜ ì£¼ê°„ ì •ì‚°ì—ì„œë„ ì‚¬ìš©í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
+        /// Â÷·® µµÂø, Flow Burst, ¿ÀÇÁ¶óÀÎ Á¤»ê»Ó¸¸ ¾Æ´Ï¶ó
+        /// BasicEconomySystemÀÇ ÁÖ°£ Á¤»ê¿¡¼­µµ »ç¿ëÇÒ ¼ö ÀÖ½À´Ï´Ù.
         /// </summary>
         public void AddCoins(long amount, string reason = "external reward")
         {
@@ -95,8 +95,8 @@ namespace CityFlow.Gameplay.Economy
         }
 
         /// <summary>
-        /// ì½”ì¸ ì‚¬ìš©ì„ ì‹œë„í•©ë‹ˆë‹¤.
-        /// ì„±ê³µí•˜ë©´ ì½”ì¸ì„ ì°¨ê°í•˜ê³  trueë¥¼ ë°˜í™˜í•©ë‹ˆë‹¤.
+        /// ÄÚÀÎ »ç¿ëÀ» ½ÃµµÇÕ´Ï´Ù.
+        /// ¼º°øÇÏ¸é ÄÚÀÎÀ» Â÷°¨ÇÏ°í true¸¦ ¹İÈ¯ÇÕ´Ï´Ù.
         /// </summary>
         public bool TrySpend(long amount)
         {
@@ -132,7 +132,7 @@ namespace CityFlow.Gameplay.Economy
         }
 
         /// <summary>
-        /// ì €ì¥ ì‹œìŠ¤í…œì— ì „ë‹¬í•  ì½”ì¸ ë°ì´í„°ë¥¼ ìƒì„±í•©ë‹ˆë‹¤.
+        /// ÀúÀå ½Ã½ºÅÛ¿¡ Àü´ŞÇÒ ÄÚÀÎ µ¥ÀÌÅÍ¸¦ »ı¼ºÇÕ´Ï´Ù.
         /// </summary>
         public EconomySaveData CreateSnapshot()
         {
@@ -143,7 +143,7 @@ namespace CityFlow.Gameplay.Economy
         }
 
         /// <summary>
-        /// ì €ì¥ëœ ì½”ì¸ ë°ì´í„°ë¥¼ ë³µì›í•©ë‹ˆë‹¤.
+        /// ÀúÀåµÈ ÄÚÀÎ µ¥ÀÌÅÍ¸¦ º¹¿øÇÕ´Ï´Ù.
         /// </summary>
         public void RestoreSnapshot(EconomySaveData snapshot)
         {
@@ -162,7 +162,7 @@ namespace CityFlow.Gameplay.Economy
         }
 
         /// <summary>
-        /// ì°¨ëŸ‰ì´ ëª©ì ì§€ì— ë„ì°©í–ˆì„ ë•Œ í˜¸ì¶œë©ë‹ˆë‹¤.
+        /// Â÷·®ÀÌ ¸ñÀûÁö¿¡ µµÂøÇßÀ» ¶§ È£ÃâµË´Ï´Ù.
         /// </summary>
         private void OnArrival(ArrivalEvent e)
         {
@@ -170,7 +170,7 @@ namespace CityFlow.Gameplay.Economy
         }
 
         /// <summary>
-        /// Flow Burstê°€ ë°œìƒí–ˆì„ ë•Œ í˜¸ì¶œë©ë‹ˆë‹¤.
+        /// Flow Burst°¡ ¹ß»ıÇßÀ» ¶§ È£ÃâµË´Ï´Ù.
         /// </summary>
         private void OnFlowBurst(FlowBurstEvent e)
         {
@@ -178,7 +178,7 @@ namespace CityFlow.Gameplay.Economy
         }
 
         /// <summary>
-        /// ì˜¤í”„ë¼ì¸ ì •ì‚° ê³„ì‚°ì´ ì™„ë£Œë˜ì—ˆì„ ë•Œ í˜¸ì¶œë©ë‹ˆë‹¤.
+        /// ¿ÀÇÁ¶óÀÎ Á¤»ê °è»êÀÌ ¿Ï·áµÇ¾úÀ» ¶§ È£ÃâµË´Ï´Ù.
         /// </summary>
         private void OnSettlementComputed(SettlementEvent e)
         {
@@ -186,7 +186,7 @@ namespace CityFlow.Gameplay.Economy
         }
 
         /// <summary>
-        /// ì½”ì¸ ë³€ê²½ ì´ë²¤íŠ¸ë¥¼ ë°œìƒì‹œí‚µë‹ˆë‹¤.
+        /// ÄÚÀÎ º¯°æ ÀÌº¥Æ®¸¦ ¹ß»ı½ÃÅµ´Ï´Ù.
         /// </summary>
         private void PublishCoinsChanged()
         {

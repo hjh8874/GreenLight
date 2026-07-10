@@ -105,17 +105,44 @@ namespace CityFlow.UI
         {
             if (_undoStack.Count == 0) return;
 
-            var action = _undoStack.Pop();
+            var action = _undoStack.Peek();
             if (_services != null && _services.Placement != null)
             {
                 if (action.ActionType == PlacementActionType.Place)
                 {
-                    // 건설한 걸 되돌리기 -> 빈칸에서만 건설이 가능하므로 항상 철거(Remove) 수행
+                    // 덮어쓰기 취소 시, 기존에 차액을 환불받았다면(netCost < 0) 되돌릴 때 돈을 다시 지불해야 함
+                    if (action.PreviousType != TileType.Empty && action.Cost < 0)
+                    {
+                        if (_services.Economy != null && _services.Economy.Coins < -action.Cost)
+                        {
+                            Debug.LogWarning("[Undo] 코인이 부족하여 덮어쓰기를 복구할 수 없습니다!");
+                            return;
+                        }
+                    }
+
+                    // 현재 지어진 건물을 철거
                     if (_services.Placement.Remove(action.Coord))
                     {
-                        if (_services.Economy != null && action.Cost > 0)
-                            _services.Economy.AddCoins(action.Cost, "Undo Build 100% Refund");
-                        Debug.Log($"[Undo] Place 취소됨 (철거 수행 및 환불 {action.Cost}): {action.Coord}");
+                        if (action.PreviousType != TileType.Empty)
+                        {
+                            // 덮어쓰기 복구: 원래 건물 다시 짓기
+                            _services.Placement.Place(action.Coord, action.PreviousType);
+                            
+                            if (_services.Economy != null)
+                            {
+                                if (action.Cost > 0) _services.Economy.AddCoins(action.Cost, "Undo Overwrite Refund");
+                                else if (action.Cost < 0) _services.Economy.TrySpend(-action.Cost);
+                            }
+                            Debug.Log($"[Undo] 덮어쓰기 취소됨 (복구 완료 및 역연산): {action.Coord}");
+                        }
+                        else
+                        {
+                            // 순수 빈 땅에 지은 것 복구
+                            if (_services.Economy != null && action.Cost > 0)
+                                _services.Economy.AddCoins(action.Cost, "Undo Build 100% Refund");
+                            Debug.Log($"[Undo] Place 취소됨 (철거 수행 및 환불 {action.Cost}): {action.Coord}");
+                        }
+                        _undoStack.Pop(); // 성공적으로 복구 시 스택에서 제거
                     }
                 }
                 else if (action.ActionType == PlacementActionType.Remove)
@@ -124,7 +151,7 @@ namespace CityFlow.UI
                     if (_services.Economy != null && action.Cost > 0 && _services.Economy.Coins < action.Cost)
                     {
                         Debug.LogWarning("[Undo] 코인이 부족하여 철거를 복구할 수 없습니다!");
-                        return; // 취소 불가
+                        return; // 잔액 부족 시 Pop 안 함
                     }
 
                     if (_services.Placement.Place(action.Coord, action.PreviousType))
@@ -132,6 +159,7 @@ namespace CityFlow.UI
                         if (_services.Economy != null && action.Cost > 0)
                             _services.Economy.TrySpend(action.Cost);
                         Debug.Log($"[Undo] Remove 취소됨 (복구 수행 및 {action.Cost} 차감): {action.Coord}");
+                        _undoStack.Pop(); // 성공 시 스택에서 제거
                     }
                 }
             }
