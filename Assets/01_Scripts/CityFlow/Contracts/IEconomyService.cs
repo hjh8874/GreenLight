@@ -9,5 +9,6 @@ namespace CityFlow.Contracts
         event Action<long> CoinsChanged;
 
         bool TrySpend(long amount);
+        void AddCoins(long amount, string reason);
     }
 }
