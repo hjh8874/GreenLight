@@ -22,51 +22,15 @@
 
 **Files:**
 - Create: `Assets/01_Scripts/CityFlow/View/FlowBurstJuice.cs`
-- Create: `Assets/Tests/EditMode/FlowBurstJuiceTests.cs`
-- Scene(수동, Step 7): `Assets/00_Scenes/CityFlowIntegrated_cmt.unity` — 빈 GameObject에 컴포넌트 부착
+- Scene(수동, Step 4): `Assets/00_Scenes/CityFlowIntegrated_cmt.unity` — 빈 GameObject에 컴포넌트 부착
+
+> **유닛 테스트 없음(환 승인 2026-07-10)**: EditMode 테스트 asmdef(`CityFlow.Sim.Tests`)는 Assembly-CSharp(View 소속)를 참조할 수 없고(Unity asmdef 규칙), Reward 매핑은 클램프 한두 줄 수학(trivial). 검증 = 컴파일 0에러 + 플레이.
 
 **Interfaces:**
 - Consumes: `CityFlow.Bootstrap.ICityFlowServiceConsumer.Initialize(CityFlowServices)`; `CityFlowServices.Events.FlowBurst` (event of `FlowBurstEvent{Vector2Int Tile; int Reward}`); `CityFlow.Managers.SoundManager.Instance?.PlaySfx(string, float)`.
-- Produces: `static float FlowBurstJuice.VolumeFor(int reward)` 및 `static float FlowBurstJuice.ShakeStrengthFor(int reward)` — Reward→연출 세기 순수 매핑(테스트 대상).
+- Produces: 없음(독립 연출 컴포넌트). `VolumeFor`/`ShakeStrengthFor`는 내부 static 순수 매핑.
 
-- [ ] **Step 1: 실패 테스트 작성** — Reward→볼륨/셰이크 매핑
-
-`Assets/Tests/EditMode/FlowBurstJuiceTests.cs`:
-
-```csharp
-using NUnit.Framework;
-using CityFlow.View;
-
-namespace CityFlow.Tests
-{
-    public sealed class FlowBurstJuiceTests
-    {
-        [Test]
-        public void VolumeFor_ClampsAndScalesWithReward()
-        {
-            Assert.AreEqual(0f, FlowBurstJuice.VolumeFor(0), 1e-4f);      // 보상 0 → 무음
-            Assert.Less(FlowBurstJuice.VolumeFor(1), FlowBurstJuice.VolumeFor(10)); // 클수록 큼
-            Assert.LessOrEqual(FlowBurstJuice.VolumeFor(100000), 1f);     // [0,1] 상한
-            Assert.GreaterOrEqual(FlowBurstJuice.VolumeFor(-5), 0f);      // 음수 방어 하한
-        }
-
-        [Test]
-        public void ShakeStrengthFor_ClampsAndScalesWithReward()
-        {
-            Assert.AreEqual(0f, FlowBurstJuice.ShakeStrengthFor(0), 1e-4f);
-            Assert.Less(FlowBurstJuice.ShakeStrengthFor(1), FlowBurstJuice.ShakeStrengthFor(10));
-            Assert.LessOrEqual(FlowBurstJuice.ShakeStrengthFor(100000), FlowBurstJuice.MaxShakeStrength);
-        }
-    }
-}
-```
-
-- [ ] **Step 2: 테스트 실패 확인**
-
-Unity MCP: `run_tests` mode=EditMode, `test_names=["CityFlow.Tests.FlowBurstJuiceTests"]`.
-Expected: FAIL(컴파일 에러 — `FlowBurstJuice` 미정의).
-
-- [ ] **Step 3: FlowBurstJuice 구현**
+- [ ] **Step 1: FlowBurstJuice 구현**
 
 `Assets/01_Scripts/CityFlow/View/FlowBurstJuice.cs`:
 
@@ -134,28 +98,24 @@ namespace CityFlow.View
 }
 ```
 
-- [ ] **Step 4: 컴파일 검증**
+- [ ] **Step 2: 컴파일 검증**
 
-Unity MCP: `execute_code` → `UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceUpdate);` (도메인 리로드로 타임아웃 정상) → `editor/state` 리소스로 `is_compiling:false` 확인 → `read_console` types=["Error"] → 0 에러.
+Unity MCP: `execute_code` → `UnityEditor.AssetDatabase.Refresh(UnityEditor.ImportAssetOptions.ForceUpdate);` (도메인 리로드로 타임아웃 정상) → `editor/state` 리소스로 `is_compiling:false` 확인 → `read_console` types=["Error"] → 0 에러. 이어서 `run_tests` mode=EditMode(전체)로 기존 99 회귀 없음 확인.
 
-- [ ] **Step 5: 테스트 통과 확인**
-
-Unity MCP: `run_tests` mode=EditMode, `test_names=["CityFlow.Tests.FlowBurstJuiceTests"]`.
-Expected: PASS(2/2).
-
-- [ ] **Step 6: 커밋**
+- [ ] **Step 3: 커밋**
 
 ```bash
-git add Assets/01_Scripts/CityFlow/View/FlowBurstJuice.cs Assets/Tests/EditMode/FlowBurstJuiceTests.cs
+git add Assets/01_Scripts/CityFlow/View/FlowBurstJuice.cs
 git commit -m "[Feat] FlowBurstJuice — FlowBurst 사운드+카메라 펀치 (B)
 
 SoundManager 경유 SFX(Reward 비례, 카탈로그 없으면 no-op) + DOTween 카메라 셰이크.
-독립 컴포넌트(엔진 이벤트 구독) — 버스트 비주얼과 무관. Reward 매핑 테스트 2종.
+독립 컴포넌트(엔진 이벤트 구독) — 버스트 비주얼과 무관.
+유닛테스트 없음(asmdef 경계 — plan 참조), 검증=컴파일+플레이.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 7: 씬 배선(수동, 플레이 검증 시)**
+- [ ] **Step 4: 씬 배선(수동, 플레이 검증 시)**
 
 `CityFlowIntegrated_cmt.unity` 열어 빈 GameObject("FlowBurstJuice") 생성 → `FlowBurstJuice` 컴포넌트 부착. CityBootstrap.InstallServices가 씬의 ICityFlowServiceConsumer를 자동 Initialize하므로 추가 배선 불필요. (Task 3 플레이 검증 때 함께 확인.)
 
@@ -422,7 +382,7 @@ Unity MCP: `run_tests` mode=EditMode(전체). Expected: 101 PASS(뷰 변경은 �
 
 - [ ] **Step 6: 플레이 검증(수동)**
 
-`CityFlowIntegrated_cmt.unity` Play(Task 1 Step 7의 FlowBurstJuice도 부착된 상태):
+`CityFlowIntegrated_cmt.unity` Play(Task 1 Step 4의 FlowBurstJuice도 부착된 상태):
 - ① 신호 탭 오버라이드 → 라인 신호 최대 3개 동시 초록 ~3초, 신호 펄스 FX.
 - ② 그 라인 차량 눈에 띄게 빨라짐(간격 과하게 벌어지면 `overrideSpeedMul` 낮춤).
 - ③ 쿨다운 60초 동안 재탭 거절.
