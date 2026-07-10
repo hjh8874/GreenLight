@@ -57,35 +57,11 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 차량 또는 흐름이 목적지에 도착했을 때 발생한 수익을
-        /// 주간 정산 금액에 누적합니다.
-        ///
-        /// EconomyService가 도착 보상을 즉시 지급하고 있다면
-        /// 이 함수를 같이 호출하면 중복 지급됩니다.
-        /// </summary>
-        public void AddArrivalToWeeklyIncome(
-            float destinationMultiplier = 1f
-        )
-        {
-            if (!CanCalculate())
-            {
-                return;
-            }
-
-            int reward =
-                economyConfig.GetArrivalCoin(
-                    destinationMultiplier
-                );
-
-            AddWeeklyIncome(
-                reward,
-                "arrival"
-            );
-        }
-
-        /// <summary>
         /// 현재 배치된 건물 수를 기준으로
         /// 주간 건물 수익을 누적합니다.
+        ///
+        /// 차량 도착 보상은 EconomyService가 처리하므로
+        /// 여기에서는 누적하지 않습니다.
         /// </summary>
         public void AddWeeklyBuildingIncome(
             int buildingCount
