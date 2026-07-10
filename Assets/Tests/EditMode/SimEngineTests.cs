@@ -426,6 +426,47 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void OverrideSignal_Corridor_GreensCollinearSignals_UpToConfigCount()
+        {
+            // 가로 간선 y=2에 교차로 3개(x=2,5,8; 각 세로 가지). anchor=(5,2) → 최근접 3개 코리도어.
+            var c = Cfg(0.25f);
+            c.GridWidth = 12; c.GridHeight = 5;
+            c.OverrideDurationSeconds = 0.5f;
+            c.OverrideCooldownSeconds = 1f;
+            c.OverrideCorridorSignals = 3;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 10; x++) e.Place(V(x, 2), TileType.Road);   // 가로 간선
+            e.Place(V(2, 3), TileType.Road);   // (2,2)를 교차로로
+            e.Place(V(5, 3), TileType.Road);   // (5,2)
+            e.Place(V(8, 3), TileType.Road);   // (8,2)
+            e.Tick(0.25f);                     // 교차로 감지
+
+            Assert.IsTrue(e.TryOverrideSignal(V(5, 2), horizontal: true));
+            Assert.Greater(e.GetOverrideSecondsLeft(V(5, 2)), 0f);   // anchor
+            Assert.Greater(e.GetOverrideSecondsLeft(V(2, 2)), 0f);   // 좌 최근접
+            Assert.Greater(e.GetOverrideSecondsLeft(V(8, 2)), 0f);   // 우 최근접
+        }
+
+        [Test]
+        public void OverrideSignal_Corridor_SingleIntersection_BehavesLikeSingle()
+        {
+            // 고립 교차로 1개면 코리도어=1 → 기존 단일 오버라이드와 동일.
+            var c = Cfg(0.25f);
+            c.GridWidth = 9; c.GridHeight = 2;
+            c.OverrideDurationSeconds = 0.5f;
+            c.OverrideCooldownSeconds = 1f;
+            c.OverrideCorridorSignals = 3;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 8; x++) e.Place(V(x, 0), TileType.Road);
+            e.Place(V(4, 1), TileType.Road);
+            e.Tick(0.25f);
+
+            Assert.IsTrue(e.TryOverrideSignal(V(4, 0), horizontal: true));
+            Assert.Greater(e.GetOverrideSecondsLeft(V(4, 0)), 0f);
+            Assert.AreEqual(0f, e.GetOverrideSecondsLeft(V(0, 0)));   // 신호 아님 → 0
+        }
+
+        [Test]
         public void Remove_OutOfBounds_ReturnsFalse_NoCrash_NoEvent()
         {
             var c = Cfg(0.25f);

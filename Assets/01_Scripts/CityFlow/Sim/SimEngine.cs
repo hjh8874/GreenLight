@@ -179,16 +179,63 @@ namespace CityFlow.Sim
         // ── 오버라이드 스킬(기획 §2-D): duration초 한 방향 강제 초록 + 엔진 강제 쿨다운 ──
         // 능동 개입의 손맛 레버. 쿨다운을 엔진이 들고 있는 이유: UI는 트러스트 경계 밖.
         readonly Dictionary<Vector2Int, double> _overrideReadyAt = new();
+        readonly List<Vector2Int> _corridorBuf = new();   // 코리도어 수집 재사용 버퍼(비-재진입)
 
         public bool TryOverrideSignal(Vector2Int tile, bool horizontal)
         {
-            if (!_signals.TryGet(tile, out var s)) return false;
+            if (!_signals.TryGet(tile, out _)) return false;
             if (_overrideReadyAt.TryGetValue(tile, out var ready) && _simTime < ready) return false;
 
-            s.OverrideUntil = _simTime + _config.OverrideDurationSeconds;
-            s.OverrideHorizontal = horizontal;
-            _overrideReadyAt[tile] = s.OverrideUntil + _config.OverrideCooldownSeconds;
+            CollectCorridor(tile, horizontal, _corridorBuf);   // anchor + 일자 라인 최근접 신호
+            double until = _simTime + _config.OverrideDurationSeconds;
+            for (int i = 0; i < _corridorBuf.Count; i++)
+            {
+                if (!_signals.TryGet(_corridorBuf[i], out var s)) continue;
+                s.OverrideUntil = until;
+                s.OverrideHorizontal = horizontal;
+                _overrideReadyAt[_corridorBuf[i]] = until + _config.OverrideCooldownSeconds;
+            }
             return true;
+        }
+
+        // 코리도어: anchor에서 선택 축(가로=x, 세로=y)으로 연속 도로를 걸으며 교차로 신호를
+        // 양방향 최근접부터 번갈아 수집(anchor 포함 최대 OverrideCorridorSignals개). "직진만".
+        void CollectCorridor(Vector2Int anchor, bool horizontal, List<Vector2Int> outTiles)
+        {
+            outTiles.Clear();
+            outTiles.Add(anchor);
+            int max = Mathf.Max(1, _config.OverrideCorridorSignals);
+            var step = horizontal ? new Vector2Int(1, 0) : new Vector2Int(0, 1);
+            Vector2Int fwd = anchor, bwd = anchor;
+            bool fwdAlive = true, bwdAlive = true;
+            while (outTiles.Count < max && (fwdAlive || bwdAlive))
+            {
+                if (fwdAlive)
+                {
+                    if (TryNextSignalAlong(ref fwd, step, out var sf)) outTiles.Add(sf);
+                    else fwdAlive = false;
+                }
+                if (outTiles.Count >= max) break;
+                if (bwdAlive)
+                {
+                    if (TryNextSignalAlong(ref bwd, -step, out var sb)) outTiles.Add(sb);
+                    else bwdAlive = false;
+                }
+            }
+        }
+
+        // cursor에서 step 방향으로 도로를 걸으며 다음 교차로 신호를 찾는다. 도로 끊기면 false.
+        bool TryNextSignalAlong(ref Vector2Int cursor, Vector2Int step, out Vector2Int signal)
+        {
+            signal = default;
+            var t = cursor + step;
+            while (t.x >= 0 && t.x < _grid.Width && t.y >= 0 && t.y < _grid.Height
+                   && _grid.GetTile(t) == TileType.Road)   // GetTile은 OOB 미검사 → 직접 가드
+            {
+                if (_signals.TryGet(t, out _)) { cursor = t; signal = t; return true; }
+                t += step;
+            }
+            return false;
         }
 
         // 뷰용: 오버라이드 남은 시간(0 = 비활성) / 쿨다운 남은 시간(0 = 사용 가능).
