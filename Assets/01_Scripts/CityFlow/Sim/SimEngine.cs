@@ -65,7 +65,7 @@ namespace CityFlow.Sim
 
             _simTime += _config.TickInterval;
 
-            // 배치도가 바뀐 틱에만 경로·수요 재계산(더티 플래그 — 매 틱 BFS 금지).
+            // 배치도가 바뀐 틱에만 경로·수요 재계산(더티 플래그 — 매 틱 재계획 금지).
             if (_grid.TopologyDirty)
             {
                 _demand.Reassign(_grid, _network);            // 도달성(같은 섬) 우선 배정

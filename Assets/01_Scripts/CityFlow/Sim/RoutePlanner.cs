@@ -24,6 +24,7 @@ namespace CityFlow.Sim
 
         readonly List<List<Vector2Int>> _routes = new(128);   // 수요 인덱스 정렬, 미연결 = null
 
+        // 소유권: 내부 List를 그대로 노출 — 소비자(FlowSolver·뷰)는 읽기 전용 계약. 변형 금지.
         public IReadOnlyList<List<Vector2Int>> Routes => _routes;
 
         public RoutePlanner(int width, int height)
@@ -98,6 +99,7 @@ namespace CityFlow.Sim
                 }
             }
 
+            // _cameFrom은 호출 간 리셋 안 함 — 재구성 체인은 이번 호출에서 완화된 노드만 따라가므로 안전.
             var path = new List<Vector2Int>();
             for (int node = goal; node != -1; node = _cameFrom[node])
                 path.Add(new Vector2Int(node % _w, node / _w));

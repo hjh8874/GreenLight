@@ -59,6 +59,8 @@ namespace CityFlow.Sim
 
             var demands = demand.Demands;
             var planned = planner.Routes;
+            // 불변식: Reassign 직후 반드시 Plan이 돈다(SimEngine 더티 블록이 쌍으로 보장) — 어긋나면 즉시 진단.
+            UnityEngine.Debug.Assert(planned.Count == demands.Count, "RoutePlanner.Plan이 최신 Reassign을 반영하지 않음");
             for (int i = 0; i < demands.Count; i++)
             {
                 var path = planned[i];
