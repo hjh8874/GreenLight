@@ -348,7 +348,22 @@ namespace CityFlow.Sim
             // 참고: PlacedEvent는 안 쏨 — 복원은 '건설'이 아니고, 뷰는 폴링이라 다음 프레임 자동 갱신.
 
             // 조율 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).
-            _signals.Rebuild(_grid);
+            // 배치 모드: 저장된 신호 목록 = 배치 기록(스펙 §3). 구세이브(자동 시절 = 전 교차로 신호)도
+            // 같은 경로로 전부 배치 복원 — 포맷·마이그레이션 공짜. 자동 모드는 현행 스캔.
+            if (!_config.AutoDetectSignals)
+            {
+                _placedSignals.Clear();
+                _placedSet.Clear();
+                if (snapshot.SignalOffsets != null)
+                    foreach (var s in snapshot.SignalOffsets)
+                    {
+                        var tile = new Vector2Int(s.X, s.Y);
+                        if (_placedSet.Add(tile)) _placedSignals.Add(tile);
+                    }
+                _placedSignals.Sort((a, b) =>
+                    (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));   // flat 정렬 복구
+            }
+            RebuildSignals();
             if (snapshot.SignalOffsets != null)
                 foreach (var s in snapshot.SignalOffsets)
                 {

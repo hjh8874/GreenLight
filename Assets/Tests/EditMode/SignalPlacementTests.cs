@@ -90,6 +90,7 @@ namespace CityFlow.Sim.Tests
             var e = Build(autoDetect: false, out _);
             e.TryPlaceSignal(V(3, 0), 8);
             e.Remove(V(3, 1));                                // 곁가지 철거 → (3,0) 교차로 해제
+            Assert.AreEqual(1, e.SignalTiles.Count);          // 소멸은 다음 재구축 틱까지 지연(즉시 아님)
             e.Tick(0.25f);                                    // 재구축 소비
             Assert.AreEqual(0, e.SignalTiles.Count);          // 신호 자동 소멸
             Assert.IsFalse(e.TryRemoveSignal(V(3, 0)));       // 배치 목록에서도 사라짐
@@ -101,6 +102,98 @@ namespace CityFlow.Sim.Tests
             var e = Build(autoDetect: false, out _);
             Assert.IsTrue(e.TryPlaceSignal(V(3, 0), 999));    // 과대값
             Assert.AreEqual(15, e.GetSignalGreenSlots(V(3, 0)));   // [1, 주기-1] 클램프(기존 규약)
+        }
+
+        [Test]
+        public void PlacedMode_SaveRoundtrip_RestoresPlacementAndLevers()
+        {
+            var e = Build(autoDetect: false, out _);
+            e.TryPlaceSignal(V(3, 0), 12);
+            e.TryPlaceSignal(V(6, 0), 4);
+            e.TrySetSignalOffsetSlots(V(6, 0), 5);
+            var snap = e.CreateSnapshot();
+
+            var fresh = Build(autoDetect: false, out _);
+            Assert.AreEqual(0, fresh.SignalTiles.Count);
+            fresh.RestoreSnapshot(snap);
+            fresh.Tick(0.25f);
+            Assert.AreEqual(2, fresh.SignalTiles.Count);              // 배치가 세이브에서 복원됨
+            Assert.AreEqual(12, fresh.GetSignalGreenSlots(V(3, 0)));
+            Assert.AreEqual(4, fresh.GetSignalGreenSlots(V(6, 0)));
+            Assert.AreEqual(5, fresh.GetSignalOffsetSlots(V(6, 0)));
+            Assert.IsTrue(fresh.TryRemoveSignal(V(3, 0)));            // 복원된 것도 배치 소유로 관리됨
+        }
+
+        [Test]
+        public void LegacyAutoSave_RestoredInPlacedMode_PlacesAllSavedSignals()
+        {
+            // 자동 시절 세이브(전 교차로 신호) → 배치 모드로 열면 그 신호들이 전부 배치된 걸로.
+            var auto = Build(autoDetect: true, out _);
+            var snap = auto.CreateSnapshot();
+
+            var placed = Build(autoDetect: false, out _);
+            placed.RestoreSnapshot(snap);
+            placed.Tick(0.25f);
+            Assert.AreEqual(2, placed.SignalTiles.Count);             // 마이그레이션 공짜
+        }
+
+        [Test]
+        public void PlacedMode_CorridorOverride_CollectsPlacedLine()
+        {
+            // 배치된 신호 3개 라인에서 코리도어가 그대로 작동(SignalMap 경유라 자동 정합).
+            var c = SimConfig.Default();
+            c.TickInterval = 0.25f;
+            c.GridWidth = 12; c.GridHeight = 5;
+            c.AutoDetectSignals = false;
+            c.OverrideDurationSeconds = 0.5f;
+            c.OverrideCooldownSeconds = 1f;
+            var e = new SimEngine(c, new SimEventHub());
+            for (int x = 0; x <= 10; x++) e.Place(V(x, 2), TileType.Road);
+            e.Place(V(2, 3), TileType.Road);
+            e.Place(V(5, 3), TileType.Road);
+            e.Place(V(8, 3), TileType.Road);
+            e.Tick(0.25f);
+            e.TryPlaceSignal(V(2, 2), 8);
+            e.TryPlaceSignal(V(5, 2), 8);
+            e.TryPlaceSignal(V(8, 2), 8);
+
+            Assert.IsTrue(e.TryOverrideSignal(V(5, 2), horizontal: true));
+            Assert.Greater(e.GetOverrideSecondsLeft(V(2, 2)), 0f);
+            Assert.Greater(e.GetOverrideSecondsLeft(V(8, 2)), 0f);
+        }
+
+        [Test]
+        public void PlacedMode_UnsignaledInterferenceIsLive_SignalBeatsIt()
+        {
+            // 배치 모드에서 무신호 간섭(1단계 잠복 수학)이 라이브: 붐비는 십자에 신호를 사면 이긴다.
+            // 십자 기하는 AxisFlowTests.CrossCity와 동일 원리(직진 관통·코너컷 검증 좌표).
+            var c = SimConfig.Default();
+            c.TickInterval = 0.25f;
+            c.GridWidth = 13; c.GridHeight = 13;
+            c.DemandPerHouse = 1f;
+            c.RoadCapacity = 12f;
+            c.DemandChoicePool = 1;
+            c.SchoolCapacity = 6;
+            c.OfficeCapacity = 20;
+            c.RushAmplitude = 0f;
+            c.AutoDetectSignals = false;
+
+            System.Func<bool, float> run = placeSignal =>
+            {
+                var e = new SimEngine(c, new SimEventHub());
+                for (int x = 0; x <= 12; x++) e.Place(V(x, 6), TileType.Road);
+                for (int y = 0; y <= 12; y++) if (y != 6) e.Place(V(6, y), TileType.Road);
+                for (int i = 0; i < 6; i++) e.Place(V(i, 7), TileType.House);
+                for (int i = 0; i < 6; i++) e.Place(V(5, i), TileType.House);
+                e.Place(V(12, 7), TileType.Office);
+                e.Place(V(5, 12), TileType.School);
+                e.Tick(0.25f);
+                if (placeSignal) e.TryPlaceSignal(V(6, 6), 8);
+                e.Tick(0.25f);
+                return e.DeliveredTotal;
+            };
+
+            Assert.Less(run(false), run(true));   // 무신호 간섭 손실 > 신호 듀티 손실 = 사는 이유
         }
     }
 }
