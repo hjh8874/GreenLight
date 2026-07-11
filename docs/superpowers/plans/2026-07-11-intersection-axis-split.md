@@ -215,7 +215,11 @@ namespace CityFlow.Sim.Tests
             for (int x = 0; x <= 12; x++) g.Place(V(x, 6), TileType.Road);
             for (int y = 0; y <= 12; y++) if (y != 6) g.Place(V(6, y), TileType.Road);
 
-            for (int i = 0; i < hHouses; i++) g.Place(V(i, 7), TileType.House);     // 접점 (i,6)
+            // 가로 집은 전부 서쪽(x<6) — 세로 간선(x=6)과 충돌 금지 + 전원 (6,6) 직진 관통.
+            // y=7 행 6채, 넘치면 y=5 행(최대 12채). ((6,7)에 놓으면 Place가 도로라 거부되고
+            // 옆집이 세로 도로로 코너컷해 교차로를 스킵 — 기하 검증에서 잡은 함정.)
+            for (int i = 0; i < hHouses; i++)
+                g.Place(i < 6 ? V(i, 7) : V(i - 6, 5), TileType.House);              // 접점 (x,6)
             for (int i = 0; i < vHouses; i++) g.Place(V(5, i), TileType.House);     // 접점 (6,i)
             g.Place(V(12, 7), TileType.Office);                                      // 접점 (12,6)
             g.Place(V(5, 12), TileType.School);                                      // 접점 (6,12)
