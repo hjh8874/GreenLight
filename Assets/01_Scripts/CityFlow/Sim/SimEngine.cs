@@ -17,6 +17,9 @@ namespace CityFlow.Sim
         readonly FlowSolver _solver;
         readonly RoutePlanner _planner;
         readonly SignalMap _signals = new SignalMap();
+        // 배치 모드(AutoDetectSignals=false) 소유 상태: flat 정렬 유지 = SignalMap 순회 순서(결정론).
+        readonly List<Vector2Int> _placedSignals = new();
+        readonly HashSet<Vector2Int> _placedSet = new();
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
         readonly ArrivalEmitter _arrivals;
         readonly BurstDetector _bursts;
@@ -69,7 +72,7 @@ namespace CityFlow.Sim
             if (_grid.TopologyDirty)
             {
                 _demand.Reassign(_grid, _network);            // 도달성(같은 섬) 우선 배정
-                _signals.Rebuild(_grid);                      // 교차로 재감지(살아남은 신호 오프셋 보존)
+                RebuildSignals();                              // 교차로 재감지(살아남은 신호 오프셋 보존)
                 _planner.Plan(_demand, _network, _grid, _config);   // 혼잡 인지 증분 배정(경로 테이블)
                 _grid.ClearTopologyDirty();
             }
@@ -91,6 +94,23 @@ namespace CityFlow.Sim
             _events.Drain();                              // ⑥ 모인 이벤트 일괄 발행 (항상 마지막!)
         }
 
+        // 신호 재구축 단일 창구: 자동 = 전 교차로 스캔 / 배치 = 배치 목록(비교차로는 먼저 소멸).
+        void RebuildSignals()
+        {
+            if (_config.AutoDetectSignals)
+            {
+                _signals.Rebuild(_grid);
+                return;
+            }
+            _placedSignals.RemoveAll(t =>
+            {
+                if (_grid.IsIntersection(t)) return false;
+                _placedSet.Remove(t);          // 도로 철거로 교차로 해제 → 배치도 소멸(환불은 경제 영역)
+                return true;
+            });
+            _signals.Rebuild(_grid, _placedSignals);
+        }
+
         // 복귀 정산: 마지막 도시 상태의 처리량으로 경과시간을 적분(상한 OfflineCapHours).
         // 세이브 시스템(한준희)이 앱 복귀 시 호출 → SettlementEvent로 결과 발행.
         public void SettleOffline(double elapsedSeconds)
@@ -99,7 +119,7 @@ namespace CityFlow.Sim
             if (_grid.TopologyDirty)
             {
                 _demand.Reassign(_grid, _network);
-                _signals.Rebuild(_grid);
+                RebuildSignals();
                 _planner.Plan(_demand, _network, _grid, _config);
                 _grid.ClearTopologyDirty();
             }
@@ -168,6 +188,30 @@ namespace CityFlow.Sim
             // 최소 통과 보장(Hard limit): 초록 0슬롯이면 그 축이 영원히 빨강 = 신호 데드락.
             // 반대 축(주기-초록)도 같은 이유로 최소 1슬롯 → [1, 주기-1] 클램프.
             s.GreenSlots = Mathf.Clamp(slots, 1, Mathf.Max(1, s.CycleSlots - 1));
+            return true;
+        }
+
+        // ── 신호 배치(구매 피벗 2단계, 스펙 2026-07-11): 배치 모드에서만. 가격·UI는 팀(김건·진우) ──
+        public bool CanPlaceSignal(Vector2Int tile) =>
+            !_config.AutoDetectSignals && _grid.IsIntersection(tile) && !_placedSet.Contains(tile);
+
+        public bool TryPlaceSignal(Vector2Int tile, int greenSlots)
+        {
+            if (!CanPlaceSignal(tile)) return false;
+            int flat = tile.y * _config.GridWidth + tile.x;
+            int idx = _placedSignals.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
+            if (idx < 0) _placedSignals.Add(tile); else _placedSignals.Insert(idx, tile);
+            _placedSet.Add(tile);
+            RebuildSignals();
+            TrySetSignalGreenSlots(tile, greenSlots);   // 구매 파라미터(방향+초) — 기존 클램프 재사용
+            return true;
+        }
+
+        public bool TryRemoveSignal(Vector2Int tile)
+        {
+            if (_config.AutoDetectSignals || !_placedSet.Remove(tile)) return false;
+            _placedSignals.Remove(tile);
+            RebuildSignals();
             return true;
         }
 
