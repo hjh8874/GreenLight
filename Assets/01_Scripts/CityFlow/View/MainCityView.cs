@@ -113,6 +113,8 @@ namespace CityFlow.View
             public float Phase;
             public Vector3 Pos;   // 지난 프레임 위치·진행 방향 — 차간 유지 판정용(1프레임 지연 근사)
             public Vector3 Dir;
+            public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
+            public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
         }
 
         private sealed class BurstVisual
@@ -493,6 +495,33 @@ namespace CityFlow.View
             return PrepareRenderer(bar.GetComponent<Renderer>());
         }
 
+        // 임시 텍스트 마커(에셋 스왑 전): 기본 폰트 TextMesh. 이모지는 tofu 위험 — 글리프 보장 문자만.
+        private GameObject CreateTextMark(Transform parent, string text, Color color, float size)
+        {
+            GameObject go = new GameObject($"TextMark_{text}");
+            go.transform.SetParent(parent, false);
+            TextMesh tm = go.AddComponent<TextMesh>();
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            tm.font = font;
+            go.GetComponent<MeshRenderer>().sharedMaterial = font.material;
+            tm.text = text;
+            tm.color = color;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.characterSize = size;
+            tm.fontSize = 48;
+            return go;
+        }
+
+        private GameObject CreateSmokePuff()
+        {
+            GameObject puff = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            puff.name = "SmokePuff";
+            puff.transform.SetParent(vehicleRoot, false);
+            puff.transform.localScale = Vector3.one * (tileSize * 0.12f);
+            ApplyRendererColor(PrepareRenderer(puff.GetComponent<Renderer>()), new Color(0.45f, 0.45f, 0.45f));
+            return puff;
+        }
+
         private void ApplySignalState(Vector2Int tile, SignalVisual visual, bool selected)
         {
             Color horizontal = GetSignalColor(tile, horizontal: true);
@@ -562,6 +591,11 @@ namespace CityFlow.View
 
                 if (!active)
                 {
+                    if (vehicles[i].AngryMark != null)
+                    {
+                        vehicles[i].AngryMark.SetActive(false);
+                        vehicles[i].SmokePuff.SetActive(false);
+                    }
                     continue;
                 }
 
@@ -665,6 +699,28 @@ namespace CityFlow.View
             {
                 Color routeColor = blockedBySignal ? Color.red : Color.HSVToRGB((routeIndex * 0.137f) % 1f, 0.7f, 0.95f);
                 ApplyRendererColor(vehicle.Renderer, routeColor);
+            }
+
+            // Jam 분노 팝업(스펙 2026-07-12 §1): 내가 서 있는 타일이 Jam이면 ! + 매연 — 가짜 디테일.
+            bool jammed = tileData.GetCongestion(currentTile) == CongestionLevel.Jam;
+            if (jammed && vehicle.AngryMark == null)
+            {
+                vehicle.AngryMark = CreateTextMark(vehicleRoot, "!", Color.red, tileSize * 0.14f);
+                vehicle.SmokePuff = CreateSmokePuff();
+            }
+            if (vehicle.AngryMark != null)
+            {
+                vehicle.AngryMark.SetActive(jammed);
+                vehicle.SmokePuff.SetActive(jammed);
+                if (jammed)
+                {
+                    Vector3 basePos = vehicle.Object.transform.localPosition;
+                    float pulse = 1f + 0.2f * Mathf.Abs(Mathf.Sin(Time.time * 6f));
+                    vehicle.AngryMark.transform.localPosition = basePos + new Vector3(0f, tileSize * 0.32f, -0.1f);
+                    vehicle.AngryMark.transform.localScale = Vector3.one * pulse;
+                    vehicle.SmokePuff.transform.localPosition = basePos - travelDir * (tileSize * 0.28f)
+                        + new Vector3(0f, tileSize * 0.06f * Mathf.Sin(Time.time * 2f), 0f);
+                }
             }
 
             vehicle.Pos = vehicle.Object.transform.localPosition;
