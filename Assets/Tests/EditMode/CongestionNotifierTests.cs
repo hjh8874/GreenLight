@@ -26,6 +26,8 @@ namespace CityFlow.Sim.Tests
             cfg.RoadCapacity = 10f;
             var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
             var solver = new FlowSolver(g.Width, g.Height);
             var notifier = new CongestionNotifier(g.Width, g.Height);
 
@@ -37,7 +39,7 @@ namespace CityFlow.Sim.Tests
             void Tick(float demand)
             {
                 cfg.DemandPerHouse = demand;
-                solver.Assign(dm, net, cfg);
+                solver.Assign(dm, planner, cfg);
                 solver.Resolve(cfg);
                 notifier.Scan(solver, buffer, cfg);
                 buffer.Drain();

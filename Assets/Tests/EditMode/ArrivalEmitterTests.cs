@@ -33,8 +33,10 @@ namespace CityFlow.Sim.Tests
             var dm = new DemandMap(cfg);
             dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
             var solver = new FlowSolver(g.Width, g.Height);
-            solver.Assign(dm, net, cfg);
+            solver.Assign(dm, planner, cfg);
             solver.Resolve(cfg);
 
             var hub = new SimEventHub();
