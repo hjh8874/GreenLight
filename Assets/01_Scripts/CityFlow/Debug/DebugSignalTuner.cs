@@ -60,7 +60,7 @@ namespace CityFlow.DebugTools
             if (kb.leftBracketKey.wasPressedThisFrame)  _engine.TrySetSignalGreenSlots(t, green - 1);
             if (kb.rightBracketKey.wasPressedThisFrame) _engine.TrySetSignalGreenSlots(t, green + 1);   // 엔진이 [1,주기-1]로 클램프
 
-            // 오버라이드 스킬(기획 §2-D): 한 방향 강제 초록으로 체증 세척. 쿨다운은 엔진이 거절.
+            // 오버라이드 스킬(기획 §2-D): 양축 강제 초록으로 체증 세척. 쿨다운은 엔진이 거절. (G/V는 코리도어 걷기 방향만 다름)
             if (kb.gKey.wasPressedThisFrame) _engine.TryOverrideSignal(t, horizontal: true);
             if (kb.vKey.wasPressedThisFrame) _engine.TryOverrideSignal(t, horizontal: false);
 

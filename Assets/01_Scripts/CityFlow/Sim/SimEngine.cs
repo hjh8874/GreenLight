@@ -172,7 +172,7 @@ namespace CityFlow.Sim
             !_signals.TryGet(tile, out var s) || s.OverrideUntil > _simTime || SignalMath.IsGreen(s, _simTime);
 
         // 뷰용: 이 교차로의 이 방향 신호 3상태(초록/노랑/적색). 신호 없으면 항상 초록.
-        // 오버라이드 중엔 지정 축만 초록, 반대 축은 적색(교차 충돌 방지).
+        // 오버라이드 중엔 양축 초록(정령 마법 — 충돌 소멸, 스펙 2026-07-11 §3).
         public SignalPhase GetSignalPhase(Vector2Int tile, bool horizontal)
         {
             if (!_signals.TryGet(tile, out var s)) return SignalPhase.Green;
@@ -181,7 +181,7 @@ namespace CityFlow.Sim
             return SignalMath.PhaseForAxis(s, _simTime, horizontal);
         }
 
-        // ── 오버라이드 스킬(기획 §2-D): duration초 한 방향 강제 초록 + 엔진 강제 쿨다운 ──
+        // ── 오버라이드 스킬(기획 §2-D): duration초 양축 강제 초록 + 엔진 강제 쿨다운 ──
         // 능동 개입의 손맛 레버. 쿨다운을 엔진이 들고 있는 이유: UI는 트러스트 경계 밖.
         readonly Dictionary<Vector2Int, double> _overrideReadyAt = new();
         readonly List<Vector2Int> _corridorBuf = new();   // 코리도어 수집 재사용 버퍼(비-재진입)

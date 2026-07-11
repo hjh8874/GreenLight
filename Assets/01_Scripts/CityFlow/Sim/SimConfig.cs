@@ -47,7 +47,7 @@ namespace CityFlow.Sim
         public float DayLengthSeconds;   // 시뮬 하루 길이(초)
 
         // ── 신호 오버라이드 스킬(기획 §2-D) ──
-        // 탭 = 한 방향 강제 초록으로 체증 세척. 쿨다운은 엔진이 강제(트러스트 경계) 🔓
+        // 탭 = 양축 강제 초록으로 체증 세척. 쿨다운은 엔진이 강제(트러스트 경계) 🔓
         public float OverrideDurationSeconds;
         public float OverrideCooldownSeconds;
         public int   OverrideCorridorSignals;   // 코리도어 최대 신호 수(anchor 포함). 라인이 짧으면 그만큼만.
