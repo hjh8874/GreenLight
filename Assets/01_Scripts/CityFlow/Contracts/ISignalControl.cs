@@ -37,5 +37,13 @@ namespace CityFlow.Contracts
         bool CanPlaceSignal(Vector2Int tile);
         bool TryPlaceSignal(Vector2Int tile, int greenSlots);
         bool TryRemoveSignal(Vector2Int tile);
+
+        // 회전교차로 배치(스펙 2026-07-11): 신호와 배타(한 타일 한 장치). 배치 모드 전용.
+        // 조율값 없음 — "조율 안 해도 흐르는 것"이 정체성. 수식(λ 0.25·용량 ×0.7)은 엔진 소관.
+        // 제안: 상점 UI 창구(신호 3종의 자매). 최종 확정은 김건 합의.
+        IReadOnlyList<Vector2Int> RoundaboutTiles { get; }
+        bool CanPlaceRoundabout(Vector2Int tile);
+        bool TryPlaceRoundabout(Vector2Int tile);
+        bool TryRemoveRoundabout(Vector2Int tile);
     }
 }

@@ -20,6 +20,9 @@ namespace CityFlow.Sim
         // 배치 모드(AutoDetectSignals=false) 소유 상태: flat 정렬 유지 = SignalMap 순회 순서(결정론).
         readonly List<Vector2Int> _placedSignals = new();
         readonly HashSet<Vector2Int> _placedSet = new();
+        // 회전교차로(스펙 2026-07-11): 신호와 배타 배치. SignalMap 무관 — FlowSolver가 셋을 직접 봄.
+        readonly List<Vector2Int> _placedRoundabouts = new();
+        readonly HashSet<Vector2Int> _roundaboutSet = new();
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
         readonly ArrivalEmitter _arrivals;
         readonly BurstDetector _bursts;
@@ -108,6 +111,12 @@ namespace CityFlow.Sim
                 _placedSet.Remove(t);          // 도로 철거로 교차로 해제 → 배치도 소멸(환불은 경제 영역)
                 return true;
             });
+            _placedRoundabouts.RemoveAll(t =>
+            {
+                if (_grid.IsIntersection(t)) return false;
+                _roundaboutSet.Remove(t);      // 교차로 해제 → 로터리도 소멸(신호와 동일 규약)
+                return true;
+            });
             _signals.Rebuild(_grid, _placedSignals);
         }
 
@@ -193,7 +202,8 @@ namespace CityFlow.Sim
 
         // ── 신호 배치(구매 피벗 2단계, 스펙 2026-07-11): 배치 모드에서만. 가격·UI는 팀(김건·진우) ──
         public bool CanPlaceSignal(Vector2Int tile) =>
-            !_config.AutoDetectSignals && _grid.IsIntersection(tile) && !_placedSet.Contains(tile);
+            !_config.AutoDetectSignals && _grid.IsIntersection(tile)
+            && !_placedSet.Contains(tile) && !_roundaboutSet.Contains(tile);   // 로터리와 배타
 
         public bool TryPlaceSignal(Vector2Int tile, int greenSlots)
         {
@@ -212,6 +222,30 @@ namespace CityFlow.Sim
             if (_config.AutoDetectSignals || !_placedSet.Remove(tile)) return false;
             _placedSignals.Remove(tile);
             RebuildSignals();
+            return true;
+        }
+
+        // ── 회전교차로 배치(스펙 2026-07-11): 신호 3종의 자매. Rebuild 불필요(SignalMap 무관) ──
+        public IReadOnlyList<Vector2Int> RoundaboutTiles => _placedRoundabouts;
+
+        public bool CanPlaceRoundabout(Vector2Int tile) =>
+            !_config.AutoDetectSignals && _grid.IsIntersection(tile)
+            && !_roundaboutSet.Contains(tile) && !_placedSet.Contains(tile);   // 신호와 배타
+
+        public bool TryPlaceRoundabout(Vector2Int tile)
+        {
+            if (!CanPlaceRoundabout(tile)) return false;
+            int flat = tile.y * _config.GridWidth + tile.x;
+            int idx = _placedRoundabouts.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
+            if (idx < 0) _placedRoundabouts.Add(tile); else _placedRoundabouts.Insert(idx, tile);
+            _roundaboutSet.Add(tile);
+            return true;
+        }
+
+        public bool TryRemoveRoundabout(Vector2Int tile)
+        {
+            if (_config.AutoDetectSignals || !_roundaboutSet.Remove(tile)) return false;
+            _placedRoundabouts.Remove(tile);
             return true;
         }
 
