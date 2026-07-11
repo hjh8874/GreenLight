@@ -135,6 +135,7 @@ namespace CityFlow.Sim.Tests
             placed.RestoreSnapshot(snap);
             placed.Tick(0.25f);
             Assert.AreEqual(2, placed.SignalTiles.Count);             // 마이그레이션 공짜
+            Assert.IsTrue(placed.TryRemoveSignal(V(3, 0)));           // 소유까지 이전 — 배치로 관리됨
         }
 
         [Test]

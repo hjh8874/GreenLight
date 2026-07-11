@@ -231,6 +231,7 @@ namespace CityFlow.Sim
 
         // ── 오버라이드 스킬(기획 §2-D): duration초 양축 강제 초록 + 엔진 강제 쿨다운 ──
         // 능동 개입의 손맛 레버. 쿨다운을 엔진이 들고 있는 이유: UI는 트러스트 경계 밖.
+        // 배치 모드에서 신호를 철거+재구매해도 이 맵은 유지 — "재설치로 쿨다운 리셋" 악용 불가(의도).
         readonly Dictionary<Vector2Int, double> _overrideReadyAt = new();
         readonly List<Vector2Int> _corridorBuf = new();   // 코리도어 수집 재사용 버퍼(비-재진입)
 
