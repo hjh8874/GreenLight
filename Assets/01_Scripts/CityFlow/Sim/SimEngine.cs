@@ -74,7 +74,7 @@ namespace CityFlow.Sim
 
             // ① 수요→세그먼트 흐름 배정 (러시아워 맥동 배율 반영 — 기획 §1 '수요의 맥동')
             _solver.Assign(_demand, _network, _config, SimConfig.DemandPulse(_simTime, _config));
-            _solver.Resolve(_config, _signals, _simTime); // ② 혼잡·병목·그린웨이브·오버라이드·delivered
+            _solver.Resolve(_config, _signals, _grid, _simTime); // ② 혼잡·병목·그린웨이브·오버라이드·delivered
             _congestion.Scan(_solver, _events, _config);  // ②' 레벨 전이만 이벤트로
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
@@ -107,7 +107,7 @@ namespace CityFlow.Sim
                 if (_signals.TryGet(t, out var sig)) sig.OverrideUntil = 0;
 
             _solver.Assign(_demand, _network, _config);   // 정산은 평균 수요(맥동 무시 = 공정)
-            _solver.Resolve(_config, _signals, _simTime); // 오프라인도 신호 조율(오프셋·초록)은 그대로 반영
+            _solver.Resolve(_config, _signals, _grid, _simTime); // 오프라인도 신호 조율(오프셋·초록)은 그대로 반영
 
             double capped = Math.Min(elapsedSeconds, _config.OfflineCapHours * 3600.0);
             long coins = _arrivals.SettleOffline(_solver, capped, _config);

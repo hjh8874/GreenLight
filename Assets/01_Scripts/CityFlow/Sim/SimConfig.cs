@@ -52,6 +52,11 @@ namespace CityFlow.Sim
         public float OverrideCooldownSeconds;
         public int   OverrideCorridorSignals;   // 코리도어 최대 신호 수(anchor 포함). 라인이 짧으면 그만큼만.
 
+        // ── 무신호 교차로 간섭(신호 구매 피벗 1단계) ──
+        // 교차 교통 1이 내 축을 λ만큼 방해(양보 협상 오버헤드) — MM식 자연 양보의 rate 근사.
+        // λ=1이면 기존 합산과 동일(연속성). 자동생성 유지 중엔 라이브 미노출(모든 교차로에 신호) 🔓
+        public float UnsignaledInterference;
+
         // ── 보상(코인) 원료 ────────────────────
         public float CoinBase;          // 🔓 공식 형태·가중치 잠정
 
@@ -89,6 +94,7 @@ namespace CityFlow.Sim
             OverrideDurationSeconds = 3f,
             OverrideCooldownSeconds = 60f,
             OverrideCorridorSignals = 3,
+            UnsignaledInterference = 1.5f,
             CoinBase = 1f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,
