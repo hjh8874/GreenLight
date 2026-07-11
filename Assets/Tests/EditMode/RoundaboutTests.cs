@@ -188,5 +188,35 @@ namespace CityFlow.Sim.Tests
             float b = Run(6, 6, 1.5f, Node.Roundabout);
             Assert.AreEqual(a, b);       // 같은 입력 = 같은 delivered(기존 관례)
         }
+
+        [Test]
+        public void SaveRoundtrip_RestoresRoundabouts()
+        {
+            var e = Build(autoDetect: false, out _);
+            e.TryPlaceRoundabout(V(6, 0));
+            e.TryPlaceRoundabout(V(3, 0));
+            var snap = e.CreateSnapshot();
+
+            var fresh = Build(autoDetect: false, out _);
+            fresh.RestoreSnapshot(snap);
+            fresh.Tick(0.25f);
+            Assert.AreEqual(2, fresh.RoundaboutTiles.Count);
+            Assert.AreEqual(V(3, 0), fresh.RoundaboutTiles[0]);       // flat 정렬 복구
+            Assert.IsTrue(fresh.TryRemoveRoundabout(V(3, 0)));        // 소유까지 복원
+            Assert.IsFalse(fresh.CanPlaceSignal(V(6, 0)));            // 배타도 복원됨
+        }
+
+        [Test]
+        public void LegacySave_WithoutRoundabouts_RestoresClean()
+        {
+            var e = Build(autoDetect: false, out _);
+            var snap = e.CreateSnapshot();
+            snap.Roundabouts = null;                                  // 구세이브 = 필드 없음
+            var fresh = Build(autoDetect: false, out _);
+            fresh.TryPlaceRoundabout(V(3, 0));                        // 이전 세션 잔존 상태
+            fresh.RestoreSnapshot(snap);
+            fresh.Tick(0.25f);
+            Assert.AreEqual(0, fresh.RoundaboutTiles.Count);          // 복원 = 전체 교체
+        }
     }
 }

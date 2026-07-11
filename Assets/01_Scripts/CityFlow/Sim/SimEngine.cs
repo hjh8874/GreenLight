@@ -365,7 +365,11 @@ namespace CityFlow.Sim
                     GreenSlots = GetSignalGreenSlots(t),
                 });
 
-            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray() };
+            var roundabouts = new RoundaboutSaveData[_placedRoundabouts.Count];
+            for (int i = 0; i < _placedRoundabouts.Count; i++)
+                roundabouts[i] = new RoundaboutSaveData { X = _placedRoundabouts[i].x, Y = _placedRoundabouts[i].y };
+
+            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts };
         }
 
         // 주의: _overrideReadyAt은 복원해도 유지(의도) — 세이브 로드로 쿨다운을 리셋하는 악용 방지.
@@ -397,6 +401,18 @@ namespace CityFlow.Sim
                     }
                 _placedSignals.Sort((a, b) =>
                     (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));   // flat 정렬 복구
+
+                _placedRoundabouts.Clear();
+                _roundaboutSet.Clear();
+                if (snapshot.Roundabouts != null)
+                    foreach (var r in snapshot.Roundabouts)
+                    {
+                        var tile = new Vector2Int(r.X, r.Y);
+                        if (_roundaboutSet.Add(tile)) _placedRoundabouts.Add(tile);
+                    }
+                _placedRoundabouts.Sort((a, b) =>
+                    (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
+                // 비교차로 잔재는 직후 RebuildSignals()의 소멸 프루닝이 청소(신호와 동일 경로).
             }
             RebuildSignals();
             if (snapshot.SignalOffsets != null)

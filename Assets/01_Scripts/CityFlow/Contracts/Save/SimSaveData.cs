@@ -7,5 +7,6 @@ namespace CityFlow.Contracts.Save
     {
         public TileSaveData[] PlacedTiles;
         public SignalSaveData[] SignalOffsets;
+        public RoundaboutSaveData[] Roundabouts;   // 구세이브 = null(로터리 0개) — 마이그레이션 공짜
     }
 }
