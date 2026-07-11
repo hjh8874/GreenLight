@@ -151,8 +151,8 @@ namespace CityFlow.Sim
                         {
                             // 로터리: 양보 간섭 급감(λr) 대신 전원 감속(용량 ×cf) — 스펙 §1 수식.
                             float cap = cfg.RoadCapacity * cfg.RoundaboutCapacityFactor;
-                            _ratioH[i] = (_flowH[i] + cfg.RoundaboutInterference * _flowV[i]) / cap;
-                            _ratioV[i] = (_flowV[i] + cfg.RoundaboutInterference * _flowH[i]) / cap;
+                            _ratioH[i] = AxisRatio(_flowH[i] + cfg.RoundaboutInterference * _flowV[i], cap, cfg);
+                            _ratioV[i] = AxisRatio(_flowV[i] + cfg.RoundaboutInterference * _flowH[i], cap, cfg);
                         }
                         else
                         {

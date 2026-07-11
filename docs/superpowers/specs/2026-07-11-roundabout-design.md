@@ -27,7 +27,7 @@
 - 로터리 < 신호최적 ⟺ `s > (1−cf)/(cf−λr)` = 0.3/0.45 = **2/3**
 - 무신호 < 로터리 ⟺ `1+1.5s < (1+0.25s)/0.7` ⟺ **s < 0.375**
 
-→ 균형=로터리 / 중간 편중=신호 / 극단 편중=방치가 각각 최적인 3분할. 계수는 SimConfig `RoundaboutInterference=0.25f`, `RoundaboutCapacityFactor=0.7f`(UnsignaledInterference 옆, 추후 SO 튜닝 대상).
+→ 균형=로터리 / 중간 편중=신호 / 극단 편중=로터리 무익(무신호가 로터리를 이김)인 3분할. 계수는 SimConfig `RoundaboutInterference=0.25f`, `RoundaboutCapacityFactor=0.7f`(UnsignaledInterference 옆, 추후 SO 튜닝 대상).
 
 ## §2. FlowSolver — 세 갈래 분기
 

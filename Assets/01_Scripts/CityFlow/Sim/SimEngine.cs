@@ -408,7 +408,8 @@ namespace CityFlow.Sim
                     foreach (var r in snapshot.Roundabouts)
                     {
                         var tile = new Vector2Int(r.X, r.Y);
-                        if (_roundaboutSet.Add(tile)) _placedRoundabouts.Add(tile);
+                        // 손상 세이브 방어: 같은 타일에 신호가 있으면 신호 우선(한 타일 한 장치)
+                        if (!_placedSet.Contains(tile) && _roundaboutSet.Add(tile)) _placedRoundabouts.Add(tile);
                     }
                 _placedRoundabouts.Sort((a, b) =>
                     (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));

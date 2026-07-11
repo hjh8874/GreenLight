@@ -58,7 +58,7 @@ namespace CityFlow.Sim
         public float UnsignaledInterference;
 
         // ── 회전교차로(스펙 2026-07-11): 낮은 양보 간섭 + 전원 감속(용량 페널티) ──
-        // 균형 교차로(s>2/3)=로터리, 편중(0.375~2/3)=신호, 극단(<0.375)=무신호가 최적 — 3분할 전략.
+        // 균형 교차로(s>2/3)=로터리, 편중(0.375~2/3)=신호, 극단(<0.375)=무신호가 로터리보다 나음(돈 낭비) — 3분할 전략.
         // 상수 λ만 쓰면 최적 신호를 항상 이겨 전략이 죽는다(스펙 §1) — cf<1이 균형추 🔓
         public float RoundaboutInterference;    // λr: 교차 교통의 방해 계수
         public float RoundaboutCapacityFactor;  // cf: 로터리 타일 유효 용량 배율
