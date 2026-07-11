@@ -48,7 +48,7 @@ namespace CityFlow.Contracts
 
         // 입체교차 배치(스펙 2026-07-12): 축 분리로 간섭 소멸 — 교차로 4형제의 넷째(엔드게임 천장).
         // 신호·로터리와 3자 배타. 조율값·계수 없음(간섭 0·페널티 0이 정체성). 수식은 엔진 소관.
-        // 제안: 상점 UI 창구. 제안이 12종까지 누적 — 배치물 공통 계약 분리도 검토 대상. 최종 확정은 김건 합의.
+        // 제안: 상점 UI 창구. 제안이 14종까지 누적(오버라이드3+신호배치3+로터리4+입체4) — 배치물 공통 계약 분리도 검토 대상. 최종 확정은 김건 합의.
         IReadOnlyList<Vector2Int> OverpassTiles { get; }
         bool CanPlaceOverpass(Vector2Int tile);
         bool TryPlaceOverpass(Vector2Int tile);
