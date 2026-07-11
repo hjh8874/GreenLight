@@ -33,6 +33,7 @@ namespace CityFlow.View
             cam.depth = (Camera.main != null ? Camera.main.depth : 0f) + 1f;
             cam.fieldOfView = 65f;
             cam.nearClipPlane = 0.05f;
+            cam.enabled = false;   // Fake 환경(simEngine null) 유령 PiP 방지 — 첫 유효 Update가 켠다
         }
 
         private void OnDestroy()
@@ -83,7 +84,8 @@ namespace CityFlow.View
         }
 
         // 최장 활성 경로 선택 — 신호를 가장 많이 지나는 경로가 그린웨이브 과시에 최적(스펙 §핵심결정).
-        // 경로 리스트는 솔버 캐시 참조 — topology 변경으로 비면 Count 가드가 다음 프레임 재선택.
+        // 개별 경로 List는 재계획 시 새로 할당되는 불변 고아 리스트(RoutePlanner 소유권 계약) —
+        // 잡은 참조는 길이가 안 변해 인덱스 안전. 소멸한 경로는 종점까지 완주 후 재선택(의도 — 뷰 전용).
         private bool EnsureRoute()
         {
             if (route != null && route.Count >= 2)
