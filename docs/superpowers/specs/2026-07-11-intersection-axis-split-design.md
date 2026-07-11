@@ -48,7 +48,7 @@ C = `RoadCapacity`, d = `GreenRatio`(가로 듀티), λ = `UnsignaledInterferenc
 - "교차로" 판정 = SignalMap과 동일 규칙(직각 도로 이웃 ≥3). 무신호 교차로 = 교차로인데 SignalMap에 없음 — **자동생성 유지 중엔 라이브에서 미노출**(모든 교차로에 신호), 테스트로 검증 + 2단계 대비.
 - 듀티 0 가드: 기존 규약 유지(초록 0 = 흐르면 최악 병목 `EfficiencyMinRatio`). `(1−d)=0`도 동일 처리.
 - **경로 병목 판정: 그 타일을 건너는 축의 ratio** 사용(경로 스텝 축, §1과 같은 분류). 대각 스텝은 `max(ratioH, ratioV)`(양축을 다 쓰니 최악 축이 병목).
-- 단일값 소비자(`GetRatio`/`GetCongestion`/`GetDensity01` → 뷰·BurstDetector·CongestionNotifier·SimStats)는 **max(ratioH, ratioV)** 를 받음 — 인터페이스 무변경, 의미는 "그 타일의 최악 축".
+- 단일값 소비자(`GetRatio`/`GetCongestion`/`GetDensity01` → BurstDetector·CongestionNotifier·SimStats·차량 감속)는 **max(ratioH, ratioV)** 를 받음 — 인터페이스 무변경, 의미는 "그 타일의 최악 축". **이건 배관이지 화면 페인트가 아님**: 혼잡의 화면 표현은 차 중심 원칙(차가 밀리는 모습, 추후 경적 사운드 — 환 2026-07-11). 타일 색 강조는 넣지 않고, 현행 프로토 뷰의 도로 색칠은 에셋 전환 때 걷어낼 임시물로 취급.
 - SignalFactor(그린웨이브)는 기존 축 무관 근사 유지 — 이번 스코프에서 손 안 댐.
 
 ## §3. 오버라이드 의미 변경 — 양쪽 초록 (PR#38 코드 위)
@@ -79,6 +79,7 @@ asset(`Assets/05_ScriptableObjects/SimConfig.asset`)과 `Default()` 둘 다.
 - 혼잡 인지 라우팅(별도 스펙 — BFS는 그대로)
 - 축별 그린웨이브 정밀화·회전 위상(E-6)
 - 뷰 연출 변경(양쪽 초록은 기존 페이즈 렌더가 자동 반영)
+- 혼잡 표현 연출(차 정체 비주얼 강화·경적 사운드) — 에셋/뷰 트랙. 경적은 `CongestionChanged`(Jam 진입) 구독 컴포넌트(FlowBurstJuice 패턴)로 에셋 확보 시 별도 작업
 
 ## 검증 계획 (EditMode)
 
