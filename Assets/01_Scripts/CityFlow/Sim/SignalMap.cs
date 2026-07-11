@@ -9,9 +9,6 @@ namespace CityFlow.Sim
     // 살아남은 교차로의 오프셋(유저 조율)은 보존, 사라진 교차로의 신호는 제거.
     internal sealed class SignalMap
     {
-        static readonly Vector2Int[] Dirs =
-            { new Vector2Int(0, 1), new Vector2Int(1, 0), new Vector2Int(0, -1), new Vector2Int(-1, 0) };
-
         readonly List<Vector2Int> _tiles = new(32);                    // flat 순서 = 결정론
         readonly Dictionary<Vector2Int, Signal> _signals = new();      // 조회 전용(순회 안 함)
         readonly HashSet<Vector2Int> _alive = new();                   // Rebuild 중 생존 표시 버퍼
@@ -28,7 +25,7 @@ namespace CityFlow.Sim
                 {
                     var t = new Vector2Int(x, y);
                     if (grid.GetTile(t) != TileType.Road) continue;
-                    if (RoadNeighbors(grid, t) < 3) continue;          // 직선(2)·끝(1)은 신호 없음
+                    if (!grid.IsIntersection(t)) continue;             // 교차로 규칙은 CityGrid가 오너
 
                     _tiles.Add(t);
                     _alive.Add(t);
@@ -43,17 +40,5 @@ namespace CityFlow.Sim
         }
 
         public bool TryGet(Vector2Int tile, out Signal signal) => _signals.TryGetValue(tile, out signal);
-
-        static int RoadNeighbors(CityGrid grid, Vector2Int t)
-        {
-            int n = 0;
-            foreach (var d in Dirs)
-            {
-                var v = t + d;
-                if (v.x < 0 || v.x >= grid.Width || v.y < 0 || v.y >= grid.Height) continue;
-                if (grid.GetTile(v) == TileType.Road) n++;
-            }
-            return n;
-        }
     }
 }
