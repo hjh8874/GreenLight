@@ -11,10 +11,9 @@ namespace CityFlow.Sim
         public int GreenSlots = 8;    // 가로축 초록 길이(슬롯) = 듀티. 세로축은 나머지(주기-초록)
         public int OffsetSlots = 0;   // 주기 시작을 미는 양 = 유저 조작 대상
 
-        // 오버라이드 스킬(기획 §2-D): 이 시각(simTime)까지 한 방향 강제 초록 — 체증 세척.
+        // 오버라이드 스킬(기획 §2-D): 이 시각(simTime)까지 양축 강제 초록 — 정령 마법, 충돌 소멸.
         // 초 단위 일시 상태라 세이브 대상 아님(SignalSaveData에 안 들어감).
         public double OverrideUntil = 0;
-        public bool OverrideHorizontal = true;
     }
 
     // 상태 없는 순수 함수: 신호는 "시간의 함수"일 뿐. 프로토(TrafficSpirit)에서 검증된 개념 이식.

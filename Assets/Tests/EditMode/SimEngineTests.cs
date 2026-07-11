@@ -401,9 +401,9 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void OverrideSignal_ForcesAxisGreen_ThenCooldownAndExpiry()
+        public void OverrideSignal_ForcesBothAxesGreen_ThenCooldownAndExpiry()
         {
-            // 오버라이드 스킬: 지정 축 강제 초록 + 반대 축 적색, 쿨다운 중 재사용 거절, 만료 후 복귀.
+            // 오버라이드 스킬(정령 마법): 양축 강제 초록(충돌 소멸), 쿨다운 중 재사용 거절, 만료 후 복귀.
             var c = Cfg(0.25f);
             c.GridWidth = 9; c.GridHeight = 2;
             c.OverrideDurationSeconds = 0.5f;   // 테스트용 짧게
@@ -416,7 +416,7 @@ namespace CityFlow.Sim.Tests
             Assert.IsFalse(e.TryOverrideSignal(V(1, 0), true));                    // 신호 없는 타일 거절
             Assert.IsTrue(e.TryOverrideSignal(V(4, 0), horizontal: false));
             Assert.AreEqual(SignalPhase.Green, e.GetSignalPhase(V(4, 0), false));  // 지정 축 초록
-            Assert.AreEqual(SignalPhase.Red, e.GetSignalPhase(V(4, 0), true));     // 반대 축 적색(충돌 방지)
+            Assert.AreEqual(SignalPhase.Green, e.GetSignalPhase(V(4, 0), true));   // 교차 축도 초록(양축)
             Assert.IsFalse(e.TryOverrideSignal(V(4, 0), false));                   // 지속+쿨다운 중 거절
             Assert.Greater(e.GetOverrideSecondsLeft(V(4, 0)), 0f);
 

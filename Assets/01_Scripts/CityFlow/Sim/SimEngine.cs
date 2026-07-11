@@ -177,7 +177,7 @@ namespace CityFlow.Sim
         {
             if (!_signals.TryGet(tile, out var s)) return SignalPhase.Green;
             if (s.OverrideUntil > _simTime)
-                return horizontal == s.OverrideHorizontal ? SignalPhase.Green : SignalPhase.Red;
+                return SignalPhase.Green;   // 정령 마법: 양축 초록(충돌 소멸) — 스펙 2026-07-11 §3
             return SignalMath.PhaseForAxis(s, _simTime, horizontal);
         }
 
@@ -197,7 +197,6 @@ namespace CityFlow.Sim
             {
                 if (!_signals.TryGet(_corridorBuf[i], out var s)) continue;
                 s.OverrideUntil = until;
-                s.OverrideHorizontal = horizontal;
                 _overrideReadyAt[_corridorBuf[i]] = until + _config.OverrideCooldownSeconds;
             }
             return true;

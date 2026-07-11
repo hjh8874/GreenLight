@@ -129,5 +129,23 @@ namespace CityFlow.Sim.Tests
             var (b, _, _) = Solve(CrossCity(6, 6), cfg, withSignals: false);
             Assert.AreEqual(a.DeliveredTotal, b.DeliveredTotal);
         }
+
+        [Test]
+        public void Override_BothAxesFullCapacity_ClearsTheJam()
+        {
+            // S3 도시(9/1, C=10) 재사용: 듀티 0.5면 교차로 ratioH=9/5=1.8(Jam, E=0.36).
+            // 오버라이드 = 양축 풀 용량 → ratioH=9/10=0.9 — 3초간 충돌 소멸, 어떤 듀티보다 좋음.
+            // (8/8 같은 대칭 기하는 측면 간선 정체가 병목을 지배해 오버라이드 효과가 안 보임 — 금지.)
+            var cfg = CrossCfg(vHouses: 1, capacity: 10f);
+            var (normal, _, _) = Solve(CrossCity(9, 1), cfg, withSignals: true);
+            var (burst, _, _) = Solve(CrossCity(9, 1), cfg, withSignals: true, tune: sm =>
+            {
+                sm.TryGet(V(6, 6), out var s);
+                s.OverrideUntil = 999.0;   // Resolve(simTime 기본 0) 동안 활성
+            });
+            Assert.AreEqual(CongestionLevel.Jam, normal.GetCongestion(V(6, 6)));      // 평상시 병목
+            Assert.AreNotEqual(CongestionLevel.Jam, burst.GetCongestion(V(6, 6)));    // 마법으로 해소
+            Assert.Less(normal.DeliveredTotal, burst.DeliveredTotal);
+        }
     }
 }
