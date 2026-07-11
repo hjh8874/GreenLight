@@ -165,6 +165,7 @@ namespace CityFlow.View
             RefreshRoundabouts();
             RefreshOverpasses();
             RefreshVehicles();
+            gameObject.AddComponent<DriveViewCamera>().Init(simEngine, transform, tileSize);
         }
 
         private void OnDestroy()
