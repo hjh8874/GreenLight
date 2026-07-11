@@ -405,7 +405,11 @@ namespace CityFlow.Sim
             for (int i = 0; i < _placedRoundabouts.Count; i++)
                 roundabouts[i] = new RoundaboutSaveData { X = _placedRoundabouts[i].x, Y = _placedRoundabouts[i].y };
 
-            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts };
+            var overpasses = new OverpassSaveData[_placedOverpasses.Count];
+            for (int i = 0; i < _placedOverpasses.Count; i++)
+                overpasses[i] = new OverpassSaveData { X = _placedOverpasses[i].x, Y = _placedOverpasses[i].y };
+
+            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses };
         }
 
         // 주의: _overrideReadyAt은 복원해도 유지(의도) — 세이브 로드로 쿨다운을 리셋하는 악용 방지.
@@ -448,6 +452,19 @@ namespace CityFlow.Sim
                         if (!_placedSet.Contains(tile) && _roundaboutSet.Add(tile)) _placedRoundabouts.Add(tile);
                     }
                 _placedRoundabouts.Sort((a, b) =>
+                    (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
+
+                _placedOverpasses.Clear();
+                _overpassSet.Clear();
+                if (snapshot.Overpasses != null)
+                    foreach (var o in snapshot.Overpasses)
+                    {
+                        var tile = new Vector2Int(o.X, o.Y);
+                        // 손상 세이브 방어: 신호·로터리가 선점한 타일이면 입체는 양보(한 타일 한 장치)
+                        if (!_placedSet.Contains(tile) && !_roundaboutSet.Contains(tile)
+                            && _overpassSet.Add(tile)) _placedOverpasses.Add(tile);
+                    }
+                _placedOverpasses.Sort((a, b) =>
                     (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
                 // 비교차로 잔재는 직후 RebuildSignals()의 소멸 프루닝이 청소(신호와 동일 경로).
             }

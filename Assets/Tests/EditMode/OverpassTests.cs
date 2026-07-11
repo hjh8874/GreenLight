@@ -161,5 +161,35 @@ namespace CityFlow.Sim.Tests
             float b = Run(6, 6, 1.5f, Node.Overpass);
             Assert.AreEqual(a, b);
         }
+
+        [Test]
+        public void SaveRoundtrip_RestoresOverpasses()
+        {
+            var e = Build(autoDetect: false, out _);
+            e.TryPlaceOverpass(V(6, 0));
+            e.TryPlaceOverpass(V(3, 0));
+            var snap = e.CreateSnapshot();
+
+            var fresh = Build(autoDetect: false, out _);
+            fresh.RestoreSnapshot(snap);
+            fresh.Tick(0.25f);
+            Assert.AreEqual(2, fresh.OverpassTiles.Count);
+            Assert.AreEqual(V(3, 0), fresh.OverpassTiles[0]);     // flat 정렬 복구
+            Assert.IsTrue(fresh.TryRemoveOverpass(V(3, 0)));      // 소유까지 복원
+            Assert.IsFalse(fresh.CanPlaceSignal(V(6, 0)));        // 배타도 복원
+        }
+
+        [Test]
+        public void LegacySave_WithoutOverpasses_RestoresClean()
+        {
+            var e = Build(autoDetect: false, out _);
+            var snap = e.CreateSnapshot();
+            snap.Overpasses = null;                               // 구세이브 = 필드 없음
+            var fresh = Build(autoDetect: false, out _);
+            fresh.TryPlaceOverpass(V(3, 0));                      // 이전 세션 잔존 상태
+            fresh.RestoreSnapshot(snap);
+            fresh.Tick(0.25f);
+            Assert.AreEqual(0, fresh.OverpassTiles.Count);        // 복원 = 전체 교체
+        }
     }
 }
