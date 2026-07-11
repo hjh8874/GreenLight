@@ -65,7 +65,8 @@ namespace CityFlow.Sim
         public float BurstFreeReturnRatio;  // Free 복귀 0.6 (경계 진동 방지)
         public float BurstCooldownSeconds;  // 타일당 10s (연사 방지)
         public float BurstRewardThreshold;  // pendingReward 이 값 넘어야 발행 🔓
-        public float BurstRewardMultiplier; // 발행 시 pending × 배수 🔓
+        public float BurstRewardMultiplier; // 발행 시 pending × 배수 🔓 ⚠ 1 초과 금지 —
+                                            // m>1이면 "고의 정체→해소" 파밍이 순이익(BurstGuardTests가 지킴)
 
         // ── 정산 ───────────────────────────────
         public float OfflineCapHours;   // 오프라인 상한 8h
@@ -100,7 +101,7 @@ namespace CityFlow.Sim
             BurstFreeReturnRatio = 0.6f,
             BurstCooldownSeconds = 10f,
             BurstRewardThreshold = 1f,
-            BurstRewardMultiplier = 2f,
+            BurstRewardMultiplier = 1f,   // 밀린 처리량 전액 회수(무이자 외상 정산) = 파밍 중립(환 2026-07-11)
             OfflineCapHours = 8f,
         };
 
