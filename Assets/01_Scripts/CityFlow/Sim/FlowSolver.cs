@@ -99,8 +99,14 @@ namespace CityFlow.Sim
         public void Resolve(in SimConfig cfg, SignalMap signals, double simTime = 0)
             => Resolve(cfg, signals, null, simTime);
 
-        // 캐노니컬: delivered = 수요 × E(축별 병목) × SignalFactor(그린웨이브).
+        // 로터리 없는 호출(기존 테스트 호환).
         public void Resolve(in SimConfig cfg, SignalMap signals, CityGrid grid, double simTime = 0)
+            => Resolve(cfg, signals, grid, null, simTime);
+
+        // 캐노니컬: delivered = 수요 × E(축별 병목) × SignalFactor(그린웨이브).
+        // roundabouts = 엔진 소유 배치 셋(조회만 — 소유·갱신은 SimEngine, 스펙 §2).
+        public void Resolve(in SimConfig cfg, SignalMap signals, CityGrid grid,
+                            HashSet<Vector2Int> roundabouts, double simTime = 0)
         {
             // ① 기본: 전 타일 합산 ratio(일반 도로 — 직선엔 교차 충돌 없음). 교차로만 아래서 덮어씀.
             for (int i = 0; i < _flowH.Length; i++)
@@ -131,6 +137,7 @@ namespace CityFlow.Sim
 
             // ①'' 무신호 교차로: 간섭 모델 — 교차 교통이 양보 협상만큼(λ) 내 축을 방해(스펙 §2).
             // 자동생성 유지 중엔 라이브 미노출(모든 교차로에 신호) — 구매 피벗 2단계 대비.
+            // 로터리는 λr·cf(스펙 2026-07-11).
             if (grid != null)
             {
                 for (int y = 0; y < grid.Height; y++)
@@ -140,8 +147,18 @@ namespace CityFlow.Sim
                         if (!grid.IsIntersection(t)) continue;
                         if (signals != null && signals.TryGet(t, out _)) continue;   // 신호가 처리함
                         int i = Index(t);
-                        _ratioH[i] = (_flowH[i] + cfg.UnsignaledInterference * _flowV[i]) / cfg.RoadCapacity;
-                        _ratioV[i] = (_flowV[i] + cfg.UnsignaledInterference * _flowH[i]) / cfg.RoadCapacity;
+                        if (roundabouts != null && roundabouts.Contains(t))
+                        {
+                            // 로터리: 양보 간섭 급감(λr) 대신 전원 감속(용량 ×cf) — 스펙 §1 수식.
+                            float cap = cfg.RoadCapacity * cfg.RoundaboutCapacityFactor;
+                            _ratioH[i] = (_flowH[i] + cfg.RoundaboutInterference * _flowV[i]) / cap;
+                            _ratioV[i] = (_flowV[i] + cfg.RoundaboutInterference * _flowH[i]) / cap;
+                        }
+                        else
+                        {
+                            _ratioH[i] = (_flowH[i] + cfg.UnsignaledInterference * _flowV[i]) / cfg.RoadCapacity;
+                            _ratioV[i] = (_flowV[i] + cfg.UnsignaledInterference * _flowH[i]) / cfg.RoadCapacity;
+                        }
                         _level[i] = Classify(Mathf.Max(_ratioH[i], _ratioV[i]), cfg);
                     }
             }

@@ -89,5 +89,104 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0, e.RoundaboutTiles.Count);      // 자동 소멸(신호와 동일 규약)
             Assert.IsFalse(e.TryRemoveRoundabout(V(3, 0)));
         }
+
+        // 십자 도시(검증된 좌표): 가로 간선(y=6)·세로 간선(x=6), H집 hx개(행7)·V집 vy개(x=5열).
+        // 주의: DemandMap은 다목적지(집마다 회사·학교 수요) — 손계산 fH/fV는 안 맞는다.
+        // 비교의 근거는 "시나리오 간 흐름 동일"(라우팅 신호 무관): 교차로 계수 차이만 남는다.
+        static SimEngine BuildCross(int hHouses, int vHouses, float demandPerHouse,
+                                    out SimEventHub hub)
+        {
+            var c = SimConfig.Default();
+            c.TickInterval = 0.25f;
+            c.GridWidth = 13; c.GridHeight = 13;
+            c.DemandPerHouse = demandPerHouse;
+            c.RoadCapacity = 12f;
+            c.DemandChoicePool = 1;
+            c.SchoolCapacity = vHouses;     // V집이 학교를 정확히 채움 → H집은 회사로
+            c.OfficeCapacity = 20;
+            c.RushAmplitude = 0f;
+            c.AutoDetectSignals = false;
+            hub = new SimEventHub();
+            var e = new SimEngine(c, hub);
+            for (int x = 0; x <= 12; x++) e.Place(V(x, 6), TileType.Road);
+            for (int y = 0; y <= 12; y++) if (y != 6) e.Place(V(6, y), TileType.Road);
+            for (int i = 0; i < hHouses; i++) e.Place(V(i, 7), TileType.House);
+            for (int i = 0; i < vHouses; i++) e.Place(V(5, i), TileType.House);
+            e.Place(V(12, 7), TileType.Office);
+            e.Place(V(5, 12), TileType.School);
+            e.Tick(0.25f);
+            return e;
+        }
+
+        enum Node { None, Signal, Roundabout }
+
+        static float Run(int hHouses, int vHouses, float demand, Node node, int greenSlots = 8)
+        {
+            var e = BuildCross(hHouses, vHouses, demand, out _);
+            if (node == Node.Signal) Assert.IsTrue(e.TryPlaceSignal(V(6, 6), greenSlots));
+            if (node == Node.Roundabout) Assert.IsTrue(e.TryPlaceRoundabout(V(6, 6)));
+            e.Tick(0.25f);
+            return e.DeliveredTotal;
+        }
+
+        [Test]
+        public void BalancedCross_RoundaboutBeatsSignal_BeatsNothing()
+        {
+            // 실측 fH=9, fV=7.5. 교차로 ratio: 무신호 H(9+11.25)/12=1.6875·V 1.75 /
+            // 신호 g=9/16: H 1.333·V 1.4286 / 로터리 H 1.2946·V 1.1607.
+            // 학교행 병목: 무신호 1.75 → 신호 1.4286 → 로터리 1.25(간선으로 이동) — 사슬 전체 엄격.
+            float none = Run(6, 6, 1.5f, Node.None);
+            float signal = Run(6, 6, 1.5f, Node.Signal, greenSlots: 9);
+            float ra = Run(6, 6, 1.5f, Node.Roundabout);
+            Assert.Less(none, signal);
+            Assert.Less(signal, ra);     // 균형 교차로 = 로터리가 최적(스펙 §1 3분할)
+        }
+
+        [Test]
+        public void AsymmetricCross_SignalBeatsRoundabout()
+        {
+            // 편중 십자(5집 vs 2집): 큰축 몰빵 신호(g=11/16)가 로터리를 이긴다.
+            // (실측 흐름은 다목적지 수요로 손계산과 다르지만 편중 영역 유지 — 부등식 실측 검증)
+            float signal = Run(5, 2, 2f, Node.Signal, greenSlots: 11);   // 큰축에 초록 몰빵
+            float ra = Run(5, 2, 2f, Node.Roundabout);
+            Assert.Less(ra, signal);     // 편중 교차로 = 신호가 최적
+        }
+
+        [Test]
+        public void NoCrossTraffic_RoundaboutIsWaste()
+        {
+            // 극단 편중의 끝점(s=0): 교차 교통이 없으면 로터리는 주축 감속(용량 ×0.7)만 남는다.
+            // 집1·회사1 단일 직선 경로 + 더미 지선(교차로 성립용) — 다목적지 수요 오염이 구조적으로 불가능.
+            // ratio(H축): 무신호 14/12=1.167(교차 0이라 λ 무관) / 로터리 14/8.4=1.667.
+            var c = SimConfig.Default();
+            c.TickInterval = 0.25f;
+            c.GridWidth = 13; c.GridHeight = 13;
+            c.DemandPerHouse = 14f;
+            c.RoadCapacity = 12f;
+            c.RushAmplitude = 0f;
+            c.AutoDetectSignals = false;
+            System.Func<bool, float> run = placeRoundabout =>
+            {
+                var e = new SimEngine(c, new SimEventHub());
+                for (int x = 0; x <= 12; x++) e.Place(V(x, 6), TileType.Road);
+                e.Place(V(6, 5), TileType.Road);              // 더미 지선 → (6,6) 교차로 성립
+                e.Place(V(6, 7), TileType.Road);
+                e.Place(V(0, 7), TileType.House);
+                e.Place(V(12, 7), TileType.Office);
+                e.Tick(0.25f);
+                if (placeRoundabout) Assert.IsTrue(e.TryPlaceRoundabout(V(6, 6)));
+                e.Tick(0.25f);
+                return e.DeliveredTotal;
+            };
+            Assert.Less(run(true), run(false));   // 극단 편중 = 돈 쓰면 손해(전략 3분할의 셋째 날)
+        }
+
+        [Test]
+        public void Roundabout_IsDeterministic()
+        {
+            float a = Run(6, 6, 1.5f, Node.Roundabout);
+            float b = Run(6, 6, 1.5f, Node.Roundabout);
+            Assert.AreEqual(a, b);       // 같은 입력 = 같은 delivered(기존 관례)
+        }
     }
 }
