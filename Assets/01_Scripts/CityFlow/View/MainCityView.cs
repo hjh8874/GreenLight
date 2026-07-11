@@ -123,6 +123,23 @@ namespace CityFlow.View
             public float HideAt;
         }
 
+        private sealed class CoinVisual
+        {
+            public GameObject Object;
+            public Vector3 Velocity;
+            public float DieAt;
+        }
+
+        private sealed class NoteVisual
+        {
+            public TextMesh Text;
+            public float DieAt;
+        }
+
+        private readonly List<CoinVisual> coins = new();
+        private readonly List<NoteVisual> notes = new();
+        [SerializeField] private Color coinColor = new Color(1f, 0.84f, 0.2f);
+
         public void Initialize(CityFlowServices services)
         {
             if (!isActiveAndEnabled)
@@ -175,6 +192,8 @@ namespace CityFlow.View
             RefreshOverpasses();
             RefreshVehicles();
             UpdateBursts();
+            UpdateCoins();
+            UpdateNotes();
         }
 
         private void BuildRoots()
@@ -1029,6 +1048,27 @@ namespace CityFlow.View
                 Object = burst,
                 HideAt = Time.time + burstSeconds
             });
+
+            // 동전 분수 + 음표(스펙 2026-07-12 §2): 길이 뚫리는 순간의 도파민 — 뷰 전용, Random 무방.
+            Vector3 origin = GridToLocal(e.Tile, -0.5f);
+            for (int i = 0; i < 6; i++)
+            {
+                GameObject coin = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                coin.name = "Coin";
+                coin.transform.SetParent(effectRoot, false);
+                coin.transform.localPosition = origin;
+                coin.transform.localScale = Vector3.one * (tileSize * 0.1f);
+                ApplyRendererColor(PrepareRenderer(coin.GetComponent<Renderer>()), coinColor);
+                coins.Add(new CoinVisual
+                {
+                    Object = coin,
+                    Velocity = new Vector3(Random.Range(-1.2f, 1.2f), Random.Range(1.6f, 2.4f), 0f) * tileSize,
+                    DieAt = Time.time + 0.9f,
+                });
+            }
+            GameObject note = CreateTextMark(effectRoot, "♪", coinColor, tileSize * 0.16f);
+            note.transform.localPosition = origin + new Vector3(0f, tileSize * 0.2f, 0f);
+            notes.Add(new NoteVisual { Text = note.GetComponent<TextMesh>(), DieAt = Time.time + 1.1f });
         }
 
         private void UpdateBursts()
@@ -1053,6 +1093,46 @@ namespace CityFlow.View
 
                 Destroy(burst.Object);
                 bursts.RemoveAt(i);
+            }
+        }
+
+        private void UpdateCoins()
+        {
+            for (int i = coins.Count - 1; i >= 0; i--)
+            {
+                CoinVisual coin = coins[i];
+                if (coin.Object == null || Time.time >= coin.DieAt)
+                {
+                    if (coin.Object != null)
+                    {
+                        Destroy(coin.Object);
+                    }
+                    coins.RemoveAt(i);
+                    continue;
+                }
+                coin.Velocity += Vector3.down * (6f * tileSize * Time.deltaTime);   // 간이 중력
+                coin.Object.transform.localPosition += coin.Velocity * Time.deltaTime;
+            }
+        }
+
+        private void UpdateNotes()
+        {
+            for (int i = notes.Count - 1; i >= 0; i--)
+            {
+                NoteVisual note = notes[i];
+                if (note.Text == null || Time.time >= note.DieAt)
+                {
+                    if (note.Text != null)
+                    {
+                        Destroy(note.Text.gameObject);
+                    }
+                    notes.RemoveAt(i);
+                    continue;
+                }
+                note.Text.transform.localPosition += Vector3.up * (0.8f * tileSize * Time.deltaTime);
+                Color c = note.Text.color;
+                c.a = Mathf.Clamp01((note.DieAt - Time.time) / 1.1f);
+                note.Text.color = c;   // 폰트 머티리얼은 투명 지원
             }
         }
 
