@@ -173,6 +173,7 @@ namespace CityFlow.View
             RefreshOverpasses();
             RefreshVehicles();
             PrewarmEffectPools();
+            gameObject.AddComponent<DriveViewCamera>().Init(simEngine, transform, tileSize);
         }
 
         private void OnDestroy()
