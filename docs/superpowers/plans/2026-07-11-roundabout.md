@@ -224,11 +224,14 @@ git commit -m "[Feat] 회전교차로 배치 API — 신호와 배타, ISignalCo
 - Consumes: Task 1의 `_roundaboutSet`, `TryPlaceRoundabout`.
 - Produces: `SimConfig.RoundaboutInterference`/`.RoundaboutCapacityFactor`, `FlowSolver.Resolve(in SimConfig, SignalMap, CityGrid, HashSet<Vector2Int> roundabouts, double simTime = 0)` (기존 3-인자 Resolve는 null 위임 — 기존 테스트 무수정 생존).
 
-- [ ] **Step 1: 실패하는 테스트 작성** — RoundaboutTests에 추가. 기하는 SignalPlacementTests.PlacedMode_UnsignaledInterferenceIsLive의 십자 도시 재사용(dev-log-12 기술노트 3: 이 좌표는 코너컷·배치 충돌 검증 완료 — 집 개수와 SchoolCapacity 외 변경 금지). V집 수를 줄여 흐름 균형(s)을 조절하고, SchoolCapacity=V집 수로 학교를 V집이 선점(배정 순서 flat(y,x) — V집이 y 낮아 먼저).
+- [ ] **Step 1: 실패하는 테스트 작성** — RoundaboutTests에 추가. 기하는 SignalPlacementTests.PlacedMode_UnsignaledInterferenceIsLive의 십자 도시 재사용(dev-log-12 기술노트 3: 이 좌표는 코너컷·배치 충돌 검증 완료 — 임의 변경 금지).
+
+**비교의 근거(2026-07-11 실측 보정):** DemandMap은 다목적지(집마다 회사·학교 수요 각 1건)라 손계산 fH=fV는 성립하지 않는다 — hx=vy=6, d=1.5 실측: fH(6,6)=9, fV(6,6)=7.5, 동쪽 간선 ratio 1.5, 세로 간선 (6,4) ratio 1.25. 대신 **라우팅은 신호 무관이라 시나리오(무신호/신호/로터리) 간 흐름이 완전히 동일** — 교차로 계수만 다르므로 비교가 성립한다. greenSlots=9(g=0.5625)로 신호 학교축 병목이 1.4286(교차로)이 되고, 로터리는 1.1607로 내려가 병목이 간선 1.25로 이동 → 학교행 경로가 엄격히 이긴다(회사행은 양쪽 다 동쪽 간선 1.5에 막혀 동률 — 총합은 로터리 승).
 
 ```csharp
-        // 십자 도시: 가로 간선(y=6)·세로 간선(x=6), H집 hx개(행7)→회사, V집 vy개(x=5열)→학교.
-        // (6,6)에서 fH = hx×demand, fV = vy×demand로 흐름 균형(s = fV/fH)을 직접 제어.
+        // 십자 도시(검증된 좌표): 가로 간선(y=6)·세로 간선(x=6), H집 hx개(행7)·V집 vy개(x=5열).
+        // 주의: DemandMap은 다목적지(집마다 회사·학교 수요) — 손계산 fH/fV는 안 맞는다.
+        // 비교의 근거는 "시나리오 간 흐름 동일"(라우팅 신호 무관): 교차로 계수 차이만 남는다.
         static SimEngine BuildCross(int hHouses, int vHouses, float demandPerHouse,
                                     out SimEventHub hub)
         {
@@ -268,9 +271,11 @@ git commit -m "[Feat] 회전교차로 배치 API — 신호와 배타, ISignalCo
         [Test]
         public void BalancedCross_RoundaboutBeatsSignal_BeatsNothing()
         {
-            // fH=fV=9 (6집×1.5). ratio: 무신호 1.875 / 신호(g=0.5) 1.5 / 로터리 (9+2.25)/8.4=1.339
+            // 실측 fH=9, fV=7.5. 교차로 ratio: 무신호 H(9+11.25)/12=1.6875·V 1.75 /
+            // 신호 g=9/16: H 1.333·V 1.4286 / 로터리 H 1.2946·V 1.1607.
+            // 학교행 병목: 무신호 1.75 → 신호 1.4286 → 로터리 1.25(간선으로 이동) — 사슬 전체 엄격.
             float none = Run(6, 6, 1.5f, Node.None);
-            float signal = Run(6, 6, 1.5f, Node.Signal, greenSlots: 8);
+            float signal = Run(6, 6, 1.5f, Node.Signal, greenSlots: 9);
             float ra = Run(6, 6, 1.5f, Node.Roundabout);
             Assert.Less(none, signal);
             Assert.Less(signal, ra);     // 균형 교차로 = 로터리가 최적(스펙 §1 3분할)
@@ -279,21 +284,40 @@ git commit -m "[Feat] 회전교차로 배치 API — 신호와 배타, ISignalCo
         [Test]
         public void AsymmetricCross_SignalBeatsRoundabout()
         {
-            // fH=10, fV=4 (5집·2집×2) → s=0.4 (신호 구간 0.375~2/3).
-            // ratio: 로터리 (10+1)/8.4=1.310 / 신호 g=11/16: H 10/8.25=1.212, V 4/3.75=1.067
+            // 편중 십자(5집 vs 2집): 큰축 몰빵 신호(g=11/16)가 로터리를 이긴다.
+            // (실측 흐름은 다목적지 수요로 손계산과 다르지만 편중 영역 유지 — 부등식 실측 검증)
             float signal = Run(5, 2, 2f, Node.Signal, greenSlots: 11);   // 큰축에 초록 몰빵
             float ra = Run(5, 2, 2f, Node.Roundabout);
             Assert.Less(ra, signal);     // 편중 교차로 = 신호가 최적
         }
 
         [Test]
-        public void ExtremeAsymmetricCross_NothingBeatsRoundabout()
+        public void NoCrossTraffic_RoundaboutIsWaste()
         {
-            // fH=12, fV=2 (6집·1집×2) → s=1/6 (<0.375).
-            // ratio(H축): 무신호 (12+3)/12=1.25 / 로터리 (12+0.5)/8.4=1.488 — 주축 감속이 역효과
-            float none = Run(6, 1, 2f, Node.None);
-            float ra = Run(6, 1, 2f, Node.Roundabout);
-            Assert.Less(ra, none);       // 극단 편중 = 돈 쓰면 손해(전략 3분할의 셋째 날)
+            // 극단 편중의 끝점(s=0): 교차 교통이 없으면 로터리는 주축 감속(용량 ×0.7)만 남는다.
+            // 집1·회사1 단일 직선 경로 + 더미 지선(교차로 성립용) — 다목적지 수요 오염이 구조적으로 불가능.
+            // ratio(H축): 무신호 14/12=1.167(교차 0이라 λ 무관) / 로터리 14/8.4=1.667.
+            var c = SimConfig.Default();
+            c.TickInterval = 0.25f;
+            c.GridWidth = 13; c.GridHeight = 13;
+            c.DemandPerHouse = 14f;
+            c.RoadCapacity = 12f;
+            c.RushAmplitude = 0f;
+            c.AutoDetectSignals = false;
+            System.Func<bool, float> run = placeRoundabout =>
+            {
+                var e = new SimEngine(c, new SimEventHub());
+                for (int x = 0; x <= 12; x++) e.Place(V(x, 6), TileType.Road);
+                e.Place(V(6, 5), TileType.Road);              // 더미 지선 → (6,6) 교차로 성립
+                e.Place(V(6, 7), TileType.Road);
+                e.Place(V(0, 7), TileType.House);
+                e.Place(V(12, 7), TileType.Office);
+                e.Tick(0.25f);
+                if (placeRoundabout) Assert.IsTrue(e.TryPlaceRoundabout(V(6, 6)));
+                e.Tick(0.25f);
+                return e.DeliveredTotal;
+            };
+            Assert.Less(run(true), run(false));   // 극단 편중 = 돈 쓰면 손해(전략 3분할의 셋째 날)
         }
 
         [Test]
@@ -305,7 +329,7 @@ git commit -m "[Feat] 회전교차로 배치 API — 신호와 배타, ISignalCo
         }
 ```
 
-- [ ] **Step 2: 테스트 실패 확인** — `read_console` 컴파일 OK 후 `run_tests`(filter `RoundaboutTests`): 신규 4개 FAIL(로터리가 수식에 없어 무신호와 동일 → Less 불성립), 기존 5개 PASS.
+- [ ] **Step 2: 테스트 실패 확인** — `read_console` 컴파일 OK 후 `run_tests`(filter `RoundaboutTests`): 신규 4개 중 **Balanced·NoCross 2개 FAIL**(로터리가 수식에 없어 무신호와 동일 → Less 불성립). Asymmetric·Determinism은 수식 전에도 성립하는 약한 핀이라 PASS — 정상. 기존 5개 PASS.
 
 - [ ] **Step 3: 구현**
 
