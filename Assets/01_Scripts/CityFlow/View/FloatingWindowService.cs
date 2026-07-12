@@ -27,6 +27,7 @@ namespace CityFlow.View
         private int presetIndex = 1;   // 기본 M
 
         private UniWindowController uniWinController;
+        private int pendingSizeReapplyFrames;   // 부착 후 창 크기 재적용 카운터(리뷰 픽스 — 부착 전 설정은 유실됨)
         private bool cameraStateSaved;
         private CameraClearFlags savedClearFlags;
         private Color savedBackground;
@@ -84,6 +85,17 @@ namespace CityFlow.View
                 }
             }
 
+            // 부착 후 창 크기 재적용(리뷰 픽스): UniWinC 네이티브 부착은 자신의 첫 Update에서 일어나고
+            // 부착 시 재적용 목록에 windowSize가 없어, 부착 전 설정한 크기는 유실된다 — 2프레임 뒤 1회 재적용.
+            if (pendingSizeReapplyFrames > 0 && !Application.isEditor)
+            {
+                pendingSizeReapplyFrames--;
+                if (pendingSizeReapplyFrames == 0)
+                {
+                    ApplyPresetWindowSize();
+                }
+            }
+
             PollResolutionChange();
         }
 
@@ -131,6 +143,8 @@ namespace CityFlow.View
             uniWinController.isHitTestEnabled = true;
             uniWinController.hitTestType = UniWindowController.HitTestType.Opacity;   // 픽셀 알파 자동 클릭통과
 
+            pendingSizeReapplyFrames = 2;   // 네이티브 창 부착(UniWinC 첫 Update) 후 프리셋 크기 재적용
+
             ApplyTransparentCamera(true);
         }
 
@@ -152,7 +166,11 @@ namespace CityFlow.View
                 return;
             }
 
-            uniWinController = gameObject.AddComponent<UniWindowController>();
+            // 전용 자식 GO에 부착(리뷰 픽스): UniWinC 싱글턴 Awake는 중복 감지 시 그 GameObject 전체를
+            // Destroy한다 — MainCityView와 같은 GO에 붙이면 뷰가 통째로 죽는 지뢰.
+            GameObject host = new GameObject("FloatingWindow");
+            host.transform.SetParent(transform, false);
+            uniWinController = host.AddComponent<UniWindowController>();
             uniWinController.autoSwitchCameraBackground = false;   // 카메라 전환은 이 서비스가 직접 소유(중복 방지)
         }
 
@@ -175,9 +193,7 @@ namespace CityFlow.View
                 }
 
                 cam.clearFlags = CameraClearFlags.SolidColor;
-                Color background = cam.backgroundColor;
-                background.a = 0f;
-                cam.backgroundColor = background;
+                cam.backgroundColor = Color.clear;   // 투명 블랙(리뷰 픽스) — premultiplied alpha 합성 전제, 패키지 컨벤션과 일치
             }
             else if (cameraStateSaved)
             {

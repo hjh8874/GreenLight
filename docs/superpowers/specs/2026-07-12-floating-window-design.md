@@ -12,7 +12,7 @@
 
 | 결정 | 내용 | 근거 |
 |---|---|---|
-| **패키지 = UniWindowController** | `com.kirurobo.uniwindowcontroller` — UPM git URL(`https://github.com/kirurobo/UniWindowController.git#upm`)로 manifest.json에 추가(락파일 동반 커밋 — 팀 공유 의존성, PR에서 합의) | MIT, 투명창·클릭통과·최상위·DPI를 전부 검증된 구현으로 제공. 직접 개발은 플랫폼 지뢰밭 |
+| **패키지 = UniWindowController** | `com.kirurobo.uniwinc`(실제 package.json name — 리포 이름과 다름 주의) — UPM git URL(`https://github.com/kirurobo/UniWindowController.git#upm`)로 manifest.json에 추가(락파일 동반 커밋 — 팀 공유 의존성, PR에서 합의) | MIT, 투명창·클릭통과·최상위·DPI를 전부 검증된 구현으로 제공. 직접 개발은 플랫폼 지뢰밭 |
 | 씬 배선 0 | `FloatingWindowService`(신규 MonoBehaviour)를 MainCityView.Initialize가 AddComponent — UniWindowController 컴포넌트도 서비스가 런타임 부착 | 드라이브 뷰와 동일 규약. 씬 오너 손 안 빌림 |
 | **기본 = 일반 창, F1 토글** | 플로팅 모드는 F1로 진입/해제, 마지막 모드·프리셋은 PlayerPrefs 저장/복원 | 첫 실행에 화면이 투명해져 있으면 사고처럼 보임 — 옵트인이 안전. 복원은 플로팅 앱의 예의 |
 | 프리셋 3단 F2/F3/F4 | S=480×270 / M=960×540 / L=1440×810 (16:9) | 방치형 유저는 "구석에 작게↔볼 때 크게" 두 모드만 씀. 자유 리사이즈는 보더리스에서 직접 구현 비용 큼(YAGNI). 기존 키맵(Tab , . [ ] r g v d)과 비충돌 |
