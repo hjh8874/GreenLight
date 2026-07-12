@@ -37,6 +37,8 @@ namespace CityFlow.Sim
 
         // 테스트 관찰용 seam. internal이라 테스트 어셈블리만 봄(InternalsVisibleTo).
         internal int StepCount { get; private set; }
+        // 관찰 seam: ApplyConfig의 구조 필드 보존을 엔진의 실제 config로 직접 핀(우회 관찰 방지).
+        internal SimConfig CurrentConfig => _config;
 
         public SimEngine(SimConfig config, SimEventHub hub)
         {
@@ -58,8 +60,11 @@ namespace CityFlow.Sim
         // 그리드 크기는 FlowSolver·ArrivalEmitter·BurstDetector·RoutePlanner가 생성 시점에
         // 고정 크기 배열로 굳혀서 런타임 리사이즈는 이 seam의 스코프 밖(재구축 필요)이고,
         // AutoDetectSignals는 세션 부트 스위치라 정책이 흔들면 배치 상태가 증발한다(지뢰).
+        // Drain 핸들러 경유 호출 시 같은 프레임의 잔여 Step부터 반영(결정론 무해 — 순서가 고정이므로).
         public void ApplyConfig(in SimConfig next)
         {
+            UnityEngine.Debug.Assert(next.TickInterval > 0f && next.MaxStepsPerFrame >= 1,
+                "ApplyConfig: 퇴화 config — 시뮬이 조용히 멈춘다");
             var merged = next;
             merged.GridWidth = _config.GridWidth;
             merged.GridHeight = _config.GridHeight;

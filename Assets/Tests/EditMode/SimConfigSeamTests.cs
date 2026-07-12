@@ -113,8 +113,12 @@ namespace CityFlow.Sim.Tests
             e.ApplyConfig(next);
             e.Tick(c.TickInterval);          // 재계획 강제(MarkTopologyDirty) 소비
 
-            Assert.AreEqual(10, e.GridWidth);     // 보존 — 정책이 그리드 리사이즈 못 함
-            Assert.AreEqual(2, e.GridHeight);
+            // 엔진의 실제 config를 직접 핀(CurrentConfig 관찰 seam) — e.GridWidth는 _grid.Width라
+            // 보존 코드를 지워도 안 깨지는 공허한 관찰이었다(최종 리뷰).
+            Assert.AreEqual(10, e.CurrentConfig.GridWidth);      // 보존 — 정책이 그리드 리사이즈 못 함
+            Assert.AreEqual(2, e.CurrentConfig.GridHeight);
+            Assert.IsFalse(e.CurrentConfig.AutoDetectSignals);   // 부트 스위치 보존
+            Assert.AreEqual(12f, e.CurrentConfig.DemandPerHouse);   // 비구조 필드는 반영
             Assert.AreEqual(1, e.SignalTiles.Count);      // 배치 신호 생존(자동감지로 안 튐)
             Assert.AreEqual(V(3, 0), e.SignalTiles[0]);
             // AutoDetectSignals가 실제로 true였다면 CanPlaceSignal은 항상 false(배치 개념 없음) —
