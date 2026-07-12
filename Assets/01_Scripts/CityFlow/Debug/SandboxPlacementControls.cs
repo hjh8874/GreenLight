@@ -14,6 +14,15 @@ namespace CityFlow.DebugTools
     {
         private const float TileSize = GridUtil.TileSize;
 
+        // 일방통행 회전 순서(설계 §핵심결정 표): E→S→W→N→(다시 E). 배치는 항상 E부터 시작.
+        private static readonly Vector2Int[] OnewayRotationOrder =
+        {
+            new Vector2Int(1, 0),    // E
+            new Vector2Int(0, -1),   // S
+            new Vector2Int(-1, 0),   // W
+            new Vector2Int(0, 1),    // N
+        };
+
         private IReadOnlyTileData _data;
         private ISignalControl _signals;
         private SimEngine _engine;           // DeliveredTotal 조회용(DebugSignalTuner와 동일 패턴)
@@ -71,10 +80,58 @@ namespace CityFlow.DebugTools
             {
                 _lastResult = TryPlace("입체교차", hover, () => _signals.TryPlaceOverpass(hover));
             }
+            else if (kb.digit4Key.wasPressedThisFrame)
+            {
+                _lastResult = TryPlaceOrRotateOneway(hover);
+            }
             else if (kb.digit0Key.wasPressedThisFrame)
             {
                 _lastResult = TryRemoveAny(hover);
             }
+        }
+
+        // 일방통행: 없으면 배치(E부터), 있으면 회전(철거→다음 방향 재배치로 조합 — 재배치 API 아님).
+        private string TryPlaceOrRotateOneway(Vector2Int tile)
+        {
+            Vector2Int existing = _signals.GetOnewayDir(tile);
+
+            if (existing != Vector2Int.zero)
+            {
+                Vector2Int next = NextOnewayDir(existing);
+                _signals.TryRemoveOneway(tile);
+                _signals.TryPlaceOneway(tile, next);
+                return $"일방통행 회전 {tile} — {DirGlyph(next)}";
+            }
+
+            if (HasAnyDevice(tile))
+            {
+                return $"일방통행 배치 거부 {tile} — 이미 있음(다른 장치)";
+            }
+
+            if (_data.GetTileType(tile) != TileType.Road)
+            {
+                return $"일방통행 배치 거부 {tile} — 도로 아님";
+            }
+
+            Vector2Int first = OnewayRotationOrder[0];
+            return _signals.TryPlaceOneway(tile, first)
+                ? $"일방통행 배치 성공 {tile} — {DirGlyph(first)}"
+                : $"일방통행 배치 거부 {tile} — 교차로/자동 모드";
+        }
+
+        private static Vector2Int NextOnewayDir(Vector2Int current)
+        {
+            int idx = System.Array.IndexOf(OnewayRotationOrder, current);
+            return OnewayRotationOrder[(idx + 1) % OnewayRotationOrder.Length];   // idx<0(미배치)이면 0=E부터
+        }
+
+        private static string DirGlyph(Vector2Int dir)
+        {
+            if (dir == new Vector2Int(1, 0)) return "→";
+            if (dir == new Vector2Int(-1, 0)) return "←";
+            if (dir == new Vector2Int(0, 1)) return "↑";
+            if (dir == new Vector2Int(0, -1)) return "↓";
+            return "-";
         }
 
         // 배치 성공/거부 사유(교차로 아님/이미 있음)를 사람이 읽을 문구로. AutoDetectSignals 자체는
@@ -111,6 +168,11 @@ namespace CityFlow.DebugTools
             if (_signals.TryRemoveOverpass(tile))
             {
                 return $"입체교차 철거 성공 {tile}";
+            }
+
+            if (_signals.TryRemoveOneway(tile))
+            {
+                return $"일방통행 철거 성공 {tile}";
             }
 
             return $"철거 거부 {tile} — 장치 없음";
@@ -162,15 +224,17 @@ namespace CityFlow.DebugTools
 
             // 세이브 오염 방지: 이 씬은 AutoSaveService를 비활성해 라이브 세이브 슬롯을 건드리지 않는다.
             GUI.Label(new Rect(12, 100, 900, 30),
-                "1=신호  2=로터리  3=입체교차  0=철거(신호→로터리→입체 순)  |  세이브 비활성 씬", style);
+                "1=신호  2=로터리  3=입체교차  4=일방통행(배치/회전)  0=철거(전부)  |  세이브 비활성 씬", style);
 
             if (TryGetHoverTile(out Vector2Int hover))
             {
                 TileType type = _data.GetTileType(hover);
                 CongestionLevel congestion = _data.GetCongestion(hover);
+                Vector2Int onewayDir = _signals.GetOnewayDir(hover);
                 string device = Contains(_signals.SignalTiles, hover) ? "신호"
                     : Contains(_signals.RoundaboutTiles, hover) ? "로터리"
                     : Contains(_signals.OverpassTiles, hover) ? "입체교차"
+                    : onewayDir != Vector2Int.zero ? $"일방통행({DirGlyph(onewayDir)})"
                     : "없음";
 
                 GUI.Label(new Rect(12, 130, 900, 30),

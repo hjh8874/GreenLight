@@ -287,6 +287,30 @@ namespace CityFlow.Sim.Tests
             Assert.IsNull(reversePlanner.Search(straight, V(2, 1), V(1, 1), cfg, oneways));
         }
 
+        // 리뷰 위임 핀(Task 2 리뷰 Minor #2): 출발 접점 타일 자체가 일방이면 Dijkstra의 첫 확장
+        // (cur == start)에서도 규칙①이 예외 없이 걸려 첫 스텝이 D로 강제됨을 고정한다.
+        // 필터 없이는 (1,1)→(0,1)이 직접 인접(1스텝)이지만, (1,1)을 S 전용 일방으로 두면
+        // 첫 스텝이 남쪽((1,0))으로 강제되어 목적지로 곧장 못 간다.
+        [Test]
+        public void Search_OnewayOnStartTile_ConstrainsFirstStep()
+        {
+            var g = Roads(2, 2, V(0, 0), V(1, 0), V(0, 1), V(1, 1));
+            var planner = new RoutePlanner(g.Width, g.Height);
+            var cfg = Cfg();
+
+            var direct = planner.Search(g, V(1, 1), V(0, 1), cfg);
+            Assert.AreEqual(new[] { V(1, 1), V(0, 1) }, direct);   // 필터 없음 = 바로 인접
+
+            var south = new Vector2Int(0, -1);
+            var oneways = new Dictionary<Vector2Int, Vector2Int> { [V(1, 1)] = south };   // 출발 타일 자체가 일방
+            var forced = planner.Search(g, V(1, 1), V(0, 1), cfg, oneways);
+
+            Assert.IsNotNull(forced);
+            Assert.AreEqual(V(1, 1), forced[0]);
+            Assert.AreEqual(V(1, 0), forced[1], "출발 타일이 일방이면 첫 스텝은 D(남쪽)로 강제되어야 함");
+            Assert.AreNotEqual(V(0, 1), forced[1], "직접 인접한 목적지로 곧장 못 가야 함(첫 스텝부터 필터 적용)");
+        }
+
         // 스펙 §4.6 — 결정론: 같은 도시(+같은 일방 상태)면 같은 Plan(우회 경로 포함).
         [Test]
         public void Plan_WithOneways_Deterministic_SameCitySamePlan()
