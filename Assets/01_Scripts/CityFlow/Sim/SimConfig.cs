@@ -12,6 +12,7 @@ namespace CityFlow.Sim
         public int   MaxStepsPerFrame;  // 누산기 while 폭주 방지 캡
 
         // ── 도시 크기 ───────────────────────────
+        // 생성 시 고정(구조 필드) — 같은 성격의 필드 추가 시 SimEngine.ApplyConfig 보존 목록 갱신.
         public int   GridWidth;         // blueprint 기준 20×20
         public int   GridHeight;
 
@@ -71,6 +72,7 @@ namespace CityFlow.Sim
         // ── 신호 배치 모드(구매 피벗 2단계) ──
         // true = 현행 자동 감지(모든 교차로에 신호). false = 배치된 곳에만 존재(TryPlaceSignal).
         // 상점 UI(김건) 도입 시 asset에서 false 전환 — 그날 무신호 간섭 λ가 라이브 활성화 🔓
+        // 생성 시 고정(구조 필드) — 같은 성격의 필드 추가 시 SimEngine.ApplyConfig 보존 목록 갱신.
         public bool AutoDetectSignals;
 
         // ── 보상(코인) 원료 ────────────────────
