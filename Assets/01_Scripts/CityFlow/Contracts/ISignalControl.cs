@@ -53,5 +53,17 @@ namespace CityFlow.Contracts
         bool CanPlaceOverpass(Vector2Int tile);
         bool TryPlaceOverpass(Vector2Int tile);
         bool TryRemoveOverpass(Vector2Int tile);
+
+        // 일방통행 배치(스펙 2026-07-12): 교차로 3형제와 달리 일반 도로 전용(!IsIntersection) —
+        // 배치 조건이 정반대라 별도 배타 검사가 필요 없다(자연 배타). 4번째 배치 가족의 첫째 다른 점:
+        // 방향값을 들고 있다(좌표-전용 셋이 아니라 Dictionary). GetOnewayDir은 뷰·저장용 조회
+        // (없으면 Vector2Int.zero) — "제안" 집계엔 포함하지 않음.
+        // 제안이 18종 도달(오버라이드3+신호배치3+로터리4+입체4+일방통행4) — 배치물 공통 계약 분리를
+        // 김건 안건으로 격상. 최종 확정은 김건 합의.
+        IReadOnlyList<Vector2Int> OnewayTiles { get; }
+        bool CanPlaceOneway(Vector2Int tile);
+        bool TryPlaceOneway(Vector2Int tile, Vector2Int dir);
+        bool TryRemoveOneway(Vector2Int tile);
+        Vector2Int GetOnewayDir(Vector2Int tile);
     }
 }

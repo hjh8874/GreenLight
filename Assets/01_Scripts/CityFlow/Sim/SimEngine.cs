@@ -26,6 +26,12 @@ namespace CityFlow.Sim
         // 입체교차(스펙 2026-07-12): 신호·로터리와 3자 배타. 로터리와 동형(SignalMap 무관, Rebuild 불필요).
         readonly List<Vector2Int> _placedOverpasses = new();
         readonly HashSet<Vector2Int> _overpassSet = new();
+        // 일방통행(스펙 2026-07-12): 교차로 3형제와 달리 일반 도로 전용 — 조건이 반대라 자연 배타.
+        // 방향값이 있어 좌표-전용 셋이 아니라 Dictionary(좌표→단위 방향) + flat 정렬 List(순회·세이브 순서).
+        readonly Dictionary<Vector2Int, Vector2Int> _onewayDirs = new();
+        readonly List<Vector2Int> _placedOneways = new();
+        static readonly Vector2Int[] OnewayUnitDirs =
+            { new Vector2Int(1, 0), new Vector2Int(-1, 0), new Vector2Int(0, 1), new Vector2Int(0, -1) };
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
         readonly ArrivalEmitter _arrivals;
         readonly BurstDetector _bursts;
@@ -155,6 +161,13 @@ namespace CityFlow.Sim
             {
                 if (_grid.IsIntersection(t)) return false;
                 _overpassSet.Remove(t);        // 교차로 해제 → 입체교차도 소멸(동일 규약)
+                return true;
+            });
+            _placedOneways.RemoveAll(t =>
+            {
+                // 조건이 반대(비교차로 유지) — 도로 철거든 교차로화든 배치 조건 위반이면 소멸.
+                if (_grid.GetTile(t) == TileType.Road && !_grid.IsIntersection(t)) return false;
+                _onewayDirs.Remove(t);
                 return true;
             });
             _signals.Rebuild(_grid, _placedSignals);
@@ -316,6 +329,38 @@ namespace CityFlow.Sim
             return true;
         }
 
+        // ── 일방통행 배치(스펙 2026-07-12): 4번째 배치 가족 — 교차로 3형제와 정반대 조건(일반 도로 전용) ──
+        // 조건이 반대라 교차로 3형제와는 자연 배타(별도 HashSet 교차 검사 불요).
+        public IReadOnlyList<Vector2Int> OnewayTiles => _placedOneways;
+
+        public bool CanPlaceOneway(Vector2Int tile) =>
+            !_config.AutoDetectSignals && _grid.InBounds(tile) && _grid.GetTile(tile) == TileType.Road
+            && !_grid.IsIntersection(tile) && !_onewayDirs.ContainsKey(tile);
+
+        public bool TryPlaceOneway(Vector2Int tile, Vector2Int dir)
+        {
+            if (!CanPlaceOneway(tile)) return false;
+            if (System.Array.IndexOf(OnewayUnitDirs, dir) < 0) return false;   // 대각·zero·비단위 거부
+            int flat = tile.y * _config.GridWidth + tile.x;
+            int idx = _placedOneways.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
+            if (idx < 0) _placedOneways.Add(tile); else _placedOneways.Insert(idx, tile);
+            _onewayDirs[tile] = dir;
+            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 신호 가족과 다른 점(다음 틱 재계획 강제)
+            return true;
+        }
+
+        public bool TryRemoveOneway(Vector2Int tile)
+        {
+            if (_config.AutoDetectSignals || !_onewayDirs.Remove(tile)) return false;
+            _placedOneways.Remove(tile);
+            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 배치와 동일 이유
+            return true;
+        }
+
+        // 뷰·저장용 조회: 없으면 zero(방향 없음을 뜻함, 예외 아님).
+        public Vector2Int GetOnewayDir(Vector2Int tile) =>
+            _onewayDirs.TryGetValue(tile, out var d) ? d : Vector2Int.zero;
+
         // 뷰용: 이 교차로가 지금 초록인가(시뮬 시간 기준). 신호 없으면 항상 초록 취급.
         public bool IsSignalGreen(Vector2Int tile) =>
             !_signals.TryGet(tile, out var s) || s.OverrideUntil > _simTime || SignalMath.IsGreen(s, _simTime);
@@ -440,7 +485,15 @@ namespace CityFlow.Sim
             for (int i = 0; i < _placedOverpasses.Count; i++)
                 overpasses[i] = new OverpassSaveData { X = _placedOverpasses[i].x, Y = _placedOverpasses[i].y };
 
-            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses };
+            var oneways = new OnewaySaveData[_placedOneways.Count];
+            for (int i = 0; i < _placedOneways.Count; i++)
+            {
+                var t = _placedOneways[i];
+                var d = _onewayDirs[t];
+                oneways[i] = new OnewaySaveData { X = t.x, Y = t.y, DirX = d.x, DirY = d.y };
+            }
+
+            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses, Oneways = oneways };
         }
 
         // 주의: _overrideReadyAt은 복원해도 유지(의도) — 세이브 로드로 쿨다운을 리셋하는 악용 방지.
@@ -500,6 +553,24 @@ namespace CityFlow.Sim
                 _placedOverpasses.Sort((a, b) =>
                     (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
                 // 비교차로 잔재는 직후 RebuildSignals()의 소멸 프루닝이 청소(신호와 동일 경로).
+
+                _placedOneways.Clear();
+                _onewayDirs.Clear();
+                if (snapshot.Oneways != null)
+                    foreach (var o in snapshot.Oneways)
+                    {
+                        var tile = new Vector2Int(o.X, o.Y);
+                        var dir = new Vector2Int(o.DirX, o.DirY);
+                        // 손상 세이브 방어: 배치 조건 재검증(교차로·비도로면 버림) + dir 검증(대각·zero면 버림).
+                        // CanPlaceOneway가 _onewayDirs.ContainsKey도 함께 봐서 중복 엔트리도 자연히 거른다.
+                        if (CanPlaceOneway(tile) && System.Array.IndexOf(OnewayUnitDirs, dir) >= 0)
+                        {
+                            _onewayDirs[tile] = dir;
+                            _placedOneways.Add(tile);
+                        }
+                    }
+                _placedOneways.Sort((a, b) =>
+                    (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
             }
             RebuildSignals();
             if (snapshot.SignalOffsets != null)
