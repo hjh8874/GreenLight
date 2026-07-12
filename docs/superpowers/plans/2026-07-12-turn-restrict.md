@@ -13,7 +13,7 @@
 - 브랜치 `feat-turn-restrict-hwan`(스택: feat-oneway-hwan 위). 커밋 접두 `[Feat]`.
 - 결정론: flat 정렬, 진입방향 인덱스 고정 순회(E,S,W,N), Dictionary 조회만.
 - 회전 정의: 좌회전 = 반시계 90°(E→N, y-up), 우회전 = 시계 90°(E→S). U턴 상시 금지. 표지판 타일 관여 대각 스텝 금지.
-- 배타: 로터리·입체와 배타 / **신호와 공존**(CanPlaceSignal 등 기존 3형제 API는 무수정 — 표지판 쪽만 검사). 시작 타일 표지판은 무제약(진입이 아님).
+- 배타: 로터리·입체와 배타 — **양방향**(표지판이 로터리/입체를 검사 + `CanPlaceRoundabout`/`CanPlaceOverpass`도 표지판 검사. 2026-07-12 정정: 초판의 "3형제 무수정"은 신호 공존 의도가 과확장된 계획 결함) / **신호와 공존**(`CanPlaceSignal`은 무수정). 시작 타일 표지판은 무제약(진입이 아님).
 - 표지판 0개 = 기존 Search 함수 그대로 호출(경로·tie-break 완전 동일). 기존 180 그린이 그 증명.
 - 비용 함수·혼잡 가중·흐름 수식 무변경. Unity MCP refresh→CS→job 폴링, Thread.Sleep 금지.
 
