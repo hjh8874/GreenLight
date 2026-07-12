@@ -160,8 +160,9 @@ namespace CityFlow.DebugTools
 
             var style = new GUIStyle(GUI.skin.label) { fontSize = 20, normal = { textColor = Color.white } };
 
+            // 세이브 오염 방지: 이 씬은 AutoSaveService를 비활성해 라이브 세이브 슬롯을 건드리지 않는다.
             GUI.Label(new Rect(12, 100, 900, 30),
-                "1=신호  2=로터리  3=입체교차  0=철거(신호→로터리→입체 순)", style);
+                "1=신호  2=로터리  3=입체교차  0=철거(신호→로터리→입체 순)  |  세이브 비활성 씬", style);
 
             if (TryGetHoverTile(out Vector2Int hover))
             {
