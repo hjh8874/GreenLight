@@ -45,6 +45,8 @@ namespace CityFlow.Sim
         internal int StepCount { get; private set; }
         // 관찰 seam: ApplyConfig의 구조 필드 보존을 엔진의 실제 config로 직접 핀(우회 관찰 방지).
         internal SimConfig CurrentConfig => _config;
+        // 관찰 seam: 일방 배치/철거가 재계획(dirty)을 강제하는지 테스트가 직접 핀(리뷰 위임분).
+        internal bool TopologyDirtyForTest => _grid.TopologyDirty;
 
         public SimEngine(SimConfig config, SimEventHub hub)
         {

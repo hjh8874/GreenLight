@@ -85,6 +85,28 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void Place_OOBInput_ReturnsFalse_NoException()
+        {
+            var e = Build(autoDetect: false, out _);
+            Assert.IsFalse(e.CanPlaceOneway(V(-1, 0)));
+            Assert.IsFalse(e.TryPlaceOneway(V(-1, 0), E));
+            Assert.IsFalse(e.CanPlaceOneway(V(99, 99)));
+            Assert.IsFalse(e.TryPlaceOneway(V(99, 99), E));
+        }
+
+        [Test]
+        public void PlaceAndRemove_MarkTopologyDirty()
+        {
+            var e = Build(autoDetect: false, out _);        // Build 끝 Tick이 dirty 소비
+            Assert.IsFalse(e.TopologyDirtyForTest);
+            Assert.IsTrue(e.TryPlaceOneway(V(1, 0), E));
+            Assert.IsTrue(e.TopologyDirtyForTest);          // 배치 = 재계획 강제
+            e.Tick(0.25f);
+            Assert.IsTrue(e.TryRemoveOneway(V(1, 0)));
+            Assert.IsTrue(e.TopologyDirtyForTest);          // 철거도 동일
+        }
+
+        [Test]
         public void Remove_Works_AndRejectsAbsent()
         {
             var e = Build(autoDetect: false, out _);
