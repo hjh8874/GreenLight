@@ -112,6 +112,11 @@ namespace CityFlow.Sim
 
         public void ClearTopologyDirty() => TopologyDirty = false;
 
+        // SimEngine.ApplyConfig(스펙 2026-07-12) 전용 seam: 타일은 안 바뀌므로 TopologyVersion
+        // (교차로·Region 캐시 키)은 그대로 두고, 다음 Step의 재계획(Reassign+RebuildSignals+Plan)만
+        // 강제한다. Place/Remove의 MarkDirty와 달리 캐시 무효화가 필요 없어 별도 진입점.
+        internal void MarkTopologyDirty() => TopologyDirty = true;
+
         void MarkDirty()
         {
             TopologyVersion++;

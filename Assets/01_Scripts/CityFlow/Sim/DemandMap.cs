@@ -30,7 +30,7 @@ namespace CityFlow.Sim
         // 수요처 종류 목록. 종류 추가 = 여기 한 줄 + CapacityFor + SimConfig 용량.
         static readonly TileType[] SinkTypes = { TileType.Office, TileType.School };
 
-        readonly SimConfig _config;
+        SimConfig _config;   // seam(SimEngine.ApplyConfig, 스펙 2026-07-12)으로 갈아 끼워짐 — readonly 제거
 
         // 프론티지 전혀 없음(맹지) 센티널 — 항상 그리드 밖(x,y<0)이라 IsRoad 경계 체크가 자연히 걸러냄.
         static readonly Vector2Int NoRoad = new Vector2Int(-1, -1);
@@ -46,6 +46,14 @@ namespace CityFlow.Sim
         public DemandMap(SimConfig config)
         {
             _config = config;
+        }
+
+        // SimEngine.ApplyConfig의 유일한 전파 지점(스펙 2026-07-12): 용량(CapacityFor)·
+        // 배정 다양성(DemandChoicePool) 등 이 클래스가 들고 있는 config 사본을 갱신.
+        // 실제 재배정은 SimEngine이 _grid.MarkTopologyDirty()로 다음 틱에 강제한다.
+        internal void ApplyConfig(in SimConfig next)
+        {
+            _config = next;
         }
 
         public void Reassign(CityGrid grid, RoadNetwork net)

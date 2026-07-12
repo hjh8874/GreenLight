@@ -10,7 +10,7 @@ namespace CityFlow.Sim
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
     public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IOfflineSettlementSource
     {
-        readonly SimConfig _config;
+        SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
         readonly RoadNetwork _network;
         readonly DemandMap _demand;
@@ -50,6 +50,24 @@ namespace CityFlow.Sim
             _bursts = new BurstDetector(config.GridWidth, config.GridHeight);
             _congestion = new CongestionNotifier(config.GridWidth, config.GridHeight);
             _events = new SimEventBuffer(hub);   // 계산 중 발행 금지 — 큐/Drain으로 재진입 차단
+        }
+
+        // SimConfig 런타임 재주입 seam(스펙 2026-07-12) — 정책 서비스(진우) 창구.
+        // 계약 승격(팀 소비자 확정)은 합의 후. 지금은 public이지만 아직 "제안" 단계.
+        // 구조 필드 3종(GridWidth/GridHeight/AutoDetectSignals)은 기존 값으로 강제 보존한다:
+        // 그리드 크기는 FlowSolver·ArrivalEmitter·BurstDetector·RoutePlanner가 생성 시점에
+        // 고정 크기 배열로 굳혀서 런타임 리사이즈는 이 seam의 스코프 밖(재구축 필요)이고,
+        // AutoDetectSignals는 세션 부트 스위치라 정책이 흔들면 배치 상태가 증발한다(지뢰).
+        public void ApplyConfig(in SimConfig next)
+        {
+            var merged = next;
+            merged.GridWidth = _config.GridWidth;
+            merged.GridHeight = _config.GridHeight;
+            merged.AutoDetectSignals = _config.AutoDetectSignals;
+
+            _config = merged;
+            _demand.ApplyConfig(_config);
+            _grid.MarkTopologyDirty();   // 다음 틱에 Reassign+Plan 강제(즉시 재계산은 안 함 — 파이프라인 순서 보존)
         }
 
         // 고정 틱 누산기: 프레임 dt가 들쭉날쭉해도 Step은 정확히 TickInterval마다 1번.
