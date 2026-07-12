@@ -108,7 +108,7 @@ namespace CityFlow.Sim
             {
                 _demand.Reassign(_grid, _network);            // 도달성(같은 섬) 우선 배정
                 RebuildSignals();                              // 교차로 재감지(살아남은 신호 오프셋 보존)
-                _planner.Plan(_demand, _network, _grid, _config);   // 혼잡 인지 증분 배정(경로 테이블)
+                _planner.Plan(_demand, _network, _grid, _config, _onewayDirs);   // 혼잡 인지 증분 배정(경로 테이블) + 일방통행 간선 필터(조회만)
                 _grid.ClearTopologyDirty();
             }
 
@@ -174,7 +174,7 @@ namespace CityFlow.Sim
             {
                 _demand.Reassign(_grid, _network);
                 RebuildSignals();
-                _planner.Plan(_demand, _network, _grid, _config);
+                _planner.Plan(_demand, _network, _grid, _config, _onewayDirs);   // 일방통행 간선 필터(조회만)
                 _grid.ClearTopologyDirty();
             }
             // 정산은 평상 신호 기준 = 공정(맥동 무시와 같은 철학). 복귀 시 잔여 오버라이드는 소멸 —

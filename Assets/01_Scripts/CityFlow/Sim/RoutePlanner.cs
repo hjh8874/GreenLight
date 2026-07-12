@@ -42,7 +42,13 @@ namespace CityFlow.Sim
         // 여기서 net.TryGetAccessRoad로 다시 계산하면 건물에 프론티지가 여러 개일 때 DemandMap과
         // 다른 접점을 고를 수 있고, 그 불일치가 "배정은 됐는데 흐름은 0"인 버그의 원인이었다.
         // net 파라미터는 시그니처 호환용으로 유지(다른 호출자·테스트가 이 형태로 호출).
+        // 기존 4-인자 호출자는 oneways=null로 위임(일방통행 미도입 시 무비용 경로, 테스트 무수정 생존).
         public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg)
+            => Plan(demand, net, grid, cfg, null);
+
+        // oneways: 엔진 소유 좌표→단위방향 맵(조회만 — 소유·갱신은 SimEngine, 로터리/입체와 같은 패턴).
+        public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg,
+                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
         {
             _routes.Clear();
             Array.Clear(_load, 0, _load.Length);
@@ -50,7 +56,7 @@ namespace CityFlow.Sim
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
             {
-                var path = Search(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg);   // 경계 밖(NoRoad)도 IsRoad가 자연히 걸러 null
+                var path = Search(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg, oneways);   // 경계 밖(NoRoad)도 IsRoad가 자연히 걸러 null
 
                 _routes.Add(path);                            // null = 이 수요는 흐르지 않음(무사고)
                 if (path == null) continue;
@@ -61,8 +67,18 @@ namespace CityFlow.Sim
 
         // 현재 _load 기준 최소 비용 경로(내부 + 테스트 seam). 미연결/비도로 끝점 = null.
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg)
+            => Search(grid, from, to, cfg, null);
+
+        // 일방통행 간선 필터(스펙 2026-07-12 §핵심결정, 상태 확장 없음 — 이웃 확장에서 3규칙 조기 continue):
+        // ① 일방 타일에서 나가는 스텝은 그 방향(D)만. ② 일방 타일로 들어가는 스텝은 -D 금지
+        // (역주행 진입 차단, 측면 합류는 허용). ③ 일방 타일이 관여하는 대각 스텝 금지(단순화 —
+        // 대각 벡터는 카디널 D와 절대 일치하지 않아 ①은 자연히 걸지만, ②는 대각으로 들어오는
+        // 역주행을 못 걸러서 별도로 필요). oneways가 null/빈 경우 Dictionary 조회 없이 스킵(무비용).
+        internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
         {
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
+            bool hasOneways = oneways != null && oneways.Count > 0;
 
             int n = _cost.Length;
             for (int i = 0; i < n; i++) { _cost[i] = float.MaxValue; _done[i] = false; }
@@ -87,12 +103,27 @@ namespace CityFlow.Sim
                 _done[cur] = true;
 
                 int cx = cur % _w, cy = cur / _w;
+                bool curOneway = false;
+                Vector2Int curDir = default;
+                if (hasOneways) curOneway = oneways.TryGetValue(new Vector2Int(cx, cy), out curDir);
+
                 for (int d = 0; d < DX.Length; d++)
                 {
                     int nx = cx + DX[d], ny = cy + DY[d];
                     if (!IsRoad(grid, nx, ny)) continue;
                     int ni = ny * _w + nx;
                     if (_done[ni]) continue;
+
+                    if (hasOneways)
+                    {
+                        bool diag = d >= 4;
+                        bool nbrOneway = oneways.TryGetValue(new Vector2Int(nx, ny), out var nbrDir);
+                        if (diag && (curOneway || nbrOneway)) continue;              // ③ 일방 관여 대각 금지
+                        var stepDir = new Vector2Int(DX[d], DY[d]);
+                        if (curOneway && stepDir != curDir) continue;                // ① 나가는 스텝 = D만
+                        if (nbrOneway && stepDir == -nbrDir) continue;               // ② 들어가는 스텝 ≠ -D
+                    }
+
                     float phys = d < 4 ? 1f : Sqrt2;          // 물리 거리 — 선택과 그린웨이브 타이밍 일치
                     float step = phys * (1f + w * _load[ni] * capInv);
                     float cand = _cost[cur] + step;
