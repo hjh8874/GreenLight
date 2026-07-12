@@ -32,6 +32,10 @@ namespace CityFlow.Sim
         readonly List<Vector2Int> _placedOneways = new();
         static readonly Vector2Int[] OnewayUnitDirs =
             { new Vector2Int(1, 0), new Vector2Int(-1, 0), new Vector2Int(0, 1), new Vector2Int(0, -1) };
+        // 턴 제한 표지판(스펙 2026-07-12): 5번째 배치 가족 — 교차로 전용이되 신호와 공존(로터리·입체와만 배타).
+        // 일방통행과 동형(Dictionary<좌표,값> + flat 정렬 List) — 값이 방향 벡터 대신 TurnMode.
+        readonly Dictionary<Vector2Int, TurnMode> _turnSigns = new();
+        readonly List<Vector2Int> _placedTurnSigns = new();
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
         readonly ArrivalEmitter _arrivals;
         readonly BurstDetector _bursts;
@@ -170,6 +174,12 @@ namespace CityFlow.Sim
                 // 조건이 반대(비교차로 유지) — 도로 철거든 교차로화든 배치 조건 위반이면 소멸.
                 if (_grid.GetTile(t) == TileType.Road && !_grid.IsIntersection(t)) return false;
                 _onewayDirs.Remove(t);
+                return true;
+            });
+            _placedTurnSigns.RemoveAll(t =>
+            {
+                if (_grid.IsIntersection(t)) return false;
+                _turnSigns.Remove(t);          // 교차로 해제 → 표지판도 소멸(신호 가족과 동일 규약)
                 return true;
             });
             _signals.Rebuild(_grid, _placedSignals);
@@ -363,6 +373,37 @@ namespace CityFlow.Sim
         public Vector2Int GetOnewayDir(Vector2Int tile) =>
             _onewayDirs.TryGetValue(tile, out var d) ? d : Vector2Int.zero;
 
+        // ── 턴 제한 표지판 배치(스펙 2026-07-12): 5번째 배치 가족 — 교차로 전용, 신호와 공존(로터리·입체와만 배타) ──
+        public IReadOnlyList<Vector2Int> TurnSignTiles => _placedTurnSigns;
+
+        public bool CanPlaceTurnSign(Vector2Int tile) =>
+            !_config.AutoDetectSignals && _grid.IsIntersection(tile)
+            && !_roundaboutSet.Contains(tile) && !_overpassSet.Contains(tile)
+            && !_turnSigns.ContainsKey(tile);                                 // 신호는 검사 안 함(공존)
+
+        public bool TryPlaceTurnSign(Vector2Int tile, TurnMode mode)
+        {
+            if (!CanPlaceTurnSign(tile)) return false;
+            int flat = tile.y * _config.GridWidth + tile.x;
+            int idx = _placedTurnSigns.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
+            if (idx < 0) _placedTurnSigns.Add(tile); else _placedTurnSigns.Insert(idx, tile);
+            _turnSigns[tile] = mode;
+            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 일방통행과 동일 이유(다음 틱 재계획 강제)
+            return true;
+        }
+
+        public bool TryRemoveTurnSign(Vector2Int tile)
+        {
+            if (_config.AutoDetectSignals || !_turnSigns.Remove(tile)) return false;
+            _placedTurnSigns.Remove(tile);
+            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 배치와 동일 이유
+            return true;
+        }
+
+        // 뷰·저장용 조회: 없으면 null(표지판 없음을 뜻함, 예외 아님) — GetOnewayDir과 동형.
+        public TurnMode? GetTurnMode(Vector2Int tile) =>
+            _turnSigns.TryGetValue(tile, out var m) ? m : (TurnMode?)null;
+
         // 뷰용: 이 교차로가 지금 초록인가(시뮬 시간 기준). 신호 없으면 항상 초록 취급.
         public bool IsSignalGreen(Vector2Int tile) =>
             !_signals.TryGet(tile, out var s) || s.OverrideUntil > _simTime || SignalMath.IsGreen(s, _simTime);
@@ -495,7 +536,14 @@ namespace CityFlow.Sim
                 oneways[i] = new OnewaySaveData { X = t.x, Y = t.y, DirX = d.x, DirY = d.y };
             }
 
-            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses, Oneways = oneways };
+            var turnSigns = new TurnSignSaveData[_placedTurnSigns.Count];
+            for (int i = 0; i < _placedTurnSigns.Count; i++)
+            {
+                var t = _placedTurnSigns[i];
+                turnSigns[i] = new TurnSignSaveData { X = t.x, Y = t.y, Mode = (int)_turnSigns[t] };
+            }
+
+            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses, Oneways = oneways, TurnSigns = turnSigns };
         }
 
         // 주의: _overrideReadyAt은 복원해도 유지(의도) — 세이브 로드로 쿨다운을 리셋하는 악용 방지.
@@ -572,6 +620,24 @@ namespace CityFlow.Sim
                         }
                     }
                 _placedOneways.Sort((a, b) =>
+                    (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
+
+                _placedTurnSigns.Clear();
+                _turnSigns.Clear();
+                if (snapshot.TurnSigns != null)
+                    foreach (var s in snapshot.TurnSigns)
+                    {
+                        var tile = new Vector2Int(s.X, s.Y);
+                        var mode = (TurnMode)s.Mode;
+                        // 손상 세이브 방어: 배치 조건 재검증(교차로·로터리/입체 선점 좌표는 버림) + 모드값 검증.
+                        // CanPlaceTurnSign이 _turnSigns.ContainsKey도 함께 봐서 중복 엔트리도 자연히 거른다.
+                        if (CanPlaceTurnSign(tile) && (mode == TurnMode.LeftOnly || mode == TurnMode.RightOnly))
+                        {
+                            _turnSigns[tile] = mode;
+                            _placedTurnSigns.Add(tile);
+                        }
+                    }
+                _placedTurnSigns.Sort((a, b) =>
                     (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
             }
             RebuildSignals();
