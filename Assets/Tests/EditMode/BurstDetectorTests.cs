@@ -70,6 +70,39 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void JamThenRelief_RewardScalesWithCoinBase()
+        {
+            // pending은 '잃은 차량 수' 단위 — 도착 코인과 같은 환율(CoinBase)로 환전해야
+            // 파밍 중립이 CoinBase≠1에서도 유지된다(감사 2026-07-12). CoinBase=2면 보상 정확히 2배.
+            int RunAndGetReward(float coinBase)
+            {
+                var g = StraightCity();
+                var cfg = BurstCfg();
+                cfg.CoinBase = coinBase;
+                var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
+                var net = new RoadNetwork(g);
+                var planner = new RoutePlanner(g.Width, g.Height);
+                planner.Plan(dm, net, g, cfg);
+                var solver = new FlowSolver(g.Width, g.Height);
+                var detector = new BurstDetector(g.Width, g.Height);
+                var hub = new SimEventHub();
+                int reward = 0;
+                hub.FlowBurst += e => reward += e.Reward;
+                var buffer = new SimEventBuffer(hub);
+
+                Step(15f, ref cfg, g, dm, planner, solver, detector, buffer);  // Jam 진입
+                Step(1f, ref cfg, g, dm, planner, solver, detector, buffer);   // Free 복귀 → Burst
+
+                return reward;
+            }
+
+            int reward1 = RunAndGetReward(1f);
+            int reward2 = RunAndGetReward(2f);
+
+            Assert.AreEqual(reward1 * 2, reward2);
+        }
+
+        [Test]
         public void BoundaryOscillation_NoBurstSpam()
         {
             // 계획 4: ratio 0.9↔1.1 진동. 1.1은 Jam 진입이지만 0.9는 복귀선(0.6) '위'

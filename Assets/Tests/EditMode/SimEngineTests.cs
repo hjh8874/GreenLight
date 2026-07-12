@@ -565,6 +565,19 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void ReadOnlyTileData_OutOfBounds_ReturnsNeutral_NoException()
+        {
+            // OOB는 예외가 아니라 중립값 — 뷰의 화면 밖 클릭/스캔이 트러스트 경계(감사 2026-07-12).
+            var c = Cfg(0.25f);
+            c.GridWidth = 5; c.GridHeight = 2;
+            var e = Engine(c);
+
+            Assert.AreEqual(TileType.Empty, e.GetTileType(V(-1, 0)));
+            Assert.AreEqual(CongestionLevel.Free, e.GetCongestion(V(99, 99)));
+            Assert.AreEqual(0f, e.GetDensity01(V(0, -5)));
+        }
+
+        [Test]
         public void Remove_OutOfBounds_ReturnsFalse_NoCrash_NoEvent()
         {
             var c = Cfg(0.25f);

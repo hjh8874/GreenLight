@@ -421,6 +421,8 @@ namespace CityFlow.Sim
             // 복원 = 전체 교체: 비우고 → 재배치 → 교차로 재감지 → 조율 복원 (PR#8 합의 흐름)
             _grid.Clear();
             _solver.ClearAllPendingRewards();   // 이전 도시의 유령 장부가 새 도시에서 터지는 것 방지
+            _arrivals.ClearAll();   // 이월 소수도 유령 장부의 일종(감사 2026-07-12)
+            _bursts.ClearAll();     // jam 히스테리시스·쿨다운도 이전 도시 잔재
             if (snapshot.PlacedTiles != null)
                 foreach (var t in snapshot.PlacedTiles)
                     _grid.Place(new Vector2Int(t.X, t.Y), t.Type);   // OOB·중복은 Place가 거름(무사고)
@@ -482,8 +484,12 @@ namespace CityFlow.Sim
 
         // ── IReadOnlyTileData: solver/grid에 위임 ──
         public float Stability01 => _stats.Stability01;
-        public CongestionLevel GetCongestion(Vector2Int tile) => _solver.GetCongestion(tile);
-        public float GetDensity01(Vector2Int tile) => Mathf.Clamp01(_solver.GetRatio(tile));
-        public TileType GetTileType(Vector2Int tile) => _grid.GetTile(tile);
+        // OOB는 예외가 아니라 중립값 — 뷰의 화면 밖 클릭/스캔이 트러스트 경계(감사 2026-07-12).
+        public CongestionLevel GetCongestion(Vector2Int tile) =>
+            _grid.InBounds(tile) ? _solver.GetCongestion(tile) : CongestionLevel.Free;
+        public float GetDensity01(Vector2Int tile) =>
+            _grid.InBounds(tile) ? Mathf.Clamp01(_solver.GetRatio(tile)) : 0f;
+        public TileType GetTileType(Vector2Int tile) =>
+            _grid.InBounds(tile) ? _grid.GetTile(tile) : TileType.Empty;
     }
 }
