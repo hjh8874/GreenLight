@@ -38,6 +38,10 @@ namespace CityFlow.Sim
         }
 
         // 수요별 경로 테이블 계산. 부하 적립은 DemandPerHouse(평균 — 맥동 무반영, 정산 철학과 동일).
+        // 접점(from/to)은 DemandMap이 배정 시 채택한 값을 그대로 쓴다(단일 출처화, 감사 픽스 2) —
+        // 여기서 net.TryGetAccessRoad로 다시 계산하면 건물에 프론티지가 여러 개일 때 DemandMap과
+        // 다른 접점을 고를 수 있고, 그 불일치가 "배정은 됐는데 흐름은 0"인 버그의 원인이었다.
+        // net 파라미터는 시그니처 호환용으로 유지(다른 호출자·테스트가 이 형태로 호출).
         public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg)
         {
             _routes.Clear();
@@ -46,10 +50,7 @@ namespace CityFlow.Sim
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
             {
-                List<Vector2Int> path = null;
-                if (net.TryGetAccessRoad(demands[i].Source, out var from) &&
-                    net.TryGetAccessRoad(demands[i].Sink, out var to))
-                    path = Search(grid, from, to, cfg);
+                var path = Search(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg);   // 경계 밖(NoRoad)도 IsRoad가 자연히 걸러 null
 
                 _routes.Add(path);                            // null = 이 수요는 흐르지 않음(무사고)
                 if (path == null) continue;

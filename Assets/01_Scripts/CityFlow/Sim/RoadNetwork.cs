@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using CityFlow.Contracts;
 
@@ -89,6 +90,20 @@ namespace CityFlow.Sim
             }
             road = default;
             return false;
+        }
+
+        // 건물의 모든 도로 프론티지(같은 8방 스캔 순서)를 buffer에 누적. 할당 없음 — 호출자가
+        // buffer 소유(재사용 패턴, Reassign/Plan 같은 재구축 경로에서만 호출). Clear는 호출자 책임
+        // (DemandMap.Collect와 동일 관례).
+        // 감사 픽스 2: 건물이 서로 다른 Region에 프론티지를 여러 개 가질 때(막다른 스텁 + 간선)
+        // TryGetAccessRoad 하나만 보면 도달 가능한 프론티지를 놓칠 수 있음 → 전수 수집으로 대응.
+        public void CollectAccessRoads(Vector2Int building, List<Vector2Int> buffer)
+        {
+            for (int d = 0; d < DX.Length; d++)
+            {
+                var v = new Vector2Int(building.x + DX[d], building.y + DY[d]);
+                if (IsRoad(v)) buffer.Add(v);
+            }
         }
 
         bool InBounds(Vector2Int v) => v.x >= 0 && v.x < _w && v.y >= 0 && v.y < _h;
