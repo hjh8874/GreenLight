@@ -17,6 +17,13 @@
       },
       "hash": "11836003a5e2ffcb7715ecec7e1fbb9d9cdb5bb8"
     },
+    "com.kirurobo.uniwinc": {
+      "version": "https://github.com/kirurobo/UniWindowController.git#upm",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "304f9ba2aa4a8fae7f3c71f38118c44722a2f6cc"
+    },
     "com.unity.2d.sprite": {
       "version": "1.0.0",
       "depth": 0,
