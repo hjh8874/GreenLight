@@ -67,8 +67,8 @@ namespace CityFlow.Contracts
         Vector2Int GetOnewayDir(Vector2Int tile);
 
         // 턴 제한 표지판 배치(스펙 2026-07-12): 5번째 배치 가족 — 교차로 전용이되 신호와 공존
-        // (로터리·입체와만 배타). 신호(시간 배분)·표지판(방향 배분)은 직교 개념이라 CanPlaceSignal 등
-        // 기존 3형제 API는 무수정 — 표지판 쪽에서만 로터리/입체를 검사한다.
+        // (로터리·입체와는 양방향 배타 — 계획 정정 2026-07-12). 신호(시간 배분)·표지판(방향 배분)은
+        // 직교 개념이라 CanPlaceSignal만 무수정(공존) — CanPlaceRoundabout/CanPlaceOverpass는 표지판도 검사.
         // 값은 방향 벡터 대신 TurnMode enum(일방통행과 동형 Dictionary 소유, 값 타입만 다름).
         // GetTurnMode는 뷰·저장용 조회(없으면 null) — "제안" 집계엔 포함하지 않음(GetOnewayDir과 동형).
         // 제안이 22종 도달(오버라이드3+신호배치3+로터리4+입체4+일방통행4+턴제한4) — 배치물 공통 계약

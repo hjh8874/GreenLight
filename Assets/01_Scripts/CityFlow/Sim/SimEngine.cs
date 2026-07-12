@@ -297,7 +297,8 @@ namespace CityFlow.Sim
         public bool CanPlaceRoundabout(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
             && !_roundaboutSet.Contains(tile) && !_placedSet.Contains(tile)
-            && !_overpassSet.Contains(tile);                                  // 3자 배타
+            && !_overpassSet.Contains(tile)                                   // 3자 배타
+            && !_turnSigns.ContainsKey(tile);   // 표지판과 배타(양방향 — 계획 정정 2026-07-12)
 
         public bool TryPlaceRoundabout(Vector2Int tile)
         {
@@ -322,7 +323,8 @@ namespace CityFlow.Sim
         public bool CanPlaceOverpass(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
             && !_overpassSet.Contains(tile) && !_placedSet.Contains(tile)
-            && !_roundaboutSet.Contains(tile);                             // 3자 배타
+            && !_roundaboutSet.Contains(tile)                              // 3자 배타
+            && !_turnSigns.ContainsKey(tile);   // 표지판과 배타(양방향 — 계획 정정 2026-07-12)
 
         public bool TryPlaceOverpass(Vector2Int tile)
         {
@@ -631,6 +633,9 @@ namespace CityFlow.Sim
                         var mode = (TurnMode)s.Mode;
                         // 손상 세이브 방어: 배치 조건 재검증(교차로·로터리/입체 선점 좌표는 버림) + 모드값 검증.
                         // CanPlaceTurnSign이 _turnSigns.ContainsKey도 함께 봐서 중복 엔트리도 자연히 거른다.
+                        // 순서 의미(양방향 배타 후에도 유지): 로터리/입체가 이 블록보다 먼저 복원되고
+                        // (그쪽은 인라인 검사라 잔존 _turnSigns의 영향도 없음), 표지판은 여기서
+                        // CanPlaceTurnSign 재검증으로 거부 — 같은 좌표 충돌 시 로터리/입체 선점 승.
                         if (CanPlaceTurnSign(tile) && (mode == TurnMode.LeftOnly || mode == TurnMode.RightOnly))
                         {
                             _turnSigns[tile] = mode;

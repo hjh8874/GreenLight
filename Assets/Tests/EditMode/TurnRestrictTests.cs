@@ -78,17 +78,20 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(e.TryPlaceTurnSign(V(3, 0), TurnMode.LeftOnly));
         }
 
-        // Global Constraints("CanPlaceSignal 등 기존 3형제 API는 무수정 — 표지판 쪽만 검사")를 문자 그대로
-        // 지킨 결과의 비대칭 핀: 배타 검사는 CanPlaceTurnSign 쪽에만 있다 — 로터리/입체 API는
-        // 손대지 않았으므로 표지판이 이미 있는 교차로에도 로터리/입체는 (엔진 레벨에서는) 배치된다.
-        // 실제 이중 배치 방지는 UI(샌드박스 배치 모드 단일 선택)의 책임 — 계획 문서에 명시된 트레이드오프.
+        // 계획 정정(2026-07-12): 배타는 양방향 — 표지판 타일에 로터리/입체도 배치 불가.
+        // ("3형제 무수정" 문구는 신호 공존 의도의 과확장이었음 — 신호만 공존, 로터리/입체는 상호 배타.)
         [Test]
-        public void RoundaboutAndOverpassApis_AreUnmodified_DoNotCheckTurnSign()
+        public void TurnSignBlocksRoundaboutAndOverpass_Bidirectional()
         {
             var e = Build(autoDetect: false, out _);
             Assert.IsTrue(e.TryPlaceTurnSign(V(3, 0), TurnMode.LeftOnly));
-            Assert.IsTrue(e.CanPlaceRoundabout(V(3, 0)));
-            Assert.IsTrue(e.CanPlaceOverpass(V(3, 0)));
+            Assert.IsFalse(e.CanPlaceRoundabout(V(3, 0)));
+            Assert.IsFalse(e.TryPlaceRoundabout(V(3, 0)));    // 표지판 위 로터리 금지
+            Assert.IsFalse(e.CanPlaceOverpass(V(3, 0)));
+            Assert.IsFalse(e.TryPlaceOverpass(V(3, 0)));      // 표지판 위 입체 금지
+            // 철거 후엔 배치 가능(한 타일 한 장치 — 교체는 "철거 후 배치")
+            Assert.IsTrue(e.TryRemoveTurnSign(V(3, 0)));
+            Assert.IsTrue(e.TryPlaceRoundabout(V(3, 0)));
         }
 
         // 스펙 핵심결정: 신호(시간 배분)와 표지판(방향 배분)은 직교 — 같은 교차로에 공존(양방향 핀).
