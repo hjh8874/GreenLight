@@ -29,7 +29,8 @@ namespace CityFlow.Sim
         // flat 인덱스. 주석님 GridUtil엔 Index가 없어 여기서 직접(index = y*W+x).
         int Index(Vector2Int t) => t.y * _width + t.x;
 
-        bool InBounds(Vector2Int t) =>
+        // internal(private→승격): SimEngine의 IReadOnlyTileData OOB 가드가 같은 어셈블리에서 재사용(감사 2026-07-12).
+        internal bool InBounds(Vector2Int t) =>
             t.x >= 0 && t.x < _width && t.y >= 0 && t.y < _height;
 
         public TileType GetTile(Vector2Int t) => _tiles[Index(t)];
