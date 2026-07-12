@@ -271,7 +271,7 @@ namespace CityFlow.DebugTools
                 // 턴제한은 신호와 공존 가능 — 별도 장치 문구로 이어붙임(체인 판정과 별개 표시).
                 if (turnMode.HasValue)
                 {
-                    device += device == "없음" ? $"턴제한({TurnGlyph(turnMode.Value)})" : $" + 턴제한({TurnGlyph(turnMode.Value)})";
+                    device = device == "없음" ? $"턴제한({TurnGlyph(turnMode.Value)})" : $"{device} + 턴제한({TurnGlyph(turnMode.Value)})";
                 }
 
                 GUI.Label(new Rect(12, 130, 900, 30),
