@@ -166,6 +166,7 @@ namespace CityFlow.View
             RefreshOverpasses();
             RefreshVehicles();
             gameObject.AddComponent<DriveViewCamera>().Init(simEngine, transform, tileSize);
+            gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize);
         }
 
         private void OnDestroy()
