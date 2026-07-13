@@ -23,6 +23,9 @@ namespace CityFlow.Sim
         // 회전교차로(스펙 2026-07-11): 신호와 배타 배치. SignalMap 무관 — FlowSolver가 셋을 직접 봄.
         readonly List<Vector2Int> _placedRoundabouts = new();
         readonly HashSet<Vector2Int> _roundaboutSet = new();
+        // 입체교차(스펙 2026-07-12): 신호·로터리와 3자 배타. 로터리와 동형(SignalMap 무관, Rebuild 불필요).
+        readonly List<Vector2Int> _placedOverpasses = new();
+        readonly HashSet<Vector2Int> _overpassSet = new();
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
         readonly ArrivalEmitter _arrivals;
         readonly BurstDetector _bursts;
@@ -82,7 +85,7 @@ namespace CityFlow.Sim
 
             // ① 수요→세그먼트 흐름 배정 (러시아워 맥동 배율 반영 — 기획 §1 '수요의 맥동')
             _solver.Assign(_demand, _planner, _config, SimConfig.DemandPulse(_simTime, _config));
-            _solver.Resolve(_config, _signals, _grid, _roundaboutSet, _simTime); // ② 혼잡·병목·그린웨이브·오버라이드·delivered
+            _solver.Resolve(_config, _signals, _grid, _roundaboutSet, _overpassSet, _simTime); // ② 혼잡·병목·그린웨이브·오버라이드·delivered
             _congestion.Scan(_solver, _events, _config);  // ②' 레벨 전이만 이벤트로
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
@@ -117,6 +120,12 @@ namespace CityFlow.Sim
                 _roundaboutSet.Remove(t);      // 교차로 해제 → 로터리도 소멸(신호와 동일 규약)
                 return true;
             });
+            _placedOverpasses.RemoveAll(t =>
+            {
+                if (_grid.IsIntersection(t)) return false;
+                _overpassSet.Remove(t);        // 교차로 해제 → 입체교차도 소멸(동일 규약)
+                return true;
+            });
             _signals.Rebuild(_grid, _placedSignals);
         }
 
@@ -138,7 +147,7 @@ namespace CityFlow.Sim
                 if (_signals.TryGet(t, out var sig)) sig.OverrideUntil = 0;
 
             _solver.Assign(_demand, _planner, _config);   // 정산은 평균 수요(맥동 무시 = 공정)
-            _solver.Resolve(_config, _signals, _grid, _roundaboutSet, _simTime); // 오프라인도 신호 조율(오프셋·초록)은 그대로 반영
+            _solver.Resolve(_config, _signals, _grid, _roundaboutSet, _overpassSet, _simTime); // 오프라인도 신호 조율(오프셋·초록)은 그대로 반영
 
             double capped = Math.Min(elapsedSeconds, _config.OfflineCapHours * 3600.0);
             long coins = _arrivals.SettleOffline(_solver, capped, _config);
@@ -203,7 +212,8 @@ namespace CityFlow.Sim
         // ── 신호 배치(구매 피벗 2단계, 스펙 2026-07-11): 배치 모드에서만. 가격·UI는 팀(김건·진우) ──
         public bool CanPlaceSignal(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
-            && !_placedSet.Contains(tile) && !_roundaboutSet.Contains(tile);   // 로터리와 배타
+            && !_placedSet.Contains(tile) && !_roundaboutSet.Contains(tile)
+            && !_overpassSet.Contains(tile);                                  // 3자 배타
 
         public bool TryPlaceSignal(Vector2Int tile, int greenSlots)
         {
@@ -230,7 +240,8 @@ namespace CityFlow.Sim
 
         public bool CanPlaceRoundabout(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
-            && !_roundaboutSet.Contains(tile) && !_placedSet.Contains(tile);   // 신호와 배타
+            && !_roundaboutSet.Contains(tile) && !_placedSet.Contains(tile)
+            && !_overpassSet.Contains(tile);                                  // 3자 배타
 
         public bool TryPlaceRoundabout(Vector2Int tile)
         {
@@ -246,6 +257,31 @@ namespace CityFlow.Sim
         {
             if (_config.AutoDetectSignals || !_roundaboutSet.Remove(tile)) return false;
             _placedRoundabouts.Remove(tile);
+            return true;
+        }
+
+        // ── 입체교차 배치(스펙 2026-07-12): 로터리 3종의 자매 — 교차로 4형제 완성 ──
+        public IReadOnlyList<Vector2Int> OverpassTiles => _placedOverpasses;
+
+        public bool CanPlaceOverpass(Vector2Int tile) =>
+            !_config.AutoDetectSignals && _grid.IsIntersection(tile)
+            && !_overpassSet.Contains(tile) && !_placedSet.Contains(tile)
+            && !_roundaboutSet.Contains(tile);                             // 3자 배타
+
+        public bool TryPlaceOverpass(Vector2Int tile)
+        {
+            if (!CanPlaceOverpass(tile)) return false;
+            int flat = tile.y * _config.GridWidth + tile.x;
+            int idx = _placedOverpasses.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
+            if (idx < 0) _placedOverpasses.Add(tile); else _placedOverpasses.Insert(idx, tile);
+            _overpassSet.Add(tile);
+            return true;
+        }
+
+        public bool TryRemoveOverpass(Vector2Int tile)
+        {
+            if (_config.AutoDetectSignals || !_overpassSet.Remove(tile)) return false;
+            _placedOverpasses.Remove(tile);
             return true;
         }
 
@@ -369,7 +405,11 @@ namespace CityFlow.Sim
             for (int i = 0; i < _placedRoundabouts.Count; i++)
                 roundabouts[i] = new RoundaboutSaveData { X = _placedRoundabouts[i].x, Y = _placedRoundabouts[i].y };
 
-            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts };
+            var overpasses = new OverpassSaveData[_placedOverpasses.Count];
+            for (int i = 0; i < _placedOverpasses.Count; i++)
+                overpasses[i] = new OverpassSaveData { X = _placedOverpasses[i].x, Y = _placedOverpasses[i].y };
+
+            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses };
         }
 
         // 주의: _overrideReadyAt은 복원해도 유지(의도) — 세이브 로드로 쿨다운을 리셋하는 악용 방지.
@@ -412,6 +452,19 @@ namespace CityFlow.Sim
                         if (!_placedSet.Contains(tile) && _roundaboutSet.Add(tile)) _placedRoundabouts.Add(tile);
                     }
                 _placedRoundabouts.Sort((a, b) =>
+                    (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
+
+                _placedOverpasses.Clear();
+                _overpassSet.Clear();
+                if (snapshot.Overpasses != null)
+                    foreach (var o in snapshot.Overpasses)
+                    {
+                        var tile = new Vector2Int(o.X, o.Y);
+                        // 손상 세이브 방어: 신호·로터리가 선점한 타일이면 입체는 양보(한 타일 한 장치)
+                        if (!_placedSet.Contains(tile) && !_roundaboutSet.Contains(tile)
+                            && _overpassSet.Add(tile)) _placedOverpasses.Add(tile);
+                    }
+                _placedOverpasses.Sort((a, b) =>
                     (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
                 // 비교차로 잔재는 직후 RebuildSignals()의 소멸 프루닝이 청소(신호와 동일 경로).
             }

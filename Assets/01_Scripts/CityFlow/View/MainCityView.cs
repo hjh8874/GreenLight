@@ -50,10 +50,12 @@ namespace CityFlow.View
         [SerializeField] private Color selectedSignalColor = Color.white;
         [SerializeField] private Color flowBurstColor = new Color(1f, 0.78f, 0.12f);
         [SerializeField] private Color roundaboutColor = new Color(0.35f, 0.78f, 0.45f);
+        [SerializeField] private Color overpassColor = new Color(0.55f, 0.62f, 0.75f);
 
         private readonly Dictionary<Vector2Int, TileVisual> tileVisuals = new();
         private readonly Dictionary<Vector2Int, SignalVisual> signalVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> roundaboutVisuals = new();
+        private readonly Dictionary<Vector2Int, GameObject> overpassVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
         private readonly List<BurstVisual> bursts = new();
 
@@ -142,6 +144,7 @@ namespace CityFlow.View
             RefreshAllTiles();
             RefreshSignals();
             RefreshRoundabouts();
+            RefreshOverpasses();
             RefreshVehicles();
         }
 
@@ -167,6 +170,7 @@ namespace CityFlow.View
             HandleSignalInput();
             RefreshSignals();
             RefreshRoundabouts();
+            RefreshOverpasses();
             RefreshVehicles();
             UpdateBursts();
         }
@@ -408,6 +412,49 @@ namespace CityFlow.View
             ring.transform.localScale = new Vector3(tileSize * 0.6f, 0.02f, tileSize * 0.6f);
             ApplyRendererColor(PrepareRenderer(ring.GetComponent<Renderer>()), roundaboutColor);
             return ring;
+        }
+
+        // 입체교차 마커: 위(가로)/아래(세로) 두 바로 "축 분리"를 암시 — 로터리와 동일 수명 규약.
+        private void RefreshOverpasses()
+        {
+            if (simEngine == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<Vector2Int> tiles = simEngine.OverpassTiles;
+
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                if (!overpassVisuals.ContainsKey(tiles[i]))
+                {
+                    overpassVisuals.Add(tiles[i], CreateOverpassVisual(tiles[i]));
+                }
+            }
+
+            foreach (Vector2Int tile in new List<Vector2Int>(overpassVisuals.Keys))
+            {
+                if (ContainsSignal(tiles, tile))
+                {
+                    continue;
+                }
+
+                Destroy(overpassVisuals[tile]);
+                overpassVisuals.Remove(tile);
+            }
+        }
+
+        private GameObject CreateOverpassVisual(Vector2Int tile)
+        {
+            GameObject root = new GameObject($"Overpass_{tile.x}_{tile.y}");
+            root.transform.SetParent(signalRoot, false);
+            root.transform.localPosition = GridToLocal(tile, signalZ);
+            // 가로 바가 위층(z 앞), 세로 바가 아래층 — 입체를 z 차이로 암시.
+            Renderer h = CreateSignalBar(root.transform, "Deck", new Vector3(tileSize * 0.8f, tileSize * 0.18f, 0.05f), new Vector3(0f, 0f, -0.04f));
+            Renderer v = CreateSignalBar(root.transform, "Under", new Vector3(tileSize * 0.18f, tileSize * 0.8f, 0.05f), new Vector3(0f, 0f, 0.04f));
+            ApplyRendererColor(h, overpassColor);
+            ApplyRendererColor(v, overpassColor);
+            return root;
         }
 
         private SignalVisual CreateSignalVisual(Vector2Int tile)
