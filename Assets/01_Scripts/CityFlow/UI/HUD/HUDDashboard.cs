@@ -15,13 +15,6 @@ namespace CityFlow.UI
         [SerializeField] private TextMeshProUGUI vehicleCountText;
         [SerializeField] private TextMeshProUGUI coinText;
         [SerializeField] private TextMeshProUGUI efficiencyText;
-        [Header("Congestion UI")]
-        [Tooltip("UI Slider를 사용하는 경우 연결")]
-        [SerializeField] private Slider congestionSlider;
-        [Tooltip("단일 Image(Filled 모드)를 사용하는 경우 연결 (색상 변경 포함)")]
-        [SerializeField] private Image congestionImageFill;
-        [SerializeField] private Color colorSmooth = Color.green;
-        [SerializeField] private Color colorJam = Color.red;
         [SerializeField] private GameObject flowBurstEffect;
 
         [Header("Settings")]
@@ -51,16 +44,12 @@ namespace CityFlow.UI
             TextMeshProUGUI vehicleCount,
             TextMeshProUGUI coin,
             TextMeshProUGUI efficiency,
-            Slider congestion,
-            Image congestionFill,
             GameObject burstEffect)
         {
             timeText = time;
             vehicleCountText = vehicleCount;
             coinText = coin;
             efficiencyText = efficiency;
-            congestionSlider = congestion;
-            congestionImageFill = congestionFill;
             flowBurstEffect = burstEffect;
         }
 
@@ -314,19 +303,6 @@ namespace CityFlow.UI
             {
                 int efficiencyPercent = Mathf.RoundToInt(_currentStability01 * 100f);
                 efficiencyText.text = $"[Eff] {efficiencyPercent}%";
-            }
-
-            // 5. 혼잡도 바 (혼잡도는 1 - 효율 로 계산)
-            float congestion = 1f - _currentStability01;
-            
-            // Slider 방식 갱신
-            if (congestionSlider != null) congestionSlider.value = congestion;
-            
-            // Image(Fill Amount) 방식 갱신 및 색상 보간 (녹색 -> 붉은색)
-            if (congestionImageFill != null)
-            {
-                congestionImageFill.fillAmount = congestion;
-                congestionImageFill.color = Color.Lerp(colorSmooth, colorJam, congestion);
             }
         }
     }

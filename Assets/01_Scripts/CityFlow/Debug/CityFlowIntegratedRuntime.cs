@@ -250,14 +250,12 @@ namespace CityFlow.DebugTools
             TextMeshProUGUI vehicleText = CreateTmpText(hudPanel.transform, "VehicleCountText", "0", new Vector2(132f, -10f), new Vector2(112f, 24f), 18);
             TextMeshProUGUI coinText = CreateTmpText(hudPanel.transform, "CoinText", "0", new Vector2(12f, -42f), new Vector2(112f, 24f), 18);
             TextMeshProUGUI efficiency = CreateTmpText(hudPanel.transform, "EfficiencyText", "100%", new Vector2(132f, -42f), new Vector2(112f, 24f), 18);
-            Slider congestionSlider = CreateSlider(hudPanel.transform, "CongestionSlider", new Vector2(12f, -82f), new Vector2(232f, 18f));
-            Image congestionFill = CreateFillImage(hudPanel.transform, "CongestionFill", new Vector2(12f, -112f), new Vector2(232f, 18f));
             GameObject burstEffect = CreatePanel(hudPanel.transform, "FlowBurstEffect", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 16f), new Vector2(184f, 26f), new Color(1f, 0.7f, 0.12f, 0.9f));
             CreateTmpText(burstEffect.transform, "Label", "FLOW BURST", Vector2.zero, new Vector2(184f, 26f), 16, TextAlignmentOptions.Center);
             burstEffect.SetActive(false);
 
             HUDDashboard dashboard = hudPanel.AddComponent<HUDDashboard>();
-            dashboard.Configure(timeText, vehicleText, coinText, efficiency, congestionSlider, congestionFill, burstEffect);
+            dashboard.Configure(timeText, vehicleText, coinText, efficiency, burstEffect);
             dashboard.Initialize(services);
 
             GameObject dock = CreatePanel(canvas, "Geon_UIDock", new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-16f, 0f), new Vector2(132f, 188f));
