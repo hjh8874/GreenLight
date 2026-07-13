@@ -69,6 +69,8 @@ namespace CityFlow.View
         private IPlacementService placement;
         private SimEngine simEngine;
         private ISignalControl signalControl;
+        private IIntersectionFacilityService intersectionFacility;
+        private ITrafficRuleService trafficRule;
         private Transform gridRoot;
         private Transform boardRoot;
         private Transform tileRoot;
@@ -172,6 +174,8 @@ namespace CityFlow.View
             placement = services.Placement;
             simEngine = services.Placement as SimEngine;
             signalControl = services.Placement as ISignalControl;
+            intersectionFacility = services.Placement as IIntersectionFacilityService;
+            trafficRule = services.Placement as ITrafficRuleService;
 
             services.Events.Placed += OnPlaced;
             services.Events.CongestionChanged += OnCongestionChanged;
@@ -423,12 +427,12 @@ namespace CityFlow.View
         // 로터리 마커: RoundaboutTiles 폴링으로 생성/제거 — RefreshSignals와 동일 수명 규약.
         private void RefreshRoundabouts()
         {
-            if (simEngine == null)
+            if (intersectionFacility == null)
             {
                 return;
             }
 
-            IReadOnlyList<Vector2Int> tiles = simEngine.RoundaboutTiles;
+            IReadOnlyList<Vector2Int> tiles = intersectionFacility.RoundaboutTiles;
 
             for (int i = 0; i < tiles.Count; i++)
             {
@@ -465,12 +469,12 @@ namespace CityFlow.View
         // 입체교차 마커: 위(가로)/아래(세로) 두 바로 "축 분리"를 암시 — 로터리와 동일 수명 규약.
         private void RefreshOverpasses()
         {
-            if (simEngine == null)
+            if (intersectionFacility == null)
             {
                 return;
             }
 
-            IReadOnlyList<Vector2Int> tiles = simEngine.OverpassTiles;
+            IReadOnlyList<Vector2Int> tiles = intersectionFacility.OverpassTiles;
 
             for (int i = 0; i < tiles.Count; i++)
             {
@@ -508,12 +512,12 @@ namespace CityFlow.View
         // 일방통행 화살표 마커: OnewayTiles 폴링 — 로터리/입체와 동일 수명 규약(폴링 생성/제거).
         private void RefreshOneways()
         {
-            if (simEngine == null)
+            if (trafficRule == null)
             {
                 return;
             }
 
-            IReadOnlyList<Vector2Int> tiles = simEngine.OnewayTiles;
+            IReadOnlyList<Vector2Int> tiles = trafficRule.OnewayTiles;
 
             for (int i = 0; i < tiles.Count; i++)
             {
@@ -525,7 +529,7 @@ namespace CityFlow.View
                     onewayVisuals.Add(tile, visual);
                 }
 
-                Vector2Int dir = simEngine.GetOnewayDir(tile);
+                Vector2Int dir = trafficRule.GetOnewayDir(tile);
                 visual.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
             }
 
@@ -568,12 +572,12 @@ namespace CityFlow.View
         // 신호와 같은 타일에 공존할 수 있어(스펙 §핵심결정) turnSignZ로 signalZ와 z 분리(겹침 회피).
         private void RefreshTurnSigns()
         {
-            if (simEngine == null)
+            if (trafficRule == null)
             {
                 return;
             }
 
-            IReadOnlyList<Vector2Int> tiles = simEngine.TurnSignTiles;
+            IReadOnlyList<Vector2Int> tiles = trafficRule.TurnSignTiles;
 
             for (int i = 0; i < tiles.Count; i++)
             {
@@ -625,7 +629,7 @@ namespace CityFlow.View
         {
             visual.Root.transform.localPosition = GridToLocal(tile, turnSignZ);
 
-            TurnMode mode = simEngine.GetTurnMode(tile) ?? TurnMode.LeftOnly;
+            TurnMode mode = trafficRule.GetTurnMode(tile) ?? TurnMode.LeftOnly;
             bool leftOnly = mode == TurnMode.LeftOnly;
             float bendX = leftOnly ? -tileSize * 0.1f : tileSize * 0.1f;
             float bendAngle = leftOnly ? 45f : -45f;
@@ -874,9 +878,9 @@ namespace CityFlow.View
             // 실제 진행 방향이 그 일방 방향과 거의 정반대(역주행)면 렌더러를 숨긴다. 조건이 매 프레임
             // 재평가되므로 조건 해제(순방향 복귀 등) 시 별도 상태 없이 자연히 복원됨.
             bool hiddenAsGhost = false;
-            if (!forward && simEngine != null)
+            if (!forward && trafficRule != null)
             {
-                Vector2Int onewayDir = simEngine.GetOnewayDir(insideTile);
+                Vector2Int onewayDir = trafficRule.GetOnewayDir(insideTile);
                 if (onewayDir != Vector2Int.zero)
                 {
                     Vector3 onewayWorldDir = new Vector3(onewayDir.x, onewayDir.y, 0f);
@@ -1019,12 +1023,12 @@ namespace CityFlow.View
 
         private bool IsRoundaboutTile(Vector2Int tile)
         {
-            if (simEngine == null)
+            if (intersectionFacility == null)
             {
                 return false;
             }
 
-            return ContainsSignal(simEngine.RoundaboutTiles, tile);   // 선형 목록 검색 헬퍼 공용
+            return ContainsSignal(intersectionFacility.RoundaboutTiles, tile);   // 선형 목록 검색 헬퍼 공용
         }
 
         private void HandleSignalInput()

@@ -24,8 +24,9 @@ namespace CityFlow.DebugTools
         };
 
         private IReadOnlyTileData _data;
-        private ISignalControl _signals;
-        private SimEngine _engine;           // DeliveredTotal 조회용(DebugSignalTuner와 동일 패턴)
+        private IIntersectionFacilityService _facility;
+        private ITrafficRuleService _rule;
+        private SimEngine _engine;           // DeliveredTotal·SignalTiles 조회용(DebugSignalTuner와 동일 패턴)
         private bool _ready;
         private string _lastResult = "대기 중";
 
@@ -37,12 +38,13 @@ namespace CityFlow.DebugTools
             }
 
             _data = services?.TileData;
-            _signals = services?.Placement as ISignalControl;
+            _facility = services?.Placement as IIntersectionFacilityService;
+            _rule = services?.Placement as ITrafficRuleService;
             _engine = services?.Placement as SimEngine;
 
-            if (_data == null || _signals == null)
+            if (_data == null || _facility == null || _rule == null)
             {
-                Debug.LogWarning("[SandboxPlacementControls] ISignalControl/TileData 없음 — 배치 컨트롤 비활성.");
+                Debug.LogWarning("[SandboxPlacementControls] IIntersectionFacilityService/ITrafficRuleService/TileData 없음 — 배치 컨트롤 비활성.");
                 _ready = false;
                 return;
             }
@@ -70,15 +72,15 @@ namespace CityFlow.DebugTools
 
             if (kb.digit1Key.wasPressedThisFrame)
             {
-                _lastResult = TryPlace("신호", hover, () => _signals.TryPlaceSignal(hover, 8));
+                _lastResult = TryPlace("신호", hover, () => _facility.TryPlaceSignal(hover, 8));
             }
             else if (kb.digit2Key.wasPressedThisFrame)
             {
-                _lastResult = TryPlace("로터리", hover, () => _signals.TryPlaceRoundabout(hover));
+                _lastResult = TryPlace("로터리", hover, () => _facility.TryPlaceRoundabout(hover));
             }
             else if (kb.digit3Key.wasPressedThisFrame)
             {
-                _lastResult = TryPlace("입체교차", hover, () => _signals.TryPlaceOverpass(hover));
+                _lastResult = TryPlace("입체교차", hover, () => _facility.TryPlaceOverpass(hover));
             }
             else if (kb.digit4Key.wasPressedThisFrame)
             {
@@ -98,17 +100,17 @@ namespace CityFlow.DebugTools
         // 일방통행 회전과 동형 패턴). CanPlaceTurnSign이 교차로·로터리/입체 배타를 이미 검사(신호는 공존).
         private string TryPlaceOrRotateTurnSign(Vector2Int tile)
         {
-            TurnMode? existing = _signals.GetTurnMode(tile);
+            TurnMode? existing = _rule.GetTurnMode(tile);
 
             if (existing.HasValue)
             {
                 TurnMode next = existing.Value == TurnMode.LeftOnly ? TurnMode.RightOnly : TurnMode.LeftOnly;
-                _signals.TryRemoveTurnSign(tile);
-                _signals.TryPlaceTurnSign(tile, next);
+                _rule.TryRemoveTurnSign(tile);
+                _rule.TryPlaceTurnSign(tile, next);
                 return $"턴제한 회전 {tile} — {TurnGlyph(next)}";
             }
 
-            return _signals.TryPlaceTurnSign(tile, TurnMode.LeftOnly)
+            return _rule.TryPlaceTurnSign(tile, TurnMode.LeftOnly)
                 ? $"턴제한 배치 성공 {tile} — {TurnGlyph(TurnMode.LeftOnly)}"
                 : $"턴제한 배치 거부 {tile} — 교차로 아님/로터리·입체 있음/자동 모드";
         }
@@ -118,13 +120,13 @@ namespace CityFlow.DebugTools
         // 일방통행: 없으면 배치(E부터), 있으면 회전(철거→다음 방향 재배치로 조합 — 재배치 API 아님).
         private string TryPlaceOrRotateOneway(Vector2Int tile)
         {
-            Vector2Int existing = _signals.GetOnewayDir(tile);
+            Vector2Int existing = _rule.GetOnewayDir(tile);
 
             if (existing != Vector2Int.zero)
             {
                 Vector2Int next = NextOnewayDir(existing);
-                _signals.TryRemoveOneway(tile);
-                _signals.TryPlaceOneway(tile, next);
+                _rule.TryRemoveOneway(tile);
+                _rule.TryPlaceOneway(tile, next);
                 return $"일방통행 회전 {tile} — {DirGlyph(next)}";
             }
 
@@ -139,7 +141,7 @@ namespace CityFlow.DebugTools
             }
 
             Vector2Int first = OnewayRotationOrder[0];
-            return _signals.TryPlaceOneway(tile, first)
+            return _rule.TryPlaceOneway(tile, first)
                 ? $"일방통행 배치 성공 {tile} — {DirGlyph(first)}"
                 : $"일방통행 배치 거부 {tile} — 교차로/자동 모드";
         }
@@ -160,7 +162,7 @@ namespace CityFlow.DebugTools
         }
 
         // 배치 성공/거부 사유(교차로 아님/이미 있음)를 사람이 읽을 문구로. AutoDetectSignals 자체는
-        // ISignalControl 계약에 없어 조회 불가 — 이 샌드박스는 항상 false로 고정하므로 구분 생략(YAGNI).
+        // IIntersectionFacilityService 계약에 없어 조회 불가 — 이 샌드박스는 항상 false로 고정하므로 구분 생략(YAGNI).
         private string TryPlace(string label, Vector2Int tile, System.Func<bool> place)
         {
             if (HasAnyDevice(tile))
@@ -180,27 +182,27 @@ namespace CityFlow.DebugTools
 
         private string TryRemoveAny(Vector2Int tile)
         {
-            if (_signals.TryRemoveSignal(tile))
+            if (_facility.TryRemoveSignal(tile))
             {
                 return $"신호 철거 성공 {tile}";
             }
 
-            if (_signals.TryRemoveRoundabout(tile))
+            if (_facility.TryRemoveRoundabout(tile))
             {
                 return $"로터리 철거 성공 {tile}";
             }
 
-            if (_signals.TryRemoveOverpass(tile))
+            if (_facility.TryRemoveOverpass(tile))
             {
                 return $"입체교차 철거 성공 {tile}";
             }
 
-            if (_signals.TryRemoveOneway(tile))
+            if (_rule.TryRemoveOneway(tile))
             {
                 return $"일방통행 철거 성공 {tile}";
             }
 
-            if (_signals.TryRemoveTurnSign(tile))
+            if (_rule.TryRemoveTurnSign(tile))
             {
                 return $"턴제한 철거 성공 {tile}";
             }
@@ -208,11 +210,13 @@ namespace CityFlow.DebugTools
             return $"철거 거부 {tile} — 장치 없음";
         }
 
+        // ponytail: SignalTiles는 ISignalControl(조율) 소속이라 Facility/Rule엔 없음 — 이미 있는
+        // _engine(SimEngine 구체, DebugSignalTuner와 동일 패턴)으로 조회. 새 계약 추가는 YAGNI.
         private bool HasAnyDevice(Vector2Int tile)
         {
-            return Contains(_signals.SignalTiles, tile)
-                || Contains(_signals.RoundaboutTiles, tile)
-                || Contains(_signals.OverpassTiles, tile);
+            return Contains(_engine.SignalTiles, tile)
+                || Contains(_facility.RoundaboutTiles, tile)
+                || Contains(_facility.OverpassTiles, tile);
         }
 
         private static bool Contains(System.Collections.Generic.IReadOnlyList<Vector2Int> tiles, Vector2Int tile)
@@ -260,11 +264,11 @@ namespace CityFlow.DebugTools
             {
                 TileType type = _data.GetTileType(hover);
                 CongestionLevel congestion = _data.GetCongestion(hover);
-                Vector2Int onewayDir = _signals.GetOnewayDir(hover);
-                TurnMode? turnMode = _signals.GetTurnMode(hover);
-                string device = Contains(_signals.SignalTiles, hover) ? "신호"
-                    : Contains(_signals.RoundaboutTiles, hover) ? "로터리"
-                    : Contains(_signals.OverpassTiles, hover) ? "입체교차"
+                Vector2Int onewayDir = _rule.GetOnewayDir(hover);
+                TurnMode? turnMode = _rule.GetTurnMode(hover);
+                string device = Contains(_engine.SignalTiles, hover) ? "신호"
+                    : Contains(_facility.RoundaboutTiles, hover) ? "로터리"
+                    : Contains(_facility.OverpassTiles, hover) ? "입체교차"
                     : onewayDir != Vector2Int.zero ? $"일방통행({DirGlyph(onewayDir)})"
                     : "없음";
 
