@@ -15,6 +15,9 @@ namespace CityFlow.Contracts
         bool TryPlaceSignal(Vector2Int tile, int greenSlots);
         bool TryRemoveSignal(Vector2Int tile);
 
+        // 신호 존재 조회(철거·점유 표시용) — ISignalControl과 동일 프로퍼티를 시설 계약에도 노출
+        IReadOnlyList<Vector2Int> SignalTiles { get; }
+
         // 회전교차로 배치(스펙 2026-07-11): 신호와 배타(한 타일 한 장치). 배치 모드 전용.
         // 조율값 없음 — "조율 안 해도 흐르는 것"이 정체성. 수식(λ 0.25·용량 ×0.7)은 엔진 소관.
         IReadOnlyList<Vector2Int> RoundaboutTiles { get; }

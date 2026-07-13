@@ -26,7 +26,7 @@ namespace CityFlow.DebugTools
         private IReadOnlyTileData _data;
         private IIntersectionFacilityService _facility;
         private ITrafficRuleService _rule;
-        private SimEngine _engine;           // DeliveredTotal·SignalTiles 조회용(DebugSignalTuner와 동일 패턴)
+        private SimEngine _engine;           // DeliveredTotal 조회용(DebugSignalTuner와 동일 패턴)
         private bool _ready;
         private string _lastResult = "대기 중";
 
@@ -210,11 +210,9 @@ namespace CityFlow.DebugTools
             return $"철거 거부 {tile} — 장치 없음";
         }
 
-        // ponytail: SignalTiles는 ISignalControl(조율) 소속이라 Facility/Rule엔 없음 — 이미 있는
-        // _engine(SimEngine 구체, DebugSignalTuner와 동일 패턴)으로 조회. 새 계약 추가는 YAGNI.
         private bool HasAnyDevice(Vector2Int tile)
         {
-            return Contains(_engine.SignalTiles, tile)
+            return Contains(_facility.SignalTiles, tile)
                 || Contains(_facility.RoundaboutTiles, tile)
                 || Contains(_facility.OverpassTiles, tile);
         }
@@ -266,7 +264,7 @@ namespace CityFlow.DebugTools
                 CongestionLevel congestion = _data.GetCongestion(hover);
                 Vector2Int onewayDir = _rule.GetOnewayDir(hover);
                 TurnMode? turnMode = _rule.GetTurnMode(hover);
-                string device = Contains(_engine.SignalTiles, hover) ? "신호"
+                string device = Contains(_facility.SignalTiles, hover) ? "신호"
                     : Contains(_facility.RoundaboutTiles, hover) ? "로터리"
                     : Contains(_facility.OverpassTiles, hover) ? "입체교차"
                     : onewayDir != Vector2Int.zero ? $"일방통행({DirGlyph(onewayDir)})"
