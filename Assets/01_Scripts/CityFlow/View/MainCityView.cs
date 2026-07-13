@@ -181,6 +181,11 @@ namespace CityFlow.View
             services.Events.CongestionChanged += OnCongestionChanged;
             services.Events.FlowBurst += OnFlowBurst;
 
+            if (services.Save != null)
+            {
+                services.Save.RestoreCompleted += OnSaveRestoreCompleted;
+            }
+
             BuildRoots();
             BuildBoard();
             BuildGridLines();
@@ -206,6 +211,11 @@ namespace CityFlow.View
             services.Events.Placed -= OnPlaced;
             services.Events.CongestionChanged -= OnCongestionChanged;
             services.Events.FlowBurst -= OnFlowBurst;
+
+            if (services.Save != null)
+            {
+                services.Save.RestoreCompleted -= OnSaveRestoreCompleted;
+            }
         }
 
         private void Update()
@@ -1197,6 +1207,17 @@ namespace CityFlow.View
         {
             RefreshTile(e.Tile, e.IsRemove ? TileType.Empty : e.Type);
             RefreshSignals();
+        }
+
+        private void OnSaveRestoreCompleted()
+        {
+            RefreshAllTiles();
+            RefreshSignals();
+            RefreshRoundabouts();
+            RefreshOverpasses();
+            RefreshOneways();
+            RefreshTurnSigns();
+            RefreshVehicles();
         }
 
         private void OnCongestionChanged(CongestionEvent e)

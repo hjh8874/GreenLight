@@ -421,7 +421,7 @@ MonoBehaviour:
   useFakeServices: 0
   mapWidth: 20
   mapHeight: 20
-  simConfig: {fileID: 11400000, guid: 77d8fda261844470987a32a13bd0df52, type: 2}
+  simConfig: {fileID: 11400000, guid: a62fee5e6fde4d068ddb93c6b6f3d461, type: 2}
 --- !u!4 &111543631
 Transform:
   m_ObjectHideFlags: 0
@@ -466,6 +466,12 @@ MonoBehaviour:
   signalZ: -0.45
   burstSeconds: 0.8
   gridLineThickness: 0.045
+  overrideSpeedMul: 2.2
+  overridePulseAmp: 0.25
+  laneOffset: 0.18
+  followGap: 0.4
+  roundaboutOrbitRadius: 0.3
+  turnSignZ: -0.5
   boardColor: {r: 0.78, g: 0.82, b: 0.78, a: 1}
   gridLineColor: {r: 0.28, g: 0.36, b: 0.38, a: 1}
   roadFreeColor: {r: 0.32, g: 0.36, b: 0.43, a: 1}
@@ -477,6 +483,11 @@ MonoBehaviour:
   vehicleColor: {r: 0.12, g: 0.12, b: 0.16, a: 1}
   selectedSignalColor: {r: 1, g: 1, b: 1, a: 1}
   flowBurstColor: {r: 1, g: 0.78, b: 0.12, a: 1}
+  roundaboutColor: {r: 0.35, g: 0.78, b: 0.45, a: 1}
+  overpassColor: {r: 0.55, g: 0.62, b: 0.75, a: 1}
+  onewayColor: {r: 0.95, g: 0.85, b: 0.15, a: 1}
+  turnSignColor: {r: 0.95, g: 0.35, b: 0.75, a: 1}
+  coinColor: {r: 1, g: 0.84, b: 0.2, a: 1}
 --- !u!1 &153700968
 GameObject:
   m_ObjectHideFlags: 0
@@ -1445,7 +1456,6 @@ GameObject:
   m_Component:
   - component: {fileID: 315876904}
   - component: {fileID: 315876903}
-  - component: {fileID: 315876905}
   m_Layer: 0
   m_Name: AuthoringGrid
   m_TagString: Untagged
@@ -1481,20 +1491,6 @@ Transform:
   - {fileID: 624197870}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &315876905
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 315876902}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 16c8681fa49c042a5ba051951afc6fc3, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.GridBoundsGizmo
-  width: 20
-  height: 20
 --- !u!1 &427040753
 GameObject:
   m_ObjectHideFlags: 0
@@ -1714,6 +1710,10 @@ MonoBehaviour:
   colorInvalid: {r: 1, g: 0, b: 0, a: 0.5}
   useFakeMode: 0
   useXYPlane: 1
+  availableTiles:
+  - {fileID: 11400000, guid: 893ad82746881f349a13799ce7aafd4a, type: 2}
+  - {fileID: 11400000, guid: fe5e54d79e293ab40befa0564254f6cc, type: 2}
+  - {fileID: 11400000, guid: 90598d14bc57fc548b1a1d7ec2a7b93f, type: 2}
   confirmPopup: {fileID: 1322450512}
 --- !u!4 &492217482
 Transform:
@@ -1903,6 +1903,10 @@ GameObject:
   - component: {fileID: 559808187}
   - component: {fileID: 559808186}
   - component: {fileID: 559808185}
+  - component: {fileID: 559808188}
+  - component: {fileID: 559808189}
+  - component: {fileID: 559808190}
+  - component: {fileID: 559808191}
   m_Layer: 0
   m_Name: Services
   m_TagString: Untagged
@@ -1970,7 +1974,70 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9f87ef03be0a49b19ef91e5eb92b0c76, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Gameplay.Economy.EconomyService
-  startingCoins: 0
+  startingCoins: 2000
+--- !u!114 &559808188
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 559808183}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d2a0d92c8f54f56a6f4a301b89e4c11, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Gameplay.Save.GameSaveLifecycleService
+  loadOnStart: 0
+  saveOnFocusLost: 1
+  saveOnApplicationPause: 1
+  saveOnApplicationQuit: 1
+--- !u!114 &559808189
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 559808183}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 969820e4724d6534c96affabb94cd788, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.PopulationSystem
+  populationConfig: {fileID: 11400000, guid: dadd848057f846c49cd3469c9366b748, type: 2}
+  gridWidth: 20
+  gridHeight: 20
+  currentPopulation: 0
+--- !u!114 &559808190
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 559808183}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ba59001f3d09436abd7dedb8458762fc, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.PopulationRestoreSync
+--- !u!114 &559808191
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 559808183}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 17d1e01933a54cdfa3482f0717491cca, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.TemporaryTrafficFacilityControls
+  signalCost: 100
+  roundaboutCost: 250
+  overpassCost: 400
+  onewayCost: 50
+  turnSignCost: 75
+  signalGreenSlots: 8
+  clearLegacyAutoSignalsOnce: 1
 --- !u!224 &568711510 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 1933230856837756137, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}

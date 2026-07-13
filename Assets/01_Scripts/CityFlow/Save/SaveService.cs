@@ -1,3 +1,4 @@
+using System;
 using CityFlow.Contracts.Save;
 using CityFlow.Contracts;
 using UnityEngine;
@@ -16,6 +17,8 @@ namespace CityFlow.Save
         public ISaveClock Clock { get; private set; }
         public bool IsRestoring { get; private set; }
         public bool IsSavingEnabled { get; private set; } = true;
+
+        public event Action RestoreCompleted;
 
         public SaveService(
             ISimSaveSource simSaveSource,
@@ -154,6 +157,15 @@ namespace CityFlow.Save
             finally
             {
                 IsRestoring = false;
+            }
+
+            try
+            {
+                RestoreCompleted?.Invoke();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
             }
 
             Debug.Log("Game save loaded and restored.");

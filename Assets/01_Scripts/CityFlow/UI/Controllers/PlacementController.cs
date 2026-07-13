@@ -4,6 +4,7 @@ using CityFlow.Contracts;
 using UnityEngine;
 using UnityEngine.EventSystems; // UI 클릭 감지용
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 using System.Collections.Generic;
 
 namespace CityFlow.UI
@@ -44,6 +45,7 @@ namespace CityFlow.UI
         private bool _isBuildingMode = false;
         
         private Stack<PlacementAction> _undoStack = new Stack<PlacementAction>();
+        private readonly List<RaycastResult> _uiRaycastResults = new List<RaycastResult>();
         
         public bool IsBuildingMode => _isBuildingMode;
         
@@ -186,7 +188,7 @@ namespace CityFlow.UI
 
                 if (rightPressedThisFrame)
                 {
-                    if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
+                    if (!IsPointerOverBlockingUI())
                     {
                         _rightClickStartCoord = GetMouseGridCoordinate();
                         _currentDragGroupId = Guid.NewGuid().ToString();
@@ -196,7 +198,7 @@ namespace CityFlow.UI
                 if (rightPressed)
                 {
                     // 마우스가 UI 패널 위에 있으면 씬 클릭 무시
-                    if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
+                    if (!IsPointerOverBlockingUI())
                     {
                         Vector2Int rightClickCoord = GetMouseGridCoordinate();
 
@@ -231,7 +233,7 @@ namespace CityFlow.UI
 
                 if (Mouse.current.rightButton.wasReleasedThisFrame)
                 {
-                    if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
+                    if (!IsPointerOverBlockingUI())
                     {
                         Vector2Int rightClickCoord = GetMouseGridCoordinate();
                         
@@ -274,9 +276,10 @@ namespace CityFlow.UI
             if (!_isBuildingMode || ghostRenderer == null) return;
 
             // 1. 방어 로직: 마우스가 UI(버튼, 패널) 위에 있으면 바닥 클릭(건설)을 방지합니다.
-            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            if (IsPointerOverBlockingUI())
             {
                 ghostRenderer.gameObject.SetActive(false);
+                _lastPlacedCoord = null;
                 return;
             }
             ghostRenderer.gameObject.SetActive(true);
@@ -302,12 +305,20 @@ namespace CityFlow.UI
                     _currentDragGroupId = Guid.NewGuid().ToString(); // 좌클릭 드래그 시작 시 새 Undo 그룹 생성
                 }
 
-                if (Mouse.current.leftButton.isPressed && canPlace)
+                if (Mouse.current.leftButton.isPressed)
                 {
-                    // 동일 타일에 중복 건설을 막기 위한 방어 로직
-                    if (_lastPlacedCoord == null || _lastPlacedCoord.Value != gridCoord)
+                    if (_lastPlacedCoord == null)
                     {
-                        PlaceInfrastructure(gridCoord);
+                        if (canPlace)
+                        {
+                            PlaceInfrastructure(gridCoord);
+                        }
+
+                        _lastPlacedCoord = gridCoord;
+                    }
+                    else if (_lastPlacedCoord.Value != gridCoord)
+                    {
+                        PlaceDragPath(_lastPlacedCoord.Value, gridCoord);
                         _lastPlacedCoord = gridCoord;
                     }
                 }
@@ -318,6 +329,62 @@ namespace CityFlow.UI
                     _lastPlacedCoord = null;
                     _currentDragGroupId = null;
                 }
+            }
+        }
+
+        private void PlaceDragPath(Vector2Int from, Vector2Int to)
+        {
+            Vector2Int cursor = from;
+
+            while (cursor.x != to.x)
+            {
+                cursor.x += Math.Sign(to.x - cursor.x);
+                TryPlaceDragTile(cursor);
+            }
+
+            while (cursor.y != to.y)
+            {
+                cursor.y += Math.Sign(to.y - cursor.y);
+                TryPlaceDragTile(cursor);
+            }
+        }
+
+        private bool IsPointerOverBlockingUI()
+        {
+            if (confirmPopup != null && confirmPopup.gameObject.activeInHierarchy)
+            {
+                return true;
+            }
+
+            if (EventSystem.current == null || Mouse.current == null)
+            {
+                return false;
+            }
+
+            PointerEventData eventData = new PointerEventData(EventSystem.current)
+            {
+                position = Mouse.current.position.ReadValue()
+            };
+
+            _uiRaycastResults.Clear();
+            EventSystem.current.RaycastAll(eventData, _uiRaycastResults);
+
+            for (int i = 0; i < _uiRaycastResults.Count; i++)
+            {
+                if (_uiRaycastResults[i].gameObject.GetComponentInParent<Selectable>() != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void TryPlaceDragTile(Vector2Int coord)
+        {
+            if (CheckCanPlace(coord))
+            {
+                PlaceInfrastructure(coord);
             }
         }
 

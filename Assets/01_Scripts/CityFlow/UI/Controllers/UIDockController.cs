@@ -138,6 +138,18 @@ namespace CityFlow.UI
             UpdatePanelVisibility();
         }
 
+        public void HideBuildPanelForPlacement()
+        {
+            _currentMenu = MenuType.None;
+
+            if (panelBuild != null) panelBuild.SetActive(false);
+            if (panelResearch != null) panelResearch.SetActive(false);
+            if (panelStats != null) panelStats.SetActive(false);
+            if (panelSettings != null) panelSettings.SetActive(false);
+
+            placementController?.ToggleBuildMode(true);
+        }
+
         private void UpdatePanelVisibility()
         {
             // _currentMenu 상태에 따라 4개의 패널 중 딱 하나만 켜고 나머지는 모두 끕니다.

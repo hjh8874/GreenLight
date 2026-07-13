@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ae4186fef9fe4af786f8adbe8343e23, type: 3}
+  m_Name: SimConfig_Integrated
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.SimConfigAsset
+  Value:
+    TickInterval: 0.1
+    MaxStepsPerFrame: 5
+    GridWidth: 20
+    GridHeight: 20
+    RoadCapacity: 10
+    DemandPerHouse: 1
+    SlowRatio: 0.7
+    JamRatio: 1
+    EfficiencyMin: 0.2
+    EfficiencyMinRatio: 2
+    GreenWaveFloor: 0.5
+    OfficeCapacity: 20
+    SchoolCapacity: 10
+    DemandChoicePool: 3
+    RushAmplitude: 0.6
+    DayLengthSeconds: 120
+    OverrideDurationSeconds: 3
+    OverrideCooldownSeconds: 60
+    OverrideCorridorSignals: 3
+    UnsignaledInterference: 1.5
+    RoundaboutInterference: 0.25
+    RoundaboutCapacityFactor: 0.7
+    RoutingCongestionWeight: 2
+    AutoDetectSignals: 0
+    CoinBase: 1
+    BurstJamEnterRatio: 1
+    BurstFreeReturnRatio: 0.6
+    BurstCooldownSeconds: 10
+    BurstRewardThreshold: 1
+    BurstRewardMultiplier: 1
+    OfflineCapHours: 8
