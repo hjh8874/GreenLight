@@ -35,10 +35,14 @@ namespace CityFlow.View
         private int lastScreenWidth = -1;
         private int lastScreenHeight = -1;
 
+        private int originalTargetFrameRate;   // 리뷰 픽스 — Destroy 시 무조건 60이 아니라 진입 시점 값으로 복원
+
         public void Init(float width, float height)
         {
             boardW = width;
             boardH = height;
+
+            originalTargetFrameRate = Application.targetFrameRate;
 
             isFloating = PlayerPrefs.GetInt(FloatingPrefKey, 0) == 1;
             presetIndex = Mathf.Clamp(PlayerPrefs.GetInt(PresetPrefKey, 1), 0, Presets.Length - 1);
@@ -55,7 +59,7 @@ namespace CityFlow.View
 
         private void OnDestroy()
         {
-            Application.targetFrameRate = 60;
+            Application.targetFrameRate = originalTargetFrameRate;
         }
 
         private void Update()
