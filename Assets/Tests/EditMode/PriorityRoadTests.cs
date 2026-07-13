@@ -67,5 +67,59 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0, e.PriorityRoadTiles.Count);
             Assert.IsFalse(e.TryRemovePriorityRoad(V(3, 0)));
         }
+
+        // 십자 교차로 (6,6) 하나. RoundaboutTests.BuildCross/Run과 동일 기하(13×13, 간선 y=6·x=6,
+        // H집 행7, V집 열5, 회사(12,7)·학교(5,12)) — 브리프 원안(Place(House/Office)가 도로 타일과
+        // 겹쳐 CanPlace가 거부·delivered 0으로 RED가 무의미해짐)을 검증된 헬퍼로 교체(2026-07-13).
+        // hHouses/vHouses 카운트로 편중을 흉내(AsymmetricCross_SignalBeatsRoundabout과 동일 전례).
+        static SimEngine BuildCross(int hHouses, int vHouses, out SimEventHub hub)
+        {
+            var c = SimConfig.Default();
+            c.TickInterval = 0.25f;
+            c.GridWidth = 13; c.GridHeight = 13;
+            c.DemandPerHouse = 2f;
+            c.RoadCapacity = 12f;
+            c.DemandChoicePool = 1;
+            c.SchoolCapacity = vHouses;
+            c.OfficeCapacity = 20;
+            c.RushAmplitude = 0f;
+            c.AutoDetectSignals = false;
+            hub = new SimEventHub();
+            var e = new SimEngine(c, hub);
+            for (int x = 0; x <= 12; x++) e.Place(V(x, 6), TileType.Road);
+            for (int y = 0; y <= 12; y++) if (y != 6) e.Place(V(6, y), TileType.Road);
+            for (int i = 0; i < hHouses; i++) e.Place(V(i, 7), TileType.House);
+            for (int i = 0; i < vHouses; i++) e.Place(V(5, i), TileType.House);
+            e.Place(V(12, 7), TileType.Office);
+            e.Place(V(5, 12), TileType.School);
+            e.Tick(0.25f);
+            return e;
+        }
+
+        static float RunCross(int hHouses, int vHouses, bool priorityH)
+        {
+            var e = BuildCross(hHouses, vHouses, out _);
+            if (priorityH) Assert.IsTrue(e.TryPlacePriorityRoad(V(6, 6), Axis.Horizontal));
+            e.Tick(0.25f);
+            return e.DeliveredTotal;
+        }
+
+        [Test]
+        public void SkewedCross_PriorityRoad_BeatsUnsignaled()
+        {
+            // 가로가 압도적으로 많은 편중 교차(5집 vs 2집) — 가로 우선도로가 무신호(대칭 λ)보다 총 처리량↑
+            float nothing = RunCross(5, 2, priorityH: false);
+            float priority = RunCross(5, 2, priorityH: true);
+            Assert.Greater(priority, nothing);
+        }
+
+        [Test]
+        public void PriorityRoad_IsDeterministic()
+        {
+            // 같은 도시·같은 배치를 두 번 → delivered 동일(결정론, 스펙 §8).
+            float a = RunCross(5, 2, priorityH: true);
+            float b = RunCross(5, 2, priorityH: true);
+            Assert.AreEqual(a, b, 1e-6f);
+        }
     }
 }

@@ -108,10 +108,17 @@ namespace CityFlow.Sim
                             HashSet<Vector2Int> roundabouts, double simTime = 0)
             => Resolve(cfg, signals, grid, roundabouts, null, simTime);
 
-        // 캐노니컬: delivered = 수요 × E(축별 병목) × SignalFactor(그린웨이브).
-        // roundabouts/overpasses = 엔진 소유 배치 셋(조회만 — 소유·갱신은 SimEngine, 스펙 §2).
+        // 우선도로 없는 호출(기존 5-인자 시그니처 호환) — priorityRoads=null로 위임.
         public void Resolve(in SimConfig cfg, SignalMap signals, CityGrid grid,
                             HashSet<Vector2Int> roundabouts, HashSet<Vector2Int> overpasses,
+                            double simTime = 0)
+            => Resolve(cfg, signals, grid, roundabouts, overpasses, null, simTime);
+
+        // 캐노니컬: delivered = 수요 × E(축별 병목) × SignalFactor(그린웨이브).
+        // roundabouts/overpasses/priorityRoads = 엔진 소유 배치 셋(조회만 — 소유·갱신은 SimEngine, 스펙 §2).
+        public void Resolve(in SimConfig cfg, SignalMap signals, CityGrid grid,
+                            HashSet<Vector2Int> roundabouts, HashSet<Vector2Int> overpasses,
+                            IReadOnlyDictionary<Vector2Int, Axis> priorityRoads,
                             double simTime = 0)
         {
             // ① 기본: 전 타일 합산 ratio(일반 도로 — 직선엔 교차 충돌 없음). 교차로만 아래서 덮어씀.
@@ -168,6 +175,15 @@ namespace CityFlow.Sim
                             float cap = cfg.RoadCapacity * cfg.RoundaboutCapacityFactor;
                             _ratioH[i] = AxisRatio(_flowH[i] + cfg.RoundaboutInterference * _flowV[i], cap, cfg);
                             _ratioV[i] = AxisRatio(_flowV[i] + cfg.RoundaboutInterference * _flowH[i], cap, cfg);
+                        }
+                        else if (priorityRoads != null && priorityRoads.TryGetValue(t, out var mainAxis))
+                        {
+                            // 우선도로: 비대칭 λ — 메인축 무정차, 곁길 양보(스펙 2026-07-13).
+                            bool hMain = mainAxis == Axis.Horizontal;
+                            float lamH = hMain ? cfg.PriorityMainInterference : cfg.PriorityYieldInterference;
+                            float lamV = hMain ? cfg.PriorityYieldInterference : cfg.PriorityMainInterference;
+                            _ratioH[i] = AxisRatio(_flowH[i] + lamH * _flowV[i], cfg.RoadCapacity, cfg);
+                            _ratioV[i] = AxisRatio(_flowV[i] + lamV * _flowH[i], cfg.RoadCapacity, cfg);
                         }
                         else
                         {
