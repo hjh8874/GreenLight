@@ -1,13 +1,10 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 using CityFlow.Contracts;
 
 namespace CityFlow.Sim
 {
-    // 도로 타일 위의 최단 경로(BFS) + (출발,도착) 경로 캐시.
-    // topology(배치도)가 바뀌면 캐시를 통째로 무효화하고 다시 계산.
-    // ponytail: 별도 인접 그래프 없이 BFS가 grid를 직접 읽음(20×20엔 충분). 느려지면 인접리스트.
+    // 접점(TryGetAccessRoad)·도달성(RegionOf)만 담당 — 경로는 RoutePlanner.
     internal sealed class RoadNetwork
     {
         // 이웃 8방을 항상 같은 순서로: 상·우·하·좌(직각) + 우상·우하·좌하·좌상(대각) → 결정론.
@@ -19,14 +16,8 @@ namespace CityFlow.Sim
         readonly CityGrid _grid;
         readonly int _w, _h;
 
-        // BFS 선할당 버퍼 — 매 탐색 Array.Clear로 재사용(틱 중 new 0).
-        readonly bool[] _visited;
-        readonly int[] _cameFrom;   // flat index → 직전 칸 index (출발은 -1)
+        // Region flood-fill 선할당 버퍼 — 매 계산 재사용(틱 중 new 0).
         readonly int[] _queue;
-
-        // 경로 캐시: (출발,도착) → 경로(미연결 null도 캐시). 조회 전용 → Dictionary OK.
-        readonly Dictionary<(Vector2Int, Vector2Int), List<Vector2Int>> _cache = new();
-        int _cachedVersion = -1;
 
         // 연결 요소(Region) 캐시: 같은 섬의 도로는 같은 id. 수요 배정이 "도달 가능한가"를
         // BFS 없이 O(1)로 묻는 용도. topology 버전이 바뀐 뒤 첫 조회 때만 flood fill(O(n)).
@@ -39,14 +30,12 @@ namespace CityFlow.Sim
             _w = grid.Width;
             _h = grid.Height;
             int n = _w * _h;
-            _visited = new bool[n];
-            _cameFrom = new int[n];
             _queue = new int[n];   // 각 칸 최대 1번 인큐 → n칸이면 충분
             _region = new int[n];
         }
 
-        // 이 도로 타일이 속한 섬 id(-1 = 도로 아님). BFS와 같은 8방 연결 규칙 →
-        // "같은 Region = FindPath 가능"이 항상 성립.
+        // 이 도로 타일이 속한 섬 id(-1 = 도로 아님). RoutePlanner와 같은 8방 연결 규칙 →
+        // "같은 Region = 경로 탐색 가능"이 항상 성립.
         public int RegionOf(Vector2Int roadTile)
         {
             if (!IsRoad(roadTile)) return -1;
@@ -89,15 +78,8 @@ namespace CityFlow.Sim
             }
         }
 
-        // topology 변경 시 호출: 캐시 통째 무효화 + 현재 버전 기록.
-        public void Rebuild()
-        {
-            _cache.Clear();
-            _cachedVersion = _grid.TopologyVersion;
-        }
-
         // 건물(집·회사)의 접점 = 인접 8방 중 첫 도로 타일(직각 먼저, 그다음 대각).
-        // BFS와 같은 스캔 순서 → 어느 도로가 접점인지 결정론적. 대각 접점도 연결.
+        // RoutePlanner와 같은 스캔 순서 → 어느 도로가 접점인지 결정론적. 대각 접점도 연결.
         // ⚠ 스캔 순서(상 우선)는 테스트 기하(AxisFlowTests 등)가 접점 위치로 의존 — 바꾸면 테스트 기하 재검증.
         public bool TryGetAccessRoad(Vector2Int building, out Vector2Int road)
         {
@@ -110,63 +92,21 @@ namespace CityFlow.Sim
             return false;
         }
 
-        public List<Vector2Int> FindPath(Vector2Int from, Vector2Int to)
+        // 건물의 모든 도로 프론티지(같은 8방 스캔 순서)를 buffer에 누적. 할당 없음 — 호출자가
+        // buffer 소유(재사용 패턴, Reassign/Plan 같은 재구축 경로에서만 호출). Clear는 호출자 책임
+        // (DemandMap.Collect와 동일 관례).
+        // 감사 픽스 2: 건물이 서로 다른 Region에 프론티지를 여러 개 가질 때(막다른 스텁 + 간선)
+        // TryGetAccessRoad 하나만 보면 도달 가능한 프론티지를 놓칠 수 있음 → 전수 수집으로 대응.
+        public void CollectAccessRoads(Vector2Int building, List<Vector2Int> buffer)
         {
-            // 안전장치: Rebuild를 안 불렀어도 버전 어긋나면 자동 무효화.
-            if (_cachedVersion != _grid.TopologyVersion) Rebuild();
-
-            var key = (from, to);
-            if (_cache.TryGetValue(key, out var cached)) return cached;
-
-            var path = Bfs(from, to);   // 미연결이면 null
-            _cache[key] = path;
-            return path;
+            for (int d = 0; d < DX.Length; d++)
+            {
+                var v = new Vector2Int(building.x + DX[d], building.y + DY[d]);
+                if (IsRoad(v)) buffer.Add(v);
+            }
         }
 
         bool InBounds(Vector2Int v) => v.x >= 0 && v.x < _w && v.y >= 0 && v.y < _h;
         bool IsRoad(Vector2Int v) => InBounds(v) && _grid.GetTile(v) == TileType.Road;
-
-        List<Vector2Int> Bfs(Vector2Int from, Vector2Int to)
-        {
-            // 끝점이 도로가 아니면 경로 없음.
-            if (!IsRoad(from) || !IsRoad(to)) return null;
-
-            Array.Clear(_visited, 0, _visited.Length);
-            int start = from.y * _w + from.x;
-            int goal = to.y * _w + to.x;
-
-            int head = 0, tail = 0;      // _queue의 읽기/쓰기 위치
-            _queue[tail++] = start;
-            _visited[start] = true;
-            _cameFrom[start] = -1;
-
-            bool found = start == goal;  // 출발==도착이면 이미 도달
-            while (head < tail && !found)
-            {
-                int cur = _queue[head++];
-                int cx = cur % _w, cy = cur / _w;   // flat → (x,y) 역변환
-                for (int d = 0; d < DX.Length; d++)
-                {
-                    int nx = cx + DX[d], ny = cy + DY[d];
-                    if (nx < 0 || nx >= _w || ny < 0 || ny >= _h) continue;
-                    int ni = ny * _w + nx;
-                    if (_visited[ni]) continue;
-                    if (_grid.GetTile(new Vector2Int(nx, ny)) != TileType.Road) continue;
-                    _visited[ni] = true;
-                    _cameFrom[ni] = cur;
-                    if (ni == goal) { found = true; break; }
-                    _queue[tail++] = ni;
-                }
-            }
-
-            if (!found) return null;   // 큐 말랐는데 목적지 못 만남 = 미연결
-
-            // cameFrom 따라 도착→출발 역추적 후 뒤집어 정방향 경로로.
-            var path = new List<Vector2Int>();
-            for (int node = goal; node != -1; node = _cameFrom[node])
-                path.Add(new Vector2Int(node % _w, node / _w));
-            path.Reverse();
-            return path;
-        }
     }
 }

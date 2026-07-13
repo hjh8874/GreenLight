@@ -33,10 +33,12 @@ MonoBehaviour:
     OverrideCooldownSeconds: 60
     OverrideCorridorSignals: 3
     UnsignaledInterference: 1.5
+    RoutingCongestionWeight: 2
+    AutoDetectSignals: 1
     CoinBase: 1
     BurstJamEnterRatio: 1
     BurstFreeReturnRatio: 0.6
     BurstCooldownSeconds: 10
     BurstRewardThreshold: 1
-    BurstRewardMultiplier: 2
+    BurstRewardMultiplier: 1
     OfflineCapHours: 8

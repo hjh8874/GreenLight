@@ -20,10 +20,10 @@ namespace CityFlow.Sim.Tests
 
         // 한 틱: 수요를 바꿔가며 배정→혼잡→감지까지 돌리고 발행.
         static void Step(float demand, ref SimConfig cfg, CityGrid g, DemandMap dm,
-            RoadNetwork net, FlowSolver solver, BurstDetector detector, SimEventBuffer buffer)
+            RoutePlanner planner, FlowSolver solver, BurstDetector detector, SimEventBuffer buffer)
         {
             cfg.DemandPerHouse = demand;
-            solver.Assign(dm, net, cfg);
+            solver.Assign(dm, planner, cfg);
             solver.Resolve(cfg);
             detector.Scan(solver, buffer, cfg);
             buffer.Drain();
@@ -47,6 +47,8 @@ namespace CityFlow.Sim.Tests
             var cfg = BurstCfg();
             var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
             var solver = new FlowSolver(g.Width, g.Height);
             var detector = new BurstDetector(g.Width, g.Height);
 
@@ -55,16 +57,49 @@ namespace CityFlow.Sim.Tests
             hub.FlowBurst += e => { bursts++; reward += e.Reward; tile = e.Tile; };
             var buffer = new SimEventBuffer(hub);
 
-            Step(15f, ref cfg, g, dm, net, solver, detector, buffer); // ratio 1.5 → Jam 진입
+            Step(15f, ref cfg, g, dm, planner, solver, detector, buffer); // ratio 1.5 → Jam 진입
             Assert.AreEqual(0, bursts);                               // 해소 전엔 없음
 
-            Step(1f, ref cfg, g, dm, net, solver, detector, buffer);  // ratio 0.1 → Free 복귀 = 전이
+            Step(1f, ref cfg, g, dm, planner, solver, detector, buffer);  // ratio 0.1 → Free 복귀 = 전이
             Assert.AreEqual(1, bursts);
             Assert.AreEqual(3, reward);                               // round(0.6 × 5)
             Assert.AreEqual(V(0, 0), tile);                           // 병목(경로 첫 최대 ratio 타일)
 
-            Step(1f, ref cfg, g, dm, net, solver, detector, buffer);  // 계속 Free → 추가 발행 없음
+            Step(1f, ref cfg, g, dm, planner, solver, detector, buffer);  // 계속 Free → 추가 발행 없음
             Assert.AreEqual(1, bursts);
+        }
+
+        [Test]
+        public void JamThenRelief_RewardScalesWithCoinBase()
+        {
+            // pending은 '잃은 차량 수' 단위 — 도착 코인과 같은 환율(CoinBase)로 환전해야
+            // 파밍 중립이 CoinBase≠1에서도 유지된다(감사 2026-07-12). CoinBase=2면 보상 정확히 2배.
+            int RunAndGetReward(float coinBase)
+            {
+                var g = StraightCity();
+                var cfg = BurstCfg();
+                cfg.CoinBase = coinBase;
+                var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
+                var net = new RoadNetwork(g);
+                var planner = new RoutePlanner(g.Width, g.Height);
+                planner.Plan(dm, net, g, cfg);
+                var solver = new FlowSolver(g.Width, g.Height);
+                var detector = new BurstDetector(g.Width, g.Height);
+                var hub = new SimEventHub();
+                int reward = 0;
+                hub.FlowBurst += e => reward += e.Reward;
+                var buffer = new SimEventBuffer(hub);
+
+                Step(15f, ref cfg, g, dm, planner, solver, detector, buffer);  // Jam 진입
+                Step(1f, ref cfg, g, dm, planner, solver, detector, buffer);   // Free 복귀 → Burst
+
+                return reward;
+            }
+
+            int reward1 = RunAndGetReward(1f);
+            int reward2 = RunAndGetReward(2f);
+
+            Assert.AreEqual(reward1 * 2, reward2);
         }
 
         [Test]
@@ -76,6 +111,8 @@ namespace CityFlow.Sim.Tests
             var cfg = BurstCfg();
             var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
             var solver = new FlowSolver(g.Width, g.Height);
             var detector = new BurstDetector(g.Width, g.Height);
 
@@ -86,8 +123,8 @@ namespace CityFlow.Sim.Tests
 
             for (int i = 0; i < 3; i++)
             {
-                Step(11f, ref cfg, g, dm, net, solver, detector, buffer); // ratio 1.1
-                Step(9f, ref cfg, g, dm, net, solver, detector, buffer);  // ratio 0.9
+                Step(11f, ref cfg, g, dm, planner, solver, detector, buffer); // ratio 1.1
+                Step(9f, ref cfg, g, dm, planner, solver, detector, buffer);  // ratio 0.9
             }
 
             Assert.AreEqual(0, bursts);

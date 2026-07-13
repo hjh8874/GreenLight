@@ -33,6 +33,10 @@ namespace CityFlow.View
         [SerializeField] private float gridLineThickness = 0.045f;
         [SerializeField] private float overrideSpeedMul = 2.2f;    // 오버라이드 라인 차량 속도 배율
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
+        [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
+        [SerializeField] private float followGap = 0.4f;           // 차간 유지 거리(타일 비율)
+        [SerializeField] private float roundaboutOrbitRadius = 0.3f;   // 로터리 궤도 반경(타일 비율)
+        [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
         [Header("Colors")]
         [SerializeField] private Color boardColor = new Color(0.78f, 0.82f, 0.78f);
@@ -46,9 +50,17 @@ namespace CityFlow.View
         [SerializeField] private Color vehicleColor = new Color(0.12f, 0.12f, 0.16f);
         [SerializeField] private Color selectedSignalColor = Color.white;
         [SerializeField] private Color flowBurstColor = new Color(1f, 0.78f, 0.12f);
+        [SerializeField] private Color roundaboutColor = new Color(0.35f, 0.78f, 0.45f);
+        [SerializeField] private Color overpassColor = new Color(0.55f, 0.62f, 0.75f);
+        [SerializeField] private Color onewayColor = new Color(0.95f, 0.85f, 0.15f);
+        [SerializeField] private Color turnSignColor = new Color(0.95f, 0.35f, 0.75f);
 
         private readonly Dictionary<Vector2Int, TileVisual> tileVisuals = new();
         private readonly Dictionary<Vector2Int, SignalVisual> signalVisuals = new();
+        private readonly Dictionary<Vector2Int, GameObject> roundaboutVisuals = new();
+        private readonly Dictionary<Vector2Int, GameObject> overpassVisuals = new();
+        private readonly Dictionary<Vector2Int, GameObject> onewayVisuals = new();
+        private readonly Dictionary<Vector2Int, TurnSignVisual> turnSignVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
         private readonly List<BurstVisual> bursts = new();
 
@@ -57,6 +69,8 @@ namespace CityFlow.View
         private IPlacementService placement;
         private SimEngine simEngine;
         private ISignalControl signalControl;
+        private IIntersectionFacilityService intersectionFacility;
+        private ITrafficRuleService trafficRule;
         private Transform gridRoot;
         private Transform boardRoot;
         private Transform tileRoot;
@@ -99,11 +113,23 @@ namespace CityFlow.View
             public MaterialPropertyBlock SelectionBlock;
         }
 
+        // 턴 제한 표지판 마커: 몸통 바(Shaft) + 꺾인 촉(Tip) — Tip의 위치/회전만 모드에 따라 매 폴링 갱신
+        // (같은 타일에서 Left↔Right 회전이 배치물 재생성 없이 그대로 반영되도록 — 오프셋 폴링 규약).
+        private sealed class TurnSignVisual
+        {
+            public GameObject Root;
+            public Transform Tip;
+        }
+
         private sealed class RouteVehicle
         {
             public GameObject Object;
             public Renderer Renderer;
             public float Phase;
+            public Vector3 Pos;   // 지난 프레임 위치·진행 방향 — 차간 유지 판정용(1프레임 지연 근사)
+            public Vector3 Dir;
+            public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
+            public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
         }
 
         private sealed class BurstVisual
@@ -111,6 +137,30 @@ namespace CityFlow.View
             public GameObject Object;
             public float HideAt;
         }
+
+        private sealed class CoinVisual
+        {
+            public GameObject Object;
+            public Vector3 Velocity;
+            public float DieAt;
+        }
+
+        private sealed class NoteVisual
+        {
+            public TextMesh Text;
+            public float DieAt;
+        }
+
+        private readonly List<CoinVisual> coins = new();
+        private readonly List<NoteVisual> notes = new();
+        [SerializeField] private Color coinColor = new Color(1f, 0.84f, 0.2f);
+
+        // 뷰팩 이펙트 오브젝트 풀(#48 리뷰 — 김건): OnFlowBurst가 초당 수십 번 터지면
+        // Instantiate/Destroy 반복이 GC 스파이크(프레임 드랍)를 냈다. 죽은 오브젝트는
+        // Destroy 대신 SetActive(false)로 풀에 반납해 재사용 → 정상상태 GC 0.
+        private readonly Stack<GameObject> burstPool = new();
+        private readonly Stack<GameObject> coinPool = new();
+        private readonly Stack<GameObject> notePool = new();
 
         public void Initialize(CityFlowServices services)
         {
@@ -124,6 +174,8 @@ namespace CityFlow.View
             placement = services.Placement;
             simEngine = services.Placement as SimEngine;
             signalControl = services.Placement as ISignalControl;
+            intersectionFacility = services.Placement as IIntersectionFacilityService;
+            trafficRule = services.Placement as ITrafficRuleService;
 
             services.Events.Placed += OnPlaced;
             services.Events.CongestionChanged += OnCongestionChanged;
@@ -134,7 +186,14 @@ namespace CityFlow.View
             BuildGridLines();
             RefreshAllTiles();
             RefreshSignals();
+            RefreshRoundabouts();
+            RefreshOverpasses();
+            RefreshOneways();
+            RefreshTurnSigns();
             RefreshVehicles();
+            PrewarmEffectPools();
+            gameObject.AddComponent<DriveViewCamera>().Init(simEngine, transform, tileSize);
+            gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize);
         }
 
         private void OnDestroy()
@@ -158,8 +217,14 @@ namespace CityFlow.View
 
             HandleSignalInput();
             RefreshSignals();
+            RefreshRoundabouts();
+            RefreshOverpasses();
+            RefreshOneways();
+            RefreshTurnSigns();
             RefreshVehicles();
             UpdateBursts();
+            UpdateCoins();
+            UpdateNotes();
         }
 
         private void BuildRoots()
@@ -359,6 +424,220 @@ namespace CityFlow.View
             }
         }
 
+        // 로터리 마커: RoundaboutTiles 폴링으로 생성/제거 — RefreshSignals와 동일 수명 규약.
+        private void RefreshRoundabouts()
+        {
+            if (intersectionFacility == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<Vector2Int> tiles = intersectionFacility.RoundaboutTiles;
+
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                if (!roundaboutVisuals.ContainsKey(tiles[i]))
+                {
+                    roundaboutVisuals.Add(tiles[i], CreateRoundaboutVisual(tiles[i]));
+                }
+            }
+
+            foreach (Vector2Int tile in new List<Vector2Int>(roundaboutVisuals.Keys))
+            {
+                if (ContainsSignal(tiles, tile))
+                {
+                    continue;
+                }
+
+                Destroy(roundaboutVisuals[tile]);
+                roundaboutVisuals.Remove(tile);
+            }
+        }
+
+        private GameObject CreateRoundaboutVisual(Vector2Int tile)
+        {
+            GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            ring.name = $"Roundabout_{tile.x}_{tile.y}";
+            ring.transform.SetParent(signalRoot, false);
+            ring.transform.localPosition = GridToLocal(tile, signalZ);
+            ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);   // 원반을 보드(XY)와 평행하게
+            ring.transform.localScale = new Vector3(tileSize * 0.6f, 0.02f, tileSize * 0.6f);
+            ApplyRendererColor(PrepareRenderer(ring.GetComponent<Renderer>()), roundaboutColor);
+            return ring;
+        }
+
+        // 입체교차 마커: 위(가로)/아래(세로) 두 바로 "축 분리"를 암시 — 로터리와 동일 수명 규약.
+        private void RefreshOverpasses()
+        {
+            if (intersectionFacility == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<Vector2Int> tiles = intersectionFacility.OverpassTiles;
+
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                if (!overpassVisuals.ContainsKey(tiles[i]))
+                {
+                    overpassVisuals.Add(tiles[i], CreateOverpassVisual(tiles[i]));
+                }
+            }
+
+            foreach (Vector2Int tile in new List<Vector2Int>(overpassVisuals.Keys))
+            {
+                if (ContainsSignal(tiles, tile))
+                {
+                    continue;
+                }
+
+                Destroy(overpassVisuals[tile]);
+                overpassVisuals.Remove(tile);
+            }
+        }
+
+        private GameObject CreateOverpassVisual(Vector2Int tile)
+        {
+            GameObject root = new GameObject($"Overpass_{tile.x}_{tile.y}");
+            root.transform.SetParent(signalRoot, false);
+            root.transform.localPosition = GridToLocal(tile, signalZ);
+            // 가로 바가 위층(z 앞), 세로 바가 아래층 — 입체를 z 차이로 암시.
+            Renderer h = CreateSignalBar(root.transform, "Deck", new Vector3(tileSize * 0.8f, tileSize * 0.18f, 0.05f), new Vector3(0f, 0f, -0.04f));
+            Renderer v = CreateSignalBar(root.transform, "Under", new Vector3(tileSize * 0.18f, tileSize * 0.8f, 0.05f), new Vector3(0f, 0f, 0.04f));
+            ApplyRendererColor(h, overpassColor);
+            ApplyRendererColor(v, overpassColor);
+            return root;
+        }
+
+        // 일방통행 화살표 마커: OnewayTiles 폴링 — 로터리/입체와 동일 수명 규약(폴링 생성/제거).
+        private void RefreshOneways()
+        {
+            if (trafficRule == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<Vector2Int> tiles = trafficRule.OnewayTiles;
+
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                Vector2Int tile = tiles[i];
+
+                if (!onewayVisuals.TryGetValue(tile, out GameObject visual))
+                {
+                    visual = CreateOnewayVisual(tile);
+                    onewayVisuals.Add(tile, visual);
+                }
+
+                Vector2Int dir = trafficRule.GetOnewayDir(tile);
+                visual.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
+            }
+
+            foreach (Vector2Int tile in new List<Vector2Int>(onewayVisuals.Keys))
+            {
+                if (ContainsSignal(tiles, tile))
+                {
+                    continue;
+                }
+
+                Destroy(onewayVisuals[tile]);
+                onewayVisuals.Remove(tile);
+            }
+        }
+
+        // 화살표: 몸통 바(뒤쪽) + 촉 2개(사선 바, 앞쪽에서 V자) — 전부 동쪽(+x)을 기준으로 만들고
+        // 루트 z회전으로 GetOnewayDir 방향을 표현(에셋 스왑 지점 1함수 수렴, 기존 규약).
+        private GameObject CreateOnewayVisual(Vector2Int tile)
+        {
+            GameObject root = new GameObject($"Oneway_{tile.x}_{tile.y}");
+            root.transform.SetParent(signalRoot, false);
+            root.transform.localPosition = GridToLocal(tile, signalZ);
+
+            Renderer shaft = CreateSignalBar(root.transform, "Shaft",
+                new Vector3(tileSize * 0.5f, tileSize * 0.1f, 0.05f), new Vector3(-tileSize * 0.08f, 0f, 0f));
+            Renderer headA = CreateSignalBar(root.transform, "HeadA",
+                new Vector3(tileSize * 0.24f, tileSize * 0.1f, 0.05f), new Vector3(tileSize * 0.2f, tileSize * 0.1f, 0f));
+            Renderer headB = CreateSignalBar(root.transform, "HeadB",
+                new Vector3(tileSize * 0.24f, tileSize * 0.1f, 0.05f), new Vector3(tileSize * 0.2f, -tileSize * 0.1f, 0f));
+            headA.transform.localRotation = Quaternion.Euler(0f, 0f, 40f);
+            headB.transform.localRotation = Quaternion.Euler(0f, 0f, -40f);
+
+            ApplyRendererColor(shaft, onewayColor);
+            ApplyRendererColor(headA, onewayColor);
+            ApplyRendererColor(headB, onewayColor);
+            return root;
+        }
+
+        // 턴 제한 표지판 마커: TurnSignTiles 폴링 — 로터리/입체/일방과 동일 수명 규약(생성/제거).
+        // 신호와 같은 타일에 공존할 수 있어(스펙 §핵심결정) turnSignZ로 signalZ와 z 분리(겹침 회피).
+        private void RefreshTurnSigns()
+        {
+            if (trafficRule == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<Vector2Int> tiles = trafficRule.TurnSignTiles;
+
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                Vector2Int tile = tiles[i];
+
+                if (!turnSignVisuals.TryGetValue(tile, out TurnSignVisual visual))
+                {
+                    visual = CreateTurnSignVisual(tile);
+                    turnSignVisuals.Add(tile, visual);
+                }
+
+                ApplyTurnSignState(tile, visual);
+            }
+
+            foreach (Vector2Int tile in new List<Vector2Int>(turnSignVisuals.Keys))
+            {
+                if (ContainsSignal(tiles, tile))
+                {
+                    continue;
+                }
+
+                Destroy(turnSignVisuals[tile].Root);
+                turnSignVisuals.Remove(tile);
+            }
+        }
+
+        // 굽은 화살: 몸통 바(북쪽 고정, 진입방향 무관 — 표지판은 특정 방향이 아니라 교차로 전체에 적용)
+        // + 꺾인 촉. 촉의 위치/회전은 GetTurnMode로 매 폴링 갱신(에셋 스왑 지점 1함수 수렴, 기존 규약).
+        private TurnSignVisual CreateTurnSignVisual(Vector2Int tile)
+        {
+            GameObject root = new GameObject($"TurnSign_{tile.x}_{tile.y}");
+            root.transform.SetParent(signalRoot, false);
+            root.transform.localPosition = GridToLocal(tile, turnSignZ);
+
+            Renderer shaft = CreateSignalBar(root.transform, "Shaft",
+                new Vector3(tileSize * 0.12f, tileSize * 0.3f, 0.05f), new Vector3(0f, -tileSize * 0.09f, 0f));
+            Renderer tip = CreateSignalBar(root.transform, "Tip",
+                new Vector3(tileSize * 0.26f, tileSize * 0.12f, 0.05f), Vector3.zero);
+
+            ApplyRendererColor(shaft, turnSignColor);
+            ApplyRendererColor(tip, turnSignColor);
+
+            return new TurnSignVisual { Root = root, Tip = tip.transform };
+        }
+
+        // LeftOnly = 반시계 꺾임(촉이 왼쪽으로), RightOnly = 시계 꺾임(촉이 오른쪽으로) — 설계 §핵심결정
+        // "회전 정의"와 같은 손감(왼쪽=+각도). null(표지판 소멸 경합 프레임)은 Left 형태로 방어.
+        private void ApplyTurnSignState(Vector2Int tile, TurnSignVisual visual)
+        {
+            visual.Root.transform.localPosition = GridToLocal(tile, turnSignZ);
+
+            TurnMode mode = trafficRule.GetTurnMode(tile) ?? TurnMode.LeftOnly;
+            bool leftOnly = mode == TurnMode.LeftOnly;
+            float bendX = leftOnly ? -tileSize * 0.1f : tileSize * 0.1f;
+            float bendAngle = leftOnly ? 45f : -45f;
+
+            visual.Tip.localPosition = new Vector3(bendX, tileSize * 0.16f, 0f);
+            visual.Tip.localRotation = Quaternion.Euler(0f, 0f, bendAngle);
+        }
+
         private SignalVisual CreateSignalVisual(Vector2Int tile)
         {
             GameObject root = signalPrefab != null
@@ -393,6 +672,33 @@ namespace CityFlow.View
             bar.transform.localPosition = localPosition;
             bar.transform.localScale = scale;
             return PrepareRenderer(bar.GetComponent<Renderer>());
+        }
+
+        // 임시 텍스트 마커(에셋 스왑 전): 기본 폰트 TextMesh. 이모지는 tofu 위험 — 글리프 보장 문자만.
+        private GameObject CreateTextMark(Transform parent, string text, Color color, float size)
+        {
+            GameObject go = new GameObject($"TextMark_{text}");
+            go.transform.SetParent(parent, false);
+            TextMesh tm = go.AddComponent<TextMesh>();
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            tm.font = font;
+            go.GetComponent<MeshRenderer>().sharedMaterial = font.material;
+            tm.text = text;
+            tm.color = color;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.characterSize = size;
+            tm.fontSize = 48;
+            return go;
+        }
+
+        private GameObject CreateSmokePuff()
+        {
+            GameObject puff = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            puff.name = "SmokePuff";
+            puff.transform.SetParent(vehicleRoot, false);
+            puff.transform.localScale = Vector3.one * (tileSize * 0.12f);
+            ApplyRendererColor(PrepareRenderer(puff.GetComponent<Renderer>()), new Color(0.45f, 0.45f, 0.45f));
+            return puff;
         }
 
         private void ApplySignalState(Vector2Int tile, SignalVisual visual, bool selected)
@@ -464,6 +770,11 @@ namespace CityFlow.View
 
                 if (!active)
                 {
+                    if (vehicles[i].AngryMark != null)
+                    {
+                        vehicles[i].AngryMark.SetActive(false);
+                        vehicles[i].SmokePuff.SetActive(false);
+                    }
                     continue;
                 }
 
@@ -520,6 +831,12 @@ namespace CityFlow.View
                 speed = 0f;
             }
 
+            // 차간 유지(MM식 추종): 같은 방향 바로 앞 차가 서 있으면 나도 정지 — 신호 앞 줄서기가 생김.
+            if (speed > 0f && IsBlockedByLeader(vehicle))
+            {
+                speed = 0f;
+            }
+
             vehicle.Phase = Mathf.Repeat(vehicle.Phase + Time.deltaTime * speed, segmentCount * 2f);
 
             float folded = Fold(vehicle.Phase, segmentCount);
@@ -528,20 +845,124 @@ namespace CityFlow.View
             Vector3 a = GridToLocal(route[index], vehicleZ);
             Vector3 b = GridToLocal(route[index + 1], vehicleZ);
             Vector3 direction = (b - a).normalized;
+            // 왕복 유령: 접힌 복귀 구간이면 실제 진행은 역방향 — 차선·바라보기 둘 다 이 방향 기준.
+            bool forward = vehicle.Phase <= segmentCount;
+            Vector3 travelDir = forward ? direction : -direction;
 
-            vehicle.Object.transform.localPosition = Vector3.Lerp(a, b, t);
+            // 우측통행 차선 오프셋: 진행 방향의 오른쪽으로 비껴 그림 → 왕복이 두 차선으로 갈라짐.
+            Vector3 lane = new Vector3(travelDir.y, -travelDir.x, 0f) * (tileSize * laneOffset);
+            Vector3 pos = Vector3.Lerp(a, b, t) + lane;
 
-            if (direction.sqrMagnitude > 0.001f)
+            // 로터리 연출(뷰 전용 — 엔진 무관): 타일 안에선 진행 방향 오른쪽으로 부풀어
+            // 중앙 섬을 반시계로 돌아가는 궤적. 경계에서 0(직선과 연속), 중심에서 최대.
+            Vector2Int insideTile = t < 0.5f ? route[index] : route[index + 1];
+            if (IsRoundaboutTile(insideTile))
             {
-                float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+                Vector3 center = GridToLocal(insideTile, vehicleZ);
+                float along = Vector3.Dot(pos - center, travelDir);   // lane은 수직이라 영향 없음
+                float bulge = Mathf.Cos(Mathf.PI * Mathf.Clamp(along / tileSize, -0.5f, 0.5f));
+                float extra = Mathf.Max(0f, tileSize * (roundaboutOrbitRadius - laneOffset)) * bulge;
+                pos += new Vector3(travelDir.y, -travelDir.x, 0f) * extra;
+            }
+
+            vehicle.Object.transform.localPosition = pos;
+
+            if (travelDir.sqrMagnitude > 0.001f)
+            {
+                // 복귀 구간도 진짜 진행 방향을 바라봄(뒷걸음 유령 제거).
+                float angle = Mathf.Atan2(travelDir.y, travelDir.x) * Mathf.Rad2Deg;
                 vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
+            }
+
+            // 역주행 유령 숨김(스펙 §3 해법①): 복귀 구간(!forward)에서 지금 서 있는 타일이 일방이고
+            // 실제 진행 방향이 그 일방 방향과 거의 정반대(역주행)면 렌더러를 숨긴다. 조건이 매 프레임
+            // 재평가되므로 조건 해제(순방향 복귀 등) 시 별도 상태 없이 자연히 복원됨.
+            bool hiddenAsGhost = false;
+            if (!forward && trafficRule != null)
+            {
+                Vector2Int onewayDir = trafficRule.GetOnewayDir(insideTile);
+                if (onewayDir != Vector2Int.zero)
+                {
+                    Vector3 onewayWorldDir = new Vector3(onewayDir.x, onewayDir.y, 0f);
+                    hiddenAsGhost = Vector3.Dot(travelDir, onewayWorldDir) < -0.9f;
+                }
             }
 
             if (vehicle.Renderer != null)
             {
+                vehicle.Renderer.enabled = !hiddenAsGhost;
                 Color routeColor = blockedBySignal ? Color.red : Color.HSVToRGB((routeIndex * 0.137f) % 1f, 0.7f, 0.95f);
                 ApplyRendererColor(vehicle.Renderer, routeColor);
             }
+
+            // Jam 분노 팝업(스펙 2026-07-12 §1): 내가 서 있는 타일이 Jam이면 ! + 매연 — 가짜 디테일.
+            bool jammed = !hiddenAsGhost && tileData.GetCongestion(currentTile) == CongestionLevel.Jam;
+            if (jammed && vehicle.AngryMark == null)
+            {
+                vehicle.AngryMark = CreateTextMark(vehicleRoot, "!", Color.red, tileSize * 0.14f);
+                vehicle.SmokePuff = CreateSmokePuff();
+            }
+            if (vehicle.AngryMark != null)
+            {
+                vehicle.AngryMark.SetActive(jammed);
+                vehicle.SmokePuff.SetActive(jammed);
+                if (jammed)
+                {
+                    Vector3 basePos = vehicle.Object.transform.localPosition;
+                    float pulse = 1f + 0.2f * Mathf.Abs(Mathf.Sin(Time.time * 6f));
+                    vehicle.AngryMark.transform.localPosition = basePos + new Vector3(0f, tileSize * 0.32f, -0.1f);
+                    vehicle.AngryMark.transform.localScale = Vector3.one * pulse;
+                    vehicle.SmokePuff.transform.localPosition = basePos - travelDir * (tileSize * 0.28f)
+                        + new Vector3(0f, tileSize * 0.06f * Mathf.Sin(Time.time * 2f), 0f);
+                }
+            }
+
+            vehicle.Pos = vehicle.Object.transform.localPosition;
+            vehicle.Dir = travelDir;
+        }
+
+        // 반대 차선(마주 오는 차)은 무시 — 차선 오프셋으로 이미 분리. 같은 방향 추종만이라 순환 대기 없음
+        // (SimDebug 렌더러의 데드락 근본수정과 같은 규약). 96대 전수 검사 = 프레임당 ~9천 회, 무해.
+        private bool IsBlockedByLeader(RouteVehicle vehicle)
+        {
+            if (vehicle.Dir.sqrMagnitude < 0.001f)
+            {
+                return false;   // 첫 프레임(이력 없음)
+            }
+
+            float gap = tileSize * followGap;
+            float gapSq = gap * gap;
+
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                RouteVehicle other = vehicles[i];
+
+                if (other == vehicle || !other.Object.activeSelf)
+                {
+                    continue;
+                }
+
+                Vector3 to = other.Pos - vehicle.Pos;
+
+                if (to.sqrMagnitude > gapSq || to.sqrMagnitude < 0.0001f)
+                {
+                    continue;   // 멀거나, 완전 겹침(모호) — 겹침은 서로 못 막게 해 교착 방지
+                }
+
+                if (Vector3.Dot(vehicle.Dir, other.Dir) <= 0.5f)
+                {
+                    continue;   // 같은 방향만 추종
+                }
+
+                if (Vector3.Dot(vehicle.Dir, to.normalized) <= 0.6f)
+                {
+                    continue;   // 앞쪽에 있을 때만
+                }
+
+                return true;
+            }
+
+            return false;
         }
 
         private static float Fold(float phase, int segmentCount)
@@ -598,6 +1019,16 @@ namespace CityFlow.View
             }
 
             return false;
+        }
+
+        private bool IsRoundaboutTile(Vector2Int tile)
+        {
+            if (intersectionFacility == null)
+            {
+                return false;
+            }
+
+            return ContainsSignal(intersectionFacility.RoundaboutTiles, tile);   // 선형 목록 검색 헬퍼 공용
         }
 
         private void HandleSignalInput()
@@ -780,9 +1211,8 @@ namespace CityFlow.View
 
         private void OnFlowBurst(FlowBurstEvent e)
         {
-            GameObject burst = InstantiatePrefabOrPrimitive(burstPrefab, PrimitiveType.Sphere);
+            GameObject burst = Rent(burstPool) ?? MakeBurst();
             burst.name = $"FlowBurst_{e.Tile.x}_{e.Tile.y}";
-            burst.transform.SetParent(effectRoot, false);
             burst.transform.localPosition = GridToLocal(e.Tile, -0.5f);
             burst.transform.localScale = Vector3.one * tileSize * 0.55f;
             ApplyRendererColor(burst.GetComponentInChildren<Renderer>(), flowBurstColor);
@@ -792,6 +1222,25 @@ namespace CityFlow.View
                 Object = burst,
                 HideAt = Time.time + burstSeconds
             });
+
+            // 동전 분수 + 음표(스펙 2026-07-12 §2): 길이 뚫리는 순간의 도파민 — 뷰 전용, Random 무방.
+            Vector3 origin = GridToLocal(e.Tile, -0.5f);
+            for (int i = 0; i < 6; i++)
+            {
+                GameObject coin = Rent(coinPool) ?? MakeCoin();
+                coin.transform.localPosition = origin;
+                coins.Add(new CoinVisual
+                {
+                    Object = coin,
+                    Velocity = new Vector3(Random.Range(-1.2f, 1.2f), Random.Range(1.6f, 2.4f), 0f) * tileSize,
+                    DieAt = Time.time + 0.9f,
+                });
+            }
+            GameObject note = Rent(notePool) ?? MakeNote();
+            TextMesh noteText = note.GetComponent<TextMesh>();
+            noteText.color = coinColor;   // 재사용분: 페이드로 낮아진 alpha 복원
+            note.transform.localPosition = origin + new Vector3(0f, tileSize * 0.2f, 0f);
+            notes.Add(new NoteVisual { Text = noteText, DieAt = Time.time + 1.1f });
         }
 
         private void UpdateBursts()
@@ -814,9 +1263,94 @@ namespace CityFlow.View
                     continue;
                 }
 
-                Destroy(burst.Object);
+                ReturnToPool(burstPool, burst.Object);
                 bursts.RemoveAt(i);
             }
+        }
+
+        private void UpdateCoins()
+        {
+            for (int i = coins.Count - 1; i >= 0; i--)
+            {
+                CoinVisual coin = coins[i];
+                if (coin.Object == null || Time.time >= coin.DieAt)
+                {
+                    ReturnToPool(coinPool, coin.Object);
+                    coins.RemoveAt(i);
+                    continue;
+                }
+                coin.Velocity += Vector3.down * (6f * tileSize * Time.deltaTime);   // 간이 중력
+                coin.Object.transform.localPosition += coin.Velocity * Time.deltaTime;
+            }
+        }
+
+        private void UpdateNotes()
+        {
+            for (int i = notes.Count - 1; i >= 0; i--)
+            {
+                NoteVisual note = notes[i];
+                if (note.Text == null || Time.time >= note.DieAt)
+                {
+                    ReturnToPool(notePool, note.Text != null ? note.Text.gameObject : null);
+                    notes.RemoveAt(i);
+                    continue;
+                }
+                note.Text.transform.localPosition += Vector3.up * (0.8f * tileSize * Time.deltaTime);
+                Color c = note.Text.color;
+                c.a = Mathf.Clamp01((note.DieAt - Time.time) / 1.1f);
+                note.Text.color = c;   // 폰트 머티리얼은 투명 지원
+            }
+        }
+
+        // 이펙트 풀 대여/반납: Rent가 비면 null → 호출부가 Make*로 신규 생성(??). 델리게이트 0 alloc.
+        private static GameObject Rent(Stack<GameObject> pool)
+        {
+            if (pool.Count == 0)
+            {
+                return null;
+            }
+            GameObject go = pool.Pop();
+            go.SetActive(true);
+            return go;
+        }
+
+        private static void ReturnToPool(Stack<GameObject> pool, GameObject go)
+        {
+            if (go == null)
+            {
+                return;
+            }
+            go.SetActive(false);
+            pool.Push(go);
+        }
+
+        private void PrewarmEffectPools()
+        {
+            for (int i = 0; i < 30; i++) ReturnToPool(coinPool, MakeCoin());
+            for (int i = 0; i < 8; i++) ReturnToPool(burstPool, MakeBurst());
+            for (int i = 0; i < 8; i++) ReturnToPool(notePool, MakeNote());
+        }
+
+        private GameObject MakeBurst()
+        {
+            GameObject go = InstantiatePrefabOrPrimitive(burstPrefab, PrimitiveType.Sphere);
+            go.transform.SetParent(effectRoot, false);
+            return go;
+        }
+
+        private GameObject MakeCoin()
+        {
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = "Coin";
+            go.transform.SetParent(effectRoot, false);
+            go.transform.localScale = Vector3.one * (tileSize * 0.1f);
+            ApplyRendererColor(PrepareRenderer(go.GetComponent<Renderer>()), coinColor);
+            return go;
+        }
+
+        private GameObject MakeNote()
+        {
+            return CreateTextMark(effectRoot, "♪", coinColor, tileSize * 0.16f);
         }
 
         private Vector3 GridToLocal(Vector2Int tile, float z)

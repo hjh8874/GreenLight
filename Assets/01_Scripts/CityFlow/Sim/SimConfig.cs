@@ -12,6 +12,7 @@ namespace CityFlow.Sim
         public int   MaxStepsPerFrame;  // 누산기 while 폭주 방지 캡
 
         // ── 도시 크기 ───────────────────────────
+        // 생성 시 고정(구조 필드) — 같은 성격의 필드 추가 시 SimEngine.ApplyConfig 보존 목록 갱신.
         public int   GridWidth;         // blueprint 기준 20×20
         public int   GridHeight;
 
@@ -57,6 +58,23 @@ namespace CityFlow.Sim
         // λ=1이면 기존 합산과 동일(연속성). 자동생성 유지 중엔 라이브 미노출(모든 교차로에 신호) 🔓
         public float UnsignaledInterference;
 
+        // ── 회전교차로(스펙 2026-07-11): 낮은 양보 간섭 + 전원 감속(용량 페널티) ──
+        // 균형 교차로(s>2/3)=로터리, 편중(0.375~2/3)=신호, 극단(<0.375)=무신호가 로터리보다 나음(돈 낭비) — 3분할 전략.
+        // 상수 λ만 쓰면 최적 신호를 항상 이겨 전략이 죽는다(스펙 §1) — cf<1이 균형추 🔓
+        public float RoundaboutInterference;    // λr: 교차 교통의 방해 계수
+        public float RoundaboutCapacityFactor;  // cf: 로터리 타일 유효 용량 배율
+
+        // ── 유기적 라우팅(혼잡 회피 강도) ──
+        // 증분 배정의 스텝 비용 = 물리거리 × (1 + w × 부하/용량). 0 = 순수 물리 최단.
+        // 2면 부하율 1.5 타일이 4배 비쌈 → 몇 칸 우회가 이득 🔓
+        public float RoutingCongestionWeight;
+
+        // ── 신호 배치 모드(구매 피벗 2단계) ──
+        // true = 현행 자동 감지(모든 교차로에 신호). false = 배치된 곳에만 존재(TryPlaceSignal).
+        // 상점 UI(김건) 도입 시 asset에서 false 전환 — 그날 무신호 간섭 λ가 라이브 활성화 🔓
+        // 생성 시 고정(구조 필드) — 같은 성격의 필드 추가 시 SimEngine.ApplyConfig 보존 목록 갱신.
+        public bool AutoDetectSignals;
+
         // ── 보상(코인) 원료 ────────────────────
         public float CoinBase;          // 🔓 공식 형태·가중치 잠정
 
@@ -65,7 +83,8 @@ namespace CityFlow.Sim
         public float BurstFreeReturnRatio;  // Free 복귀 0.6 (경계 진동 방지)
         public float BurstCooldownSeconds;  // 타일당 10s (연사 방지)
         public float BurstRewardThreshold;  // pendingReward 이 값 넘어야 발행 🔓
-        public float BurstRewardMultiplier; // 발행 시 pending × 배수 🔓
+        public float BurstRewardMultiplier; // 발행 시 pending × 배수 🔓 ⚠ 1 초과 금지 —
+                                            // m>1이면 "고의 정체→해소" 파밍이 순이익(BurstGuardTests가 지킴)
 
         // ── 정산 ───────────────────────────────
         public float OfflineCapHours;   // 오프라인 상한 8h
@@ -95,12 +114,16 @@ namespace CityFlow.Sim
             OverrideCooldownSeconds = 60f,
             OverrideCorridorSignals = 3,
             UnsignaledInterference = 1.5f,
+            RoundaboutInterference = 0.25f,
+            RoundaboutCapacityFactor = 0.7f,
+            RoutingCongestionWeight = 2f,
+            AutoDetectSignals = true,
             CoinBase = 1f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,
             BurstCooldownSeconds = 10f,
             BurstRewardThreshold = 1f,
-            BurstRewardMultiplier = 2f,
+            BurstRewardMultiplier = 1f,   // 밀린 처리량 전액 회수(무이자 외상 정산) = 파밍 중립(환 2026-07-11)
             OfflineCapHours = 8f,
         };
 

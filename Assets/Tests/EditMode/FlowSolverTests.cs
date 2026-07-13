@@ -32,8 +32,10 @@ namespace CityFlow.Sim.Tests
             var dm = new DemandMap(cfg);
             dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
             var solver = new FlowSolver(g.Width, g.Height);
-            solver.Assign(dm, net, cfg);
+            solver.Assign(dm, planner, cfg);
             solver.Resolve(cfg);
             return solver;
         }
@@ -104,6 +106,21 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void RoadCapacityZero_NoNaN()
+        {
+            // RoadCapacity=0에서도 나눗셈이 남아있으면 0/0=NaN이 밀도로 새어나간다(감사 2026-07-12).
+            // AxisRatio 규약: cap≤0이면 흐름>0인 타일은 EfficiencyMinRatio(→Jam), 유휴 타일은 0.
+            var solver = Solve(StraightCity(), Cfg(demand: 1f, capacity: 0f));
+
+            float idleRatio = solver.GetRatio(V(2, 1));   // Empty 타일 — 경로가 지나지 않음
+            Assert.IsFalse(float.IsNaN(idleRatio));
+            Assert.AreEqual(0f, Mathf.Clamp01(idleRatio), 1e-6f);
+
+            Assert.AreEqual(CongestionLevel.Jam, solver.GetCongestion(V(2, 0)));  // 흐름 도로 타일 → Jam
+            Assert.IsFalse(float.IsNaN(solver.GetRatio(V(2, 0))));
+        }
+
+        [Test]
         public void DemandScale_ScalesDeliveredAndStats()
         {
             // 러시아워 배율 1.5 → 여유 용량에선 delivered도 1.5배, 안정도 분모(DemandRate)도 함께.
@@ -111,8 +128,11 @@ namespace CityFlow.Sim.Tests
             var cfg = Cfg(demand: 1f, capacity: 10f);
             var dm = new DemandMap(cfg);
             dm.Reassign(g, new RoadNetwork(g));
+            var net = new RoadNetwork(g);
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
             var solver = new FlowSolver(g.Width, g.Height);
-            solver.Assign(dm, new RoadNetwork(g), cfg, demandScale: 1.5f);
+            solver.Assign(dm, planner, cfg, demandScale: 1.5f);
             solver.Resolve(cfg);
 
             Assert.AreEqual(1.5f, solver.DeliveredTotal, 1e-3f);

@@ -7,10 +7,17 @@ namespace CityFlow.Sim
 {
     // 통근 수요 1건: 수요원(집) → 수요처(Office 등).
     // ponytail: demandRate는 나중(FlowSolver)에서 SimConfig로. 지금은 배정 관계만.
+    // SourceRoad/SinkRoad: 배정 시 채택한 접점(감사 픽스 2 — 단일 출처화). RoutePlanner.Plan은
+    // 이 값을 그대로 써서 경로를 잇는다 — 접점을 다시 계산하지 않음(두 시스템이 각자 접점을
+    // 고르면 Region 불일치로 도달 가능한 수요가 흐름 0으로 죽는 버그의 온상이었음).
+    // 프론티지가 전혀 없으면(맹지) DemandMap.NoRoad 센티널 — RoutePlanner의 IsRoad 경계 체크가
+    // 자연히 걸러 null 경로(무사고)로 처리.
     internal struct Demand
     {
         public Vector2Int Source;
         public Vector2Int Sink;
+        public Vector2Int SourceRoad;
+        public Vector2Int SinkRoad;
     }
 
     // 집(House)을 가장 가까운 수요처에 배정. 맨해튼 최근접 + 용량 캡 + 차순위. topology 변경 시에만.
@@ -23,18 +30,30 @@ namespace CityFlow.Sim
         // 수요처 종류 목록. 종류 추가 = 여기 한 줄 + CapacityFor + SimConfig 용량.
         static readonly TileType[] SinkTypes = { TileType.Office, TileType.School };
 
-        readonly SimConfig _config;
+        SimConfig _config;   // seam(SimEngine.ApplyConfig, 스펙 2026-07-12)으로 갈아 끼워짐 — readonly 제거
+
+        // 프론티지 전혀 없음(맹지) 센티널 — 항상 그리드 밖(x,y<0)이라 IsRoad 경계 체크가 자연히 걸러냄.
+        static readonly Vector2Int NoRoad = new Vector2Int(-1, -1);
 
         // 선할당 재사용 버퍼(재배정은 드물지만 습관).
         readonly List<Vector2Int> _houses = new(64);
         readonly List<Vector2Int> _sinks = new(16);
         readonly List<Demand> _demands = new(128);
+        readonly List<Vector2Int> _houseFrontageBuffer = new(8);   // 집 프론티지 전수 스캔용 재사용 버퍼
 
         public IReadOnlyList<Demand> Demands => _demands;
 
         public DemandMap(SimConfig config)
         {
             _config = config;
+        }
+
+        // SimEngine.ApplyConfig의 유일한 전파 지점(스펙 2026-07-12): 용량(CapacityFor)·
+        // 배정 다양성(DemandChoicePool) 등 이 클래스가 들고 있는 config 사본을 갱신.
+        // 실제 재배정은 SimEngine이 _grid.MarkTopologyDirty()로 다음 틱에 강제한다.
+        internal void ApplyConfig(in SimConfig next)
+        {
+            _config = next;
         }
 
         public void Reassign(CityGrid grid, RoadNetwork net)
@@ -75,54 +94,98 @@ namespace CityFlow.Sim
         // 각 집을 '남은 용량이 있는, 도달 가능한(같은 섬)' sink 중 가까운 K곳(DemandChoicePool)
         // 하나에 배정 — 좌표 해시로 결정론적 선택(같은 도시 = 같은 배정, 세이브·테스트 안전).
         // K=1이면 항상 최근접. 도달 가능한 곳이 하나도 없으면 최근접 폴백(흐름 0).
+        // 감사 픽스 2: 건물의 프론티지가 여러 개(다른 Region)일 수 있어 전수 검사 — 첫 접점만
+        // 보면 실제로는 연결된 건물을 도달불가로 오판한다(막다른 스텁이 스캔 1순위일 때).
         void AssignType(List<Vector2Int> sources, List<Vector2Int> sinks, int capPerSink, RoadNetwork net)
         {
             if (sinks.Count == 0) return;
 
             var remaining = new int[sinks.Count]; // ponytail: 재배정 드물어 지역 할당 OK
-            var sinkRegion = new int[sinks.Count];   // 수요처 접점 도로의 섬 id(-1 = 접점 없음)
+            var sinkFrontages = new List<Vector2Int>[sinks.Count];   // 수요처 프론티지 전수(스캔 순서)
             for (int i = 0; i < sinks.Count; i++)
             {
                 remaining[i] = capPerSink;
-                sinkRegion[i] = net.TryGetAccessRoad(sinks[i], out var road) ? net.RegionOf(road) : -1;
+                sinkFrontages[i] = new List<Vector2Int>(4);
+                net.CollectAccessRoads(sinks[i], sinkFrontages[i]);
             }
 
             int pool = Mathf.Max(1, _config.DemandChoicePool);
-            var candidates = new List<(int idx, int dist)>(sinks.Count);   // 같은 섬 + 용량 남은 곳
+            // 같은 Region 매칭 + 채택된 접점 쌍(RoutePlanner 단일 출처화용)까지 함께 후보에 담음.
+            var candidates = new List<(int idx, int dist, Vector2Int houseRoad, Vector2Int sinkRoad)>(sinks.Count);
 
             for (int h = 0; h < sources.Count; h++)
             {
                 var house = sources[h];
-                int houseRegion = net.TryGetAccessRoad(house, out var hr) ? net.RegionOf(hr) : -1;
+                _houseFrontageBuffer.Clear();
+                net.CollectAccessRoads(house, _houseFrontageBuffer);
 
                 candidates.Clear();
                 int bestAny = -1, bestAnyDist = int.MaxValue;   // 섬 무관 최근접(폴백)
+                Vector2Int bestAnyHouseRoad = NoRoad, bestAnySinkRoad = NoRoad;
                 for (int i = 0; i < sinks.Count; i++)
                 {
                     if (remaining[i] <= 0) continue;
                     int d = Manhattan(house, sinks[i]);
-                    if (d < bestAnyDist) { bestAnyDist = d; bestAny = i; } // strict < → 동점 시 낮은 인덱스 유지
-                    if (houseRegion >= 0 && sinkRegion[i] == houseRegion)
-                        candidates.Add((i, d));
+                    if (d < bestAnyDist)   // strict < → 동점 시 낮은 인덱스 유지
+                    {
+                        bestAnyDist = d;
+                        bestAny = i;
+                        bestAnyHouseRoad = _houseFrontageBuffer.Count > 0 ? _houseFrontageBuffer[0] : NoRoad;
+                        bestAnySinkRoad = sinkFrontages[i].Count > 0 ? sinkFrontages[i][0] : NoRoad;
+                    }
+                    if (TryFirstRegionMatch(net, _houseFrontageBuffer, sinkFrontages[i], out var houseRoad, out var sinkRoad))
+                        candidates.Add((i, d, houseRoad, sinkRoad));
                 }
 
                 int best;
+                Vector2Int chosenHouseRoad, chosenSinkRoad;
                 if (candidates.Count > 0)
                 {
                     // 거리순(동점은 flat 인덱스순) 상위 pool곳 중 집 좌표 해시로 택1.
                     candidates.Sort((a, b) => a.dist != b.dist ? a.dist - b.dist : a.idx - b.idx);
                     int span = Mathf.Min(pool, candidates.Count);
-                    best = candidates[HashPick(house, span)].idx;
+                    var picked = candidates[HashPick(house, span)];
+                    best = picked.idx;
+                    chosenHouseRoad = picked.houseRoad;
+                    chosenSinkRoad = picked.sinkRoad;
                 }
                 else
                 {
                     best = bestAny;   // 도달 가능한 수요처 0개 → 기존 동작(배정하되 흐름 0)
                     if (best < 0) continue;   // 모든 sink 만석 → 이 집은 이 종류 수요 없음
+                    chosenHouseRoad = bestAnyHouseRoad;
+                    chosenSinkRoad = bestAnySinkRoad;
                 }
 
                 remaining[best]--;
-                _demands.Add(new Demand { Source = house, Sink = sinks[best] });
+                _demands.Add(new Demand
+                {
+                    Source = house, Sink = sinks[best],
+                    SourceRoad = chosenHouseRoad, SinkRoad = chosenSinkRoad,
+                });
             }
+        }
+
+        // 집 프론티지 순서 우선 → 그 다음 수요처 프론티지 순서로, 같은 Region인 첫 쌍을 접점으로
+        // 채택(결정론). 매칭 없으면 false(호출자가 폴백 처리).
+        static bool TryFirstRegionMatch(RoadNetwork net, List<Vector2Int> houseFrontages,
+            List<Vector2Int> sinkFrontages, out Vector2Int houseRoad, out Vector2Int sinkRoad)
+        {
+            for (int hi = 0; hi < houseFrontages.Count; hi++)
+            {
+                int hRegion = net.RegionOf(houseFrontages[hi]);
+                if (hRegion < 0) continue;
+                for (int si = 0; si < sinkFrontages.Count; si++)
+                {
+                    if (net.RegionOf(sinkFrontages[si]) != hRegion) continue;
+                    houseRoad = houseFrontages[hi];
+                    sinkRoad = sinkFrontages[si];
+                    return true;
+                }
+            }
+            houseRoad = default;
+            sinkRoad = default;
+            return false;
         }
 
         // 좌표 기반 결정론 난수(SampleDailyVisits와 같은 프라임 해시) — 프레임·순서 무관.

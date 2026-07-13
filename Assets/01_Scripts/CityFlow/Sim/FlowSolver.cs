@@ -48,7 +48,8 @@ namespace CityFlow.Sim
         int Index(Vector2Int t) => t.y * _w + t.x;
 
         // demandScale: 이번 틱 수요 맥동 배율(SimConfig.DemandPulse). 1 = 균일(기존 동작).
-        public void Assign(DemandMap demand, RoadNetwork net, in SimConfig cfg, float demandScale = 1f)
+        // 경로는 RoutePlanner가 재건축 시 계획한 테이블(수요 인덱스 정렬)을 읽음 — 매 틱 탐색 없음.
+        public void Assign(DemandMap demand, RoutePlanner planner, in SimConfig cfg, float demandScale = 1f)
         {
             Array.Clear(_flowH, 0, _flowH.Length);
             Array.Clear(_flowV, 0, _flowV.Length);
@@ -57,13 +58,13 @@ namespace CityFlow.Sim
             DemandRate = cfg.DemandPerHouse * demandScale;
 
             var demands = demand.Demands;
+            var planned = planner.Routes;
+            // 불변식: Reassign 직후 반드시 Plan이 돈다(SimEngine 더티 블록이 쌍으로 보장) — 어긋나면 즉시 진단.
+            UnityEngine.Debug.Assert(planned.Count == demands.Count, "RoutePlanner.Plan이 최신 Reassign을 반영하지 않음");
             for (int i = 0; i < demands.Count; i++)
             {
-                // 접점이 없거나 미연결이면 이 수요는 흐르지 않음(무사고).
-                if (!net.TryGetAccessRoad(demands[i].Source, out var from)) continue;
-                if (!net.TryGetAccessRoad(demands[i].Sink, out var to)) continue;
-                var path = net.FindPath(from, to);
-                if (path == null) continue;
+                var path = planned[i];
+                if (path == null) continue;                   // 접점 없음/미연결 = 흐르지 않음(무사고)
 
                 for (int p = 0; p < path.Count; p++)
                 {
@@ -98,13 +99,25 @@ namespace CityFlow.Sim
         public void Resolve(in SimConfig cfg, SignalMap signals, double simTime = 0)
             => Resolve(cfg, signals, null, simTime);
 
-        // 캐노니컬: delivered = 수요 × E(축별 병목) × SignalFactor(그린웨이브).
+        // 로터리 없는 호출(기존 테스트 호환).
         public void Resolve(in SimConfig cfg, SignalMap signals, CityGrid grid, double simTime = 0)
+            => Resolve(cfg, signals, grid, null, simTime);
+
+        // 입체교차 없는 호출(기존 테스트 호환).
+        public void Resolve(in SimConfig cfg, SignalMap signals, CityGrid grid,
+                            HashSet<Vector2Int> roundabouts, double simTime = 0)
+            => Resolve(cfg, signals, grid, roundabouts, null, simTime);
+
+        // 캐노니컬: delivered = 수요 × E(축별 병목) × SignalFactor(그린웨이브).
+        // roundabouts/overpasses = 엔진 소유 배치 셋(조회만 — 소유·갱신은 SimEngine, 스펙 §2).
+        public void Resolve(in SimConfig cfg, SignalMap signals, CityGrid grid,
+                            HashSet<Vector2Int> roundabouts, HashSet<Vector2Int> overpasses,
+                            double simTime = 0)
         {
             // ① 기본: 전 타일 합산 ratio(일반 도로 — 직선엔 교차 충돌 없음). 교차로만 아래서 덮어씀.
             for (int i = 0; i < _flowH.Length; i++)
             {
-                float r = (_flowH[i] + _flowV[i]) / cfg.RoadCapacity;
+                float r = AxisRatio(_flowH[i] + _flowV[i], cfg.RoadCapacity, cfg);
                 _ratioH[i] = r;
                 _ratioV[i] = r;
                 _level[i] = Classify(r, cfg);
@@ -130,7 +143,11 @@ namespace CityFlow.Sim
 
             // ①'' 무신호 교차로: 간섭 모델 — 교차 교통이 양보 협상만큼(λ) 내 축을 방해(스펙 §2).
             // 자동생성 유지 중엔 라이브 미노출(모든 교차로에 신호) — 구매 피벗 2단계 대비.
-            if (grid != null)
+            // 로터리는 λr·cf(스펙 2026-07-11). 입체교차는 축 독립(스펙 2026-07-12).
+            // 자동 감지 모드 + 살아있는 SignalMap이면 모든 교차로에 신호가 있어 이 루프는 전부
+            // continue — 통째로 스킵(감사 2026-07-12: 라이브에서 매 틱 W×H 헛스캔이었다).
+            // 전제: 엔진은 topology 더티 시 Rebuild를 Resolve보다 먼저 돌린다(Step 순서가 보장).
+            if (grid != null && !(cfg.AutoDetectSignals && signals != null))
             {
                 for (int y = 0; y < grid.Height; y++)
                     for (int x = 0; x < grid.Width; x++)
@@ -139,8 +156,24 @@ namespace CityFlow.Sim
                         if (!grid.IsIntersection(t)) continue;
                         if (signals != null && signals.TryGet(t, out _)) continue;   // 신호가 처리함
                         int i = Index(t);
-                        _ratioH[i] = (_flowH[i] + cfg.UnsignaledInterference * _flowV[i]) / cfg.RoadCapacity;
-                        _ratioV[i] = (_flowV[i] + cfg.UnsignaledInterference * _flowH[i]) / cfg.RoadCapacity;
+                        if (overpasses != null && overpasses.Contains(t))
+                        {
+                            // 입체교차: 두 축이 위아래로 분리 — 간섭 소멸, 축별 풀 용량(스펙 2026-07-12 §1).
+                            _ratioH[i] = AxisRatio(_flowH[i], cfg.RoadCapacity, cfg);
+                            _ratioV[i] = AxisRatio(_flowV[i], cfg.RoadCapacity, cfg);
+                        }
+                        else if (roundabouts != null && roundabouts.Contains(t))
+                        {
+                            // 로터리: 양보 간섭 급감(λr) 대신 전원 감속(용량 ×cf) — 스펙 §1 수식.
+                            float cap = cfg.RoadCapacity * cfg.RoundaboutCapacityFactor;
+                            _ratioH[i] = AxisRatio(_flowH[i] + cfg.RoundaboutInterference * _flowV[i], cap, cfg);
+                            _ratioV[i] = AxisRatio(_flowV[i] + cfg.RoundaboutInterference * _flowH[i], cap, cfg);
+                        }
+                        else
+                        {
+                            _ratioH[i] = AxisRatio(_flowH[i] + cfg.UnsignaledInterference * _flowV[i], cfg.RoadCapacity, cfg);
+                            _ratioV[i] = AxisRatio(_flowV[i] + cfg.UnsignaledInterference * _flowH[i], cfg.RoadCapacity, cfg);
+                        }
                         _level[i] = Classify(Mathf.Max(_ratioH[i], _ratioV[i]), cfg);
                     }
             }
@@ -225,6 +258,9 @@ namespace CityFlow.Sim
         // BurstDetector용 flat 인덱스 접근(전 타일 순회 전제).
         public float GetPendingReward(int flatIndex) => _pendingReward[flatIndex];
         public void ClearPendingReward(int flatIndex) => _pendingReward[flatIndex] = 0f;   // Burst가 소비
+        public void ClearPendingReward(Vector2Int t) => _pendingReward[Index(t)] = 0f;     // 철거 소각용
+        // 장부는 도시 상태와 생명주기 공유 — 세이브 복원 시 이전 도시의 유령 장부 방지(리뷰 2026-07-11).
+        public void ClearAllPendingRewards() => Array.Clear(_pendingReward, 0, _pendingReward.Length);
 
         static CongestionLevel Classify(float ratio, in SimConfig cfg) =>
             ratio > cfg.JamRatio ? CongestionLevel.Jam

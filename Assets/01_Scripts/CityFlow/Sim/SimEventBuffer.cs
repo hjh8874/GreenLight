@@ -31,29 +31,48 @@ namespace CityFlow.Sim
 
         // 틱 끝: 큐에 쌓인 순서대로 SimEventHub에 일괄 발행하고 비운다.
         // 발행 순서: 배치(원인) → 혼잡(도로 상태) → 도착·버스트(결과) — 구독자가 인과 순서로 받게.
+        // 구독자(뷰/UI) 예외가 시뮬 틱과 다른 구독자를 죽이지 않게 격리 — 이벤트 유실·이중발행 방지(감사 2026-07-12).
         internal void Drain()
         {
             for (int i = 0; i < _placed.Count; i++)
-                _hub.Publish(_placed[i]);
+            {
+                try { _hub.Publish(_placed[i]); }
+                catch (System.Exception ex) { UnityEngine.Debug.LogException(ex); }
+            }
             _placed.Clear();
 
             for (int i = 0; i < _congestion.Count; i++)
-                _hub.Publish(_congestion[i]);
+            {
+                try { _hub.Publish(_congestion[i]); }
+                catch (System.Exception ex) { UnityEngine.Debug.LogException(ex); }
+            }
             _congestion.Clear();
 
             for (int i = 0; i < _arrivals.Count; i++)
-                _hub.Publish(_arrivals[i]);
+            {
+                try { _hub.Publish(_arrivals[i]); }
+                catch (System.Exception ex) { UnityEngine.Debug.LogException(ex); }
+            }
             _arrivals.Clear();
 
             for (int i = 0; i < _bursts.Count; i++)
-                _hub.Publish(_bursts[i]);
+            {
+                try { _hub.Publish(_bursts[i]); }
+                catch (System.Exception ex) { UnityEngine.Debug.LogException(ex); }
+            }
             _bursts.Clear();
 
             for (int i = 0; i < _settlements.Count; i++)
-                _hub.Publish(_settlements[i]);
+            {
+                try { _hub.Publish(_settlements[i]); }
+                catch (System.Exception ex) { UnityEngine.Debug.LogException(ex); }
+            }
             _settlements.Clear();
             for (int i = 0; i < _stability.Count; i++)
-                _hub.Publish(_stability[i]);
+            {
+                try { _hub.Publish(_stability[i]); }
+                catch (System.Exception ex) { UnityEngine.Debug.LogException(ex); }
+            }
             _stability.Clear();
         }
     }

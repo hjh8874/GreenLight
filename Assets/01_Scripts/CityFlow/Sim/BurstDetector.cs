@@ -22,6 +22,13 @@ namespace CityFlow.Sim
             _cooldownLeft = new float[n];
         }
 
+        // 복원 = 전체 교체: 이전 도시의 jam 상태·쿨다운이 새 도시의 정당한 Burst를 억누르지 않게(감사 2026-07-12).
+        public void ClearAll()
+        {
+            System.Array.Clear(_jammed, 0, _jammed.Length);
+            System.Array.Clear(_cooldownLeft, 0, _cooldownLeft.Length);
+        }
+
         public void Scan(FlowSolver solver, SimEventBuffer events, in SimConfig cfg)
         {
             for (int i = 0; i < _jammed.Length; i++)
@@ -42,9 +49,11 @@ namespace CityFlow.Sim
                 if (pending < cfg.BurstRewardThreshold) continue; // 티끌 병목은 발행 안 함
                 if (_cooldownLeft[i] > 0f) continue;              // 연사 방지(pending은 유지)
 
+                // pending은 '잃은 차량 수' 단위 — 도착 코인과 같은 환율(CoinBase)로 환전해야 파밍 중립이 CoinBase≠1에서도 유지(감사 2026-07-12)
+                int reward = Mathf.RoundToInt(pending * cfg.BurstRewardMultiplier * cfg.CoinBase);
                 events.QueueBurst(new FlowBurstEvent(
                     new Vector2Int(i % _w, i / _w),
-                    Mathf.RoundToInt(pending * cfg.BurstRewardMultiplier)));
+                    reward));
                 solver.ClearPendingReward(i);                     // 보상은 1회만 — 소비
                 _cooldownLeft[i] = cfg.BurstCooldownSeconds;
             }

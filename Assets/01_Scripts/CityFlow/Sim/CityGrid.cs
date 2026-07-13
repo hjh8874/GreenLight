@@ -29,7 +29,8 @@ namespace CityFlow.Sim
         // flat 인덱스. 주석님 GridUtil엔 Index가 없어 여기서 직접(index = y*W+x).
         int Index(Vector2Int t) => t.y * _width + t.x;
 
-        bool InBounds(Vector2Int t) =>
+        // internal(private→승격): SimEngine의 IReadOnlyTileData OOB 가드가 같은 어셈블리에서 재사용(감사 2026-07-12).
+        internal bool InBounds(Vector2Int t) =>
             t.x >= 0 && t.x < _width && t.y >= 0 && t.y < _height;
 
         public TileType GetTile(Vector2Int t) => _tiles[Index(t)];
@@ -110,6 +111,11 @@ namespace CityFlow.Sim
         }
 
         public void ClearTopologyDirty() => TopologyDirty = false;
+
+        // SimEngine.ApplyConfig(스펙 2026-07-12) 전용 seam: 타일은 안 바뀌므로 TopologyVersion
+        // (교차로·Region 캐시 키)은 그대로 두고, 다음 Step의 재계획(Reassign+RebuildSignals+Plan)만
+        // 강제한다. Place/Remove의 MarkDirty와 달리 캐시 무효화가 필요 없어 별도 진입점.
+        internal void MarkTopologyDirty() => TopologyDirty = true;
 
         void MarkDirty()
         {
