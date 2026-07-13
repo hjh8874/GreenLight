@@ -140,6 +140,13 @@ namespace CityFlow.View
         private readonly List<NoteVisual> notes = new();
         [SerializeField] private Color coinColor = new Color(1f, 0.84f, 0.2f);
 
+        // 뷰팩 이펙트 오브젝트 풀(#48 리뷰 — 김건): OnFlowBurst가 초당 수십 번 터지면
+        // Instantiate/Destroy 반복이 GC 스파이크(프레임 드랍)를 냈다. 죽은 오브젝트는
+        // Destroy 대신 SetActive(false)로 풀에 반납해 재사용 → 정상상태 GC 0.
+        private readonly Stack<GameObject> burstPool = new();
+        private readonly Stack<GameObject> coinPool = new();
+        private readonly Stack<GameObject> notePool = new();
+
         public void Initialize(CityFlowServices services)
         {
             if (!isActiveAndEnabled)
@@ -165,6 +172,7 @@ namespace CityFlow.View
             RefreshRoundabouts();
             RefreshOverpasses();
             RefreshVehicles();
+            PrewarmEffectPools();
         }
 
         private void OnDestroy()
@@ -1036,9 +1044,8 @@ namespace CityFlow.View
 
         private void OnFlowBurst(FlowBurstEvent e)
         {
-            GameObject burst = InstantiatePrefabOrPrimitive(burstPrefab, PrimitiveType.Sphere);
+            GameObject burst = Rent(burstPool) ?? MakeBurst();
             burst.name = $"FlowBurst_{e.Tile.x}_{e.Tile.y}";
-            burst.transform.SetParent(effectRoot, false);
             burst.transform.localPosition = GridToLocal(e.Tile, -0.5f);
             burst.transform.localScale = Vector3.one * tileSize * 0.55f;
             ApplyRendererColor(burst.GetComponentInChildren<Renderer>(), flowBurstColor);
@@ -1053,12 +1060,8 @@ namespace CityFlow.View
             Vector3 origin = GridToLocal(e.Tile, -0.5f);
             for (int i = 0; i < 6; i++)
             {
-                GameObject coin = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                coin.name = "Coin";
-                coin.transform.SetParent(effectRoot, false);
+                GameObject coin = Rent(coinPool) ?? MakeCoin();
                 coin.transform.localPosition = origin;
-                coin.transform.localScale = Vector3.one * (tileSize * 0.1f);
-                ApplyRendererColor(PrepareRenderer(coin.GetComponent<Renderer>()), coinColor);
                 coins.Add(new CoinVisual
                 {
                     Object = coin,
@@ -1066,9 +1069,11 @@ namespace CityFlow.View
                     DieAt = Time.time + 0.9f,
                 });
             }
-            GameObject note = CreateTextMark(effectRoot, "♪", coinColor, tileSize * 0.16f);
+            GameObject note = Rent(notePool) ?? MakeNote();
+            TextMesh noteText = note.GetComponent<TextMesh>();
+            noteText.color = coinColor;   // 재사용분: 페이드로 낮아진 alpha 복원
             note.transform.localPosition = origin + new Vector3(0f, tileSize * 0.2f, 0f);
-            notes.Add(new NoteVisual { Text = note.GetComponent<TextMesh>(), DieAt = Time.time + 1.1f });
+            notes.Add(new NoteVisual { Text = noteText, DieAt = Time.time + 1.1f });
         }
 
         private void UpdateBursts()
@@ -1091,7 +1096,7 @@ namespace CityFlow.View
                     continue;
                 }
 
-                Destroy(burst.Object);
+                ReturnToPool(burstPool, burst.Object);
                 bursts.RemoveAt(i);
             }
         }
@@ -1103,10 +1108,7 @@ namespace CityFlow.View
                 CoinVisual coin = coins[i];
                 if (coin.Object == null || Time.time >= coin.DieAt)
                 {
-                    if (coin.Object != null)
-                    {
-                        Destroy(coin.Object);
-                    }
+                    ReturnToPool(coinPool, coin.Object);
                     coins.RemoveAt(i);
                     continue;
                 }
@@ -1122,10 +1124,7 @@ namespace CityFlow.View
                 NoteVisual note = notes[i];
                 if (note.Text == null || Time.time >= note.DieAt)
                 {
-                    if (note.Text != null)
-                    {
-                        Destroy(note.Text.gameObject);
-                    }
+                    ReturnToPool(notePool, note.Text != null ? note.Text.gameObject : null);
                     notes.RemoveAt(i);
                     continue;
                 }
@@ -1134,6 +1133,57 @@ namespace CityFlow.View
                 c.a = Mathf.Clamp01((note.DieAt - Time.time) / 1.1f);
                 note.Text.color = c;   // 폰트 머티리얼은 투명 지원
             }
+        }
+
+        // 이펙트 풀 대여/반납: Rent가 비면 null → 호출부가 Make*로 신규 생성(??). 델리게이트 0 alloc.
+        private static GameObject Rent(Stack<GameObject> pool)
+        {
+            if (pool.Count == 0)
+            {
+                return null;
+            }
+            GameObject go = pool.Pop();
+            go.SetActive(true);
+            return go;
+        }
+
+        private static void ReturnToPool(Stack<GameObject> pool, GameObject go)
+        {
+            if (go == null)
+            {
+                return;
+            }
+            go.SetActive(false);
+            pool.Push(go);
+        }
+
+        private void PrewarmEffectPools()
+        {
+            for (int i = 0; i < 30; i++) ReturnToPool(coinPool, MakeCoin());
+            for (int i = 0; i < 8; i++) ReturnToPool(burstPool, MakeBurst());
+            for (int i = 0; i < 8; i++) ReturnToPool(notePool, MakeNote());
+        }
+
+        private GameObject MakeBurst()
+        {
+            GameObject go = InstantiatePrefabOrPrimitive(burstPrefab, PrimitiveType.Sphere);
+            go.transform.SetParent(effectRoot, false);
+            return go;
+        }
+
+        private GameObject MakeCoin()
+        {
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = "Coin";
+            go.transform.SetParent(effectRoot, false);
+            go.transform.localScale = Vector3.one * (tileSize * 0.1f);
+            ApplyRendererColor(PrepareRenderer(go.GetComponent<Renderer>()), coinColor);
+            return go;
+        }
+
+        private GameObject MakeNote()
+        {
+            return CreateTextMark(effectRoot, "♪", coinColor, tileSize * 0.16f);
         }
 
         private Vector3 GridToLocal(Vector2Int tile, float z)
