@@ -22,7 +22,8 @@ namespace CityFlow.Contracts
         int GetSignalGreenSlots(Vector2Int tile);
         bool TrySetSignalGreenSlots(Vector2Int tile, int slots);
 
-        // 오버라이드 스킬(기획 §2-D): 한 방향을 duration초 강제 초록 + 엔진 쿨다운. 능동 개입의 손맛 레버.
+        // 오버라이드 스킬(기획 §2-D): duration초 양축 강제 초록(정령 마법 — 충돌 소멸) + 엔진 쿨다운.
+        // horizontal은 초록 축이 아니라 **코리도어 걷기 방향**(그 라인의 신호들을 함께 발동).
         // 쿨다운을 엔진이 들고 있어 UI(트러스트 경계 밖)가 못 우회 → 조회만 계약으로 노출.
         // 제안(E-1): 튜너·통합뷰가 SimEngine 직접 캐스팅하던 걸 계약으로 승격. 최종 확정은 김건 합의.
         bool TryOverrideSignal(Vector2Int tile, bool horizontal);

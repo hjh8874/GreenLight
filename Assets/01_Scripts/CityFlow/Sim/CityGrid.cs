@@ -71,6 +71,44 @@ namespace CityFlow.Sim
             MarkDirty();
         }
 
+        // ── 교차로 판정(직각 도로 이웃 ≥3)의 단일 출처 — SignalMap·FlowSolver가 공유.
+        // TopologyVersion 키 lazy 캐시(RoadNetwork.EnsureRegions와 같은 패턴). 구매 피벗 2단계에서
+        // "교차로 ≠ 신호"가 되므로 신호와 무관한 여기(grid)가 오너.
+        static readonly Vector2Int[] OrthoDirs =
+            { new Vector2Int(0, 1), new Vector2Int(1, 0), new Vector2Int(0, -1), new Vector2Int(-1, 0) };
+
+        bool[] _intersection;
+        int _intersectionVersion = -1;
+
+        public bool IsIntersection(Vector2Int t)
+        {
+            if (!InBounds(t) || GetTile(t) != TileType.Road) return false;
+            EnsureIntersections();
+            return _intersection[Index(t)];
+        }
+
+        void EnsureIntersections()
+        {
+            if (_intersectionVersion == TopologyVersion) return;
+            _intersectionVersion = TopologyVersion;
+            _intersection ??= new bool[_tiles.Length];
+
+            for (int y = 0; y < _height; y++)
+                for (int x = 0; x < _width; x++)
+                {
+                    var t = new Vector2Int(x, y);
+                    int i = Index(t);
+                    if (GetTile(t) != TileType.Road) { _intersection[i] = false; continue; }
+                    int n = 0;
+                    foreach (var d in OrthoDirs)
+                    {
+                        var v = t + d;
+                        if (InBounds(v) && GetTile(v) == TileType.Road) n++;
+                    }
+                    _intersection[i] = n >= 3;
+                }
+        }
+
         public void ClearTopologyDirty() => TopologyDirty = false;
 
         void MarkDirty()

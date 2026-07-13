@@ -74,7 +74,7 @@ namespace CityFlow.Sim
 
             // ① 수요→세그먼트 흐름 배정 (러시아워 맥동 배율 반영 — 기획 §1 '수요의 맥동')
             _solver.Assign(_demand, _network, _config, SimConfig.DemandPulse(_simTime, _config));
-            _solver.Resolve(_config, _signals, _simTime); // ② 혼잡·병목·그린웨이브·오버라이드·delivered
+            _solver.Resolve(_config, _signals, _grid, _simTime); // ② 혼잡·병목·그린웨이브·오버라이드·delivered
             _congestion.Scan(_solver, _events, _config);  // ②' 레벨 전이만 이벤트로
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
@@ -112,7 +112,7 @@ namespace CityFlow.Sim
                 if (_signals.TryGet(t, out var sig)) sig.OverrideUntil = 0;
 
             _solver.Assign(_demand, _network, _config);   // 정산은 평균 수요(맥동 무시 = 공정)
-            _solver.Resolve(_config, _signals, _simTime); // 오프라인도 신호 조율(오프셋·초록)은 그대로 반영
+            _solver.Resolve(_config, _signals, _grid, _simTime); // 오프라인도 신호 조율(오프셋·초록)은 그대로 반영
 
             double capSeconds = Math.Max(0.0, _config.OfflineCapHours * 3600.0);
             double capped = Math.Min(elapsedSeconds, capSeconds);
@@ -179,16 +179,16 @@ namespace CityFlow.Sim
             !_signals.TryGet(tile, out var s) || s.OverrideUntil > _simTime || SignalMath.IsGreen(s, _simTime);
 
         // 뷰용: 이 교차로의 이 방향 신호 3상태(초록/노랑/적색). 신호 없으면 항상 초록.
-        // 오버라이드 중엔 지정 축만 초록, 반대 축은 적색(교차 충돌 방지).
+        // 오버라이드 중엔 양축 초록(정령 마법 — 충돌 소멸, 스펙 2026-07-11 §3).
         public SignalPhase GetSignalPhase(Vector2Int tile, bool horizontal)
         {
             if (!_signals.TryGet(tile, out var s)) return SignalPhase.Green;
             if (s.OverrideUntil > _simTime)
-                return horizontal == s.OverrideHorizontal ? SignalPhase.Green : SignalPhase.Red;
+                return SignalPhase.Green;   // 정령 마법: 양축 초록(충돌 소멸) — 스펙 2026-07-11 §3
             return SignalMath.PhaseForAxis(s, _simTime, horizontal);
         }
 
-        // ── 오버라이드 스킬(기획 §2-D): duration초 한 방향 강제 초록 + 엔진 강제 쿨다운 ──
+        // ── 오버라이드 스킬(기획 §2-D): duration초 양축 강제 초록 + 엔진 강제 쿨다운 ──
         // 능동 개입의 손맛 레버. 쿨다운을 엔진이 들고 있는 이유: UI는 트러스트 경계 밖.
         readonly Dictionary<Vector2Int, double> _overrideReadyAt = new();
         readonly List<Vector2Int> _corridorBuf = new();   // 코리도어 수집 재사용 버퍼(비-재진입)
@@ -204,7 +204,6 @@ namespace CityFlow.Sim
             {
                 if (!_signals.TryGet(_corridorBuf[i], out var s)) continue;
                 s.OverrideUntil = until;
-                s.OverrideHorizontal = horizontal;
                 _overrideReadyAt[_corridorBuf[i]] = until + _config.OverrideCooldownSeconds;
             }
             return true;

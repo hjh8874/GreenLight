@@ -11,8 +11,10 @@ namespace CityFlow.Sim
     internal sealed class FlowSolver
     {
         readonly int _w;
-        readonly float[] _flow;    // 타일별 이번 틱 흐름(대/초)
-        readonly float[] _ratio;   // flow / RoadCapacity
+        readonly float[] _flowH;   // 타일별 가로축 흐름(대/초). 대각 스텝은 양축 0.5씩(근사)
+        readonly float[] _flowV;
+        readonly float[] _ratioH;  // 축별 ratio. 교차로가 아니면 양축 동일(합산/C = 기존 규약)
+        readonly float[] _ratioV;
         readonly CongestionLevel[] _level;
         readonly float[] _pendingReward;   // 병목 타일에 쌓인 잃은 처리량(틱 넘어 누적, D4가 소비)
 
@@ -34,8 +36,10 @@ namespace CityFlow.Sim
         {
             _w = width;
             int n = width * height;
-            _flow = new float[n];
-            _ratio = new float[n];
+            _flowH = new float[n];
+            _flowV = new float[n];
+            _ratioH = new float[n];
+            _ratioV = new float[n];
             _level = new CongestionLevel[n];
             _pendingReward = new float[n];
             _deliveredToSink = new float[n];
@@ -46,7 +50,8 @@ namespace CityFlow.Sim
         // demandScale: 이번 틱 수요 맥동 배율(SimConfig.DemandPulse). 1 = 균일(기존 동작).
         public void Assign(DemandMap demand, RoadNetwork net, in SimConfig cfg, float demandScale = 1f)
         {
-            Array.Clear(_flow, 0, _flow.Length);
+            Array.Clear(_flowH, 0, _flowH.Length);
+            Array.Clear(_flowV, 0, _flowV.Length);
             _routes.Clear();
             _routeSinks.Clear();
             DemandRate = cfg.DemandPerHouse * demandScale;
@@ -61,30 +66,52 @@ namespace CityFlow.Sim
                 if (path == null) continue;
 
                 for (int p = 0; p < path.Count; p++)
-                    _flow[Index(path[p])] += DemandRate;
+                {
+                    var (wH, wV) = AxisWeights(path, p);
+                    int i2 = Index(path[p]);
+                    _flowH[i2] += DemandRate * wH;
+                    _flowV[i2] += DemandRate * wV;
+                }
                 _routes.Add(path);
                 _routeSinks.Add(demands[i].Sink);
             }
         }
 
-        // 신호 없는 호출(기존 테스트·정산 경로 호환) — factor 항상 1.
-        public void Resolve(in SimConfig cfg) => Resolve(cfg, null);
-
-        // 신호 포함 Resolve: delivered = 수요 × E(혼잡 병목) × SignalFactor(그린웨이브 조율).
-        // simTime: 오버라이드 스킬 만료 판정용(기본 0 = 오버라이드 없음, 기존 호출 호환).
-        public void Resolve(in SimConfig cfg, SignalMap signals, double simTime = 0)
+        // 타일 p의 축 가중치 — 진입 스텝 기준(첫 타일은 출발 스텝). 대각 = 양축 절반.
+        // 단일 타일 경로(출발=도착)는 축 모호 → 0.5/0.5 (결정론적 근사).
+        static (float wH, float wV) AxisWeights(List<Vector2Int> path, int p)
         {
-            // ① 타일별 혼잡: <Slow Free / Slow~Jam Slow / >Jam Jam (SimConfig 주석 규약)
-            for (int i = 0; i < _flow.Length; i++)
+            if (path.Count < 2) return (0.5f, 0.5f);
+            var step = p > 0 ? path[p] - path[p - 1] : path[1] - path[0];
+            if (step.x != 0 && step.y != 0) return (0.5f, 0.5f);
+            return step.y == 0 ? (1f, 0f) : (0f, 1f);
+        }
+
+        // 축별 ratio — 용량 0 규약은 기존과 동일(흐르면 최악 병목).
+        static float AxisRatio(float flow, float cap, in SimConfig cfg) =>
+            cap > 0f ? flow / cap : flow > 0f ? cfg.EfficiencyMinRatio : 0f;
+
+        // 신호·grid 없는 호출(기존 테스트 호환) — 전 타일 일반 도로 규약.
+        public void Resolve(in SimConfig cfg) => Resolve(cfg, null, null);
+
+        // grid 없는 호출(기존 테스트 호환) — 무신호 간섭 없음(신호 타일만 축별 듀티).
+        public void Resolve(in SimConfig cfg, SignalMap signals, double simTime = 0)
+            => Resolve(cfg, signals, null, simTime);
+
+        // 캐노니컬: delivered = 수요 × E(축별 병목) × SignalFactor(그린웨이브).
+        public void Resolve(in SimConfig cfg, SignalMap signals, CityGrid grid, double simTime = 0)
+        {
+            // ① 기본: 전 타일 합산 ratio(일반 도로 — 직선엔 교차 충돌 없음). 교차로만 아래서 덮어씀.
+            for (int i = 0; i < _flowH.Length; i++)
             {
-                _ratio[i] = _flow[i] / cfg.RoadCapacity;
-                _level[i] = Classify(_ratio[i], cfg);
+                float r = (_flowH[i] + _flowV[i]) / cfg.RoadCapacity;
+                _ratioH[i] = r;
+                _ratioV[i] = r;
+                _level[i] = Classify(r, cfg);
             }
 
-            // ①' 신호 타일만 유효 용량 = RoadCapacity × GreenRatio(듀티)로 재계산.
-            // 빨간불 동안 큐가 쌓이는 걸 용량 감소로 근사 — 여유 있으면 무손실, 부하 오르면
-            // 신호가 먼저 병목이 되고, 초록을 늘리면(GreenSlots↑) 풀린다 = 두 번째 유저 레버.
-            // ponytail: 축별 초록 분배(가로/세로 나눠먹기)는 2차 — 타일 flow가 축 미구분이라 듀티만.
+            // ①' 신호 교차로: 축별 듀티 용량(가로 d·세로 1−d) — "보는 것 = 버는 것".
+            // 오버라이드(정령 마법)는 양축 풀 용량 = 3초간 충돌 소멸(스펙 §3).
             if (signals != null)
             {
                 var tiles = signals.Tiles;
@@ -92,13 +119,30 @@ namespace CityFlow.Sim
                 {
                     if (!signals.TryGet(tiles[k], out var s)) continue;
                     if (s.CycleSlots <= 0) continue;   // 주기 0 = 항상 초록(IsGreen과 같은 규약)
-                    // 오버라이드 스킬 활성 중엔 한 방향 상시 초록 = 유효 용량 풀(듀티 1).
-                    float g = s.OverrideUntil > simTime ? 1f : SignalMath.GreenRatio(s);
+                    bool ovr = s.OverrideUntil > simTime;
+                    float g = SignalMath.GreenRatio(s);
                     int i = Index(tiles[k]);
-                    _ratio[i] = g > 0f ? _flow[i] / (cfg.RoadCapacity * g)
-                              : _flow[i] > 0f ? cfg.EfficiencyMinRatio : 0f;   // 초록 0 = 흐르면 최악 병목
-                    _level[i] = Classify(_ratio[i], cfg);
+                    _ratioH[i] = AxisRatio(_flowH[i], cfg.RoadCapacity * (ovr ? 1f : g), cfg);
+                    _ratioV[i] = AxisRatio(_flowV[i], cfg.RoadCapacity * (ovr ? 1f : 1f - g), cfg);
+                    _level[i] = Classify(Mathf.Max(_ratioH[i], _ratioV[i]), cfg);
                 }
+            }
+
+            // ①'' 무신호 교차로: 간섭 모델 — 교차 교통이 양보 협상만큼(λ) 내 축을 방해(스펙 §2).
+            // 자동생성 유지 중엔 라이브 미노출(모든 교차로에 신호) — 구매 피벗 2단계 대비.
+            if (grid != null)
+            {
+                for (int y = 0; y < grid.Height; y++)
+                    for (int x = 0; x < grid.Width; x++)
+                    {
+                        var t = new Vector2Int(x, y);
+                        if (!grid.IsIntersection(t)) continue;
+                        if (signals != null && signals.TryGet(t, out _)) continue;   // 신호가 처리함
+                        int i = Index(t);
+                        _ratioH[i] = (_flowH[i] + cfg.UnsignaledInterference * _flowV[i]) / cfg.RoadCapacity;
+                        _ratioV[i] = (_flowV[i] + cfg.UnsignaledInterference * _flowH[i]) / cfg.RoadCapacity;
+                        _level[i] = Classify(Mathf.Max(_ratioH[i], _ratioV[i]), cfg);
+                    }
             }
 
             // ② 경로별: 병목(최대 ratio) → E → delivered + 잃은 만큼 병목 타일에 pending 적립
@@ -111,8 +155,11 @@ namespace CityFlow.Sim
                 int bottleneckIdx = -1;
                 for (int p = 0; p < path.Count; p++)
                 {
-                    float rt = _ratio[Index(path[p])];
-                    if (rt > bottleneck) { bottleneck = rt; bottleneckIdx = Index(path[p]); } // strict > → 첫 최대 타일(결정론)
+                    var (wH, wV) = AxisWeights(path, p);
+                    int idx = Index(path[p]);
+                    float rt = wH > 0f && wV > 0f ? Mathf.Max(_ratioH[idx], _ratioV[idx])
+                             : wH > 0f ? _ratioH[idx] : _ratioV[idx];
+                    if (rt > bottleneck) { bottleneck = rt; bottleneckIdx = idx; } // strict > → 결정론
                 }
 
                 float e = Efficiency(bottleneck, cfg);
@@ -161,7 +208,14 @@ namespace CityFlow.Sim
 
         public CongestionLevel GetCongestion(Vector2Int t) => _level[Index(t)];
 
-        public float GetRatio(Vector2Int t) => _ratio[Index(t)];
+        // 단일값 소비자(BurstDetector·CongestionNotifier·차량 감속·안정도)용 — 최악 축.
+        // 배관이지 화면 페인트 아님: 혼잡 표현은 차 중심 원칙(스펙 §2, 환 2026-07-11).
+        public float GetRatio(Vector2Int t) => GetRatio(Index(t));
+        public float GetRatio(int flatIndex) => Mathf.Max(_ratioH[flatIndex], _ratioV[flatIndex]);
+
+        // 테스트 관찰용 seam(InternalsVisibleTo) — 축 적립 검증.
+        internal float GetFlowHForTest(int flatIndex) => _flowH[flatIndex];
+        internal float GetFlowVForTest(int flatIndex) => _flowV[flatIndex];
 
         // ArrivalEmitter용 — flat 인덱스로 수요처 처리량 조회(전 타일 순회 전제).
         public float GetDeliveredToSink(int flatIndex) => _deliveredToSink[flatIndex];
@@ -169,7 +223,6 @@ namespace CityFlow.Sim
         public float GetPendingReward(Vector2Int t) => _pendingReward[Index(t)];
 
         // BurstDetector용 flat 인덱스 접근(전 타일 순회 전제).
-        public float GetRatio(int flatIndex) => _ratio[flatIndex];
         public float GetPendingReward(int flatIndex) => _pendingReward[flatIndex];
         public void ClearPendingReward(int flatIndex) => _pendingReward[flatIndex] = 0f;   // Burst가 소비
 

@@ -98,6 +98,7 @@ namespace CityFlow.Sim
 
         // 건물(집·회사)의 접점 = 인접 8방 중 첫 도로 타일(직각 먼저, 그다음 대각).
         // BFS와 같은 스캔 순서 → 어느 도로가 접점인지 결정론적. 대각 접점도 연결.
+        // ⚠ 스캔 순서(상 우선)는 테스트 기하(AxisFlowTests 등)가 접점 위치로 의존 — 바꾸면 테스트 기하 재검증.
         public bool TryGetAccessRoad(Vector2Int building, out Vector2Int road)
         {
             for (int d = 0; d < DX.Length; d++)
