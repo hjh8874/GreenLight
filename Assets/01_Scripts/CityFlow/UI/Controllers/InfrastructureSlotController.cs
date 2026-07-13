@@ -11,6 +11,7 @@ namespace CityFlow.UI.Controllers
     {
         [Header("Data")]
         [SerializeField] private InfrastructureDataSO infraData;
+        public InfrastructureDataSO InfraData => infraData;
         
         [Header("UI References (Self)")]
         [SerializeField] private Image iconImage;

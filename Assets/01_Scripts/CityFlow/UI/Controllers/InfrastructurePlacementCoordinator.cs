@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
 using System.Collections.Generic;
+using System.Linq;
 using CityFlow.Bootstrap;
 
 namespace CityFlow.UI.Controllers
@@ -217,8 +218,14 @@ namespace CityFlow.UI.Controllers
             long cost = _currentData.Cost;
             
             // Transaction: TrySpend first
-            if (_economy != null && cost > 0)
+            if (cost > 0)
             {
+                if (_economy == null)
+                {
+                    Debug.LogWarning("[InfrastructurePlacementCoordinator] EconomyService is null, but cost > 0. Placement blocked to prevent free placement.");
+                    return;
+                }
+
                 if (!_economy.TrySpend(cost))
                 {
                     Debug.LogWarning("[InfrastructurePlacementCoordinator] Not enough coins.");
@@ -270,7 +277,7 @@ namespace CityFlow.UI.Controllers
             }
 
             // 2. Try Signal
-            var signalTiles = _facilityService.SignalTiles as List<Vector2Int>;
+            var signalTiles = _facilityService.SignalTiles;
             if (signalTiles != null && signalTiles.Contains(coord))
             {
                 if (_facilityService.TryRemoveSignal(coord))
@@ -281,7 +288,7 @@ namespace CityFlow.UI.Controllers
             }
 
             // 3. Try Roundabout
-            var roundabouts = _facilityService.RoundaboutTiles as List<Vector2Int>;
+            var roundabouts = _facilityService.RoundaboutTiles;
             if (roundabouts != null && roundabouts.Contains(coord))
             {
                 if (_facilityService.TryRemoveRoundabout(coord))
@@ -292,7 +299,7 @@ namespace CityFlow.UI.Controllers
             }
 
             // 4. Try Overpass
-            var overpasses = _facilityService.OverpassTiles as List<Vector2Int>;
+            var overpasses = _facilityService.OverpassTiles;
             if (overpasses != null && overpasses.Contains(coord))
             {
                 if (_facilityService.TryRemoveOverpass(coord))
@@ -317,22 +324,24 @@ namespace CityFlow.UI.Controllers
 
         private void ProcessRefund(InfrastructureKind kind)
         {
-            long refundAmount = kind switch
+            long originalCost = 0;
+            
+            // 씬에 존재하는 슬롯들을 통해 동적으로 가격을 조회합니다.
+            var slots = UnityEngine.Object.FindObjectsByType<InfrastructureSlotController>(UnityEngine.FindObjectsInactive.Include, UnityEngine.FindObjectsSortMode.None);
+            var slot = slots.FirstOrDefault(s => s.InfraData != null && s.InfraData.Kind == kind);
+            if (slot != null)
             {
-                InfrastructureKind.Signal => 100,
-                InfrastructureKind.Roundabout => 150,
-                InfrastructureKind.Overpass => 300,
-                InfrastructureKind.Oneway => 50,
-                InfrastructureKind.TurnRestriction => 50,
-                _ => 0
-            };
+                originalCost = slot.InfraData.Cost;
+            }
+
+            long refundAmount = (long)(originalCost * DEMOLISH_REFUND_RATE);
 
             if (_economy != null && refundAmount > 0)
             {
                 _economy.AddCoins(refundAmount, "Demolish Refund");
             }
             
-            Debug.Log($"[InfrastructurePlacementCoordinator] Demolished {kind}. Refunded {refundAmount} coins.");
+            Debug.Log($"[InfrastructurePlacementCoordinator] Demolished {kind}. Refunded {refundAmount} coins (Original Cost: {originalCost}, Rate: {DEMOLISH_REFUND_RATE}).");
         }
     }
 }
