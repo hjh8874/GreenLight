@@ -16,6 +16,7 @@ namespace CityFlow.View
         public const float MaxShakeStrength = 0.4f;   // 멀미 방지 상한(월드 유닛)
 
         private CityFlowServices services;
+        private Tween shakeTween; // 이 컴포넌트가 생성한 셰이크 트윈만 추적 — 카메라 이동/전환 트윈과 분리.
 
         public void Initialize(CityFlowServices services)
         {
@@ -38,10 +39,10 @@ namespace CityFlow.View
             Camera cam = Camera.main;
             if (cam != null)
             {
-                // complete:true 필수 — 진행 중 셰이크를 원점 복귀시키고 죽인다. 기본 DOKill은
-                // 흔들린 중간 위치에 카메라를 남겨 다음 셰이크가 거기를 기준점 삼음 → 누적 드리프트.
-                cam.transform.DOKill(complete: true);
-                cam.transform.DOShakePosition(shakeDuration, ShakeStrengthFor(e.Reward))
+                // complete:true 필수 — 진행 중 셰이크를 원점 복귀시키고 죽인다. cam.transform.DOKill은
+                // 카메라 이동/전환 트윈까지 전부 종료시키므로, 이 컴포넌트가 만든 셰이크 트윈만 골라서 죽인다.
+                shakeTween?.Kill(complete: true);
+                shakeTween = cam.transform.DOShakePosition(shakeDuration, ShakeStrengthFor(e.Reward))
                     .SetUpdate(true);
             }
         }
