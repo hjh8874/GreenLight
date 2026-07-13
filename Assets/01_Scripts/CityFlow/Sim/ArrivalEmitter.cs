@@ -17,6 +17,9 @@ namespace CityFlow.Sim
             _acc = new float[width * height];
         }
 
+        // 복원 = 전체 교체: 이전 도시의 이월 소수가 새 도시의 첫 도착 타이밍을 오염시키지 않게(감사 2026-07-12).
+        public void ClearAll() => Array.Clear(_acc, 0, _acc.Length);
+
         public void Emit(FlowSolver solver, SimEventBuffer events, in SimConfig cfg)
         {
             for (int i = 0; i < _acc.Length; i++)
@@ -27,7 +30,8 @@ namespace CityFlow.Sim
                     _acc[i] -= 1f;
                     var tile = new Vector2Int(i % _w, i / _w);
                     // ponytail: coin = CoinBase 고정. distanceFactor(L)는 D7 정산 공식 확정 때.
-                    events.QueueArrival(new ArrivalEvent(tile, (int)cfg.CoinBase));
+                    // 절삭이 아니라 반올림 — CoinBase<1 튜닝에서 코인 0 고착 방지(감사 2026-07-12). 소수 누적 설계는 경제(진우) 몫
+                    events.QueueArrival(new ArrivalEvent(tile, Mathf.RoundToInt(cfg.CoinBase)));
                 }
             }
         }
@@ -44,7 +48,8 @@ namespace CityFlow.Sim
                 arrivals += n;
                 _acc[i] = (float)(acc - n);      // 나머지는 다음(온라인/오프라인)으로 이월
             }
-            return arrivals * (long)cfg.CoinBase;
+            // 절삭이 아니라 반올림 — CoinBase<1 튜닝에서 코인 0 고착 방지(감사 2026-07-12). 소수 누적 설계는 경제(진우) 몫
+            return (long)System.Math.Round(arrivals * (double)cfg.CoinBase);
         }
     }
 }

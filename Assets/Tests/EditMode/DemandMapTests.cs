@@ -171,5 +171,69 @@ namespace CityFlow.Sim.Tests
                 Assert.AreEqual(dm.Demands[i].Sink, dm2.Demands[i].Sink);
             }
         }
+
+        // 감사 픽스 2: 집(2,2)의 스캔 1순위(북)에 고립 스텁 1칸, 2순위(남)에 간선 진입.
+        // 간선은 (2,1)-(2,0)-(3,0)-(4,0)-(5,0)-Office(6,0)로 실제 연결됨.
+        // 북쪽 스텁만 보고 접점을 고르면(구현 전) Region이 달라 도달불가로 오판 → 흐름 0.
+        static CityGrid MultiFrontageGrid()
+        {
+            var g = new CityGrid(7, 4);
+            g.Place(V(2, 3), TileType.Road);   // 고립 스텁(주변에 다른 도로 없음) — 스캔 1순위(북)
+            g.Place(V(2, 1), TileType.Road);   // 간선 진입 — 스캔 3순위(남)
+            g.Place(V(2, 0), TileType.Road);
+            g.Place(V(3, 0), TileType.Road);
+            g.Place(V(4, 0), TileType.Road);
+            g.Place(V(5, 0), TileType.Road);
+            g.Place(V(2, 2), TileType.House);
+            g.Place(V(6, 0), TileType.Office);
+            return g;
+        }
+
+        static float DeliveredOf(CityGrid grid, in SimConfig cfg)
+        {
+            var net = new RoadNetwork(grid);
+            var dm = new DemandMap(cfg);
+            dm.Reassign(grid, net);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(dm, net, grid, cfg);
+            var solver = new FlowSolver(grid.Width, grid.Height);
+            solver.Assign(dm, planner, cfg);
+            solver.Resolve(cfg);
+            return solver.DeliveredTotal;
+        }
+
+        [Test]
+        public void MultiFrontage_IsolatedStubFirst_StillReachable()
+        {
+            var g = MultiFrontageGrid();
+            var cfg = SimConfig.Default();
+            cfg.DemandPerHouse = 1f;
+            cfg.RoadCapacity = 10f;
+
+            var net = new RoadNetwork(g);
+            var dm = new DemandMap(cfg);
+            dm.Reassign(g, net);
+            Assert.IsTrue(Has(dm, V(2, 2), V(6, 0)));
+
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
+            var solver = new FlowSolver(g.Width, g.Height);
+            solver.Assign(dm, planner, cfg);
+            solver.Resolve(cfg);
+
+            Assert.Greater(solver.DeliveredTotal, 0f); // 북쪽 스텁만 봤다면 0(도달불가 오판)
+        }
+
+        [Test]
+        public void MultiFrontage_Deterministic()
+        {
+            var cfg = SimConfig.Default();
+            cfg.DemandPerHouse = 1f;
+            cfg.RoadCapacity = 10f;
+
+            float a = DeliveredOf(MultiFrontageGrid(), cfg);
+            float b = DeliveredOf(MultiFrontageGrid(), cfg);
+            Assert.AreEqual(a, b, 1e-4f);
+        }
     }
 }

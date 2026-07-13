@@ -117,7 +117,7 @@ namespace CityFlow.Sim
             // ① 기본: 전 타일 합산 ratio(일반 도로 — 직선엔 교차 충돌 없음). 교차로만 아래서 덮어씀.
             for (int i = 0; i < _flowH.Length; i++)
             {
-                float r = (_flowH[i] + _flowV[i]) / cfg.RoadCapacity;
+                float r = AxisRatio(_flowH[i] + _flowV[i], cfg.RoadCapacity, cfg);
                 _ratioH[i] = r;
                 _ratioV[i] = r;
                 _level[i] = Classify(r, cfg);
@@ -144,7 +144,10 @@ namespace CityFlow.Sim
             // ①'' 무신호 교차로: 간섭 모델 — 교차 교통이 양보 협상만큼(λ) 내 축을 방해(스펙 §2).
             // 자동생성 유지 중엔 라이브 미노출(모든 교차로에 신호) — 구매 피벗 2단계 대비.
             // 로터리는 λr·cf(스펙 2026-07-11). 입체교차는 축 독립(스펙 2026-07-12).
-            if (grid != null)
+            // 자동 감지 모드 + 살아있는 SignalMap이면 모든 교차로에 신호가 있어 이 루프는 전부
+            // continue — 통째로 스킵(감사 2026-07-12: 라이브에서 매 틱 W×H 헛스캔이었다).
+            // 전제: 엔진은 topology 더티 시 Rebuild를 Resolve보다 먼저 돌린다(Step 순서가 보장).
+            if (grid != null && !(cfg.AutoDetectSignals && signals != null))
             {
                 for (int y = 0; y < grid.Height; y++)
                     for (int x = 0; x < grid.Width; x++)
@@ -168,8 +171,8 @@ namespace CityFlow.Sim
                         }
                         else
                         {
-                            _ratioH[i] = (_flowH[i] + cfg.UnsignaledInterference * _flowV[i]) / cfg.RoadCapacity;
-                            _ratioV[i] = (_flowV[i] + cfg.UnsignaledInterference * _flowH[i]) / cfg.RoadCapacity;
+                            _ratioH[i] = AxisRatio(_flowH[i] + cfg.UnsignaledInterference * _flowV[i], cfg.RoadCapacity, cfg);
+                            _ratioV[i] = AxisRatio(_flowV[i] + cfg.UnsignaledInterference * _flowH[i], cfg.RoadCapacity, cfg);
                         }
                         _level[i] = Classify(Mathf.Max(_ratioH[i], _ratioV[i]), cfg);
                     }
