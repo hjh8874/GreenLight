@@ -243,6 +243,18 @@ namespace CityFlow.Sim.Tests
             Assert.IsNull(fresh.GetTurnMode(V(6, 0)));
         }
 
+        // ── PR#55 리뷰 지적(abicodue, SimEngine.cs:380 인근): 배치 API도 세이브 복원과 대칭으로
+        // 미정의 TurnMode 값을 거부해야 한다 — TryPlaceTurnSign((TurnMode)2, ...) 직접 호출 경로.
+        // SaveRoundtrip_RejectsCorruptedMode99와 대칭(복원 경로는 이미 검증, 배치 경로도 이제 동일).
+        [Test]
+        public void TryPlaceTurnSign_RejectsUndefinedMode()
+        {
+            var e = Build(autoDetect: false, out _);
+            Assert.IsFalse(e.TryPlaceTurnSign(V(3, 0), (TurnMode)2));   // 존재하지 않는 모드값(손상)
+            Assert.AreEqual(0, e.TurnSignTiles.Count);
+            Assert.IsNull(e.GetTurnMode(V(3, 0)));
+        }
+
         // ── Task 2 리뷰 위임 핀(필수 #9): 신호 철거/재배치 후에도 같은 타일의 표지판은 생존 ──
         // TryRemoveSignal/TryPlaceSignal이 _turnSigns를 건드리지 않는다(신호·표지판 독립 소유) — 고정.
         [Test]

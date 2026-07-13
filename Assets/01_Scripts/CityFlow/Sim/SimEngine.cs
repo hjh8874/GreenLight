@@ -383,9 +383,14 @@ namespace CityFlow.Sim
             && !_roundaboutSet.Contains(tile) && !_overpassSet.Contains(tile)
             && !_turnSigns.ContainsKey(tile);                                 // 신호는 검사 안 함(공존)
 
+        // 배치 API·세이브 복원 양쪽이 공유(비대칭 방지) — enum 캐스팅으로 미정의 값(예: (TurnMode)2)이
+        // 들어오는 경로를 여기서 함께 거른다.
+        private static bool IsValidTurnMode(TurnMode mode) =>
+            mode == TurnMode.LeftOnly || mode == TurnMode.RightOnly;
+
         public bool TryPlaceTurnSign(Vector2Int tile, TurnMode mode)
         {
-            if (!CanPlaceTurnSign(tile)) return false;
+            if (!IsValidTurnMode(mode) || !CanPlaceTurnSign(tile)) return false;
             int flat = tile.y * _config.GridWidth + tile.x;
             int idx = _placedTurnSigns.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
             if (idx < 0) _placedTurnSigns.Add(tile); else _placedTurnSigns.Insert(idx, tile);
@@ -636,7 +641,7 @@ namespace CityFlow.Sim
                         // 순서 의미(양방향 배타 후에도 유지): 로터리/입체가 이 블록보다 먼저 복원되고
                         // (그쪽은 인라인 검사라 잔존 _turnSigns의 영향도 없음), 표지판은 여기서
                         // CanPlaceTurnSign 재검증으로 거부 — 같은 좌표 충돌 시 로터리/입체 선점 승.
-                        if (CanPlaceTurnSign(tile) && (mode == TurnMode.LeftOnly || mode == TurnMode.RightOnly))
+                        if (CanPlaceTurnSign(tile) && IsValidTurnMode(mode))
                         {
                             _turnSigns[tile] = mode;
                             _placedTurnSigns.Add(tile);
