@@ -38,5 +38,5 @@ MonoBehaviour:
     BurstFreeReturnRatio: 0.6
     BurstCooldownSeconds: 10
     BurstRewardThreshold: 1
-    BurstRewardMultiplier: 2
+    BurstRewardMultiplier: 1
     OfflineCapHours: 8

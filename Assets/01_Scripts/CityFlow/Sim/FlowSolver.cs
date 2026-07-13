@@ -225,6 +225,9 @@ namespace CityFlow.Sim
         // BurstDetector용 flat 인덱스 접근(전 타일 순회 전제).
         public float GetPendingReward(int flatIndex) => _pendingReward[flatIndex];
         public void ClearPendingReward(int flatIndex) => _pendingReward[flatIndex] = 0f;   // Burst가 소비
+        public void ClearPendingReward(Vector2Int t) => _pendingReward[Index(t)] = 0f;     // 철거 소각용
+        // 장부는 도시 상태와 생명주기 공유 — 세이브 복원 시 이전 도시의 유령 장부 방지(리뷰 2026-07-11).
+        public void ClearAllPendingRewards() => Array.Clear(_pendingReward, 0, _pendingReward.Length);
 
         static CongestionLevel Classify(float ratio, in SimConfig cfg) =>
             ratio > cfg.JamRatio ? CongestionLevel.Jam

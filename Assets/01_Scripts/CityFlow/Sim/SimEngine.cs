@@ -129,6 +129,8 @@ namespace CityFlow.Sim
         public bool Remove(Vector2Int tile)
         {
             if (!_grid.TryRemove(tile, out var removed)) return false;
+            // 철거 = 조용: 그 타일의 밀린 보상 장부(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
+            _solver.ClearPendingReward(tile);
             _events.QueuePlaced(new PlacedEvent(tile, removed, isRemove: true));
             return true;
         }
@@ -293,6 +295,7 @@ namespace CityFlow.Sim
 
             // 복원 = 전체 교체: 비우고 → 재배치 → 교차로 재감지 → 조율 복원 (PR#8 합의 흐름)
             _grid.Clear();
+            _solver.ClearAllPendingRewards();   // 이전 도시의 유령 장부가 새 도시에서 터지는 것 방지
             if (snapshot.PlacedTiles != null)
                 foreach (var t in snapshot.PlacedTiles)
                     _grid.Place(new Vector2Int(t.X, t.Y), t.Type);   // OOB·중복은 Place가 거름(무사고)
