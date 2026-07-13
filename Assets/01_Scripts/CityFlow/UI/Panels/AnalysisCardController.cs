@@ -19,8 +19,7 @@ namespace CityFlow.UI
         [SerializeField] private Color normalColor = Color.white;
         [SerializeField] private Color warningColor = Color.red;
 
-        [Header("Local Congestion Bar")]
-        [SerializeField] private Image imgCongestionFill; // 타일 전용 혼잡도 바
+
 
         [Header("Footer Buttons")]
         [SerializeField] private Button btnResolveJam;
@@ -42,7 +41,6 @@ namespace CityFlow.UI
             TMP_Text vehicleId,
             TMP_Text vehicleType,
             TMP_Text waitTime,
-            Image congestionFill,
             Button resolveJam,
             Button upgrade,
             bool fakeMode)
@@ -52,7 +50,7 @@ namespace CityFlow.UI
             txtVehicleId = vehicleId;
             txtVehicleType = vehicleType;
             txtWaitTime = waitTime;
-            imgCongestionFill = congestionFill;
+
             btnResolveJam = resolveJam;
             btnUpgrade = upgrade;
             useFakeMode = fakeMode;
@@ -153,12 +151,7 @@ namespace CityFlow.UI
                 // 요구사항 수식: += 0.2f * congestion(density)
                 _currentWaitTime += 0.2f * density;
 
-                // 타일 전용 로컬 혼잡도 바 갱신
-                if (imgCongestionFill != null)
-                {
-                    imgCongestionFill.fillAmount = density;
-                    imgCongestionFill.color = Color.Lerp(normalColor, warningColor, density);
-                }
+
 
                 if (txtWaitTime != null)
                 {

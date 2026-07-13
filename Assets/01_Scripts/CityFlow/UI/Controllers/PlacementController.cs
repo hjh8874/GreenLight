@@ -12,6 +12,7 @@ namespace CityFlow.UI
 
     public struct PlacementAction
     {
+        public string GroupId;
         public PlacementActionType ActionType;
         public Vector2Int Coord;
         public TileType PreviousType;
@@ -48,6 +49,9 @@ namespace CityFlow.UI
         
         private TileType _currentType = TileType.Road; 
         private Vector2Int? _lastPlacedCoord = null;
+        private Vector2Int? _lastRemovedCoord = null;
+        private Vector2Int? _rightClickStartCoord = null;
+        private string _currentDragGroupId = null;
 
         /// <summary>
         /// 건설 패널(BuildPanelController) 등에서 타일 타입을 변경할 때 호출합니다.
@@ -105,61 +109,68 @@ namespace CityFlow.UI
         {
             if (_undoStack.Count == 0) return;
 
-            var action = _undoStack.Peek();
-            if (_services != null && _services.Placement != null)
+            string targetGroupId = _undoStack.Peek().GroupId;
+
+            while (_undoStack.Count > 0 && _undoStack.Peek().GroupId == targetGroupId)
             {
-                if (action.ActionType == PlacementActionType.Place)
+                var action = _undoStack.Peek();
+                if (_services != null && _services.Placement != null)
                 {
-                    // 덮어쓰기 취소 시, 기존에 차액을 환불받았다면(netCost < 0) 되돌릴 때 돈을 다시 지불해야 함
-                    if (action.PreviousType != TileType.Empty && action.Cost < 0)
+                    if (action.ActionType == PlacementActionType.Place)
                     {
-                        if (_services.Economy != null && _services.Economy.Coins < -action.Cost)
+                        // 덮어쓰기 취소 시, 기존에 차액을 환불받았다면(netCost < 0) 되돌릴 때 돈을 다시 지불해야 함
+                        if (action.PreviousType != TileType.Empty && action.Cost < 0)
                         {
-                            Debug.LogWarning("[Undo] 코인이 부족하여 덮어쓰기를 복구할 수 없습니다!");
-                            return;
-                        }
-                    }
-
-                    // 현재 지어진 건물을 철거
-                    if (_services.Placement.Remove(action.Coord))
-                    {
-                        if (action.PreviousType != TileType.Empty)
-                        {
-                            // 덮어쓰기 복구: 원래 건물 다시 짓기
-                            _services.Placement.Place(action.Coord, action.PreviousType);
-                            
-                            if (_services.Economy != null)
+                            if (_services.Economy != null && _services.Economy.Coins < -action.Cost)
                             {
-                                if (action.Cost > 0) _services.Economy.AddCoins(action.Cost, "Undo Overwrite Refund");
-                                else if (action.Cost < 0) _services.Economy.TrySpend(-action.Cost);
+                                Debug.LogWarning("[Undo] 코인이 부족하여 덮어쓰기를 복구할 수 없습니다!");
+                                return; // 그룹 내 실패 시 롤백 중단
                             }
-                            Debug.Log($"[Undo] 덮어쓰기 취소됨 (복구 완료 및 역연산): {action.Coord}");
                         }
-                        else
-                        {
-                            // 순수 빈 땅에 지은 것 복구
-                            if (_services.Economy != null && action.Cost > 0)
-                                _services.Economy.AddCoins(action.Cost, "Undo Build 100% Refund");
-                            Debug.Log($"[Undo] Place 취소됨 (철거 수행 및 환불 {action.Cost}): {action.Coord}");
-                        }
-                        _undoStack.Pop(); // 성공적으로 복구 시 스택에서 제거
-                    }
-                }
-                else if (action.ActionType == PlacementActionType.Remove)
-                {
-                    // 철거한 걸 되돌리기 -> 다시 원래 건물로 건설
-                    if (_services.Economy != null && action.Cost > 0 && _services.Economy.Coins < action.Cost)
-                    {
-                        Debug.LogWarning("[Undo] 코인이 부족하여 철거를 복구할 수 없습니다!");
-                        return; // 잔액 부족 시 Pop 안 함
-                    }
 
-                    if (_services.Placement.Place(action.Coord, action.PreviousType))
+                        // 현재 지어진 건물을 철거
+                        if (_services.Placement.Remove(action.Coord))
+                        {
+                            if (action.PreviousType != TileType.Empty)
+                            {
+                                // 덮어쓰기 복구: 원래 건물 다시 짓기
+                                _services.Placement.Place(action.Coord, action.PreviousType);
+                                
+                                if (_services.Economy != null)
+                                {
+                                    if (action.Cost > 0) _services.Economy.AddCoins(action.Cost, "Undo Overwrite Refund");
+                                    else if (action.Cost < 0) _services.Economy.TrySpend(-action.Cost);
+                                }
+                                Debug.Log($"[Undo] 덮어쓰기 취소됨 (복구 완료 및 역연산): {action.Coord}");
+                            }
+                            else
+                            {
+                                // 순수 빈 땅에 지은 것 복구
+                                if (_services.Economy != null && action.Cost > 0)
+                                    _services.Economy.AddCoins(action.Cost, "Undo Build 100% Refund");
+                                Debug.Log($"[Undo] Place 취소됨 (철거 수행 및 환불 {action.Cost}): {action.Coord}");
+                            }
+                            _undoStack.Pop(); // 성공적으로 복구 시 스택에서 제거
+                        }
+                        else return; // 엔진 롤백 실패 시 중단
+                    }
+                    else if (action.ActionType == PlacementActionType.Remove)
                     {
-                        if (_services.Economy != null && action.Cost > 0)
-                            _services.Economy.TrySpend(action.Cost);
-                        Debug.Log($"[Undo] Remove 취소됨 (복구 수행 및 {action.Cost} 차감): {action.Coord}");
-                        _undoStack.Pop(); // 성공 시 스택에서 제거
+                        // 철거한 걸 되돌리기 -> 다시 원래 건물로 건설
+                        if (_services.Economy != null && action.Cost > 0 && _services.Economy.Coins < action.Cost)
+                        {
+                            Debug.LogWarning("[Undo] 코인이 부족하여 철거를 복구할 수 없습니다!");
+                            return; // 잔액 부족 시 롤백 중단
+                        }
+
+                        if (_services.Placement.Place(action.Coord, action.PreviousType))
+                        {
+                            if (_services.Economy != null && action.Cost > 0)
+                                _services.Economy.TrySpend(action.Cost);
+                            Debug.Log($"[Undo] Remove 취소됨 (복구 수행 및 {action.Cost} 차감): {action.Coord}");
+                            _undoStack.Pop(); // 성공 시 스택에서 제거
+                        }
+                        else return; // 엔진 롤백 실패 시 중단
                     }
                 }
             }
@@ -167,53 +178,99 @@ namespace CityFlow.UI
 
         private void Update()
         {
-            // 6. 마우스 우클릭 시 철거 확인창 호출 (건설 모드 여부와 상관없이 항상 동작)
-            if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
+            // 6. 마우스 우클릭 시 철거 확인창 호출 (도로는 드래그 즉시 철거 지원)
+            if (Mouse.current != null)
             {
-                // 마우스가 UI 패널 위에 있으면 씬 클릭 무시
-                if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
-                {
-                    Vector2Int rightClickCoord = GetMouseGridCoordinate();
-                        TileType currentTileType = TileType.Empty;
-                        if (useFakeMode)
-                        {
-                            currentTileType = TileType.Road; // UI 단독 테스트 시에는 아무 바닥이나 Road가 있다고 가정
-                        }
-                        else if (_services != null && _services.TileData != null)
-                        {
-                            currentTileType = _services.TileData.GetTileType(rightClickCoord);
-                        }
+                bool rightPressed = Mouse.current.rightButton.isPressed;
+                bool rightPressedThisFrame = Mouse.current.rightButton.wasPressedThisFrame;
 
-                        if (currentTileType != TileType.Empty)
+                if (rightPressedThisFrame)
+                {
+                    if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
+                    {
+                        _rightClickStartCoord = GetMouseGridCoordinate();
+                        _currentDragGroupId = Guid.NewGuid().ToString();
+                    }
+                }
+
+                if (rightPressed)
+                {
+                    // 마우스가 UI 패널 위에 있으면 씬 클릭 무시
+                    if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
+                    {
+                        Vector2Int rightClickCoord = GetMouseGridCoordinate();
+
+                        // 중복 철거(드래그 중 같은 타일 반복 철거) 방지
+                        if (_lastRemovedCoord == null || _lastRemovedCoord.Value != rightClickCoord)
                         {
-                            // 도로(Road)인 경우 팝업 없이 즉시 철거
-                            if (currentTileType == TileType.Road)
+                            TileType currentTileType = TileType.Empty;
+                            if (useFakeMode)
                             {
-                                TileType oldType = _currentType;
-                                _currentType = TileType.Empty; 
-                                PlaceInfrastructure(rightClickCoord);
-                                _currentType = oldType;
+                                currentTileType = TileType.Road;
                             }
-                            else if (confirmPopup != null)
+                            else if (_services != null && _services.TileData != null)
                             {
-                                confirmPopup.Show("Demolish this tile?", () => 
+                                currentTileType = _services.TileData.GetTileType(rightClickCoord);
+                            }
+
+                            if (currentTileType != TileType.Empty)
+                            {
+                                if (currentTileType == TileType.Road)
                                 {
+                                    // 도로(Road)인 경우 드래그로 팝업 없이 즉시 철거
+                                    _lastRemovedCoord = rightClickCoord;
                                     TileType oldType = _currentType;
                                     _currentType = TileType.Empty; 
                                     PlaceInfrastructure(rightClickCoord);
-                                    _currentType = oldType; 
-                                });
-                            }
-                            else
-                            {
-                                TileType oldType = _currentType;
-                                _currentType = TileType.Empty; 
-                                PlaceInfrastructure(rightClickCoord);
-                                _currentType = oldType;
+                                    _currentType = oldType;
+                                }
                             }
                         }
                     }
                 }
+
+                if (Mouse.current.rightButton.wasReleasedThisFrame)
+                {
+                    if (EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject())
+                    {
+                        Vector2Int rightClickCoord = GetMouseGridCoordinate();
+                        
+                        // 단일 클릭 판정 (누른 곳과 뗀 곳이 같음)
+                        if (_rightClickStartCoord != null && _rightClickStartCoord.Value == rightClickCoord)
+                        {
+                            TileType currentTileType = TileType.Empty;
+                            if (useFakeMode) currentTileType = TileType.Road;
+                            else if (_services != null && _services.TileData != null) currentTileType = _services.TileData.GetTileType(rightClickCoord);
+
+                            if (currentTileType != TileType.Empty && currentTileType != TileType.Road)
+                            {
+                                // 도로가 아닌 경우(건물 등) 단일 클릭일 때만 철거 팝업
+                                _currentDragGroupId = Guid.NewGuid().ToString(); // 팝업 철거도 독립된 Undo 액션 그룹 부여
+                                if (confirmPopup != null)
+                                {
+                                    confirmPopup.Show("Demolish this tile?", () => 
+                                    {
+                                        TileType oldType = _currentType;
+                                        _currentType = TileType.Empty; 
+                                        PlaceInfrastructure(rightClickCoord);
+                                        _currentType = oldType; 
+                                    });
+                                }
+                                else
+                                {
+                                    TileType oldType = _currentType;
+                                    _currentType = TileType.Empty; 
+                                    PlaceInfrastructure(rightClickCoord);
+                                    _currentType = oldType;
+                                }
+                            }
+                        }
+                    }
+                    _lastRemovedCoord = null;
+                    _rightClickStartCoord = null;
+                    _currentDragGroupId = null;
+                }
+            }
             if (!_isBuildingMode || ghostRenderer == null) return;
 
             // 1. 방어 로직: 마우스가 UI(버튼, 패널) 위에 있으면 바닥 클릭(건설)을 방지합니다.
@@ -240,6 +297,11 @@ namespace CityFlow.UI
             // 5. 마우스 좌클릭 시 최종 건설 명령 하달 (드래그 연속 건설 지원)
             if (Mouse.current != null)
             {
+                if (Mouse.current.leftButton.wasPressedThisFrame)
+                {
+                    _currentDragGroupId = Guid.NewGuid().ToString(); // 좌클릭 드래그 시작 시 새 Undo 그룹 생성
+                }
+
                 if (Mouse.current.leftButton.isPressed && canPlace)
                 {
                     // 동일 타일에 중복 건설을 막기 위한 방어 로직
@@ -254,6 +316,7 @@ namespace CityFlow.UI
                 if (Mouse.current.leftButton.wasReleasedThisFrame)
                 {
                     _lastPlacedCoord = null;
+                    _currentDragGroupId = null;
                 }
             }
         }
@@ -314,6 +377,8 @@ namespace CityFlow.UI
                 return;
             }
 
+            string groupId = string.IsNullOrEmpty(_currentDragGroupId) ? Guid.NewGuid().ToString() : _currentDragGroupId;
+
             if (_services != null && _services.Placement != null && _services.TileData != null)
             {
                 TileType previousType = _services.TileData.GetTileType(coord);
@@ -327,7 +392,7 @@ namespace CityFlow.UI
                         if (_services.Economy != null && refundCost > 0)
                             _services.Economy.AddCoins(refundCost, "Demolish Refund");
                             
-                        _undoStack.Push(new PlacementAction { ActionType = PlacementActionType.Remove, Coord = coord, PreviousType = previousType, NewType = TileType.Empty, Cost = refundCost });
+                        _undoStack.Push(new PlacementAction { GroupId = groupId, ActionType = PlacementActionType.Remove, Coord = coord, PreviousType = previousType, NewType = TileType.Empty, Cost = refundCost });
                         Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 철거 명령 전달 (환불 {refundCost}) 및 Undo 기록 완료.");
                     }
                 }
@@ -359,7 +424,7 @@ namespace CityFlow.UI
                                 }
                                 
                                 // Undo 기록은 덮어쓰기(Place)로 기록하여 복구 시 previousType로 돌아가게 함
-                                _undoStack.Push(new PlacementAction { ActionType = PlacementActionType.Place, Coord = coord, PreviousType = previousType, NewType = _currentType, Cost = netCost });
+                                _undoStack.Push(new PlacementAction { GroupId = groupId, ActionType = PlacementActionType.Place, Coord = coord, PreviousType = previousType, NewType = _currentType, Cost = netCost });
                                 Debug.Log($"[Real Mode] 덮어쓰기 성공! {previousType} -> {_currentType}. 차액: {netCost}");
                             }
                             else
@@ -383,7 +448,7 @@ namespace CityFlow.UI
                             if (_services.Economy != null && buildCost > 0)
                                 _services.Economy.TrySpend(buildCost);
                                 
-                            _undoStack.Push(new PlacementAction { ActionType = PlacementActionType.Place, Coord = coord, PreviousType = previousType, NewType = _currentType, Cost = buildCost });
+                            _undoStack.Push(new PlacementAction { GroupId = groupId, ActionType = PlacementActionType.Place, Coord = coord, PreviousType = previousType, NewType = _currentType, Cost = buildCost });
                             Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 {_currentType} 건설 명령 전달 (비용 {buildCost}) 및 Undo 기록 완료.");
                         }
                     }
