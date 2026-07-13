@@ -33,6 +33,8 @@ namespace CityFlow.View
         [SerializeField] private float gridLineThickness = 0.045f;
         [SerializeField] private float overrideSpeedMul = 2.2f;    // 오버라이드 라인 차량 속도 배율
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
+        [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
+        [SerializeField] private float followGap = 0.4f;           // 차간 유지 거리(타일 비율)
 
         [Header("Colors")]
         [SerializeField] private Color boardColor = new Color(0.78f, 0.82f, 0.78f);
@@ -104,6 +106,8 @@ namespace CityFlow.View
             public GameObject Object;
             public Renderer Renderer;
             public float Phase;
+            public Vector3 Pos;   // 지난 프레임 위치·진행 방향 — 차간 유지 판정용(1프레임 지연 근사)
+            public Vector3 Dir;
         }
 
         private sealed class BurstVisual
@@ -520,6 +524,12 @@ namespace CityFlow.View
                 speed = 0f;
             }
 
+            // 차간 유지(MM식 추종): 같은 방향 바로 앞 차가 서 있으면 나도 정지 — 신호 앞 줄서기가 생김.
+            if (speed > 0f && IsBlockedByLeader(vehicle))
+            {
+                speed = 0f;
+            }
+
             vehicle.Phase = Mathf.Repeat(vehicle.Phase + Time.deltaTime * speed, segmentCount * 2f);
 
             float folded = Fold(vehicle.Phase, segmentCount);
@@ -528,12 +538,18 @@ namespace CityFlow.View
             Vector3 a = GridToLocal(route[index], vehicleZ);
             Vector3 b = GridToLocal(route[index + 1], vehicleZ);
             Vector3 direction = (b - a).normalized;
+            // 왕복 유령: 접힌 복귀 구간이면 실제 진행은 역방향 — 차선·바라보기 둘 다 이 방향 기준.
+            bool forward = vehicle.Phase <= segmentCount;
+            Vector3 travelDir = forward ? direction : -direction;
 
-            vehicle.Object.transform.localPosition = Vector3.Lerp(a, b, t);
+            // 우측통행 차선 오프셋: 진행 방향의 오른쪽으로 비껴 그림 → 왕복이 두 차선으로 갈라짐.
+            Vector3 lane = new Vector3(travelDir.y, -travelDir.x, 0f) * (tileSize * laneOffset);
+            vehicle.Object.transform.localPosition = Vector3.Lerp(a, b, t) + lane;
 
-            if (direction.sqrMagnitude > 0.001f)
+            if (travelDir.sqrMagnitude > 0.001f)
             {
-                float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+                // 복귀 구간도 진짜 진행 방향을 바라봄(뒷걸음 유령 제거).
+                float angle = Mathf.Atan2(travelDir.y, travelDir.x) * Mathf.Rad2Deg;
                 vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
             }
 
@@ -542,6 +558,53 @@ namespace CityFlow.View
                 Color routeColor = blockedBySignal ? Color.red : Color.HSVToRGB((routeIndex * 0.137f) % 1f, 0.7f, 0.95f);
                 ApplyRendererColor(vehicle.Renderer, routeColor);
             }
+
+            vehicle.Pos = vehicle.Object.transform.localPosition;
+            vehicle.Dir = travelDir;
+        }
+
+        // 반대 차선(마주 오는 차)은 무시 — 차선 오프셋으로 이미 분리. 같은 방향 추종만이라 순환 대기 없음
+        // (SimDebug 렌더러의 데드락 근본수정과 같은 규약). 96대 전수 검사 = 프레임당 ~9천 회, 무해.
+        private bool IsBlockedByLeader(RouteVehicle vehicle)
+        {
+            if (vehicle.Dir.sqrMagnitude < 0.001f)
+            {
+                return false;   // 첫 프레임(이력 없음)
+            }
+
+            float gap = tileSize * followGap;
+            float gapSq = gap * gap;
+
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                RouteVehicle other = vehicles[i];
+
+                if (other == vehicle || !other.Object.activeSelf)
+                {
+                    continue;
+                }
+
+                Vector3 to = other.Pos - vehicle.Pos;
+
+                if (to.sqrMagnitude > gapSq || to.sqrMagnitude < 0.0001f)
+                {
+                    continue;   // 멀거나, 완전 겹침(모호) — 겹침은 서로 못 막게 해 교착 방지
+                }
+
+                if (Vector3.Dot(vehicle.Dir, other.Dir) <= 0.5f)
+                {
+                    continue;   // 같은 방향만 추종
+                }
+
+                if (Vector3.Dot(vehicle.Dir, to.normalized) <= 0.6f)
+                {
+                    continue;   // 앞쪽에 있을 때만
+                }
+
+                return true;
+            }
+
+            return false;
         }
 
         private static float Fold(float phase, int segmentCount)
