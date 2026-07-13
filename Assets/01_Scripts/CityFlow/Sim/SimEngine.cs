@@ -598,7 +598,14 @@ namespace CityFlow.Sim
                 turnSigns[i] = new TurnSignSaveData { X = t.x, Y = t.y, Mode = (int)_turnSigns[t] };
             }
 
-            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses, Oneways = oneways, TurnSigns = turnSigns };
+            var priorityRoads = new PriorityRoadSaveData[_placedPriorityRoads.Count];
+            for (int i = 0; i < _placedPriorityRoads.Count; i++)
+            {
+                var t = _placedPriorityRoads[i];
+                priorityRoads[i] = new PriorityRoadSaveData { X = t.x, Y = t.y, Axis = (int)_priorityDirs[t] };
+            }
+
+            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses, Oneways = oneways, TurnSigns = turnSigns, PriorityRoads = priorityRoads };
         }
 
         // 주의: _overrideReadyAt은 복원해도 유지(의도) — 세이브 로드로 쿨다운을 리셋하는 악용 방지.
@@ -696,6 +703,22 @@ namespace CityFlow.Sim
                         }
                     }
                 _placedTurnSigns.Sort((a, b) =>
+                    (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
+
+                _placedPriorityRoads.Clear();
+                _priorityDirs.Clear();
+                if (snapshot.PriorityRoads != null)
+                    foreach (var p in snapshot.PriorityRoads)
+                    {
+                        var tile = new Vector2Int(p.X, p.Y);
+                        // 손상 세이브 방어: 배치 조건 재검증(4자 배타·교차로) + Axis 값 범위 검증.
+                        if (CanPlacePriorityRoad(tile) && (p.Axis == 0 || p.Axis == 1))
+                        {
+                            _priorityDirs[tile] = (Axis)p.Axis;
+                            _placedPriorityRoads.Add(tile);
+                        }
+                    }
+                _placedPriorityRoads.Sort((a, b) =>
                     (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
             }
             RebuildSignals();

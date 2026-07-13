@@ -134,5 +134,32 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0, e.PriorityRoadTiles.Count);
             Assert.IsFalse(e.TryRemovePriorityRoad(V(3, 0)));
         }
+
+        // ── 세이브 왕복(스펙 4단계): 좌표+축 보존, 구세이브(null) 마이그레이션 공짜 ──
+        [Test]
+        public void SaveRoundtrip_RestoresPriorityRoadsWithAxis()
+        {
+            var e = Build(autoDetect: false, out _);
+            e.TryPlacePriorityRoad(V(3, 0), Axis.Horizontal);
+            e.TryPlacePriorityRoad(V(6, 0), Axis.Vertical);
+            var snap = e.CreateSnapshot();
+
+            var e2 = Build(autoDetect: false, out _);
+            e2.RestoreSnapshot(snap);
+            Assert.AreEqual(2, e2.PriorityRoadTiles.Count);
+            Assert.AreEqual(Axis.Horizontal, e2.GetPriorityAxis(V(3, 0)));
+            Assert.AreEqual(Axis.Vertical, e2.GetPriorityAxis(V(6, 0)));
+        }
+
+        [Test]
+        public void LegacySave_WithoutPriorityRoads_RestoresClean()
+        {
+            var e = Build(autoDetect: false, out _);
+            var snap = e.CreateSnapshot();
+            snap.PriorityRoads = null;   // 구세이브 시뮬
+            var e2 = Build(autoDetect: false, out _);
+            Assert.DoesNotThrow(() => e2.RestoreSnapshot(snap));
+            Assert.AreEqual(0, e2.PriorityRoadTiles.Count);
+        }
     }
 }
