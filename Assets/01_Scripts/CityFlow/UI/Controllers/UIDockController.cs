@@ -25,6 +25,7 @@ namespace CityFlow.UI
         [SerializeField] private bool normalizeLayoutOnStart;
 
         private MenuType _currentMenu = MenuType.None;
+        private bool _isBuildPanelCollapsed;
         private bool _isBound;
 
         public void Configure(
@@ -115,6 +116,8 @@ namespace CityFlow.UI
         /// </summary>
         public void ToggleMenu(MenuType menu)
         {
+            _isBuildPanelCollapsed = false;
+
             if (_currentMenu == menu)
             {
                 // 이미 열려있는 메뉴의 버튼을 또 누르면 닫기
@@ -135,25 +138,25 @@ namespace CityFlow.UI
         public void CloseAllPanels()
         {
             _currentMenu = MenuType.None;
+            _isBuildPanelCollapsed = false;
             UpdatePanelVisibility();
         }
 
-        public void HideBuildPanelForPlacement()
+        public void CollapseBuildPanelForPlacement()
         {
-            _currentMenu = MenuType.None;
+            if (_currentMenu != MenuType.Build)
+            {
+                return;
+            }
 
-            if (panelBuild != null) panelBuild.SetActive(false);
-            if (panelResearch != null) panelResearch.SetActive(false);
-            if (panelStats != null) panelStats.SetActive(false);
-            if (panelSettings != null) panelSettings.SetActive(false);
-
-            placementController?.ToggleBuildMode(true);
+            _isBuildPanelCollapsed = true;
+            UpdatePanelVisibility();
         }
 
         private void UpdatePanelVisibility()
         {
             // _currentMenu 상태에 따라 4개의 패널 중 딱 하나만 켜고 나머지는 모두 끕니다.
-            if (panelBuild != null) panelBuild.SetActive(_currentMenu == MenuType.Build);
+            if (panelBuild != null) panelBuild.SetActive(_currentMenu == MenuType.Build && !_isBuildPanelCollapsed);
             if (panelResearch != null) panelResearch.SetActive(_currentMenu == MenuType.Research);
             if (panelStats != null) panelStats.SetActive(_currentMenu == MenuType.Stats);
             if (panelSettings != null) panelSettings.SetActive(_currentMenu == MenuType.Settings);
