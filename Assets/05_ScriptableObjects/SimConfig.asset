@@ -29,8 +29,9 @@ MonoBehaviour:
     DemandChoicePool: 3
     RushAmplitude: 0.6
     DayLengthSeconds: 120
-    OverrideDurationSeconds: 20
-    OverrideCooldownSeconds: 30
+    OverrideDurationSeconds: 3
+    OverrideCooldownSeconds: 60
+    OverrideCorridorSignals: 3
     CoinBase: 1
     BurstJamEnterRatio: 1
     BurstFreeReturnRatio: 0.6

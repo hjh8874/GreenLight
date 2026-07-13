@@ -21,5 +21,12 @@ namespace CityFlow.Contracts
         // 초록 길이 레버: 그 교차로가 차를 통과시키는 시간 비율(유효 용량). [0, 주기]로 클램프.
         int GetSignalGreenSlots(Vector2Int tile);
         bool TrySetSignalGreenSlots(Vector2Int tile, int slots);
+
+        // 오버라이드 스킬(기획 §2-D): 한 방향을 duration초 강제 초록 + 엔진 쿨다운. 능동 개입의 손맛 레버.
+        // 쿨다운을 엔진이 들고 있어 UI(트러스트 경계 밖)가 못 우회 → 조회만 계약으로 노출.
+        // 제안(E-1): 튜너·통합뷰가 SimEngine 직접 캐스팅하던 걸 계약으로 승격. 최종 확정은 김건 합의.
+        bool TryOverrideSignal(Vector2Int tile, bool horizontal);
+        float GetOverrideSecondsLeft(Vector2Int tile);   // 0 = 비활성
+        float GetOverrideCooldownLeft(Vector2Int tile);  // 0 = 사용 가능
     }
 }

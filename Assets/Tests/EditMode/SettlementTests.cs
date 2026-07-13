@@ -75,5 +75,47 @@ namespace CityFlow.Sim.Tests
             eng.SettleOffline(1.0);                    // 잔여 0.5 + 0.5 = 1.0 → 1코인
             Assert.AreEqual(1L, settlements[1].Coins);
         }
+
+        // 신호(교차로) 있는 도시: 듀티 0.5 → 유효 용량 5 < 수요 6이라 신호가 병목.
+        // 오버라이드(강제 초록)가 처리량을 실제로 바꾸는 조건 — 정산 무시 검증의 전제.
+        static SimEngine BuildSignalCity(out List<SettlementEvent> settlements)
+        {
+            var c = SimConfig.Default();
+            c.TickInterval = 0.25f;
+            c.GridWidth = 9; c.GridHeight = 2;
+            c.DemandPerHouse = 6f;
+            c.RoadCapacity = 10f;
+            c.CoinBase = 1f;
+            c.OfflineCapHours = 8f;
+
+            var hub = new SimEventHub();
+            var s = new List<SettlementEvent>();
+            hub.SettlementComputed += e => s.Add(e);
+            settlements = s;
+
+            var eng = new SimEngine(c, hub);
+            for (int x = 0; x <= 8; x++) eng.Place(V(x, 0), TileType.Road);
+            eng.Place(V(4, 1), TileType.Road);   // (4,0)이 교차로 신호
+            eng.Place(V(0, 1), TileType.House);
+            eng.Place(V(8, 1), TileType.Office);
+            eng.Tick(0.25f);                     // 교차로 감지
+            return eng;
+        }
+
+        [Test]
+        public void Settle_IgnoresActiveOverride_AndExpiresIt()
+        {
+            // 정산은 평상 신호 기준 = 공정(맥동 무시와 같은 철학). 정산 직전에 오버라이드를
+            // 탭해도 코인은 안 탭한 대조군과 동일해야 하고, 복귀 시 잔여 오버라이드는 소멸.
+            var tapped = BuildSignalCity(out var tappedSettlements);
+            Assert.IsTrue(tapped.TryOverrideSignal(V(4, 0), horizontal: true));   // 정산 직전 강제 초록
+            tapped.SettleOffline(3600.0);
+
+            var control = BuildSignalCity(out var controlSettlements);            // 동일 도시, 탭 없음
+            control.SettleOffline(3600.0);
+
+            Assert.AreEqual(controlSettlements[0].Coins, tappedSettlements[0].Coins);  // 오버라이드 무시
+            Assert.AreEqual(0f, tapped.GetOverrideSecondsLeft(V(4, 0)));               // 잔여 오버라이드 소멸
+        }
     }
 }
