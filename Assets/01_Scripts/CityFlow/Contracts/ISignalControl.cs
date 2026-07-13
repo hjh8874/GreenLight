@@ -11,7 +11,7 @@ namespace CityFlow.Contracts
     // 제안(설계 §5): SimEngine에 흩어져 있던 신호 조작 메서드를 계약으로 승격. 최종 확정은 주석·김건 합의.
     public interface ISignalControl
     {
-        // 자동 감지된 교차로(신호) 타일들. UI가 조작 대상을 여기서 고른다.
+        // 존재하는 신호 타일들(자동 감지 또는 배치). UI가 조작 대상을 여기서 고른다.
         IReadOnlyList<Vector2Int> SignalTiles { get; }
 
         // 오프셋 레버: 인접 신호 타이밍을 밀어 그린웨이브를 맞춘다. 값은 랩어라운드(주기 등가).
@@ -29,5 +29,13 @@ namespace CityFlow.Contracts
         bool TryOverrideSignal(Vector2Int tile, bool horizontal);
         float GetOverrideSecondsLeft(Vector2Int tile);   // 0 = 비활성
         float GetOverrideCooldownLeft(Vector2Int tile);  // 0 = 사용 가능
+
+        // 신호 배치(구매 피벗 2단계, 스펙 2026-07-11): AutoDetectSignals=false 모드에서만 유효.
+        // greenSlots = 구매 시 정하는 "방향+초"(가로 초록 슬롯 — 주기 절반 초과 = 가로 우선).
+        // 가격 검증은 상점(UI+경제)이 호출 전에 — 엔진은 배치 규칙(교차로·중복)만 지킨다.
+        // 제안: 상점 UI가 붙을 창구. 최종 확정은 김건 합의.
+        bool CanPlaceSignal(Vector2Int tile);
+        bool TryPlaceSignal(Vector2Int tile, int greenSlots);
+        bool TryRemoveSignal(Vector2Int tile);
     }
 }

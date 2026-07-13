@@ -62,6 +62,11 @@ namespace CityFlow.Sim
         // 2면 부하율 1.5 타일이 4배 비쌈 → 몇 칸 우회가 이득 🔓
         public float RoutingCongestionWeight;
 
+        // ── 신호 배치 모드(구매 피벗 2단계) ──
+        // true = 현행 자동 감지(모든 교차로에 신호). false = 배치된 곳에만 존재(TryPlaceSignal).
+        // 상점 UI(김건) 도입 시 asset에서 false 전환 — 그날 무신호 간섭 λ가 라이브 활성화 🔓
+        public bool AutoDetectSignals;
+
         // ── 보상(코인) 원료 ────────────────────
         public float CoinBase;          // 🔓 공식 형태·가중치 잠정
 
@@ -102,6 +107,7 @@ namespace CityFlow.Sim
             OverrideCorridorSignals = 3,
             UnsignaledInterference = 1.5f,
             RoutingCongestionWeight = 2f,
+            AutoDetectSignals = true,
             CoinBase = 1f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,
