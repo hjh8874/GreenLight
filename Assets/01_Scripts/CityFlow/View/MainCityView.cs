@@ -113,6 +113,8 @@ namespace CityFlow.View
             public float Phase;
             public Vector3 Pos;   // 지난 프레임 위치·진행 방향 — 차간 유지 판정용(1프레임 지연 근사)
             public Vector3 Dir;
+            public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
+            public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
         }
 
         private sealed class BurstVisual
@@ -120,6 +122,30 @@ namespace CityFlow.View
             public GameObject Object;
             public float HideAt;
         }
+
+        private sealed class CoinVisual
+        {
+            public GameObject Object;
+            public Vector3 Velocity;
+            public float DieAt;
+        }
+
+        private sealed class NoteVisual
+        {
+            public TextMesh Text;
+            public float DieAt;
+        }
+
+        private readonly List<CoinVisual> coins = new();
+        private readonly List<NoteVisual> notes = new();
+        [SerializeField] private Color coinColor = new Color(1f, 0.84f, 0.2f);
+
+        // 뷰팩 이펙트 오브젝트 풀(#48 리뷰 — 김건): OnFlowBurst가 초당 수십 번 터지면
+        // Instantiate/Destroy 반복이 GC 스파이크(프레임 드랍)를 냈다. 죽은 오브젝트는
+        // Destroy 대신 SetActive(false)로 풀에 반납해 재사용 → 정상상태 GC 0.
+        private readonly Stack<GameObject> burstPool = new();
+        private readonly Stack<GameObject> coinPool = new();
+        private readonly Stack<GameObject> notePool = new();
 
         public void Initialize(CityFlowServices services)
         {
@@ -146,6 +172,7 @@ namespace CityFlow.View
             RefreshRoundabouts();
             RefreshOverpasses();
             RefreshVehicles();
+            PrewarmEffectPools();
         }
 
         private void OnDestroy()
@@ -173,6 +200,8 @@ namespace CityFlow.View
             RefreshOverpasses();
             RefreshVehicles();
             UpdateBursts();
+            UpdateCoins();
+            UpdateNotes();
         }
 
         private void BuildRoots()
@@ -493,6 +522,33 @@ namespace CityFlow.View
             return PrepareRenderer(bar.GetComponent<Renderer>());
         }
 
+        // 임시 텍스트 마커(에셋 스왑 전): 기본 폰트 TextMesh. 이모지는 tofu 위험 — 글리프 보장 문자만.
+        private GameObject CreateTextMark(Transform parent, string text, Color color, float size)
+        {
+            GameObject go = new GameObject($"TextMark_{text}");
+            go.transform.SetParent(parent, false);
+            TextMesh tm = go.AddComponent<TextMesh>();
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            tm.font = font;
+            go.GetComponent<MeshRenderer>().sharedMaterial = font.material;
+            tm.text = text;
+            tm.color = color;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.characterSize = size;
+            tm.fontSize = 48;
+            return go;
+        }
+
+        private GameObject CreateSmokePuff()
+        {
+            GameObject puff = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            puff.name = "SmokePuff";
+            puff.transform.SetParent(vehicleRoot, false);
+            puff.transform.localScale = Vector3.one * (tileSize * 0.12f);
+            ApplyRendererColor(PrepareRenderer(puff.GetComponent<Renderer>()), new Color(0.45f, 0.45f, 0.45f));
+            return puff;
+        }
+
         private void ApplySignalState(Vector2Int tile, SignalVisual visual, bool selected)
         {
             Color horizontal = GetSignalColor(tile, horizontal: true);
@@ -562,6 +618,11 @@ namespace CityFlow.View
 
                 if (!active)
                 {
+                    if (vehicles[i].AngryMark != null)
+                    {
+                        vehicles[i].AngryMark.SetActive(false);
+                        vehicles[i].SmokePuff.SetActive(false);
+                    }
                     continue;
                 }
 
@@ -665,6 +726,28 @@ namespace CityFlow.View
             {
                 Color routeColor = blockedBySignal ? Color.red : Color.HSVToRGB((routeIndex * 0.137f) % 1f, 0.7f, 0.95f);
                 ApplyRendererColor(vehicle.Renderer, routeColor);
+            }
+
+            // Jam 분노 팝업(스펙 2026-07-12 §1): 내가 서 있는 타일이 Jam이면 ! + 매연 — 가짜 디테일.
+            bool jammed = tileData.GetCongestion(currentTile) == CongestionLevel.Jam;
+            if (jammed && vehicle.AngryMark == null)
+            {
+                vehicle.AngryMark = CreateTextMark(vehicleRoot, "!", Color.red, tileSize * 0.14f);
+                vehicle.SmokePuff = CreateSmokePuff();
+            }
+            if (vehicle.AngryMark != null)
+            {
+                vehicle.AngryMark.SetActive(jammed);
+                vehicle.SmokePuff.SetActive(jammed);
+                if (jammed)
+                {
+                    Vector3 basePos = vehicle.Object.transform.localPosition;
+                    float pulse = 1f + 0.2f * Mathf.Abs(Mathf.Sin(Time.time * 6f));
+                    vehicle.AngryMark.transform.localPosition = basePos + new Vector3(0f, tileSize * 0.32f, -0.1f);
+                    vehicle.AngryMark.transform.localScale = Vector3.one * pulse;
+                    vehicle.SmokePuff.transform.localPosition = basePos - travelDir * (tileSize * 0.28f)
+                        + new Vector3(0f, tileSize * 0.06f * Mathf.Sin(Time.time * 2f), 0f);
+                }
             }
 
             vehicle.Pos = vehicle.Object.transform.localPosition;
@@ -961,9 +1044,8 @@ namespace CityFlow.View
 
         private void OnFlowBurst(FlowBurstEvent e)
         {
-            GameObject burst = InstantiatePrefabOrPrimitive(burstPrefab, PrimitiveType.Sphere);
+            GameObject burst = Rent(burstPool) ?? MakeBurst();
             burst.name = $"FlowBurst_{e.Tile.x}_{e.Tile.y}";
-            burst.transform.SetParent(effectRoot, false);
             burst.transform.localPosition = GridToLocal(e.Tile, -0.5f);
             burst.transform.localScale = Vector3.one * tileSize * 0.55f;
             ApplyRendererColor(burst.GetComponentInChildren<Renderer>(), flowBurstColor);
@@ -973,6 +1055,25 @@ namespace CityFlow.View
                 Object = burst,
                 HideAt = Time.time + burstSeconds
             });
+
+            // 동전 분수 + 음표(스펙 2026-07-12 §2): 길이 뚫리는 순간의 도파민 — 뷰 전용, Random 무방.
+            Vector3 origin = GridToLocal(e.Tile, -0.5f);
+            for (int i = 0; i < 6; i++)
+            {
+                GameObject coin = Rent(coinPool) ?? MakeCoin();
+                coin.transform.localPosition = origin;
+                coins.Add(new CoinVisual
+                {
+                    Object = coin,
+                    Velocity = new Vector3(Random.Range(-1.2f, 1.2f), Random.Range(1.6f, 2.4f), 0f) * tileSize,
+                    DieAt = Time.time + 0.9f,
+                });
+            }
+            GameObject note = Rent(notePool) ?? MakeNote();
+            TextMesh noteText = note.GetComponent<TextMesh>();
+            noteText.color = coinColor;   // 재사용분: 페이드로 낮아진 alpha 복원
+            note.transform.localPosition = origin + new Vector3(0f, tileSize * 0.2f, 0f);
+            notes.Add(new NoteVisual { Text = noteText, DieAt = Time.time + 1.1f });
         }
 
         private void UpdateBursts()
@@ -995,9 +1096,94 @@ namespace CityFlow.View
                     continue;
                 }
 
-                Destroy(burst.Object);
+                ReturnToPool(burstPool, burst.Object);
                 bursts.RemoveAt(i);
             }
+        }
+
+        private void UpdateCoins()
+        {
+            for (int i = coins.Count - 1; i >= 0; i--)
+            {
+                CoinVisual coin = coins[i];
+                if (coin.Object == null || Time.time >= coin.DieAt)
+                {
+                    ReturnToPool(coinPool, coin.Object);
+                    coins.RemoveAt(i);
+                    continue;
+                }
+                coin.Velocity += Vector3.down * (6f * tileSize * Time.deltaTime);   // 간이 중력
+                coin.Object.transform.localPosition += coin.Velocity * Time.deltaTime;
+            }
+        }
+
+        private void UpdateNotes()
+        {
+            for (int i = notes.Count - 1; i >= 0; i--)
+            {
+                NoteVisual note = notes[i];
+                if (note.Text == null || Time.time >= note.DieAt)
+                {
+                    ReturnToPool(notePool, note.Text != null ? note.Text.gameObject : null);
+                    notes.RemoveAt(i);
+                    continue;
+                }
+                note.Text.transform.localPosition += Vector3.up * (0.8f * tileSize * Time.deltaTime);
+                Color c = note.Text.color;
+                c.a = Mathf.Clamp01((note.DieAt - Time.time) / 1.1f);
+                note.Text.color = c;   // 폰트 머티리얼은 투명 지원
+            }
+        }
+
+        // 이펙트 풀 대여/반납: Rent가 비면 null → 호출부가 Make*로 신규 생성(??). 델리게이트 0 alloc.
+        private static GameObject Rent(Stack<GameObject> pool)
+        {
+            if (pool.Count == 0)
+            {
+                return null;
+            }
+            GameObject go = pool.Pop();
+            go.SetActive(true);
+            return go;
+        }
+
+        private static void ReturnToPool(Stack<GameObject> pool, GameObject go)
+        {
+            if (go == null)
+            {
+                return;
+            }
+            go.SetActive(false);
+            pool.Push(go);
+        }
+
+        private void PrewarmEffectPools()
+        {
+            for (int i = 0; i < 30; i++) ReturnToPool(coinPool, MakeCoin());
+            for (int i = 0; i < 8; i++) ReturnToPool(burstPool, MakeBurst());
+            for (int i = 0; i < 8; i++) ReturnToPool(notePool, MakeNote());
+        }
+
+        private GameObject MakeBurst()
+        {
+            GameObject go = InstantiatePrefabOrPrimitive(burstPrefab, PrimitiveType.Sphere);
+            go.transform.SetParent(effectRoot, false);
+            return go;
+        }
+
+        private GameObject MakeCoin()
+        {
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = "Coin";
+            go.transform.SetParent(effectRoot, false);
+            go.transform.localScale = Vector3.one * (tileSize * 0.1f);
+            ApplyRendererColor(PrepareRenderer(go.GetComponent<Renderer>()), coinColor);
+            return go;
+        }
+
+        private GameObject MakeNote()
+        {
+            return CreateTextMark(effectRoot, "♪", coinColor, tileSize * 0.16f);
         }
 
         private Vector3 GridToLocal(Vector2Int tile, float z)
