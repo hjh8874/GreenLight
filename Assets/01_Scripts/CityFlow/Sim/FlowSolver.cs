@@ -48,7 +48,8 @@ namespace CityFlow.Sim
         int Index(Vector2Int t) => t.y * _w + t.x;
 
         // demandScale: 이번 틱 수요 맥동 배율(SimConfig.DemandPulse). 1 = 균일(기존 동작).
-        public void Assign(DemandMap demand, RoadNetwork net, in SimConfig cfg, float demandScale = 1f)
+        // 경로는 RoutePlanner가 재건축 시 계획한 테이블(수요 인덱스 정렬)을 읽음 — 매 틱 탐색 없음.
+        public void Assign(DemandMap demand, RoutePlanner planner, in SimConfig cfg, float demandScale = 1f)
         {
             Array.Clear(_flowH, 0, _flowH.Length);
             Array.Clear(_flowV, 0, _flowV.Length);
@@ -57,13 +58,13 @@ namespace CityFlow.Sim
             DemandRate = cfg.DemandPerHouse * demandScale;
 
             var demands = demand.Demands;
+            var planned = planner.Routes;
+            // 불변식: Reassign 직후 반드시 Plan이 돈다(SimEngine 더티 블록이 쌍으로 보장) — 어긋나면 즉시 진단.
+            UnityEngine.Debug.Assert(planned.Count == demands.Count, "RoutePlanner.Plan이 최신 Reassign을 반영하지 않음");
             for (int i = 0; i < demands.Count; i++)
             {
-                // 접점이 없거나 미연결이면 이 수요는 흐르지 않음(무사고).
-                if (!net.TryGetAccessRoad(demands[i].Source, out var from)) continue;
-                if (!net.TryGetAccessRoad(demands[i].Sink, out var to)) continue;
-                var path = net.FindPath(from, to);
-                if (path == null) continue;
+                var path = planned[i];
+                if (path == null) continue;                   // 접점 없음/미연결 = 흐르지 않음(무사고)
 
                 for (int p = 0; p < path.Count; p++)
                 {

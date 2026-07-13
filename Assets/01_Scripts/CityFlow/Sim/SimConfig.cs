@@ -57,6 +57,11 @@ namespace CityFlow.Sim
         // λ=1이면 기존 합산과 동일(연속성). 자동생성 유지 중엔 라이브 미노출(모든 교차로에 신호) 🔓
         public float UnsignaledInterference;
 
+        // ── 유기적 라우팅(혼잡 회피 강도) ──
+        // 증분 배정의 스텝 비용 = 물리거리 × (1 + w × 부하/용량). 0 = 순수 물리 최단.
+        // 2면 부하율 1.5 타일이 4배 비쌈 → 몇 칸 우회가 이득 🔓
+        public float RoutingCongestionWeight;
+
         // ── 보상(코인) 원료 ────────────────────
         public float CoinBase;          // 🔓 공식 형태·가중치 잠정
 
@@ -96,6 +101,7 @@ namespace CityFlow.Sim
             OverrideCooldownSeconds = 60f,
             OverrideCorridorSignals = 3,
             UnsignaledInterference = 1.5f,
+            RoutingCongestionWeight = 2f,
             CoinBase = 1f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,

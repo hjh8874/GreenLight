@@ -51,10 +51,12 @@ namespace CityFlow.Sim.Tests
         {
             var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
             SignalMap signals = null;
             if (withSignals) { signals = new SignalMap(); signals.Rebuild(g); tune?.Invoke(signals); }
             var solver = new FlowSolver(g.Width, g.Height);
-            solver.Assign(dm, net, cfg);
+            solver.Assign(dm, planner, cfg);
             solver.Resolve(cfg, signals, g);
             return (solver, signals, g);
         }

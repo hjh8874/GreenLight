@@ -32,8 +32,10 @@ namespace CityFlow.Sim.Tests
             var dm = new DemandMap(cfg);
             dm.Reassign(g, new RoadNetwork(g));
             var net = new RoadNetwork(g);
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
             var solver = new FlowSolver(g.Width, g.Height);
-            solver.Assign(dm, net, cfg);
+            solver.Assign(dm, planner, cfg);
             solver.Resolve(cfg);
             return solver;
         }
@@ -111,8 +113,11 @@ namespace CityFlow.Sim.Tests
             var cfg = Cfg(demand: 1f, capacity: 10f);
             var dm = new DemandMap(cfg);
             dm.Reassign(g, new RoadNetwork(g));
+            var net = new RoadNetwork(g);
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
             var solver = new FlowSolver(g.Width, g.Height);
-            solver.Assign(dm, new RoadNetwork(g), cfg, demandScale: 1.5f);
+            solver.Assign(dm, planner, cfg, demandScale: 1.5f);
             solver.Resolve(cfg);
 
             Assert.AreEqual(1.5f, solver.DeliveredTotal, 1e-3f);
