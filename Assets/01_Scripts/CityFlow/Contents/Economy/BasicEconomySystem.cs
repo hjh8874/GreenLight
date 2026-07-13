@@ -6,17 +6,30 @@ namespace CityFlow.Content
     public class BasicEconomySystem : MonoBehaviour
     {
         [Header("경제 설정 파일")]
-        [SerializeField] private EconomyConfigSO economyConfig;
+        [Tooltip(
+            "가격 밸런스 시트 v0의 정수 값을 입력한 " +
+            "EconomyConfigSO를 연결합니다."
+        )]
+        [SerializeField]
+        private EconomyConfigSO economyConfig;
 
         [Header("실제 코인 관리 서비스")]
-        [SerializeField] private EconomyService economyService;
+        [SerializeField]
+        private EconomyService economyService;
 
         [Header("이번 주 누적 수익")]
-        [SerializeField] private long weeklyAccumulatedCoin;
+        [Tooltip(
+            "각 수익은 정수 코인으로 들어오며, " +
+            "누적 합계는 long 타입으로 보관합니다."
+        )]
+        [SerializeField]
+        private long weeklyAccumulatedCoin;
 
         /// <summary>
         /// 이번 주에 누적된 정산 대기 코인입니다.
-        /// 아직 실제 보유 코인에는 포함되지 않습니다.
+        ///
+        /// 개별 코인 가격과 보상은 정수(int)만 사용하지만,
+        /// 장시간 누적될 수 있으므로 합계는 long으로 관리합니다.
         /// </summary>
         public long WeeklyAccumulatedCoin =>
             weeklyAccumulatedCoin;
@@ -27,7 +40,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 필요한 컴포넌트와 설정 파일이 연결되어 있는지 확인합니다.
+        /// EconomyConfigSO와 EconomyService가
+        /// 정상적으로 연결되어 있는지 확인합니다.
         /// </summary>
         private void ValidateReferences()
         {
@@ -35,7 +49,8 @@ namespace CityFlow.Content
             {
                 Debug.LogWarning(
                     "[BasicEconomySystem] " +
-                    "EconomyConfigSO가 연결되지 않았습니다.",
+                    "EconomyConfigSO가 연결되지 않았습니다. " +
+                    "가격 밸런스 시트 v0를 반영한 설정 파일을 연결하세요.",
                     this
                 );
             }
@@ -58,10 +73,12 @@ namespace CityFlow.Content
 
         /// <summary>
         /// 현재 배치된 건물 수를 기준으로
-        /// 주간 건물 수익을 누적합니다.
+        /// 주간 건물 수익을 계산하여 누적합니다.
         ///
         /// 차량 도착 보상은 EconomyService가 처리하므로
-        /// 여기에서는 누적하지 않습니다.
+        /// 이 코드에서는 별도로 중복 누적하지 않습니다.
+        ///
+        /// 계산 결과는 정수 코인만 사용합니다.
         /// </summary>
         public void AddWeeklyBuildingIncome(
             int buildingCount
@@ -94,15 +111,19 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 지정된 금액을 이번 주 수익에 누적합니다.
+        /// 정수 코인을 이번 주 수익에 누적합니다.
+        ///
+        /// float과 double은 받지 않으므로
+        /// 소수점 반올림 문제가 발생하지 않습니다.
+        ///
         /// 이 시점에는 실제 보유 코인이 증가하지 않습니다.
         /// </summary>
         public void AddWeeklyIncome(
-            long amount,
+            int amount,
             string reason = "weekly income"
         )
         {
-            if (amount <= 0L)
+            if (amount <= 0)
             {
                 return;
             }
@@ -118,7 +139,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 주간 누적 수익을 실제 보유 코인으로 지급합니다.
+        /// 이번 주 누적 수익을 실제 보유 코인으로 지급합니다.
         ///
         /// 실제 코인은 EconomyService에서 관리하며,
         /// 지급 후 주간 누적 수익은 0으로 초기화됩니다.
@@ -167,8 +188,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 현재 토지 가격을 계산하고
-        /// EconomyService의 실제 코인을 사용합니다.
+        /// 가격 밸런스 시트 v0를 반영한
+        /// 정수 토지 가격을 계산하고 구매합니다.
         /// </summary>
         public bool TryPurchaseLand(
             int purchasedLandCount
@@ -186,6 +207,17 @@ namespace CityFlow.Content
                 economyConfig.GetLandCost(
                     safeLandCount
                 );
+
+            if (cost <= 0)
+            {
+                Debug.LogWarning(
+                    "[BasicEconomySystem] " +
+                    $"잘못된 토지 가격입니다. Cost: {cost}",
+                    this
+                );
+
+                return false;
+            }
 
             if (!economyService.TrySpend(cost))
             {
@@ -210,8 +242,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 현재 업그레이드 가격을 계산하고
-        /// EconomyService의 실제 코인을 사용합니다.
+        /// 가격 밸런스 시트 v0를 반영한
+        /// 정수 업그레이드 가격을 계산하고 구매합니다.
         /// </summary>
         public bool TryPurchaseUpgrade(
             int currentUpgradeLevel
@@ -229,6 +261,17 @@ namespace CityFlow.Content
                 economyConfig.GetUpgradeCost(
                     safeUpgradeLevel
                 );
+
+            if (cost <= 0)
+            {
+                Debug.LogWarning(
+                    "[BasicEconomySystem] " +
+                    $"잘못된 업그레이드 가격입니다. Cost: {cost}",
+                    this
+                );
+
+                return false;
+            }
 
             if (!economyService.TrySpend(cost))
             {
@@ -253,16 +296,18 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 토지를 구매하지 않고 현재 가격만 계산합니다.
-        /// 구매 버튼이나 가격 UI에서 사용할 수 있습니다.
+        /// 토지를 구매하지 않고
+        /// 현재 정수 가격만 반환합니다.
+        ///
+        /// 가격 UI와 구매 버튼 표시에서 사용합니다.
         /// </summary>
-        public long GetLandCost(
+        public int GetLandCost(
             int purchasedLandCount
         )
         {
             if (economyConfig == null)
             {
-                return 0L;
+                return 0;
             }
 
             return economyConfig.GetLandCost(
@@ -271,16 +316,18 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 업그레이드를 구매하지 않고 현재 가격만 계산합니다.
-        /// 구매 버튼이나 가격 UI에서 사용할 수 있습니다.
+        /// 업그레이드를 구매하지 않고
+        /// 현재 정수 가격만 반환합니다.
+        ///
+        /// 가격 UI와 구매 버튼 표시에서 사용합니다.
         /// </summary>
-        public long GetUpgradeCost(
+        public int GetUpgradeCost(
             int currentUpgradeLevel
         )
         {
             if (economyConfig == null)
             {
-                return 0L;
+                return 0;
             }
 
             return economyConfig.GetUpgradeCost(
@@ -289,7 +336,10 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 저장된 주간 누적 수익을 복원할 때 사용합니다.
+        /// 저장된 주간 누적 수익을 복원합니다.
+        ///
+        /// 누적 합계는 장시간 플레이를 고려하여
+        /// long 타입으로 유지합니다.
         /// </summary>
         public void RestoreWeeklyAccumulatedCoin(
             long amount
@@ -306,13 +356,18 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 새 게임 시작 또는 정산 데이터 초기화에 사용합니다.
+        /// 새 게임 시작 또는
+        /// 정산 데이터 초기화 시 사용합니다.
         /// </summary>
         public void ResetWeeklyAccumulatedCoin()
         {
             weeklyAccumulatedCoin = 0L;
         }
 
+        /// <summary>
+        /// 경제 계산에 필요한 EconomyConfigSO가
+        /// 연결되어 있는지 확인합니다.
+        /// </summary>
         private bool CanCalculate()
         {
             if (economyConfig != null)
@@ -328,6 +383,10 @@ namespace CityFlow.Content
             return false;
         }
 
+        /// <summary>
+        /// 구매에 필요한 EconomyConfigSO와
+        /// EconomyService가 모두 있는지 확인합니다.
+        /// </summary>
         private bool CanPurchase()
         {
             if (!CanCalculate())
