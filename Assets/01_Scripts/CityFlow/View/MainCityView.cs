@@ -35,6 +35,7 @@ namespace CityFlow.View
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
         [SerializeField] private float followGap = 0.4f;           // 차간 유지 거리(타일 비율)
+        [SerializeField] private float roundaboutOrbitRadius = 0.3f;   // 로터리 궤도 반경(타일 비율)
 
         [Header("Colors")]
         [SerializeField] private Color boardColor = new Color(0.78f, 0.82f, 0.78f);
@@ -48,9 +49,11 @@ namespace CityFlow.View
         [SerializeField] private Color vehicleColor = new Color(0.12f, 0.12f, 0.16f);
         [SerializeField] private Color selectedSignalColor = Color.white;
         [SerializeField] private Color flowBurstColor = new Color(1f, 0.78f, 0.12f);
+        [SerializeField] private Color roundaboutColor = new Color(0.35f, 0.78f, 0.45f);
 
         private readonly Dictionary<Vector2Int, TileVisual> tileVisuals = new();
         private readonly Dictionary<Vector2Int, SignalVisual> signalVisuals = new();
+        private readonly Dictionary<Vector2Int, GameObject> roundaboutVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
         private readonly List<BurstVisual> bursts = new();
 
@@ -138,6 +141,7 @@ namespace CityFlow.View
             BuildGridLines();
             RefreshAllTiles();
             RefreshSignals();
+            RefreshRoundabouts();
             RefreshVehicles();
         }
 
@@ -162,6 +166,7 @@ namespace CityFlow.View
 
             HandleSignalInput();
             RefreshSignals();
+            RefreshRoundabouts();
             RefreshVehicles();
             UpdateBursts();
         }
@@ -363,6 +368,48 @@ namespace CityFlow.View
             }
         }
 
+        // 로터리 마커: RoundaboutTiles 폴링으로 생성/제거 — RefreshSignals와 동일 수명 규약.
+        private void RefreshRoundabouts()
+        {
+            if (simEngine == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<Vector2Int> tiles = simEngine.RoundaboutTiles;
+
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                if (!roundaboutVisuals.ContainsKey(tiles[i]))
+                {
+                    roundaboutVisuals.Add(tiles[i], CreateRoundaboutVisual(tiles[i]));
+                }
+            }
+
+            foreach (Vector2Int tile in new List<Vector2Int>(roundaboutVisuals.Keys))
+            {
+                if (ContainsSignal(tiles, tile))
+                {
+                    continue;
+                }
+
+                Destroy(roundaboutVisuals[tile]);
+                roundaboutVisuals.Remove(tile);
+            }
+        }
+
+        private GameObject CreateRoundaboutVisual(Vector2Int tile)
+        {
+            GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            ring.name = $"Roundabout_{tile.x}_{tile.y}";
+            ring.transform.SetParent(signalRoot, false);
+            ring.transform.localPosition = GridToLocal(tile, signalZ);
+            ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);   // 원반을 보드(XY)와 평행하게
+            ring.transform.localScale = new Vector3(tileSize * 0.6f, 0.02f, tileSize * 0.6f);
+            ApplyRendererColor(PrepareRenderer(ring.GetComponent<Renderer>()), roundaboutColor);
+            return ring;
+        }
+
         private SignalVisual CreateSignalVisual(Vector2Int tile)
         {
             GameObject root = signalPrefab != null
@@ -544,7 +591,21 @@ namespace CityFlow.View
 
             // 우측통행 차선 오프셋: 진행 방향의 오른쪽으로 비껴 그림 → 왕복이 두 차선으로 갈라짐.
             Vector3 lane = new Vector3(travelDir.y, -travelDir.x, 0f) * (tileSize * laneOffset);
-            vehicle.Object.transform.localPosition = Vector3.Lerp(a, b, t) + lane;
+            Vector3 pos = Vector3.Lerp(a, b, t) + lane;
+
+            // 로터리 연출(뷰 전용 — 엔진 무관): 타일 안에선 진행 방향 오른쪽으로 부풀어
+            // 중앙 섬을 반시계로 돌아가는 궤적. 경계에서 0(직선과 연속), 중심에서 최대.
+            Vector2Int insideTile = t < 0.5f ? route[index] : route[index + 1];
+            if (IsRoundaboutTile(insideTile))
+            {
+                Vector3 center = GridToLocal(insideTile, vehicleZ);
+                float along = Vector3.Dot(pos - center, travelDir);   // lane은 수직이라 영향 없음
+                float bulge = Mathf.Cos(Mathf.PI * Mathf.Clamp(along / tileSize, -0.5f, 0.5f));
+                float extra = Mathf.Max(0f, tileSize * (roundaboutOrbitRadius - laneOffset)) * bulge;
+                pos += new Vector3(travelDir.y, -travelDir.x, 0f) * extra;
+            }
+
+            vehicle.Object.transform.localPosition = pos;
 
             if (travelDir.sqrMagnitude > 0.001f)
             {
@@ -661,6 +722,16 @@ namespace CityFlow.View
             }
 
             return false;
+        }
+
+        private bool IsRoundaboutTile(Vector2Int tile)
+        {
+            if (simEngine == null)
+            {
+                return false;
+            }
+
+            return ContainsSignal(simEngine.RoundaboutTiles, tile);   // 선형 목록 검색 헬퍼 공용
         }
 
         private void HandleSignalInput()
