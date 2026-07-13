@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 38839b4dc28e6634c9efda9e964b4e54, type: 3}
+  m_Name: EconomyConfig
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.EconomyConfigSO
+  coinBase: 1
+  defaultDestinationRewardPercent: 100
+  settlementDays: 7
+  weeklyCoinPerBuilding: 20
+  cityUnlockCosts:
+  - 1000
+  - 5000
+  - 20000
+  landCosts:
+  - 500
+  - 900
+  - 1500
+  - 2400
+  - 3800
+  upgradeCosts:
+  - 200
+  - 350
+  - 600
+  - 1000
+  - 1600
+  initialRefundPercent: 100
+  refundDecreasePercent: 10
+  minimumRefundPercent: 50
+  refundDecreaseIntervalDays: 1
+  realMinutesPerGameDay: 14
+  flowBurstRewardPercent: 200
+  flowBurstDurationSeconds: 10

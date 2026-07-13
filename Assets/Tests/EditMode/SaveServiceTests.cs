@@ -145,7 +145,10 @@ namespace CityFlow.Sim.Tests
                 Simulation = new SimSaveData(),
                 WeeklySettlement = new WeeklySettlementSaveData
                 {
-                    PendingCoins = 777L
+                    PendingCoins = 777L,
+                    DaysIntoCurrentWeek = 5,
+                    LastProcessedTotalDays = 125L,
+                    HasCycleProgress = true
                 },
                 Radio = new RadioSaveData
                 {
@@ -166,6 +169,9 @@ namespace CityFlow.Sim.Tests
             Assert.That(service.TryLoadAndRestore(), Is.True);
             Assert.That(repository.TryLoad(out GameSaveData reloaded), Is.True);
             Assert.That(reloaded.WeeklySettlement.PendingCoins, Is.EqualTo(777L));
+            Assert.That(reloaded.WeeklySettlement.DaysIntoCurrentWeek, Is.EqualTo(5));
+            Assert.That(reloaded.WeeklySettlement.LastProcessedTotalDays, Is.EqualTo(125L));
+            Assert.That(reloaded.WeeklySettlement.HasCycleProgress, Is.True);
             Assert.That(reloaded.Radio.CurrentSlotIndex, Is.EqualTo(0));
             Assert.That(reloaded.Radio.Slots[0].YoutubeVideoId, Is.EqualTo("video-id"));
         }

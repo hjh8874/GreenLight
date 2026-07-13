@@ -6,5 +6,8 @@ namespace CityFlow.Contracts.Save
     public sealed class WeeklySettlementSaveData
     {
         public long PendingCoins;
+        public int DaysIntoCurrentWeek;
+        public long LastProcessedTotalDays;
+        public bool HasCycleProgress;
     }
 }

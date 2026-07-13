@@ -14,9 +14,11 @@ namespace CityFlow.Bootstrap
         public SaveService Save { get; }
         public IEconomyService Economy { get; private set; }
         public IGameCalendarService GameCalendar { get; private set; }
+        public IWeeklyEconomyService WeeklyEconomy { get; private set; }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
+        public event Action<IWeeklyEconomyService> WeeklyEconomyRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -77,6 +79,23 @@ namespace CityFlow.Bootstrap
             }
 
             Save?.RegisterWeeklySettlementSaveSource(weeklySettlementSaveSource);
+        }
+
+        public void RegisterWeeklyEconomy(IWeeklyEconomyService weeklyEconomy)
+        {
+            if (weeklyEconomy == null)
+            {
+                return;
+            }
+
+            WeeklyEconomy = weeklyEconomy;
+
+            if (weeklyEconomy is IWeeklySettlementSaveSource saveSource)
+            {
+                Save?.RegisterWeeklySettlementSaveSource(saveSource);
+            }
+
+            WeeklyEconomyRegistered?.Invoke(weeklyEconomy);
         }
 
         public void RegisterResearchSaveSource(IResearchSaveSource researchSaveSource)
