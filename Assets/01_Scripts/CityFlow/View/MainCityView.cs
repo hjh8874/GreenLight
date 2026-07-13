@@ -61,6 +61,7 @@ namespace CityFlow.View
         private readonly Dictionary<Vector2Int, GameObject> overpassVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> onewayVisuals = new();
         private readonly Dictionary<Vector2Int, TurnSignVisual> turnSignVisuals = new();
+        private readonly Dictionary<Vector2Int, GameObject> priorityRoadVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
         private readonly List<BurstVisual> bursts = new();
 
@@ -190,6 +191,7 @@ namespace CityFlow.View
             RefreshOverpasses();
             RefreshOneways();
             RefreshTurnSigns();
+            RefreshPriorityRoads();
             RefreshVehicles();
             PrewarmEffectPools();
             gameObject.AddComponent<DriveViewCamera>().Init(simEngine, transform, tileSize);
@@ -221,6 +223,7 @@ namespace CityFlow.View
             RefreshOverpasses();
             RefreshOneways();
             RefreshTurnSigns();
+            RefreshPriorityRoads();
             RefreshVehicles();
             UpdateBursts();
             UpdateCoins();
@@ -464,6 +467,57 @@ namespace CityFlow.View
             ring.transform.localScale = new Vector3(tileSize * 0.6f, 0.02f, tileSize * 0.6f);
             ApplyRendererColor(PrepareRenderer(ring.GetComponent<Renderer>()), roundaboutColor);
             return ring;
+        }
+
+        // 우선도로 마커: PriorityRoadTiles 폴링 — 로터리/입체/일방과 동일 수명 규약(생성/제거).
+        // 메인축(가로/세로)에 맞춰 표지 막대를 회전(일방통행과 동일하게 회전은 매 프레임 갱신).
+        private void RefreshPriorityRoads()
+        {
+            if (intersectionFacility == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<Vector2Int> tiles = intersectionFacility.PriorityRoadTiles;
+
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                Vector2Int tile = tiles[i];
+
+                if (!priorityRoadVisuals.TryGetValue(tile, out GameObject visual))
+                {
+                    visual = CreatePriorityRoadVisual(tile);
+                    priorityRoadVisuals.Add(tile, visual);
+                }
+
+                float z = intersectionFacility.GetPriorityAxis(tile) == Axis.Vertical ? 90f : 0f;
+                visual.transform.localRotation = Quaternion.Euler(0f, 0f, z);
+            }
+
+            foreach (Vector2Int tile in new List<Vector2Int>(priorityRoadVisuals.Keys))
+            {
+                if (ContainsSignal(tiles, tile))
+                {
+                    continue;
+                }
+
+                Destroy(priorityRoadVisuals[tile]);
+                priorityRoadVisuals.Remove(tile);
+            }
+        }
+
+        private GameObject CreatePriorityRoadVisual(Vector2Int tile)
+        {
+            // 임시 프리미티브 양보 표지(▽): 얇은 큐브 막대를 축 방향으로.
+            // ponytail: 표지판 3D 에셋은 아트 단계
+            GameObject root = new GameObject($"PriorityRoad_{tile.x}_{tile.y}");
+            root.transform.SetParent(signalRoot, false);
+            root.transform.localPosition = GridToLocal(tile, signalZ);
+
+            Renderer bar = CreateSignalBar(root.transform, "Bar",
+                new Vector3(tileSize * 0.5f, tileSize * 0.08f, 0.02f), Vector3.zero);
+            ApplyRendererColor(bar, onewayColor);   // 기존 색 재사용(에셋 전)
+            return root;
         }
 
         // 입체교차 마커: 위(가로)/아래(세로) 두 바로 "축 분리"를 암시 — 로터리와 동일 수명 규약.
