@@ -121,5 +121,18 @@ namespace CityFlow.Sim.Tests
             float b = RunCross(5, 2, priorityH: true);
             Assert.AreEqual(a, b, 1e-6f);
         }
+
+        // 신호·로터리·입체·턴제한과 동일 규약: 곁가지 철거로 교차로 해제 → 다음 재구축 틱에 소멸.
+        // (SimEngine.cs RebuildSignals의 _placedPriorityRoads.RemoveAll 프루닝 블록을 핀)
+        [Test]
+        public void RoadRemoval_KillsPriorityRoadNextRebuild()
+        {
+            var e = Build(autoDetect: false, out _);
+            Assert.IsTrue(e.TryPlacePriorityRoad(V(3, 0), Axis.Horizontal));
+            e.Remove(V(3, 1));                                // 곁가지 철거 → (3,0)이 교차로 아님
+            e.Tick(0.25f);                                    // RebuildSignals가 프루닝
+            Assert.AreEqual(0, e.PriorityRoadTiles.Count);
+            Assert.IsFalse(e.TryRemovePriorityRoad(V(3, 0)));
+        }
     }
 }
