@@ -84,11 +84,36 @@ namespace CityFlow.DebugTools
             {
                 _lastResult = TryPlaceOrRotateOneway(hover);
             }
+            else if (kb.digit5Key.wasPressedThisFrame)
+            {
+                _lastResult = TryPlaceOrRotateTurnSign(hover);
+            }
             else if (kb.digit0Key.wasPressedThisFrame)
             {
                 _lastResult = TryRemoveAny(hover);
             }
         }
+
+        // 턴 제한 표지판: 없으면 배치(LeftOnly부터), 있으면 회전(Left↔Right — 철거→재배치로 조합,
+        // 일방통행 회전과 동형 패턴). CanPlaceTurnSign이 교차로·로터리/입체 배타를 이미 검사(신호는 공존).
+        private string TryPlaceOrRotateTurnSign(Vector2Int tile)
+        {
+            TurnMode? existing = _signals.GetTurnMode(tile);
+
+            if (existing.HasValue)
+            {
+                TurnMode next = existing.Value == TurnMode.LeftOnly ? TurnMode.RightOnly : TurnMode.LeftOnly;
+                _signals.TryRemoveTurnSign(tile);
+                _signals.TryPlaceTurnSign(tile, next);
+                return $"턴제한 회전 {tile} — {TurnGlyph(next)}";
+            }
+
+            return _signals.TryPlaceTurnSign(tile, TurnMode.LeftOnly)
+                ? $"턴제한 배치 성공 {tile} — {TurnGlyph(TurnMode.LeftOnly)}"
+                : $"턴제한 배치 거부 {tile} — 교차로 아님/로터리·입체 있음/자동 모드";
+        }
+
+        private static string TurnGlyph(TurnMode mode) => mode == TurnMode.LeftOnly ? "↰" : "↱";
 
         // 일방통행: 없으면 배치(E부터), 있으면 회전(철거→다음 방향 재배치로 조합 — 재배치 API 아님).
         private string TryPlaceOrRotateOneway(Vector2Int tile)
@@ -175,6 +200,11 @@ namespace CityFlow.DebugTools
                 return $"일방통행 철거 성공 {tile}";
             }
 
+            if (_signals.TryRemoveTurnSign(tile))
+            {
+                return $"턴제한 철거 성공 {tile}";
+            }
+
             return $"철거 거부 {tile} — 장치 없음";
         }
 
@@ -224,18 +254,25 @@ namespace CityFlow.DebugTools
 
             // 세이브 오염 방지: 이 씬은 AutoSaveService를 비활성해 라이브 세이브 슬롯을 건드리지 않는다.
             GUI.Label(new Rect(12, 100, 900, 30),
-                "1=신호  2=로터리  3=입체교차  4=일방통행(배치/회전)  0=철거(전부)  |  세이브 비활성 씬", style);
+                "1=신호  2=로터리  3=입체교차  4=일방통행(배치/회전)  5=턴제한(배치/회전, 신호와 공존)  0=철거(전부)  |  세이브 비활성 씬", style);
 
             if (TryGetHoverTile(out Vector2Int hover))
             {
                 TileType type = _data.GetTileType(hover);
                 CongestionLevel congestion = _data.GetCongestion(hover);
                 Vector2Int onewayDir = _signals.GetOnewayDir(hover);
+                TurnMode? turnMode = _signals.GetTurnMode(hover);
                 string device = Contains(_signals.SignalTiles, hover) ? "신호"
                     : Contains(_signals.RoundaboutTiles, hover) ? "로터리"
                     : Contains(_signals.OverpassTiles, hover) ? "입체교차"
                     : onewayDir != Vector2Int.zero ? $"일방통행({DirGlyph(onewayDir)})"
                     : "없음";
+
+                // 턴제한은 신호와 공존 가능 — 별도 장치 문구로 이어붙임(체인 판정과 별개 표시).
+                if (turnMode.HasValue)
+                {
+                    device = device == "없음" ? $"턴제한({TurnGlyph(turnMode.Value)})" : $"{device} + 턴제한({TurnGlyph(turnMode.Value)})";
+                }
 
                 GUI.Label(new Rect(12, 130, 900, 30),
                     $"호버 {hover}  타일 {type}  혼잡 {congestion}  장치 {device}", style);
