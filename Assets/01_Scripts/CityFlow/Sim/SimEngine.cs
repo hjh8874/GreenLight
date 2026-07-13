@@ -369,6 +369,8 @@ namespace CityFlow.Sim
         public Axis GetPriorityAxis(Vector2Int tile) =>
             _priorityDirs.TryGetValue(tile, out var a) ? a : Axis.Horizontal;
 
+        // 턴 표지판은 검사 안 함(공존 의도) — 표지판은 라우팅 필터, 우선도로는 솔버 간섭 분기라
+        // 메커니즘이 달라 이중계산 없음(신호↔표지판 공존과 동일 규약). 4자 배타는 신호·로터리·입체만.
         public bool CanPlacePriorityRoad(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
             && !_priorityDirs.ContainsKey(tile) && !_placedSet.Contains(tile)
