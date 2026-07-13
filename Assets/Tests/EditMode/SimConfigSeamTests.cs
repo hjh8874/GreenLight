@@ -128,6 +128,25 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void ApplyConfig_RejectsDegenerateConfig()
+        {
+            var c = BaseConfig();
+            var e = Build(c, out _);
+
+            var before = e.CurrentConfig;
+
+            // TickInterval=0 → 누산기가 절대 안 비고 Step이 조용히 멈춘다(리뷰 지적, PR#53).
+            var degenerate = c;
+            degenerate.TickInterval = 0f;
+
+            bool applied = e.ApplyConfig(degenerate);
+
+            Assert.IsFalse(applied);   // 거부되어야 함
+            Assert.AreEqual(before.TickInterval, e.CurrentConfig.TickInterval);   // 관찰 seam — 안 바뀜
+            Assert.AreEqual(before.DemandPerHouse, e.CurrentConfig.DemandPerHouse);
+        }
+
+        [Test]
         public void ApplyConfig_IsDeterministic()
         {
             System.Func<float> run = () =>

@@ -61,10 +61,17 @@ namespace CityFlow.Sim
         // 고정 크기 배열로 굳혀서 런타임 리사이즈는 이 seam의 스코프 밖(재구축 필요)이고,
         // AutoDetectSignals는 세션 부트 스위치라 정책이 흔들면 배치 상태가 증발한다(지뢰).
         // Drain 핸들러 경유 호출 시 같은 프레임의 잔여 Step부터 반영(결정론 무해 — 순서가 고정이므로).
-        public void ApplyConfig(in SimConfig next)
+        // 리뷰 픽스(PR#53): Debug.Assert는 릴리스 빌드에서 스트립되어 퇴화 config가 조용히 통과 —
+        // 시뮬이 멈춘 채 아무 신호도 없이 방치된다. bool 반환으로 실패를 호출자가 확인할 수 있게 한다.
+        public bool ApplyConfig(in SimConfig next)
         {
-            UnityEngine.Debug.Assert(next.TickInterval > 0f && next.MaxStepsPerFrame >= 1,
-                "ApplyConfig: 퇴화 config — 시뮬이 조용히 멈춘다");
+            if (!(next.TickInterval > 0f && next.MaxStepsPerFrame >= 1))
+            {
+                UnityEngine.Debug.LogWarning(
+                    "ApplyConfig: 퇴화 config 거부(TickInterval>0, MaxStepsPerFrame>=1 필요) — 적용 안 함");
+                return false;
+            }
+
             var merged = next;
             merged.GridWidth = _config.GridWidth;
             merged.GridHeight = _config.GridHeight;
@@ -73,6 +80,7 @@ namespace CityFlow.Sim
             _config = merged;
             _demand.ApplyConfig(_config);
             _grid.MarkTopologyDirty();   // 다음 틱에 Reassign+Plan 강제(즉시 재계산은 안 함 — 파이프라인 순서 보존)
+            return true;
         }
 
         // 고정 틱 누산기: 프레임 dt가 들쭉날쭉해도 Step은 정확히 TickInterval마다 1번.
