@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using CityFlow.Contracts;
 
 namespace CityFlow.Sim
 {
@@ -16,11 +17,20 @@ namespace CityFlow.Sim
         static readonly int[] DY = { 1, 0, -1, 0, 1, -1, -1, 1 };
         const float Sqrt2 = 1.4142135f;
 
+        // 턴 제한 표지판(스펙 2026-07-12): 상태 확장 탐색의 진입방향 인덱스 고정 순회(결정론).
+        // DX/DY 카디널 부분(idx0..3 = N,E,S,W)을 이 순서로 재사상: N→3,E→0,S→1,W→2.
+        static readonly int[] CardinalToStateIdx = { 3, 0, 1, 2 };
+
         readonly int _w, _h;
         readonly float[] _cost;      // Dijkstra 누적 비용
         readonly bool[] _done;
         readonly int[] _cameFrom;
         readonly float[] _load;      // 이번 계획에서 이미 배정된 흐름(대/초)
+
+        // 턴 제한 표지판 상태 확장(스펙 2026-07-12): 상태 = 타일×진입방향(4) — [n×4] 1회 할당.
+        readonly float[] _turnCost;
+        readonly bool[] _turnDone;
+        readonly int[] _turnCameFrom;
 
         readonly List<List<Vector2Int>> _routes = new(128);   // 수요 인덱스 정렬, 미연결 = null
 
@@ -35,6 +45,9 @@ namespace CityFlow.Sim
             _done = new bool[n];
             _cameFrom = new int[n];
             _load = new float[n];
+            _turnCost = new float[n * 4];
+            _turnDone = new bool[n * 4];
+            _turnCameFrom = new int[n * 4];
         }
 
         // 수요별 경로 테이블 계산. 부하 적립은 DemandPerHouse(평균 — 맥동 무반영, 정산 철학과 동일).
@@ -42,7 +55,19 @@ namespace CityFlow.Sim
         // 여기서 net.TryGetAccessRoad로 다시 계산하면 건물에 프론티지가 여러 개일 때 DemandMap과
         // 다른 접점을 고를 수 있고, 그 불일치가 "배정은 됐는데 흐름은 0"인 버그의 원인이었다.
         // net 파라미터는 시그니처 호환용으로 유지(다른 호출자·테스트가 이 형태로 호출).
+        // 기존 4-인자 호출자는 oneways=null로 위임(일방통행 미도입 시 무비용 경로, 테스트 무수정 생존).
         public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg)
+            => Plan(demand, net, grid, cfg, null);
+
+        // oneways: 엔진 소유 좌표→단위방향 맵(조회만 — 소유·갱신은 SimEngine, 로터리/입체와 같은 패턴).
+        public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg,
+                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
+            => Plan(demand, net, grid, cfg, oneways, null);
+
+        // 턴 제한 표지판(스펙 2026-07-12): null 위임 체인 연장. turnSigns가 있을 때만 상태 확장 탐색으로 분기(Search 내부).
+        public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg,
+                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
+                          IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
         {
             _routes.Clear();
             Array.Clear(_load, 0, _load.Length);
@@ -50,7 +75,7 @@ namespace CityFlow.Sim
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
             {
-                var path = Search(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg);   // 경계 밖(NoRoad)도 IsRoad가 자연히 걸러 null
+                var path = Search(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg, oneways, turnSigns);   // 경계 밖(NoRoad)도 IsRoad가 자연히 걸러 null
 
                 _routes.Add(path);                            // null = 이 수요는 흐르지 않음(무사고)
                 if (path == null) continue;
@@ -61,8 +86,18 @@ namespace CityFlow.Sim
 
         // 현재 _load 기준 최소 비용 경로(내부 + 테스트 seam). 미연결/비도로 끝점 = null.
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg)
+            => Search(grid, from, to, cfg, null);
+
+        // 일방통행 간선 필터(스펙 2026-07-12 §핵심결정, 상태 확장 없음 — 이웃 확장에서 3규칙 조기 continue):
+        // ① 일방 타일에서 나가는 스텝은 그 방향(D)만. ② 일방 타일로 들어가는 스텝은 -D 금지
+        // (역주행 진입 차단, 측면 합류는 허용). ③ 일방 타일이 관여하는 대각 스텝 금지(단순화 —
+        // 대각 벡터는 카디널 D와 절대 일치하지 않아 ①은 자연히 걸지만, ②는 대각으로 들어오는
+        // 역주행을 못 걸러서 별도로 필요). oneways가 null/빈 경우 Dictionary 조회 없이 스킵(무비용).
+        internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
         {
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
+            bool hasOneways = oneways != null && oneways.Count > 0;
 
             int n = _cost.Length;
             for (int i = 0; i < n; i++) { _cost[i] = float.MaxValue; _done[i] = false; }
@@ -87,12 +122,27 @@ namespace CityFlow.Sim
                 _done[cur] = true;
 
                 int cx = cur % _w, cy = cur / _w;
+                bool curOneway = false;
+                Vector2Int curDir = default;
+                if (hasOneways) curOneway = oneways.TryGetValue(new Vector2Int(cx, cy), out curDir);
+
                 for (int d = 0; d < DX.Length; d++)
                 {
                     int nx = cx + DX[d], ny = cy + DY[d];
                     if (!IsRoad(grid, nx, ny)) continue;
                     int ni = ny * _w + nx;
                     if (_done[ni]) continue;
+
+                    if (hasOneways)
+                    {
+                        bool diag = d >= 4;
+                        bool nbrOneway = oneways.TryGetValue(new Vector2Int(nx, ny), out var nbrDir);
+                        if (diag && (curOneway || nbrOneway)) continue;              // ③ 일방 관여 대각 금지
+                        var stepDir = new Vector2Int(DX[d], DY[d]);
+                        if (curOneway && stepDir != curDir) continue;                // ① 나가는 스텝 = D만
+                        if (nbrOneway && stepDir == -nbrDir) continue;               // ② 들어가는 스텝 ≠ -D
+                    }
+
                     float phys = d < 4 ? 1f : Sqrt2;          // 물리 거리 — 선택과 그린웨이브 타이밍 일치
                     float step = phys * (1f + w * _load[ni] * capInv);
                     float cand = _cost[cur] + step;
@@ -104,6 +154,154 @@ namespace CityFlow.Sim
             var path = new List<Vector2Int>();
             for (int node = goal; node != -1; node = _cameFrom[node])
                 path.Add(new Vector2Int(node % _w, node / _w));
+            path.Reverse();
+            return path;
+        }
+
+        // 턴 제한 표지판(스펙 2026-07-12 §핵심결정 "표지판 0개 = 레거시 탐색"): turnSigns가 없거나
+        // 비어 있으면 위 5-인자 Search를 무수정 그대로 호출 — 기존 180 테스트·라이브 결정론의
+        // 무풍지대(경로·tie-break 완전 동일)를 이 분기 자체가 증명한다. 있으면 상태 확장 탐색.
+        internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
+                                          IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
+        {
+            if (turnSigns == null || turnSigns.Count == 0)
+                return Search(grid, from, to, cfg, oneways);
+            return SearchWithTurnState(grid, from, to, cfg, oneways, turnSigns);
+        }
+
+        // 상태 확장 Dijkstra: 상태 = (타일 × 진입방향, E=0/S=1/W=2/N=3 고정 순회 — CardinalToStateIdx).
+        // 표지판 타일 T에 진입방향 d_in으로 들어온 상태에서 나가는 스텝 d_out은
+        // Turn(d_in,모드)만 허용: LeftOnly→(d_in+3)%4, RightOnly→(d_in+1)%4 — U턴(+2)·직진(+0)·
+        // 반대턴은 이 산술만으로 자동 배제(별도 예외 처리 불요). 표지판 관여 대각 스텝은
+        // 진입·이탈 무관, 시작 타일 포함 예외 없이 금지(기하 규칙 — 회전 상태와 무관).
+        // 시작 타일은 진입방향 미확립 — 첫 스텝은 턴 필터 없이 확장(대각 금지·일방통행 3규칙은 그대로 적용).
+        // 일방통행 3규칙은 기존 5-인자 Search와 동일하게 이 경로에도 적용(두 도구 공존).
+        // dist/cameFrom 배열은 생성자 1회 할당(_turnCost/_turnDone/_turnCameFrom) — 매 호출 클리어만.
+        internal List<Vector2Int> SearchWithTurnState(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                                       IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
+                                                       IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
+        {
+            if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
+            if (from == to) return new List<Vector2Int> { from };   // legacy Search_SameTile_ReturnsSingle과 동형
+
+            bool hasOneways = oneways != null && oneways.Count > 0;
+            int goal = to.y * _w + to.x;
+
+            int statesN = _turnCost.Length;
+            for (int i = 0; i < statesN; i++) { _turnCost[i] = float.MaxValue; _turnDone[i] = false; }
+
+            float capInv = cfg.RoadCapacity > 0f ? 1f / cfg.RoadCapacity : 0f;
+            float w = cfg.RoutingCongestionWeight;
+
+            // ── 시작 타일 씨앗: 진입방향 미확립 — 턴 필터 없이 확장(대각 금지·일방통행은 그대로) ──
+            int sx = from.x, sy = from.y;
+            bool startOneway = false;
+            Vector2Int startOnewayDir = default;
+            if (hasOneways) startOneway = oneways.TryGetValue(from, out startOnewayDir);
+            bool startIsSign = turnSigns.ContainsKey(from);
+
+            for (int d = 0; d < DX.Length; d++)
+            {
+                int nx = sx + DX[d], ny = sy + DY[d];
+                if (!IsRoad(grid, nx, ny)) continue;
+                var nbrTile = new Vector2Int(nx, ny);
+                bool diag = d >= 4;
+
+                bool nbrOneway = false;
+                Vector2Int nbrOnewayDir = default;
+                if (hasOneways) nbrOneway = oneways.TryGetValue(nbrTile, out nbrOnewayDir);
+                bool nbrIsSign = turnSigns.ContainsKey(nbrTile);
+
+                if (diag && (startOneway || nbrOneway)) continue;             // 일방 규칙③
+                if (diag && (startIsSign || nbrIsSign)) continue;             // 표지판 관여 대각 금지(시작 예외 없음)
+
+                if (hasOneways)
+                {
+                    var stepDir = new Vector2Int(DX[d], DY[d]);
+                    if (startOneway && stepDir != startOnewayDir) continue;   // ① 나가는 스텝 = D만
+                    if (nbrOneway && stepDir == -nbrOnewayDir) continue;      // ② 들어가는 스텝 ≠ -D
+                }
+                // 시작 타일 표지판은 무제약(진입이 아니므로) — 턴 필터 미적용.
+
+                float phys = d < 4 ? 1f : Sqrt2;
+                float step = phys * (1f + w * _load[ny * _w + nx] * capInv);
+                int newDirIn = d < 4 ? CardinalToStateIdx[d] : 0;             // 대각 도착은 자리표시(비표지판 타일 확정 — 무해)
+                int state = (ny * _w + nx) * 4 + newDirIn;
+                if (step < _turnCost[state]) { _turnCost[state] = step; _turnCameFrom[state] = -1; }
+            }
+
+            // ── 본 루프: flat 오름차순 스캔(결정론) — 노드가 아니라 상태 단위 ──
+            int goalState = -1;
+            while (true)
+            {
+                int cur = -1;
+                float best = float.MaxValue;
+                for (int i = 0; i < statesN; i++)
+                    if (!_turnDone[i] && _turnCost[i] < best) { best = _turnCost[i]; cur = i; }
+                if (cur == -1) return null;                       // 프런티어 고갈 = 미연결(무사고)
+
+                int curNode = cur / 4;
+                if (curNode == goal) { goalState = cur; break; }   // 어느 진입방향이든 노드 도달이면 종료
+                _turnDone[cur] = true;
+
+                int curDirIn = cur % 4;
+                int cx = curNode % _w, cy = curNode / _w;
+                var curTile = new Vector2Int(cx, cy);
+                bool curIsSign = turnSigns.TryGetValue(curTile, out var curMode);
+                bool curOneway = false;
+                Vector2Int curOnewayDir = default;
+                if (hasOneways) curOneway = oneways.TryGetValue(curTile, out curOnewayDir);
+
+                for (int d = 0; d < DX.Length; d++)
+                {
+                    int nx = cx + DX[d], ny = cy + DY[d];
+                    if (!IsRoad(grid, nx, ny)) continue;
+                    int ni = ny * _w + nx;
+                    var nbrTile = new Vector2Int(nx, ny);
+                    bool diag = d >= 4;
+
+                    bool nbrOneway = false;
+                    Vector2Int nbrOnewayDir = default;
+                    if (hasOneways) nbrOneway = oneways.TryGetValue(nbrTile, out nbrOnewayDir);
+                    bool nbrIsSign = turnSigns.ContainsKey(nbrTile);
+
+                    if (diag && (curOneway || nbrOneway)) continue;           // 일방 규칙③
+                    if (diag && (curIsSign || nbrIsSign)) continue;           // 표지판 관여 대각 금지
+
+                    if (hasOneways)
+                    {
+                        var stepDir = new Vector2Int(DX[d], DY[d]);
+                        if (curOneway && stepDir != curOnewayDir) continue;   // ① 나가는 스텝 = D만
+                        if (nbrOneway && stepDir == -nbrOnewayDir) continue;  // ② 들어가는 스텝 ≠ -D
+                    }
+
+                    if (curIsSign && !diag)                                  // 표지판 타일 이탈 = Turn(d_in,모드)만
+                    {
+                        int expected = curMode == TurnMode.LeftOnly
+                            ? (curDirIn + 3) % 4    // 좌회전(반시계 90°)
+                            : (curDirIn + 1) % 4;   // 우회전(시계 90°) — U턴(+2)·직진(+0)은 둘 다 아님
+                        if (CardinalToStateIdx[d] != expected) continue;
+                    }
+
+                    float phys = d < 4 ? 1f : Sqrt2;
+                    float step = phys * (1f + w * _load[ni] * capInv);
+                    float cand = _turnCost[cur] + step;
+                    int newDirIn = d < 4 ? CardinalToStateIdx[d] : curDirIn;  // 대각은 직전 방향 유지(비표지판 확정 — 무해)
+                    int nState = ni * 4 + newDirIn;
+                    if (cand < _turnCost[nState]) { _turnCost[nState] = cand; _turnCameFrom[nState] = cur; }
+                }
+            }
+
+            // 재구성 = (타일,방향) 체인 → 타일 리스트. 타일 중복 허용(P턴 — 같은 노드를 다른
+            // 진입방향으로 재방문 가능, 상태가 다르므로 무한루프 없음: cameFrom은 항상 더 이른 상태).
+            var path = new List<Vector2Int>();
+            for (int state = goalState; state != -1; state = _turnCameFrom[state])
+            {
+                int node = state / 4;
+                path.Add(new Vector2Int(node % _w, node / _w));
+            }
+            path.Add(from);
             path.Reverse();
             return path;
         }

@@ -36,6 +36,7 @@ namespace CityFlow.View
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
         [SerializeField] private float followGap = 0.4f;           // 차간 유지 거리(타일 비율)
         [SerializeField] private float roundaboutOrbitRadius = 0.3f;   // 로터리 궤도 반경(타일 비율)
+        [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
         [Header("Colors")]
         [SerializeField] private Color boardColor = new Color(0.78f, 0.82f, 0.78f);
@@ -51,11 +52,15 @@ namespace CityFlow.View
         [SerializeField] private Color flowBurstColor = new Color(1f, 0.78f, 0.12f);
         [SerializeField] private Color roundaboutColor = new Color(0.35f, 0.78f, 0.45f);
         [SerializeField] private Color overpassColor = new Color(0.55f, 0.62f, 0.75f);
+        [SerializeField] private Color onewayColor = new Color(0.95f, 0.85f, 0.15f);
+        [SerializeField] private Color turnSignColor = new Color(0.95f, 0.35f, 0.75f);
 
         private readonly Dictionary<Vector2Int, TileVisual> tileVisuals = new();
         private readonly Dictionary<Vector2Int, SignalVisual> signalVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> roundaboutVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> overpassVisuals = new();
+        private readonly Dictionary<Vector2Int, GameObject> onewayVisuals = new();
+        private readonly Dictionary<Vector2Int, TurnSignVisual> turnSignVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
         private readonly List<BurstVisual> bursts = new();
 
@@ -104,6 +109,14 @@ namespace CityFlow.View
             public MaterialPropertyBlock HorizontalBlock;
             public MaterialPropertyBlock VerticalBlock;
             public MaterialPropertyBlock SelectionBlock;
+        }
+
+        // 턴 제한 표지판 마커: 몸통 바(Shaft) + 꺾인 촉(Tip) — Tip의 위치/회전만 모드에 따라 매 폴링 갱신
+        // (같은 타일에서 Left↔Right 회전이 배치물 재생성 없이 그대로 반영되도록 — 오프셋 폴링 규약).
+        private sealed class TurnSignVisual
+        {
+            public GameObject Root;
+            public Transform Tip;
         }
 
         private sealed class RouteVehicle
@@ -171,6 +184,8 @@ namespace CityFlow.View
             RefreshSignals();
             RefreshRoundabouts();
             RefreshOverpasses();
+            RefreshOneways();
+            RefreshTurnSigns();
             RefreshVehicles();
             PrewarmEffectPools();
             gameObject.AddComponent<DriveViewCamera>().Init(simEngine, transform, tileSize);
@@ -200,6 +215,8 @@ namespace CityFlow.View
             RefreshSignals();
             RefreshRoundabouts();
             RefreshOverpasses();
+            RefreshOneways();
+            RefreshTurnSigns();
             RefreshVehicles();
             UpdateBursts();
             UpdateCoins();
@@ -488,6 +505,135 @@ namespace CityFlow.View
             return root;
         }
 
+        // 일방통행 화살표 마커: OnewayTiles 폴링 — 로터리/입체와 동일 수명 규약(폴링 생성/제거).
+        private void RefreshOneways()
+        {
+            if (simEngine == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<Vector2Int> tiles = simEngine.OnewayTiles;
+
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                Vector2Int tile = tiles[i];
+
+                if (!onewayVisuals.TryGetValue(tile, out GameObject visual))
+                {
+                    visual = CreateOnewayVisual(tile);
+                    onewayVisuals.Add(tile, visual);
+                }
+
+                Vector2Int dir = simEngine.GetOnewayDir(tile);
+                visual.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
+            }
+
+            foreach (Vector2Int tile in new List<Vector2Int>(onewayVisuals.Keys))
+            {
+                if (ContainsSignal(tiles, tile))
+                {
+                    continue;
+                }
+
+                Destroy(onewayVisuals[tile]);
+                onewayVisuals.Remove(tile);
+            }
+        }
+
+        // 화살표: 몸통 바(뒤쪽) + 촉 2개(사선 바, 앞쪽에서 V자) — 전부 동쪽(+x)을 기준으로 만들고
+        // 루트 z회전으로 GetOnewayDir 방향을 표현(에셋 스왑 지점 1함수 수렴, 기존 규약).
+        private GameObject CreateOnewayVisual(Vector2Int tile)
+        {
+            GameObject root = new GameObject($"Oneway_{tile.x}_{tile.y}");
+            root.transform.SetParent(signalRoot, false);
+            root.transform.localPosition = GridToLocal(tile, signalZ);
+
+            Renderer shaft = CreateSignalBar(root.transform, "Shaft",
+                new Vector3(tileSize * 0.5f, tileSize * 0.1f, 0.05f), new Vector3(-tileSize * 0.08f, 0f, 0f));
+            Renderer headA = CreateSignalBar(root.transform, "HeadA",
+                new Vector3(tileSize * 0.24f, tileSize * 0.1f, 0.05f), new Vector3(tileSize * 0.2f, tileSize * 0.1f, 0f));
+            Renderer headB = CreateSignalBar(root.transform, "HeadB",
+                new Vector3(tileSize * 0.24f, tileSize * 0.1f, 0.05f), new Vector3(tileSize * 0.2f, -tileSize * 0.1f, 0f));
+            headA.transform.localRotation = Quaternion.Euler(0f, 0f, 40f);
+            headB.transform.localRotation = Quaternion.Euler(0f, 0f, -40f);
+
+            ApplyRendererColor(shaft, onewayColor);
+            ApplyRendererColor(headA, onewayColor);
+            ApplyRendererColor(headB, onewayColor);
+            return root;
+        }
+
+        // 턴 제한 표지판 마커: TurnSignTiles 폴링 — 로터리/입체/일방과 동일 수명 규약(생성/제거).
+        // 신호와 같은 타일에 공존할 수 있어(스펙 §핵심결정) turnSignZ로 signalZ와 z 분리(겹침 회피).
+        private void RefreshTurnSigns()
+        {
+            if (simEngine == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<Vector2Int> tiles = simEngine.TurnSignTiles;
+
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                Vector2Int tile = tiles[i];
+
+                if (!turnSignVisuals.TryGetValue(tile, out TurnSignVisual visual))
+                {
+                    visual = CreateTurnSignVisual(tile);
+                    turnSignVisuals.Add(tile, visual);
+                }
+
+                ApplyTurnSignState(tile, visual);
+            }
+
+            foreach (Vector2Int tile in new List<Vector2Int>(turnSignVisuals.Keys))
+            {
+                if (ContainsSignal(tiles, tile))
+                {
+                    continue;
+                }
+
+                Destroy(turnSignVisuals[tile].Root);
+                turnSignVisuals.Remove(tile);
+            }
+        }
+
+        // 굽은 화살: 몸통 바(북쪽 고정, 진입방향 무관 — 표지판은 특정 방향이 아니라 교차로 전체에 적용)
+        // + 꺾인 촉. 촉의 위치/회전은 GetTurnMode로 매 폴링 갱신(에셋 스왑 지점 1함수 수렴, 기존 규약).
+        private TurnSignVisual CreateTurnSignVisual(Vector2Int tile)
+        {
+            GameObject root = new GameObject($"TurnSign_{tile.x}_{tile.y}");
+            root.transform.SetParent(signalRoot, false);
+            root.transform.localPosition = GridToLocal(tile, turnSignZ);
+
+            Renderer shaft = CreateSignalBar(root.transform, "Shaft",
+                new Vector3(tileSize * 0.12f, tileSize * 0.3f, 0.05f), new Vector3(0f, -tileSize * 0.09f, 0f));
+            Renderer tip = CreateSignalBar(root.transform, "Tip",
+                new Vector3(tileSize * 0.26f, tileSize * 0.12f, 0.05f), Vector3.zero);
+
+            ApplyRendererColor(shaft, turnSignColor);
+            ApplyRendererColor(tip, turnSignColor);
+
+            return new TurnSignVisual { Root = root, Tip = tip.transform };
+        }
+
+        // LeftOnly = 반시계 꺾임(촉이 왼쪽으로), RightOnly = 시계 꺾임(촉이 오른쪽으로) — 설계 §핵심결정
+        // "회전 정의"와 같은 손감(왼쪽=+각도). null(표지판 소멸 경합 프레임)은 Left 형태로 방어.
+        private void ApplyTurnSignState(Vector2Int tile, TurnSignVisual visual)
+        {
+            visual.Root.transform.localPosition = GridToLocal(tile, turnSignZ);
+
+            TurnMode mode = simEngine.GetTurnMode(tile) ?? TurnMode.LeftOnly;
+            bool leftOnly = mode == TurnMode.LeftOnly;
+            float bendX = leftOnly ? -tileSize * 0.1f : tileSize * 0.1f;
+            float bendAngle = leftOnly ? 45f : -45f;
+
+            visual.Tip.localPosition = new Vector3(bendX, tileSize * 0.16f, 0f);
+            visual.Tip.localRotation = Quaternion.Euler(0f, 0f, bendAngle);
+        }
+
         private SignalVisual CreateSignalVisual(Vector2Int tile)
         {
             GameObject root = signalPrefab != null
@@ -724,14 +870,29 @@ namespace CityFlow.View
                 vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
             }
 
+            // 역주행 유령 숨김(스펙 §3 해법①): 복귀 구간(!forward)에서 지금 서 있는 타일이 일방이고
+            // 실제 진행 방향이 그 일방 방향과 거의 정반대(역주행)면 렌더러를 숨긴다. 조건이 매 프레임
+            // 재평가되므로 조건 해제(순방향 복귀 등) 시 별도 상태 없이 자연히 복원됨.
+            bool hiddenAsGhost = false;
+            if (!forward && simEngine != null)
+            {
+                Vector2Int onewayDir = simEngine.GetOnewayDir(insideTile);
+                if (onewayDir != Vector2Int.zero)
+                {
+                    Vector3 onewayWorldDir = new Vector3(onewayDir.x, onewayDir.y, 0f);
+                    hiddenAsGhost = Vector3.Dot(travelDir, onewayWorldDir) < -0.9f;
+                }
+            }
+
             if (vehicle.Renderer != null)
             {
+                vehicle.Renderer.enabled = !hiddenAsGhost;
                 Color routeColor = blockedBySignal ? Color.red : Color.HSVToRGB((routeIndex * 0.137f) % 1f, 0.7f, 0.95f);
                 ApplyRendererColor(vehicle.Renderer, routeColor);
             }
 
             // Jam 분노 팝업(스펙 2026-07-12 §1): 내가 서 있는 타일이 Jam이면 ! + 매연 — 가짜 디테일.
-            bool jammed = tileData.GetCongestion(currentTile) == CongestionLevel.Jam;
+            bool jammed = !hiddenAsGhost && tileData.GetCongestion(currentTile) == CongestionLevel.Jam;
             if (jammed && vehicle.AngryMark == null)
             {
                 vehicle.AngryMark = CreateTextMark(vehicleRoot, "!", Color.red, tileSize * 0.14f);
