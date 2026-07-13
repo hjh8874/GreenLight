@@ -26,6 +26,10 @@ namespace CityFlow.Sim
         // 입체교차(스펙 2026-07-12): 신호·로터리와 3자 배타. 로터리와 동형(SignalMap 무관, Rebuild 불필요).
         readonly List<Vector2Int> _placedOverpasses = new();
         readonly HashSet<Vector2Int> _overpassSet = new();
+        // 우선도로(스펙 2026-07-13): 교차로 전용(로터리처럼) + 축 우선순위(Dictionary).
+        // 간섭 계수만 바꿈 — 라우팅 무관이라 MarkTopologyDirty 안 함(로터리 규약).
+        readonly List<Vector2Int> _placedPriorityRoads = new();
+        readonly Dictionary<Vector2Int, Axis> _priorityDirs = new();
         // 일방통행(스펙 2026-07-12): 교차로 3형제와 달리 일반 도로 전용 — 조건이 반대라 자연 배타.
         // 방향값이 있어 좌표-전용 셋이 아니라 Dictionary(좌표→단위 방향) + flat 정렬 List(순회·세이브 순서).
         readonly Dictionary<Vector2Int, Vector2Int> _onewayDirs = new();
@@ -169,6 +173,12 @@ namespace CityFlow.Sim
                 _overpassSet.Remove(t);        // 교차로 해제 → 입체교차도 소멸(동일 규약)
                 return true;
             });
+            _placedPriorityRoads.RemoveAll(t =>
+            {
+                if (_grid.IsIntersection(t)) return false;
+                _priorityDirs.Remove(t);       // 교차로 해제 → 우선도로도 소멸(동일 규약)
+                return true;
+            });
             _placedOneways.RemoveAll(t =>
             {
                 // 조건이 반대(비교차로 유지) — 도로 철거든 교차로화든 배치 조건 위반이면 소멸.
@@ -276,7 +286,8 @@ namespace CityFlow.Sim
         public bool CanPlaceSignal(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
             && !_placedSet.Contains(tile) && !_roundaboutSet.Contains(tile)
-            && !_overpassSet.Contains(tile);                                  // 3자 배타
+            && !_overpassSet.Contains(tile)                                   // 3자 배타
+            && !_priorityDirs.ContainsKey(tile);   // 우선도로와 배타(4자 배타, 스펙 2026-07-13)
 
         public bool TryPlaceSignal(Vector2Int tile, int greenSlots)
         {
@@ -305,7 +316,8 @@ namespace CityFlow.Sim
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
             && !_roundaboutSet.Contains(tile) && !_placedSet.Contains(tile)
             && !_overpassSet.Contains(tile)                                   // 3자 배타
-            && !_turnSigns.ContainsKey(tile);   // 표지판과 배타(양방향 — 계획 정정 2026-07-12)
+            && !_turnSigns.ContainsKey(tile)    // 표지판과 배타(양방향 — 계획 정정 2026-07-12)
+            && !_priorityDirs.ContainsKey(tile);   // 우선도로와 배타(4자 배타, 스펙 2026-07-13)
 
         public bool TryPlaceRoundabout(Vector2Int tile)
         {
@@ -331,7 +343,8 @@ namespace CityFlow.Sim
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
             && !_overpassSet.Contains(tile) && !_placedSet.Contains(tile)
             && !_roundaboutSet.Contains(tile)                              // 3자 배타
-            && !_turnSigns.ContainsKey(tile);   // 표지판과 배타(양방향 — 계획 정정 2026-07-12)
+            && !_turnSigns.ContainsKey(tile)    // 표지판과 배타(양방향 — 계획 정정 2026-07-12)
+            && !_priorityDirs.ContainsKey(tile);   // 우선도로와 배타(4자 배타, 스펙 2026-07-13)
 
         public bool TryPlaceOverpass(Vector2Int tile)
         {
@@ -347,6 +360,34 @@ namespace CityFlow.Sim
         {
             if (_config.AutoDetectSignals || !_overpassSet.Remove(tile)) return false;
             _placedOverpasses.Remove(tile);
+            return true;
+        }
+
+        // ── 우선도로 배치(스펙 2026-07-13): 로터리 3종의 자매 — 교차로 4형제 완성(신호·로터리·입체와 4자 배타) ──
+        public IReadOnlyList<Vector2Int> PriorityRoadTiles => _placedPriorityRoads;
+
+        public Axis GetPriorityAxis(Vector2Int tile) =>
+            _priorityDirs.TryGetValue(tile, out var a) ? a : Axis.Horizontal;
+
+        public bool CanPlacePriorityRoad(Vector2Int tile) =>
+            !_config.AutoDetectSignals && _grid.IsIntersection(tile)
+            && !_priorityDirs.ContainsKey(tile) && !_placedSet.Contains(tile)
+            && !_roundaboutSet.Contains(tile) && !_overpassSet.Contains(tile);   // 4자 배타
+
+        public bool TryPlacePriorityRoad(Vector2Int tile, Axis mainAxis)
+        {
+            if (!CanPlacePriorityRoad(tile)) return false;
+            int flat = tile.y * _config.GridWidth + tile.x;
+            int idx = _placedPriorityRoads.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
+            if (idx < 0) _placedPriorityRoads.Add(tile); else _placedPriorityRoads.Insert(idx, tile);
+            _priorityDirs[tile] = mainAxis;
+            return true;                          // MarkTopologyDirty 안 함(로터리 규약 — 라우팅 무관)
+        }
+
+        public bool TryRemovePriorityRoad(Vector2Int tile)
+        {
+            if (_config.AutoDetectSignals || !_priorityDirs.Remove(tile)) return false;
+            _placedPriorityRoads.Remove(tile);
             return true;
         }
 
