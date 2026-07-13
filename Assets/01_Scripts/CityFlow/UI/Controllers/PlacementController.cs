@@ -60,6 +60,17 @@ namespace CityFlow.UI
         {
             _currentType = type;
             Debug.Log($"[PlacementController] 건설 모드 변경됨: {_currentType}");
+
+            // 인프라 상점과 같은 패널에 탭으로 합쳐졌을 경우를 대비해, 일반 타일 선택 시 인프라 모드를 강제 취소합니다.
+            var infraCoord = UnityEngine.Object.FindFirstObjectByType<CityFlow.UI.Controllers.InfrastructurePlacementCoordinator>();
+            if (infraCoord != null && infraCoord.IsBuildingMode)
+            {
+                infraCoord.CancelPlacement();
+            }
+
+            // 도로/집 건설 모드를 확실하게 활성화합니다.
+            enabled = true;
+            ToggleBuildMode(true);
         }
 
         public void Initialize(CityFlowServices services)
