@@ -6,6 +6,12 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/00_Scenes/TitleScene.unity
+    guid: d2f3ee9203638471eb57d22a7c07da3d
+  - enabled: 1
+    path: Assets/00_Scenes/CityFlowIntegrated_cmt.unity
+    guid: 0e0ed64502234e7c87c38b5c4f427ee6
+  - enabled: 1
     path: Assets/00_Scenes/SampleScene.unity
     guid: 99c9720ab356a0642a771bea13969a05
   m_configObjects:
