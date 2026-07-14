@@ -11,8 +11,10 @@ namespace CityFlow.Contracts.Save
         public int GridHeight;
         public SimSaveData Simulation;
         public EconomySaveData Economy;
+        public WeeklySettlementSaveData WeeklySettlement;
         public ResearchSaveData Research;
         public ProgressionSaveData Progression;
         public GameCalendarSaveData Calendar;
+        public RadioSaveData Radio;
     }
 }

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using CityFlow.Sim;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -181,6 +182,11 @@ namespace CityFlow.View
             services.Events.CongestionChanged += OnCongestionChanged;
             services.Events.FlowBurst += OnFlowBurst;
 
+            if (services.Save != null)
+            {
+                services.Save.RestoreCompleted += OnRestoreCompleted;
+            }
+
             BuildRoots();
             BuildBoard();
             BuildGridLines();
@@ -206,6 +212,11 @@ namespace CityFlow.View
             services.Events.Placed -= OnPlaced;
             services.Events.CongestionChanged -= OnCongestionChanged;
             services.Events.FlowBurst -= OnFlowBurst;
+
+            if (services.Save != null)
+            {
+                services.Save.RestoreCompleted -= OnRestoreCompleted;
+            }
         }
 
         private void Update()
@@ -297,6 +308,34 @@ namespace CityFlow.View
                     RefreshTile(tile, tileData.GetTileType(tile));
                 }
             }
+        }
+
+        private void RebuildRestoredVisuals()
+        {
+            ClearChildren(tileRoot);
+            tileVisuals.Clear();
+
+            ClearChildren(signalRoot);
+            signalVisuals.Clear();
+            roundaboutVisuals.Clear();
+            overpassVisuals.Clear();
+            onewayVisuals.Clear();
+            turnSignVisuals.Clear();
+
+            ClearChildren(vehicleRoot);
+            vehicles.Clear();
+
+            selectedSignalIndex = 0;
+
+            RefreshAllTiles();
+            RefreshSignals();
+            RefreshRoundabouts();
+            RefreshOverpasses();
+            RefreshOneways();
+            RefreshTurnSigns();
+            RefreshVehicles();
+
+            Debug.Log("[MainCityView] Restored city visuals rebuilt.");
         }
 
         private void RefreshTile(Vector2Int tile, TileType type)
@@ -1197,6 +1236,11 @@ namespace CityFlow.View
         {
             RefreshTile(e.Tile, e.IsRemove ? TileType.Empty : e.Type);
             RefreshSignals();
+        }
+
+        private void OnRestoreCompleted(RestoreCompletedEvent _)
+        {
+            RebuildRestoredVisuals();
         }
 
         private void OnCongestionChanged(CongestionEvent e)

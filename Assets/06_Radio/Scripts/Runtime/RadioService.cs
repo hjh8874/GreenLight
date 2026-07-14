@@ -1,15 +1,21 @@
 using System;
 using System.Collections.Generic;
+using CityFlow.Bootstrap;
 using GreenLight.Radio.Data;
 using GreenLight.Radio.Save;
 using UnityEngine;
 
 namespace GreenLight.Radio.Runtime
 {
-    public sealed class RadioService : MonoBehaviour, IRadioSaveSource
+    public sealed class RadioService :
+        MonoBehaviour,
+        ICityFlowServiceConsumer,
+        IRadioSaveSource
     {
         [SerializeField] private int initialSlotCount = 3;
         [SerializeField] private List<RadioSlotData> slots = new();
+
+        private RadioCentralSaveAdapter centralSaveAdapter;
 
         public IReadOnlyList<RadioSlotData> Slots => slots;
         public int CurrentSlotIndex { get; private set; } = -1;
@@ -24,6 +30,19 @@ namespace GreenLight.Radio.Runtime
         private void Awake()
         {
             EnsureSlotCount(initialSlotCount);
+        }
+
+        public void Initialize(CityFlowServices services)
+        {
+            if (services == null)
+            {
+                return;
+            }
+
+            EnsureSlotCount(initialSlotCount);
+            centralSaveAdapter ??= new RadioCentralSaveAdapter(this);
+            services.RegisterRadioSaveSource(centralSaveAdapter);
+            Debug.Log("[RadioService] Radio save source registered.");
         }
 
         public bool TryUnlockSlot(int slotIndex)
@@ -133,12 +152,25 @@ namespace GreenLight.Radio.Runtime
 
         public void RestoreSnapshot(RadioSaveData snapshot)
         {
+            RestoreSnapshot(snapshot, true);
+        }
+
+        public void RestoreSnapshotSilently(RadioSaveData snapshot)
+        {
+            RestoreSnapshot(snapshot, false);
+        }
+
+        private void RestoreSnapshot(
+            RadioSaveData snapshot,
+            bool notifyListeners)
+        {
             if (snapshot?.Slots == null)
             {
                 return;
             }
 
             EnsureSlotCount(snapshot.Slots.Length);
+            ResetSlotState();
 
             for (int i = 0; i < snapshot.Slots.Length; i++)
             {
@@ -161,12 +193,12 @@ namespace GreenLight.Radio.Runtime
                     savedSlot.DisplayName,
                     savedSlot.ThemeId);
 
-                if (slot.IsUnlocked)
+                if (notifyListeners && slot.IsUnlocked)
                 {
                     SlotUnlocked?.Invoke(slot);
                 }
 
-                if (slot.SourceType != RadioSourceType.None)
+                if (notifyListeners && slot.SourceType != RadioSourceType.None)
                 {
                     SlotRegistered?.Invoke(slot);
                 }
@@ -222,6 +254,30 @@ namespace GreenLight.Radio.Runtime
             {
                 slots.Add(new RadioSlotData(i));
             }
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                if (slots[i] == null)
+                {
+                    slots[i] = new RadioSlotData(i);
+                }
+            }
+        }
+
+        private void ResetSlotState()
+        {
+            for (int i = 0; i < slots.Count; i++)
+            {
+                slots[i]?.Restore(
+                    false,
+                    RadioSourceType.None,
+                    string.Empty,
+                    string.Empty,
+                    string.Empty);
+            }
+
+            CurrentSlotIndex = -1;
+            CurrentSlot = null;
         }
 
         private static RadioSourceType ParseSourceType(string sourceType)
