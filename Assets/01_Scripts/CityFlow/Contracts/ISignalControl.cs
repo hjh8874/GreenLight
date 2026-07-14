@@ -34,6 +34,7 @@ namespace CityFlow.Contracts
         bool TryOverrideSignal(Vector2Int tile, bool horizontal);
         float GetOverrideSecondsLeft(Vector2Int tile);   // 0 = 비활성
         float GetOverrideCooldownLeft(Vector2Int tile);  // 0 = 사용 가능
+        float GetTotalOverrideCooldown();                // 전체 쿨다운(비율 계산용)
 
         // UI 쿨타임 애니메이션용 (타일, 가로여부, 오버라이드지속시간, 전체쿨타임시간)
         event System.Action<Vector2Int, bool, float, float> OnOverrideTriggered;

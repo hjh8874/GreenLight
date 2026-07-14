@@ -29,6 +29,12 @@ namespace CityFlow.UI
         [SerializeField] private Slider sliderGreen;
         [SerializeField] private Button btnOverrideH;
         [SerializeField] private Button btnOverrideV;
+
+        [Header("Cooldown Overlay")]
+        [SerializeField] private Image imgCooldownH;
+        [SerializeField] private Image imgCooldownV;
+        [SerializeField] private TMP_Text txtCooldownH;
+        [SerializeField] private TMP_Text txtCooldownV;
         [Header("Footer Buttons")]
         [SerializeField] private Button btnResolveJam;
         [SerializeField] private Button btnUpgrade;
@@ -39,6 +45,7 @@ namespace CityFlow.UI
 
         private CityFlowServices _services;
         private Coroutine _updateRoutine;
+        private Coroutine _signalCooldownRoutine;
         private float _currentWaitTime = 0f;
         private Vector2Int _currentTile;
         private bool _isClosing = false;
@@ -127,6 +134,11 @@ namespace CityFlow.UI
                 StopCoroutine(_updateRoutine);
                 _updateRoutine = null;
             }
+            if (_signalCooldownRoutine != null)
+            {
+                StopCoroutine(_signalCooldownRoutine);
+                _signalCooldownRoutine = null;
+            }
             
             var signalControl = _services?.Placement as ISignalControl;
             if (signalControl != null && signalControl.SignalTiles.Contains(tile))
@@ -149,6 +161,10 @@ namespace CityFlow.UI
                     sliderGreen.maxValue = Mathf.Max(1, cycle - 1);
                     sliderGreen.SetValueWithoutNotify(signalControl.GetSignalGreenSlots(tile));
                 }
+
+                // 쿨다운 상태 즉시 반영 후 갱신 코루틴 시작
+                ApplyCooldownVisuals(signalControl);
+                _signalCooldownRoutine = StartCoroutine(UpdateSignalCooldownRoutine());
             }
             else
             {
@@ -171,7 +187,8 @@ namespace CityFlow.UI
             if (_isClosing || !gameObject.activeSelf) return;
             _isClosing = true;
 
-            if (_updateRoutine != null) StopCoroutine(_updateRoutine);
+            if (_updateRoutine != null) { StopCoroutine(_updateRoutine); _updateRoutine = null; }
+            if (_signalCooldownRoutine != null) { StopCoroutine(_signalCooldownRoutine); _signalCooldownRoutine = null; }
             
             // DOTween 닫기 애니메이션
             transform.DOKill();
@@ -196,9 +213,9 @@ namespace CityFlow.UI
             // 같은 타일을 누르면 항상 같은 가짜 차량이 나오도록 Random Seed 고정
             Random.InitState(tile.x * 1000 + tile.y);
             
-            if (txtTileCoord != null) txtTileCoord.text = $"Tile: {tile.x}, {tile.y}";
+            if (txtTileCoord != null) txtTileCoord.text = $"타일: {tile.x}, {tile.y}";
             
-            string[] types = { "Sedan", "SUV", "Truck", "Bus", "Sports Car" };
+            string[] types = { "세단", "SUV", "트럭", "버스", "스포츠카" };
             if (txtVehicleType != null) txtVehicleType.text = types[Random.Range(0, types.Length)];
             
             int idPrefix = Random.Range(10, 99);
@@ -222,13 +239,13 @@ namespace CityFlow.UI
 
                 if (txtWaitTime != null)
                 {
-                    string timeText = _currentWaitTime.ToString("F1") + "s";
+                    string timeText = _currentWaitTime.ToString("F1") + "초";
                     
                     // 70% 돌파 시 크리티컬 경고 처리
                     if (density > 0.7f)
                     {
                         txtWaitTime.color = warningColor;
-                        txtWaitTime.text = $"{timeText} ! JAM";
+                        txtWaitTime.text = $"{timeText} ! 정체";
                     }
                     else
                     {
@@ -251,6 +268,59 @@ namespace CityFlow.UI
                 return _services.TileData.GetDensity01(_currentTile);
             }
             return 0f;
+        }
+
+        // ─── 신호 제어 쿨다운 애니메이션 ───────────────────────────
+        private IEnumerator UpdateSignalCooldownRoutine()
+        {
+            WaitForSeconds wait = new WaitForSeconds(0.2f); // 200ms 주기 스로틀링
+
+            while (true)
+            {
+                var signalControl = _services?.Placement as ISignalControl;
+                if (signalControl != null)
+                {
+                    ApplyCooldownVisuals(signalControl);
+                }
+                yield return wait;
+            }
+        }
+
+        private void ApplyCooldownVisuals(ISignalControl signalControl)
+        {
+            float cooldownLeft = signalControl.GetOverrideCooldownLeft(_currentTile);
+            bool onCooldown = cooldownLeft > 0f;
+
+            // SimConfig 기준 전체 쿨다운을 인터페이스에서 동적으로 가져옴
+            float totalCooldown = signalControl.GetTotalOverrideCooldown();
+            float fillRatio = onCooldown ? Mathf.Clamp01(cooldownLeft / totalCooldown) : 0f;
+            string timeLabel = onCooldown ? Mathf.CeilToInt(cooldownLeft) + "초" : "";
+
+            // 가로 오버라이드 버튼
+            if (btnOverrideH != null) btnOverrideH.interactable = !onCooldown;
+            if (imgCooldownH != null)
+            {
+                imgCooldownH.gameObject.SetActive(onCooldown);
+                imgCooldownH.fillAmount = fillRatio;
+            }
+            if (txtCooldownH != null)
+            {
+                txtCooldownH.gameObject.SetActive(onCooldown);
+                txtCooldownH.text = timeLabel;
+            }
+
+            // 세로 오버라이드 버튼
+            if (btnOverrideV != null) btnOverrideV.interactable = !onCooldown;
+            if (imgCooldownV != null)
+            {
+                imgCooldownV.gameObject.SetActive(onCooldown);
+                imgCooldownV.fillAmount = fillRatio;
+            }
+            if (txtCooldownV != null)
+            {
+                txtCooldownV.gameObject.SetActive(onCooldown);
+                txtCooldownV.text = timeLabel;
+            }
         }
     }
 }

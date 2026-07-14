@@ -13,15 +13,14 @@ MonoBehaviour:
   m_Name: OnewayData
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Data.InfrastructureDataSO
   Kind: 3
-  InfrastructureName: Oneway
+  InfrastructureName: "\uC77C\uBC29\uD1B5\uD589"
   Icon: {fileID: 0}
-  Description: 'Role: Restricts traffic flow on a road tile to a single direction
-    to streamline movement.
-
-    Condition: Can be placed on any existing road tile.
-
-'
+  Description: "\uC5ED\uD560: \uB3C4\uB85C \uD0C0\uC77C\uC758 \uAD50\uD1B5 \uD750\uB984\uC744
+    \uD55C \uBC29\uD5A5\uC73C\uB85C \uC81C\uD55C\uD558\uC5EC \uC774\uB3D9\uC744 \uC6D0\uD65C\uD558\uAC8C
+    \uD569\uB2C8\uB2E4.\r\n\uC870\uAC74: \uAE30\uC874 \uB3C4\uB85C \uD0C0\uC77C \uC5B4\uB514\uC5D0\uB098
+    \uBC30\uCE58\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."
   Cost: 50
   GreenSlots: 0
   OnewayDir: {x: 1, y: 0}
   TurnMode: 0
+  PriorityAxis: 0

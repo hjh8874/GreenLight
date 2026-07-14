@@ -88,6 +88,14 @@ namespace CityFlow.UI
             }
         }
 
+        private void OnDisable()
+        {
+            if (_tooltipController != null)
+            {
+                _tooltipController.HideTooltip();
+            }
+        }
+
         public void OnPointerClick(PointerEventData eventData)
         {
             // 전체 슬롯 클릭 시 가벼운 선택 애니메이션 (실제 건설은 btnBuy가 담당)
@@ -112,7 +120,6 @@ namespace CityFlow.UI
             if (_placementController != null && tileData != null)
             {
                 _placementController.SetBuildType(tileData.Category);
-                FindFirstObjectByType<UIDockController>()?.CollapseBuildPanelForPlacement();
                 Debug.Log($"[BuildSlot] {tileData.BuildingName} 건설 모드 활성화");
             }
         }

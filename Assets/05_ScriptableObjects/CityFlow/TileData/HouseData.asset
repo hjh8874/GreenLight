@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: HouseData
   m_EditorClassIdentifier: CityFlow.Contracts::CityFlow.Contracts.TileDataSO
   buildingId: house_001
-  buildingName: House
+  buildingName: "\uC9D1"
   category: 2
   buildingIcon: {fileID: 0}
   buildingPrefab: {fileID: 0}
-  buildingDescription: This is a residential zone that attracts population and generates
-    tax revenue (coins).
+  buildingDescription: "\uC774\uACF3\uC740 \uC778\uAD6C\uB97C \uC720\uC785\uC2DC\uD0A4\uACE0
+    \uC138\uC218(\uCF54\uC778)\uB97C \uCC3D\uCD9C\uD558\uB294 \uC8FC\uAC70 \uAD6C\uC5ED\uC785\uB2C8\uB2E4\n"
   buildCost: 100
   dailyCoinValue: 10
   prosperityValue: 1

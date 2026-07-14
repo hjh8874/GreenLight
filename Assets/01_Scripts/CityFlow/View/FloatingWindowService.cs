@@ -32,6 +32,7 @@ namespace CityFlow.View
 
         private float boardW;
         private float boardH;
+        private bool shouldFitBoardToScreen = true;
         private bool isFloating;
         private int presetIndex = 1;   // 기본 M
         private FloatingState state = FloatingState.Normal;
@@ -62,10 +63,11 @@ namespace CityFlow.View
         public bool IsFloating => isFloating;
         public int PresetIndex => presetIndex;
 
-        public void Init(float width, float height)
+        public void Init(float width, float height, bool fitBoardToScreen = true)
         {
             boardW = width;
             boardH = height;
+            shouldFitBoardToScreen = fitBoardToScreen;
 
             originalTargetFrameRate = Application.targetFrameRate;
             originalRunInBackground = Application.runInBackground;
@@ -80,7 +82,10 @@ namespace CityFlow.View
             }
 
             ApplyPerfMode();
-            FitBoardToScreen();
+            if (shouldFitBoardToScreen)
+            {
+                FitBoardToScreen();
+            }
         }
 
         private void OnDestroy()
@@ -452,7 +457,10 @@ namespace CityFlow.View
 
             lastScreenWidth = Screen.width;
             lastScreenHeight = Screen.height;
-            FitBoardToScreen();
+            if (shouldFitBoardToScreen)
+            {
+                FitBoardToScreen();
+            }
         }
 
         // 띠 비율 창에서 도시가 안 잘리게(스펙 §핵심결정): orthoSize = max(보드 반높이, 반너비/화면비) + margin.

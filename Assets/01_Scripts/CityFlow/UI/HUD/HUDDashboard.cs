@@ -298,13 +298,13 @@ namespace CityFlow.UI
             {
                 if (_gameCalendar != null)
                 {
-                    timeText.text = $"[Time] Y{_gameCalendar.Year} M{_gameCalendar.Month:00} D{_gameCalendar.Day:00} {_gameCalendar.Hour:00}:00";
+                    timeText.text = $"시간: {_gameCalendar.Year}년 {_gameCalendar.Month:00}월 {_gameCalendar.Day:00}일 {_gameCalendar.Hour:00}:00";
                 }
                 else
                 {
                     int minutes = Mathf.FloorToInt(Time.time / 60f);
                     int seconds = Mathf.FloorToInt(Time.time % 60f);
-                    timeText.text = $"[Time] {minutes:00}:{seconds:00}";
+                    timeText.text = $"시간: {minutes:00}:{seconds:00}";
                 }
             }
 
@@ -320,7 +320,7 @@ namespace CityFlow.UI
                     DOTween.To(() => _displayedVehicles, x => 
                     {
                         _displayedVehicles = x;
-                        vehicleCountText.text = $"[Cars] {Mathf.RoundToInt(_displayedVehicles):N0}";
+                        vehicleCountText.text = $"차량: {Mathf.RoundToInt(_displayedVehicles):N0}대";
                     }, targetVehicleCount, updateInterval).SetEase(Ease.Linear).SetTarget(vehicleCountText);
                 }
             }
@@ -344,7 +344,7 @@ namespace CityFlow.UI
             if (efficiencyText != null)
             {
                 int efficiencyPercent = Mathf.RoundToInt(_currentStability01 * 100f);
-                efficiencyText.text = $"[Eff] {efficiencyPercent}%";
+                efficiencyText.text = $"안정도: {efficiencyPercent}%";
             }
         }
 
@@ -356,8 +356,8 @@ namespace CityFlow.UI
             }
 
             coinText.text =
-                $"[Coins] {Mathf.RoundToInt(_displayedCoins):N0}  " +
-                $"[Pending] {_pendingCoins:N0}";
+                $"재화: {Mathf.RoundToInt(_displayedCoins):N0}  " +
+                $"대기: {_pendingCoins:N0}";
         }
     }
 }

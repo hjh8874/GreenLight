@@ -35,13 +35,30 @@ namespace CityFlow.UI
 
         private void Start()
         {
-            _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>();
+            if (placementController == null)
+            {
+                placementController = FindFirstObjectByType<PlacementController>(FindObjectsInactive.Include);
+            }
+            if (_infraCoordinator == null)
+            {
+                _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+            }
             // 시작 시 상세 카드와 하이라이트 박스는 숨겨둡니다.
             DeselectTile();
         }
 
         private void Update()
         {
+            // 동적 생성되는 컨트롤러들을 위해 Update에서 지연 검색 지원
+            if (placementController == null)
+            {
+                placementController = FindFirstObjectByType<PlacementController>(FindObjectsInactive.Include);
+            }
+            if (_infraCoordinator == null)
+            {
+                _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+            }
+
             // 1. 방어 로직: 현재 건설 모드(고스트가 떠다니는 상태)라면 타일 선택을 무시합니다.
             bool isBuilding = (placementController != null && placementController.IsBuildingMode) || 
                               (_infraCoordinator != null && _infraCoordinator.IsBuildingMode);
@@ -78,9 +95,15 @@ namespace CityFlow.UI
 
             if (useXYPlane && Camera.main != null)
             {
-                float distance = Mathf.Abs(Camera.main.transform.position.z);
-                Vector3 worldPos = Camera.main.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, distance));
-                return new Vector2Int(Mathf.FloorToInt(worldPos.x), Mathf.FloorToInt(worldPos.y));
+                Ray xyRay = Camera.main.ScreenPointToRay(mousePos);
+                Plane xyPlane = new Plane(Vector3.forward, Vector3.zero);
+                if (xyPlane.Raycast(xyRay, out float xyEnter))
+                {
+                    Vector3 worldPos = xyRay.GetPoint(xyEnter);
+                    return new Vector2Int(Mathf.FloorToInt(worldPos.x), Mathf.FloorToInt(worldPos.y));
+                }
+
+                return null;
             }
 
             Ray ray = Camera.main.ScreenPointToRay(mousePos);
@@ -100,8 +123,11 @@ namespace CityFlow.UI
             if (highlightBox != null)
             {
                 highlightBox.SetActive(true);
+                float markerZ = placementController != null
+                    ? placementController.GetSurfaceMarkerZ(coord)
+                    : -0.05f;
                 highlightBox.transform.position = useXYPlane
-                    ? new Vector3(coord.x + 0.5f, coord.y + 0.5f, -0.55f)
+                    ? new Vector3(coord.x + 0.5f, coord.y + 0.5f, markerZ)
                     : new Vector3(coord.x, 0, coord.y);
             }
 

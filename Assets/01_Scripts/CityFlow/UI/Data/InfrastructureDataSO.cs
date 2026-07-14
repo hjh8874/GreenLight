@@ -26,5 +26,8 @@ namespace CityFlow.UI.Data
         
         [Tooltip("턴 제한 - 허용 모드")]
         public TurnMode TurnMode = TurnMode.LeftOnly;
+
+        [Tooltip("우선도로 - 무정차 주축(곁길이 양보한다)")]
+        public Axis PriorityAxis = Axis.Horizontal;
     }
 }

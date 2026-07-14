@@ -562,6 +562,8 @@ namespace CityFlow.Sim
         public float GetOverrideCooldownLeft(Vector2Int tile) =>
             _overrideReadyAt.TryGetValue(tile, out var ready) && ready > _simTime
                 ? (float)(ready - _simTime) : 0f;
+                
+        public float GetTotalOverrideCooldown() => _config.OverrideCooldownSeconds;
 
         // 진입 허가 = 초록만(노랑·적색은 진입 금지).
         public bool IsSignalGreen(Vector2Int tile, bool horizontal) =>

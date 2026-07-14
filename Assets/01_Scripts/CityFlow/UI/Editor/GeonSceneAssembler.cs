@@ -61,7 +61,7 @@ namespace CityFlow.UI.Editor
                 btnInfra = btnInfraGO.GetComponent<Button>();
                 
                 var text = btnInfraGO.GetComponentInChildren<TMP_Text>();
-                if (text != null) text.text = "Infra";
+                if (text != null) text.text = "인프라";
             }
             else
             {

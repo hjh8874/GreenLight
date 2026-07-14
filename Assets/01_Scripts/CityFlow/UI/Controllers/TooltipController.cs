@@ -53,10 +53,10 @@ namespace CityFlow.UI
             gameObject.SetActive(true);
             
             if (txtName != null) txtName.text = tileData.BuildingName;
-            if (txtCategory != null) txtCategory.text = $"Category: {tileData.Category}";
-            if (txtCost != null) txtCost.text = $"Cost: {tileData.BuildCost} Coins";
-            if (txtIncome != null) txtIncome.text = $"Income: +{tileData.DailyCoinValue}/min";
-            if (txtEffect != null) txtEffect.text = $"Stability: +{tileData.ProsperityValue}";
+            if (txtCategory != null) txtCategory.text = $"분류: {tileData.Category}";
+            if (txtCost != null) txtCost.text = $"비용: {tileData.BuildCost} 코인";
+            if (txtIncome != null) txtIncome.text = $"수입: 분당 +{tileData.DailyCoinValue}";
+            if (txtEffect != null) txtEffect.text = $"안정도: +{tileData.ProsperityValue}";
             if (txtDescription != null) txtDescription.text = tileData.BuildingDescription;
 
             // 켜지는 순간 랙 방지를 위해 즉시 위치 동기화
@@ -77,10 +77,10 @@ namespace CityFlow.UI
             gameObject.SetActive(true);
             
             if (txtName != null) txtName.text = infraData.InfrastructureName;
-            if (txtCategory != null) txtCategory.text = $"Category: {infraData.Kind}";
-            if (txtCost != null) txtCost.text = $"Cost: {infraData.Cost} Coins";
-            if (txtIncome != null) txtIncome.text = "Maintenance: Auto"; // 인프라는 별도 수입이 없으므로 안내 문구 대체
-            if (txtEffect != null) txtEffect.text = "Effect: Traffic Flow Control"; // 인프라 범용 효과
+            if (txtCategory != null) txtCategory.text = $"분류: {infraData.Kind}";
+            if (txtCost != null) txtCost.text = $"비용: {infraData.Cost} 코인";
+            if (txtIncome != null) txtIncome.text = "유지비: 자동"; // 인프라는 별도 수입이 없으므로 안내 문구 대체
+            if (txtEffect != null) txtEffect.text = "효과: 교통 흐름 제어"; // 인프라 범용 효과
             if (txtDescription != null) txtDescription.text = infraData.Description;
 
             if (Mouse.current != null)
