@@ -35,22 +35,22 @@ namespace CityFlow.UI
 
         private void Start()
         {
-            if (placementController == null)
-            {
-                placementController = FindFirstObjectByType<PlacementController>(FindObjectsInactive.Include);
-            }
-            _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+            // Do NOT use FindFirstObjectByType here. 
+            // If it's dynamically created, Configure() will set these.
+            // If it's a dummy in the scene, leaving them null allows us to ignore it in Update().
+
             // 시작 시 상세 카드와 하이라이트 박스는 숨겨둡니다.
             DeselectTile();
         }
 
         private void Update()
         {
-            // 동적 생성되는 컨트롤러들을 위해 Update에서 지연 검색 지원
+            // 방어 코드: Configure()를 통해 제대로 초기화되지 않은 껍데기(Dummy) 컨트롤러는 이벤트를 무시합니다.
             if (placementController == null)
             {
-                placementController = FindFirstObjectByType<PlacementController>(FindObjectsInactive.Include);
+                return;
             }
+
             if (_infraCoordinator == null)
             {
                 _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);

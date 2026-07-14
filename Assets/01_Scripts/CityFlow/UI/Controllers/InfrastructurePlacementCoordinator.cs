@@ -103,6 +103,8 @@ namespace CityFlow.UI.Controllers
 
         public void CancelPlacement()
         {
+            if (!_isBuildingMode && !_isDemolishMode) return;
+
             _isBuildingMode = false;
             _isDemolishMode = false;
             _currentData = null;
