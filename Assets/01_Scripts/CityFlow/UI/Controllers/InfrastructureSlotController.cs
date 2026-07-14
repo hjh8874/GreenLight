@@ -1,65 +1,64 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
-using CityFlow.Contracts;
-using CityFlow.Configs;
+using CityFlow.UI.Data;
 using TMPro;
 using DG.Tweening;
 
-namespace CityFlow.UI
+namespace CityFlow.UI.Controllers
 {
-    public class BuildSlotController : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
+    public class InfrastructureSlotController : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
     {
         [Header("Data")]
-        [SerializeField] private TileDataSO tileData;
+        [SerializeField] private InfrastructureDataSO infraData;
+        public InfrastructureDataSO InfraData => infraData;
         
         [Header("UI References (Self)")]
         [SerializeField] private Image iconImage;
         [SerializeField] private TextMeshProUGUI costText;
         [SerializeField] private Button btnBuy;
 
-        private PlacementController _placementController;
+        private InfrastructurePlacementCoordinator _coordinator;
         private TooltipController _tooltipController;
 
-        public void Initialize(PlacementController placement, TooltipController tooltip)
+        private void Start()
         {
-            _placementController = placement;
-            _tooltipController = tooltip;
+            // 에디터 씬에 있는 코디네이터를 자동으로 찾아서 연결합니다.
+            _coordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>();
+            _tooltipController = FindFirstObjectByType<TooltipController>(FindObjectsInactive.Include);
 
-            // UI 초기화
-            if (tileData != null)
+            // UI 자동 세팅
+            if (infraData != null)
             {
-                if (iconImage != null && tileData.BuildingIcon != null)
+                if (iconImage != null && infraData.Icon != null)
                 {
-                    iconImage.sprite = tileData.BuildingIcon;
+                    iconImage.sprite = infraData.Icon;
                 }
                 
                 if (costText != null)
                 {
-                    costText.text = tileData.BuildCost.ToString();
+                    costText.text = infraData.Cost.ToString();
                 }
             }
 
             if (btnBuy != null)
             {
+                // 인스펙터 OnClick 외에 코드에서도 클릭 처리 및 DOTween 효과 추가
                 btnBuy.onClick.RemoveAllListeners();
                 btnBuy.onClick.AddListener(OnBuyClicked);
 
-                // Add EventTrigger for DOTween Hover on btnBuy only
                 EventTrigger trigger = btnBuy.gameObject.GetComponent<EventTrigger>();
                 if (trigger == null) trigger = btnBuy.gameObject.AddComponent<EventTrigger>();
                 trigger.triggers.Clear();
                 
-                EventTrigger.Entry enterEntry = new EventTrigger.Entry();
-                enterEntry.eventID = EventTriggerType.PointerEnter;
+                EventTrigger.Entry enterEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
                 enterEntry.callback.AddListener((data) => {
                     btnBuy.transform.DOKill();
                     btnBuy.transform.DOScale(1.1f, 0.2f).SetEase(Ease.OutBack);
                 });
                 trigger.triggers.Add(enterEntry);
 
-                EventTrigger.Entry exitEntry = new EventTrigger.Entry();
-                exitEntry.eventID = EventTriggerType.PointerExit;
+                EventTrigger.Entry exitEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
                 exitEntry.callback.AddListener((data) => {
                     btnBuy.transform.DOKill();
                     btnBuy.transform.DOScale(1f, 0.15f).SetEase(Ease.OutQuad);
@@ -70,18 +69,14 @@ namespace CityFlow.UI
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            // Tooltip 표시 (DOTween 애니메이션은 btnBuy의 EventTrigger로 이동)
-
-            if (_tooltipController != null && tileData != null)
+            if (_tooltipController != null && infraData != null)
             {
-                _tooltipController.ShowTooltip(tileData);
+                _tooltipController.ShowTooltip(infraData);
             }
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            // Tooltip 숨기기 (DOTween 애니메이션은 btnBuy의 EventTrigger로 이동)
-
             if (_tooltipController != null)
             {
                 _tooltipController.HideTooltip();
@@ -90,16 +85,11 @@ namespace CityFlow.UI
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            // 전체 슬롯 클릭 시 가벼운 선택 애니메이션 (실제 건설은 btnBuy가 담당)
             transform.DOKill();
             transform.localScale = Vector3.one; 
             transform.DOPunchScale(new Vector3(-0.05f, -0.05f, 0f), 0.15f, 2, 0.5f);
 
-            // 만약 별도의 구매 버튼(btnBuy)이 연결되지 않은 기존 프리팹이라면 호환성을 위해 여기서 처리합니다.
-            if (btnBuy == null)
-            {
-                OnBuyClicked();
-            }
+            if (btnBuy == null) OnBuyClicked();
         }
 
         private void OnBuyClicked()
@@ -109,11 +99,9 @@ namespace CityFlow.UI
                 btnBuy.transform.DOPunchScale(new Vector3(-0.2f, -0.2f, 0f), 0.2f, 5, 1f);
             }
 
-            if (_placementController != null && tileData != null)
+            if (_coordinator != null && infraData != null)
             {
-                _placementController.SetBuildType(tileData.Category);
-                FindFirstObjectByType<UIDockController>()?.CollapseBuildPanelForPlacement();
-                Debug.Log($"[BuildSlot] {tileData.BuildingName} 건설 모드 활성화");
+                _coordinator.StartPlacement(infraData);
             }
         }
     }

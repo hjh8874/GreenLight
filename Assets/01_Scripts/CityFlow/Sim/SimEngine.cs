@@ -481,6 +481,8 @@ namespace CityFlow.Sim
         readonly Dictionary<Vector2Int, double> _overrideReadyAt = new();
         readonly List<Vector2Int> _corridorBuf = new();   // 코리도어 수집 재사용 버퍼(비-재진입)
 
+        public event System.Action<Vector2Int, bool, float, float> OnOverrideTriggered;
+
         public bool TryOverrideSignal(Vector2Int tile, bool horizontal)
         {
             if (!_signals.TryGet(tile, out _)) return false;
@@ -494,6 +496,10 @@ namespace CityFlow.Sim
                 s.OverrideUntil = until;
                 _overrideReadyAt[_corridorBuf[i]] = until + _config.OverrideCooldownSeconds;
             }
+
+            // 이벤트 발행 (UI 애니메이션용)
+            OnOverrideTriggered?.Invoke(tile, horizontal, _config.OverrideDurationSeconds, _config.OverrideCooldownSeconds);
+
             return true;
         }
 

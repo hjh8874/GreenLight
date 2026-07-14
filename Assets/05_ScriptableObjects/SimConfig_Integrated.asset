@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0ae4186fef9fe4af786f8adbe8343e23, type: 3}
-  m_Name: SimConfig
+  m_Name: SimConfig_Integrated
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.SimConfigAsset
   Value:
     TickInterval: 0.1
@@ -36,8 +36,6 @@ MonoBehaviour:
     RoundaboutInterference: 0.25
     RoundaboutCapacityFactor: 0.7
     RoutingCongestionWeight: 2
-    PriorityMainInterference: 0.1
-    PriorityYieldInterference: 2.5
     AutoDetectSignals: 0
     CoinBase: 1
     BurstJamEnterRatio: 1
