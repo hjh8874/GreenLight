@@ -16,7 +16,7 @@ MonoBehaviour:
   - minimumDistanceTiles: 0
     rewardMultiplier: 1
   - minimumDistanceTiles: 5
-    rewardMultiplier: 1.2
+    rewardMultiplier: 1.1
   - minimumDistanceTiles: 14
     rewardMultiplier: 1.6
   - minimumDistanceTiles: 20
