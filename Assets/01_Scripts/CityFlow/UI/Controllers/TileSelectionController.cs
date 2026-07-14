@@ -35,13 +35,27 @@ namespace CityFlow.UI
 
         private void Start()
         {
-            _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>();
+            if (placementController == null)
+            {
+                placementController = FindFirstObjectByType<PlacementController>(FindObjectsInactive.Include);
+            }
+            _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
             // 시작 시 상세 카드와 하이라이트 박스는 숨겨둡니다.
             DeselectTile();
         }
 
         private void Update()
         {
+            // 동적 생성되는 컨트롤러들을 위해 Update에서 지연 검색 지원
+            if (placementController == null)
+            {
+                placementController = FindFirstObjectByType<PlacementController>(FindObjectsInactive.Include);
+            }
+            if (_infraCoordinator == null)
+            {
+                _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+            }
+
             // 1. 방어 로직: 현재 건설 모드(고스트가 떠다니는 상태)라면 타일 선택을 무시합니다.
             bool isBuilding = (placementController != null && placementController.IsBuildingMode) || 
                               (_infraCoordinator != null && _infraCoordinator.IsBuildingMode);
