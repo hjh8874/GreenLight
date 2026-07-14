@@ -140,7 +140,15 @@ namespace CityFlow.UI.Controllers
 
             if (ghostRenderer != null)
             {
-                ghostRenderer.transform.position = new Vector3(gridCoord.x, 0, gridCoord.y);
+                if (_originalPlacementController != null)
+                {
+                    ghostRenderer.transform.position = _originalPlacementController.GetGhostPosition(gridCoord);
+                }
+                else
+                {
+                    ghostRenderer.transform.position = new Vector3(gridCoord.x, 0, gridCoord.y);
+                }
+                
                 if (_isDemolishMode)
                 {
                     ghostRenderer.color = Color.red; // Always red for demolish
@@ -173,6 +181,12 @@ namespace CityFlow.UI.Controllers
 
         private Vector2Int GetMouseGridCoordinate()
         {
+            if (_originalPlacementController != null)
+            {
+                return _originalPlacementController.GetMouseGridCoordinate();
+            }
+
+            // Fallback if no PlacementController exists (sandbox without it)
             Vector2 mousePos = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
             Ray ray = Camera.main.ScreenPointToRay(mousePos);
             Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
