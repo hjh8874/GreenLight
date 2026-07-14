@@ -13,13 +13,13 @@ MonoBehaviour:
   m_Name: OverpassData
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Data.InfrastructureDataSO
   Kind: 2
-  InfrastructureName: Overpass
+  InfrastructureName: "\uACE0\uAC00 \uB3C4\uB85C"
   Icon: {fileID: 0}
-  Description: 'Role: Physically separates intersecting roads vertically, permanently
-    eliminating traffic jams.
-
-    Condition: Can only be placed on an intersection
-    (3+ connected roads).'
+  Description: "\uC5ED\uD560: \uAD50\uCC28\uD558\uB294 \uB3C4\uB85C\uB97C \uC218\uC9C1\uC73C\uB85C
+    \uBD84\uB9AC\uD558\uC5EC \uAD50\uD1B5 \uCCB4\uC99D\uC744 \uC601\uAD6C\uC801\uC73C\uB85C
+    \uD574\uC18C\uD569\uB2C8\uB2E4.\r\n\uC870\uAC74: \uAD50\uCC28\uB85C(3\uAC1C \uC774\uC0C1\uC758
+    \uB3C4\uB85C\uAC00 \uC5F0\uACB0\uB41C \uC9C0\uC810)\uC5D0\uB9CC \uC124\uCE58\uD560
+    \uC218 \uC788\uC2B5\uB2C8\uB2E4."
   Cost: 300
   GreenSlots: 0
   OnewayDir: {x: 0, y: 0}

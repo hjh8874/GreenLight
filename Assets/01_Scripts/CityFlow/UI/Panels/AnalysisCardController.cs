@@ -291,8 +291,8 @@ namespace CityFlow.UI
             float cooldownLeft = signalControl.GetOverrideCooldownLeft(_currentTile);
             bool onCooldown = cooldownLeft > 0f;
 
-            // SimConfig 기본값 60초 기준 비율 계산
-            float totalCooldown = 60f;
+            // SimConfig 기준 전체 쿨다운을 인터페이스에서 동적으로 가져옴
+            float totalCooldown = signalControl.GetTotalOverrideCooldown();
             float fillRatio = onCooldown ? Mathf.Clamp01(cooldownLeft / totalCooldown) : 0f;
             string timeLabel = onCooldown ? Mathf.CeilToInt(cooldownLeft) + "초" : "";
 

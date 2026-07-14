@@ -13,15 +13,13 @@ MonoBehaviour:
   m_Name: SignalData
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Data.InfrastructureDataSO
   Kind: 0
-  InfrastructureName: Signal
+  InfrastructureName: "\uC2E0\uD638\uB4F1"
   Icon: {fileID: 0}
-  Description: 'Role: Regulates intersection traffic by cycling green/red lights
-    to prevent gridlocks.
-
-    Condition: Can only be placed on an intersection
-    (3+ connected roads).
-
-'
+  Description: "\uC5ED\uD560: \uAD50\uCC28\uB85C\uC758 \uC2E0\uD638\uB4F1(\uB179\uC0C9/\uC801\uC0C9)\uC744
+    \uC21C\uD658\uC2DC\uCF1C \uAD50\uD1B5 \uC815\uCCB4\uB97C \uBC29\uC9C0\uD558\uACE0
+    \uD1B5\uD589\uC744 \uC870\uC808\uD569\uB2C8\uB2E4.\r\n\uC870\uAC74: \uAD50\uCC28\uB85C(3\uAC1C
+    \uC774\uC0C1\uC758 \uB3C4\uB85C\uAC00 \uC5F0\uACB0\uB41C \uC9C0\uC810)\uC5D0\uB9CC
+    \uC124\uCE58\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."
   Cost: 100
   GreenSlots: 5
   OnewayDir: {x: 0, y: 0}

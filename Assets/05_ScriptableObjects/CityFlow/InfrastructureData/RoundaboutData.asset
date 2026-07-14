@@ -13,15 +13,14 @@ MonoBehaviour:
   m_Name: RoundaboutData
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Data.InfrastructureDataSO
   Kind: 1
-  InfrastructureName: Roundabout
+  InfrastructureName: "\uD68C\uC804 \uAD50\uCC28\uB85C"
   Icon: {fileID: 0}
-  Description: 'Role: Allows continuous circular traffic flow without stopping at
-    signals. Great for moderate traffic.
-
-    Condition: Can only be placed on an
-    intersection (3+ connected roads).
-
-'
+  Description: "\uC5ED\uD560: \uC2E0\uD638 \uB300\uAE30 \uC5C6\uC774 \uCC28\uB7C9\uC774
+    \uC6D0\uD615\uC73C\uB85C \uB04A\uAE40 \uC5C6\uC774 \uC774\uB3D9\uD560 \uC218
+    \uC788\uAC8C \uD569\uB2C8\uB2E4. \uC801\uB2F9\uD55C \uAD50\uD1B5\uB7C9\uC5D0
+    \uC801\uD569\uD569\uB2C8\uB2E4.\r\n\uC870\uAC74: \uAD50\uCC28\uB85C(3\uAC1C \uC774\uC0C1\uC758
+    \uB3C4\uB85C\uAC00 \uC5F0\uACB0\uB41C \uC9C0\uC810)\uC5D0\uB9CC \uC124\uCE58\uD560
+    \uC218 \uC788\uC2B5\uB2C8\uB2E4."
   Cost: 150
   GreenSlots: 0
   OnewayDir: {x: 0, y: 0}

@@ -13,15 +13,13 @@ MonoBehaviour:
   m_Name: TurnRestrictionData
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Data.InfrastructureDataSO
   Kind: 4
-  InfrastructureName: TurnRestriction
+  InfrastructureName: "\uD68C\uC804 \uC81C\uD55C \uAD6C\uC5ED"
   Icon: {fileID: 0}
-  Description: 'Role: Prohibits certain turns (e.g., Left turn only) to reduce traffic
-    conflicts.
-
-    Condition: Can only be placed on an intersection (3+ connected
-    roads).
-
-'
+  Description: "\uC5ED\uD560: \uD2B9\uC815 \uD68C\uC804(\uC608: \uC88C\uD68C\uC804\uB9CC
+    \uD5C8\uC6A9)\uC744 \uAE08\uC9C0\uD558\uC5EC \uAD50\uD1B5 \uD63C\uC7A1\uC744
+    \uC904\uC785\uB2C8\uB2E4.\r\n\uC870\uAC74: \uAD50\uCC28\uB85C(3\uAC1C \uC774\uC0C1\uC758
+    \uB3C4\uB85C\uAC00 \uC5F0\uACB0\uB41C \uACF3)\uC5D0\uB9CC \uC124\uCE58\uD560
+    \uC218 \uC788\uC2B5\uB2C8\uB2E4."
   Cost: 50
   GreenSlots: 0
   OnewayDir: {x: 0, y: 0}
