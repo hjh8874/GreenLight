@@ -4,7 +4,6 @@ using UnityEngine;
 
 namespace CityFlow.View
 {
-    [RequireComponent(typeof(Renderer))]
     public sealed class RoadCongestionView : MonoBehaviour, ICityFlowServiceConsumer
     {
         [SerializeField] private Vector2Int tile;
@@ -16,28 +15,58 @@ namespace CityFlow.View
         private Renderer cachedRenderer;
         private MaterialPropertyBlock propertyBlock;
         private CityFlowServices services;
+        private bool subscribed;
+
+        public void Configure(
+            Vector2Int tile,
+            Renderer targetRenderer,
+            Color freeColor,
+            Color slowColor,
+            Color jamColor)
+        {
+            this.tile = tile;
+            cachedRenderer = targetRenderer;
+            this.freeColor = freeColor;
+            this.slowColor = slowColor;
+            this.jamColor = jamColor;
+            propertyBlock ??= new MaterialPropertyBlock();
+            Refresh();
+        }
 
         public void Initialize(CityFlowServices services)
         {
+            if (subscribed && this.services == services)
+            {
+                Refresh();
+                return;
+            }
+
+            if (subscribed && this.services != null)
+            {
+                this.services.Events.CongestionChanged -= OnCongestionChanged;
+            }
+
             this.services = services;
             tileData = services.TileData;
             services.Events.CongestionChanged += OnCongestionChanged;
+            subscribed = true;
             Refresh();
         }
 
         private void Awake()
         {
-            cachedRenderer = GetComponent<Renderer>();
-            propertyBlock = new MaterialPropertyBlock();
+            cachedRenderer ??= GetComponentInChildren<Renderer>();
+            propertyBlock ??= new MaterialPropertyBlock();
             Refresh();
         }
 
         private void OnDestroy()
         {
-            if (services != null)
+            if (subscribed && services != null)
             {
                 services.Events.CongestionChanged -= OnCongestionChanged;
             }
+            subscribed = false;
         }
 
         private void OnCongestionChanged(CongestionEvent e)

@@ -6,21 +6,19 @@ namespace CityFlow.UI
 {
     public sealed class UIDockController : MonoBehaviour
     {
-        public enum MenuType { None, Build, Research, Stats, Settings, Infra }
+        public enum MenuType { None, Build, Research, Stats, Settings }
 
         [Header("Menu Buttons (Dock_Right)")]
         [SerializeField] private Button btnBuild;
         [SerializeField] private Button btnResearch;
         [SerializeField] private Button btnStats;
         [SerializeField] private Button btnSettings;
-        [SerializeField] private Button btnInfra;
 
         [Header("Sub Panels (SubPanels_Right)")]
         [SerializeField] private GameObject panelBuild;
         [SerializeField] private GameObject panelResearch;
         [SerializeField] private GameObject panelStats;
         [SerializeField] private GameObject panelSettings;
-        [SerializeField] private GameObject panelInfra;
 
         [Header("System Sync")]
         [SerializeField] private PlacementController placementController;
@@ -84,7 +82,6 @@ namespace CityFlow.UI
             ConfigureDockButton(btnResearch, new Vector2(-24f, 114f));
             ConfigureDockButton(btnStats, new Vector2(-24f, 72f));
             ConfigureDockButton(btnSettings, new Vector2(-24f, 30f));
-            ConfigureDockButton(btnInfra, new Vector2(-24f, -12f));
         }
 
         private static void ConfigureDockButton(Button button, Vector2 anchoredPosition)
@@ -124,7 +121,6 @@ namespace CityFlow.UI
             if (btnResearch != null) btnResearch.onClick.AddListener(() => ToggleMenu(MenuType.Research));
             if (btnStats != null) btnStats.onClick.AddListener(() => ToggleMenu(MenuType.Stats));
             if (btnSettings != null) btnSettings.onClick.AddListener(() => ToggleMenu(MenuType.Settings));
-            if (btnInfra != null) btnInfra.onClick.AddListener(() => ToggleMenu(MenuType.Infra));
             _isBound = true;
         }
 
@@ -163,21 +159,19 @@ namespace CityFlow.UI
             if (panelResearch != null) panelResearch.SetActive(_currentMenu == MenuType.Research);
             if (panelStats != null) panelStats.SetActive(_currentMenu == MenuType.Stats);
             if (panelSettings != null) panelSettings.SetActive(_currentMenu == MenuType.Settings);
-            if (panelInfra != null) panelInfra.SetActive(_currentMenu == MenuType.Infra);
-
-            // 건설 패널이 열렸을 때만 고스트 모드를 켜고, 닫히면 고스트 모드도 강제 종료(Sync)합니다.
-            if (placementController != null)
-            {
-                placementController.ToggleBuildMode(_currentMenu == MenuType.Build);
-            }
-
-            if (_currentMenu != MenuType.Infra)
+            if (_currentMenu != MenuType.Build)
             {
                 var infraCoord = UnityEngine.Object.FindFirstObjectByType<CityFlow.UI.Controllers.InfrastructurePlacementCoordinator>();
                 if (infraCoord != null)
                 {
                     infraCoord.CancelPlacement();
                 }
+            }
+
+            // 건설 패널이 열렸을 때만 고스트 모드를 켜고, 닫히면 고스트 모드도 강제 종료(Sync)합니다.
+            if (placementController != null)
+            {
+                placementController.ToggleBuildMode(_currentMenu == MenuType.Build);
             }
         }
     }

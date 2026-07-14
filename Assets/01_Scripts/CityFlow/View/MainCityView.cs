@@ -28,9 +28,15 @@ namespace CityFlow.View
         [Header("Runtime Visuals")]
         [SerializeField] private int maxMovingVehicles = 96;
         [SerializeField] private float vehicleSpeed = 2f;
+        [SerializeField, Min(0.1f)] private float vehicleAcceleration = 2.2f;
+        [SerializeField, Min(0.1f)] private float vehicleDeceleration = 9f;
         [SerializeField] private float vehicleZ = -0.35f;
         [SerializeField] private float signalZ = -0.45f;
         [SerializeField] private float burstSeconds = 0.8f;
+        [SerializeField, Min(1f)] private float flowBurstSpeedMultiplier = 1.6f;
+        [SerializeField, Min(1f)] private float flowBurstAccelerationMultiplier = 3f;
+        [SerializeField, Min(0.1f)] private float flowBurstSpeedDuration = 2.5f;
+        [SerializeField, Min(0)] private int flowBurstSpeedRadius = 3;
         [SerializeField] private float gridLineThickness = 0.045f;
         [SerializeField] private float overrideSpeedMul = 2.2f;    // 오버라이드 라인 차량 속도 배율
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
@@ -44,10 +50,10 @@ namespace CityFlow.View
         [SerializeField, Range(1f, 89f)] private float angledViewDegrees = 35.264f;
         [Tooltip("지면에서 가장 가까운 A 줌 지점까지의 거리")]
         [SerializeField, Min(0.5f)] private float minimumZoomDistance = 5f;
-        [Tooltip("A-B, B-C 줌 지점 사이에 공통으로 적용할 거리")]
+        [Tooltip("A-B 줌 지점 사이에 적용할 거리")]
         [SerializeField, Min(0.1f)] private float zoomStepDistance = 10f;
 
-        private const int ZoomStepCount = 3;
+        private const int ZoomStepCount = 2;
         private const int DefaultZoomStepIndex = 0;
         private const float OrthographicSizePerDistance = 0.9375f;
 
@@ -76,7 +82,11 @@ namespace CityFlow.View
         private readonly Dictionary<Vector2Int, TurnSignVisual> turnSignVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> priorityRoadVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
-        private readonly List<BurstVisual> bursts = new();
+        private readonly List<FlowBurstSpeedZone> flowBurstSpeedZones = new();
+        private readonly HashSet<Vector2Int> signalTileSet = new();
+        private readonly Dictionary<Vector2Int, RouteVehicle> intersectionOccupants = new();
+        private readonly Dictionary<Vector2Int, RouteVehicle> intersectionClaims = new();
+        private readonly List<Vector2Int> intersectionClaimRelease = new();
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
@@ -97,6 +107,12 @@ namespace CityFlow.View
         private Vector3 cameraUpDirection;
         private int zoomStepIndex;
         private bool isIsometricView;
+
+        public GameObject FlowBurstPrefab => burstPrefab;
+        public Transform EffectRoot => effectRoot;
+        public float TileSize => tileSize;
+        public float FlowBurstSeconds => burstSeconds;
+        public Color FlowBurstColor => flowBurstColor;
 
         public string SelectedSignalSummary
         {
@@ -146,43 +162,24 @@ namespace CityFlow.View
             public Renderer Renderer;
             public Renderer DetailRenderer;
             public float Phase;
+            public float CurrentSpeed;
             public readonly List<Vector2Int> DisplayRoute = new();
             public int DisplayRouteHash;
             public Vector3 Pos;   // 지난 프레임 위치·진행 방향 — 차간 유지 판정용(1프레임 지연 근사)
             public Vector3 Dir;
+            public Vector2Int CurrentTile;
+            public bool HasCurrentTile;
+            public Vector2Int OccupiedTile;
+            public bool HasOccupiedTile;
             public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
             public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
         }
 
-        private sealed class BurstVisual
+        private struct FlowBurstSpeedZone
         {
-            public GameObject Object;
-            public float HideAt;
+            public Vector2Int Tile;
+            public float Until;
         }
-
-        private sealed class CoinVisual
-        {
-            public GameObject Object;
-            public Vector3 Velocity;
-            public float DieAt;
-        }
-
-        private sealed class NoteVisual
-        {
-            public TextMesh Text;
-            public float DieAt;
-        }
-
-        private readonly List<CoinVisual> coins = new();
-        private readonly List<NoteVisual> notes = new();
-        [SerializeField] private Color coinColor = new Color(1f, 0.84f, 0.2f);
-
-        // 뷰팩 이펙트 오브젝트 풀(#48 리뷰 — 김건): OnFlowBurst가 초당 수십 번 터지면
-        // Instantiate/Destroy 반복이 GC 스파이크(프레임 드랍)를 냈다. 죽은 오브젝트는
-        // Destroy 대신 SetActive(false)로 풀에 반납해 재사용 → 정상상태 GC 0.
-        private readonly Stack<GameObject> burstPool = new();
-        private readonly Stack<GameObject> coinPool = new();
-        private readonly Stack<GameObject> notePool = new();
 
         public void Initialize(CityFlowServices services)
         {
@@ -200,8 +197,7 @@ namespace CityFlow.View
             trafficRule = services.Placement as ITrafficRuleService;
 
             services.Events.Placed += OnPlaced;
-            services.Events.CongestionChanged += OnCongestionChanged;
-            services.Events.FlowBurst += OnFlowBurst;
+            services.Events.FlowBurst += OnFlowBurstSpeedBoost;
 
             if (services.Save != null)
             {
@@ -209,6 +205,7 @@ namespace CityFlow.View
             }
 
             BuildRoots();
+            EnsureFlowBurstViews();
             BuildBoard();
             BuildGridLines();
             RefreshAllTiles();
@@ -219,7 +216,6 @@ namespace CityFlow.View
             RefreshTurnSigns();
             RefreshPriorityRoads();
             RefreshVehicles();
-            PrewarmEffectPools();
             gameObject.AddComponent<DriveViewCamera>().Init(simEngine, transform, tileSize);
             gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize, false);
             InitializeCameraView();
@@ -233,8 +229,7 @@ namespace CityFlow.View
             }
 
             services.Events.Placed -= OnPlaced;
-            services.Events.CongestionChanged -= OnCongestionChanged;
-            services.Events.FlowBurst -= OnFlowBurst;
+            services.Events.FlowBurst -= OnFlowBurstSpeedBoost;
 
             if (services.Save != null)
             {
@@ -351,9 +346,6 @@ namespace CityFlow.View
             RefreshTurnSigns();
             RefreshPriorityRoads();
             RefreshVehicles();
-            UpdateBursts();
-            UpdateCoins();
-            UpdateNotes();
         }
 
         private void BuildRoots()
@@ -378,6 +370,24 @@ namespace CityFlow.View
             GameObject root = new GameObject(rootName);
             root.transform.SetParent(transform, false);
             return root.transform;
+        }
+
+        private void EnsureFlowBurstViews()
+        {
+            FlowBurstView burstView = GetComponent<FlowBurstView>();
+            if (burstView == null)
+            {
+                burstView = gameObject.AddComponent<FlowBurstView>();
+            }
+            burstView.Configure(this);
+            burstView.Initialize(services);
+
+            FlowBurstJuice burstJuice = GetComponent<FlowBurstJuice>();
+            if (burstJuice == null)
+            {
+                burstJuice = gameObject.AddComponent<FlowBurstJuice>();
+            }
+            burstJuice.Initialize(services);
         }
 
         private void BuildBoard()
@@ -478,6 +488,29 @@ namespace CityFlow.View
             visual.Object.transform.localPosition = GridToLocal(tile, tileZ);
             visual.Object.transform.localScale = tileScale;
             ApplyTileColor(tile, visual);
+            ConfigureRoadCongestionView(tile, visual);
+        }
+
+        private void ConfigureRoadCongestionView(Vector2Int tile, TileVisual visual)
+        {
+            RoadCongestionView congestionView = visual.Object.GetComponent<RoadCongestionView>();
+
+            if (visual.Type != TileType.Road)
+            {
+                if (congestionView != null)
+                {
+                    Destroy(congestionView);
+                }
+                return;
+            }
+
+            if (congestionView == null)
+            {
+                congestionView = visual.Object.AddComponent<RoadCongestionView>();
+            }
+
+            congestionView.Configure(tile, visual.Renderer, roadFreeColor, roadSlowColor, roadJamColor);
+            congestionView.Initialize(services);
         }
 
         private TileVisual CreateTileVisual(Vector2Int tile, TileType type)
@@ -1040,14 +1073,25 @@ namespace CityFlow.View
 
                 if (!active)
                 {
+                    vehicles[i].HasCurrentTile = false;
+                    vehicles[i].HasOccupiedTile = false;
+                    vehicles[i].CurrentSpeed = 0f;
                     if (vehicles[i].AngryMark != null)
                     {
                         vehicles[i].AngryMark.SetActive(false);
                         vehicles[i].SmokePuff.SetActive(false);
                     }
+                }
+            }
+
+            PrepareIntersectionTrafficState();
+
+            for (int i = 0; i < visibleCount; i++)
+            {
+                if (!vehicles[i].Object.activeSelf)
+                {
                     continue;
                 }
-
                 MoveVehicle(vehicles[i], routes[i], i);
             }
         }
@@ -1087,7 +1131,7 @@ namespace CityFlow.View
         {
             List<Vector2Int> route = GetDisplayRoute(vehicle, sourceRoute);
             int segmentCount = route.Count - 1;
-            float speed = vehicleSpeed;
+            float targetSpeed = vehicleSpeed;
 
             if (segmentCount <= 0)
             {
@@ -1098,36 +1142,53 @@ namespace CityFlow.View
             // 복귀 구간에서 접힌 위치와 어긋나 정체 벗어난 차가 엉뚱한(정체) 타일을 읽어
             // !표·저속이 남던 버그(밀도·Jam 둘 다 이 타일 사용).
             Vector2Int currentTile = route[Mathf.Clamp(Mathf.FloorToInt(Fold(vehicle.Phase, segmentCount)), 0, route.Count - 1)];
-            speed *= Mathf.Lerp(1f, 0.25f, tileData.GetDensity01(currentTile));
+            targetSpeed *= Mathf.Lerp(1f, 0.25f, tileData.GetDensity01(currentTile));
+
+            // 정체 해소 직후에는 팀 디버그 뷰와 같은 반경 가속을 적용한다.
+            // 신호·앞차 정지는 아래 판정에서 여전히 0으로 덮어써 안전 규칙을 우선한다.
+            bool boostedByFlowBurst = IsInFlowBurstSpeedZone(currentTile);
+            if (boostedByFlowBurst)
+            {
+                targetSpeed *= flowBurstSpeedMultiplier;
+            }
 
             // 오버라이드 = 양축 초록이라 전방 신호가 오버라이드면 축 무관 가속이 정답(스펙 2026-07-11 §3).
             if (signalControl != null && TryGetNextSignalTile(route, vehicle.Phase, out _, out Vector2Int aheadSignal, out _)
                 && signalControl.GetOverrideSecondsLeft(aheadSignal) > 0f)
             {
-                speed *= overrideSpeedMul;
+                targetSpeed *= overrideSpeedMul;
             }
 
-            bool blockedBySignal = IsRouteVehicleBlocked(route, vehicle.Phase);
-
-            if (blockedBySignal)
+            // 팀 디버그 뷰와 같은 순서로 앞차를 먼저 확인한다.
+            // 앞차에 막힌 차량이 교차로를 선점하면 실제 선두 차량까지 막혀 교착이 생긴다.
+            bool blockedByLeader = IsBlockedByLeader(vehicle);
+            if (blockedByLeader)
             {
-                speed = 0f;
+                ReleaseApproachIntersectionClaims(vehicle);
+                targetSpeed = 0f;
             }
-
-            // 차간 유지(MM식 추종): 같은 방향 바로 앞 차가 서 있으면 나도 정지 — 신호 앞 줄서기가 생김.
-            if (speed > 0f && IsBlockedByLeader(vehicle))
+            else if (IsRouteVehicleBlocked(vehicle, route, vehicle.Phase))
             {
-                speed = 0f;
+                targetSpeed = 0f;
             }
 
             // 90도 원호 길이는 같은 반경의 두 직선 합보다 짧으므로, phase 진행량을 보정해
             // 직선과 원호에서 차량의 실제 화면 이동속도가 같게 유지되도록 한다.
-            if (speed > 0f)
+            if (targetSpeed > 0f)
             {
-                speed *= GetTurnPhaseSpeedMultiplier(route, vehicle.Phase);
+                targetSpeed *= GetTurnPhaseSpeedMultiplier(route, vehicle.Phase);
             }
 
-            vehicle.Phase = Mathf.Repeat(vehicle.Phase + Time.deltaTime * speed, segmentCount * 2f);
+            float acceleration = targetSpeed < vehicle.CurrentSpeed
+                ? vehicleDeceleration
+                : vehicleAcceleration * (boostedByFlowBurst ? flowBurstAccelerationMultiplier : 1f);
+            vehicle.CurrentSpeed = Mathf.MoveTowards(
+                vehicle.CurrentSpeed,
+                targetSpeed,
+                acceleration * Time.deltaTime);
+            vehicle.Phase = Mathf.Repeat(
+                vehicle.Phase + Time.deltaTime * vehicle.CurrentSpeed,
+                segmentCount * 2f);
 
             float folded = Fold(vehicle.Phase, segmentCount);
             int index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
@@ -1148,6 +1209,10 @@ namespace CityFlow.View
             }
 
             vehicle.Object.transform.localPosition = pos;
+            vehicle.CurrentTile = currentTile;
+            vehicle.HasCurrentTile = true;
+            vehicle.OccupiedTile = insideTile;
+            vehicle.HasOccupiedTile = true;
 
             if (travelDir.sqrMagnitude > 0.001f)
             {
@@ -1198,15 +1263,39 @@ namespace CityFlow.View
                 {
                     Vector3 basePos = vehicle.Object.transform.localPosition;
                     float pulse = 1f + 0.2f * Mathf.Abs(Mathf.Sin(Time.time * 6f));
-                    vehicle.AngryMark.transform.localPosition = basePos + new Vector3(0f, tileSize * 0.32f, -0.1f);
+                    vehicle.AngryMark.transform.localPosition = basePos + Vector3.back * (tileSize * 0.45f);
+                    AlignTextMarkPerpendicularToGround(vehicle.AngryMark.transform);
                     vehicle.AngryMark.transform.localScale = Vector3.one * pulse;
                     vehicle.SmokePuff.transform.localPosition = basePos - travelDir * (tileSize * 0.28f)
-                        + new Vector3(0f, tileSize * 0.06f * Mathf.Sin(Time.time * 2f), 0f);
+                        + Vector3.back * (tileSize * (0.12f + 0.06f * Mathf.Sin(Time.time * 2f)));
                 }
             }
 
             vehicle.Pos = vehicle.Object.transform.localPosition;
             vehicle.Dir = travelDir;
+        }
+
+        private void AlignTextMarkPerpendicularToGround(Transform textMark)
+        {
+            Vector3 groundUp = -transform.forward;
+
+            if (!isIsometricView && mainCamera != null)
+            {
+                Vector3 toCamera = mainCamera.transform.position - textMark.position;
+                textMark.rotation = Quaternion.LookRotation(toCamera.normalized, mainCamera.transform.up);
+                return;
+            }
+
+            Vector3 facing = mainCamera != null
+                ? Vector3.ProjectOnPlane(mainCamera.transform.position - textMark.position, groundUp)
+                : transform.up;
+
+            if (facing.sqrMagnitude < 0.001f)
+            {
+                facing = transform.up;
+            }
+
+            textMark.rotation = Quaternion.LookRotation(facing.normalized, groundUp);
         }
 
         // 시뮬레이션의 대각 지름길은 유지하되, 실제 직각 회전으로 보이는 구간은 표시 경로에
@@ -1602,6 +1691,113 @@ namespace CityFlow.View
             return false;
         }
 
+        private void PrepareIntersectionTrafficState()
+        {
+            signalTileSet.Clear();
+            if (simEngine != null)
+            {
+                IReadOnlyList<Vector2Int> signalTiles = simEngine.SignalTiles;
+                for (int i = 0; i < signalTiles.Count; i++)
+                {
+                    signalTileSet.Add(signalTiles[i]);
+                }
+            }
+
+            intersectionOccupants.Clear();
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                RouteVehicle vehicle = vehicles[i];
+                if (!vehicle.Object.activeSelf || !vehicle.HasOccupiedTile
+                    || !signalTileSet.Contains(vehicle.OccupiedTile))
+                {
+                    continue;
+                }
+
+                intersectionOccupants[vehicle.OccupiedTile] = vehicle;
+            }
+
+            intersectionClaimRelease.Clear();
+            foreach (KeyValuePair<Vector2Int, RouteVehicle> claim in intersectionClaims)
+            {
+                RouteVehicle owner = claim.Value;
+                bool keepsClaim = owner != null
+                    && owner.Object.activeSelf
+                    && ((owner.HasOccupiedTile && owner.OccupiedTile == claim.Key)
+                        || IsVehicleHeadingToSignal(owner, claim.Key));
+
+                if (!keepsClaim)
+                {
+                    intersectionClaimRelease.Add(claim.Key);
+                }
+            }
+
+            for (int i = 0; i < intersectionClaimRelease.Count; i++)
+            {
+                intersectionClaims.Remove(intersectionClaimRelease[i]);
+            }
+        }
+
+        private bool IsVehicleHeadingToSignal(RouteVehicle vehicle, Vector2Int signalTile)
+        {
+            return vehicle.DisplayRoute.Count > 1
+                && TryGetNextSignalTile(
+                    vehicle.DisplayRoute,
+                    vehicle.Phase,
+                    out _,
+                    out Vector2Int next,
+                    out _)
+                && next == signalTile;
+        }
+
+        private void ReleaseApproachIntersectionClaims(RouteVehicle vehicle)
+        {
+            intersectionClaimRelease.Clear();
+            foreach (KeyValuePair<Vector2Int, RouteVehicle> claim in intersectionClaims)
+            {
+                if (claim.Value == vehicle
+                    && (!vehicle.HasOccupiedTile || vehicle.OccupiedTile != claim.Key))
+                {
+                    intersectionClaimRelease.Add(claim.Key);
+                }
+            }
+
+            for (int i = 0; i < intersectionClaimRelease.Count; i++)
+            {
+                intersectionClaims.Remove(intersectionClaimRelease[i]);
+            }
+        }
+
+        private void OnFlowBurstSpeedBoost(FlowBurstEvent e)
+        {
+            flowBurstSpeedZones.Add(new FlowBurstSpeedZone
+            {
+                Tile = e.Tile,
+                Until = Time.time + flowBurstSpeedDuration
+            });
+        }
+
+        private bool IsInFlowBurstSpeedZone(Vector2Int tile)
+        {
+            for (int i = flowBurstSpeedZones.Count - 1; i >= 0; i--)
+            {
+                FlowBurstSpeedZone zone = flowBurstSpeedZones[i];
+                if (Time.time > zone.Until)
+                {
+                    flowBurstSpeedZones.RemoveAt(i);
+                    continue;
+                }
+
+                Vector2Int distance = tile - zone.Tile;
+                if (Mathf.Abs(distance.x) <= flowBurstSpeedRadius
+                    && Mathf.Abs(distance.y) <= flowBurstSpeedRadius)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static float Fold(float phase, int segmentCount)
         {
             float cycle = segmentCount * 2f;
@@ -1609,7 +1805,7 @@ namespace CityFlow.View
             return p <= segmentCount ? p : cycle - p;
         }
 
-        private bool IsRouteVehicleBlocked(List<Vector2Int> route, float phase)
+        private bool IsRouteVehicleBlocked(RouteVehicle vehicle, List<Vector2Int> route, float phase)
         {
             if (simEngine == null || !TryGetNextSignalTile(route, phase, out Vector2Int current, out Vector2Int next, out float progress))
             {
@@ -1624,7 +1820,25 @@ namespace CityFlow.View
             }
 
             bool horizontal = current.y == next.y;
-            return !simEngine.IsSignalGreen(next, horizontal);
+            if (!simEngine.IsSignalGreen(next, horizontal))
+            {
+                return true;
+            }
+
+            if (intersectionOccupants.TryGetValue(next, out RouteVehicle occupant)
+                && occupant != vehicle)
+            {
+                return true;
+            }
+
+            if (intersectionClaims.TryGetValue(next, out RouteVehicle owner)
+                && owner != vehicle)
+            {
+                return true;
+            }
+
+            intersectionClaims[next] = vehicle;
+            return false;
         }
 
         // 차의 현재 위상에서 진행 방향의 현재/다음 타일. 다음 타일이 신호일 때만 true — 부스트·블록 판정 공용.
@@ -1643,7 +1857,7 @@ namespace CityFlow.View
             current = forward ? route[index] : route[index + 1];
             next = forward ? route[index + 1] : route[index];
             progress = forward ? folded - index : index + 1f - folded;
-            if (current == next || !IsSignalTile(next)) return false;
+            if (current == next || !signalTileSet.Contains(next)) return false;
             return true;
         }
 
@@ -1856,158 +2070,42 @@ namespace CityFlow.View
             RebuildRestoredVisuals();
         }
 
-        private void OnCongestionChanged(CongestionEvent e)
+        public Vector3 GetFlowBurstAnchor(Vector2Int tile, out Transform targetVehicle)
         {
-            if (!tileVisuals.TryGetValue(e.Tile, out TileVisual visual))
+            Vector3 tileCenter = transform.TransformPoint(GridToLocal(tile, vehicleZ));
+            RouteVehicle bestVehicle = null;
+            int bestPriority = int.MaxValue;
+            float bestDistanceSqr = float.MaxValue;
+
+            for (int i = 0; i < vehicles.Count; i++)
             {
-                return;
-            }
-
-            ApplyTileColor(e.Tile, visual);
-        }
-
-        private void OnFlowBurst(FlowBurstEvent e)
-        {
-            GameObject burst = Rent(burstPool) ?? MakeBurst();
-            burst.name = $"FlowBurst_{e.Tile.x}_{e.Tile.y}";
-            burst.transform.localPosition = GridToLocal(e.Tile, -0.5f);
-            burst.transform.localScale = Vector3.one * tileSize * 0.55f;
-            ApplyRendererColor(burst.GetComponentInChildren<Renderer>(), flowBurstColor);
-
-            bursts.Add(new BurstVisual
-            {
-                Object = burst,
-                HideAt = Time.time + burstSeconds
-            });
-
-            // 동전 분수 + 음표(스펙 2026-07-12 §2): 길이 뚫리는 순간의 도파민 — 뷰 전용, Random 무방.
-            Vector3 origin = GridToLocal(e.Tile, -0.5f);
-            for (int i = 0; i < 6; i++)
-            {
-                GameObject coin = Rent(coinPool) ?? MakeCoin();
-                coin.transform.localPosition = origin;
-                coins.Add(new CoinVisual
-                {
-                    Object = coin,
-                    Velocity = new Vector3(Random.Range(-1.2f, 1.2f), Random.Range(1.6f, 2.4f), 0f) * tileSize,
-                    DieAt = Time.time + 0.9f,
-                });
-            }
-            GameObject note = Rent(notePool) ?? MakeNote();
-            TextMesh noteText = note.GetComponent<TextMesh>();
-            noteText.color = coinColor;   // 재사용분: 페이드로 낮아진 alpha 복원
-            note.transform.localPosition = origin + new Vector3(0f, tileSize * 0.2f, 0f);
-            notes.Add(new NoteVisual { Text = noteText, DieAt = Time.time + 1.1f });
-        }
-
-        private void UpdateBursts()
-        {
-            for (int i = bursts.Count - 1; i >= 0; i--)
-            {
-                BurstVisual burst = bursts[i];
-
-                if (burst.Object == null)
-                {
-                    bursts.RemoveAt(i);
-                    continue;
-                }
-
-                float remaining = Mathf.Clamp01((burst.HideAt - Time.time) / burstSeconds);
-                burst.Object.transform.localScale = Vector3.one * Mathf.Lerp(tileSize * 1.1f, tileSize * 0.25f, remaining);
-
-                if (Time.time < burst.HideAt)
+                RouteVehicle vehicle = vehicles[i];
+                if (!vehicle.HasCurrentTile || !vehicle.Object.activeInHierarchy
+                    || (vehicle.Renderer != null && !vehicle.Renderer.enabled))
                 {
                     continue;
                 }
 
-                ReturnToPool(burstPool, burst.Object);
-                bursts.RemoveAt(i);
-            }
-        }
+                bool sameTile = vehicle.CurrentTile == tile;
+                bool wasJammed = vehicle.AngryMark != null && vehicle.AngryMark.activeSelf;
+                int priority = wasJammed
+                    ? (sameTile ? 0 : 1)
+                    : (sameTile ? 2 : 3);
+                float distanceSqr = (vehicle.Object.transform.position - tileCenter).sqrMagnitude;
 
-        private void UpdateCoins()
-        {
-            for (int i = coins.Count - 1; i >= 0; i--)
-            {
-                CoinVisual coin = coins[i];
-                if (coin.Object == null || Time.time >= coin.DieAt)
+                if (priority < bestPriority || (priority == bestPriority && distanceSqr < bestDistanceSqr))
                 {
-                    ReturnToPool(coinPool, coin.Object);
-                    coins.RemoveAt(i);
-                    continue;
+                    bestVehicle = vehicle;
+                    bestPriority = priority;
+                    bestDistanceSqr = distanceSqr;
                 }
-                coin.Velocity += Vector3.down * (6f * tileSize * Time.deltaTime);   // 간이 중력
-                coin.Object.transform.localPosition += coin.Velocity * Time.deltaTime;
             }
-        }
 
-        private void UpdateNotes()
-        {
-            for (int i = notes.Count - 1; i >= 0; i--)
-            {
-                NoteVisual note = notes[i];
-                if (note.Text == null || Time.time >= note.DieAt)
-                {
-                    ReturnToPool(notePool, note.Text != null ? note.Text.gameObject : null);
-                    notes.RemoveAt(i);
-                    continue;
-                }
-                note.Text.transform.localPosition += Vector3.up * (0.8f * tileSize * Time.deltaTime);
-                Color c = note.Text.color;
-                c.a = Mathf.Clamp01((note.DieAt - Time.time) / 1.1f);
-                note.Text.color = c;   // 폰트 머티리얼은 투명 지원
-            }
-        }
-
-        // 이펙트 풀 대여/반납: Rent가 비면 null → 호출부가 Make*로 신규 생성(??). 델리게이트 0 alloc.
-        private static GameObject Rent(Stack<GameObject> pool)
-        {
-            if (pool.Count == 0)
-            {
-                return null;
-            }
-            GameObject go = pool.Pop();
-            go.SetActive(true);
-            return go;
-        }
-
-        private static void ReturnToPool(Stack<GameObject> pool, GameObject go)
-        {
-            if (go == null)
-            {
-                return;
-            }
-            go.SetActive(false);
-            pool.Push(go);
-        }
-
-        private void PrewarmEffectPools()
-        {
-            for (int i = 0; i < 30; i++) ReturnToPool(coinPool, MakeCoin());
-            for (int i = 0; i < 8; i++) ReturnToPool(burstPool, MakeBurst());
-            for (int i = 0; i < 8; i++) ReturnToPool(notePool, MakeNote());
-        }
-
-        private GameObject MakeBurst()
-        {
-            GameObject go = InstantiatePrefabOrPrimitive(burstPrefab, PrimitiveType.Sphere);
-            go.transform.SetParent(effectRoot, false);
-            return go;
-        }
-
-        private GameObject MakeCoin()
-        {
-            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            go.name = "Coin";
-            go.transform.SetParent(effectRoot, false);
-            go.transform.localScale = Vector3.one * (tileSize * 0.1f);
-            ApplyRendererColor(PrepareRenderer(go.GetComponent<Renderer>()), coinColor);
-            return go;
-        }
-
-        private GameObject MakeNote()
-        {
-            return CreateTextMark(effectRoot, "♪", coinColor, tileSize * 0.16f);
+            Vector3 groundUp = -transform.forward;
+            targetVehicle = bestVehicle != null ? bestVehicle.Object.transform : null;
+            return bestVehicle != null
+                ? bestVehicle.Object.transform.position + groundUp * (tileSize * 0.35f)
+                : tileCenter + groundUp * (tileSize * 0.35f);
         }
 
         private Vector3 GridToLocal(Vector2Int tile, float z)

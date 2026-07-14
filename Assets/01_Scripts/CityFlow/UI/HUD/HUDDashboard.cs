@@ -15,7 +15,6 @@ namespace CityFlow.UI
         [SerializeField] private TextMeshProUGUI vehicleCountText;
         [SerializeField] private TextMeshProUGUI coinText;
         [SerializeField] private TextMeshProUGUI efficiencyText;
-        [SerializeField] private GameObject flowBurstEffect;
 
         [Header("Settings")]
         [SerializeField] private float updateInterval = 0.2f;
@@ -46,13 +45,12 @@ namespace CityFlow.UI
             TextMeshProUGUI vehicleCount,
             TextMeshProUGUI coin,
             TextMeshProUGUI efficiency,
-            GameObject burstEffect)
+            GameObject _)
         {
             timeText = time;
             vehicleCountText = vehicleCount;
             coinText = coin;
             efficiencyText = efficiency;
-            flowBurstEffect = burstEffect;
         }
 
         public void Initialize(CityFlowServices services)
@@ -67,7 +65,6 @@ namespace CityFlow.UI
 
             // 이벤트 구독 (구독해야 코어 엔진에서 데이터가 날아옵니다)
             _services.Events.StabilityChanged += OnStabilityChanged;
-            _services.Events.FlowBurst += OnFlowBurst;
             _services.EconomyRegistered += OnEconomyRegistered;
             _services.GameCalendarRegistered += OnGameCalendarRegistered;
             _services.WeeklyEconomyRegistered += OnWeeklyEconomyRegistered;
@@ -102,7 +99,6 @@ namespace CityFlow.UI
                 // 메모리 누수 방지 이벤트 해제
                 _services.Events.StabilityChanged -= OnStabilityChanged;
                 _services.Events.Arrival -= OnArrival;
-                _services.Events.FlowBurst -= OnFlowBurst;
                 _services.EconomyRegistered -= OnEconomyRegistered;
                 _services.GameCalendarRegistered -= OnGameCalendarRegistered;
                 _services.WeeklyEconomyRegistered -= OnWeeklyEconomyRegistered;
@@ -222,22 +218,6 @@ namespace CityFlow.UI
         {
             _pendingCoins = Math.Max(0L, pendingCoins);
             RefreshCoinText();
-        }
-
-        private void OnFlowBurst(FlowBurstEvent e)
-        {
-            if (flowBurstEffect != null)
-            {
-                // Flow Burst 발동 시 이펙트를 켜줍니다 (1초 뒤 자동 꺼짐)
-                flowBurstEffect.SetActive(true);
-                Invoke(nameof(TurnOffBurstEffect), 1.0f);
-            }
-        }
-
-        private void TurnOffBurstEffect()
-        {
-            if (flowBurstEffect != null)
-                flowBurstEffect.SetActive(false);
         }
 
         private void Start()

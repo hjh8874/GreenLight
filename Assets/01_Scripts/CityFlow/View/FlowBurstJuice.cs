@@ -20,7 +20,8 @@ namespace CityFlow.View
 
         public void Initialize(CityFlowServices services)
         {
-            if (!isActiveAndEnabled) return;
+            if (!isActiveAndEnabled || this.services == services) return;
+            if (this.services != null) this.services.Events.FlowBurst -= OnFlowBurst;
             this.services = services;
             services.Events.FlowBurst += OnFlowBurst;
         }
@@ -28,6 +29,7 @@ namespace CityFlow.View
         private void OnDestroy()
         {
             if (services != null) services.Events.FlowBurst -= OnFlowBurst;
+            shakeTween?.Kill(complete: true);
         }
 
         private void OnFlowBurst(FlowBurstEvent e)

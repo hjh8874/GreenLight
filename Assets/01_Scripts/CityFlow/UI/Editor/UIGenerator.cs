@@ -33,25 +33,12 @@ namespace CityFlow.UI.Editor
             TextMeshProUGUI coinText = CreateText("CoinText", topBarObj.transform);
             TextMeshProUGUI efficiencyText = CreateText("EfficiencyText", topBarObj.transform);
             
-            // Slider (혼잡도 바) 뼈대
-            GameObject sliderObj = new GameObject("CongestionBar");
-            sliderObj.transform.SetParent(topBarObj.transform, false);
-            Slider congestionBar = sliderObj.AddComponent<Slider>();
-            
-            // FlowBurst 이펙트 (빈 이미지)
-            GameObject burstEffectObj = new GameObject("FlowBurstEffect");
-            burstEffectObj.transform.SetParent(topBarObj.transform, false);
-            burstEffectObj.AddComponent<Image>();
-            burstEffectObj.SetActive(false);
-
             // [마법의 핵심] 스크립트 구멍에 자동 바인딩 (드래그 앤 드롭 자동화)
             SerializedObject serializedObject = new SerializedObject(hudScript);
             serializedObject.FindProperty("timeText").objectReferenceValue = timeText;
             serializedObject.FindProperty("vehicleCountText").objectReferenceValue = vehicleCountText;
             serializedObject.FindProperty("coinText").objectReferenceValue = coinText;
             serializedObject.FindProperty("efficiencyText").objectReferenceValue = efficiencyText;
-            serializedObject.FindProperty("congestionBar").objectReferenceValue = congestionBar;
-            serializedObject.FindProperty("flowBurstEffect").objectReferenceValue = burstEffectObj;
             serializedObject.ApplyModifiedProperties();
 
             // 3. Dock_Right 생성 (우하단 네비게이션 도크)

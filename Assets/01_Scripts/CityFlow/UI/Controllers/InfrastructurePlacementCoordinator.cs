@@ -124,15 +124,23 @@ namespace CityFlow.UI.Controllers
             if (!_isBuildingMode) return;
             if (!_isDemolishMode && _currentData == null) return;
 
-            if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
-            {
-                CancelPlacement();
-                return;
-            }
-
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             {
                 if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(false);
+                return;
+            }
+
+            if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
+            {
+                Vector2Int clickedCoord = GetMouseGridCoordinate();
+                if (_originalPlacementController != null)
+                {
+                    _originalPlacementController.TryDemolishAt(clickedCoord);
+                }
+                else
+                {
+                    TryDemolishInfrastructureAt(clickedCoord);
+                }
                 return;
             }
 
@@ -275,8 +283,6 @@ namespace CityFlow.UI.Controllers
 
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
             
-            // Log to Undo (Undo tracking needs to be injected or static, we'll implement later)
-            // Example: UndoManager.Record(new InfrastructureUndoCommand(...))
         }
 
         // --- Demolish Logic (LIFO priority handling) ---

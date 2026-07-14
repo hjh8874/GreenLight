@@ -33,8 +33,22 @@ namespace CityFlow.UI
             }
         }
 
-        // 새 게임 — 세이브 덮어쓰기 확인 UX는 후속(지금은 바로 로드).
-        public void OnStartNewGame() => LoadGame();
+        // 새 게임 — 기존 저장과 백업을 제거해 게임 씬의 자동 불러오기 대상에서 제외한다.
+        // 세이브 덮어쓰기 확인 UX는 후속으로 추가한다.
+        public void OnStartNewGame()
+        {
+            try
+            {
+                new JsonSaveRepository().DeleteSave();
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning($"[TitleScene] 새 게임을 시작하기 전에 기존 저장을 삭제하지 못했습니다.\n{exception.Message}");
+                return;
+            }
+
+            LoadGame();
+        }
 
         public void OnContinue()
         {

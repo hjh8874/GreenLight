@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using TMPro;
@@ -14,6 +15,25 @@ namespace CityFlow.UI
 
         private CityFlowServices _services;
         private Coroutine _updateRoutine;
+        private readonly Queue<ArrivalCoinSample> _arrivalCoinSamples = new();
+        private long _arrivalCoinsInLastMinute;
+
+        private readonly struct ArrivalCoinSample
+        {
+            public readonly float Time;
+            public readonly int Coins;
+
+            public ArrivalCoinSample(float time, int coins)
+            {
+                Time = time;
+                Coins = coins;
+            }
+        }
+
+        private void Awake()
+        {
+            EnsureTextElements();
+        }
 
         public void Configure(TMP_Text jamCount, TMP_Text coinsPerMinute)
         {
@@ -23,7 +43,13 @@ namespace CityFlow.UI
 
         public void Initialize(CityFlowServices services)
         {
+            if (_services != null)
+            {
+                _services.Events.Arrival -= OnArrival;
+            }
+
             _services = services;
+            _services.Events.Arrival += OnArrival;
         }
 
         private void OnEnable()
@@ -36,6 +62,14 @@ namespace CityFlow.UI
         private void OnDisable()
         {
             if (_updateRoutine != null) StopCoroutine(_updateRoutine);
+        }
+
+        private void OnDestroy()
+        {
+            if (_services != null)
+            {
+                _services.Events.Arrival -= OnArrival;
+            }
         }
 
         private IEnumerator UpdateStatsRoutine()
@@ -62,13 +96,72 @@ namespace CityFlow.UI
 
                     if (txtJamCount != null) txtJamCount.text = $"정체 구역: {jamCount}곳";
 
-                    // 2. 분당 수입 지표 (현재는 임시 가짜 계산식)
-                    // 실제 엔진 이벤트(ArrivalEvent) 누적치를 통해 분당 계산을 해야 하나 1차 빌드에선 단순화
-                    int cpm = Mathf.RoundToInt(_services.TileData.Stability01 * 300f); 
-                    if (txtCoinsPerMinute != null) txtCoinsPerMinute.text = $"수입: 분당 {cpm}";
+                    RemoveExpiredArrivalSamples();
+                    if (txtCoinsPerMinute != null)
+                    {
+                        txtCoinsPerMinute.text = $"도착 수입: 분당 {_arrivalCoinsInLastMinute:N0}";
+                    }
                 }
                 yield return wait;
             }
+        }
+
+        private void OnArrival(ArrivalEvent arrival)
+        {
+            if (arrival.Coins <= 0)
+            {
+                return;
+            }
+
+            _arrivalCoinSamples.Enqueue(new ArrivalCoinSample(Time.unscaledTime, arrival.Coins));
+            _arrivalCoinsInLastMinute += arrival.Coins;
+            RemoveExpiredArrivalSamples();
+        }
+
+        private void RemoveExpiredArrivalSamples()
+        {
+            float cutoff = Time.unscaledTime - 60f;
+            while (_arrivalCoinSamples.Count > 0 && _arrivalCoinSamples.Peek().Time < cutoff)
+            {
+                _arrivalCoinsInLastMinute -= _arrivalCoinSamples.Dequeue().Coins;
+            }
+        }
+
+        private void EnsureTextElements()
+        {
+            if (txtJamCount == null)
+            {
+                txtJamCount = CreateText("JamCountText", new Vector2(30f, -30f));
+            }
+
+            if (txtCoinsPerMinute == null)
+            {
+                txtCoinsPerMinute = CreateText("CoinsPerMinuteText", new Vector2(30f, -75f));
+            }
+        }
+
+        private TMP_Text CreateText(string objectName, Vector2 anchoredPosition)
+        {
+            GameObject textObject = new GameObject(
+                objectName,
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(TextMeshProUGUI));
+            textObject.transform.SetParent(transform, false);
+
+            RectTransform rect = textObject.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = new Vector2(420f, 40f);
+
+            TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+            text.fontSize = 26f;
+            text.color = new Color(0.12f, 0.12f, 0.12f, 1f);
+            text.alignment = TextAlignmentOptions.MidlineLeft;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
+            return text;
         }
     }
 }
