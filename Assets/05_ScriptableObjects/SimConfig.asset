@@ -33,6 +33,8 @@ MonoBehaviour:
     OverrideCooldownSeconds: 60
     OverrideCorridorSignals: 3
     UnsignaledInterference: 1.5
+    RoundaboutInterference: 0.25
+    RoundaboutCapacityFactor: 0.7
     RoutingCongestionWeight: 2
     AutoDetectSignals: 1
     CoinBase: 1
