@@ -8,7 +8,7 @@ namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IOfflineSettlementSource
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IOfflineSettlementSource, IRouteDistanceProvider
     {
         SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
@@ -255,6 +255,14 @@ namespace CityFlow.Sim
         
         // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게 
         public float DeliveredTotal => _solver.DeliveredTotal;
+
+        public bool TryGetAverageRouteDistance(
+            Vector2Int destination,
+            out float distanceTiles) =>
+            _solver.TryGetAverageRouteDistance(destination, out distanceTiles);
+
+        public bool TryGetCityAverageRouteDistance(out float distanceTiles) =>
+            _solver.TryGetCityAverageRouteDistance(out distanceTiles);
 
         // ── ISignalControl(신호 조작 창구): 유저가 교차로를 조율하는 두 레버 — 오프셋·초록 길이 ──
         // 제안 단계: 계약으로 승격(설계 §5), 최종 확정은 주석·김건 합의. 김건 Game뷰 UI가 이 계약에 붙음.

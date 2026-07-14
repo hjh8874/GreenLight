@@ -11,6 +11,7 @@ namespace CityFlow.Sim
     internal sealed class FlowSolver
     {
         readonly int _w;
+        readonly int _h;
         readonly float[] _flowH;   // 타일별 가로축 흐름(대/초). 대각 스텝은 양축 0.5씩(근사)
         readonly float[] _flowV;
         readonly float[] _ratioH;  // 축별 ratio. 교차로가 아니면 양축 동일(합산/C = 기존 규약)
@@ -21,7 +22,10 @@ namespace CityFlow.Sim
         // 이번 틱에 실제로 흐른 경로들. RoadNetwork 캐시의 참조만 담음(소유 X, 틱 중 new 0).
         readonly List<List<Vector2Int>> _routes = new(128);
         readonly List<Vector2Int> _routeSinks = new(128);   // 경로별 도착 건물 타일(_routes와 나란히)
+        readonly List<float> _routeDistances = new(128);
         readonly float[] _deliveredToSink;                  // 수요처 타일별 이번 틱 처리량(대/초)
+        readonly float[] _distanceWeightedDeliveredToSink;
+        float _distanceWeightedDeliveredTotal;
 
         public float DeliveredTotal { get; private set; }   // 이번 틱 총 처리량(대/초)
 
@@ -35,6 +39,7 @@ namespace CityFlow.Sim
         public FlowSolver(int width, int height)
         {
             _w = width;
+            _h = height;
             int n = width * height;
             _flowH = new float[n];
             _flowV = new float[n];
@@ -43,6 +48,7 @@ namespace CityFlow.Sim
             _level = new CongestionLevel[n];
             _pendingReward = new float[n];
             _deliveredToSink = new float[n];
+            _distanceWeightedDeliveredToSink = new float[n];
         }
 
         int Index(Vector2Int t) => t.y * _w + t.x;
@@ -55,6 +61,7 @@ namespace CityFlow.Sim
             Array.Clear(_flowV, 0, _flowV.Length);
             _routes.Clear();
             _routeSinks.Clear();
+            _routeDistances.Clear();
             DemandRate = cfg.DemandPerHouse * demandScale;
 
             var demands = demand.Demands;
@@ -75,7 +82,20 @@ namespace CityFlow.Sim
                 }
                 _routes.Add(path);
                 _routeSinks.Add(demands[i].Sink);
+                _routeDistances.Add(PhysicalDistance(path));
             }
+        }
+
+        static float PhysicalDistance(List<Vector2Int> path)
+        {
+            float distance = 0f;
+            for (int p = 1; p < path.Count; p++)
+            {
+                Vector2Int step = path[p] - path[p - 1];
+                distance += step.x != 0 && step.y != 0 ? Sqrt2 : 1f;
+            }
+
+            return distance;
         }
 
         // 타일 p의 축 가중치 — 진입 스텝 기준(첫 타일은 출발 스텝). 대각 = 양축 절반.
@@ -196,7 +216,12 @@ namespace CityFlow.Sim
 
             // ② 경로별: 병목(최대 ratio) → E → delivered + 잃은 만큼 병목 타일에 pending 적립
             DeliveredTotal = 0f;
+            _distanceWeightedDeliveredTotal = 0f;
             Array.Clear(_deliveredToSink, 0, _deliveredToSink.Length);
+            Array.Clear(
+                _distanceWeightedDeliveredToSink,
+                0,
+                _distanceWeightedDeliveredToSink.Length);
             for (int r = 0; r < _routes.Count; r++)
             {
                 var path = _routes[r];
@@ -214,7 +239,11 @@ namespace CityFlow.Sim
                 float e = Efficiency(bottleneck, cfg);
                 float delivered = DemandRate * e * SignalFactor(path, signals, cfg);
                 DeliveredTotal += delivered;
-                _deliveredToSink[Index(_routeSinks[r])] += delivered;
+                int sinkIndex = Index(_routeSinks[r]);
+                float distanceWeightedDelivered = delivered * _routeDistances[r];
+                _deliveredToSink[sinkIndex] += delivered;
+                _distanceWeightedDeliveredToSink[sinkIndex] += distanceWeightedDelivered;
+                _distanceWeightedDeliveredTotal += distanceWeightedDelivered;
 
                 // 잃은 처리량(rate×틱=대수)을 병목에 적립 — 나중에 그 타일을 고치면 Burst 보상의 원료.
                 // 신호 손실은 pending에 안 넣음: 조율의 보상은 Burst가 아니라 그린웨이브 처리량 자체(설계 §2).
@@ -268,6 +297,40 @@ namespace CityFlow.Sim
 
         // ArrivalEmitter용 — flat 인덱스로 수요처 처리량 조회(전 타일 순회 전제).
         public float GetDeliveredToSink(int flatIndex) => _deliveredToSink[flatIndex];
+
+        public bool TryGetAverageRouteDistance(
+            Vector2Int destination,
+            out float distanceTiles)
+        {
+            distanceTiles = 0f;
+            if (destination.x < 0 || destination.x >= _w ||
+                destination.y < 0 || destination.y >= _h)
+            {
+                return false;
+            }
+
+            int index = Index(destination);
+            float delivered = _deliveredToSink[index];
+            if (delivered <= 0f)
+            {
+                return false;
+            }
+
+            distanceTiles = _distanceWeightedDeliveredToSink[index] / delivered;
+            return true;
+        }
+
+        public bool TryGetCityAverageRouteDistance(out float distanceTiles)
+        {
+            distanceTiles = 0f;
+            if (DeliveredTotal <= 0f)
+            {
+                return false;
+            }
+
+            distanceTiles = _distanceWeightedDeliveredTotal / DeliveredTotal;
+            return true;
+        }
 
         public float GetPendingReward(Vector2Int t) => _pendingReward[Index(t)];
 
