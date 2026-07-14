@@ -61,13 +61,12 @@ namespace CityFlow.UI
                     }
 
                     if (txtJamCount != null) txtJamCount.text = $"정체 구역: {jamCount}곳";
-                }
 
                     // 2. 분당 수입 지표 (현재는 임시 가짜 계산식)
                     // 실제 엔진 이벤트(ArrivalEvent) 누적치를 통해 분당 계산을 해야 하나 1차 빌드에선 단순화
                     int cpm = Mathf.RoundToInt(_services.TileData.Stability01 * 300f); 
                     if (txtCoinsPerMinute != null) txtCoinsPerMinute.text = $"수입: 분당 {cpm}";
-
+                }
                 yield return wait;
             }
         }
