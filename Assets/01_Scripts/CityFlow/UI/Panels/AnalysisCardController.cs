@@ -213,9 +213,9 @@ namespace CityFlow.UI
             // 같은 타일을 누르면 항상 같은 가짜 차량이 나오도록 Random Seed 고정
             Random.InitState(tile.x * 1000 + tile.y);
             
-            if (txtTileCoord != null) txtTileCoord.text = $"Tile: {tile.x}, {tile.y}";
+            if (txtTileCoord != null) txtTileCoord.text = $"타일: {tile.x}, {tile.y}";
             
-            string[] types = { "Sedan", "SUV", "Truck", "Bus", "Sports Car" };
+            string[] types = { "세단", "SUV", "트럭", "버스", "스포츠카" };
             if (txtVehicleType != null) txtVehicleType.text = types[Random.Range(0, types.Length)];
             
             int idPrefix = Random.Range(10, 99);
@@ -239,13 +239,13 @@ namespace CityFlow.UI
 
                 if (txtWaitTime != null)
                 {
-                    string timeText = _currentWaitTime.ToString("F1") + "s";
+                    string timeText = _currentWaitTime.ToString("F1") + "초";
                     
                     // 70% 돌파 시 크리티컬 경고 처리
                     if (density > 0.7f)
                     {
                         txtWaitTime.color = warningColor;
-                        txtWaitTime.text = $"{timeText} ! JAM";
+                        txtWaitTime.text = $"{timeText} ! 정체";
                     }
                     else
                     {
@@ -294,7 +294,7 @@ namespace CityFlow.UI
             // SimConfig 기본값 60초 기준 비율 계산
             float totalCooldown = 60f;
             float fillRatio = onCooldown ? Mathf.Clamp01(cooldownLeft / totalCooldown) : 0f;
-            string timeLabel = onCooldown ? Mathf.CeilToInt(cooldownLeft) + "s" : "";
+            string timeLabel = onCooldown ? Mathf.CeilToInt(cooldownLeft) + "초" : "";
 
             // 가로 오버라이드 버튼
             if (btnOverrideH != null) btnOverrideH.interactable = !onCooldown;
