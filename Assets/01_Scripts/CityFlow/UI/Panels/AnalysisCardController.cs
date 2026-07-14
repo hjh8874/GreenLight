@@ -29,6 +29,12 @@ namespace CityFlow.UI
         [SerializeField] private Slider sliderGreen;
         [SerializeField] private Button btnOverrideH;
         [SerializeField] private Button btnOverrideV;
+
+        [Header("Cooldown Overlay")]
+        [SerializeField] private Image imgCooldownH;
+        [SerializeField] private Image imgCooldownV;
+        [SerializeField] private TMP_Text txtCooldownH;
+        [SerializeField] private TMP_Text txtCooldownV;
         [Header("Footer Buttons")]
         [SerializeField] private Button btnResolveJam;
         [SerializeField] private Button btnUpgrade;
@@ -39,6 +45,7 @@ namespace CityFlow.UI
 
         private CityFlowServices _services;
         private Coroutine _updateRoutine;
+        private Coroutine _signalCooldownRoutine;
         private float _currentWaitTime = 0f;
         private Vector2Int _currentTile;
         private bool _isClosing = false;
@@ -127,6 +134,11 @@ namespace CityFlow.UI
                 StopCoroutine(_updateRoutine);
                 _updateRoutine = null;
             }
+            if (_signalCooldownRoutine != null)
+            {
+                StopCoroutine(_signalCooldownRoutine);
+                _signalCooldownRoutine = null;
+            }
             
             var signalControl = _services?.Placement as ISignalControl;
             if (signalControl != null && signalControl.SignalTiles.Contains(tile))
@@ -149,6 +161,10 @@ namespace CityFlow.UI
                     sliderGreen.maxValue = Mathf.Max(1, cycle - 1);
                     sliderGreen.SetValueWithoutNotify(signalControl.GetSignalGreenSlots(tile));
                 }
+
+                // 쿨다운 상태 즉시 반영 후 갱신 코루틴 시작
+                ApplyCooldownVisuals(signalControl);
+                _signalCooldownRoutine = StartCoroutine(UpdateSignalCooldownRoutine());
             }
             else
             {
@@ -171,7 +187,8 @@ namespace CityFlow.UI
             if (_isClosing || !gameObject.activeSelf) return;
             _isClosing = true;
 
-            if (_updateRoutine != null) StopCoroutine(_updateRoutine);
+            if (_updateRoutine != null) { StopCoroutine(_updateRoutine); _updateRoutine = null; }
+            if (_signalCooldownRoutine != null) { StopCoroutine(_signalCooldownRoutine); _signalCooldownRoutine = null; }
             
             // DOTween 닫기 애니메이션
             transform.DOKill();
@@ -251,6 +268,59 @@ namespace CityFlow.UI
                 return _services.TileData.GetDensity01(_currentTile);
             }
             return 0f;
+        }
+
+        // ─── 신호 제어 쿨다운 애니메이션 ───────────────────────────
+        private IEnumerator UpdateSignalCooldownRoutine()
+        {
+            WaitForSeconds wait = new WaitForSeconds(0.2f); // 200ms 주기 스로틀링
+
+            while (true)
+            {
+                var signalControl = _services?.Placement as ISignalControl;
+                if (signalControl != null)
+                {
+                    ApplyCooldownVisuals(signalControl);
+                }
+                yield return wait;
+            }
+        }
+
+        private void ApplyCooldownVisuals(ISignalControl signalControl)
+        {
+            float cooldownLeft = signalControl.GetOverrideCooldownLeft(_currentTile);
+            bool onCooldown = cooldownLeft > 0f;
+
+            // SimConfig 기본값 60초 기준 비율 계산
+            float totalCooldown = 60f;
+            float fillRatio = onCooldown ? Mathf.Clamp01(cooldownLeft / totalCooldown) : 0f;
+            string timeLabel = onCooldown ? Mathf.CeilToInt(cooldownLeft) + "s" : "";
+
+            // 가로 오버라이드 버튼
+            if (btnOverrideH != null) btnOverrideH.interactable = !onCooldown;
+            if (imgCooldownH != null)
+            {
+                imgCooldownH.gameObject.SetActive(onCooldown);
+                imgCooldownH.fillAmount = fillRatio;
+            }
+            if (txtCooldownH != null)
+            {
+                txtCooldownH.gameObject.SetActive(onCooldown);
+                txtCooldownH.text = timeLabel;
+            }
+
+            // 세로 오버라이드 버튼
+            if (btnOverrideV != null) btnOverrideV.interactable = !onCooldown;
+            if (imgCooldownV != null)
+            {
+                imgCooldownV.gameObject.SetActive(onCooldown);
+                imgCooldownV.fillAmount = fillRatio;
+            }
+            if (txtCooldownV != null)
+            {
+                txtCooldownV.gameObject.SetActive(onCooldown);
+                txtCooldownV.text = timeLabel;
+            }
         }
     }
 }

@@ -85,7 +85,10 @@ namespace CityFlow.UI.Editor
             Slider sliderGreen = CreateSlider(signalContainer, "SliderGreen", new Vector2(20, -10));
             
             Button btnH = CreateButton(signalContainer, "BtnOverrideH", "가로 ➔", new Vector2(-60, -70), fontToUse);
+            CreateCooldownOverlay(btnH, fontToUse, out Image imgCooldownH, out TextMeshProUGUI txtCooldownH);
+
             Button btnV = CreateButton(signalContainer, "BtnOverrideV", "세로 ⬆", new Vector2(60, -70), fontToUse);
+            CreateCooldownOverlay(btnV, fontToUse, out Image imgCooldownV, out TextMeshProUGUI txtCooldownV);
 
             var serializedObject = new SerializedObject(controller);
             
@@ -111,6 +114,12 @@ namespace CityFlow.UI.Editor
             serializedObject.FindProperty("sliderGreen").objectReferenceValue = sliderGreen;
             serializedObject.FindProperty("btnOverrideH").objectReferenceValue = btnH;
             serializedObject.FindProperty("btnOverrideV").objectReferenceValue = btnV;
+            
+            serializedObject.FindProperty("imgCooldownH").objectReferenceValue = imgCooldownH;
+            serializedObject.FindProperty("txtCooldownH").objectReferenceValue = txtCooldownH;
+            serializedObject.FindProperty("imgCooldownV").objectReferenceValue = imgCooldownV;
+            serializedObject.FindProperty("txtCooldownV").objectReferenceValue = txtCooldownV;
+            
             serializedObject.ApplyModifiedProperties();
             
             // Set inactive AT THE END so meshes build properly
@@ -225,6 +234,42 @@ namespace CityFlow.UI.Editor
             if (font != null) txt.font = font;
             
             return obj.GetComponent<Button>();
+        }
+
+        private static void CreateCooldownOverlay(Button parentBtn, TMP_FontAsset font, out Image img, out TextMeshProUGUI txt)
+        {
+            GameObject overlayObj = new GameObject("CooldownOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            overlayObj.transform.SetParent(parentBtn.transform, false);
+            var overlayRect = overlayObj.GetComponent<RectTransform>();
+            overlayRect.anchorMin = Vector2.zero;
+            overlayRect.anchorMax = Vector2.one;
+            overlayRect.sizeDelta = Vector2.zero;
+
+            img = overlayObj.GetComponent<Image>();
+            img.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+            img.type = Image.Type.Filled;
+            img.fillMethod = Image.FillMethod.Radial360;
+            img.fillOrigin = 2; // Top
+            img.color = new Color(0f, 0f, 0f, 0.7f); // 반투명 검정색
+            img.fillAmount = 0f;
+
+            GameObject textObj = new GameObject("CooldownText", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            textObj.transform.SetParent(overlayObj.transform, false);
+            var textRect = textObj.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.sizeDelta = Vector2.zero;
+
+            txt = textObj.GetComponent<TextMeshProUGUI>();
+            txt.text = "";
+            txt.color = Color.yellow;
+            txt.alignment = TextAlignmentOptions.Center;
+            txt.fontSize = 20;
+            if (font != null) txt.font = font;
+
+            // 처음에는 비활성화 상태
+            overlayObj.SetActive(false);
+            textObj.SetActive(false);
         }
 
         private static GameObject FindObjectIncludingInactive(string name)
