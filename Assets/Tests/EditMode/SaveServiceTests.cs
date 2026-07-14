@@ -110,7 +110,7 @@ namespace CityFlow.Sim.Tests
             var simulation = new FakeSimulationSaveSource(
                 calls,
                 60.0,
-                () => weekly.AddCoins(40L));
+                () => economy.AddCoins(40L));
             var service = new SaveService(
                 simulation,
                 repository,
@@ -141,7 +141,11 @@ namespace CityFlow.Sim.Tests
             int summaryCount = 0;
             OfflineSettlementCompletedEvent summary = default;
 
-            service.RestoreCompleted += _ => restoreCompleted = true;
+            service.RestoreCompleted += _ =>
+            {
+                economy.AddCoins(weekly.ClaimCoins());
+                restoreCompleted = true;
+            };
             service.OfflineSettlementCompleted += settlement =>
             {
                 summaryCount++;
@@ -154,8 +158,58 @@ namespace CityFlow.Sim.Tests
             Assert.That(summaryPublishedAfterRestore, Is.True);
             Assert.That(summary.SettledOfflineSeconds, Is.EqualTo(60.0));
             Assert.That(summary.InitialCoins, Is.EqualTo(100L));
-            Assert.That(summary.EarnedCoins, Is.EqualTo(40L));
-            Assert.That(summary.CurrentCoins, Is.EqualTo(100L));
+            Assert.That(summary.EarnedCoins, Is.EqualTo(90L));
+            Assert.That(summary.CurrentCoins, Is.EqualTo(190L));
+        }
+
+        [Test]
+        public void TryLoadAndRestore_RestoredPendingCoinsPublishSummaryWithoutOfflineTime()
+        {
+            var calls = new List<string>();
+            DateTime now = new DateTime(2026, 7, 14, 9, 0, 0, DateTimeKind.Utc);
+            var repository = new JsonSaveRepository(savePath, backupPath);
+            var economy = new FakeEconomySaveSource();
+            var weekly = new FakeWeeklySettlementSaveSource(calls);
+            var service = new SaveService(
+                new FakeSimulationSaveSource(calls, 0.0),
+                repository,
+                new FakeSaveClock(now),
+                economy);
+
+            service.RegisterWeeklySettlementSaveSource(weekly);
+
+            Assert.That(repository.TrySave(new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                SavedAtUtcTicks = now.AddSeconds(-1.0).Ticks,
+                Simulation = new SimSaveData(),
+                Economy = new EconomySaveData
+                {
+                    Coins = 100L
+                },
+                WeeklySettlement = new WeeklySettlementSaveData
+                {
+                    PendingCoins = 50L
+                }
+            }), Is.True);
+
+            service.RestoreCompleted += _ =>
+                economy.AddCoins(weekly.ClaimCoins());
+
+            int summaryCount = 0;
+            OfflineSettlementCompletedEvent summary = default;
+            service.OfflineSettlementCompleted += settlement =>
+            {
+                summaryCount++;
+                summary = settlement;
+            };
+
+            Assert.That(service.TryLoadAndRestore(), Is.True);
+            Assert.That(summaryCount, Is.EqualTo(1));
+            Assert.That(summary.SettledOfflineSeconds, Is.Zero);
+            Assert.That(summary.InitialCoins, Is.EqualTo(100L));
+            Assert.That(summary.EarnedCoins, Is.EqualTo(50L));
+            Assert.That(summary.CurrentCoins, Is.EqualTo(150L));
         }
 
         [Test]
@@ -308,6 +362,11 @@ namespace CityFlow.Sim.Tests
             {
                 Coins = Math.Max(0L, snapshot?.Coins ?? 0L);
             }
+
+            public void AddCoins(long amount)
+            {
+                Coins += Math.Max(0L, amount);
+            }
         }
 
         private sealed class FakeCalendarSaveSource :
@@ -368,6 +427,13 @@ namespace CityFlow.Sim.Tests
             public void AddCoins(long amount)
             {
                 RestoredCoins += Math.Max(0L, amount);
+            }
+
+            public long ClaimCoins()
+            {
+                long claimedCoins = RestoredCoins;
+                RestoredCoins = 0L;
+                return claimedCoins;
             }
         }
 

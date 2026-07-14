@@ -73,6 +73,11 @@ namespace CityFlow.UI
         private void OnOfflineSettlementCompleted(
             OfflineSettlementCompletedEvent settlement)
         {
+            if (!gameObject.activeSelf)
+            {
+                gameObject.SetActive(true);
+            }
+
             initialCoinsText.text = $"{settlement.InitialCoins:N0}";
             earnedCoinsText.text = $"+{settlement.EarnedCoins:N0}";
             currentCoinsText.text = $"{settlement.CurrentCoins:N0}";
@@ -126,6 +131,11 @@ namespace CityFlow.UI
             }
 
             transitionRoutine = null;
+
+            if (!show)
+            {
+                gameObject.SetActive(false);
+            }
         }
 
         private void ApplyHiddenState()

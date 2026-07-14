@@ -248,13 +248,15 @@ namespace CityFlow.Save
             RestoreCompleted?.Invoke(
                 new RestoreCompletedEvent(settledOfflineSeconds));
 
-            if (settledOfflineSeconds > 0.0)
+            OfflineSettlementCompletedEvent settlementSummary =
+                CreateOfflineSettlementSummary(
+                    restoredSnapshot,
+                    CreateSnapshot(),
+                    settledOfflineSeconds);
+
+            if (settledOfflineSeconds > 0.0 || settlementSummary.EarnedCoins > 0L)
             {
-                OfflineSettlementCompleted?.Invoke(
-                    CreateOfflineSettlementSummary(
-                        restoredSnapshot,
-                        CreateSnapshot(),
-                        settledOfflineSeconds));
+                OfflineSettlementCompleted?.Invoke(settlementSummary);
             }
 
             Debug.Log("Game save loaded and restored.");
@@ -268,11 +270,9 @@ namespace CityFlow.Save
         {
             long initialCoins = Math.Max(0L, beforeSettlement?.Economy?.Coins ?? 0L);
             long currentCoins = Math.Max(0L, afterSettlement?.Economy?.Coins ?? initialCoins);
-            decimal totalBefore = initialCoins +
-                Math.Max(0L, beforeSettlement?.WeeklySettlement?.PendingCoins ?? 0L);
-            decimal totalAfter = currentCoins +
-                Math.Max(0L, afterSettlement?.WeeklySettlement?.PendingCoins ?? 0L);
-            decimal earnedDifference = Math.Max(0m, totalAfter - totalBefore);
+            decimal earnedDifference = Math.Max(
+                0m,
+                (decimal)currentCoins - initialCoins);
             long earnedCoins = earnedDifference >= long.MaxValue
                 ? long.MaxValue
                 : (long)earnedDifference;

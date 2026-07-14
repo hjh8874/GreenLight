@@ -55,7 +55,7 @@ namespace CityFlow.Gameplay.Economy
             services.RegisterWeeklyEconomy(this);
             PublishPendingCoins();
 
-            Debug.Log("[WeeklyEconomyLoopService] Weekly economy loop initialized.");
+            Debug.Log("[WeeklyEconomyLoopService] Manual coin harvest initialized.");
         }
 
         private void OnDestroy()
@@ -147,6 +147,22 @@ namespace CityFlow.Gameplay.Economy
             PublishPendingCoins();
         }
 
+        public bool TryHarvestPendingCoins()
+        {
+            if (!TryClaimPendingCoins(true, out long amount))
+            {
+                return false;
+            }
+
+            services?.Save?.Save();
+
+            Debug.Log(
+                $"[WeeklyEconomyLoopService] Pending coins harvested. " +
+                $"Amount: {amount}, Balance: {services?.Economy?.Coins ?? 0L}.");
+
+            return true;
+        }
+
         private void OnArrival(ArrivalEvent arrival)
         {
             if (arrival.Coins <= 0 || services?.Save?.IsRestoring == true)
@@ -204,10 +220,53 @@ namespace CityFlow.Gameplay.Economy
         {
             CaptureLegacyCalendarBaseline();
 
-            if (ProcessCalendarProgress())
+            bool claimedRestoredPending =
+                TryClaimPendingCoins(false, out long claimedAmount);
+            bool calendarProgressChanged = ProcessCalendarProgress();
+
+            if (claimedRestoredPending || calendarProgressChanged)
             {
                 services.Save?.Save();
             }
+
+            if (claimedRestoredPending)
+            {
+                Debug.Log(
+                    $"[WeeklyEconomyLoopService] Restored pending coins were " +
+                    $"included in the startup settlement. Amount: {claimedAmount}.");
+            }
+        }
+
+        private bool TryClaimPendingCoins(
+            bool publishHarvestResult,
+            out long claimedAmount)
+        {
+            claimedAmount = PendingCoins;
+
+            if (claimedAmount <= 0L)
+            {
+                return false;
+            }
+
+            if (!economySystem.ClaimWeeklySettlement())
+            {
+                claimedAmount = 0L;
+                PublishPendingCoins();
+                return false;
+            }
+
+            PublishPendingCoins();
+
+            if (publishHarvestResult)
+            {
+                SettlementCompleted?.Invoke(
+                    new WeeklySettlementCompletedEvent(
+                        claimedAmount,
+                        services?.Economy?.Coins ?? 0L,
+                        SettlementDays));
+            }
+
+            return true;
         }
 
         private void CaptureLegacyCalendarBaseline()
@@ -251,37 +310,10 @@ namespace CityFlow.Gameplay.Economy
             }
 
             long progressedDays = daysIntoCurrentWeek + elapsedDays;
-            long settlementCount = progressedDays / SettlementDays;
             daysIntoCurrentWeek = (int)(progressedDays % SettlementDays);
             lastProcessedTotalDays = currentTotalDays;
 
-            for (long i = 0L; i < settlementCount; i++)
-            {
-                SettleWeek();
-            }
-
             return true;
-        }
-
-        private void SettleWeek()
-        {
-            long amount = PendingCoins;
-            bool paid = economySystem.ClaimWeeklySettlement();
-            PublishPendingCoins();
-
-            if (paid)
-            {
-                long balanceAfterSettlement = services?.Economy?.Coins ?? 0L;
-                SettlementCompleted?.Invoke(
-                    new WeeklySettlementCompletedEvent(
-                        amount,
-                        balanceAfterSettlement,
-                        SettlementDays));
-
-                Debug.Log(
-                    $"[WeeklyEconomyLoopService] Weekly settlement paid. " +
-                    $"Amount: {amount}.");
-            }
         }
 
         private bool ValidateDependencies()

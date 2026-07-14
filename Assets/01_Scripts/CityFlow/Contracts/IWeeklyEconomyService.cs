@@ -12,5 +12,6 @@ namespace CityFlow.Contracts
         event Action<WeeklySettlementCompletedEvent> SettlementCompleted;
 
         void AddPendingCoins(long amount, string reason = "weekly income");
+        bool TryHarvestPendingCoins();
     }
 }

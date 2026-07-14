@@ -108,7 +108,12 @@ namespace CityFlow.UI
 
         private void OnSettlementCompleted(WeeklySettlementCompletedEvent settlement)
         {
-            periodText.text = $"{settlement.SettlementDays}-DAY REVENUE";
+            if (!gameObject.activeSelf)
+            {
+                gameObject.SetActive(true);
+            }
+
+            periodText.text = "HARVEST COMPLETE";
             amountText.text = $"+{settlement.Amount:N0} COINS";
             balanceText.text = $"BALANCE  {settlement.BalanceAfterSettlement:N0}";
 
@@ -169,6 +174,7 @@ namespace CityFlow.UI
 
             ApplyHiddenState();
             presentationRoutine = null;
+            gameObject.SetActive(false);
         }
 
         private void ApplyHiddenState()
