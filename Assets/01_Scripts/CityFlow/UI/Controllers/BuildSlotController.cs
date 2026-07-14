@@ -88,6 +88,14 @@ namespace CityFlow.UI
             }
         }
 
+        private void OnDisable()
+        {
+            if (_tooltipController != null)
+            {
+                _tooltipController.HideTooltip();
+            }
+        }
+
         public void OnPointerClick(PointerEventData eventData)
         {
             // 전체 슬롯 클릭 시 가벼운 선택 애니메이션 (실제 건설은 btnBuy가 담당)
