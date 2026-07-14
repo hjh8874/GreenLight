@@ -208,8 +208,8 @@ namespace CityFlow.UI
 
                 if (rightPressed)
                 {
-                    // 마우스가 UI 패널 위에 있으면 씬 클릭 무시
-                    if (!IsPointerOverBlockingUI())
+                    // 마우스가 UI 패널 위에 있으면 씬 클릭 무시. (단, 맵에서 시작된 클릭만 인정하여 드래그 철거 방어)
+                    if (!IsPointerOverBlockingUI() && _rightClickStartCoord.HasValue)
                     {
                         Vector2Int rightClickCoord = GetMouseGridCoordinate();
 
@@ -228,15 +228,12 @@ namespace CityFlow.UI
 
                             if (currentTileType != TileType.Empty)
                             {
-                                if (currentTileType == TileType.Road)
-                                {
-                                    // 도로(Road)인 경우 드래그로 팝업 없이 즉시 철거
-                                    _lastRemovedCoord = rightClickCoord;
-                                    TileType oldType = _currentType;
-                                    _currentType = TileType.Empty; 
-                                    PlaceInfrastructure(rightClickCoord);
-                                    _currentType = oldType;
-                                }
+                                // 모든 타일(도로/건물) 우클릭 드래그 시 즉시 철거
+                                _lastRemovedCoord = rightClickCoord;
+                                TileType oldType = _currentType;
+                                _currentType = TileType.Empty; 
+                                PlaceInfrastructure(rightClickCoord);
+                                _currentType = oldType;
                             }
                         }
                     }
@@ -251,32 +248,7 @@ namespace CityFlow.UI
                         // 단일 클릭 판정 (누른 곳과 뗀 곳이 같음)
                         if (_rightClickStartCoord != null && _rightClickStartCoord.Value == rightClickCoord)
                         {
-                            TileType currentTileType = TileType.Empty;
-                            if (useFakeMode) currentTileType = TileType.Road;
-                            else if (_services != null && _services.TileData != null) currentTileType = _services.TileData.GetTileType(rightClickCoord);
-
-                            if (currentTileType != TileType.Empty && currentTileType != TileType.Road)
-                            {
-                                // 도로가 아닌 경우(건물 등) 단일 클릭일 때만 철거 팝업
-                                _currentDragGroupId = Guid.NewGuid().ToString(); // 팝업 철거도 독립된 Undo 액션 그룹 부여
-                                if (confirmPopup != null)
-                                {
-                                    confirmPopup.Show("Demolish this tile?", () => 
-                                    {
-                                        TileType oldType = _currentType;
-                                        _currentType = TileType.Empty; 
-                                        PlaceInfrastructure(rightClickCoord);
-                                        _currentType = oldType; 
-                                    });
-                                }
-                                else
-                                {
-                                    TileType oldType = _currentType;
-                                    _currentType = TileType.Empty; 
-                                    PlaceInfrastructure(rightClickCoord);
-                                    _currentType = oldType;
-                                }
-                            }
+                            // 드래그 중에 이미 철거 처리됨 — 추가 동작 불필요
                         }
                     }
                     _lastRemovedCoord = null;

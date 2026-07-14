@@ -260,6 +260,9 @@ namespace CityFlow.Sim
         // 제안 단계: 계약으로 승격(설계 §5), 최종 확정은 주석·김건 합의. 김건 Game뷰 UI가 이 계약에 붙음.
         public IReadOnlyList<Vector2Int> SignalTiles => _signals.Tiles;
 
+        public int GetSignalCycleSlots(Vector2Int tile) =>
+            _signals.TryGet(tile, out var s) ? s.CycleSlots : 0;
+
         public int GetSignalOffsetSlots(Vector2Int tile) =>
             _signals.TryGet(tile, out var s) ? s.OffsetSlots : 0;
 

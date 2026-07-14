@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using TMPro;
@@ -19,8 +20,15 @@ namespace CityFlow.UI
         [SerializeField] private Color normalColor = Color.white;
         [SerializeField] private Color warningColor = Color.red;
 
+        [Header("Containers")]
+        [SerializeField] private GameObject normalInfoContainer;
+        [SerializeField] private GameObject signalControlContainer;
 
-
+        [Header("Signal Control Elements")]
+        [SerializeField] private Slider sliderOffset;
+        [SerializeField] private Slider sliderGreen;
+        [SerializeField] private Button btnOverrideH;
+        [SerializeField] private Button btnOverrideV;
         [Header("Footer Buttons")]
         [SerializeField] private Button btnResolveJam;
         [SerializeField] private Button btnUpgrade;
@@ -65,6 +73,29 @@ namespace CityFlow.UI
         {
             if (btnResolveJam != null) btnResolveJam.onClick.AddListener(OnResolveJamClicked);
             if (btnUpgrade != null) btnUpgrade.onClick.AddListener(OnUpgradeClicked);
+            
+            if (sliderOffset != null) sliderOffset.onValueChanged.AddListener(OnOffsetChanged);
+            if (sliderGreen != null) sliderGreen.onValueChanged.AddListener(OnGreenChanged);
+            if (btnOverrideH != null) btnOverrideH.onClick.AddListener(() => OnOverrideClicked(true));
+            if (btnOverrideV != null) btnOverrideV.onClick.AddListener(() => OnOverrideClicked(false));
+        }
+
+        private void OnOffsetChanged(float value)
+        {
+            var signalControl = _services?.Placement as ISignalControl;
+            signalControl?.TrySetSignalOffsetSlots(_currentTile, (int)value);
+        }
+
+        private void OnGreenChanged(float value)
+        {
+            var signalControl = _services?.Placement as ISignalControl;
+            signalControl?.TrySetSignalGreenSlots(_currentTile, (int)value);
+        }
+
+        private void OnOverrideClicked(bool horizontal)
+        {
+            var signalControl = _services?.Placement as ISignalControl;
+            signalControl?.TryOverrideSignal(_currentTile, horizontal);
         }
 
         private void OnResolveJamClicked()
@@ -90,13 +121,49 @@ namespace CityFlow.UI
             transform.localScale = Vector3.zero;
             transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
             
-            // 1. 타일 좌표 기반 가짜 데이터 조립 (팩토리 패턴 적용) 및 타일 종류(이름) 설정
-            SynthesizeFakeVehicleData(tile);
+            // 모드 전환 전 기존 갱신 코루틴 정리 (신호 제어 타일로 넘어갈 때의 누수 방지)
+            if (_updateRoutine != null)
+            {
+                StopCoroutine(_updateRoutine);
+                _updateRoutine = null;
+            }
+            
+            var signalControl = _services?.Placement as ISignalControl;
+            if (signalControl != null && signalControl.SignalTiles.Contains(tile))
+            {
+                // 신호 제어 모드
+                if (normalInfoContainer != null) normalInfoContainer.SetActive(false);
+                if (signalControlContainer != null) signalControlContainer.SetActive(true);
+                
+                if (txtTitle != null) txtTitle.text = "교차로 신호 제어";
+                
+                int cycle = signalControl.GetSignalCycleSlots(tile);
+                if (sliderOffset != null)
+                {
+                    sliderOffset.maxValue = Mathf.Max(0, cycle - 1);
+                    sliderOffset.SetValueWithoutNotify(signalControl.GetSignalOffsetSlots(tile));
+                }
+                if (sliderGreen != null)
+                {
+                    sliderGreen.minValue = 1;
+                    sliderGreen.maxValue = Mathf.Max(1, cycle - 1);
+                    sliderGreen.SetValueWithoutNotify(signalControl.GetSignalGreenSlots(tile));
+                }
+            }
+            else
+            {
+                // 일반 정보 모드
+                if (normalInfoContainer != null) normalInfoContainer.SetActive(true);
+                if (signalControlContainer != null) signalControlContainer.SetActive(false);
 
-            // 2. 0.2초 스로틀링 루프 시작
-            _currentWaitTime = 0f;
-            if (_updateRoutine != null) StopCoroutine(_updateRoutine);
-            _updateRoutine = StartCoroutine(UpdateCardRoutine());
+                // 1. 타일 좌표 기반 가짜 데이터 조립 (팩토리 패턴 적용) 및 타일 종류(이름) 설정
+                SynthesizeFakeVehicleData(tile);
+
+                // 2. 0.2초 스로틀링 루프 시작
+                _currentWaitTime = 0f;
+                if (_updateRoutine != null) StopCoroutine(_updateRoutine);
+                _updateRoutine = StartCoroutine(UpdateCardRoutine());
+            }
         }
 
         public void CloseCard()
