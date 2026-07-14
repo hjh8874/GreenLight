@@ -1726,7 +1726,7 @@ namespace CityFlow.View
                 return;
             }
 
-            if (keyboard.tabKey.wasPressedThisFrame)
+            if (keyboard.nKey.wasPressedThisFrame)
             {
                 SelectNextSignal();
             }
