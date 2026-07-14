@@ -162,10 +162,15 @@ namespace CityFlow.Gameplay.Economy
         }
 
         /// <summary>
-        /// 차량이 목적지에 도착했을 때 호출됩니다.
+        /// Handles vehicle arrival rewards through the active economy policy.
         /// </summary>
         private void OnArrival(ArrivalEvent e)
         {
+            if (services.WeeklyEconomy != null)
+            {
+                return;
+            }
+
             AddCoins(e.Coins, "arrival");
         }
 
@@ -182,6 +187,14 @@ namespace CityFlow.Gameplay.Economy
         /// </summary>
         private void OnSettlementComputed(SettlementEvent e)
         {
+            if (services.WeeklyEconomy != null)
+            {
+                services.WeeklyEconomy.AddPendingCoins(
+                    e.Coins,
+                    "offline vehicle income");
+                return;
+            }
+
             AddCoins(e.Coins, "offline settlement");
         }
 

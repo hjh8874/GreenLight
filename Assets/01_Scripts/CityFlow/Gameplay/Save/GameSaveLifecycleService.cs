@@ -36,6 +36,11 @@ namespace CityFlow.Gameplay.Save
                 return;
             }
 
+            if (services.Save.WeeklySettlementSaveSource != null)
+            {
+                return;
+            }
+
             BasicEconomySystem economySystem =
                 FindAnyObjectByType<BasicEconomySystem>(
                     FindObjectsInactive.Include);

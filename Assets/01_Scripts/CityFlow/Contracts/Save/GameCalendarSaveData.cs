@@ -10,6 +10,7 @@ namespace CityFlow.Contracts.Save
         public int Day;
         public int Hour;
         public int TotalMonths;
+        public long TotalDays;
         public float AccumulatedRealSeconds;
     }
 }
