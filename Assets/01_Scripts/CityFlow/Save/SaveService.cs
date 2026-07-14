@@ -27,6 +27,7 @@ namespace CityFlow.Save
         private bool hasLoadedSave;
 
         public event Action<RestoreCompletedEvent> RestoreCompleted;
+        public event Action<OfflineSettlementCompletedEvent> OfflineSettlementCompleted;
 
         public SaveService(
             ISimSaveSource simSaveSource,
@@ -231,10 +232,12 @@ namespace CityFlow.Save
             hasLoadedSave = true;
             IsRestoring = true;
             double settledOfflineSeconds;
+            GameSaveData restoredSnapshot;
 
             try
             {
                 RestoreSnapshot(saveData);
+                restoredSnapshot = CreateSnapshot();
                 settledOfflineSeconds = SettleOfflineProgress(saveData);
             }
             finally
@@ -245,8 +248,40 @@ namespace CityFlow.Save
             RestoreCompleted?.Invoke(
                 new RestoreCompletedEvent(settledOfflineSeconds));
 
+            if (settledOfflineSeconds > 0.0)
+            {
+                OfflineSettlementCompleted?.Invoke(
+                    CreateOfflineSettlementSummary(
+                        restoredSnapshot,
+                        CreateSnapshot(),
+                        settledOfflineSeconds));
+            }
+
             Debug.Log("Game save loaded and restored.");
             return true;
+        }
+
+        private static OfflineSettlementCompletedEvent CreateOfflineSettlementSummary(
+            GameSaveData beforeSettlement,
+            GameSaveData afterSettlement,
+            double settledOfflineSeconds)
+        {
+            long initialCoins = Math.Max(0L, beforeSettlement?.Economy?.Coins ?? 0L);
+            long currentCoins = Math.Max(0L, afterSettlement?.Economy?.Coins ?? initialCoins);
+            decimal totalBefore = initialCoins +
+                Math.Max(0L, beforeSettlement?.WeeklySettlement?.PendingCoins ?? 0L);
+            decimal totalAfter = currentCoins +
+                Math.Max(0L, afterSettlement?.WeeklySettlement?.PendingCoins ?? 0L);
+            decimal earnedDifference = Math.Max(0m, totalAfter - totalBefore);
+            long earnedCoins = earnedDifference >= long.MaxValue
+                ? long.MaxValue
+                : (long)earnedDifference;
+
+            return new OfflineSettlementCompletedEvent(
+                settledOfflineSeconds,
+                initialCoins,
+                earnedCoins,
+                currentCoins);
         }
 
         private double SettleOfflineProgress(GameSaveData saveData)

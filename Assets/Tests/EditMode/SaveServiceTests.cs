@@ -100,6 +100,65 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void TryLoadAndRestore_PublishesOfflineCoinSummaryAfterRestoreCompleted()
+        {
+            var calls = new List<string>();
+            DateTime now = new DateTime(2026, 7, 14, 9, 0, 0, DateTimeKind.Utc);
+            var repository = new JsonSaveRepository(savePath, backupPath);
+            var economy = new FakeEconomySaveSource();
+            var weekly = new FakeWeeklySettlementSaveSource(calls);
+            var simulation = new FakeSimulationSaveSource(
+                calls,
+                60.0,
+                () => weekly.AddCoins(40L));
+            var service = new SaveService(
+                simulation,
+                repository,
+                new FakeSaveClock(now),
+                economy);
+
+            service.RegisterWeeklySettlementSaveSource(weekly);
+
+            bool written = repository.TrySave(new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                SavedAtUtcTicks = now.AddSeconds(-120.0).Ticks,
+                Simulation = new SimSaveData(),
+                Economy = new EconomySaveData
+                {
+                    Coins = 100L
+                },
+                WeeklySettlement = new WeeklySettlementSaveData
+                {
+                    PendingCoins = 50L
+                }
+            });
+
+            Assert.That(written, Is.True);
+
+            bool restoreCompleted = false;
+            bool summaryPublishedAfterRestore = false;
+            int summaryCount = 0;
+            OfflineSettlementCompletedEvent summary = default;
+
+            service.RestoreCompleted += _ => restoreCompleted = true;
+            service.OfflineSettlementCompleted += settlement =>
+            {
+                summaryCount++;
+                summary = settlement;
+                summaryPublishedAfterRestore = restoreCompleted;
+            };
+
+            Assert.That(service.TryLoadAndRestore(), Is.True);
+            Assert.That(summaryCount, Is.EqualTo(1));
+            Assert.That(summaryPublishedAfterRestore, Is.True);
+            Assert.That(summary.SettledOfflineSeconds, Is.EqualTo(60.0));
+            Assert.That(summary.InitialCoins, Is.EqualTo(100L));
+            Assert.That(summary.EarnedCoins, Is.EqualTo(40L));
+            Assert.That(summary.CurrentCoins, Is.EqualTo(100L));
+        }
+
+        [Test]
         public void RestoreSnapshot_LegacyDataWithoutOptionalSections_RestoresDefaults()
         {
             var calls = new List<string>();
@@ -200,16 +259,19 @@ namespace CityFlow.Sim.Tests
         {
             private readonly List<string> calls;
             private readonly double settledSeconds;
+            private readonly Action onSettle;
 
             public int GridWidth => 20;
             public int GridHeight => 20;
 
             public FakeSimulationSaveSource(
                 List<string> calls,
-                double settledSeconds)
+                double settledSeconds,
+                Action onSettle = null)
             {
                 this.calls = calls;
                 this.settledSeconds = settledSeconds;
+                this.onSettle = onSettle;
             }
 
             public SimSaveData CreateSnapshot()
@@ -225,7 +287,26 @@ namespace CityFlow.Sim.Tests
             public double SettleOffline(double elapsedSeconds)
             {
                 calls.Add("settlement");
+                onSettle?.Invoke();
                 return settledSeconds;
+            }
+        }
+
+        private sealed class FakeEconomySaveSource : IEconomySaveSource
+        {
+            public long Coins { get; private set; }
+
+            public EconomySaveData CreateSnapshot()
+            {
+                return new EconomySaveData
+                {
+                    Coins = Coins
+                };
+            }
+
+            public void RestoreSnapshot(EconomySaveData snapshot)
+            {
+                Coins = Math.Max(0L, snapshot?.Coins ?? 0L);
             }
         }
 
@@ -282,6 +363,11 @@ namespace CityFlow.Sim.Tests
                 RestoreCount++;
                 RestoredCoins = snapshot.PendingCoins;
                 calls.Add("weekly");
+            }
+
+            public void AddCoins(long amount)
+            {
+                RestoredCoins += Math.Max(0L, amount);
             }
         }
 
