@@ -73,7 +73,7 @@ namespace CityFlow.UI.Editor
             var cr = card.rectTransform;
             cr.anchorMin = cr.anchorMax = new Vector2(0.5f, 0.5f);
             cr.pivot = new Vector2(0.5f, 0.5f);
-            cr.sizeDelta = new Vector2(560f, 620f);
+            cr.sizeDelta = new Vector2(560f, 500f);
             cr.anchoredPosition = new Vector2(0f, 24f);
             var shadow = card.gameObject.AddComponent<Shadow>();
             shadow.effectColor = new Color(0f, 0f, 0f, 0.18f);
@@ -102,10 +102,8 @@ namespace CityFlow.UI.Editor
             Dot(dots.transform, knob, SignalAmber);
             Dot(dots.transform, knob, SignalGreen);
 
-            // 타이틀 (NanumGothic fallback으로 한글 렌더)
-            Label("Title", card.transform, "그린웨이브", 60f, Ink, FontStyles.Bold, 72f);
-            Label("Subtitle", card.transform, "· GREEN WAVE ·", 20f, SignalGreen, FontStyles.Bold, 26f);
-            Label("Tagline", card.transform, "신호등 정령 · Traffic Spirit", 17f, Muted, FontStyles.Normal, 22f);
+            // 타이틀 (컨셉 변경: IDLE CITY. 신호등 정령·GREEN WAVE 부제 제거 — 새 컨셉 태그라인 정해지면 추가)
+            Label("Title", card.transform, "IDLE CITY", 62f, Ink, FontStyles.Bold, 76f);
 
             // 간격
             var spacer = new GameObject("Spacer").AddComponent<RectTransform>();
@@ -127,7 +125,7 @@ namespace CityFlow.UI.Editor
             vr.sizeDelta = new Vector2(200f, 30f);
             ver.alignment = TextAlignmentOptions.BottomLeft;
 
-            var cred = Label("Credits", canvasGo.transform, "© 도시흐름팀", 18f, Muted, FontStyles.Normal, 0f);
+            var cred = Label("Credits", canvasGo.transform, "© 그린웨이브", 18f, Muted, FontStyles.Normal, 0f);
             var cd = cred.rectTransform;
             cd.anchorMin = cd.anchorMax = new Vector2(1f, 0f);
             cd.pivot = new Vector2(1f, 0f);
