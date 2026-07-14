@@ -103,6 +103,28 @@ namespace CityFlow.UI.Editor
                     break;
                 }
             }
+            
+            if (titleText == null)
+            {
+                GameObject textObj = new GameObject("TitleText", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+                textObj.transform.SetParent(analysisCardObj.transform, false);
+                textObj.transform.SetAsFirstSibling();
+                var textRect = textObj.GetComponent<RectTransform>();
+                textRect.anchorMin = new Vector2(0, 1);
+                textRect.anchorMax = new Vector2(1, 1);
+                textRect.pivot = new Vector2(0.5f, 1);
+                textRect.anchoredPosition = new Vector2(0, -15);
+                textRect.sizeDelta = new Vector2(-30, 40);
+                
+                titleText = textObj.GetComponent<TextMeshProUGUI>();
+                titleText.text = "타일 상세 정보";
+                titleText.color = Color.white;
+                titleText.alignment = TextAlignmentOptions.TopLeft;
+                titleText.fontSize = 22;
+                titleText.fontStyle = FontStyles.Bold;
+                if (fontToUse != null) titleText.font = fontToUse;
+            }
+
             if (titleText != null)
             {
                 serializedObject.FindProperty("txtTitle").objectReferenceValue = titleText;
