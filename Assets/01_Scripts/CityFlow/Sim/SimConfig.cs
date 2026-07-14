@@ -64,6 +64,11 @@ namespace CityFlow.Sim
         public float RoundaboutInterference;    // λr: 교차 교통의 방해 계수
         public float RoundaboutCapacityFactor;  // cf: 로터리 타일 유효 용량 배율
 
+        // ── 우선도로(스펙 2026-07-13): 무신호 간섭의 비대칭 확장 ──
+        // 메인축은 곁길로부터 거의 방해 안 받고(λ_main≈0), 곁길은 메인축에 크게 양보(λ_yield↑).
+        public float PriorityMainInterference;    // λ_main
+        public float PriorityYieldInterference;   // λ_yield
+
         // ── 유기적 라우팅(혼잡 회피 강도) ──
         // 증분 배정의 스텝 비용 = 물리거리 × (1 + w × 부하/용량). 0 = 순수 물리 최단.
         // 2면 부하율 1.5 타일이 4배 비쌈 → 몇 칸 우회가 이득 🔓
@@ -116,6 +121,8 @@ namespace CityFlow.Sim
             UnsignaledInterference = 1.5f,
             RoundaboutInterference = 0.25f,
             RoundaboutCapacityFactor = 0.7f,
+            PriorityMainInterference = 0.1f,
+            PriorityYieldInterference = 2.5f,
             RoutingCongestionWeight = 2f,
             AutoDetectSignals = true,
             CoinBase = 1f,
