@@ -25,10 +25,12 @@ namespace CityFlow.UI
         private IReadOnlyCityStats _cityStats;
         private IEconomyService _economy;
         private IGameCalendarService _gameCalendar;
+        private IWeeklyEconomyService _weeklyEconomy;
         private float _updateTimer;
         
         // Cached state from events
         private long _currentCoins;
+        private long _pendingCoins;
         private float _currentStability01 = 1f;
 
         // Display state for DOTween
@@ -68,6 +70,7 @@ namespace CityFlow.UI
             _services.Events.FlowBurst += OnFlowBurst;
             _services.EconomyRegistered += OnEconomyRegistered;
             _services.GameCalendarRegistered += OnGameCalendarRegistered;
+            _services.WeeklyEconomyRegistered += OnWeeklyEconomyRegistered;
 
             if (_services.Economy != null)
             {
@@ -81,6 +84,11 @@ namespace CityFlow.UI
             if (_services.GameCalendar != null)
             {
                 BindGameCalendar(_services.GameCalendar);
+            }
+
+            if (_services.WeeklyEconomy != null)
+            {
+                BindWeeklyEconomy(_services.WeeklyEconomy);
             }
 
             // 초기 UI 갱신
@@ -97,6 +105,7 @@ namespace CityFlow.UI
                 _services.Events.FlowBurst -= OnFlowBurst;
                 _services.EconomyRegistered -= OnEconomyRegistered;
                 _services.GameCalendarRegistered -= OnGameCalendarRegistered;
+                _services.WeeklyEconomyRegistered -= OnWeeklyEconomyRegistered;
             }
 
             if (_economy != null)
@@ -109,6 +118,11 @@ namespace CityFlow.UI
                 _gameCalendar.HourChanged -= OnCalendarChanged;
                 _gameCalendar.DayChanged -= OnCalendarChanged;
                 _gameCalendar.MonthChanged -= OnCalendarChanged;
+            }
+
+            if (_weeklyEconomy != null)
+            {
+                _weeklyEconomy.PendingCoinsChanged -= OnPendingCoinsChanged;
             }
         }
 
@@ -182,6 +196,34 @@ namespace CityFlow.UI
             UpdateUI();
         }
 
+        private void OnWeeklyEconomyRegistered(IWeeklyEconomyService weeklyEconomy)
+        {
+            BindWeeklyEconomy(weeklyEconomy);
+        }
+
+        private void BindWeeklyEconomy(IWeeklyEconomyService weeklyEconomy)
+        {
+            if (_weeklyEconomy == weeklyEconomy)
+            {
+                return;
+            }
+
+            if (_weeklyEconomy != null)
+            {
+                _weeklyEconomy.PendingCoinsChanged -= OnPendingCoinsChanged;
+            }
+
+            _weeklyEconomy = weeklyEconomy;
+            _weeklyEconomy.PendingCoinsChanged += OnPendingCoinsChanged;
+            OnPendingCoinsChanged(_weeklyEconomy.PendingCoins);
+        }
+
+        private void OnPendingCoinsChanged(long pendingCoins)
+        {
+            _pendingCoins = Math.Max(0L, pendingCoins);
+            RefreshCoinText();
+        }
+
         private void OnFlowBurst(FlowBurstEvent e)
         {
             if (flowBurstEffect != null)
@@ -212,8 +254,8 @@ namespace CityFlow.UI
         {
             ConfigureHeaderText(timeText, new Vector2(16f, -14f), new Vector2(210f, 30f));
             ConfigureHeaderText(vehicleCountText, new Vector2(240f, -14f), new Vector2(150f, 30f));
-            ConfigureHeaderText(coinText, new Vector2(410f, -14f), new Vector2(150f, 30f));
-            ConfigureHeaderText(efficiencyText, new Vector2(580f, -14f), new Vector2(150f, 30f));
+            ConfigureHeaderText(coinText, new Vector2(410f, -14f), new Vector2(280f, 30f));
+            ConfigureHeaderText(efficiencyText, new Vector2(710f, -14f), new Vector2(150f, 30f));
         }
 
         private static void ConfigureHeaderText(TextMeshProUGUI text, Vector2 anchoredPosition, Vector2 sizeDelta)
@@ -293,7 +335,7 @@ namespace CityFlow.UI
                     DOTween.To(() => _displayedCoins, x => 
                     {
                         _displayedCoins = x;
-                        coinText.text = $"[Coins] {Mathf.RoundToInt(_displayedCoins):N0}";
+                        RefreshCoinText();
                     }, _currentCoins, updateInterval).SetEase(Ease.Linear).SetTarget(coinText);
                 }
             }
@@ -304,6 +346,18 @@ namespace CityFlow.UI
                 int efficiencyPercent = Mathf.RoundToInt(_currentStability01 * 100f);
                 efficiencyText.text = $"[Eff] {efficiencyPercent}%";
             }
+        }
+
+        private void RefreshCoinText()
+        {
+            if (coinText == null)
+            {
+                return;
+            }
+
+            coinText.text =
+                $"[Coins] {Mathf.RoundToInt(_displayedCoins):N0}  " +
+                $"[Pending] {_pendingCoins:N0}";
         }
     }
 }

@@ -1905,6 +1905,8 @@ GameObject:
   - component: {fileID: 559808186}
   - component: {fileID: 559808185}
   - component: {fileID: 559808188}
+  - component: {fileID: 559808189}
+  - component: {fileID: 559808190}
   m_Layer: 0
   m_Name: Services
   m_TagString: Untagged
@@ -1989,6 +1991,35 @@ MonoBehaviour:
   saveOnFocusLost: 1
   saveOnApplicationPause: 1
   saveOnApplicationQuit: 1
+--- !u!114 &559808189
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 559808183}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 62c2b42e981658b46891e15f68d08423, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.BasicEconomySystem
+  economyConfig: {fileID: 11400000, guid: b7a1a4dd78b44dc791a1536a75539231, type: 2}
+  economyService: {fileID: 559808187}
+  weeklyAccumulatedCoin: 0
+--- !u!114 &559808190
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 559808183}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a6f731ad7624a6cbcc1674e2e073db2, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Gameplay.Economy.WeeklyEconomyLoopService
+  economySystem: {fileID: 559808189}
+  economyConfig: {fileID: 11400000, guid: b7a1a4dd78b44dc791a1536a75539231, type: 2}
 --- !u!224 &568711510 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 1933230856837756137, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
