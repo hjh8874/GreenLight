@@ -249,18 +249,6 @@ namespace CityFlow.UI
                         if (_rightClickStartCoord != null && _rightClickStartCoord.Value == rightClickCoord)
                         {
                             // 드래그 중에 이미 철거 처리됨 — 추가 동작 불필요
-                            TileType clickedType = TileType.Empty;
-                            if (!useFakeMode && _services != null && _services.TileData != null)
-                            {
-                                clickedType = _services.TileData.GetTileType(rightClickCoord);
-                            }
-
-                            // 빈 타일(공터)에 우클릭 시 건설 모드 쾌적하게 종료
-                            if (clickedType == TileType.Empty)
-                            {
-                                ToggleBuildMode(false);
-                                UnityEngine.Object.FindFirstObjectByType<UIDockController>()?.CloseAllPanels();
-                            }
                         }
                     }
                     _lastRemovedCoord = null;
