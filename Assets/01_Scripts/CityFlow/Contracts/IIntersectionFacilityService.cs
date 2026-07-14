@@ -31,5 +31,13 @@ namespace CityFlow.Contracts
         bool CanPlaceOverpass(Vector2Int tile);
         bool TryPlaceOverpass(Vector2Int tile);
         bool TryRemoveOverpass(Vector2Int tile);
+
+        // 우선도로 배치(스펙 2026-07-13): 무신호 교차로에 우선축 지정 — 메인축 무정차·곁길 양보.
+        // 신호·로터리·입체와 4자 배타(한 교차로 한 장치). 축 값(H/V) 보유 — 로터리와 달리 방향성 있음.
+        IReadOnlyList<Vector2Int> PriorityRoadTiles { get; }
+        Axis GetPriorityAxis(Vector2Int tile);
+        bool CanPlacePriorityRoad(Vector2Int tile);
+        bool TryPlacePriorityRoad(Vector2Int tile, Axis mainAxis);
+        bool TryRemovePriorityRoad(Vector2Int tile);
     }
 }

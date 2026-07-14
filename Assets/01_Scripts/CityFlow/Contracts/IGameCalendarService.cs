@@ -9,6 +9,7 @@ namespace CityFlow.Contracts
         int Day { get; }
         int Hour { get; }
         int TotalMonths { get; }
+        long TotalDays { get; }
         float RealSecondsPerGameHour { get; }
 
         event Action<int> HourChanged;

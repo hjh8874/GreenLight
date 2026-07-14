@@ -34,6 +34,7 @@ namespace CityFlow.Gameplay.Progression
         public int Day { get; private set; }
         public int Hour { get; private set; }
         public int TotalMonths { get; private set; }
+        public long TotalDays { get; private set; }
         public float RealSecondsPerGameHour => realSecondsPerGameHour;
 
         public event Action<int> HourChanged;
@@ -73,6 +74,7 @@ namespace CityFlow.Gameplay.Progression
             Day = Mathf.Clamp(startDay, 1, Mathf.Max(1, daysPerMonth));
             Hour = Mathf.Clamp(startHour, 0, Mathf.Max(1, hoursPerDay) - 1);
             TotalMonths = ((Year - 1) * Mathf.Max(1, monthsPerYear)) + Month;
+            TotalDays = CalculateTotalDays(Year, Month, Day);
         }
 
         public GameCalendarSaveData CreateSnapshot()
@@ -84,6 +86,7 @@ namespace CityFlow.Gameplay.Progression
                 Day = Day,
                 Hour = Hour,
                 TotalMonths = TotalMonths,
+                TotalDays = TotalDays,
                 AccumulatedRealSeconds = accumulatedRealSeconds
             };
         }
@@ -105,6 +108,10 @@ namespace CityFlow.Gameplay.Progression
             Day = Mathf.Clamp(snapshot.Day, 1, validDaysPerMonth);
             Hour = Mathf.Clamp(snapshot.Hour, 0, validHoursPerDay - 1);
             TotalMonths = Mathf.Max(1, snapshot.TotalMonths);
+            long calculatedTotalDays = CalculateTotalDays(Year, Month, Day);
+            TotalDays = snapshot.TotalDays > 0L
+                ? snapshot.TotalDays
+                : calculatedTotalDays;
             accumulatedRealSeconds = Mathf.Clamp(snapshot.AccumulatedRealSeconds, 0f, secondsPerHour);
 
             PublishRestoredDate();
@@ -151,6 +158,7 @@ namespace CityFlow.Gameplay.Progression
             Month = (int)(totalMonthIndex % validMonthsPerYear) + 1;
             Year = ClampToPositiveInt((long)Year + addedYears);
             TotalMonths = ClampToPositiveInt((long)TotalMonths + addedMonths);
+            TotalDays = Math.Max(0L, TotalDays + addedDays);
 
             HourChanged?.Invoke(Hour);
 
@@ -192,6 +200,7 @@ namespace CityFlow.Gameplay.Progression
         private void AdvanceDay()
         {
             Day++;
+            TotalDays++;
             if (Day > Mathf.Max(1, daysPerMonth))
             {
                 Day = 1;
@@ -214,6 +223,18 @@ namespace CityFlow.Gameplay.Progression
 
             MonthChanged?.Invoke(TotalMonths);
             Debug.Log($"[GameCalendarService] Month changed: Y{Year} M{Month} D{Day} {Hour:00}:00.");
+        }
+
+        private long CalculateTotalDays(int year, int month, int day)
+        {
+            long validYear = Math.Max(1, year) - 1L;
+            long validMonth = Math.Max(1, month) - 1L;
+            long validDay = Math.Max(1, day) - 1L;
+            long validMonthsPerYear = Math.Max(1, monthsPerYear);
+            long validDaysPerMonth = Math.Max(1, daysPerMonth);
+
+            return ((validYear * validMonthsPerYear) + validMonth) *
+                   validDaysPerMonth + validDay;
         }
 
         // Attach this component to a scene object. CityBootstrap initializes it through ICityFlowServiceConsumer.
