@@ -20,7 +20,8 @@ MonoBehaviour:
     \uD1B5\uD589\uC744 \uC870\uC808\uD569\uB2C8\uB2E4.\r\n\uC870\uAC74: \uAD50\uCC28\uB85C(3\uAC1C
     \uC774\uC0C1\uC758 \uB3C4\uB85C\uAC00 \uC5F0\uACB0\uB41C \uC9C0\uC810)\uC5D0\uB9CC
     \uC124\uCE58\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4."
-  Cost: 100
+  Cost: 50
   GreenSlots: 5
   OnewayDir: {x: 0, y: 0}
   TurnMode: 0
+  PriorityAxis: 0

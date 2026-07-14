@@ -219,6 +219,7 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.Overpass => _facilityService.CanPlaceOverpass(coord),
                 InfrastructureKind.Oneway => _trafficRuleService.CanPlaceOneway(coord),
                 InfrastructureKind.TurnRestriction => _trafficRuleService.CanPlaceTurnSign(coord),
+                InfrastructureKind.PriorityRoad => _facilityService.CanPlacePriorityRoad(coord),
                 _ => false
             };
         }
@@ -257,6 +258,7 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.Overpass => _facilityService.TryPlaceOverpass(coord),
                 InfrastructureKind.Oneway => _trafficRuleService.TryPlaceOneway(coord, _currentData.OnewayDir),
                 InfrastructureKind.TurnRestriction => _trafficRuleService.TryPlaceTurnSign(coord, _currentData.TurnMode),
+                InfrastructureKind.PriorityRoad => _facilityService.TryPlacePriorityRoad(coord, _currentData.PriorityAxis),
                 _ => false
             };
 
@@ -325,7 +327,18 @@ namespace CityFlow.UI.Controllers
                 }
             }
 
-            // 5. Try Oneway
+            // 5. Try Priority Road
+            var priorityRoads = _facilityService.PriorityRoadTiles;
+            if (priorityRoads != null && priorityRoads.Contains(coord))
+            {
+                if (_facilityService.TryRemovePriorityRoad(coord))
+                {
+                    ProcessRefund(InfrastructureKind.PriorityRoad);
+                    return true;
+                }
+            }
+
+            // 6. Try Oneway
             if (_trafficRuleService.GetOnewayDir(coord) != Vector2Int.zero)
             {
                 if (_trafficRuleService.TryRemoveOneway(coord))

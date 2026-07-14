@@ -10,17 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4b10c4abb99e2cc4d806ce034d4d8a02, type: 3}
-  m_Name: OverpassData
+  m_Name: PriorityRoadData
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Data.InfrastructureDataSO
-  Kind: 2
-  InfrastructureName: "\uACE0\uAC00 \uB3C4\uB85C"
+  Kind: 5
+  InfrastructureName: PriorityRoad
   Icon: {fileID: 0}
-  Description: "\uC5ED\uD560: \uAD50\uCC28\uD558\uB294 \uB3C4\uB85C\uB97C \uC218\uC9C1\uC73C\uB85C
-    \uBD84\uB9AC\uD558\uC5EC \uAD50\uD1B5 \uCCB4\uC99D\uC744 \uC601\uAD6C\uC801\uC73C\uB85C
-    \uD574\uC18C\uD569\uB2C8\uB2E4.\r\n\uC870\uAC74: \uAD50\uCC28\uB85C(3\uAC1C \uC774\uC0C1\uC758
-    \uB3C4\uB85C\uAC00 \uC5F0\uACB0\uB41C \uC9C0\uC810)\uC5D0\uB9CC \uC124\uCE58\uD560
-    \uC218 \uC788\uC2B5\uB2C8\uB2E4."
-  Cost: 2500
+  Description: "PriorityRoad \uC778\uD504\uB77C \uAC74\uC124 \uB370\uC774\uD130\uC785\uB2C8\uB2E4."
+  Cost: 50
   GreenSlots: 0
   OnewayDir: {x: 0, y: 0}
   TurnMode: 0

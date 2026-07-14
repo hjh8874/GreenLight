@@ -24,3 +24,4 @@ MonoBehaviour:
   GreenSlots: 0
   OnewayDir: {x: 0, y: 0}
   TurnMode: 0
+  PriorityAxis: 0
