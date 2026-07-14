@@ -11,9 +11,9 @@ namespace CityFlow.EditorTools
     public static class WeeklySettlementPopupBaker
     {
         private const string TargetCanvasName = "UI_MainCanvas";
-        private const string PopupName = "WeeklySettlementPopup";
+        private const string PopupName = "CoinHarvestResultPopup";
 
-        [MenuItem("Tools/GreenLight/UI/Bake Weekly Settlement Popup")]
+        [MenuItem("Tools/GreenLight/UI/Bake Manual Coin Harvest Popup")]
         public static void Bake()
         {
             Scene activeScene = SceneManager.GetActiveScene();
@@ -30,7 +30,7 @@ namespace CityFlow.EditorTools
             {
                 Selection.activeGameObject = existingPopup.gameObject;
                 EditorGUIUtility.PingObject(existingPopup.gameObject);
-                Debug.Log("[WeeklySettlementPopupBaker] The active scene already contains a weekly settlement popup.");
+                Debug.Log("[WeeklySettlementPopupBaker] The active scene already contains a coin harvest popup.");
                 return;
             }
 
@@ -60,7 +60,7 @@ namespace CityFlow.EditorTools
             TextMeshProUGUI period = CreateText(
                 card,
                 "PeriodText",
-                "7-DAY REVENUE",
+                "HARVEST COMPLETE",
                 new Vector2(0f, 53f),
                 new Vector2(430f, 30f),
                 18f,
@@ -94,7 +94,7 @@ namespace CityFlow.EditorTools
             EditorGUIUtility.PingObject(root);
 
             Debug.Log(
-                $"[WeeklySettlementPopupBaker] Weekly settlement popup baked under " +
+                $"[WeeklySettlementPopupBaker] Coin harvest popup baked under " +
                 $"'{canvas.name}' in scene '{activeScene.name}'.");
         }
 
@@ -144,7 +144,7 @@ namespace CityFlow.EditorTools
             CreateText(
                 card,
                 "TitleText",
-                "WEEKLY SETTLEMENT",
+                "COIN HARVEST",
                 new Vector2(0f, 99f),
                 new Vector2(430f, 28f),
                 15f,

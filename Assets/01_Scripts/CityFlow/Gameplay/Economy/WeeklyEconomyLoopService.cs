@@ -55,7 +55,7 @@ namespace CityFlow.Gameplay.Economy
             services.RegisterWeeklyEconomy(this);
             PublishPendingCoins();
 
-            Debug.Log("[WeeklyEconomyLoopService] Weekly economy loop initialized.");
+            Debug.Log("[WeeklyEconomyLoopService] Manual coin harvest initialized.");
         }
 
         private void OnDestroy()
@@ -145,6 +145,39 @@ namespace CityFlow.Gameplay.Economy
             }
 
             PublishPendingCoins();
+        }
+
+        public bool TryHarvestPendingCoins()
+        {
+            long amount = PendingCoins;
+
+            if (amount <= 0L)
+            {
+                return false;
+            }
+
+            if (!economySystem.ClaimWeeklySettlement())
+            {
+                PublishPendingCoins();
+                return false;
+            }
+
+            PublishPendingCoins();
+
+            long balanceAfterHarvest = services?.Economy?.Coins ?? 0L;
+            SettlementCompleted?.Invoke(
+                new WeeklySettlementCompletedEvent(
+                    amount,
+                    balanceAfterHarvest,
+                    SettlementDays));
+
+            services?.Save?.Save();
+
+            Debug.Log(
+                $"[WeeklyEconomyLoopService] Pending coins harvested. " +
+                $"Amount: {amount}, Balance: {balanceAfterHarvest}.");
+
+            return true;
         }
 
         private void OnArrival(ArrivalEvent arrival)
@@ -251,37 +284,10 @@ namespace CityFlow.Gameplay.Economy
             }
 
             long progressedDays = daysIntoCurrentWeek + elapsedDays;
-            long settlementCount = progressedDays / SettlementDays;
             daysIntoCurrentWeek = (int)(progressedDays % SettlementDays);
             lastProcessedTotalDays = currentTotalDays;
 
-            for (long i = 0L; i < settlementCount; i++)
-            {
-                SettleWeek();
-            }
-
             return true;
-        }
-
-        private void SettleWeek()
-        {
-            long amount = PendingCoins;
-            bool paid = economySystem.ClaimWeeklySettlement();
-            PublishPendingCoins();
-
-            if (paid)
-            {
-                long balanceAfterSettlement = services?.Economy?.Coins ?? 0L;
-                SettlementCompleted?.Invoke(
-                    new WeeklySettlementCompletedEvent(
-                        amount,
-                        balanceAfterSettlement,
-                        SettlementDays));
-
-                Debug.Log(
-                    $"[WeeklyEconomyLoopService] Weekly settlement paid. " +
-                    $"Amount: {amount}.");
-            }
         }
 
         private bool ValidateDependencies()
