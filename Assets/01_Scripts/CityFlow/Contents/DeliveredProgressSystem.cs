@@ -6,45 +6,48 @@ using UnityEngine;
 namespace CityFlow.Content
 {
     /// <summary>
-    /// 차량의 누적 도착 횟수를 관리하는 진행도 시스템입니다.
+    /// 차량 도착 이벤트를 기준으로
+    /// 게임 전체 누적 도착 횟수를 관리합니다.
     ///
-    /// 기존 FlowSolver.DeliveredTotal은 이번 틱의 처리량이므로
-    /// 장기 해금 조건으로 사용하지 않습니다.
+    /// FlowSolver.DeliveredTotal처럼 현재 틱 처리량을 나타내는 값과 달리,
+    /// LifetimeDeliveredTotal은 새 게임 시작 이후 계속 누적되는 진행도 값입니다.
     ///
-    /// 이 시스템의 LifetimeDeliveredTotal은
-    /// 게임 전체 기간 동안 누적되는 별도의 진행도 값입니다.
+    /// 실제 해금 임계값은 이 클래스에 하드코딩하지 않습니다.
+    /// ShopItemDataSO.RequiredTotalArrivals를 정본으로 사용합니다.
     /// </summary>
     public sealed class DeliveredProgressSystem :
         MonoBehaviour,
         ICityFlowServiceConsumer,
         IReadOnlyDeliveredProgress
     {
-        [Header("현재 누적 도착 진행도")]
+        [Header("누적 도착 진행도")]
 
         [Tooltip(
             "새 게임 시작 이후 누적된 전체 도착 횟수입니다. " +
-            "로터리, 입체 교차로, 도시 단계 해금에 사용합니다."
+            "현재는 런타임 누적값이며, 세이브 연동은 기존 Progression 저장 구조에 연결해야 합니다."
         )]
         [Min(0)]
         [SerializeField]
         private long lifetimeDeliveredTotal;
 
         private CityFlowServices services;
+        private bool isInitialized;
+        private bool isSubscribed;
 
         /// <summary>
-        /// 누적 도착 횟수입니다.
+        /// 새 게임 시작 이후 누적된 전체 도착 횟수입니다.
         /// </summary>
         public long LifetimeDeliveredTotal =>
             lifetimeDeliveredTotal;
 
         /// <summary>
-        /// 누적 도착값이 변경되었을 때 발생합니다.
+        /// 누적 도착값이 변경될 때 최신 값을 전달합니다.
         /// </summary>
         public event Action<long>
             LifetimeDeliveredChanged;
 
         /// <summary>
-        /// CityBootstrap에서 서비스를 전달받아
+        /// CityBootstrap에서 CityFlowServices를 전달받아
         /// 도착 이벤트를 구독합니다.
         /// </summary>
         public void Initialize(
@@ -53,6 +56,15 @@ namespace CityFlow.Content
         {
             if (!isActiveAndEnabled)
             {
+                return;
+            }
+
+            if (isInitialized)
+            {
+                /*
+                 * CityBootstrap과 Start의 보조 초기화가
+                 * 모두 호출되어도 이벤트를 중복 구독하지 않습니다.
+                 */
                 return;
             }
 
@@ -67,47 +79,125 @@ namespace CityFlow.Content
                 return;
             }
 
-            this.services = services;
-
             if (services.Events == null)
             {
                 Debug.LogError(
                     "[DeliveredProgressSystem] " +
-                    "SimEventHub가 없습니다.",
+                    "SimEventHub가 연결되지 않았습니다.",
                     this
                 );
 
                 return;
             }
 
-            services.Events.Arrival += OnArrival;
+            this.services = services;
+            isInitialized = true;
 
+            SubscribeEvents();
             PublishChanged();
 
             Debug.Log(
-                $"[DeliveredProgressSystem] " +
-                $"초기화 완료. " +
+                $"[DeliveredProgressSystem] 초기화 완료. " +
                 $"누적 도착: {lifetimeDeliveredTotal}",
                 this
             );
         }
 
-        private void OnDestroy()
+        /// <summary>
+        /// CityBootstrap의 자동 초기화 대상에서 누락됐을 경우를 대비한
+        /// 보조 초기화입니다.
+        ///
+        /// 이 코드가 있어도 DeliveredProgressSystem 컴포넌트는
+        /// 반드시 활성 씬의 GameObject에 추가되어 있어야 합니다.
+        /// </summary>
+        private void Start()
         {
-            if (services?.Events == null)
+            if (isInitialized)
             {
                 return;
             }
 
-            services.Events.Arrival -= OnArrival;
+            CityBootstrap bootstrap =
+                FindAnyObjectByType<CityBootstrap>();
+
+            if (bootstrap?.Services == null)
+            {
+                Debug.LogWarning(
+                    "[DeliveredProgressSystem] " +
+                    "CityBootstrap 또는 Services를 찾지 못했습니다. " +
+                    "Services 오브젝트에 컴포넌트가 추가되어 있는지 확인하세요.",
+                    this
+                );
+
+                return;
+            }
+
+            Initialize(
+                bootstrap.Services
+            );
+        }
+
+        private void OnEnable()
+        {
+            if (isInitialized)
+            {
+                SubscribeEvents();
+            }
+        }
+
+        private void OnDisable()
+        {
+            UnsubscribeEvents();
+        }
+
+        private void OnDestroy()
+        {
+            UnsubscribeEvents();
         }
 
         /// <summary>
-        /// 차량 도착 이벤트를 받을 때마다
-        /// 누적 도착값을 1 증가시킵니다.
+        /// Arrival 이벤트를 한 번만 구독합니다.
+        /// </summary>
+        private void SubscribeEvents()
+        {
+            if (isSubscribed ||
+                services?.Events == null)
+            {
+                return;
+            }
+
+            services.Events.Arrival +=
+                OnArrival;
+
+            isSubscribed = true;
+        }
+
+        /// <summary>
+        /// Arrival 이벤트 구독을 해제합니다.
+        /// </summary>
+        private void UnsubscribeEvents()
+        {
+            if (!isSubscribed ||
+                services?.Events == null)
+            {
+                return;
+            }
+
+            services.Events.Arrival -=
+                OnArrival;
+
+            isSubscribed = false;
+        }
+
+        /// <summary>
+        /// 차량 도착 이벤트를 받으면
+        /// 누적 도착 횟수를 증가시킵니다.
         ///
-        /// 현재 코드는 Arrival 이벤트가 차량 1대당
-        /// 한 번 발생한다는 전제로 작성되어 있습니다.
+        /// 현재는 Arrival 이벤트 1회를
+        /// 차량 1대 도착으로 처리합니다.
+        ///
+        /// ArrivalEvent가 여러 대의 도착량을 포함하는 구조라면
+        /// 이후 이벤트의 실제 도착 수 필드를 사용해야 합니다.
         /// </summary>
         private void OnArrival(
             ArrivalEvent arrivalEvent
@@ -115,15 +205,12 @@ namespace CityFlow.Content
         {
             AddDeliveredCount(
                 1L,
-                "arrival event"
+                "arrival"
             );
         }
 
         /// <summary>
-        /// 누적 도착값을 증가시킵니다.
-        ///
-        /// 추후 여러 대의 도착을 한 번에 처리하는 경우에도
-        /// 이 메서드를 그대로 사용할 수 있습니다.
+        /// 누적 도착 횟수를 증가시킵니다.
         /// </summary>
         public void AddDeliveredCount(
             long amount,
@@ -134,7 +221,7 @@ namespace CityFlow.Content
             {
                 Debug.LogWarning(
                     $"[DeliveredProgressSystem] " +
-                    $"증가량은 1 이상이어야 합니다. " +
+                    $"도착 증가량은 1 이상이어야 합니다. " +
                     $"Amount: {amount}",
                     this
                 );
@@ -173,10 +260,10 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 저장 데이터에서 누적 도착값을 복원할 때 사용합니다.
+        /// 저장된 누적 도착값을 복원합니다.
         ///
-        /// 현재 단계에서는 세이브 시스템에 직접 등록하지 않고,
-        /// 기존 Progression 저장 구현체가 이 메서드를 호출하도록 합니다.
+        /// 기존 IProgressionSaveSource 구현체의
+        /// RestoreSnapshot에서 호출할 예정입니다.
         /// </summary>
         public void RestoreLifetimeDeliveredTotal(
             long restoredValue
@@ -199,7 +286,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 새 게임 시작이나 테스트 초기화에 사용합니다.
+        /// 새 게임 또는 테스트 초기화 시
+        /// 누적 도착값을 0으로 변경합니다.
         /// </summary>
         public void ResetProgress()
         {
@@ -209,22 +297,28 @@ namespace CityFlow.Content
 
             Debug.Log(
                 "[DeliveredProgressSystem] " +
-                "누적 도착 진행도가 초기화되었습니다.",
+                "누적 도착값을 초기화했습니다.",
                 this
             );
         }
 
         /// <summary>
-        /// 지정한 누적 도착 조건을 만족했는지 확인합니다.
+        /// 전달받은 누적 도착 임계값을 만족했는지 확인합니다.
+        ///
+        /// 이 메서드에는 로터리 100, 입체 교차로 500 같은
+        /// 특정 상품의 값을 직접 넣지 않습니다.
+        ///
+        /// 호출자는 ShopItemDataSO.RequiredTotalArrivals를
+        /// 전달해야 합니다.
         /// </summary>
         public bool HasReached(
-            long requiredDeliveredTotal
+            long requiredTotalArrivals
         )
         {
             long safeRequirement =
                 Math.Max(
                     0L,
-                    requiredDeliveredTotal
+                    requiredTotalArrivals
                 );
 
             return lifetimeDeliveredTotal >=
@@ -232,23 +326,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// 로터리 해금 조건을 만족했는지 확인합니다.
-        /// </summary>
-        public bool IsRoundaboutUnlocked()
-        {
-            return HasReached(100L);
-        }
-
-        /// <summary>
-        /// 입체 교차로 해금 조건을 만족했는지 확인합니다.
-        /// </summary>
-        public bool IsOverpassUnlocked()
-        {
-            return HasReached(500L);
-        }
-
-        /// <summary>
-        /// 현재 누적 도착값 변경 이벤트를 발생시킵니다.
+        /// 누적 도착 변경 이벤트를 발생시킵니다.
         /// </summary>
         private void PublishChanged()
         {
