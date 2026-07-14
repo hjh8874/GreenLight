@@ -187,11 +187,8 @@ namespace CityFlow.Gameplay.Economy
         /// </summary>
         private void OnSettlementComputed(SettlementEvent e)
         {
-            if (services.WeeklyEconomy != null)
+            if (e.Coins <= 0L)
             {
-                services.WeeklyEconomy.AddPendingCoins(
-                    e.Coins,
-                    "offline vehicle income");
                 return;
             }
 

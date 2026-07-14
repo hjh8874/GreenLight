@@ -149,33 +149,16 @@ namespace CityFlow.Gameplay.Economy
 
         public bool TryHarvestPendingCoins()
         {
-            long amount = PendingCoins;
-
-            if (amount <= 0L)
+            if (!TryClaimPendingCoins(true, out long amount))
             {
                 return false;
             }
-
-            if (!economySystem.ClaimWeeklySettlement())
-            {
-                PublishPendingCoins();
-                return false;
-            }
-
-            PublishPendingCoins();
-
-            long balanceAfterHarvest = services?.Economy?.Coins ?? 0L;
-            SettlementCompleted?.Invoke(
-                new WeeklySettlementCompletedEvent(
-                    amount,
-                    balanceAfterHarvest,
-                    SettlementDays));
 
             services?.Save?.Save();
 
             Debug.Log(
                 $"[WeeklyEconomyLoopService] Pending coins harvested. " +
-                $"Amount: {amount}, Balance: {balanceAfterHarvest}.");
+                $"Amount: {amount}, Balance: {services?.Economy?.Coins ?? 0L}.");
 
             return true;
         }
@@ -237,10 +220,53 @@ namespace CityFlow.Gameplay.Economy
         {
             CaptureLegacyCalendarBaseline();
 
-            if (ProcessCalendarProgress())
+            bool claimedRestoredPending =
+                TryClaimPendingCoins(false, out long claimedAmount);
+            bool calendarProgressChanged = ProcessCalendarProgress();
+
+            if (claimedRestoredPending || calendarProgressChanged)
             {
                 services.Save?.Save();
             }
+
+            if (claimedRestoredPending)
+            {
+                Debug.Log(
+                    $"[WeeklyEconomyLoopService] Restored pending coins were " +
+                    $"included in the startup settlement. Amount: {claimedAmount}.");
+            }
+        }
+
+        private bool TryClaimPendingCoins(
+            bool publishHarvestResult,
+            out long claimedAmount)
+        {
+            claimedAmount = PendingCoins;
+
+            if (claimedAmount <= 0L)
+            {
+                return false;
+            }
+
+            if (!economySystem.ClaimWeeklySettlement())
+            {
+                claimedAmount = 0L;
+                PublishPendingCoins();
+                return false;
+            }
+
+            PublishPendingCoins();
+
+            if (publishHarvestResult)
+            {
+                SettlementCompleted?.Invoke(
+                    new WeeklySettlementCompletedEvent(
+                        claimedAmount,
+                        services?.Economy?.Coins ?? 0L,
+                        SettlementDays));
+            }
+
+            return true;
         }
 
         private void CaptureLegacyCalendarBaseline()
