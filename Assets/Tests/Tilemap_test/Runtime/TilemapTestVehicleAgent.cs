@@ -5,11 +5,18 @@ namespace CityFlow.TilemapTest
 {
     public sealed class TilemapTestVehicleAgent : MonoBehaviour
     {
+        // ponytail: minimum bumper gap; visual tuning knob, adjust in inspector if prefab size changes.
+        [SerializeField] private float followGap = 0.28f;
+
+        // Registry so each agent can see the car ahead. n<=maxActiveVehicles(80) -> O(n^2) scan is fine.
+        private static readonly List<TilemapTestVehicleAgent> Active = new List<TilemapTestVehicleAgent>();
+
         private readonly List<Vector3> path = new List<Vector3>();
         private float speed;
         private int targetIndex;
 
         public bool IsRunning { get; private set; }
+        public Vector3 Heading { get; private set; }
 
         public void Configure(IReadOnlyList<Vector3> worldPath, float moveSpeed)
         {
@@ -25,6 +32,10 @@ namespace CityFlow.TilemapTest
             }
         }
 
+        private void OnEnable() => Active.Add(this);
+
+        private void OnDisable() => Active.Remove(this);
+
         private void Update()
         {
             if (!IsRunning || targetIndex >= path.Count)
@@ -33,8 +44,24 @@ namespace CityFlow.TilemapTest
             }
 
             Vector3 target = path[targetIndex];
-            transform.position = Vector3.MoveTowards(transform.position, target, speed * Time.deltaTime);
+            Vector3 position = transform.position;
+            Vector3 dir = target - position;
+            dir.y = 0f;
+            if (dir.sqrMagnitude > 1e-6f)
+            {
+                Heading = dir.normalized;
+            }
+
             LookAtTarget(target);
+
+            // Congestion handling: hold position this frame if a same-lane, same-direction car
+            // is within followGap ahead. Cars queue with a gap instead of overlapping.
+            if (IsBlockedAhead(position))
+            {
+                return;
+            }
+
+            transform.position = Vector3.MoveTowards(position, target, speed * Time.deltaTime);
 
             if (Vector3.SqrMagnitude(transform.position - target) <= 0.0004f)
             {
@@ -46,6 +73,48 @@ namespace CityFlow.TilemapTest
                     Destroy(gameObject);
                 }
             }
+        }
+
+        private bool IsBlockedAhead(Vector3 position)
+        {
+            for (int i = 0; i < Active.Count; i++)
+            {
+                TilemapTestVehicleAgent other = Active[i];
+                if (other == this || !other.IsRunning)
+                {
+                    continue;
+                }
+
+                if (WithinFollowZone(other.transform.position - position, Heading, other.Heading, followGap))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// True when <paramref name="relative"/> (other - self) sits in the follow zone: ahead of us,
+        /// within <paramref name="gap"/>, roughly the same lane, and travelling the same direction.
+        /// Oncoming and cross traffic are ignored so head-on cars don't deadlock.
+        /// </summary>
+        public static bool WithinFollowZone(Vector3 relative, Vector3 heading, Vector3 otherHeading, float gap)
+        {
+            relative.y = 0f;
+            float forward = Vector3.Dot(relative, heading);
+            if (forward <= 0.01f || forward > gap)
+            {
+                return false;
+            }
+
+            Vector3 lateral = relative - forward * heading;
+            if (lateral.magnitude > gap * 0.6f)
+            {
+                return false;
+            }
+
+            return Vector3.Dot(heading, otherHeading) >= 0.5f;
         }
 
         private void LookAtTarget(Vector3 target)
