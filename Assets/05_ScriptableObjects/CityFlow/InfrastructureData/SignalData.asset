@@ -18,11 +18,11 @@ MonoBehaviour:
   Description: 'Role: Regulates intersection traffic by cycling green/red lights
     to prevent gridlocks.
 
-    Condition: Can only be placed on an intersection
-    (3+ connected roads).
+    Condition: Can only be placed on an intersection (3+
+    connected roads).
 
 '
-  Cost: 100
+  Cost: 50
   GreenSlots: 5
   OnewayDir: {x: 0, y: 0}
   TurnMode: 0

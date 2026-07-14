@@ -20,7 +20,7 @@ MonoBehaviour:
 
     Condition: Can only be placed on an intersection
     (3+ connected roads).'
-  Cost: 300
+  Cost: 2500
   GreenSlots: 0
   OnewayDir: {x: 0, y: 0}
   TurnMode: 0
