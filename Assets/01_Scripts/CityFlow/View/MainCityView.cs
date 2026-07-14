@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using CityFlow.Sim;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -183,7 +184,7 @@ namespace CityFlow.View
 
             if (services.Save != null)
             {
-                services.Save.RestoreCompleted += OnSaveRestoreCompleted;
+                services.Save.RestoreCompleted += OnRestoreCompleted;
             }
 
             BuildRoots();
@@ -214,7 +215,7 @@ namespace CityFlow.View
 
             if (services.Save != null)
             {
-                services.Save.RestoreCompleted -= OnSaveRestoreCompleted;
+                services.Save.RestoreCompleted -= OnRestoreCompleted;
             }
         }
 
@@ -307,6 +308,34 @@ namespace CityFlow.View
                     RefreshTile(tile, tileData.GetTileType(tile));
                 }
             }
+        }
+
+        private void RebuildRestoredVisuals()
+        {
+            ClearChildren(tileRoot);
+            tileVisuals.Clear();
+
+            ClearChildren(signalRoot);
+            signalVisuals.Clear();
+            roundaboutVisuals.Clear();
+            overpassVisuals.Clear();
+            onewayVisuals.Clear();
+            turnSignVisuals.Clear();
+
+            ClearChildren(vehicleRoot);
+            vehicles.Clear();
+
+            selectedSignalIndex = 0;
+
+            RefreshAllTiles();
+            RefreshSignals();
+            RefreshRoundabouts();
+            RefreshOverpasses();
+            RefreshOneways();
+            RefreshTurnSigns();
+            RefreshVehicles();
+
+            Debug.Log("[MainCityView] Restored city visuals rebuilt.");
         }
 
         private void RefreshTile(Vector2Int tile, TileType type)
@@ -1209,15 +1238,9 @@ namespace CityFlow.View
             RefreshSignals();
         }
 
-        private void OnSaveRestoreCompleted()
+        private void OnRestoreCompleted(RestoreCompletedEvent _)
         {
-            RefreshAllTiles();
-            RefreshSignals();
-            RefreshRoundabouts();
-            RefreshOverpasses();
-            RefreshOneways();
-            RefreshTurnSigns();
-            RefreshVehicles();
+            RebuildRestoredVisuals();
         }
 
         private void OnCongestionChanged(CongestionEvent e)

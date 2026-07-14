@@ -9,16 +9,24 @@ namespace CityFlow.Save
     {
         public ISimSaveSource SimSaveSource { get; private set; }
         public IEconomySaveSource EconomySaveSource { get; private set; }
+        public IWeeklySettlementSaveSource WeeklySettlementSaveSource { get; private set; }
         public IResearchSaveSource ResearchSaveSource { get; private set; }
         public IProgressionSaveSource ProgressionSaveSource { get; private set; }
         public IGameCalendarSaveSource GameCalendarSaveSource { get; private set; }
+        public IRadioSaveSource RadioSaveSource { get; private set; }
         public IOfflineCalendarProgressionSource OfflineCalendarProgressionSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
         public ISaveClock Clock { get; private set; }
         public bool IsRestoring { get; private set; }
         public bool IsSavingEnabled { get; private set; } = true;
 
-        public event Action RestoreCompleted;
+        private WeeklySettlementSaveData retainedWeeklySettlement;
+        private ResearchSaveData retainedResearch;
+        private ProgressionSaveData retainedProgression;
+        private RadioSaveData retainedRadio;
+        private bool hasLoadedSave;
+
+        public event Action<RestoreCompletedEvent> RestoreCompleted;
 
         public SaveService(
             ISimSaveSource simSaveSource,
@@ -41,10 +49,55 @@ namespace CityFlow.Save
             EconomySaveSource = economySaveSource;
         }
 
+        public void RegisterWeeklySettlementSaveSource(
+            IWeeklySettlementSaveSource weeklySettlementSaveSource)
+        {
+            WeeklySettlementSaveSource = weeklySettlementSaveSource;
+
+            if (hasLoadedSave)
+            {
+                WeeklySettlementSaveSource?.RestoreSnapshot(
+                    retainedWeeklySettlement ?? new WeeklySettlementSaveData());
+            }
+        }
+
+        public void RegisterResearchSaveSource(IResearchSaveSource researchSaveSource)
+        {
+            ResearchSaveSource = researchSaveSource;
+
+            if (hasLoadedSave)
+            {
+                ResearchSaveSource?.RestoreSnapshot(
+                    retainedResearch ?? new ResearchSaveData());
+            }
+        }
+
+        public void RegisterProgressionSaveSource(IProgressionSaveSource progressionSaveSource)
+        {
+            ProgressionSaveSource = progressionSaveSource;
+
+            if (hasLoadedSave)
+            {
+                ProgressionSaveSource?.RestoreSnapshot(
+                    retainedProgression ?? new ProgressionSaveData());
+            }
+        }
+
         public void RegisterGameCalendarSaveSource(IGameCalendarSaveSource gameCalendarSaveSource)
         {
             GameCalendarSaveSource = gameCalendarSaveSource;
             OfflineCalendarProgressionSource = gameCalendarSaveSource as IOfflineCalendarProgressionSource;
+        }
+
+        public void RegisterRadioSaveSource(IRadioSaveSource radioSaveSource)
+        {
+            RadioSaveSource = radioSaveSource;
+
+            if (hasLoadedSave)
+            {
+                RadioSaveSource?.RestoreSnapshot(
+                    retainedRadio ?? CreateEmptyRadioSaveData());
+            }
         }
 
         public GameSaveData CreateSnapshot()
@@ -57,9 +110,15 @@ namespace CityFlow.Save
                 GridHeight = SimSaveSource?.GridHeight ?? 0,
                 Simulation = SimSaveSource?.CreateSnapshot(),
                 Economy = EconomySaveSource?.CreateSnapshot(),
-                Research = ResearchSaveSource?.CreateSnapshot(),
-                Progression = ProgressionSaveSource?.CreateSnapshot(),
-                Calendar = GameCalendarSaveSource?.CreateSnapshot()
+                WeeklySettlement = WeeklySettlementSaveSource?.CreateSnapshot()
+                    ?? retainedWeeklySettlement,
+                Research = ResearchSaveSource?.CreateSnapshot()
+                    ?? retainedResearch,
+                Progression = ProgressionSaveSource?.CreateSnapshot()
+                    ?? retainedProgression,
+                Calendar = GameCalendarSaveSource?.CreateSnapshot(),
+                Radio = RadioSaveSource?.CreateSnapshot()
+                    ?? retainedRadio
             };
         }
 
@@ -88,19 +147,33 @@ namespace CityFlow.Save
                 EconomySaveSource?.RestoreSnapshot(saveData.Economy);
             }
 
-            if (saveData.Research != null)
+            if (WeeklySettlementSaveSource != null)
             {
-                ResearchSaveSource?.RestoreSnapshot(saveData.Research);
+                WeeklySettlementSaveSource.RestoreSnapshot(
+                    saveData.WeeklySettlement ?? new WeeklySettlementSaveData());
             }
 
-            if (saveData.Progression != null)
+            if (ResearchSaveSource != null)
             {
-                ProgressionSaveSource?.RestoreSnapshot(saveData.Progression);
+                ResearchSaveSource.RestoreSnapshot(
+                    saveData.Research ?? new ResearchSaveData());
+            }
+
+            if (ProgressionSaveSource != null)
+            {
+                ProgressionSaveSource.RestoreSnapshot(
+                    saveData.Progression ?? new ProgressionSaveData());
             }
 
             if (saveData.Calendar != null)
             {
                 GameCalendarSaveSource?.RestoreSnapshot(saveData.Calendar);
+            }
+
+            if (RadioSaveSource != null)
+            {
+                RadioSaveSource.RestoreSnapshot(
+                    saveData.Radio ?? CreateEmptyRadioSaveData());
             }
         }
 
@@ -113,7 +186,14 @@ namespace CityFlow.Save
             }
 
             GameSaveData saveData = CreateSnapshot();
-            return Repository.TrySave(saveData);
+            bool saved = Repository.TrySave(saveData);
+
+            if (saved)
+            {
+                RetainOptionalSections(saveData);
+            }
+
+            return saved;
         }
 
         public bool DeleteSaveAndSuspend()
@@ -147,41 +227,38 @@ namespace CityFlow.Save
                 return false;
             }
 
+            RetainOptionalSections(saveData);
+            hasLoadedSave = true;
             IsRestoring = true;
+            double settledOfflineSeconds;
 
             try
             {
                 RestoreSnapshot(saveData);
-                SettleOfflineProgress(saveData);
+                settledOfflineSeconds = SettleOfflineProgress(saveData);
             }
             finally
             {
                 IsRestoring = false;
             }
 
-            try
-            {
-                RestoreCompleted?.Invoke();
-            }
-            catch (Exception exception)
-            {
-                Debug.LogException(exception);
-            }
+            RestoreCompleted?.Invoke(
+                new RestoreCompletedEvent(settledOfflineSeconds));
 
             Debug.Log("Game save loaded and restored.");
             return true;
         }
 
-        private void SettleOfflineProgress(GameSaveData saveData)
+        private double SettleOfflineProgress(GameSaveData saveData)
         {
             if (saveData == null || saveData.SavedAtUtcTicks <= 0L)
             {
-                return;
+                return 0.0;
             }
 
             if (!(SimSaveSource is IOfflineSettlementSource offlineSettlementSource))
             {
-                return;
+                return 0.0;
             }
 
             System.DateTime savedAtUtc;
@@ -193,14 +270,14 @@ namespace CityFlow.Save
             catch (System.ArgumentOutOfRangeException)
             {
                 Debug.LogWarning("Offline settlement skipped because saved UTC ticks are invalid.");
-                return;
+                return 0.0;
             }
 
             double elapsedSeconds = (Clock.UtcNow - savedAtUtc).TotalSeconds;
 
             if (elapsedSeconds <= 0.0)
             {
-                return;
+                return 0.0;
             }
 
             double settledSeconds = offlineSettlementSource.SettleOffline(elapsedSeconds);
@@ -210,6 +287,25 @@ namespace CityFlow.Save
             Debug.Log(savedAfterSettlement
                 ? $"Offline settlement completed and saved for {settledSeconds:0.##} of {elapsedSeconds:0.##} elapsed seconds."
                 : $"Offline settlement completed for {settledSeconds:0.##} of {elapsedSeconds:0.##} elapsed seconds, but the updated save could not be written.");
+
+            return settledSeconds;
+        }
+
+        private void RetainOptionalSections(GameSaveData saveData)
+        {
+            retainedWeeklySettlement = saveData?.WeeklySettlement;
+            retainedResearch = saveData?.Research;
+            retainedProgression = saveData?.Progression;
+            retainedRadio = saveData?.Radio;
+        }
+
+        private static RadioSaveData CreateEmptyRadioSaveData()
+        {
+            return new RadioSaveData
+            {
+                Slots = Array.Empty<RadioSlotSaveData>(),
+                CurrentSlotIndex = -1
+            };
         }
     }
 }

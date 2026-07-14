@@ -1987,7 +1987,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7d2a0d92c8f54f56a6f4a301b89e4c11, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Gameplay.Save.GameSaveLifecycleService
-  loadOnStart: 0
+  loadOnStart: 1
   saveOnFocusLost: 1
   saveOnApplicationPause: 1
   saveOnApplicationQuit: 1
@@ -2037,7 +2037,6 @@ MonoBehaviour:
   onewayCost: 50
   turnSignCost: 75
   signalGreenSlots: 8
-  clearLegacyAutoSignalsOnce: 1
 --- !u!224 &568711510 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 1933230856837756137, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}

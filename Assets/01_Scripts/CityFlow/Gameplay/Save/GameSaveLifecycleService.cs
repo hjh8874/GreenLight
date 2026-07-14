@@ -1,4 +1,5 @@
 using CityFlow.Bootstrap;
+using CityFlow.Content;
 using UnityEngine;
 
 namespace CityFlow.Gameplay.Save
@@ -20,10 +21,45 @@ namespace CityFlow.Gameplay.Save
         private bool applicationPaused;
         private bool applicationFocused = true;
         private bool applicationQuitting;
+        private BasicEconomySaveAdapter weeklySettlementSaveAdapter;
 
         public void Initialize(CityFlowServices services)
         {
             this.services = services;
+            RegisterWeeklySettlementSaveSource();
+        }
+
+        private void RegisterWeeklySettlementSaveSource()
+        {
+            if (services?.Save == null)
+            {
+                return;
+            }
+
+            if (services.Save.WeeklySettlementSaveSource != null)
+            {
+                return;
+            }
+
+            BasicEconomySystem economySystem =
+                FindAnyObjectByType<BasicEconomySystem>(
+                    FindObjectsInactive.Include);
+
+            if (economySystem == null)
+            {
+                Debug.Log(
+                    "[GameSaveLifecycleService] Weekly settlement save source was not found.");
+                return;
+            }
+
+            weeklySettlementSaveAdapter =
+                new BasicEconomySaveAdapter(economySystem);
+
+            services.RegisterWeeklySettlementSaveSource(
+                weeklySettlementSaveAdapter);
+
+            Debug.Log(
+                "[GameSaveLifecycleService] Weekly settlement save source registered.");
         }
 
         private void Start()

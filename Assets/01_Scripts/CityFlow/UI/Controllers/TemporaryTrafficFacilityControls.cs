@@ -15,8 +15,6 @@ namespace CityFlow.UI
     public sealed class TemporaryTrafficFacilityControls : MonoBehaviour, ICityFlowServiceConsumer
     {
         private const float TileSize = GridUtil.TileSize;
-        private const string LegacySignalMigrationKey =
-            "CityFlowIntegrated.ManualSignalsMigration.V1";
 
         private static readonly Vector2Int[] OnewayRotationOrder =
         {
@@ -36,9 +34,6 @@ namespace CityFlow.UI
         [Header("Signal")]
         [Min(1)] [SerializeField] private int signalGreenSlots = 8;
 
-        [Header("Temporary Migration")]
-        [SerializeField] private bool clearLegacyAutoSignalsOnce = true;
-
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
         private IIntersectionFacilityService facility;
@@ -49,7 +44,7 @@ namespace CityFlow.UI
 
         public void Initialize(CityFlowServices cityFlowServices)
         {
-            if (!isActiveAndEnabled)
+            if (!isActiveAndEnabled || !Debug.isDebugBuild)
             {
                 return;
             }
@@ -83,46 +78,9 @@ namespace CityFlow.UI
             }
         }
 
-        private void Start()
-        {
-            ClearLegacyAutoSignalsIfNeeded();
-        }
-
         private void OnEconomyRegistered(IEconomyService registeredEconomy)
         {
             economy = registeredEconomy;
-        }
-
-        private void ClearLegacyAutoSignalsIfNeeded()
-        {
-            if (!ready || !clearLegacyAutoSignalsOnce
-                || PlayerPrefs.GetInt(LegacySignalMigrationKey, 0) == 1)
-            {
-                return;
-            }
-
-            Vector2Int[] legacySignals = new Vector2Int[facility.SignalTiles.Count];
-            for (int i = 0; i < facility.SignalTiles.Count; i++)
-            {
-                legacySignals[i] = facility.SignalTiles[i];
-            }
-
-            int removedCount = 0;
-            for (int i = 0; i < legacySignals.Length; i++)
-            {
-                if (facility.TryRemoveSignal(legacySignals[i]))
-                {
-                    removedCount++;
-                }
-            }
-
-            PlayerPrefs.SetInt(LegacySignalMigrationKey, 1);
-            PlayerPrefs.Save();
-
-            if (removedCount > 0)
-            {
-                lastResult = $"기존 자동 신호 {removedCount}개 정리 완료";
-            }
         }
 
         private void Update()
