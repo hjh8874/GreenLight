@@ -95,9 +95,15 @@ namespace CityFlow.UI
 
             if (useXYPlane && Camera.main != null)
             {
-                float distance = Mathf.Abs(Camera.main.transform.position.z);
-                Vector3 worldPos = Camera.main.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, distance));
-                return new Vector2Int(Mathf.FloorToInt(worldPos.x), Mathf.FloorToInt(worldPos.y));
+                Ray xyRay = Camera.main.ScreenPointToRay(mousePos);
+                Plane xyPlane = new Plane(Vector3.forward, Vector3.zero);
+                if (xyPlane.Raycast(xyRay, out float xyEnter))
+                {
+                    Vector3 worldPos = xyRay.GetPoint(xyEnter);
+                    return new Vector2Int(Mathf.FloorToInt(worldPos.x), Mathf.FloorToInt(worldPos.y));
+                }
+
+                return null;
             }
 
             Ray ray = Camera.main.ScreenPointToRay(mousePos);
@@ -117,8 +123,11 @@ namespace CityFlow.UI
             if (highlightBox != null)
             {
                 highlightBox.SetActive(true);
+                float markerZ = placementController != null
+                    ? placementController.GetSurfaceMarkerZ(coord)
+                    : -0.05f;
                 highlightBox.transform.position = useXYPlane
-                    ? new Vector3(coord.x + 0.5f, coord.y + 0.5f, -0.55f)
+                    ? new Vector3(coord.x + 0.5f, coord.y + 0.5f, markerZ)
                     : new Vector3(coord.x, 0, coord.y);
             }
 

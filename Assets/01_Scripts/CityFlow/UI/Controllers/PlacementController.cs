@@ -23,6 +23,9 @@ namespace CityFlow.UI
 
     public class PlacementController : MonoBehaviour, ICityFlowServiceConsumer
     {
+        private const float RoadSurfaceMarkerZ = -0.05f;
+        private const float EmptyGroundMarkerZ = 0.12f;
+
         [Header("Ghost Settings")]
         [Tooltip("마우스를 따라다닐 잔상(고스트) 프리팹 또는 스프라이트")]
         [SerializeField] private SpriteRenderer ghostRenderer;
@@ -372,8 +375,19 @@ namespace CityFlow.UI
         public Vector3 GetGhostPosition(Vector2Int gridCoord)
         {
             return useXYPlane
-                ? new Vector3(gridCoord.x + 0.5f, gridCoord.y + 0.5f, -0.6f)
+                ? new Vector3(gridCoord.x + 0.5f, gridCoord.y + 0.5f, GetSurfaceMarkerZ(gridCoord))
                 : new Vector3(gridCoord.x, 0, gridCoord.y);
+        }
+
+        public float GetSurfaceMarkerZ(Vector2Int gridCoord)
+        {
+            if (_services != null && _services.TileData != null
+                && _services.TileData.GetTileType(gridCoord) == TileType.Empty)
+            {
+                return EmptyGroundMarkerZ;
+            }
+
+            return RoadSurfaceMarkerZ;
         }
 
         public Vector2Int GetMouseGridCoordinate()
@@ -382,9 +396,13 @@ namespace CityFlow.UI
 
             if (useXYPlane && Camera.main != null)
             {
-                float distance = Mathf.Abs(Camera.main.transform.position.z);
-                Vector3 worldPos = Camera.main.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, distance));
-                return new Vector2Int(Mathf.FloorToInt(worldPos.x), Mathf.FloorToInt(worldPos.y));
+                Ray xyRay = Camera.main.ScreenPointToRay(mousePos);
+                Plane xyPlane = new Plane(Vector3.forward, Vector3.zero);
+                if (xyPlane.Raycast(xyRay, out float xyEnter))
+                {
+                    Vector3 worldPos = xyRay.GetPoint(xyEnter);
+                    return new Vector2Int(Mathf.FloorToInt(worldPos.x), Mathf.FloorToInt(worldPos.y));
+                }
             }
             // 화면 좌표를 평면(Y=0)에 투사하여 정수형 그리드 좌표로 뽑아냅니다.
             Ray ray = Camera.main.ScreenPointToRay(mousePos);

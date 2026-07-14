@@ -40,6 +40,17 @@ namespace CityFlow.View
         [SerializeField] private float roundaboutOrbitRadius = 0.3f;   // 로터리 궤도 반경(타일 비율)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
+        [Header("Camera View")]
+        [SerializeField, Range(1f, 89f)] private float angledViewDegrees = 35.264f;
+        [Tooltip("지면에서 가장 가까운 A 줌 지점까지의 거리")]
+        [SerializeField, Min(0.5f)] private float minimumZoomDistance = 5f;
+        [Tooltip("A-B, B-C 줌 지점 사이에 공통으로 적용할 거리")]
+        [SerializeField, Min(0.1f)] private float zoomStepDistance = 10f;
+
+        private const int ZoomStepCount = 3;
+        private const int DefaultZoomStepIndex = 0;
+        private const float OrthographicSizePerDistance = 0.9375f;
+
         [Header("Colors")]
         [SerializeField] private Color boardColor = new Color(0.78f, 0.82f, 0.78f);
         [SerializeField] private Color gridLineColor = new Color(0.28f, 0.36f, 0.38f, 1f);
@@ -81,6 +92,11 @@ namespace CityFlow.View
         private Transform signalRoot;
         private Transform effectRoot;
         private int selectedSignalIndex;
+        private Camera mainCamera;
+        private Vector3 cameraTarget;
+        private Vector3 cameraUpDirection;
+        private int zoomStepIndex;
+        private bool isIsometricView;
 
         public string SelectedSignalSummary
         {
@@ -128,6 +144,7 @@ namespace CityFlow.View
         {
             public GameObject Object;
             public Renderer Renderer;
+            public Renderer DetailRenderer;
             public float Phase;
             public readonly List<Vector2Int> DisplayRoute = new();
             public int DisplayRouteHash;
@@ -204,7 +221,8 @@ namespace CityFlow.View
             RefreshVehicles();
             PrewarmEffectPools();
             gameObject.AddComponent<DriveViewCamera>().Init(simEngine, transform, tileSize);
-            gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize);
+            gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize, false);
+            InitializeCameraView();
         }
 
         private void OnDestroy()
@@ -224,8 +242,102 @@ namespace CityFlow.View
             }
         }
 
+        private void InitializeCameraView()
+        {
+            mainCamera = Camera.main;
+            if (mainCamera == null)
+            {
+                return;
+            }
+
+            cameraTarget = transform.TransformPoint(new Vector3(
+                width * tileSize * 0.5f,
+                height * tileSize * 0.5f,
+                0f));
+            cameraUpDirection = (transform.up - transform.right).normalized;
+            zoomStepIndex = DefaultZoomStepIndex;
+            isIsometricView = true;
+            ApplyCameraView();
+        }
+
+        private void HandleCameraViewInput()
+        {
+            if (mainCamera == null)
+            {
+                return;
+            }
+
+            bool cameraViewChanged = false;
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.tabKey.wasPressedThisFrame)
+            {
+                isIsometricView = !isIsometricView;
+                cameraViewChanged = true;
+            }
+
+            Mouse mouse = Mouse.current;
+            if (mouse != null)
+            {
+                float scrollY = mouse.scroll.ReadValue().y;
+                int nextZoomStepIndex = zoomStepIndex;
+                if (scrollY > 0f)
+                {
+                    nextZoomStepIndex = Mathf.Max(0, zoomStepIndex - 1);
+                }
+                else if (scrollY < 0f)
+                {
+                    nextZoomStepIndex = Mathf.Min(ZoomStepCount - 1, zoomStepIndex + 1);
+                }
+
+                if (nextZoomStepIndex != zoomStepIndex)
+                {
+                    zoomStepIndex = nextZoomStepIndex;
+                    cameraViewChanged = true;
+                }
+
+                if (mouse.middleButton.isPressed)
+                {
+                    Vector2 pointerDelta = mouse.delta.ReadValue();
+                    if (pointerDelta.sqrMagnitude > 0f)
+                    {
+                        float worldUnitsPerPixel = mainCamera.orthographicSize * 2f / Mathf.Max(1, Screen.height);
+                        Vector3 boardRight = Vector3.ProjectOnPlane(mainCamera.transform.right, transform.forward).normalized;
+                        Vector3 boardUp = Vector3.ProjectOnPlane(mainCamera.transform.up, transform.forward).normalized;
+                        cameraTarget -= (boardRight * pointerDelta.x + boardUp * pointerDelta.y) * worldUnitsPerPixel;
+                        cameraViewChanged = true;
+                    }
+                }
+            }
+
+            if (cameraViewChanged)
+            {
+                ApplyCameraView();
+            }
+        }
+
+        private void ApplyCameraView()
+        {
+            float viewDistance = minimumZoomDistance + zoomStepDistance * zoomStepIndex;
+            Vector3 cameraPosition = cameraTarget - transform.forward * viewDistance;
+
+            if (isIsometricView)
+            {
+                Vector3 southEastDirection = (transform.right - transform.up).normalized;
+                float angleRadians = angledViewDegrees * Mathf.Deg2Rad;
+                Vector3 angledOffset = southEastDirection * (Mathf.Cos(angleRadians) * viewDistance)
+                    - transform.forward * (Mathf.Sin(angleRadians) * viewDistance);
+                cameraPosition = cameraTarget + angledOffset;
+            }
+
+            Quaternion cameraRotation = Quaternion.LookRotation(cameraTarget - cameraPosition, cameraUpDirection);
+            mainCamera.transform.SetPositionAndRotation(cameraPosition, cameraRotation);
+            mainCamera.orthographicSize = viewDistance * OrthographicSizePerDistance;
+        }
+
         private void Update()
         {
+            HandleCameraViewInput();
+
             if (tileData == null)
             {
                 return;
@@ -361,21 +473,30 @@ namespace CityFlow.View
             }
 
             visual.Type = type;
-            visual.Object.transform.localPosition = GridToLocal(tile, 0f);
-            visual.Object.transform.localScale = GetTileScale(type);
+            Vector3 tileScale = GetTileScale(type);
+            float tileZ = type == TileType.Road ? 0f : -tileScale.z * 0.5f;
+            visual.Object.transform.localPosition = GridToLocal(tile, tileZ);
+            visual.Object.transform.localScale = tileScale;
             ApplyTileColor(tile, visual);
         }
 
         private TileVisual CreateTileVisual(Vector2Int tile, TileType type)
         {
-            GameObject instance = InstantiatePrefabOrPrimitive(GetPrefab(type), PrimitiveType.Cube);
+            GameObject prefab = GetPrefab(type);
+            GameObject instance = InstantiatePrefabOrPrimitive(prefab, PrimitiveType.Cube);
             instance.name = $"{type}_{tile.x}_{tile.y}";
             instance.transform.SetParent(tileRoot, false);
+
+            Renderer renderer = PrepareRenderer(instance.GetComponentInChildren<Renderer>());
+            if (prefab == null && type != TileType.Road)
+            {
+                AddFallbackBuildingDetails(instance.transform, type);
+            }
 
             return new TileVisual
             {
                 Object = instance,
-                Renderer = PrepareRenderer(instance.GetComponentInChildren<Renderer>()),
+                Renderer = renderer,
                 Block = new MaterialPropertyBlock(),
                 Type = type
             };
@@ -422,9 +543,53 @@ namespace CityFlow.View
 
         private Vector3 GetTileScale(TileType type)
         {
-            float size = type == TileType.Road ? tileSize : tileSize * 0.48f;
-            float depth = type == TileType.Road ? 0.08f : 0.24f;
-            return new Vector3(size, size, depth);
+            return type switch
+            {
+                TileType.Road => new Vector3(tileSize, tileSize, 0.08f),
+                TileType.House => new Vector3(tileSize * 0.62f, tileSize * 0.62f, tileSize * 0.7f),
+                TileType.Office => new Vector3(tileSize * 0.55f, tileSize * 0.55f, tileSize * 1.25f),
+                TileType.School => new Vector3(tileSize * 0.76f, tileSize * 0.6f, tileSize * 0.55f),
+                _ => Vector3.one * tileSize
+            };
+        }
+
+        private void AddFallbackBuildingDetails(Transform building, TileType type)
+        {
+            Color detailColor = type switch
+            {
+                TileType.House => Color.Lerp(houseColor, Color.white, 0.35f),
+                TileType.Office => Color.Lerp(officeColor, Color.white, 0.2f),
+                TileType.School => Color.Lerp(schoolColor, Color.black, 0.2f),
+                _ => Color.white
+            };
+
+            Vector3 detailScale = type switch
+            {
+                TileType.House => new Vector3(0.78f, 0.78f, 0.28f),
+                TileType.Office => new Vector3(0.72f, 0.72f, 0.18f),
+                TileType.School => new Vector3(0.42f, 0.22f, 0.4f),
+                _ => Vector3.one * 0.2f
+            };
+            Vector3 detailPosition = type switch
+            {
+                TileType.House => new Vector3(0f, 0f, -0.64f),
+                TileType.Office => new Vector3(0f, 0f, -0.58f),
+                TileType.School => new Vector3(0f, -0.48f, -0.42f),
+                _ => Vector3.zero
+            };
+
+            Renderer detail = CreateDetailCube(building, "BuildingDetail", detailScale, detailPosition);
+            ApplyRendererColor(detail, detailColor);
+        }
+
+        private Renderer CreateDetailCube(Transform parent, string name, Vector3 scale, Vector3 localPosition)
+        {
+            GameObject detail = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            detail.name = name;
+            detail.transform.SetParent(parent, false);
+            detail.transform.localScale = scale;
+            detail.transform.localPosition = localPosition;
+            return PrepareRenderer(detail.GetComponent<Renderer>());
         }
 
         private GameObject GetPrefab(TileType type)
@@ -746,9 +911,16 @@ namespace CityFlow.View
             root.transform.SetParent(signalRoot, false);
             root.transform.localPosition = GridToLocal(tile, signalZ);
 
-            Renderer horizontal = CreateSignalBar(root.transform, "Horizontal", new Vector3(tileSize * 0.42f, tileSize * 0.1f, 0.08f), Vector3.zero);
-            Renderer vertical = CreateSignalBar(root.transform, "Vertical", new Vector3(tileSize * 0.1f, tileSize * 0.42f, 0.08f), Vector3.zero);
-            Renderer selection = CreateSignalBar(root.transform, "Selection", new Vector3(tileSize * 0.72f, tileSize * 0.72f, 0.02f), new Vector3(0f, 0f, 0.02f));
+            Renderer post = CreateSignalBar(root.transform, "Post",
+                new Vector3(tileSize * 0.08f, tileSize * 0.08f, tileSize * 0.6f), new Vector3(0f, 0f, tileSize * 0.15f));
+            ApplyRendererColor(post, new Color(0.18f, 0.2f, 0.22f));
+
+            Renderer horizontal = CreateSignalBar(root.transform, "Horizontal",
+                new Vector3(tileSize * 0.42f, tileSize * 0.1f, tileSize * 0.14f), new Vector3(0f, 0f, -tileSize * 0.18f));
+            Renderer vertical = CreateSignalBar(root.transform, "Vertical",
+                new Vector3(tileSize * 0.1f, tileSize * 0.42f, tileSize * 0.14f), new Vector3(0f, 0f, -tileSize * 0.18f));
+            Renderer selection = CreateSignalBar(root.transform, "Selection",
+                new Vector3(tileSize * 0.72f, tileSize * 0.72f, 0.03f), new Vector3(0f, 0f, tileSize * 0.42f));
 
             return new SignalVisual
             {
@@ -887,16 +1059,25 @@ namespace CityFlow.View
                 GameObject vehicle = InstantiatePrefabOrPrimitive(vehiclePrefab, PrimitiveType.Cube);
                 vehicle.name = $"Vehicle_{vehicles.Count + 1}";
                 vehicle.transform.SetParent(vehicleRoot, false);
-                vehicle.transform.localScale = new Vector3(tileSize * 0.34f, tileSize * 0.16f, 0.12f);
+                vehicle.transform.localScale = new Vector3(tileSize * 0.38f, tileSize * 0.2f, tileSize * 0.28f);
 
                 Renderer renderer = vehicle.GetComponentInChildren<Renderer>();
                 PrepareRenderer(renderer);
                 ApplyRendererColor(renderer, vehicleColor);
 
+                Renderer detailRenderer = null;
+                if (vehiclePrefab == null)
+                {
+                    detailRenderer = CreateDetailCube(vehicle.transform, "Cabin",
+                        new Vector3(0.55f, 0.72f, 0.42f), new Vector3(-0.05f, 0f, -0.65f));
+                    ApplyRendererColor(detailRenderer, Color.Lerp(vehicleColor, Color.white, 0.3f));
+                }
+
                 vehicles.Add(new RouteVehicle
                 {
                     Object = vehicle,
                     Renderer = renderer,
+                    DetailRenderer = detailRenderer,
                     Phase = vehicles.Count * 0.618f
                 });
             }
@@ -920,7 +1101,7 @@ namespace CityFlow.View
             speed *= Mathf.Lerp(1f, 0.25f, tileData.GetDensity01(currentTile));
 
             // 오버라이드 = 양축 초록이라 전방 신호가 오버라이드면 축 무관 가속이 정답(스펙 2026-07-11 §3).
-            if (signalControl != null && TryGetNextSignalTile(route, vehicle.Phase, out _, out Vector2Int aheadSignal)
+            if (signalControl != null && TryGetNextSignalTile(route, vehicle.Phase, out _, out Vector2Int aheadSignal, out _)
                 && signalControl.GetOverrideSecondsLeft(aheadSignal) > 0f)
             {
                 speed *= overrideSpeedMul;
@@ -992,8 +1173,14 @@ namespace CityFlow.View
             if (vehicle.Renderer != null)
             {
                 vehicle.Renderer.enabled = !hiddenAsGhost;
-                Color routeColor = blockedBySignal ? Color.red : Color.HSVToRGB((routeIndex * 0.137f) % 1f, 0.7f, 0.95f);
+                Color routeColor = Color.HSVToRGB((routeIndex * 0.137f) % 1f, 0.7f, 0.95f);
                 ApplyRendererColor(vehicle.Renderer, routeColor);
+
+                if (vehicle.DetailRenderer != null)
+                {
+                    vehicle.DetailRenderer.enabled = !hiddenAsGhost;
+                    ApplyRendererColor(vehicle.DetailRenderer, Color.Lerp(routeColor, Color.white, 0.3f));
+                }
             }
 
             // Jam 분노 팝업(스펙 2026-07-12 §1): 내가 서 있는 타일이 Jam이면 ! + 매연 — 가짜 디테일.
@@ -1424,7 +1611,14 @@ namespace CityFlow.View
 
         private bool IsRouteVehicleBlocked(List<Vector2Int> route, float phase)
         {
-            if (simEngine == null || !TryGetNextSignalTile(route, phase, out Vector2Int current, out Vector2Int next))
+            if (simEngine == null || !TryGetNextSignalTile(route, phase, out Vector2Int current, out Vector2Int next, out float progress))
+            {
+                return false;
+            }
+
+            // 타일 중앙 사이 절반이 교차로 경계. 이미 경계를 넘은 차는 노란불의
+            // "진입 금지, 정리 준비" 규칙에 따라 멈추지 않고 교차로를 빠져나간다.
+            if (progress >= 0.5f)
             {
                 return false;
             }
@@ -1434,10 +1628,11 @@ namespace CityFlow.View
         }
 
         // 차의 현재 위상에서 진행 방향의 현재/다음 타일. 다음 타일이 신호일 때만 true — 부스트·블록 판정 공용.
-        private bool TryGetNextSignalTile(List<Vector2Int> route, float phase, out Vector2Int current, out Vector2Int next)
+        private bool TryGetNextSignalTile(List<Vector2Int> route, float phase, out Vector2Int current, out Vector2Int next, out float progress)
         {
             current = default;
             next = default;
+            progress = 0f;
             if (route == null || route.Count < 2) return false;
             int segmentCount = route.Count - 1;
             float cycle = segmentCount * 2f;
@@ -1447,6 +1642,7 @@ namespace CityFlow.View
             int index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
             current = forward ? route[index] : route[index + 1];
             next = forward ? route[index + 1] : route[index];
+            progress = forward ? folded - index : index + 1f - folded;
             if (current == next || !IsSignalTile(next)) return false;
             return true;
         }
@@ -1504,8 +1700,14 @@ namespace CityFlow.View
                     return;
                 }
 
-                Vector3 world = Camera.main.ScreenToWorldPoint(mouse.position.ReadValue());
-                Vector2Int clicked = WorldToGrid(world);
+                Ray ray = Camera.main.ScreenPointToRay(mouse.position.ReadValue());
+                Plane boardPlane = new Plane(transform.forward, cameraTarget);
+                if (!boardPlane.Raycast(ray, out float enter))
+                {
+                    return;
+                }
+
+                Vector2Int clicked = WorldToGrid(ray.GetPoint(enter));
 
                 for (int i = 0; i < signals.Count; i++)
                 {
