@@ -11,8 +11,8 @@ namespace CityFlow.UI
     public sealed class TitleSceneController : MonoBehaviour
     {
         [Header("Scene Flow")]
-        [Tooltip("시작하기가 로드할 게임 씬 이름. Build Settings에 등록돼 있어야 로드된다.")]
-        [SerializeField] private string gameSceneName = "CityFlowIntegrated_debug_Hwan";
+        [Tooltip("시작하기가 로드할 게임 씬 이름. Build Settings에 등록돼 있어야 로드된다. (주석님 메인씬)")]
+        [SerializeField] private string gameSceneName = "CityFlowIntegrated_cmt";
 
         [Header("Refs")]
         [Tooltip("세이브가 없으면 비활성화할 이어하기 버튼.")]
