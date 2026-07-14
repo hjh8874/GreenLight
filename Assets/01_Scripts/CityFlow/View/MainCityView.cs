@@ -324,6 +324,7 @@ namespace CityFlow.View
             overpassVisuals.Clear();
             onewayVisuals.Clear();
             turnSignVisuals.Clear();
+            priorityRoadVisuals.Clear();
 
             ClearChildren(vehicleRoot);
             vehicles.Clear();
@@ -336,6 +337,7 @@ namespace CityFlow.View
             RefreshOverpasses();
             RefreshOneways();
             RefreshTurnSigns();
+            RefreshPriorityRoads();
             RefreshVehicles();
 
             Debug.Log("[MainCityView] Restored city visuals rebuilt.");
