@@ -112,6 +112,7 @@ namespace CityFlow.UI
             if (_placementController != null && tileData != null)
             {
                 _placementController.SetBuildType(tileData.Category);
+                FindFirstObjectByType<UIDockController>()?.CollapseBuildPanelForPlacement();
                 Debug.Log($"[BuildSlot] {tileData.BuildingName} 건설 모드 활성화");
             }
         }
