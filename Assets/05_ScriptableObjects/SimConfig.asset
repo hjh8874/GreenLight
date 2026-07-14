@@ -34,6 +34,8 @@ MonoBehaviour:
     OverrideCorridorSignals: 3
     UnsignaledInterference: 1.5
     RoutingCongestionWeight: 2
+    PriorityMainInterference: 0.1
+    PriorityYieldInterference: 2.5
     AutoDetectSignals: 1
     CoinBase: 1
     BurstJamEnterRatio: 1
