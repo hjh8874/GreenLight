@@ -37,15 +37,8 @@ namespace CityFlow.Content
             {
                 new DistanceRewardTier(0f, 1f),
                 new DistanceRewardTier(5f, 1.1f),
-                new DistanceRewardTier(6f, 1.2f),
-                new DistanceRewardTier(7f, 1.3f),
-                new DistanceRewardTier(8f, 1.4f),
-                new DistanceRewardTier(9f, 1.5f),
-                new DistanceRewardTier(10f, 1.6f),
-                new DistanceRewardTier(11f, 1.7f),
-                new DistanceRewardTier(12f, 1.8f),
-                new DistanceRewardTier(13f, 1.9f),
-                new DistanceRewardTier(14f, 2f)
+                new DistanceRewardTier(14f, 1.6f),
+                new DistanceRewardTier(20f, 2f)
             };
 
         public IReadOnlyList<DistanceRewardTier> RewardTiers => rewardTiers;
