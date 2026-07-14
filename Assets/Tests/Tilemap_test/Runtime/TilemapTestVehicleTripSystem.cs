@@ -251,12 +251,10 @@ namespace CityFlow.TilemapTest
 
         private Vector3 GetLaneOffset(Vector2Int direction)
         {
-            if (Mathf.Abs(direction.x) > 0)
-            {
-                return Vector3.forward * laneOffset;
-            }
-
-            return Vector3.right * laneOffset;
+            // 진행 방향 기준 오른쪽으로 오프셋(우측통행). 방향 부호를 반영하므로
+            // 왕복 차량(동↔서, 남↔북)이 반대 차선을 타 정면으로 겹치지 않는다.
+            Vector3 travel = new Vector3(direction.x, 0f, direction.y);
+            return Vector3.Cross(Vector3.up, travel).normalized * laneOffset;
         }
 
         private bool IsRoad(Vector2Int tile)
