@@ -36,6 +36,7 @@ namespace CityFlow.View
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
         [SerializeField] private float followGap = 0.4f;           // 차간 유지 거리(타일 비율)
+        [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
         [SerializeField] private float roundaboutOrbitRadius = 0.3f;   // 로터리 궤도 반경(타일 비율)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
@@ -128,6 +129,8 @@ namespace CityFlow.View
             public GameObject Object;
             public Renderer Renderer;
             public float Phase;
+            public readonly List<Vector2Int> DisplayRoute = new();
+            public int DisplayRouteHash;
             public Vector3 Pos;   // 지난 프레임 위치·진행 방향 — 차간 유지 판정용(1프레임 지연 근사)
             public Vector3 Dir;
             public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
@@ -899,8 +902,9 @@ namespace CityFlow.View
             }
         }
 
-        private void MoveVehicle(RouteVehicle vehicle, List<Vector2Int> route, int routeIndex)
+        private void MoveVehicle(RouteVehicle vehicle, List<Vector2Int> sourceRoute, int routeIndex)
         {
+            List<Vector2Int> route = GetDisplayRoute(vehicle, sourceRoute);
             int segmentCount = route.Count - 1;
             float speed = vehicleSpeed;
 
@@ -932,25 +936,24 @@ namespace CityFlow.View
                 speed = 0f;
             }
 
+            // 90도 원호 길이는 같은 반경의 두 직선 합보다 짧으므로, phase 진행량을 보정해
+            // 직선과 원호에서 차량의 실제 화면 이동속도가 같게 유지되도록 한다.
+            if (speed > 0f)
+            {
+                speed *= GetTurnPhaseSpeedMultiplier(route, vehicle.Phase);
+            }
+
             vehicle.Phase = Mathf.Repeat(vehicle.Phase + Time.deltaTime * speed, segmentCount * 2f);
 
             float folded = Fold(vehicle.Phase, segmentCount);
             int index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
             float t = folded - index;
-            Vector3 a = GridToLocal(route[index], vehicleZ);
-            Vector3 b = GridToLocal(route[index + 1], vehicleZ);
-            Vector3 direction = (b - a).normalized;
             // 왕복 유령: 접힌 복귀 구간이면 실제 진행은 역방향 — 차선·바라보기 둘 다 이 방향 기준.
             bool forward = vehicle.Phase <= segmentCount;
-            Vector3 travelDir = forward ? direction : -direction;
-
-            // 우측통행 차선 오프셋: 진행 방향의 오른쪽으로 비껴 그림 → 왕복이 두 차선으로 갈라짐.
-            Vector3 lane = new Vector3(travelDir.y, -travelDir.x, 0f) * (tileSize * laneOffset);
-            Vector3 pos = Vector3.Lerp(a, b, t) + lane;
+            EvaluateVehiclePose(route, index, t, forward, out Vector3 pos, out Vector3 travelDir, out Vector2Int insideTile);
 
             // 로터리 연출(뷰 전용 — 엔진 무관): 타일 안에선 진행 방향 오른쪽으로 부풀어
             // 중앙 섬을 반시계로 돌아가는 궤적. 경계에서 0(직선과 연속), 중심에서 최대.
-            Vector2Int insideTile = t < 0.5f ? route[index] : route[index + 1];
             if (IsRoundaboutTile(insideTile))
             {
                 Vector3 center = GridToLocal(insideTile, vehicleZ);
@@ -1014,6 +1017,355 @@ namespace CityFlow.View
 
             vehicle.Pos = vehicle.Object.transform.localPosition;
             vehicle.Dir = travelDir;
+        }
+
+        // 시뮬레이션의 대각 지름길은 유지하되, 실제 직각 회전으로 보이는 구간은 표시 경로에
+        // 교차로 타일을 삽입한다. 한 대각 구간에 두 타일 이동을 압축하지 않아 직선과 같은 속도를 유지한다.
+        private List<Vector2Int> GetDisplayRoute(RouteVehicle vehicle, List<Vector2Int> sourceRoute)
+        {
+            int routeHash = ComputeDisplayRouteHash(sourceRoute);
+            if (vehicle.DisplayRoute.Count > 0 && vehicle.DisplayRouteHash == routeHash)
+            {
+                return vehicle.DisplayRoute;
+            }
+
+            int previousSegmentCount = Mathf.Max(0, vehicle.DisplayRoute.Count - 1);
+            float normalizedPhase = previousSegmentCount > 0
+                ? vehicle.Phase / (previousSegmentCount * 2f)
+                : 0f;
+
+            vehicle.DisplayRoute.Clear();
+            if (sourceRoute.Count == 0)
+            {
+                vehicle.DisplayRouteHash = routeHash;
+                return vehicle.DisplayRoute;
+            }
+
+            vehicle.DisplayRoute.Add(sourceRoute[0]);
+            for (int i = 0; i < sourceRoute.Count - 1; i++)
+            {
+                if (TryGetDiagonalTurnBridge(sourceRoute, i, out Vector2Int bridge)
+                    && vehicle.DisplayRoute[vehicle.DisplayRoute.Count - 1] != bridge)
+                {
+                    vehicle.DisplayRoute.Add(bridge);
+                }
+
+                Vector2Int next = sourceRoute[i + 1];
+                if (vehicle.DisplayRoute[vehicle.DisplayRoute.Count - 1] != next)
+                {
+                    vehicle.DisplayRoute.Add(next);
+                }
+            }
+
+            int newSegmentCount = Mathf.Max(0, vehicle.DisplayRoute.Count - 1);
+            if (previousSegmentCount > 0 && newSegmentCount > 0)
+            {
+                vehicle.Phase = normalizedPhase * newSegmentCount * 2f;
+            }
+            else if (newSegmentCount > 0)
+            {
+                vehicle.Phase = Mathf.Repeat(vehicle.Phase, newSegmentCount * 2f);
+            }
+
+            vehicle.DisplayRouteHash = routeHash;
+            return vehicle.DisplayRoute;
+        }
+
+        private int ComputeDisplayRouteHash(List<Vector2Int> route)
+        {
+            unchecked
+            {
+                int hash = 17;
+                for (int i = 0; i < route.Count; i++)
+                {
+                    hash = hash * 31 + route[i].GetHashCode();
+                    if (i < route.Count - 1 && TryGetDiagonalTurnBridge(route, i, out Vector2Int bridge))
+                    {
+                        hash = hash * 31 + bridge.GetHashCode();
+                    }
+                }
+                return hash;
+            }
+        }
+
+        private bool TryGetDiagonalTurnBridge(List<Vector2Int> route, int segmentIndex, out Vector2Int bridge)
+        {
+            bridge = default;
+            Vector2Int from = route[segmentIndex];
+            Vector2Int to = route[segmentIndex + 1];
+            int dx = to.x - from.x;
+            int dy = to.y - from.y;
+            if (Mathf.Abs(dx) != 1 || Mathf.Abs(dy) != 1)
+            {
+                return false;
+            }
+
+            Vector2Int horizontalBridge = new Vector2Int(to.x, from.y);
+            Vector2Int verticalBridge = new Vector2Int(from.x, to.y);
+            bool canTurnHorizontalFirst = IsRoadTile(horizontalBridge)
+                && IsRoadTile(new Vector2Int(from.x - dx, from.y))
+                && IsRoadTile(new Vector2Int(to.x, to.y + dy));
+            bool canTurnVerticalFirst = IsRoadTile(verticalBridge)
+                && IsRoadTile(new Vector2Int(from.x, from.y - dy))
+                && IsRoadTile(new Vector2Int(to.x + dx, to.y));
+
+            if (!canTurnHorizontalFirst && !canTurnVerticalFirst)
+            {
+                return false;
+            }
+
+            bool horizontalFirst = canTurnHorizontalFirst;
+            if (canTurnHorizontalFirst && canTurnVerticalFirst)
+            {
+                if (segmentIndex > 0)
+                {
+                    Vector2Int incoming = from - route[segmentIndex - 1];
+                    horizontalFirst = incoming.y == 0;
+                }
+                else if (segmentIndex + 2 < route.Count)
+                {
+                    Vector2Int outgoing = route[segmentIndex + 2] - to;
+                    horizontalFirst = outgoing.x == 0;
+                }
+            }
+
+            bridge = horizontalFirst ? horizontalBridge : verticalBridge;
+            return !IsRoundaboutTile(bridge);
+        }
+
+        // 일반 교차로 회전 연출(뷰 전용 — 엔진 무관): 진입선과 이탈선에 접하는 90도 원호로
+        // 연결해 교차로 중심에서 방향이 한 번에 꺾이지 않도록 한다.
+        private void EvaluateVehiclePose(
+            List<Vector2Int> route,
+            int segmentIndex,
+            float segmentT,
+            bool forward,
+            out Vector3 pos,
+            out Vector3 travelDir,
+            out Vector2Int insideTile)
+        {
+            Vector3 a = GridToLocal(route[segmentIndex], vehicleZ);
+            Vector3 b = GridToLocal(route[segmentIndex + 1], vehicleZ);
+            Vector3 centerline = Vector3.Lerp(a, b, segmentT);
+            Vector3 routeTangent = (b - a).normalized;
+            insideTile = segmentT < 0.5f ? route[segmentIndex] : route[segmentIndex + 1];
+
+            float radiusFraction = GetCornerTurnRadiusFraction();
+
+            int cornerIndex = -1;
+            float curveT = 0f;
+
+            if (segmentT >= 1f - radiusFraction && segmentIndex + 2 < route.Count)
+            {
+                cornerIndex = segmentIndex + 1;
+                curveT = (segmentT - (1f - radiusFraction)) / (radiusFraction * 2f);
+            }
+            else if (segmentT < radiusFraction && segmentIndex > 0)
+            {
+                cornerIndex = segmentIndex;
+                curveT = 0.5f + segmentT / (radiusFraction * 2f);
+            }
+
+            if (cornerIndex >= 0 && TryEvaluateTurnBezier(route, cornerIndex, curveT, radiusFraction, out Vector3 curvePosition, out Vector3 curveTangent))
+            {
+                centerline = curvePosition;
+                routeTangent = curveTangent;
+                insideTile = route[cornerIndex];
+            }
+
+            travelDir = forward ? routeTangent : -routeTangent;
+
+            // 곡선의 접선을 기준으로 오른쪽 차선을 계산해야 회전 중에도 차선이 끊기지 않는다.
+            Vector3 laneRight = new Vector3(travelDir.y, -travelDir.x, 0f);
+            pos = centerline + laneRight * (tileSize * laneOffset);
+        }
+
+        private float GetTurnPhaseSpeedMultiplier(List<Vector2Int> route, float phase)
+        {
+            int segmentCount = route.Count - 1;
+            if (segmentCount <= 0)
+            {
+                return 1f;
+            }
+
+            float folded = Fold(phase, segmentCount);
+            int segmentIndex = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
+            float segmentT = folded - segmentIndex;
+            float radiusFraction = GetCornerTurnRadiusFraction();
+            int cornerIndex = -1;
+
+            if (segmentT >= 1f - radiusFraction && segmentIndex + 2 < route.Count)
+            {
+                cornerIndex = segmentIndex + 1;
+            }
+            else if (segmentT < radiusFraction && segmentIndex > 0)
+            {
+                cornerIndex = segmentIndex;
+            }
+
+            if (cornerIndex < 0 || !TryGetTurnDirections(route, cornerIndex, out Vector3 incoming, out Vector3 outgoing))
+            {
+                return 1f;
+            }
+
+            // 우측 차선 오프셋으로 실제 차량 궤도의 반경은 중심선 반경과 달라진다.
+            // 좌회전은 바깥쪽, 우회전은 안쪽 반경을 사용하며 복귀 구간에서는 회전 방향도 반전된다.
+            bool forward = phase <= segmentCount;
+            float routeCross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+            float travelCross = forward ? routeCross : -routeCross;
+            float centerRadius = GetCornerTurnRadiusFraction();
+            float actualRadius = centerRadius + (travelCross > 0f ? laneOffset : -laneOffset);
+            actualRadius = Mathf.Max(actualRadius, 0.05f);
+
+            // phase상 곡선 길이(2×중심선 반경)를 실제 차량 원호 길이(π/2×차선 반경)에 맞춘다.
+            return 4f * centerRadius / (Mathf.PI * actualRadius);
+        }
+
+        private float GetCornerTurnRadiusFraction()
+        {
+            return cornerTurnRadius > 0f
+                ? Mathf.Clamp(cornerTurnRadius, 0.6f, 0.85f)
+                : 0.75f;
+        }
+
+        private bool IsRoadTile(Vector2Int tile)
+        {
+            return tileData != null
+                && tile.x >= 0 && tile.x < width
+                && tile.y >= 0 && tile.y < height
+                && tileData.GetTileType(tile) == TileType.Road;
+        }
+
+        private bool TryEvaluateTurnBezier(
+            List<Vector2Int> route,
+            int cornerIndex,
+            float curveT,
+            float radiusFraction,
+            out Vector3 position,
+            out Vector3 tangent)
+        {
+            position = default;
+            tangent = default;
+
+            if (!TryGetTurnDirections(route, cornerIndex, out Vector3 incoming, out Vector3 outgoing))
+            {
+                return false;
+            }
+
+            Vector3 corner = GridToLocal(route[cornerIndex], vehicleZ);
+            float radius = tileSize * radiusFraction;
+            Vector3 entry = corner - incoming * radius;
+            Vector3 exit = corner + outgoing * radius;
+            const float quarterCircleHandle = 0.55228475f;
+            Vector3 controlIn = entry + incoming * (radius * quarterCircleHandle);
+            Vector3 controlOut = exit - outgoing * (radius * quarterCircleHandle);
+            float u = RemapBezierParameterByArcLength(
+                entry, controlIn, controlOut, exit, Mathf.Clamp01(curveT));
+
+            position = EvaluateCubicBezier(entry, controlIn, controlOut, exit, u);
+            tangent = EvaluateCubicBezierTangent(entry, controlIn, controlOut, exit, u);
+            return tangent.sqrMagnitude > 0.0001f;
+        }
+
+        private static float RemapBezierParameterByArcLength(
+            Vector3 start,
+            Vector3 controlIn,
+            Vector3 controlOut,
+            Vector3 end,
+            float normalizedDistance)
+        {
+            const int samples = 12;
+            float totalLength = 0f;
+            Vector3 previous = start;
+
+            for (int i = 1; i <= samples; i++)
+            {
+                float sampleT = i / (float)samples;
+                Vector3 sample = EvaluateCubicBezier(start, controlIn, controlOut, end, sampleT);
+                totalLength += Vector3.Distance(previous, sample);
+                previous = sample;
+            }
+
+            float targetLength = totalLength * normalizedDistance;
+            float accumulated = 0f;
+            previous = start;
+
+            for (int i = 1; i <= samples; i++)
+            {
+                float sampleT = i / (float)samples;
+                Vector3 sample = EvaluateCubicBezier(start, controlIn, controlOut, end, sampleT);
+                float segmentLength = Vector3.Distance(previous, sample);
+                if (accumulated + segmentLength >= targetLength)
+                {
+                    float localT = segmentLength > 0.0001f
+                        ? (targetLength - accumulated) / segmentLength
+                        : 0f;
+                    return Mathf.Lerp((i - 1) / (float)samples, sampleT, localT);
+                }
+
+                accumulated += segmentLength;
+                previous = sample;
+            }
+
+            return 1f;
+        }
+
+        private static Vector3 EvaluateCubicBezier(
+            Vector3 start,
+            Vector3 controlIn,
+            Vector3 controlOut,
+            Vector3 end,
+            float t)
+        {
+            float oneMinusT = 1f - t;
+            return oneMinusT * oneMinusT * oneMinusT * start
+                + 3f * oneMinusT * oneMinusT * t * controlIn
+                + 3f * oneMinusT * t * t * controlOut
+                + t * t * t * end;
+        }
+
+        private static Vector3 EvaluateCubicBezierTangent(
+            Vector3 start,
+            Vector3 controlIn,
+            Vector3 controlOut,
+            Vector3 end,
+            float t)
+        {
+            float oneMinusT = 1f - t;
+            return (3f * oneMinusT * oneMinusT * (controlIn - start)
+                + 6f * oneMinusT * t * (controlOut - controlIn)
+                + 3f * t * t * (end - controlOut)).normalized;
+        }
+
+        private bool TryGetTurnDirections(
+            List<Vector2Int> route,
+            int cornerIndex,
+            out Vector3 incoming,
+            out Vector3 outgoing)
+        {
+            incoming = default;
+            outgoing = default;
+
+            // 로터리는 아래의 기존 전용 궤도 연출을 그대로 사용해 원호를 중복 적용하지 않는다.
+            if (cornerIndex <= 0 || cornerIndex >= route.Count - 1 || IsRoundaboutTile(route[cornerIndex]))
+            {
+                return false;
+            }
+
+            Vector3 previous = GridToLocal(route[cornerIndex - 1], vehicleZ);
+            Vector3 corner = GridToLocal(route[cornerIndex], vehicleZ);
+            Vector3 next = GridToLocal(route[cornerIndex + 1], vehicleZ);
+            incoming = corner - previous;
+            outgoing = next - corner;
+
+            if (incoming.sqrMagnitude < 0.0001f || outgoing.sqrMagnitude < 0.0001f)
+            {
+                return false;
+            }
+
+            incoming.Normalize();
+            outgoing.Normalize();
+            return Mathf.Abs(Vector3.Dot(incoming, outgoing)) < 0.001f;
         }
 
         // 반대 차선(마주 오는 차)은 무시 — 차선 오프셋으로 이미 분리. 같은 방향 추종만이라 순환 대기 없음
