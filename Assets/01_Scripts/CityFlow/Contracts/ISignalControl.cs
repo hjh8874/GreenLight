@@ -17,6 +17,9 @@ namespace CityFlow.Contracts
         // 존재하는 신호 타일들(자동 감지 또는 배치). UI가 조작 대상을 여기서 고른다.
         IReadOnlyList<Vector2Int> SignalTiles { get; }
 
+        // 전체 주기 (Max Value 설정을 위해 UI에서 사용)
+        int GetSignalCycleSlots(Vector2Int tile);
+
         // 오프셋 레버: 인접 신호 타이밍을 밀어 그린웨이브를 맞춘다. 값은 랩어라운드(주기 등가).
         int GetSignalOffsetSlots(Vector2Int tile);
         bool TrySetSignalOffsetSlots(Vector2Int tile, int slots);

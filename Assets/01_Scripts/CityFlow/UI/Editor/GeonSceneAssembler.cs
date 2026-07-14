@@ -74,37 +74,12 @@ namespace CityFlow.UI.Editor
             serializedObject.FindProperty("panelInfra").objectReferenceValue = infraPanel;
             serializedObject.ApplyModifiedProperties();
 
-            // Create Demolish button inside Infra_Panel
+            // Cleanup: Remove legacy Btn_Demolish if it exists in scene
             Transform demolishBtnTransform = infraPanel.transform.Find("Btn_Demolish");
-            if (demolishBtnTransform == null)
+            if (demolishBtnTransform != null)
             {
-                GameObject demoBtnGO = new GameObject("Btn_Demolish", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
-                demoBtnGO.transform.SetParent(infraPanel.transform, false);
-                var rect = demoBtnGO.GetComponent<RectTransform>();
-                rect.anchorMin = new Vector2(1, 0.5f);
-                rect.anchorMax = new Vector2(1, 0.5f);
-                rect.pivot = new Vector2(1, 0.5f);
-                rect.anchoredPosition = new Vector2(-60, 0); // Position it on the right side
-                rect.sizeDelta = new Vector2(100, 60);
-
-                var img = demoBtnGO.GetComponent<Image>();
-                img.color = Color.red;
-
-                GameObject textGO = new GameObject("Text", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
-                textGO.transform.SetParent(demoBtnGO.transform, false);
-                var txt = textGO.GetComponent<TextMeshProUGUI>();
-                txt.text = "Demolish";
-                txt.alignment = TextAlignmentOptions.Center;
-                txt.color = Color.white;
-                txt.fontSize = 18;
-
-                var btn = demoBtnGO.GetComponent<Button>();
-                
-                var coordinator = Object.FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
-                if (coordinator != null)
-                {
-                    UnityEditor.Events.UnityEventTools.AddPersistentListener(btn.onClick, coordinator.StartDemolishMode);
-                }
+                Object.DestroyImmediate(demolishBtnTransform.gameObject);
+                Debug.Log("[CityFlow] Legacy Btn_Demolish removed from Infra_Panel.");
             }
 
             // Make sure Infra_Panel starts inactive so toggle works correctly
