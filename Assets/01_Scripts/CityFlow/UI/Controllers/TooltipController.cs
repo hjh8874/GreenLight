@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using UnityEngine.InputSystem;
 using DG.Tweening;
 using CityFlow.Configs;
+using CityFlow.UI.Data;
 
 namespace CityFlow.UI
 {
@@ -65,6 +66,28 @@ namespace CityFlow.UI
             }
 
             // DOTween 팝업 애니메이션
+            transform.DOKill();
+            transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutBack);
+        }
+
+        public void ShowTooltip(InfrastructureDataSO infraData)
+        {
+            if (infraData == null) return;
+            
+            gameObject.SetActive(true);
+            
+            if (txtName != null) txtName.text = infraData.InfrastructureName;
+            if (txtCategory != null) txtCategory.text = $"Category: {infraData.Kind}";
+            if (txtCost != null) txtCost.text = $"Cost: {infraData.Cost} Coins";
+            if (txtIncome != null) txtIncome.text = "Maintenance: Auto"; // 인프라는 별도 수입이 없으므로 안내 문구 대체
+            if (txtEffect != null) txtEffect.text = "Effect: Traffic Flow Control"; // 인프라 범용 효과
+            if (txtDescription != null) txtDescription.text = infraData.Description;
+
+            if (Mouse.current != null)
+            {
+                transform.position = Mouse.current.position.ReadValue() + offset;
+            }
+
             transform.DOKill();
             transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutBack);
         }

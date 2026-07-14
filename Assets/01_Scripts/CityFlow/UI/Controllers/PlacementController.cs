@@ -62,6 +62,17 @@ namespace CityFlow.UI
         {
             _currentType = type;
             Debug.Log($"[PlacementController] 건설 모드 변경됨: {_currentType}");
+
+            // 인프라 상점과 같은 패널에 탭으로 합쳐졌을 경우를 대비해, 일반 타일 선택 시 인프라 모드를 강제 취소합니다.
+            var infraCoord = UnityEngine.Object.FindFirstObjectByType<CityFlow.UI.Controllers.InfrastructurePlacementCoordinator>();
+            if (infraCoord != null && infraCoord.IsBuildingMode)
+            {
+                infraCoord.CancelPlacement();
+            }
+
+            // 도로/집 건설 모드를 확실하게 활성화합니다.
+            enabled = true;
+            ToggleBuildMode(true);
         }
 
         public void Initialize(CityFlowServices services)
@@ -289,9 +300,7 @@ namespace CityFlow.UI
             
             // 3. 고스트 위치 스냅 (일단 바닥이 없으므로 허공(XZ평면 혹은 XY평면)에 딱딱 맞춰 이동시킵니다)
             // 3D 쿼터뷰(Y=0 바닥) 기준 맵핑. 만약 2D 게임이라면 y대신 z를 0으로 주고 세팅합니다.
-            ghostRenderer.transform.position = useXYPlane
-                ? new Vector3(gridCoord.x + 0.5f, gridCoord.y + 0.5f, -0.6f)
-                : new Vector3(gridCoord.x, 0, gridCoord.y);
+            ghostRenderer.transform.position = GetGhostPosition(gridCoord);
 
             // 4. 건설 유효성 검증 (엔진 디커플링 통신)
             bool canPlace = CheckCanPlace(gridCoord);
@@ -388,7 +397,14 @@ namespace CityFlow.UI
             }
         }
 
-        private Vector2Int GetMouseGridCoordinate()
+        public Vector3 GetGhostPosition(Vector2Int gridCoord)
+        {
+            return useXYPlane
+                ? new Vector3(gridCoord.x + 0.5f, gridCoord.y + 0.5f, -0.6f)
+                : new Vector3(gridCoord.x, 0, gridCoord.y);
+        }
+
+        public Vector2Int GetMouseGridCoordinate()
         {
             Vector2 mousePos = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
 
