@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using CityFlow.Contracts;
+using CityFlow.UI.Controllers;
 
 namespace CityFlow.UI
 {
@@ -10,6 +11,7 @@ namespace CityFlow.UI
         [Header("References")]
         [SerializeField] private AnalysisCardController analysisCard;
         [SerializeField] private PlacementController placementController;
+        private InfrastructurePlacementCoordinator _infraCoordinator;
 
         [Header("Visuals")]
         [Tooltip("타일을 선택했을 때 바닥에 표시될 강조(하이라이트) 박스")]
@@ -33,6 +35,7 @@ namespace CityFlow.UI
 
         private void Start()
         {
+            _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>();
             // 시작 시 상세 카드와 하이라이트 박스는 숨겨둡니다.
             DeselectTile();
         }
@@ -40,7 +43,10 @@ namespace CityFlow.UI
         private void Update()
         {
             // 1. 방어 로직: 현재 건설 모드(고스트가 떠다니는 상태)라면 타일 선택을 무시합니다.
-            if (placementController != null && placementController.IsBuildingMode)
+            bool isBuilding = (placementController != null && placementController.IsBuildingMode) || 
+                              (_infraCoordinator != null && _infraCoordinator.IsBuildingMode);
+
+            if (isBuilding)
             {
                 DeselectTile(); // 건설 모드 켜지면 분석 카드도 바로 닫음
                 return;
