@@ -94,7 +94,7 @@ namespace CityFlow.UI
                 return;
             }
 
-            label.alignment = TextAlignmentOptions.Center;
+            label.alignment = TextAlignmentOptions.Midline;
             label.fontSize = 16f;
             label.textWrappingMode = TextWrappingModes.NoWrap;
             label.overflowMode = TextOverflowModes.Overflow;
