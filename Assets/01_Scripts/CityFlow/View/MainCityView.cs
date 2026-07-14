@@ -913,7 +913,10 @@ namespace CityFlow.View
                 return;
             }
 
-            Vector2Int currentTile = route[Mathf.Clamp(Mathf.FloorToInt(vehicle.Phase) % route.Count, 0, route.Count - 1)];
+            // 실제 렌더 위치와 같은 Fold 인덱스로 현재 타일을 잡는다. Phase%route.Count는
+            // 복귀 구간에서 접힌 위치와 어긋나 정체 벗어난 차가 엉뚱한(정체) 타일을 읽어
+            // !표·저속이 남던 버그(밀도·Jam 둘 다 이 타일 사용).
+            Vector2Int currentTile = route[Mathf.Clamp(Mathf.FloorToInt(Fold(vehicle.Phase, segmentCount)), 0, route.Count - 1)];
             speed *= Mathf.Lerp(1f, 0.25f, tileData.GetDensity01(currentTile));
 
             // 오버라이드 = 양축 초록이라 전방 신호가 오버라이드면 축 무관 가속이 정답(스펙 2026-07-11 §3).
