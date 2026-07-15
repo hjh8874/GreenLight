@@ -230,10 +230,12 @@ namespace CityFlow.Sim
         }
 
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
-        public bool CanPlace(Vector2Int tile, TileType type) => _grid.CanPlace(tile, type);
+        public bool CanPlace(Vector2Int tile, TileType type) =>
+            !(IsBuildingTile(type) && IsInRoundaboutFootprint(tile)) && _grid.CanPlace(tile, type);
 
         public bool Place(Vector2Int tile, TileType type)
         {
+            if (IsBuildingTile(type) && IsInRoundaboutFootprint(tile)) return false;   // 로터리 풋프린트에 건물 금지
             if (!_grid.Place(tile, type)) return false;
             _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false));
             return true;
@@ -296,7 +298,7 @@ namespace CityFlow.Sim
         // ── 신호 배치(구매 피벗 2단계, 스펙 2026-07-11): 배치 모드에서만. 가격·UI는 팀(김건·진우) ──
         public bool CanPlaceSignal(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
-            && !_placedSet.Contains(tile) && !_roundaboutSet.Contains(tile)
+            && !_placedSet.Contains(tile) && !IsInRoundaboutFootprint(tile)   // 로터리 풋프린트(팔 포함) 예약
             && !_overpassSet.Contains(tile)                                   // 3자 배타
             && !_priorityDirs.ContainsKey(tile);   // 우선도로와 배타(4자 배타, 스펙 2026-07-13)
 
@@ -320,15 +322,45 @@ namespace CityFlow.Sim
             return true;
         }
 
-        // ── 회전교차로 배치(스펙 2026-07-11): 신호 3종의 자매. Rebuild 불필요(SignalMap 무관) ──
+        // ── 회전교차로 배치(스펙 2026-07-11 + 풋프린트 2026-07-15): 십자 5칸 점유(center + 상하좌우 4팔) ──
+        //   저장은 center만(_roundaboutSet), 풋프린트는 파생. 흐름은 center 1노드(무변경).
         public IReadOnlyList<Vector2Int> RoundaboutTiles => _placedRoundabouts;
 
-        public bool CanPlaceRoundabout(Vector2Int tile) =>
-            !_config.AutoDetectSignals && _grid.IsIntersection(tile)
-            && !_roundaboutSet.Contains(tile) && !_placedSet.Contains(tile)
-            && !_overpassSet.Contains(tile)                                   // 3자 배타
-            && !_turnSigns.ContainsKey(tile)    // 표지판과 배타(양방향 — 계획 정정 2026-07-12)
-            && !_priorityDirs.ContainsKey(tile);   // 우선도로와 배타(4자 배타, 스펙 2026-07-13)
+        // 로터리 팔 방향(상하좌우). 대각 제외 — 십자 풋프린트.
+        static readonly Vector2Int[] RoundaboutArmDirs =
+            { new Vector2Int(1, 0), new Vector2Int(-1, 0), new Vector2Int(0, 1), new Vector2Int(0, -1) };
+
+        static bool IsBuildingTile(TileType t) =>
+            t == TileType.House || t == TileType.Office || t == TileType.School;
+
+        // tile이 배치된 어떤 로터리의 풋프린트(center 또는 그 4팔)에 속하나. 타 장치·건물 배치가 이걸로 예약 검사.
+        public bool IsInRoundaboutFootprint(Vector2Int tile)
+        {
+            if (_roundaboutSet.Contains(tile)) return true;
+            for (int i = 0; i < RoundaboutArmDirs.Length; i++)
+                if (_roundaboutSet.Contains(tile + RoundaboutArmDirs[i])) return true;   // 이웃이 center면 tile은 그 로터리의 팔
+            return false;
+        }
+
+        // center가 교차로 + center 배타(기존 4형제·표지판) + 인바운드 팔이 전부 비어야(건물X·장치X·타풋프린트X).
+        // OOB 팔은 스킵 — 가장자리 교차로는 부분 풋프린트로 허용(MM: 있는 만큼만 주변 비우기).
+        public bool CanPlaceRoundabout(Vector2Int tile)
+        {
+            if (_config.AutoDetectSignals || !_grid.IsIntersection(tile)) return false;
+            if (_roundaboutSet.Contains(tile) || _placedSet.Contains(tile) || _overpassSet.Contains(tile)
+                || _turnSigns.ContainsKey(tile) || _priorityDirs.ContainsKey(tile)) return false;   // center 배타
+            if (IsInRoundaboutFootprint(tile)) return false;                 // center가 남의 로터리 풋프린트(팔)와 겹침
+            for (int i = 0; i < RoundaboutArmDirs.Length; i++)
+            {
+                var arm = tile + RoundaboutArmDirs[i];
+                if (!_grid.InBounds(arm)) continue;                          // 가장자리 팔 스킵
+                if (IsBuildingTile(_grid.GetTile(arm))) return false;       // 건물 팔 거부(Road·Empty는 OK)
+                if (_placedSet.Contains(arm) || _overpassSet.Contains(arm) || _priorityDirs.ContainsKey(arm)
+                    || _turnSigns.ContainsKey(arm) || _onewayDirs.ContainsKey(arm)) return false;   // 팔에 타 장치
+                if (IsInRoundaboutFootprint(arm)) return false;             // 팔이 남의 로터리 풋프린트와 겹침
+            }
+            return true;
+        }
 
         public bool TryPlaceRoundabout(Vector2Int tile)
         {
@@ -353,7 +385,7 @@ namespace CityFlow.Sim
         public bool CanPlaceOverpass(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
             && !_overpassSet.Contains(tile) && !_placedSet.Contains(tile)
-            && !_roundaboutSet.Contains(tile)                              // 3자 배타
+            && !IsInRoundaboutFootprint(tile)                              // 3자 배타(로터리 풋프린트)
             && !_turnSigns.ContainsKey(tile)    // 표지판과 배타(양방향 — 계획 정정 2026-07-12)
             && !_priorityDirs.ContainsKey(tile);   // 우선도로와 배타(4자 배타, 스펙 2026-07-13)
 
@@ -385,7 +417,7 @@ namespace CityFlow.Sim
         public bool CanPlacePriorityRoad(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
             && !_priorityDirs.ContainsKey(tile) && !_placedSet.Contains(tile)
-            && !_roundaboutSet.Contains(tile) && !_overpassSet.Contains(tile);   // 4자 배타
+            && !IsInRoundaboutFootprint(tile) && !_overpassSet.Contains(tile);   // 4자 배타(로터리 풋프린트)
 
         public bool TryPlacePriorityRoad(Vector2Int tile, Axis mainAxis)
         {
@@ -410,7 +442,8 @@ namespace CityFlow.Sim
 
         public bool CanPlaceOneway(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.InBounds(tile) && _grid.GetTile(tile) == TileType.Road
-            && !_grid.IsIntersection(tile) && !_onewayDirs.ContainsKey(tile);
+            && !_grid.IsIntersection(tile) && !_onewayDirs.ContainsKey(tile)
+            && !IsInRoundaboutFootprint(tile);   // 로터리 팔(도로) 예약
 
         public bool TryPlaceOneway(Vector2Int tile, Vector2Int dir)
         {
@@ -441,7 +474,7 @@ namespace CityFlow.Sim
 
         public bool CanPlaceTurnSign(Vector2Int tile) =>
             !_config.AutoDetectSignals && _grid.IsIntersection(tile)
-            && !_roundaboutSet.Contains(tile) && !_overpassSet.Contains(tile)
+            && !IsInRoundaboutFootprint(tile) && !_overpassSet.Contains(tile)   // 로터리 풋프린트와 배타
             && !_turnSigns.ContainsKey(tile);                                 // 신호는 검사 안 함(공존)
 
         // 배치 API·세이브 복원 양쪽이 공유(비대칭 방지) — enum 캐스팅으로 미정의 값(예: (TurnMode)2)이
