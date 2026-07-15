@@ -55,7 +55,7 @@ namespace CityFlow.View
         [FormerlySerializedAs("zoomStepDistance")]
         [SerializeField, Min(0.1f)] private float zoomDistanceRange = 10f;
         [Tooltip("마우스 휠 입력 1단위당 변경할 카메라 거리")]
-        [SerializeField, Min(0.001f)] private float zoomScrollSensitivity = 0.01f;
+        [SerializeField, Min(0.001f)] private float zoomScrollSensitivity = 1f;
 
         private const float OrthographicSizePerDistance = 0.9375f;
 
@@ -265,11 +265,13 @@ namespace CityFlow.View
             }
 
             bool cameraViewChanged = false;
+            bool cameraModeChanged = false;
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null && keyboard.tabKey.wasPressedThisFrame)
             {
                 isIsometricView = !isIsometricView;
                 cameraViewChanged = true;
+                cameraModeChanged = true;
             }
 
             Mouse mouse = Mouse.current;
@@ -303,6 +305,11 @@ namespace CityFlow.View
             if (cameraViewChanged)
             {
                 ApplyCameraView();
+
+                if (cameraModeChanged && tileData != null)
+                {
+                    RefreshAllTiles();
+                }
             }
         }
 
@@ -312,14 +319,24 @@ namespace CityFlow.View
                 zoomDistance,
                 minimumZoomDistance,
                 minimumZoomDistance + zoomDistanceRange);
+            mainCamera.useOcclusionCulling = false;
             Vector3 cameraPosition = cameraTarget - transform.forward * viewDistance;
 
             if (isIsometricView)
             {
                 Vector3 southEastDirection = (transform.right - transform.up).normalized;
                 float angleRadians = angledViewDegrees * Mathf.Deg2Rad;
-                Vector3 angledOffset = southEastDirection * (Mathf.Cos(angleRadians) * viewDistance)
-                    - transform.forward * (Mathf.Sin(angleRadians) * viewDistance);
+                Vector3 angledOffsetDirection = southEastDirection * Mathf.Cos(angleRadians)
+                    - transform.forward * Mathf.Sin(angleRadians);
+                Vector3 cameraForward = -angledOffsetDirection;
+                float projectedBoardHalfDepth = width * tileSize * 0.5f
+                    * Mathf.Abs(Vector3.Dot(transform.right, cameraForward))
+                    + height * tileSize * 0.5f
+                    * Mathf.Abs(Vector3.Dot(transform.up, cameraForward));
+                float safeCameraDistance = projectedBoardHalfDepth
+                    + mainCamera.nearClipPlane
+                    + 1f;
+                Vector3 angledOffset = angledOffsetDirection * safeCameraDistance;
                 cameraPosition = cameraTarget + angledOffset;
             }
 
@@ -405,6 +422,9 @@ namespace CityFlow.View
             board.transform.localScale = new Vector3(width * tileSize, height * tileSize, 0.04f);
             Renderer boardRenderer = board.GetComponent<Renderer>();
             boardRenderer.sharedMaterial = CreateGridMaterial();
+            boardRenderer.allowOcclusionWhenDynamic = false;
+            boardRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            boardRenderer.receiveShadows = false;
         }
 
         private void BuildGridLines()
@@ -484,6 +504,10 @@ namespace CityFlow.View
             visual.Type = type;
             Vector3 tileScale = GetTileScale(type);
             float tileZ = type == TileType.Road ? 0f : -tileScale.z * 0.5f;
+            visual.Object.SetActive(true);
+            visual.Renderer.enabled = true;
+            visual.Renderer.forceRenderingOff = false;
+            visual.Renderer.allowOcclusionWhenDynamic = false;
             visual.Object.transform.localPosition = GridToLocal(tile, tileZ);
             visual.Object.transform.localScale = tileScale;
             ApplyTileColor(tile, visual);
@@ -2221,6 +2245,9 @@ namespace CityFlow.View
             if (renderer != null)
             {
                 renderer.sharedMaterial = CreateUnlitMaterial();
+                renderer.enabled = true;
+                renderer.forceRenderingOff = false;
+                renderer.allowOcclusionWhenDynamic = false;
             }
 
             return renderer;
@@ -2240,7 +2267,13 @@ namespace CityFlow.View
             Material material = CreateUnlitMaterial();
             Texture2D texture = CreateGridTexture();
 
+            material.renderQueue = 1900;
             material.mainTexture = texture;
+
+            if (material.HasProperty("_ZWrite"))
+            {
+                material.SetFloat("_ZWrite", 0f);
+            }
 
             if (material.HasProperty("_BaseMap"))
             {

@@ -2,10 +2,8 @@ using System;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
-using UnityEngine.EventSystems; // UI 클릭 감지용
 using UnityEngine.InputSystem;
-using UnityEngine.UI;
-using System.Collections.Generic;
+using CityFlow.UI.Controllers;
 
 namespace CityFlow.UI
 {
@@ -13,6 +11,8 @@ namespace CityFlow.UI
     {
         private const float RoadSurfaceMarkerZ = -0.05f;
         private const float EmptyGroundMarkerZ = 0.12f;
+        private const int GhostSortingOrder = 100;
+        private const float MinimumGhostAlpha = 0.75f;
 
         [Header("Ghost Settings")]
         [Tooltip("마우스를 따라다닐 잔상(고스트) 프리팹 또는 스프라이트")]
@@ -35,7 +35,7 @@ namespace CityFlow.UI
         private CityFlowServices _services;
         private bool _isBuildingMode = false;
         
-        private readonly List<RaycastResult> _uiRaycastResults = new List<RaycastResult>();
+        private readonly UIRaycastBlocker _uiRaycastBlocker = new UIRaycastBlocker();
         
         public bool IsBuildingMode => _isBuildingMode;
         
@@ -67,6 +67,7 @@ namespace CityFlow.UI
         public void Initialize(CityFlowServices services)
         {
             _services = services;
+            PrepareGhostRenderer();
         }
 
         public void ConfigureGhost(SpriteRenderer renderer)
@@ -74,6 +75,7 @@ namespace CityFlow.UI
             ghostRenderer = renderer;
             if (ghostRenderer != null)
             {
+                PrepareGhostRenderer();
                 ghostRenderer.gameObject.SetActive(_isBuildingMode);
             }
         }
@@ -177,7 +179,7 @@ namespace CityFlow.UI
 
             // 4. 건설 유효성 검증 (엔진 디커플링 통신)
             bool canPlace = CheckCanPlace(gridCoord);
-            ghostRenderer.color = canPlace ? colorValid : colorInvalid;
+            ghostRenderer.color = GetVisibleGhostColor(canPlace ? colorValid : colorInvalid);
 
             // 5. 마우스 좌클릭 시 최종 건설 명령 하달 (드래그 연속 건설 지원)
             if (Mouse.current != null)
@@ -272,28 +274,7 @@ namespace CityFlow.UI
                 return true;
             }
 
-            if (EventSystem.current == null || Mouse.current == null)
-            {
-                return false;
-            }
-
-            PointerEventData eventData = new PointerEventData(EventSystem.current)
-            {
-                position = Mouse.current.position.ReadValue()
-            };
-
-            _uiRaycastResults.Clear();
-            EventSystem.current.RaycastAll(eventData, _uiRaycastResults);
-
-            for (int i = 0; i < _uiRaycastResults.Count; i++)
-            {
-                if (_uiRaycastResults[i].gameObject.GetComponentInParent<Selectable>() != null)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return _uiRaycastBlocker.IsPointerOverBlockingUI();
         }
 
         private void TryPlaceDragTile(Vector2Int coord)
@@ -320,6 +301,22 @@ namespace CityFlow.UI
             }
 
             return RoadSurfaceMarkerZ;
+        }
+
+        public Color GetVisibleGhostColor(Color color)
+        {
+            color.a = Mathf.Max(color.a, MinimumGhostAlpha);
+            return color;
+        }
+
+        private void PrepareGhostRenderer()
+        {
+            if (ghostRenderer == null)
+            {
+                return;
+            }
+
+            ghostRenderer.sortingOrder = Mathf.Max(ghostRenderer.sortingOrder, GhostSortingOrder);
         }
 
         public Vector2Int GetMouseGridCoordinate()
