@@ -6,6 +6,7 @@ using CityFlow.Sim;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.Serialization;
 
 namespace CityFlow.View
 {
@@ -51,10 +52,11 @@ namespace CityFlow.View
         [Tooltip("지면에서 가장 가까운 A 줌 지점까지의 거리")]
         [SerializeField, Min(0.5f)] private float minimumZoomDistance = 5f;
         [Tooltip("A-B 줌 지점 사이에 적용할 거리")]
-        [SerializeField, Min(0.1f)] private float zoomStepDistance = 10f;
+        [FormerlySerializedAs("zoomStepDistance")]
+        [SerializeField, Min(0.1f)] private float zoomDistanceRange = 10f;
+        [Tooltip("마우스 휠 입력 1단위당 변경할 카메라 거리")]
+        [SerializeField, Min(0.001f)] private float zoomScrollSensitivity = 0.01f;
 
-        private const int ZoomStepCount = 2;
-        private const int DefaultZoomStepIndex = 0;
         private const float OrthographicSizePerDistance = 0.9375f;
 
         [Header("Colors")]
@@ -84,9 +86,6 @@ namespace CityFlow.View
         private readonly List<RouteVehicle> vehicles = new();
         private readonly List<FlowBurstSpeedZone> flowBurstSpeedZones = new();
         private readonly HashSet<Vector2Int> signalTileSet = new();
-        private readonly Dictionary<Vector2Int, RouteVehicle> intersectionOccupants = new();
-        private readonly Dictionary<Vector2Int, RouteVehicle> intersectionClaims = new();
-        private readonly List<Vector2Int> intersectionClaimRelease = new();
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
@@ -105,7 +104,7 @@ namespace CityFlow.View
         private Camera mainCamera;
         private Vector3 cameraTarget;
         private Vector3 cameraUpDirection;
-        private int zoomStepIndex;
+        private float zoomDistance;
         private bool isIsometricView;
 
         public GameObject FlowBurstPrefab => burstPrefab;
@@ -171,6 +170,9 @@ namespace CityFlow.View
             public bool HasCurrentTile;
             public Vector2Int OccupiedTile;
             public bool HasOccupiedTile;
+            public Vector2Int ClaimedIntersection;
+            public bool HasIntersectionClaim;
+            public bool IntersectionClaimHorizontal;
             public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
             public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
         }
@@ -250,7 +252,7 @@ namespace CityFlow.View
                 height * tileSize * 0.5f,
                 0f));
             cameraUpDirection = (transform.up - transform.right).normalized;
-            zoomStepIndex = DefaultZoomStepIndex;
+            zoomDistance = minimumZoomDistance;
             isIsometricView = true;
             ApplyCameraView();
         }
@@ -274,19 +276,13 @@ namespace CityFlow.View
             if (mouse != null)
             {
                 float scrollY = mouse.scroll.ReadValue().y;
-                int nextZoomStepIndex = zoomStepIndex;
-                if (scrollY > 0f)
+                float nextZoomDistance = Mathf.Clamp(
+                    zoomDistance - scrollY * zoomScrollSensitivity,
+                    minimumZoomDistance,
+                    minimumZoomDistance + zoomDistanceRange);
+                if (!Mathf.Approximately(nextZoomDistance, zoomDistance))
                 {
-                    nextZoomStepIndex = Mathf.Max(0, zoomStepIndex - 1);
-                }
-                else if (scrollY < 0f)
-                {
-                    nextZoomStepIndex = Mathf.Min(ZoomStepCount - 1, zoomStepIndex + 1);
-                }
-
-                if (nextZoomStepIndex != zoomStepIndex)
-                {
-                    zoomStepIndex = nextZoomStepIndex;
+                    zoomDistance = nextZoomDistance;
                     cameraViewChanged = true;
                 }
 
@@ -312,7 +308,10 @@ namespace CityFlow.View
 
         private void ApplyCameraView()
         {
-            float viewDistance = minimumZoomDistance + zoomStepDistance * zoomStepIndex;
+            float viewDistance = Mathf.Clamp(
+                zoomDistance,
+                minimumZoomDistance,
+                minimumZoomDistance + zoomDistanceRange);
             Vector3 cameraPosition = cameraTarget - transform.forward * viewDistance;
 
             if (isIsometricView)
@@ -1075,6 +1074,7 @@ namespace CityFlow.View
                 {
                     vehicles[i].HasCurrentTile = false;
                     vehicles[i].HasOccupiedTile = false;
+                    vehicles[i].HasIntersectionClaim = false;
                     vehicles[i].CurrentSpeed = 0f;
                     if (vehicles[i].AngryMark != null)
                     {
@@ -1161,7 +1161,7 @@ namespace CityFlow.View
 
             // 팀 디버그 뷰와 같은 순서로 앞차를 먼저 확인한다.
             // 앞차에 막힌 차량이 교차로를 선점하면 실제 선두 차량까지 막혀 교착이 생긴다.
-            bool blockedByLeader = IsBlockedByLeader(vehicle);
+            bool blockedByLeader = IsBlockedByLeader(vehicle, routeIndex);
             bool mustStop = false;
             if (blockedByLeader)
             {
@@ -1199,6 +1199,7 @@ namespace CityFlow.View
                     targetSpeed,
                     acceleration * Time.deltaTime);
             }
+            float previousPhase = vehicle.Phase;
             vehicle.Phase = Mathf.Repeat(
                 vehicle.Phase + Time.deltaTime * vehicle.CurrentSpeed,
                 segmentCount * 2f);
@@ -1209,6 +1210,18 @@ namespace CityFlow.View
             // 왕복 유령: 접힌 복귀 구간이면 실제 진행은 역방향 — 차선·바라보기 둘 다 이 방향 기준.
             bool forward = vehicle.Phase <= segmentCount;
             EvaluateVehiclePose(route, index, t, forward, out Vector3 pos, out Vector3 travelDir, out Vector2Int insideTile);
+
+            if (WouldOverlapAfterMove(vehicle, routeIndex, pos, travelDir))
+            {
+                vehicle.Phase = previousPhase;
+                vehicle.CurrentSpeed = 0f;
+                ReleaseApproachIntersectionClaims(vehicle);
+                folded = Fold(vehicle.Phase, segmentCount);
+                index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
+                t = folded - index;
+                forward = vehicle.Phase <= segmentCount;
+                EvaluateVehiclePose(route, index, t, forward, out pos, out travelDir, out insideTile);
+            }
 
             // 로터리 연출(뷰 전용 — 엔진 무관): 타일 안에선 진행 방향 오른쪽으로 부풀어
             // 중앙 섬을 반시계로 돌아가는 궤적. 경계에서 0(직선과 연속), 중심에서 최대.
@@ -1662,7 +1675,7 @@ namespace CityFlow.View
 
         // 반대 차선(마주 오는 차)은 무시 — 차선 오프셋으로 이미 분리. 같은 방향 추종만이라 순환 대기 없음
         // (SimDebug 렌더러의 데드락 근본수정과 같은 규약). 96대 전수 검사 = 프레임당 ~9천 회, 무해.
-        private bool IsBlockedByLeader(RouteVehicle vehicle)
+        private bool IsBlockedByLeader(RouteVehicle vehicle, int vehicleIndex)
         {
             if (vehicle.Dir.sqrMagnitude < 0.001f)
             {
@@ -1670,7 +1683,9 @@ namespace CityFlow.View
             }
 
             float gap = tileSize * followGap;
-            float gapSq = gap * gap;
+            float lateralGap = tileSize * 0.2f;
+            Vector3 direction = vehicle.Dir.normalized;
+            Vector3 lateralDirection = new Vector3(-direction.y, direction.x, 0f);
 
             for (int i = 0; i < vehicles.Count; i++)
             {
@@ -1683,9 +1698,9 @@ namespace CityFlow.View
 
                 Vector3 to = other.Pos - vehicle.Pos;
 
-                if (to.sqrMagnitude > gapSq || to.sqrMagnitude < 0.0001f)
+                if (to.sqrMagnitude < 0.0001f)
                 {
-                    continue;   // 멀거나, 완전 겹침(모호) — 겹침은 서로 못 막게 해 교착 방지
+                    return i < vehicleIndex;
                 }
 
                 if (Vector3.Dot(vehicle.Dir, other.Dir) <= 0.5f)
@@ -1693,12 +1708,75 @@ namespace CityFlow.View
                     continue;   // 같은 방향만 추종
                 }
 
-                if (Vector3.Dot(vehicle.Dir, to.normalized) <= 0.6f)
+                float longitudinalDistance = Vector3.Dot(direction, to);
+                if (longitudinalDistance <= 0f || longitudinalDistance > gap)
                 {
-                    continue;   // 앞쪽에 있을 때만
+                    continue;
+                }
+
+                if (Mathf.Abs(Vector3.Dot(lateralDirection, to)) >= lateralGap)
+                {
+                    continue;
                 }
 
                 return true;
+            }
+
+            return false;
+        }
+
+        private bool WouldOverlapAfterMove(
+            RouteVehicle vehicle,
+            int vehicleIndex,
+            Vector3 candidatePosition,
+            Vector3 candidateDirection)
+        {
+            if (candidateDirection.sqrMagnitude < 0.001f)
+            {
+                return false;
+            }
+
+            float longitudinalGap = tileSize * followGap;
+            float lateralGap = tileSize * 0.2f;
+            float crossingGapSq = tileSize * tileSize * 0.05f;
+            Vector3 direction = candidateDirection.normalized;
+            Vector3 lateralDirection = new Vector3(-direction.y, direction.x, 0f);
+
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                RouteVehicle other = vehicles[i];
+                if (other == vehicle || !other.Object.activeSelf || !other.HasCurrentTile)
+                {
+                    continue;
+                }
+
+                Vector3 toOther = other.Pos - candidatePosition;
+                if (toOther.sqrMagnitude < 0.0001f)
+                {
+                    return i < vehicleIndex;
+                }
+
+                float alignment = other.Dir.sqrMagnitude > 0.001f
+                    ? Vector3.Dot(direction, other.Dir.normalized)
+                    : 1f;
+                if (alignment > 0.5f)
+                {
+                    float longitudinalDistance = Vector3.Dot(direction, toOther);
+                    float lateralDistance = Mathf.Abs(Vector3.Dot(lateralDirection, toOther));
+                    if (longitudinalDistance >= 0f
+                        && longitudinalDistance < longitudinalGap
+                        && lateralDistance < lateralGap)
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                if (i < vehicleIndex && toOther.sqrMagnitude < crossingGapSq)
+                {
+                    return true;
+                }
             }
 
             return false;
@@ -1716,37 +1794,21 @@ namespace CityFlow.View
                 }
             }
 
-            intersectionOccupants.Clear();
             for (int i = 0; i < vehicles.Count; i++)
             {
                 RouteVehicle vehicle = vehicles[i];
-                if (!vehicle.Object.activeSelf || !vehicle.HasOccupiedTile
-                    || !signalTileSet.Contains(vehicle.OccupiedTile))
+                if (!vehicle.HasIntersectionClaim)
                 {
                     continue;
                 }
 
-                intersectionOccupants[vehicle.OccupiedTile] = vehicle;
-            }
-
-            intersectionClaimRelease.Clear();
-            foreach (KeyValuePair<Vector2Int, RouteVehicle> claim in intersectionClaims)
-            {
-                RouteVehicle owner = claim.Value;
-                bool keepsClaim = owner != null
-                    && owner.Object.activeSelf
-                    && ((owner.HasOccupiedTile && owner.OccupiedTile == claim.Key)
-                        || IsVehicleHeadingToSignal(owner, claim.Key));
-
+                bool keepsClaim = vehicle.Object.activeSelf
+                    && ((vehicle.HasOccupiedTile && vehicle.OccupiedTile == vehicle.ClaimedIntersection)
+                        || IsVehicleHeadingToSignal(vehicle, vehicle.ClaimedIntersection));
                 if (!keepsClaim)
                 {
-                    intersectionClaimRelease.Add(claim.Key);
+                    vehicle.HasIntersectionClaim = false;
                 }
-            }
-
-            for (int i = 0; i < intersectionClaimRelease.Count; i++)
-            {
-                intersectionClaims.Remove(intersectionClaimRelease[i]);
             }
         }
 
@@ -1764,19 +1826,10 @@ namespace CityFlow.View
 
         private void ReleaseApproachIntersectionClaims(RouteVehicle vehicle)
         {
-            intersectionClaimRelease.Clear();
-            foreach (KeyValuePair<Vector2Int, RouteVehicle> claim in intersectionClaims)
+            if (vehicle.HasIntersectionClaim
+                && (!vehicle.HasOccupiedTile || vehicle.OccupiedTile != vehicle.ClaimedIntersection))
             {
-                if (claim.Value == vehicle
-                    && (!vehicle.HasOccupiedTile || vehicle.OccupiedTile != claim.Key))
-                {
-                    intersectionClaimRelease.Add(claim.Key);
-                }
-            }
-
-            for (int i = 0; i < intersectionClaimRelease.Count; i++)
-            {
-                intersectionClaims.Remove(intersectionClaimRelease[i]);
+                vehicle.HasIntersectionClaim = false;
             }
         }
 
@@ -1838,19 +1891,38 @@ namespace CityFlow.View
                 return true;
             }
 
-            if (intersectionOccupants.TryGetValue(next, out RouteVehicle occupant)
-                && occupant != vehicle)
+            for (int i = 0; i < vehicles.Count; i++)
             {
-                return true;
+                RouteVehicle other = vehicles[i];
+                if (other == vehicle || !other.Object.activeSelf)
+                {
+                    continue;
+                }
+
+                if (other.HasIntersectionClaim && other.ClaimedIntersection == next)
+                {
+                    if (other.IntersectionClaimHorizontal != horizontal)
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                if (other.HasOccupiedTile && other.OccupiedTile == next
+                    && other.Dir.sqrMagnitude > 0.001f)
+                {
+                    bool otherHorizontal = Mathf.Abs(other.Dir.x) >= Mathf.Abs(other.Dir.y);
+                    if (otherHorizontal != horizontal)
+                    {
+                        return true;
+                    }
+                }
             }
 
-            if (intersectionClaims.TryGetValue(next, out RouteVehicle owner)
-                && owner != vehicle)
-            {
-                return true;
-            }
-
-            intersectionClaims[next] = vehicle;
+            vehicle.ClaimedIntersection = next;
+            vehicle.HasIntersectionClaim = true;
+            vehicle.IntersectionClaimHorizontal = horizontal;
             return false;
         }
 

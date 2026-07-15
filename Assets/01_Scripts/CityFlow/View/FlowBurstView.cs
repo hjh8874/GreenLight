@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
@@ -8,13 +9,21 @@ namespace CityFlow.View
     {
         [SerializeField] private Transform burstMarker;
         [SerializeField] private float visibleSeconds = 0.6f;
-        [SerializeField] private float maxScale = 0.4f;
+        [SerializeField, Min(0.1f)] private float maxScale = 1.5f;
 
-        private float hideAtTime;
+        private const float MinimumVisibleScale = 1f;
+
+        private sealed class BurstInstance
+        {
+            public Transform Marker;
+            public Vector3 BaseScale;
+            public float HideAtTime;
+            public Transform TargetVehicle;
+        }
+
+        private readonly List<BurstInstance> burstInstances = new();
         private CityFlowServices services;
         private MainCityView cityView;
-        private Vector3 markerBaseScale = Vector3.one;
-        private Transform activeVehicle;
 
         public void Configure(MainCityView mainCityView)
         {
@@ -40,9 +49,15 @@ namespace CityFlow.View
             cityView ??= GetComponent<MainCityView>();
             EnsureBurstMarker();
 
-            if (burstMarker != null)
+            for (int i = 0; i < burstInstances.Count; i++)
             {
-                burstMarker.gameObject.SetActive(false);
+                BurstInstance instance = burstInstances[i];
+                if (instance.Marker != null)
+                {
+                    instance.Marker.gameObject.SetActive(false);
+                }
+
+                instance.TargetVehicle = null;
             }
         }
 
@@ -62,43 +77,48 @@ namespace CityFlow.View
 
         private void Update()
         {
-            if (burstMarker == null || !burstMarker.gameObject.activeSelf)
+            float duration = Mathf.Max(0.01f, visibleSeconds);
+            float visibleMaxScale = Mathf.Max(MinimumVisibleScale, maxScale);
+            for (int i = 0; i < burstInstances.Count; i++)
             {
-                return;
-            }
+                BurstInstance instance = burstInstances[i];
+                if (instance.Marker == null || !instance.Marker.gameObject.activeSelf)
+                {
+                    continue;
+                }
 
-            float remaining01 = Mathf.Clamp01((hideAtTime - Time.time) / visibleSeconds);
-            float elapsed01 = 1f - remaining01;
-            float pulse = Mathf.Sin(elapsed01 * Mathf.PI);
-            burstMarker.localScale = markerBaseScale * Mathf.Lerp(0.15f, maxScale, pulse);
+                float remaining01 = Mathf.Clamp01((instance.HideAtTime - Time.time) / duration);
+                float elapsed01 = 1f - remaining01;
+                float pulse = Mathf.Sin(elapsed01 * Mathf.PI);
+                instance.Marker.localScale = instance.BaseScale
+                    * Mathf.Lerp(0.15f, visibleMaxScale, pulse);
 
-            if (activeVehicle != null && activeVehicle.gameObject.activeInHierarchy && cityView != null)
-            {
-                burstMarker.position = activeVehicle.position
-                    - cityView.transform.forward * (cityView.TileSize * 0.35f);
-            }
+                if (instance.TargetVehicle != null
+                    && instance.TargetVehicle.gameObject.activeInHierarchy
+                    && cityView != null)
+                {
+                    instance.Marker.position = instance.TargetVehicle.position
+                        - cityView.transform.forward * (cityView.TileSize * 0.35f);
+                }
 
-            if (Time.time >= hideAtTime)
-            {
-                burstMarker.gameObject.SetActive(false);
-                activeVehicle = null;
+                if (Time.time >= instance.HideAtTime)
+                {
+                    instance.Marker.gameObject.SetActive(false);
+                    instance.TargetVehicle = null;
+                }
             }
         }
 
         private void OnFlowBurst(FlowBurstEvent e)
         {
-            if (burstMarker == null)
-            {
-                return;
-            }
-
-            activeVehicle = null;
-            burstMarker.position = cityView != null
-                ? cityView.GetFlowBurstAnchor(e.Tile, out activeVehicle)
+            BurstInstance instance = GetOrCreateBurstInstance();
+            instance.TargetVehicle = null;
+            instance.Marker.position = cityView != null
+                ? cityView.GetFlowBurstAnchor(e.Tile, out instance.TargetVehicle)
                 : GridUtil.GridToWorld(e.Tile);
-            burstMarker.localScale = markerBaseScale * 0.15f;
-            burstMarker.gameObject.SetActive(true);
-            hideAtTime = Time.time + visibleSeconds;
+            instance.Marker.localScale = instance.BaseScale * 0.15f;
+            instance.Marker.gameObject.SetActive(true);
+            instance.HideAtTime = Time.time + Mathf.Max(0.01f, visibleSeconds);
         }
 
         private void EnsureBurstMarker()
@@ -110,10 +130,51 @@ namespace CityFlow.View
                 {
                     burstMarker.SetParent(cityView.EffectRoot, false);
                 }
-                markerBaseScale = burstMarker.localScale;
+                RegisterBurstMarker(burstMarker);
                 return;
             }
 
+            burstMarker = CreateBurstMarker();
+            RegisterBurstMarker(burstMarker);
+        }
+
+        private BurstInstance GetOrCreateBurstInstance()
+        {
+            EnsureBurstMarker();
+            for (int i = 0; i < burstInstances.Count; i++)
+            {
+                BurstInstance instance = burstInstances[i];
+                if (instance.Marker != null && !instance.Marker.gameObject.activeSelf)
+                {
+                    return instance;
+                }
+            }
+
+            return RegisterBurstMarker(CreateBurstMarker());
+        }
+
+        private BurstInstance RegisterBurstMarker(Transform marker)
+        {
+            for (int i = 0; i < burstInstances.Count; i++)
+            {
+                if (burstInstances[i].Marker == marker)
+                {
+                    return burstInstances[i];
+                }
+            }
+
+            var instance = new BurstInstance
+            {
+                Marker = marker,
+                BaseScale = marker.localScale
+            };
+            burstInstances.Add(instance);
+            marker.gameObject.SetActive(false);
+            return instance;
+        }
+
+        private Transform CreateBurstMarker()
+        {
             GameObject marker = cityView != null && cityView.FlowBurstPrefab != null
                 ? Instantiate(cityView.FlowBurstPrefab)
                 : GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -122,8 +183,8 @@ namespace CityFlow.View
             marker.transform.SetParent(cityView != null && cityView.EffectRoot != null
                 ? cityView.EffectRoot
                 : transform, false);
-            markerBaseScale = Vector3.one * (cityView != null ? cityView.TileSize : GridUtil.TileSize);
-            marker.transform.localScale = markerBaseScale;
+            marker.transform.localScale = Vector3.one
+                * (cityView != null ? cityView.TileSize : GridUtil.TileSize);
 
             if (cityView == null || cityView.FlowBurstPrefab == null)
             {
@@ -141,8 +202,8 @@ namespace CityFlow.View
                 }
             }
 
-            burstMarker = marker.transform;
-            burstMarker.gameObject.SetActive(false);
+            marker.SetActive(false);
+            return marker.transform;
         }
 
         private static Material CreateMarkerMaterial(Color color)
