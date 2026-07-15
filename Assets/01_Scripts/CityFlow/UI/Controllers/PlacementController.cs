@@ -2,10 +2,8 @@ using System;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
-using UnityEngine.EventSystems; // UI 클릭 감지용
 using UnityEngine.InputSystem;
-using UnityEngine.UI;
-using System.Collections.Generic;
+using CityFlow.UI.Controllers;
 
 namespace CityFlow.UI
 {
@@ -37,7 +35,7 @@ namespace CityFlow.UI
         private CityFlowServices _services;
         private bool _isBuildingMode = false;
         
-        private readonly List<RaycastResult> _uiRaycastResults = new List<RaycastResult>();
+        private readonly UIRaycastBlocker _uiRaycastBlocker = new UIRaycastBlocker();
         
         public bool IsBuildingMode => _isBuildingMode;
         
@@ -276,28 +274,7 @@ namespace CityFlow.UI
                 return true;
             }
 
-            if (EventSystem.current == null || Mouse.current == null)
-            {
-                return false;
-            }
-
-            PointerEventData eventData = new PointerEventData(EventSystem.current)
-            {
-                position = Mouse.current.position.ReadValue()
-            };
-
-            _uiRaycastResults.Clear();
-            EventSystem.current.RaycastAll(eventData, _uiRaycastResults);
-
-            for (int i = 0; i < _uiRaycastResults.Count; i++)
-            {
-                if (_uiRaycastResults[i].gameObject.GetComponentInParent<Selectable>() != null)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return _uiRaycastBlocker.IsPointerOverBlockingUI();
         }
 
         private void TryPlaceDragTile(Vector2Int coord)

@@ -3,9 +3,6 @@ using CityFlow.Contracts;
 using CityFlow.UI.Data;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.EventSystems;
-using UnityEngine.UI;
-using System.Collections.Generic;
 using System.Linq;
 using CityFlow.Bootstrap;
 
@@ -29,7 +26,7 @@ namespace CityFlow.UI.Controllers
         private PlacementController _originalPlacementController;
         private int _frameStarted = 0;
         private bool _wasOriginalBuildingMode = false;
-        private readonly List<RaycastResult> _uiRaycastResults = new List<RaycastResult>();
+        private readonly UIRaycastBlocker _uiRaycastBlocker = new UIRaycastBlocker();
         
         // Configuration Constants (Balancing Defaults)
         private const float UNDO_REFUND_RATE = 1.0f;
@@ -126,7 +123,7 @@ namespace CityFlow.UI.Controllers
             if (!_isBuildingMode) return;
             if (!_isDemolishMode && _currentData == null) return;
 
-            if (IsPointerOverBlockingUI())
+            if (_uiRaycastBlocker.IsPointerOverBlockingUI())
             {
                 if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(false);
                 return;
@@ -215,32 +212,6 @@ namespace CityFlow.UI.Controllers
             // Fallback for 2D/XY plane cases just in case
             Vector3 fallbackWorldPos = Camera.main.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, Mathf.Abs(Camera.main.transform.position.z)));
             return GridUtil.WorldToGrid(fallbackWorldPos);
-        }
-
-        private bool IsPointerOverBlockingUI()
-        {
-            if (EventSystem.current == null || Mouse.current == null)
-            {
-                return false;
-            }
-
-            PointerEventData eventData = new PointerEventData(EventSystem.current)
-            {
-                position = Mouse.current.position.ReadValue()
-            };
-
-            _uiRaycastResults.Clear();
-            EventSystem.current.RaycastAll(eventData, _uiRaycastResults);
-
-            for (int i = 0; i < _uiRaycastResults.Count; i++)
-            {
-                if (_uiRaycastResults[i].gameObject.GetComponentInParent<Selectable>() != null)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private bool CheckCanPlace(Vector2Int coord, InfrastructureDataSO data)
