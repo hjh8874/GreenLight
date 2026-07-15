@@ -1,4 +1,3 @@
-using System.Reflection;
 using CityFlow.Bootstrap;
 using UnityEngine;
 
@@ -21,11 +20,8 @@ namespace CityFlow.DebugTools
                 return;
             }
 
-            // 자동 프로퍼티 백킹 필드를 직접 꺼서 비공개 세터 우회.
-            var field = save.GetType().GetField(
-                "<IsSavingEnabled>k__BackingField",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            field?.SetValue(save, false);
+            // 공개 API로 라이브 세이브 쓰기 비활성 (리플렉션 우회 제거 — 사일런트 실패 없음).
+            save.SetSavingEnabled(false);
 
             Debug.Log($"[DebugDisableSaving] 라이브 세이브 쓰기 비활성 (IsSavingEnabled={save.IsSavingEnabled}). 이 씬은 save_v1.json에 안 씀.");
         }

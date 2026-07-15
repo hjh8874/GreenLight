@@ -21,6 +21,11 @@ namespace CityFlow.Save
         public bool IsRestoring { get; private set; }
         public bool IsSavingEnabled { get; private set; } = true;
 
+        // 디버그 씬 등에서 라이브 세이브 쓰기를 명시적으로 끄고/켜기 위한 공개 훅.
+        // (컴파일러 생성 백킹필드를 리플렉션으로 우회하면 필드명 변경·IL2CPP 스트리핑 시
+        //  조용히 실패해 저장이 켜진 채로 남으므로, 명시적 API로 그 사일런트 실패를 제거.)
+        public void SetSavingEnabled(bool enabled) => IsSavingEnabled = enabled;
+
         private WeeklySettlementSaveData retainedWeeklySettlement;
         private ResearchSaveData retainedResearch;
         private ProgressionSaveData retainedProgression;
