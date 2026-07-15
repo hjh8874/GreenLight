@@ -1162,14 +1162,17 @@ namespace CityFlow.View
             // 팀 디버그 뷰와 같은 순서로 앞차를 먼저 확인한다.
             // 앞차에 막힌 차량이 교차로를 선점하면 실제 선두 차량까지 막혀 교착이 생긴다.
             bool blockedByLeader = IsBlockedByLeader(vehicle);
+            bool mustStop = false;
             if (blockedByLeader)
             {
                 ReleaseApproachIntersectionClaims(vehicle);
                 targetSpeed = 0f;
+                mustStop = true;
             }
             else if (IsRouteVehicleBlocked(vehicle, route, vehicle.Phase))
             {
                 targetSpeed = 0f;
+                mustStop = true;
             }
 
             // 90도 원호 길이는 같은 반경의 두 직선 합보다 짧으므로, phase 진행량을 보정해
@@ -1179,13 +1182,22 @@ namespace CityFlow.View
                 targetSpeed *= GetTurnPhaseSpeedMultiplier(route, vehicle.Phase);
             }
 
-            float acceleration = targetSpeed < vehicle.CurrentSpeed
-                ? vehicleDeceleration
-                : vehicleAcceleration * (boostedByFlowBurst ? flowBurstAccelerationMultiplier : 1f);
-            vehicle.CurrentSpeed = Mathf.MoveTowards(
-                vehicle.CurrentSpeed,
-                targetSpeed,
-                acceleration * Time.deltaTime);
+            if (mustStop)
+            {
+                // 신호와 차간 거리 판정은 연출보다 우선한다. 감속 중 Phase가 전진하면
+                // 정지선이나 앞차 경계를 넘을 수 있으므로 논리 이동을 즉시 멈춘다.
+                vehicle.CurrentSpeed = 0f;
+            }
+            else
+            {
+                float acceleration = targetSpeed < vehicle.CurrentSpeed
+                    ? vehicleDeceleration
+                    : vehicleAcceleration * (boostedByFlowBurst ? flowBurstAccelerationMultiplier : 1f);
+                vehicle.CurrentSpeed = Mathf.MoveTowards(
+                    vehicle.CurrentSpeed,
+                    targetSpeed,
+                    acceleration * Time.deltaTime);
+            }
             vehicle.Phase = Mathf.Repeat(
                 vehicle.Phase + Time.deltaTime * vehicle.CurrentSpeed,
                 segmentCount * 2f);
