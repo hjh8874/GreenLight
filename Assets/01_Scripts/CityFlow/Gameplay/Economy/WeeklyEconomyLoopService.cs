@@ -154,8 +154,6 @@ namespace CityFlow.Gameplay.Economy
                 return false;
             }
 
-            services?.Save?.Save();
-
             Debug.Log(
                 $"[WeeklyEconomyLoopService] Pending coins harvested. " +
                 $"Amount: {amount}, Balance: {services?.Economy?.Coins ?? 0L}.");
@@ -216,18 +214,19 @@ namespace CityFlow.Gameplay.Economy
             ProcessCalendarProgress();
         }
 
-        private void OnRestoreCompleted(RestoreCompletedEvent _)
+        private void OnRestoreCompleted(RestoreCompletedEvent restoreEvent)
         {
             CaptureLegacyCalendarBaseline();
 
+            if (!restoreEvent.IncludesOfflineProgression)
+            {
+                PublishPendingCoins();
+                return;
+            }
+
             bool claimedRestoredPending =
                 TryClaimPendingCoins(false, out long claimedAmount);
-            bool calendarProgressChanged = ProcessCalendarProgress();
-
-            if (claimedRestoredPending || calendarProgressChanged)
-            {
-                services.Save?.Save();
-            }
+            ProcessCalendarProgress();
 
             if (claimedRestoredPending)
             {

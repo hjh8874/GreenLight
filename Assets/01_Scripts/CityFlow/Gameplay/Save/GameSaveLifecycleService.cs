@@ -11,16 +11,10 @@ namespace CityFlow.Gameplay.Save
         [SerializeField] private bool loadOnStart = true;
 
         [Header("Automatic Save")]
-        [SerializeField] private bool saveOnFocusLost = true;
-        [SerializeField] private bool saveOnApplicationPause = true;
         [SerializeField] private bool saveOnApplicationQuit = true;
 
         private CityFlowServices services;
         private bool initialLoadAttempted;
-        private bool inactiveSaveCompleted;
-        private bool applicationPaused;
-        private bool applicationFocused = true;
-        private bool applicationQuitting;
         private BasicEconomySaveAdapter weeklySettlementSaveAdapter;
 
         public void Initialize(CityFlowServices services)
@@ -67,36 +61,8 @@ namespace CityFlow.Gameplay.Save
             TryLoadInitialSave();
         }
 
-        private void OnApplicationFocus(bool hasFocus)
-        {
-            applicationFocused = hasFocus;
-
-            if (!hasFocus && saveOnFocusLost)
-            {
-                TrySaveInactiveState("application focus lost");
-                return;
-            }
-
-            ResetInactiveSaveGuard();
-        }
-
-        private void OnApplicationPause(bool pauseStatus)
-        {
-            applicationPaused = pauseStatus;
-
-            if (pauseStatus && saveOnApplicationPause)
-            {
-                TrySaveInactiveState("application paused");
-                return;
-            }
-
-            ResetInactiveSaveGuard();
-        }
-
         private void OnApplicationQuit()
         {
-            applicationQuitting = true;
-
             if (!saveOnApplicationQuit)
             {
                 return;
@@ -138,16 +104,6 @@ namespace CityFlow.Gameplay.Save
                 : "[GameSaveLifecycleService] Initial save could not be loaded.");
         }
 
-        private void TrySaveInactiveState(string reason)
-        {
-            if (inactiveSaveCompleted)
-            {
-                return;
-            }
-
-            inactiveSaveCompleted = TrySave(reason);
-        }
-
         private bool TrySave(string reason)
         {
             if (services?.Save == null)
@@ -156,20 +112,12 @@ namespace CityFlow.Gameplay.Save
                 return false;
             }
 
-            bool saved = services.Save.Save();
+            bool saved = services.Save.Save(createAutomaticSlot: true);
             Debug.Log(saved
                 ? $"[GameSaveLifecycleService] Game saved because of {reason}."
                 : $"[GameSaveLifecycleService] Game save failed because of {reason}.");
 
             return saved;
-        }
-
-        private void ResetInactiveSaveGuard()
-        {
-            if (!applicationPaused && applicationFocused && !applicationQuitting)
-            {
-                inactiveSaveCompleted = false;
-            }
         }
 
         // Unity setup: Add this component to the Services object in the integrated gameplay scene.
