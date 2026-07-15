@@ -82,12 +82,12 @@ namespace CityFlow.Gameplay.Save
                 return;
             }
 
-            bool saved = services.Save.Save();
+            bool saved = services.Save.Save(createAutomaticSlot: true);
             Debug.Log(saved
                 ? $"[AutoSaveService] Auto saved at game month {totalMonths}."
                 : $"[AutoSaveService] Auto save failed at game month {totalMonths}.");
         }
 
-        // Attach this component to a scene object with GameCalendarService. CityBootstrap initializes it automatically.
+        // Unity setup: Attach this beside GameCalendarService. One automatic slot is created per game month.
     }
 }

@@ -17,6 +17,7 @@ namespace CityFlow.Save
         public IOfflineCalendarProgressionSource OfflineCalendarProgressionSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
         public ISaveClock Clock { get; private set; }
+        public SaveSlotRepository SaveSlots { get; private set; }
         public bool IsRestoring { get; private set; }
         public bool IsSavingEnabled { get; private set; } = true;
 
@@ -28,6 +29,7 @@ namespace CityFlow.Save
 
         public event Action<RestoreCompletedEvent> RestoreCompleted;
         public event Action<OfflineSettlementCompletedEvent> OfflineSettlementCompleted;
+        public event Action<SaveSlotMetadata> AutomaticSaveSlotCreated;
 
         public SaveService(
             ISimSaveSource simSaveSource,
@@ -43,6 +45,7 @@ namespace CityFlow.Save
             EconomySaveSource = economySaveSource;
             ResearchSaveSource = researchSaveSource;
             ProgressionSaveSource = progressionSaveSource;
+            SaveSlots = new SaveSlotRepository();
         }
 
         public void RegisterEconomySaveSource(IEconomySaveSource economySaveSource)
@@ -178,7 +181,7 @@ namespace CityFlow.Save
             }
         }
 
-        public bool Save()
+        public bool Save(bool createAutomaticSlot = false)
         {
             if (!IsSavingEnabled)
             {
@@ -192,6 +195,12 @@ namespace CityFlow.Save
             if (saved)
             {
                 RetainOptionalSections(saveData);
+
+                if (createAutomaticSlot
+                    && SaveSlots.TryCreateAutomatic(saveData, out SaveSlotMetadata metadata))
+                {
+                    AutomaticSaveSlotCreated?.Invoke(metadata);
+                }
             }
 
             return saved;
@@ -221,6 +230,50 @@ namespace CityFlow.Save
                 return false;
             }
 
+            return TryRestoreLoadedSnapshot(saveData, settleOffline: true);
+        }
+
+        public bool TryCreateManualSave(
+            string displayName,
+            byte[] previewPng,
+            out SaveSlotMetadata metadata)
+        {
+            metadata = null;
+
+            if (!IsSavingEnabled)
+            {
+                Debug.LogWarning("Manual save skipped because saving is disabled.");
+                return false;
+            }
+
+            return SaveSlots.TryCreateManual(
+                CreateSnapshot(),
+                displayName,
+                previewPng,
+                out metadata);
+        }
+
+        public bool TryLoadSaveSlot(string slotId, bool settleOffline = false)
+        {
+            return SaveSlots.TryLoad(slotId, out GameSaveData saveData)
+                && TryRestoreLoadedSnapshot(saveData, settleOffline);
+        }
+
+        public bool TryDeleteSaveSlot(string slotId)
+        {
+            return SaveSlots.TryDelete(slotId);
+        }
+
+        private bool TryRestoreLoadedSnapshot(
+            GameSaveData saveData,
+            bool settleOffline)
+        {
+            if (saveData == null)
+            {
+                Debug.LogWarning("Save restore skipped because save data is null.");
+                return false;
+            }
+
             if (saveData.SaveVersion != SaveConstants.CurrentSaveVersion)
             {
                 Debug.LogWarning(
@@ -238,7 +291,9 @@ namespace CityFlow.Save
             {
                 RestoreSnapshot(saveData);
                 restoredSnapshot = CreateSnapshot();
-                settledOfflineSeconds = SettleOfflineProgress(saveData);
+                settledOfflineSeconds = settleOffline
+                    ? SettleOfflineProgress(saveData)
+                    : 0.0;
             }
             finally
             {
@@ -246,7 +301,20 @@ namespace CityFlow.Save
             }
 
             RestoreCompleted?.Invoke(
-                new RestoreCompletedEvent(settledOfflineSeconds));
+                new RestoreCompletedEvent(
+                    settledOfflineSeconds,
+                    settleOffline));
+
+            if (settleOffline)
+            {
+                bool persistedSettlement = Save(createAutomaticSlot: false);
+
+                if (!persistedSettlement)
+                {
+                    Debug.LogWarning(
+                        "Offline settlement completed, but its final state could not be persisted.");
+                }
+            }
 
             OfflineSettlementCompletedEvent settlementSummary =
                 CreateOfflineSettlementSummary(
@@ -318,10 +386,9 @@ namespace CityFlow.Save
             double settledSeconds = offlineSettlementSource.SettleOffline(elapsedSeconds);
             OfflineCalendarProgressionSource?.AdvanceOffline(settledSeconds);
 
-            bool savedAfterSettlement = Save();
-            Debug.Log(savedAfterSettlement
-                ? $"Offline settlement completed and saved for {settledSeconds:0.##} of {elapsedSeconds:0.##} elapsed seconds."
-                : $"Offline settlement completed for {settledSeconds:0.##} of {elapsedSeconds:0.##} elapsed seconds, but the updated save could not be written.");
+            Debug.Log(
+                $"Offline settlement completed for {settledSeconds:0.##} " +
+                $"of {elapsedSeconds:0.##} elapsed seconds.");
 
             return settledSeconds;
         }
