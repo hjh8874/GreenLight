@@ -305,6 +305,17 @@ namespace CityFlow.Save
                     settledOfflineSeconds,
                     settleOffline));
 
+            if (settleOffline)
+            {
+                bool persistedSettlement = Save(createAutomaticSlot: false);
+
+                if (!persistedSettlement)
+                {
+                    Debug.LogWarning(
+                        "Offline settlement completed, but its final state could not be persisted.");
+                }
+            }
+
             OfflineSettlementCompletedEvent settlementSummary =
                 CreateOfflineSettlementSummary(
                     restoredSnapshot,
