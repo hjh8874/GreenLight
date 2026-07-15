@@ -15,6 +15,13 @@ namespace CityFlow.Contracts
                 Mathf.FloorToInt(world.y / TileSize));
         }
 
+        public static Vector2Int WorldToGridXZ(Vector3 world)
+        {
+            return new Vector2Int(
+                Mathf.RoundToInt(world.x / TileSize),
+                Mathf.RoundToInt(world.z / TileSize));
+        }
+
         public static Vector3 GridToWorld(Vector2Int grid)
         {
             return new Vector3(

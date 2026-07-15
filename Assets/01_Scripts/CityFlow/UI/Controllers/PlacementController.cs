@@ -333,7 +333,7 @@ namespace CityFlow.UI
                 if (xyPlane.Raycast(xyRay, out float xyEnter))
                 {
                     Vector3 worldPos = xyRay.GetPoint(xyEnter);
-                    return new Vector2Int(Mathf.FloorToInt(worldPos.x), Mathf.FloorToInt(worldPos.y));
+                    return GridUtil.WorldToGrid(worldPos);
                 }
             }
             // 화면 좌표를 평면(Y=0)에 투사하여 정수형 그리드 좌표로 뽑아냅니다.
@@ -343,12 +343,12 @@ namespace CityFlow.UI
             if (groundPlane.Raycast(ray, out float enter))
             {
                 Vector3 hitPoint = ray.GetPoint(enter);
-                return new Vector2Int(Mathf.RoundToInt(hitPoint.x), Mathf.RoundToInt(hitPoint.z));
+                return GridUtil.WorldToGridXZ(hitPoint);
             }
             
             // (Fallback) 만약 2D 세팅일 경우를 위한 안전장치
             Vector3 fallbackWorldPos = Camera.main.ScreenToWorldPoint(mousePos);
-            return new Vector2Int(Mathf.RoundToInt(fallbackWorldPos.x), Mathf.RoundToInt(fallbackWorldPos.y));
+            return GridUtil.WorldToGrid(fallbackWorldPos);
         }
 
         private bool CheckCanPlace(Vector2Int coord)

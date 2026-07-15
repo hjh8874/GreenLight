@@ -204,12 +204,12 @@ namespace CityFlow.UI.Controllers
             if (groundPlane.Raycast(ray, out float enter))
             {
                 Vector3 hitPoint = ray.GetPoint(enter);
-                return new Vector2Int(Mathf.RoundToInt(hitPoint.x), Mathf.RoundToInt(hitPoint.z));
+                return GridUtil.WorldToGridXZ(hitPoint);
             }
             
             // Fallback for 2D/XY plane cases just in case
             Vector3 fallbackWorldPos = Camera.main.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, Mathf.Abs(Camera.main.transform.position.z)));
-            return new Vector2Int(Mathf.RoundToInt(fallbackWorldPos.x), Mathf.RoundToInt(fallbackWorldPos.y));
+            return GridUtil.WorldToGrid(fallbackWorldPos);
         }
 
         private bool CheckCanPlace(Vector2Int coord, InfrastructureDataSO data)

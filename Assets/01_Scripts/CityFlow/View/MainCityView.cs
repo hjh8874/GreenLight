@@ -1171,6 +1171,7 @@ namespace CityFlow.View
             }
             else if (IsRouteVehicleBlocked(vehicle, route, vehicle.Phase))
             {
+                ReleaseApproachIntersectionClaims(vehicle);
                 targetSpeed = 0f;
                 mustStop = true;
             }
@@ -2099,10 +2100,17 @@ namespace CityFlow.View
                 }
 
                 bool sameTile = vehicle.CurrentTile == tile;
+                Vector2Int tileDistance = vehicle.CurrentTile - tile;
+                if (Mathf.Abs(tileDistance.x) > flowBurstSpeedRadius
+                    || Mathf.Abs(tileDistance.y) > flowBurstSpeedRadius)
+                {
+                    continue;
+                }
+
                 bool wasJammed = vehicle.AngryMark != null && vehicle.AngryMark.activeSelf;
-                int priority = wasJammed
-                    ? (sameTile ? 0 : 1)
-                    : (sameTile ? 2 : 3);
+                int priority = sameTile
+                    ? (wasJammed ? 0 : 1)
+                    : (wasJammed ? 2 : 3);
                 float distanceSqr = (vehicle.Object.transform.position - tileCenter).sqrMagnitude;
 
                 if (priority < bestPriority || (priority == bestPriority && distanceSqr < bestDistanceSqr))
