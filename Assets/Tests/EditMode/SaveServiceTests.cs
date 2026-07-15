@@ -160,6 +160,10 @@ namespace CityFlow.Sim.Tests
             Assert.That(summary.InitialCoins, Is.EqualTo(100L));
             Assert.That(summary.EarnedCoins, Is.EqualTo(90L));
             Assert.That(summary.CurrentCoins, Is.EqualTo(190L));
+            Assert.That(repository.TryLoad(out GameSaveData persisted), Is.True);
+            Assert.That(persisted.Economy.Coins, Is.EqualTo(190L));
+            Assert.That(persisted.WeeklySettlement.PendingCoins, Is.Zero);
+            Assert.That(persisted.SavedAtUtcTicks, Is.EqualTo(now.Ticks));
         }
 
         [Test]
