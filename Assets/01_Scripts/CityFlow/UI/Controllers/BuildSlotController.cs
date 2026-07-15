@@ -21,10 +21,15 @@ namespace CityFlow.UI
         private PlacementController _placementController;
         private TooltipController _tooltipController;
 
+        public TileDataSO TileData => tileData;
+
         public void Initialize(PlacementController placement, TooltipController tooltip)
         {
             _placementController = placement;
             _tooltipController = tooltip;
+
+            ResolveReferences();
+            NormalizeLayout();
 
             // UI 초기화
             if (tileData != null)
@@ -68,6 +73,76 @@ namespace CityFlow.UI
             }
         }
 
+        private void ResolveReferences()
+        {
+            Transform iconTransform = transform.Find("Icon");
+            Transform costTransform = transform.Find("CostText");
+            Transform buyTransform = transform.Find("Btn_Buy");
+
+            if (iconTransform != null)
+            {
+                iconImage = iconTransform.GetComponent<Image>();
+            }
+
+            if (costTransform != null)
+            {
+                costText = costTransform.GetComponent<TextMeshProUGUI>();
+            }
+
+            if (buyTransform != null)
+            {
+                btnBuy = buyTransform.GetComponent<Button>();
+            }
+        }
+
+        private void NormalizeLayout()
+        {
+            if (costText != null)
+            {
+                RectTransform costRect = costText.rectTransform;
+                costRect.anchorMin = new Vector2(0.5f, 1f);
+                costRect.anchorMax = new Vector2(0.5f, 1f);
+                costRect.pivot = new Vector2(0.5f, 1f);
+                costRect.anchoredPosition = new Vector2(0f, -8f);
+                costRect.sizeDelta = new Vector2(100f, 30f);
+                costText.enableAutoSizing = true;
+                costText.fontSizeMin = 14f;
+                costText.fontSizeMax = 22f;
+                costText.alignment = TextAlignmentOptions.Center;
+                costText.textWrappingMode = TextWrappingModes.NoWrap;
+            }
+
+            if (iconImage != null)
+            {
+                RectTransform iconRect = iconImage.rectTransform;
+                iconRect.anchorMin = new Vector2(0.5f, 1f);
+                iconRect.anchorMax = new Vector2(0.5f, 1f);
+                iconRect.pivot = new Vector2(0.5f, 1f);
+                iconRect.anchoredPosition = new Vector2(0f, -42f);
+                iconRect.sizeDelta = new Vector2(84f, 72f);
+            }
+
+            if (btnBuy != null)
+            {
+                RectTransform buttonRect = btnBuy.GetComponent<RectTransform>();
+                buttonRect.anchorMin = new Vector2(0.5f, 0f);
+                buttonRect.anchorMax = new Vector2(0.5f, 0f);
+                buttonRect.pivot = new Vector2(0.5f, 0f);
+                buttonRect.anchoredPosition = new Vector2(0f, 8f);
+                buttonRect.sizeDelta = new Vector2(100f, 38f);
+
+                TextMeshProUGUI buttonLabel = btnBuy.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (buttonLabel != null)
+                {
+                    buttonLabel.enableAutoSizing = true;
+                    buttonLabel.fontSizeMin = 14f;
+                    buttonLabel.fontSizeMax = 18f;
+                    buttonLabel.alignment = TextAlignmentOptions.Center;
+                    buttonLabel.textWrappingMode = TextWrappingModes.NoWrap;
+                }
+            }
+        }
+
         public void OnPointerEnter(PointerEventData eventData)
         {
             // Tooltip 표시 (DOTween 애니메이션은 btnBuy의 EventTrigger로 이동)
@@ -98,16 +173,12 @@ namespace CityFlow.UI
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            // 전체 슬롯 클릭 시 가벼운 선택 애니메이션 (실제 건설은 btnBuy가 담당)
+            // 전체 슬롯 클릭 시 가벼운 선택 애니메이션
             transform.DOKill();
             transform.localScale = Vector3.one; 
             transform.DOPunchScale(new Vector3(-0.05f, -0.05f, 0f), 0.15f, 2, 0.5f);
 
-            // 만약 별도의 구매 버튼(btnBuy)이 연결되지 않은 기존 프리팹이라면 호환성을 위해 여기서 처리합니다.
-            if (btnBuy == null)
-            {
-                OnBuyClicked();
-            }
+            OnBuyClicked();
         }
 
         private void OnBuyClicked()

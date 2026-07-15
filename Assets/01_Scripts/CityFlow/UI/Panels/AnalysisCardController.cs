@@ -78,6 +78,8 @@ namespace CityFlow.UI
 
         private void Start()
         {
+            NormalizeSignalControlLayout();
+
             if (btnResolveJam != null) btnResolveJam.onClick.AddListener(OnResolveJamClicked);
             if (btnUpgrade != null) btnUpgrade.onClick.AddListener(OnUpgradeClicked);
             
@@ -118,6 +120,8 @@ namespace CityFlow.UI
         public void OpenCard(Vector2Int tile)
         {
             if (gameObject.activeSelf && _currentTile == tile && !_isClosing) return; // 이미 열려있으면 무시
+
+            NormalizeSignalControlLayout();
             
             _isClosing = false;
             _currentTile = tile;
@@ -179,6 +183,163 @@ namespace CityFlow.UI
                 _currentWaitTime = 0f;
                 if (_updateRoutine != null) StopCoroutine(_updateRoutine);
                 _updateRoutine = StartCoroutine(UpdateCardRoutine());
+            }
+        }
+
+        private void NormalizeSignalControlLayout()
+        {
+            RectTransform cardRect = transform as RectTransform;
+            if (cardRect != null)
+            {
+                cardRect.anchorMin = Vector2.zero;
+                cardRect.anchorMax = Vector2.zero;
+                cardRect.pivot = Vector2.zero;
+                cardRect.anchoredPosition = new Vector2(20f, 20f);
+                cardRect.sizeDelta = new Vector2(460f, 280f);
+            }
+
+            if (txtTitle != null)
+            {
+                RectTransform titleRect = txtTitle.rectTransform;
+                titleRect.anchorMin = new Vector2(0.5f, 1f);
+                titleRect.anchorMax = new Vector2(0.5f, 1f);
+                titleRect.pivot = new Vector2(0.5f, 1f);
+                titleRect.anchoredPosition = new Vector2(0f, -14f);
+                titleRect.sizeDelta = new Vector2(420f, 36f);
+                txtTitle.fontSize = 22f;
+                txtTitle.alignment = TextAlignmentOptions.TopLeft;
+                txtTitle.textWrappingMode = TextWrappingModes.NoWrap;
+            }
+
+            if (signalControlContainer == null)
+            {
+                return;
+            }
+
+            RectTransform containerRect = signalControlContainer.transform as RectTransform;
+            if (containerRect != null)
+            {
+                containerRect.anchorMin = Vector2.zero;
+                containerRect.anchorMax = Vector2.one;
+                containerRect.anchoredPosition = Vector2.zero;
+                containerRect.sizeDelta = Vector2.zero;
+            }
+
+            NormalizeSignalLabel("LblOffset", new Vector2(-150f, 48f));
+            NormalizeSignalLabel("LblGreen", new Vector2(-150f, -8f));
+            NormalizeSlider(sliderOffset, new Vector2(35f, 48f));
+            NormalizeSlider(sliderGreen, new Vector2(35f, -8f));
+            NormalizeSignalButton(btnOverrideH, new Vector2(-65f, -82f));
+            NormalizeSignalButton(btnOverrideV, new Vector2(65f, -82f));
+        }
+
+        private void NormalizeSignalLabel(string childName, Vector2 position)
+        {
+            Transform labelTransform = signalControlContainer.transform.Find(childName);
+            if (labelTransform == null)
+            {
+                return;
+            }
+
+            RectTransform labelRect = labelTransform as RectTransform;
+            if (labelRect != null)
+            {
+                labelRect.anchorMin = new Vector2(0.5f, 0.5f);
+                labelRect.anchorMax = new Vector2(0.5f, 0.5f);
+                labelRect.pivot = new Vector2(0.5f, 0.5f);
+                labelRect.anchoredPosition = position;
+                labelRect.sizeDelta = new Vector2(110f, 24f);
+            }
+
+            TMP_Text label = labelTransform.GetComponent<TMP_Text>();
+            if (label != null)
+            {
+                label.fontSize = 16f;
+                label.alignment = TextAlignmentOptions.MidlineLeft;
+                label.textWrappingMode = TextWrappingModes.NoWrap;
+            }
+        }
+
+        private static void NormalizeSlider(Slider slider, Vector2 position)
+        {
+            if (slider == null)
+            {
+                return;
+            }
+
+            RectTransform sliderRect = slider.transform as RectTransform;
+            if (sliderRect != null)
+            {
+                sliderRect.anchorMin = new Vector2(0.5f, 0.5f);
+                sliderRect.anchorMax = new Vector2(0.5f, 0.5f);
+                sliderRect.pivot = new Vector2(0.5f, 0.5f);
+                sliderRect.anchoredPosition = position;
+                sliderRect.sizeDelta = new Vector2(220f, 20f);
+            }
+
+            RectTransform background = slider.transform.Find("Background") as RectTransform;
+            if (background != null)
+            {
+                background.anchorMin = new Vector2(0f, 0.3f);
+                background.anchorMax = new Vector2(1f, 0.7f);
+                background.offsetMin = Vector2.zero;
+                background.offsetMax = Vector2.zero;
+            }
+
+            RectTransform fillArea = slider.transform.Find("Fill Area") as RectTransform;
+            if (fillArea != null)
+            {
+                fillArea.anchorMin = new Vector2(0f, 0.25f);
+                fillArea.anchorMax = new Vector2(1f, 0.75f);
+                fillArea.offsetMin = new Vector2(10f, 0f);
+                fillArea.offsetMax = new Vector2(-10f, 0f);
+            }
+
+            RectTransform handleArea = slider.transform.Find("Handle Slide Area") as RectTransform;
+            if (handleArea != null)
+            {
+                handleArea.anchorMin = Vector2.zero;
+                handleArea.anchorMax = Vector2.one;
+                handleArea.offsetMin = new Vector2(10f, 0f);
+                handleArea.offsetMax = new Vector2(-10f, 0f);
+            }
+        }
+
+        private static void NormalizeSignalButton(Button button, Vector2 position)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            RectTransform buttonRect = button.transform as RectTransform;
+            if (buttonRect != null)
+            {
+                buttonRect.anchorMin = new Vector2(0.5f, 0.5f);
+                buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
+                buttonRect.pivot = new Vector2(0.5f, 0.5f);
+                buttonRect.anchoredPosition = position;
+                buttonRect.sizeDelta = new Vector2(110f, 40f);
+            }
+
+            Transform labelTransform = button.transform.Find("Text");
+            TMP_Text label = labelTransform != null ? labelTransform.GetComponent<TMP_Text>() : null;
+            if (label != null)
+            {
+                label.fontSize = 16f;
+                label.alignment = TextAlignmentOptions.Center;
+                label.textWrappingMode = TextWrappingModes.NoWrap;
+            }
+
+            Transform cooldownTextTransform = button.transform.Find("CooldownOverlay/CooldownText");
+            TMP_Text cooldownText = cooldownTextTransform != null
+                ? cooldownTextTransform.GetComponent<TMP_Text>()
+                : null;
+            if (cooldownText != null)
+            {
+                cooldownText.fontSize = 16f;
+                cooldownText.alignment = TextAlignmentOptions.Center;
+                cooldownText.textWrappingMode = TextWrappingModes.NoWrap;
             }
         }
 
@@ -298,6 +459,7 @@ namespace CityFlow.UI
 
             // 가로 오버라이드 버튼
             if (btnOverrideH != null) btnOverrideH.interactable = !onCooldown;
+            SetButtonLabelVisible(btnOverrideH, !onCooldown);
             if (imgCooldownH != null)
             {
                 imgCooldownH.gameObject.SetActive(onCooldown);
@@ -311,6 +473,7 @@ namespace CityFlow.UI
 
             // 세로 오버라이드 버튼
             if (btnOverrideV != null) btnOverrideV.interactable = !onCooldown;
+            SetButtonLabelVisible(btnOverrideV, !onCooldown);
             if (imgCooldownV != null)
             {
                 imgCooldownV.gameObject.SetActive(onCooldown);
@@ -320,6 +483,20 @@ namespace CityFlow.UI
             {
                 txtCooldownV.gameObject.SetActive(onCooldown);
                 txtCooldownV.text = timeLabel;
+            }
+        }
+
+        private static void SetButtonLabelVisible(Button button, bool isVisible)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            Transform label = button.transform.Find("Text");
+            if (label != null)
+            {
+                label.gameObject.SetActive(isVisible);
             }
         }
     }

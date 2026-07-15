@@ -124,15 +124,23 @@ namespace CityFlow.UI.Controllers
             if (!_isBuildingMode) return;
             if (!_isDemolishMode && _currentData == null) return;
 
-            if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
-            {
-                CancelPlacement();
-                return;
-            }
-
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             {
                 if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(false);
+                return;
+            }
+
+            if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
+            {
+                Vector2Int clickedCoord = GetMouseGridCoordinate();
+                if (_originalPlacementController != null)
+                {
+                    _originalPlacementController.TryDemolishAt(clickedCoord);
+                }
+                else
+                {
+                    TryDemolishInfrastructureAt(clickedCoord);
+                }
                 return;
             }
 
@@ -196,12 +204,12 @@ namespace CityFlow.UI.Controllers
             if (groundPlane.Raycast(ray, out float enter))
             {
                 Vector3 hitPoint = ray.GetPoint(enter);
-                return new Vector2Int(Mathf.RoundToInt(hitPoint.x), Mathf.RoundToInt(hitPoint.z));
+                return GridUtil.WorldToGridXZ(hitPoint);
             }
             
             // Fallback for 2D/XY plane cases just in case
             Vector3 fallbackWorldPos = Camera.main.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, Mathf.Abs(Camera.main.transform.position.z)));
-            return new Vector2Int(Mathf.RoundToInt(fallbackWorldPos.x), Mathf.RoundToInt(fallbackWorldPos.y));
+            return GridUtil.WorldToGrid(fallbackWorldPos);
         }
 
         private bool CheckCanPlace(Vector2Int coord, InfrastructureDataSO data)
@@ -275,8 +283,6 @@ namespace CityFlow.UI.Controllers
 
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
             
-            // Log to Undo (Undo tracking needs to be injected or static, we'll implement later)
-            // Example: UndoManager.Record(new InfrastructureUndoCommand(...))
         }
 
         // --- Demolish Logic (LIFO priority handling) ---

@@ -1,7 +1,5 @@
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
 using UnityEditor.SceneManagement;
 using CityFlow.UI;
 using CityFlow.UI.Controllers;
@@ -35,45 +33,6 @@ namespace CityFlow.UI.Editor
                 return;
             }
 
-            // Find the Dock Right panel to add our button to
-            GameObject dockRight = FindObjectIncludingInactive("Dock_Right");
-            if (dockRight == null)
-            {
-                Debug.LogError("Error: Dock_Right not found.");
-                return;
-            }
-
-            // Create btnInfra by duplicating btnBuild if btnInfra doesn't exist yet
-            Transform btnInfraTransform = dockRight.transform.Find("Btn_Infra");
-            Button btnInfra = null;
-            if (btnInfraTransform == null)
-            {
-                // Try finding any button inside dockRight
-                Button existingBtn = dockRight.GetComponentInChildren<Button>();
-                if (existingBtn == null)
-                {
-                    Debug.LogError("Error: No existing buttons found in Dock_Right to duplicate.");
-                    return;
-                }
-                
-                GameObject btnInfraGO = Object.Instantiate(existingBtn.gameObject, dockRight.transform);
-                btnInfraGO.name = "Btn_Infra";
-                btnInfra = btnInfraGO.GetComponent<Button>();
-                
-                var text = btnInfraGO.GetComponentInChildren<TMP_Text>();
-                if (text != null) text.text = "인프라";
-            }
-            else
-            {
-                btnInfra = btnInfraTransform.GetComponent<Button>();
-            }
-
-            // Add btnInfra and panelInfra to UIDockController
-            var serializedObject = new SerializedObject(uidock);
-            serializedObject.FindProperty("btnInfra").objectReferenceValue = btnInfra;
-            serializedObject.FindProperty("panelInfra").objectReferenceValue = infraPanel;
-            serializedObject.ApplyModifiedProperties();
-
             // Cleanup: Remove legacy Btn_Demolish if it exists in scene
             Transform demolishBtnTransform = infraPanel.transform.Find("Btn_Demolish");
             if (demolishBtnTransform != null)
@@ -82,13 +41,13 @@ namespace CityFlow.UI.Editor
                 Debug.Log("[CityFlow] Legacy Btn_Demolish removed from Infra_Panel.");
             }
 
-            // Make sure Infra_Panel starts inactive so toggle works correctly
+            // Infra_Panel is controlled by the first category tab inside Build_Panel.
             infraPanel.SetActive(false);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             
-            Debug.Log("[CityFlow] Infra_Panel toggle and Demolish button perfectly assembled into the scene!");
+            Debug.Log("[CityFlow] Infra_Panel assembled as a Build category and legacy Demolish button removed.");
         }
 
         private static GameObject FindObjectIncludingInactive(string name)
