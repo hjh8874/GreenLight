@@ -62,6 +62,7 @@ namespace CityFlow.View
 
         public bool IsFloating => isFloating;
         public int PresetIndex => presetIndex;
+        public event System.Action<bool> OnFloatingStateChanged;
 
         public void Init(float width, float height, bool fitBoardToScreen = true)
         {
@@ -164,6 +165,7 @@ namespace CityFlow.View
                 return;
             }
 
+            OnFloatingStateChanged?.Invoke(isFloating);
             ApplyPerfMode();
             SavePrefs();
         }

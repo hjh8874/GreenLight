@@ -28,7 +28,6 @@ namespace CityFlow.UI
 
         private MenuType _currentMenu = MenuType.None;
         private bool _isBound;
-        private View.FloatingWindowService _floatingService;
 
         public void Configure(
             Button build,
@@ -55,7 +54,6 @@ namespace CityFlow.UI
 
         private void Start()
         {
-            _floatingService = FindObjectOfType<View.FloatingWindowService>();
             BindButtons();
             EnsureEscapeController();
 

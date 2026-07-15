@@ -17,13 +17,34 @@ namespace CityFlow.UI
 
         private void Start()
         {
-            _floatingService = FindObjectOfType<FloatingWindowService>();
+            _floatingService = FindFirstObjectByType<FloatingWindowService>();
+            if (_floatingService != null)
+            {
+                _floatingService.OnFloatingStateChanged += OnFloatingStateChangedEvent;
+            }
             BindButtons();
         }
 
         private void OnEnable()
         {
             SyncFloatingUI();
+        }
+
+        private void OnDestroy()
+        {
+            if (_floatingService != null)
+            {
+                _floatingService.OnFloatingStateChanged -= OnFloatingStateChangedEvent;
+            }
+        }
+
+        private void OnFloatingStateChangedEvent(bool isFloating)
+        {
+            if (tglFloatingMode != null)
+            {
+                tglFloatingMode.SetIsOnWithoutNotify(isFloating);
+            }
+            UpdatePresetButtonInteractable(isFloating);
         }
 
         private void BindButtons()
@@ -46,7 +67,7 @@ namespace CityFlow.UI
         {
             if (_floatingService == null)
             {
-                _floatingService = FindObjectOfType<FloatingWindowService>();
+                _floatingService = FindFirstObjectByType<FloatingWindowService>();
             }
 
             if (_floatingService == null) return;
@@ -63,7 +84,7 @@ namespace CityFlow.UI
         {
             if (_floatingService == null)
             {
-                _floatingService = FindObjectOfType<FloatingWindowService>();
+                _floatingService = FindFirstObjectByType<FloatingWindowService>();
             }
 
             if (_floatingService == null) return;
@@ -81,7 +102,7 @@ namespace CityFlow.UI
         {
             if (_floatingService == null)
             {
-                _floatingService = FindObjectOfType<FloatingWindowService>();
+                _floatingService = FindFirstObjectByType<FloatingWindowService>();
             }
 
             if (_floatingService == null) return;
