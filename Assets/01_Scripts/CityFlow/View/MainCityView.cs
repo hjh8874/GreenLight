@@ -55,7 +55,7 @@ namespace CityFlow.View
         [FormerlySerializedAs("zoomStepDistance")]
         [SerializeField, Min(0.1f)] private float zoomDistanceRange = 10f;
         [Tooltip("마우스 휠 입력 1단위당 변경할 카메라 거리")]
-        [SerializeField, Min(0.001f)] private float zoomScrollSensitivity = 0.01f;
+        [SerializeField, Min(0.001f)] private float zoomScrollSensitivity = 1f;
 
         private const float OrthographicSizePerDistance = 0.9375f;
 
