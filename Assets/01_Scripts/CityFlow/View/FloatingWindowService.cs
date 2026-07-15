@@ -142,7 +142,7 @@ namespace CityFlow.View
             PollResolutionChange();
         }
 
-        private void ToggleFloating()
+        public void ToggleFloating()
         {
             if (Application.isEditor)
             {
@@ -168,7 +168,7 @@ namespace CityFlow.View
             SavePrefs();
         }
 
-        private void SetPreset(int index)
+        public void SetPreset(int index)
         {
             presetIndex = Mathf.Clamp(index, 0, Presets.Length - 1);
 

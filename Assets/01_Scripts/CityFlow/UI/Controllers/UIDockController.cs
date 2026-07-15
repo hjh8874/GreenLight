@@ -6,19 +6,21 @@ namespace CityFlow.UI
 {
     public sealed class UIDockController : MonoBehaviour
     {
-        public enum MenuType { None, Build, Research, Stats, Settings }
+        public enum MenuType { None, Build, Research, Stats, Settings, Floating }
 
         [Header("Menu Buttons (Dock_Right)")]
         [SerializeField] private Button btnBuild;
         [SerializeField] private Button btnResearch;
         [SerializeField] private Button btnStats;
         [SerializeField] private Button btnSettings;
+        [SerializeField] private Button btnFloatingMode;
 
         [Header("Sub Panels (SubPanels_Right)")]
         [SerializeField] private GameObject panelBuild;
         [SerializeField] private GameObject panelResearch;
         [SerializeField] private GameObject panelStats;
         [SerializeField] private GameObject panelSettings;
+        [SerializeField] private GameObject panelFloating;
 
         [Header("System Sync")]
         [SerializeField] private PlacementController placementController;
@@ -26,6 +28,7 @@ namespace CityFlow.UI
 
         private MenuType _currentMenu = MenuType.None;
         private bool _isBound;
+        private View.FloatingWindowService _floatingService;
 
         public void Configure(
             Button build,
@@ -52,6 +55,7 @@ namespace CityFlow.UI
 
         private void Start()
         {
+            _floatingService = FindObjectOfType<View.FloatingWindowService>();
             BindButtons();
             EnsureEscapeController();
 
@@ -82,6 +86,7 @@ namespace CityFlow.UI
             ConfigureDockButton(btnResearch, new Vector2(-24f, 114f));
             ConfigureDockButton(btnStats, new Vector2(-24f, 72f));
             ConfigureDockButton(btnSettings, new Vector2(-24f, 30f));
+            ConfigureDockButton(btnFloatingMode, new Vector2(-24f, -12f));
         }
 
         private static void ConfigureDockButton(Button button, Vector2 anchoredPosition)
@@ -121,6 +126,9 @@ namespace CityFlow.UI
             if (btnResearch != null) btnResearch.onClick.AddListener(() => ToggleMenu(MenuType.Research));
             if (btnStats != null) btnStats.onClick.AddListener(() => ToggleMenu(MenuType.Stats));
             if (btnSettings != null) btnSettings.onClick.AddListener(() => ToggleMenu(MenuType.Settings));
+            
+            if (btnFloatingMode != null) btnFloatingMode.onClick.AddListener(() => ToggleMenu(MenuType.Floating));
+            
             _isBound = true;
         }
 
@@ -159,6 +167,7 @@ namespace CityFlow.UI
             if (panelResearch != null) panelResearch.SetActive(_currentMenu == MenuType.Research);
             if (panelStats != null) panelStats.SetActive(_currentMenu == MenuType.Stats);
             if (panelSettings != null) panelSettings.SetActive(_currentMenu == MenuType.Settings);
+            if (panelFloating != null) panelFloating.SetActive(_currentMenu == MenuType.Floating);
             if (_currentMenu != MenuType.Build)
             {
                 var infraCoord = UnityEngine.Object.FindFirstObjectByType<CityFlow.UI.Controllers.InfrastructurePlacementCoordinator>();

@@ -1,3 +1,4 @@
+using CityFlow.View;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -25,12 +26,14 @@ namespace CityFlow.UI
 
         private void BindButtons()
         {
-            // 뮤트 톳글 이벤트 바인딩
             if (_isBound)
             {
                 return;
             }
 
+
+
+            // 뮤트 토글 이벤트 바인딩
             if (tglMuteAudio != null)
             {
                 tglMuteAudio.onValueChanged.AddListener(OnMuteToggleChanged);
