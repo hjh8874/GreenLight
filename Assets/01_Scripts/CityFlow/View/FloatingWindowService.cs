@@ -62,6 +62,7 @@ namespace CityFlow.View
 
         public bool IsFloating => isFloating;
         public int PresetIndex => presetIndex;
+        public event System.Action<bool> OnFloatingStateChanged;
 
         public void Init(float width, float height, bool fitBoardToScreen = true)
         {
@@ -142,7 +143,7 @@ namespace CityFlow.View
             PollResolutionChange();
         }
 
-        private void ToggleFloating()
+        public void ToggleFloating()
         {
             if (Application.isEditor)
             {
@@ -164,11 +165,12 @@ namespace CityFlow.View
                 return;
             }
 
+            OnFloatingStateChanged?.Invoke(isFloating);
             ApplyPerfMode();
             SavePrefs();
         }
 
-        private void SetPreset(int index)
+        public void SetPreset(int index)
         {
             presetIndex = Mathf.Clamp(index, 0, Presets.Length - 1);
 
