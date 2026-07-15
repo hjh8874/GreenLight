@@ -95,7 +95,12 @@ namespace CityFlow.UI
                 Debug.Log($"[FloatingPanel] 플로팅 모드 토글: {(isOn ? "ON (창 모드)" : "OFF (전체 화면)")}");
             }
 
-            UpdatePresetButtonInteractable(isOn);
+            // 전환 중 무시되었을 경우를 대비하여, 실제 서비스 상태로 UI 강제 재동기화
+            if (tglFloatingMode != null && tglFloatingMode.isOn != _floatingService.IsFloating)
+            {
+                tglFloatingMode.SetIsOnWithoutNotify(_floatingService.IsFloating);
+            }
+            UpdatePresetButtonInteractable(_floatingService.IsFloating);
         }
 
         private void OnPresetClicked(int index)
