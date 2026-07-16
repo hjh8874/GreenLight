@@ -1776,8 +1776,12 @@ namespace CityFlow.View
                 return false;
             }
 
-            entryAngle = Mathf.Atan2(-incoming.y, -incoming.x);
-            float exitAngle = Mathf.Atan2(outgoing.y, outgoing.x);
+            // 차선 정렬: 차는 우측 차선(중심선 오른쪽 laneOffset)으로 접근하므로
+            // 진입/이탈점을 중심선에서 차선 쪽으로 δ만큼 돌려 접선 연속으로 만든다.
+            // (중심선 기준이면 진입 시 차가 왼쪽으로 끌려 붙는 어색함 발생)
+            float laneShift = Mathf.Asin(Mathf.Clamp01(laneOffset / Mathf.Max(0.01f, roundaboutOrbitRadius)));
+            entryAngle = Mathf.Atan2(-incoming.y, -incoming.x) + laneShift;
+            float exitAngle = Mathf.Atan2(outgoing.y, outgoing.x) - laneShift;
             ccwSweep = Mathf.Repeat(exitAngle - entryAngle, 2f * Mathf.PI);
             if (ccwSweep < 0.05f)
             {
