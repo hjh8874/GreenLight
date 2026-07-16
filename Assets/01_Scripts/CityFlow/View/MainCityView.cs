@@ -220,6 +220,8 @@ namespace CityFlow.View
         {
             public RoutePolyline Outbound;
             public RoutePolyline Inbound;
+            public Vector3 OutboundMerge;   // 출발 스퍼가 도로 차선에 닿는 점(합류 양보 판정 — 라이브 QA B)
+            public Vector3 InboundMerge;
         }
 
         public void Initialize(CityFlowServices services)
@@ -2306,6 +2308,16 @@ namespace CityFlow.View
 
         private void RebuildCommute(IReadOnlyList<List<Vector2Int>> routes)
         {
+            // sticky(QA A): 리빌드 전 각 차의 구 폴리라인을 붙잡아 "경로 타일이 실제로 바뀐 차"만 골라낸다.
+            var previousBakes = new Dictionary<CommuteCar, BakedRoutePair>(carVehicles.Count);
+            foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
+            {
+                if (bakedRoutes.TryGetValue(kv.Key.RouteIndex, out BakedRoutePair old))
+                {
+                    previousBakes[kv.Key] = old;
+                }
+            }
+
             commuteScheduler.Rebuild(
                 simEngine.ActiveRouteSources, simEngine.ActiveRouteSinks,
                 officeSlots, homeSlots, maxMovingVehicles,
@@ -2345,12 +2357,24 @@ namespace CityFlow.View
                 {
                     Outbound = BakeCommuteRoute(outboundTiles, homeAnchor, workAnchor),
                     Inbound = BakeCommuteRoute(inboundTiles, workAnchor, homeAnchor),
+                    OutboundMerge = ComputeMergePoint(outboundTiles),
+                    InboundMerge = ComputeMergePoint(inboundTiles),
                 };
             }
 
-            AssignCommuteVehicles();
+            commuteScheduler.SnapNewToHour(CurrentGameHour());   // 신규 차만 현재 시각 수렴 — 생존 차 상태 보존(QA A)
+            SyncCommuteVehicleBindings(previousBakes);
             RebuildParkingVisuals();
-            commuteScheduler.SnapToHour(CurrentGameHour());   // Rebuild는 전 차를 ParkedHome으로 초기화 → 현재 시각으로 스냅
+        }
+
+        // 출발 스퍼가 도로 차선에 닿는 점 ≈ 첫 도로 세그먼트 시작의 차선 오프셋 위치(베이크 phase 0 포즈).
+        private Vector3 ComputeMergePoint(List<Vector2Int> tiles)
+        {
+            Vector3 a = GridToLocal(tiles[0], vehicleZ);
+            Vector3 b = GridToLocal(tiles[1], vehicleZ);
+            Vector3 dir = (b - a).normalized;
+            Vector3 laneRight = new Vector3(dir.y, -dir.x, 0f);
+            return a + laneRight * (tileSize * laneOffset);
         }
 
         // GetDisplayRoute(L1536)의 대각 브리지 삽입 로직을 차량 상태 없이 재현(원본 무접촉).
@@ -2487,34 +2511,120 @@ namespace CityFlow.View
             parkingSlotVisuals.Clear();
         }
 
-        // 차량 풀에서 car당 1대 할당(총 인구 상한 = 풀 크기 = maxMovingVehicles — 리뷰 #7).
-        private void AssignCommuteVehicles()
+        // sticky 바인딩(QA A): 생존 차는 vehicle·위치 무접촉 유지, 사라진 짝만 풀 반납, 신규만 할당.
+        // 경로 타일이 실제로 바뀐 이동 중 차만 페이드(렌더러 off) + 주차 상태로 개별 수렴(순간이동 금지).
+        // 총 인구 상한 = 풀 크기 = maxMovingVehicles(리뷰 #7).
+        private void SyncCommuteVehicleBindings(Dictionary<CommuteCar, BakedRoutePair> previousBakes)
         {
-            carVehicles.Clear();
             IReadOnlyList<CommuteCar> cars = commuteScheduler.Cars;
-            int next = 0;
+            var alive = new HashSet<CommuteCar>();
+            for (int i = 0; i < cars.Count; i++)
+            {
+                alive.Add(cars[i]);
+            }
+
+            List<CommuteCar> stale = null;
+            foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
+            {
+                if (!alive.Contains(kv.Key))
+                {
+                    (stale ??= new List<CommuteCar>()).Add(kv.Key);
+                }
+            }
+
+            if (stale != null)
+            {
+                for (int i = 0; i < stale.Count; i++)
+                {
+                    DeactivateCommuteVehicle(carVehicles[stale[i]]);
+                    carVehicles.Remove(stale[i]);
+                }
+            }
+
             for (int i = 0; i < cars.Count; i++)
             {
                 CommuteCar car = cars[i];
-                if (!bakedRoutes.ContainsKey(car.RouteIndex))
+                bool hasBake = bakedRoutes.TryGetValue(car.RouteIndex, out BakedRoutePair pair);
+                if (carVehicles.TryGetValue(car, out RouteVehicle vehicle))
                 {
-                    continue;   // 경로 너무 짧아 베이크 실패 → 이 car는 그리지 않음
-                }
+                    vehicle.RouteIndex = car.RouteIndex;   // 경로색 동기화(짝 보존이라 색 연속)
+                    if (!hasBake)
+                    {
+                        // 새 위상에서 경로 소실(미연결 등): 페이드 후 다음 리빌드에서 재배치.
+                        SetVehicleRenderersEnabled(vehicle, false);
+                        continue;
+                    }
 
-                if (next >= vehicles.Count)
+                    bool moving = car.State == CarState.Outbound || car.State == CarState.Inbound;
+                    if (moving
+                        && previousBakes.TryGetValue(car, out BakedRoutePair old)
+                        && !SamePolylineTiles(old.Outbound, pair.Outbound))
+                    {
+                        // 이동 중 경로 변경: Distance가 새 폴리라인과 무의미 — 페이드 + 주차로 개별 수렴.
+                        SetVehicleRenderersEnabled(vehicle, false);
+                        CommuteScheduler.SnapCar(car, CurrentGameHour());
+                    }
+
+                    // 주차 차/경로 불변 이동 차: 무접촉 — 위치·상태 그대로(주차 앵커는 다음 프레임 재계산).
+                }
+                else
                 {
-                    break;
-                }
+                    if (!hasBake)
+                    {
+                        continue;   // 경로 너무 짧아 베이크 실패 → 이 car는 그리지 않음
+                    }
 
-                RouteVehicle vehicle = vehicles[next++];
-                ResetVehicleForCommute(vehicle, car.RouteIndex);
-                carVehicles[car] = vehicle;
+                    RouteVehicle fresh = TakeFreeVehicle();
+                    if (fresh == null)
+                    {
+                        continue;   // 풀 고갈 — 정원 초과분 미표시
+                    }
+
+                    ResetVehicleForCommute(fresh, car.RouteIndex);
+                    carVehicles[car] = fresh;
+                }
             }
 
-            for (; next < vehicles.Count; next++)
+            // 어떤 car에도 안 묶인 활성 차 정리(통근 모드 런타임 전환 등 안전망).
+            var bound = new HashSet<RouteVehicle>(carVehicles.Values);
+            for (int i = 0; i < vehicles.Count; i++)
             {
-                DeactivateCommuteVehicle(vehicles[next]);
+                if (vehicles[i].Object.activeSelf && !bound.Contains(vehicles[i]))
+                {
+                    DeactivateCommuteVehicle(vehicles[i]);
+                }
             }
+        }
+
+        private RouteVehicle TakeFreeVehicle()
+        {
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                if (!vehicles[i].Object.activeSelf)
+                {
+                    return vehicles[i];
+                }
+            }
+
+            return null;
+        }
+
+        private static bool SamePolylineTiles(RoutePolyline a, RoutePolyline b)
+        {
+            if (a.TileCount != b.TileCount)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < a.TileCount; i++)
+            {
+                if (a.TileAt(i) != b.TileAt(i))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private void ResetVehicleForCommute(RouteVehicle vehicle, int routeIndex)
@@ -2589,6 +2699,12 @@ namespace CityFlow.View
             if (s.IsSpur)
             {
                 targetSpeed *= parkingApproachSpeedMul;   // 주차 진입/이탈 감속(신호·혼잡 판정 제외 구간)
+                if (s.SegT < 0.5f)   // 출발 스퍼(SegT=0)만 — 도착 스퍼(SegT=1)는 합류 아님
+                {
+                    // 합류 양보(QA B): 합류 지점 근방 이동 차에 바닥 있는 감속 — 하드스톱·점유 금지.
+                    Vector3 merge = inbound ? pair.InboundMerge : pair.OutboundMerge;
+                    targetSpeed = Mathf.Min(targetSpeed, MergeYieldCap(vehicle, merge, targetSpeed));
+                }
             }
             else
             {
@@ -2715,6 +2831,38 @@ namespace CityFlow.View
             vehicle.Dir = s.Dir;
         }
 
+        // 합류 양보 캡(라이브 QA B): 스퍼→도로 진입 시 합류 지점 근방의 이동 차가 있으면
+        // CrossingYieldCap 패턴으로 바닥(crossYieldFloor)까지만 감속 — 하드스톱 없음(데드락 금지).
+        // 방향 무관(합류는 어느 방향 차와도 겹칠 수 있음 — LeaderSpeedCap의 Dot>0.5 필터가 못 잡는 케이스),
+        // 주차 차(Dir=zero)는 제외. 신규 튜닝 필드 없음 — followGap·crossYieldFloor 재사용(ponytail).
+        private float MergeYieldCap(RouteVehicle vehicle, Vector3 mergePoint, float freeSpeed)
+        {
+            float range = tileSize * followGap;
+            float nearest = float.MaxValue;
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                RouteVehicle other = vehicles[i];
+                if (other == vehicle || !other.Object.activeSelf || other.Dir.sqrMagnitude < 0.001f)
+                {
+                    continue;
+                }
+
+                float d = (other.Pos - mergePoint).magnitude;
+                if (d < nearest)
+                {
+                    nearest = d;
+                }
+            }
+
+            if (nearest >= range)
+            {
+                return freeSpeed;
+            }
+
+            float floor = Mathf.Clamp(crossYieldFloor, 0.1f, 1f);
+            return Mathf.Lerp(freeSpeed * floor, freeSpeed, Mathf.Clamp01(nearest / range));
+        }
+
         private static void SetVehicleRenderersEnabled(RouteVehicle vehicle, bool enabled)
         {
             if (vehicle.Renderer != null)
@@ -2792,6 +2940,7 @@ namespace CityFlow.View
             bakedRoutes.Clear();
             carVehicles.Clear();
             DestroyParkingVisuals();
+            commuteScheduler.Clear();   // 복원 = sticky 없이 전원 신규 → SnapNewToHour가 전체 수렴
             commuteRoutesBuilt = false;
             commuteRoutesHash = 0;
         }
