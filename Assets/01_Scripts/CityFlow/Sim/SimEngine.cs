@@ -257,6 +257,7 @@ namespace CityFlow.Sim
         
         // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게 
         public float DeliveredTotal => _solver.DeliveredTotal;
+        public float DemandRate => _solver.DemandRate;
 
         public bool TryGetAverageRouteDistance(
             Vector2Int destination,
