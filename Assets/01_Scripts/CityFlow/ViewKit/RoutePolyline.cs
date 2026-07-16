@@ -31,17 +31,16 @@ namespace CityFlow.ViewKit
         public bool IsSpur;
     }
 
-    // 베이크 = "위상 샘플링": MainCityView.EvaluateVehiclePose(중심선 Lerp + 코너 베지어 + 차선 오프셋)와
-    // 로터리 궤도 오버라이드(에지 블렌드 + TryRoundaboutOrbit)의 순수 재현을 phase 축을
-    // SamplesPerSegment 간격으로 훑어 정점화하고, 누적 아크렝스 테이블로 SampleAt(이진 탐색)을 지원한다.
-    // 원본(MainCityView)은 그대로 두고 시각 파리티만 목표로 한다 — 재발명 금지.
+    // 베이크 = "위상 샘플링": MainCityView.EvaluateVehiclePose(중심선 Lerp + 코너 베지어 + 차선 오프셋)의
+    // 순수 재현을 phase 축을 SamplesPerSegment 간격으로 훑어 정점화하고, 누적 아크렝스 테이블로
+    // SampleAt(이진 탐색)을 지원한다. 원본(MainCityView)은 그대로 두고 시각 파리티만 목표 — 재발명 금지.
+    // 예외: 로터리는 옛 SmoothStep 블렌드(중앙 딥 결함, 라이브 QA E-1)를 버리고 접선 기하 재구성
+    // (ApplyRoundaboutGeometry — 전이 베지어 + 순수 CCW 원호)으로 대체한다.
     // forward 전용(단방향) — 퇴근 방향은 뷰가 타일 목록을 뒤집어 별도 베이크한다. Dir는 항상 베이크 방향 접선.
     //
     // ponytail: 베이크는 위상 샘플링 8/seg — 시각 파리티 우선. 해상도 문제 시 코너만 적응 샘플로 승급.
     public sealed class RoutePolyline
     {
-        private const float RoundaboutBlendEdge = 0.35f;
-
         private struct Vertex
         {
             public Vector3 Pos;
@@ -98,6 +97,11 @@ namespace CityFlow.ViewKit
 
                 PoseAt(input, tiles, segmentCount, segmentCount, out Vector3 lastPos, out Vector3 lastDir);
                 vertices.Add(new Vertex { Pos = lastPos, Dir = lastDir, Seg = segmentCount - 1, SegT = 1f, Spur = false });
+            }
+
+            if (segmentCount > 0)
+            {
+                ApplyRoundaboutGeometry(input, tiles, segmentCount, vertices);
             }
 
             if (input.StartAnchor.HasValue)
@@ -190,7 +194,6 @@ namespace CityFlow.ViewKit
             Vector3 b = TileToLocal(tiles[segmentIndex + 1], input.TileSize, input.Z);
             Vector3 centerline = Vector3.Lerp(a, b, segmentT);
             Vector3 routeTangent = (b - a).normalized;
-            int insideTileIndex = segmentT < 0.5f ? segmentIndex : segmentIndex + 1;
 
             float radiusFraction = input.CornerRadiusFraction;
             int cornerIndex = -1;
@@ -211,34 +214,14 @@ namespace CityFlow.ViewKit
             {
                 centerline = curvePosition;
                 routeTangent = curveTangent;
-                insideTileIndex = cornerIndex;
             }
 
             Vector3 travelDir = routeTangent;
             Vector3 laneRight = new Vector3(travelDir.y, -travelDir.x, 0f);
             Vector3 position = centerline + laneRight * (input.TileSize * input.LaneOffset);
 
-            // 로터리 경계에서는 차선 포즈를 유지하고 안쪽에서만 CCW 링 포즈로 부드럽게 전환한다.
-            if (input.IsRoundabout(tiles[insideTileIndex]))
-            {
-                int ci = segmentT < 0.5f ? segmentIndex : segmentIndex + 1;
-                if (TryRoundaboutOrbit(input, tiles, ci, folded, out Vector3 ringPos, out Vector3 ringDir))
-                {
-                    float arcU = Mathf.Clamp01(folded - ci + 0.5f);
-                    float blend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(arcU / RoundaboutBlendEdge))
-                                * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((1f - arcU) / RoundaboutBlendEdge));
-                    position = Vector3.Lerp(position, ringPos, blend);
-                    if (ringDir.sqrMagnitude > 0.0001f)
-                    {
-                        Vector3 blendedDir = Vector3.Lerp(travelDir.normalized, ringDir.normalized, blend);
-                        if (blendedDir.sqrMagnitude > 0.0001f)
-                        {
-                            travelDir = blendedDir.normalized;
-                        }
-                    }
-                }
-            }
-
+            // 로터리 포즈는 여기서 다루지 않는다 — 베이크 후처리(ApplyRoundaboutGeometry)가
+            // 해당 구간 정점을 접선 기하(전이 베지어+원호)로 통째로 교체한다(QA E-1).
             pos = position;
             dir = travelDir.sqrMagnitude > 0.0001f ? travelDir.normalized : Vector3.right;
         }
@@ -307,47 +290,162 @@ namespace CityFlow.ViewKit
             return tangent.sqrMagnitude > 0.0001f;
         }
 
-        private static bool TryRoundaboutOrbit(
+        // ── 로터리 접선 기하 재구성(라이브 QA E-1) ──────────────────────────────────────
+        // 옛 SmoothStep 블렌드는 "차선 중심선(로터리 중앙 관통) ↔ 링" 위치 보간이라 궤도 창
+        // 대부분에서 중앙 딥(실측 0.498 / 반경 0.68). 근본 교체: 로터리 타일 구간의 정점을
+        //   [진입 전이 베지어] → [순수 CCW 원호(TryGetRoundaboutArc entryAngle/ccwSweep)] → [이탈 전이 베지어]
+        // 로 통째로 재구성한다. 링/차선 교점(laneShift가 인코딩 — 중심 전방 √(R²−λ²) 지점)이
+        // 반경 위 C0 접점이고, 차선 직선은 링과 λ<R라 진정한 접선이 될 수 없으므로(75° 꺾임)
+        // 전이 베지어(양끝 접선 일치)로 C1을 만든다. 전이 최저 중심거리 ≈ 0.61R — 딥 해소.
+        // 구간 경계 포즈는 실제 베이스 포즈(코너 베지어 포함)에서 취해 코너-인접 진입도 연속.
+        private static void ApplyRoundaboutGeometry(
             in BakeInput input,
             IReadOnlyList<Vector2Int> tiles,
-            int centerIndex,
-            float folded,
-            out Vector3 position,
-            out Vector3 tangent)
+            int segmentCount,
+            List<Vertex> vertices)
         {
-            position = default;
-            tangent = default;
+            float radius = Mathf.Max(0.05f, input.OrbitRadius);
+            // 링/차선 교점까지의 중심 전방 거리(타일=페이즈 단위). λ≥R 퇴화는 하한 가드.
+            float halfSpan = Mathf.Sqrt(Mathf.Max(0.0001f, radius * radius - input.LaneOffset * input.LaneOffset));
 
-            if (centerIndex <= 0 || centerIndex >= tiles.Count - 1)
+            for (int ci = 1; ci < tiles.Count - 1; ci++)
             {
-                return false;
+                if (!input.IsRoundabout(tiles[ci]))
+                {
+                    continue;
+                }
+
+                // Task 1 리뷰 지적: TryGetRoundaboutArc는 정규화 벡터 기대 — 대각 안전 명시 정규화.
+                Vector3 incoming = new Vector3(
+                    tiles[ci].x - tiles[ci - 1].x,
+                    tiles[ci].y - tiles[ci - 1].y,
+                    0f).normalized;
+                Vector3 outgoing = new Vector3(
+                    tiles[ci + 1].x - tiles[ci].x,
+                    tiles[ci + 1].y - tiles[ci].y,
+                    0f).normalized;
+
+                if (!PolylineMath.TryGetRoundaboutArc(incoming, outgoing, input.LaneOffset, radius, out float entryAngle, out float ccwSweep))
+                {
+                    continue;
+                }
+
+                float startPhase = ci - halfSpan;   // ci ∈ [1, Count-2], halfSpan < 1 → 항상 경로 내부
+                float endPhase = ci + halfSpan;
+                PoseAt(input, tiles, segmentCount, startPhase, out Vector3 entryPos, out Vector3 entryDir);
+                PoseAt(input, tiles, segmentCount, endPhase, out Vector3 exitPos, out Vector3 exitDir);
+
+                // 전이 스윕: 양끝 각각 min(29°, 전체 스윕 30%) — 남는 가운데가 순수 원호.
+                float beta = Mathf.Min(0.5f, ccwSweep * 0.3f);
+                float arcStartAngle = entryAngle + beta;
+                float arcEndAngle = entryAngle + ccwSweep - beta;
+                Vector3 center = TileToLocal(tiles[ci], input.TileSize, input.Z);
+                float worldRadius = input.TileSize * radius;
+
+                var built = new List<Vertex>(32);
+                AppendTransitionBezier(built, entryPos, entryDir,
+                    RingPoint(center, worldRadius, arcStartAngle), RingTangent(arcStartAngle), includeStart: true);
+
+                // 원호: 스윕 12°당 1정점 이상.
+                int arcSamples = Mathf.Max(2, Mathf.CeilToInt((arcEndAngle - arcStartAngle) * Mathf.Rad2Deg / 12f));
+                for (int k = 1; k <= arcSamples; k++)   // k=0은 전이 베지어 끝점과 중복 — 스킵
+                {
+                    float angle = Mathf.Lerp(arcStartAngle, arcEndAngle, (float)k / arcSamples);
+                    built.Add(new Vertex { Pos = RingPoint(center, worldRadius, angle), Dir = RingTangent(angle) });
+                }
+
+                AppendTransitionBezier(built, RingPoint(center, worldRadius, arcEndAngle), RingTangent(arcEndAngle),
+                    exitPos, exitDir, includeStart: false);
+
+                AssignPhasesByChordLength(built, startPhase, endPhase, segmentCount);
+                SpliceVertices(vertices, built, startPhase, endPhase);
+            }
+        }
+
+        // 접선 일치 전이(C1): from/to의 접선을 핸들로 쓰는 쿼터 베지어. 링 안쪽 최저 ≈ 0.61R.
+        private static void AppendTransitionBezier(
+            List<Vertex> built, Vector3 from, Vector3 fromDir, Vector3 to, Vector3 toDir, bool includeStart)
+        {
+            float distance = Vector3.Distance(from, to);
+            if (distance < 1e-4f)
+            {
+                if (includeStart)
+                {
+                    built.Add(new Vertex { Pos = from, Dir = fromDir });
+                }
+                return;
             }
 
-            Vector2Int previous = tiles[centerIndex - 1];
-            Vector2Int next = tiles[centerIndex + 1];
-            // Task 1 리뷰 지적: TryGetRoundaboutArc는 정규화된 벡터를 기대(sqrMagnitude<0.5 가드).
-            // 축정렬 타일 스텝은 이미 단위벡터지만 대각 안전을 위해 명시적으로 정규화한다.
-            Vector3 incoming = new Vector3(
-                tiles[centerIndex].x - previous.x,
-                tiles[centerIndex].y - previous.y,
-                0f).normalized;
-            Vector3 outgoing = new Vector3(
-                next.x - tiles[centerIndex].x,
-                next.y - tiles[centerIndex].y,
-                0f).normalized;
-
-            if (!PolylineMath.TryGetRoundaboutArc(incoming, outgoing, input.LaneOffset, input.OrbitRadius, out float entryAngle, out float ccwSweep))
+            Vector3 controlIn = from + fromDir * (distance * PolylineMath.QuarterCircleHandle);
+            Vector3 controlOut = to - toDir * (distance * PolylineMath.QuarterCircleHandle);
+            const int samples = 6;
+            for (int k = includeStart ? 0 : 1; k <= samples; k++)
             {
-                return false;
+                float t = (float)k / samples;
+                built.Add(new Vertex
+                {
+                    Pos = PolylineMath.EvaluateCubicBezier(from, controlIn, controlOut, to, t),
+                    Dir = PolylineMath.EvaluateCubicBezierTangent(from, controlIn, controlOut, to, t),
+                });
+            }
+        }
+
+        // 구성 정점의 Seg/SegT를 공간 진행(누적 현 길이) 비례로 배정 — 혼잡 타일·신호 진행률 의미 보존.
+        private static void AssignPhasesByChordLength(List<Vertex> built, float startPhase, float endPhase, int segmentCount)
+        {
+            float total = 0f;
+            var cumulative = new float[built.Count];
+            for (int j = 1; j < built.Count; j++)
+            {
+                total += Vector3.Distance(built[j - 1].Pos, built[j].Pos);
+                cumulative[j] = total;
             }
 
-            float arcU = Mathf.Clamp01(folded - centerIndex + 0.5f);
-            float angle = entryAngle + arcU * ccwSweep;
-            float radius = input.TileSize * input.OrbitRadius;
-            Vector3 center = TileToLocal(tiles[centerIndex], input.TileSize, input.Z);
-            position = center + new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * radius;
-            tangent = new Vector3(-Mathf.Sin(angle), Mathf.Cos(angle), 0f);
-            return true;
+            for (int j = 0; j < built.Count; j++)
+            {
+                float u = total > 1e-5f ? cumulative[j] / total : (built.Count > 1 ? (float)j / (built.Count - 1) : 0f);
+                float phase = Mathf.Lerp(startPhase, endPhase, u);
+                int seg = Mathf.Clamp(Mathf.FloorToInt(phase), 0, segmentCount - 1);
+                Vertex v = built[j];
+                v.Seg = seg;
+                v.SegT = phase - seg;
+                v.Spur = false;
+                built[j] = v;
+            }
+        }
+
+        // (startPhase, endPhase) 안의 베이스 정점을 제거하고 구성 정점으로 교체.
+        // 로터리 풋프린트는 배타(center 인접 불가) → 서로 다른 로터리의 구간은 겹치지 않는다.
+        private static void SpliceVertices(List<Vertex> vertices, List<Vertex> built, float startPhase, float endPhase)
+        {
+            int first = 0;
+            while (first < vertices.Count && vertices[first].Seg + vertices[first].SegT < startPhase - 1e-4f)
+            {
+                first++;
+            }
+
+            int last = vertices.Count - 1;
+            while (last >= 0 && vertices[last].Seg + vertices[last].SegT > endPhase + 1e-4f)
+            {
+                last--;
+            }
+
+            if (first <= last)
+            {
+                vertices.RemoveRange(first, last - first + 1);
+            }
+
+            vertices.InsertRange(first, built);
+        }
+
+        private static Vector3 RingPoint(Vector3 center, float worldRadius, float angle)
+        {
+            return center + new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * worldRadius;
+        }
+
+        private static Vector3 RingTangent(float angle)
+        {
+            return new Vector3(-Mathf.Sin(angle), Mathf.Cos(angle), 0f);   // CCW 접선
         }
 
         // 주차 앵커 스퍼: 앵커 ↔ 경로 끝 정점을 쿼터 베지어로 잇는다(핸들 길이 = 거리 × QuarterCircleHandle).

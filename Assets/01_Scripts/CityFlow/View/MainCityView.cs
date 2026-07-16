@@ -2740,6 +2740,15 @@ namespace CityFlow.View
                 targetSpeed = Mathf.Min(targetSpeed, CrossingYieldCap(vehicle, targetSpeed));
                 // QA D: 로터리 진입 소프트 양보 — 링 위에 도는 차가 있으면 경계 접근에서 바닥 감속.
                 targetSpeed = Mathf.Min(targetSpeed, RoundaboutEntryYieldCap(vehicle, poly, s, targetSpeed));
+
+                // QA E-2: 링 위 차간 간격 — insideTile 기준(경계 반쪽부터)으로 링 점유 시 각도 순서 리더 캡.
+                Vector2Int ringInsideTile = s.SegT < 0.5f
+                    ? currentTile
+                    : poly.TileAt(Mathf.Min(s.TileIndex + 1, poly.TileCount - 1));
+                if (IsRoundaboutTile(ringInsideTile))
+                {
+                    targetSpeed = Mathf.Min(targetSpeed, RingLeaderCap(vehicle, ringInsideTile, targetSpeed));
+                }
             }
 
             bool mustStop = !s.IsSpur && IsRouteVehicleBlocked(poly, s);
@@ -2913,6 +2922,58 @@ namespace CityFlow.View
             // CrossingYieldCap 리턴식과 같은 Lerp 패턴(0 금지): 경계(SegT=1)로 갈수록 바닥까지.
             float floor = Mathf.Clamp(crossYieldFloor, 0.1f, 1f);
             return Mathf.Lerp(freeSpeed * floor, freeSpeed, Mathf.Clamp01((1f - s.SegT) * 2f));
+        }
+
+        // 링 전용 각도 순서 리더 캡(라이브 QA E-2): LeaderSpeedCap의 같은 방향 필터(Dot>0.5)는
+        // 링에서 무력(90° 떨어진 차끼리 dot≈0) → 링 위 간격 유지 없음. CCW 진행이므로 내 각도
+        // 기준 CCW 앞쪽 최근접 차와의 각도 간격이 작을수록 감속 — crossYieldFloor 바닥 Lerp(0 금지:
+        // 링은 순환이라 하드스톱 체인이 기아 데드락 재발 경로, 바닥으로 차단). 링 근방 판정은
+        // 위치 기반(반경+followGap) — TileIndex 기반은 링 전반부(중심 통과 전) 차를 놓친다.
+        // 새 튜닝 필드 없음(followGap→각도 환산, crossYieldFloor 재사용), O(n) 스캔(ponytail).
+        private float RingLeaderCap(RouteVehicle vehicle, Vector2Int ringTile, float freeSpeed)
+        {
+            Vector3 center = GridToLocal(ringTile, vehicleZ);
+            float ringRadius = tileSize * Mathf.Max(0.05f, roundaboutOrbitRadius);
+            float nearRange = ringRadius + tileSize * followGap;
+            Vector3 rel = vehicle.Pos - center;
+            float myAngle = Mathf.Atan2(rel.y, rel.x);
+
+            float nearestGap = float.MaxValue;
+            foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
+            {
+                RouteVehicle other = kv.Value;
+                if (other == vehicle || !other.Object.activeSelf || other.Dir.sqrMagnitude < 0.001f)
+                {
+                    continue;   // 자신·비활성·주차(Dir=zero) 제외
+                }
+
+                Vector3 otherRel = other.Pos - center;
+                if (otherRel.magnitude > nearRange)
+                {
+                    continue;   // 링 근방 아님
+                }
+
+                float gap = Mathf.Repeat(Mathf.Atan2(otherRel.y, otherRel.x) - myAngle, 2f * Mathf.PI);
+                if (gap > 0.001f && gap < nearestGap)
+                {
+                    nearestGap = gap;   // CCW 앞쪽 최근접
+                }
+            }
+
+            if (nearestGap == float.MaxValue)
+            {
+                return freeSpeed;
+            }
+
+            // followGap 거리→링 각도 환산. [1×, 2×] 간격 구간을 [바닥, 자유]로 매핑(LeaderSpeedCap 컨벤션).
+            float gapRad = (tileSize * followGap) / ringRadius;
+            if (nearestGap >= 2f * gapRad)
+            {
+                return freeSpeed;
+            }
+
+            float floor = Mathf.Clamp(crossYieldFloor, 0.1f, 1f);
+            return Mathf.Lerp(freeSpeed * floor, freeSpeed, Mathf.Clamp01((nearestGap - gapRad) / gapRad));
         }
 
         private static void SetVehicleRenderersEnabled(RouteVehicle vehicle, bool enabled)

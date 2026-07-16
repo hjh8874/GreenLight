@@ -110,5 +110,24 @@ namespace CityFlow.Sim.Tests
             }
             Assert.Greater(ringSamples, 0, "링 완전 블렌드 창 샘플 존재");
         }
+
+        // 링 구간(로터리 타일 안쪽 반)에서 중심 거리의 최소값이 반경의 70% 이상 — 중앙 파고듦 회귀 방지.
+        [Test]
+        public void RoundaboutTile_NoCenterDip()
+        {
+            var input = Straight3();
+            input.Tiles = new List<Vector2Int> { new(0, 0), new(1, 0), new(2, 0), new(3, 0) };
+            input.IsRoundabout = t => t == new Vector2Int(2, 0);
+            var p = RoutePolyline.Bake(input);
+            Vector3 center = new Vector3(2.5f, 0.5f, 0f);
+            float minDist = float.MaxValue;
+            for (float d = 0f; d <= p.Length; d += 0.02f)
+            {
+                Sample s = p.SampleAt(d);
+                if (s.TileIndex != 2 || s.SegT > 0.5f) continue;   // 로터리 타일 진입 반쪽
+                minDist = Mathf.Min(minDist, Vector3.Distance(s.Pos, center));
+            }
+            Assert.Greater(minDist, 0.68f * 0.7f, "링 구간이 중앙으로 파고들면 회귀");
+        }
     }
 }
