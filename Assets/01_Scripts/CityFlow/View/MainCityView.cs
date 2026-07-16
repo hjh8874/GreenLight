@@ -722,16 +722,36 @@ namespace CityFlow.View
             }
         }
 
+        // 풋프린트 로터리(스펙 2026-07-15): 도로색 회전 차도(링) + 초록 중앙 섬.
+        //   접근 도로와 이어져 보이게 링을 도로색·도로 표면(z=0)에 깔고, 섬만 그 위로 살짝 띄운다.
+        //   저장·흐름은 center 1타일 그대로 — 순수 뷰. v1은 차량이 center 직진 통과(도는 애니 = v2).
         private GameObject CreateRoundaboutVisual(Vector2Int tile)
         {
-            GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            ring.name = $"Roundabout_{tile.x}_{tile.y}";
-            ring.transform.SetParent(signalRoot, false);
-            ring.transform.localPosition = GridToLocal(tile, signalZ);
-            ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);   // 원반을 보드(XY)와 평행하게
-            ring.transform.localScale = new Vector3(tileSize * 0.6f, 0.02f, tileSize * 0.6f);
-            ApplyRendererColor(PrepareRenderer(ring.GetComponent<Renderer>()), roundaboutColor);
-            return ring;
+            GameObject root = new GameObject($"Roundabout_{tile.x}_{tile.y}");
+            root.transform.SetParent(signalRoot, false);
+            root.transform.localPosition = GridToLocal(tile, 0f);           // 도로 평면에 정렬
+
+            // 회전 차도(링): 도로색 원형 판 — 반경 ~1.1타일로 상하좌우 접근 도로와 겹쳐 이어져 보인다.
+            GameObject pad = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            pad.name = "Ring";
+            Destroy(pad.GetComponent<Collider>());                          // 장식 마커 — 물리 불필요
+            pad.transform.SetParent(root.transform, false);
+            pad.transform.localPosition = new Vector3(0f, 0f, -0.05f);      // 도로 슬래브 바로 앞(z-fight 방지)
+            pad.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);    // 원반을 보드(XY)와 평행하게
+            pad.transform.localScale = new Vector3(tileSize * 2.2f, 0.02f, tileSize * 2.2f);
+            ApplyRendererColor(PrepareRenderer(pad.GetComponent<Renderer>()), roadFreeColor);   // 도로색 = 이어짐
+
+            // 중앙 섬(잔디): 링 위로 살짝 띄워 초록으로 — "차도 링 + 섬" 로터리 형태.
+            GameObject island = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            island.name = "Island";
+            Destroy(island.GetComponent<Collider>());
+            island.transform.SetParent(root.transform, false);
+            island.transform.localPosition = new Vector3(0f, 0f, -0.14f);
+            island.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            island.transform.localScale = new Vector3(tileSize * 0.9f, 0.03f, tileSize * 0.9f);
+            ApplyRendererColor(PrepareRenderer(island.GetComponent<Renderer>()), roundaboutColor);   // 초록 섬
+
+            return root;
         }
 
         // 우선도로 마커: PriorityRoadTiles 폴링 — 로터리/입체/일방과 동일 수명 규약(생성/제거).
