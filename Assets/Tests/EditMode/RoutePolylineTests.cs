@@ -60,6 +60,21 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(last.IsSpur, "스퍼 구간 플래그");
         }
 
+        // 단일 타일(앵커 없음) 퇴화 경로: Length 0 + SampleAt이 예외 없이 유일 정점 반환.
+        [Test]
+        public void SingleTile_NoAnchors_SampleAtDoesNotThrow()
+        {
+            var input = Straight3();
+            input.Tiles = new List<Vector2Int> { new(0, 0) };
+            input.StartAnchor = null; input.EndAnchor = null;
+            var p = RoutePolyline.Bake(input);
+            Assert.AreEqual(0f, p.Length, 1e-4f);
+            Sample s = p.SampleAt(0f);
+            Assert.AreEqual(0, s.TileIndex);
+            Sample s2 = p.SampleAt(5f);   // 범위 밖 클램프도 안전
+            Assert.AreEqual(s.Pos, s2.Pos);
+        }
+
         // SegT: 세그먼트 중간에서 ≈0.5 (신호 정지선 판정용 진행률).
         [Test]
         public void SegT_TracksTileBoundaryProgress()

@@ -121,6 +121,21 @@ namespace CityFlow.ViewKit
 
         public Sample SampleAt(float distance)
         {
+            // 단일 정점 폴리라인(0/1타일 + 앵커 없음) 가드: 이진탐색이 upper=1을 만들며
+            // 배열 밖을 읽으므로 유일 정점을 그대로 반환한다(리뷰 Critical 픽스).
+            if (_cumulative.Length == 1)
+            {
+                Vertex only = _vertices[0];
+                return new Sample
+                {
+                    Pos = only.Pos,
+                    Dir = only.Dir,
+                    TileIndex = only.Seg,
+                    SegT = only.SegT,
+                    IsSpur = only.Spur,
+                };
+            }
+
             float clamped = Mathf.Clamp(distance, 0f, Length);
 
             int lo = 0;
