@@ -154,6 +154,15 @@ namespace CityFlow.Gameplay.Economy
                 return false;
             }
 
+            bool saved = services?.Save?.Save() == true;
+
+            if (!saved)
+            {
+                Debug.LogWarning(
+                    "[WeeklyEconomyLoopService] Coin harvest succeeded, but the single save file could not be updated.",
+                    this);
+            }
+
             Debug.Log(
                 $"[WeeklyEconomyLoopService] Pending coins harvested. " +
                 $"Amount: {amount}, Balance: {services?.Economy?.Coins ?? 0L}.");

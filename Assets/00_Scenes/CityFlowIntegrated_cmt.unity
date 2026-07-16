@@ -5589,6 +5589,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Gameplay.Save.AutoSaveService
   saveOnMonthChanged: 1
+  saveOnPlacementChanged: 1
+  placementSaveDelaySeconds: 0.5
 --- !u!114 &559808186
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5635,6 +5637,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Gameplay.Save.GameSaveLifecycleService
   loadOnStart: 1
+  saveOnFocusLost: 1
+  saveOnApplicationPause: 1
+  saveOnFloatingModeEntered: 1
   saveOnApplicationQuit: 1
 --- !u!114 &559808189
 MonoBehaviour:
@@ -14945,7 +14950,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1452140457
 RectTransform:
   m_ObjectHideFlags: 0
@@ -16260,7 +16265,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1529819784
 RectTransform:
   m_ObjectHideFlags: 0
@@ -22381,7 +22386,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &2077478953
 RectTransform:
   m_ObjectHideFlags: 0
