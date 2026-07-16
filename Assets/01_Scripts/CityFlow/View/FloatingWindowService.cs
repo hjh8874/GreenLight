@@ -179,6 +179,29 @@ namespace CityFlow.View
 
             if (Application.isEditor)
             {
+                if (isFloating)
+                {
+                    state = FloatingState.Floating;
+                    if (titleBarController != null)
+                    {
+                        titleBarController.gameObject.SetActive(true);
+                        titleBarController.Initialize(this, null);
+                    }
+                }
+                else
+                {
+                    isMaximized = false;
+                    isDockedToTop = false;
+
+                    if (titleBarController != null)
+                    {
+                        titleBarController.ApplyContentInset();
+                        titleBarController.gameObject.SetActive(false);
+                    }
+
+                    state = FloatingState.Normal;
+                }
+
                 SavePrefs();
                 OnFloatingStateChanged?.Invoke(isFloating);
                 return;
