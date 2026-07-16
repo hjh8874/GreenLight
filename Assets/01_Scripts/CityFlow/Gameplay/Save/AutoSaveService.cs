@@ -1,3 +1,4 @@
+using System.Collections;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
@@ -7,9 +8,12 @@ namespace CityFlow.Gameplay.Save
     public sealed class AutoSaveService : MonoBehaviour, ICityFlowServiceConsumer
     {
         [SerializeField] private bool saveOnMonthChanged = true;
+        [SerializeField] private bool saveOnPlacementChanged = true;
+        [SerializeField, Min(0f)] private float placementSaveDelaySeconds = 0.5f;
 
         private CityFlowServices services;
         private IGameCalendarService gameCalendar;
+        private Coroutine placementSaveCoroutine;
 
         public void Initialize(CityFlowServices services)
         {
@@ -20,6 +24,7 @@ namespace CityFlow.Gameplay.Save
 
             this.services = services;
             services.GameCalendarRegistered += OnGameCalendarRegistered;
+            services.Events.Placed += OnPlaced;
 
             if (services.GameCalendar != null)
             {
@@ -34,11 +39,17 @@ namespace CityFlow.Gameplay.Save
             if (services != null)
             {
                 services.GameCalendarRegistered -= OnGameCalendarRegistered;
+                services.Events.Placed -= OnPlaced;
             }
 
             if (gameCalendar != null)
             {
                 gameCalendar.MonthChanged -= OnMonthChanged;
+            }
+
+            if (placementSaveCoroutine != null)
+            {
+                StopCoroutine(placementSaveCoroutine);
             }
         }
 
@@ -82,12 +93,52 @@ namespace CityFlow.Gameplay.Save
                 return;
             }
 
-            bool saved = services.Save.Save(createAutomaticSlot: true);
+            bool saved = services.Save.Save();
             Debug.Log(saved
                 ? $"[AutoSaveService] Auto saved at game month {totalMonths}."
                 : $"[AutoSaveService] Auto save failed at game month {totalMonths}.");
         }
 
-        // Unity setup: Attach this beside GameCalendarService. One automatic slot is created per game month.
+        private void OnPlaced(PlacedEvent placedEvent)
+        {
+            if (!saveOnPlacementChanged
+                || services?.Save == null
+                || services.Save.IsRestoring)
+            {
+                return;
+            }
+
+            if (placementSaveCoroutine != null)
+            {
+                StopCoroutine(placementSaveCoroutine);
+            }
+
+            placementSaveCoroutine = StartCoroutine(
+                SaveAfterPlacementDelay(placedEvent));
+        }
+
+        private IEnumerator SaveAfterPlacementDelay(PlacedEvent placedEvent)
+        {
+            if (placementSaveDelaySeconds > 0f)
+            {
+                yield return new WaitForSecondsRealtime(placementSaveDelaySeconds);
+            }
+
+            placementSaveCoroutine = null;
+
+            if (services?.Save == null || services.Save.IsRestoring)
+            {
+                yield break;
+            }
+
+            bool saved = services?.Save?.Save() == true;
+            string action = placedEvent.IsRemove ? "removed" : "placed";
+
+            Debug.Log(saved
+                ? $"[AutoSaveService] Auto saved after {action} {placedEvent.Type} at {placedEvent.Tile}."
+                : $"[AutoSaveService] Auto save failed after {action} {placedEvent.Type} at {placedEvent.Tile}.");
+        }
+
+        // Unity setup: Attach this beside GameCalendarService. Saves update the single default save file.
     }
 }
