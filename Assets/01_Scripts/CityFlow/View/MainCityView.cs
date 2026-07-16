@@ -3,6 +3,8 @@ using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using CityFlow.Sim;
+using CityFlow.UI;
+using CityFlow.UI.Controllers;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -107,6 +109,11 @@ namespace CityFlow.View
         private Transform effectRoot;
         private int selectedSignalIndex;
         private Camera mainCamera;
+        private DriveViewCamera driveViewCamera;
+        private UIDockController dockController;
+        private PlacementController placementController;
+        private InfrastructurePlacementCoordinator infrastructurePlacementCoordinator;
+        private RouteVehicle selectedVehicle;
         private Vector3 cameraTarget;
         private Vector3 cameraUpDirection;
         private float zoomDistance;
@@ -117,6 +124,7 @@ namespace CityFlow.View
         public float TileSize => tileSize;
         public float FlowBurstSeconds => burstSeconds;
         public Color FlowBurstColor => flowBurstColor;
+        public bool IsDriveViewActive => driveViewCamera != null && driveViewCamera.IsFollowing;
 
         public string SelectedSignalSummary
         {
@@ -228,13 +236,22 @@ namespace CityFlow.View
             RefreshTurnSigns();
             RefreshPriorityRoads();
             RefreshVehicles();
-            gameObject.AddComponent<DriveViewCamera>().Init(simEngine, transform, tileSize);
-            gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize, false);
             InitializeCameraView();
+            driveViewCamera = gameObject.AddComponent<DriveViewCamera>();
+            driveViewCamera.Init(transform, mainCamera);
+            dockController = FindAnyObjectByType<UIDockController>(FindObjectsInactive.Include);
+            placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
+            infrastructurePlacementCoordinator = FindAnyObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+            gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize, false);
         }
 
         private void OnDestroy()
         {
+            if (driveViewCamera != null)
+            {
+                ExitDriveView();
+            }
+
             if (services == null)
             {
                 return;
@@ -362,14 +379,26 @@ namespace CityFlow.View
 
         private void Update()
         {
-            HandleCameraViewInput();
+            if (selectedVehicle != null && !IsDriveViewActive)
+            {
+                ExitDriveView();
+            }
+
+            HandleVehicleSelectionInput();
+            if (!IsDriveViewActive)
+            {
+                HandleCameraViewInput();
+            }
 
             if (tileData == null)
             {
                 return;
             }
 
-            HandleSignalInput();
+            if (!IsDriveViewActive)
+            {
+                HandleSignalInput();
+            }
             RefreshSignals();
             RefreshRoundabouts();
             RefreshOverpasses();
@@ -377,6 +406,114 @@ namespace CityFlow.View
             RefreshTurnSigns();
             RefreshPriorityRoads();
             RefreshVehicles();
+        }
+
+        private void HandleVehicleSelectionInput()
+        {
+            if (IsDriveViewActive || IsVehicleSelectionBlocked() || mainCamera == null || driveViewCamera == null)
+            {
+                return;
+            }
+
+            Mouse mouse = Mouse.current;
+            if (mouse == null || !mouse.leftButton.wasPressedThisFrame)
+            {
+                return;
+            }
+
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            {
+                return;
+            }
+
+            if (TryGetVehicleAtScreenPosition(mouse.position.ReadValue(), out RouteVehicle vehicle))
+            {
+                selectedVehicle = vehicle;
+                driveViewCamera.Follow(vehicle.Object.transform);
+                if (IsDriveViewActive)
+                {
+                    dockController?.SetDriveViewActive(true);
+                }
+                else
+                {
+                    selectedVehicle = null;
+                }
+            }
+        }
+
+        private bool IsVehicleSelectionBlocked()
+        {
+            if (dockController == null)
+            {
+                dockController = FindAnyObjectByType<UIDockController>(FindObjectsInactive.Include);
+            }
+
+            if (placementController == null)
+            {
+                placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
+            }
+
+            if (infrastructurePlacementCoordinator == null)
+            {
+                infrastructurePlacementCoordinator = FindAnyObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+            }
+
+            return (dockController != null && dockController.IsAnyMenuOpen)
+                || (placementController != null && placementController.IsBuildingMode)
+                || (infrastructurePlacementCoordinator != null && infrastructurePlacementCoordinator.IsBuildingMode);
+        }
+
+        private void ExitDriveView()
+        {
+            selectedVehicle = null;
+            driveViewCamera?.StopFollowing();
+            dockController?.SetDriveViewActive(false);
+        }
+
+        public bool IsPointerOverVehicle(Vector2 screenPosition)
+        {
+            return TryGetVehicleAtScreenPosition(screenPosition, out _);
+        }
+
+        private bool TryGetVehicleAtScreenPosition(Vector2 screenPosition, out RouteVehicle vehicle)
+        {
+            vehicle = null;
+            if (mainCamera == null || !mainCamera.enabled)
+            {
+                return false;
+            }
+
+            Ray ray = mainCamera.ScreenPointToRay(screenPosition);
+            if (!Physics.Raycast(
+                ray,
+                out RaycastHit hit,
+                mainCamera.farClipPlane,
+                Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Ignore))
+            {
+                return false;
+            }
+
+            Transform hitTransform = hit.collider.transform;
+            for (int vehicleIndex = 0; vehicleIndex < vehicles.Count; vehicleIndex++)
+            {
+                RouteVehicle candidate = vehicles[vehicleIndex];
+                if (!candidate.Object.activeSelf
+                    || candidate.Renderer == null
+                    || !candidate.Renderer.enabled)
+                {
+                    continue;
+                }
+
+                Transform vehicleTransform = candidate.Object.transform;
+                if (hitTransform == vehicleTransform || hitTransform.IsChildOf(vehicleTransform))
+                {
+                    vehicle = candidate;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void BuildRoots()
@@ -1270,6 +1407,11 @@ namespace CityFlow.View
 
         private void DeactivateVehicle(RouteVehicle vehicle)
         {
+            if (selectedVehicle == vehicle)
+            {
+                ExitDriveView();
+            }
+
             // 현 해시로 카운트된 차만 감산(위상 변경 직후 구 해시 차량 이중감산 방지)
             if (vehicle.RouteIndex >= 0 && vehicle.RouteIndex < routeSpawns.Count
                 && routeSpawns[vehicle.RouteIndex].RouteHash == vehicle.RouteHash)
@@ -1298,6 +1440,11 @@ namespace CityFlow.View
                 vehicle.name = $"Vehicle_{vehicles.Count + 1}";
                 vehicle.transform.SetParent(vehicleRoot, false);
                 vehicle.transform.localScale = new Vector3(tileSize * 0.38f, tileSize * 0.2f, tileSize * 0.28f);
+
+                if (vehicle.GetComponentInChildren<Collider>() == null)
+                {
+                    vehicle.AddComponent<BoxCollider>();
+                }
 
                 Renderer renderer = vehicle.GetComponentInChildren<Renderer>();
                 PrepareRenderer(renderer);

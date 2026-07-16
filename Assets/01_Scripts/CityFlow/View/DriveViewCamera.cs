@@ -1,117 +1,157 @@
-using System.Collections.Generic;
-using CityFlow.Sim;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 namespace CityFlow.View
 {
-    // 드라이브 뷰(스펙 2026-07-12): 활성 통근 경로를 저공 1인칭으로 달리는 우상단 PiP.
-    // 씬 배선 0 — MainCityView.Initialize가 런타임 AddComponent. 신호에 안 멈춤(그린웨이브 환상이 의도).
     public sealed class DriveViewCamera : MonoBehaviour
     {
-        [SerializeField] private float speed = 2f;            // 타일/초
-        [SerializeField] private float height = 0.9f;         // 보드 위 높이(−z 방향)
-        [SerializeField] private float lookDown = 0.45f;      // 전방의 아래(+z) 성분 = 틸트
-        [SerializeField] private Rect viewport = new Rect(0.72f, 0.72f, 0.27f, 0.27f);
+        [SerializeField, Min(0.1f)] private float height = 0.9f;
+        [SerializeField, Min(0f)] private float followDistance = 0.35f;
+        [SerializeField, Min(0f)] private float lookDown = 0.45f;
+        [SerializeField, Min(0.01f)] private float positionSmoothTime = 0.08f;
+        [SerializeField, Min(0.1f)] private float rotationSharpness = 12f;
 
-        private SimEngine simEngine;
-        private float tileSize;
-        private Camera cam;
-        private List<Vector2Int> route;
-        private float phase;
-        private bool enabledByUser = true;                    // 기본 ON — 경로 없으면 자동 숨김
+        private Transform viewRoot;
+        private Transform followTarget;
+        private Camera mainCamera;
+        private Camera driveCamera;
+        private Vector3 positionVelocity;
 
-        public void Init(SimEngine engine, Transform viewRoot, float tile)
+        public bool IsFollowing => driveCamera != null && driveCamera.enabled;
+
+        public void Init(Transform root, Camera sourceCamera)
         {
-            simEngine = engine;
-            tileSize = tile;
+            viewRoot = root;
+            mainCamera = sourceCamera;
 
-            GameObject go = new GameObject("DriveViewCamera");
-            go.transform.SetParent(viewRoot, false);
-            cam = go.AddComponent<Camera>();                  // AudioListener 없음 — 메인과 중복 방지
-            cam.rect = viewport;
-            cam.depth = (Camera.main != null ? Camera.main.depth : 0f) + 1f;
-            cam.fieldOfView = 65f;
-            cam.nearClipPlane = 0.05f;
-            cam.enabled = false;   // Fake 환경(simEngine null) 유령 PiP 방지 — 첫 유효 Update가 켠다
+            GameObject cameraObject = new GameObject("DriveViewCamera");
+            cameraObject.transform.SetParent(viewRoot, false);
+            driveCamera = cameraObject.AddComponent<Camera>();
+            driveCamera.rect = new Rect(0f, 0f, 1f, 1f);
+            driveCamera.depth = mainCamera != null ? mainCamera.depth + 1f : 1f;
+            driveCamera.fieldOfView = 65f;
+            driveCamera.orthographic = false;
+            driveCamera.nearClipPlane = 0.05f;
+            driveCamera.enabled = false;
+
+            if (mainCamera != null)
+            {
+                driveCamera.clearFlags = mainCamera.clearFlags;
+                driveCamera.backgroundColor = mainCamera.backgroundColor;
+                driveCamera.cullingMask = mainCamera.cullingMask;
+                driveCamera.farClipPlane = mainCamera.farClipPlane;
+                driveCamera.allowHDR = mainCamera.allowHDR;
+                driveCamera.allowMSAA = mainCamera.allowMSAA;
+            }
         }
 
-        private void OnDestroy()
+        public void Follow(Transform target)
         {
-            if (cam != null)
+            if (target == null || driveCamera == null)
             {
-                Destroy(cam.gameObject);
+                return;
+            }
+
+            followTarget = target;
+            positionVelocity = Vector3.zero;
+            SnapToTarget();
+
+            if (mainCamera != null)
+            {
+                mainCamera.enabled = false;
+            }
+
+            driveCamera.enabled = true;
+        }
+
+        public void StopFollowing()
+        {
+            followTarget = null;
+            positionVelocity = Vector3.zero;
+
+            if (driveCamera != null)
+            {
+                driveCamera.enabled = false;
+            }
+
+            if (mainCamera != null)
+            {
+                mainCamera.enabled = true;
             }
         }
 
         private void Update()
         {
-            if (cam == null || simEngine == null)
+            if (!IsFollowing)
             {
                 return;
             }
 
             Keyboard keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.dKey.wasPressedThisFrame)
+            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
             {
-                enabledByUser = !enabledByUser;
+                StopFollowing();
             }
+        }
 
-            if (!enabledByUser || !EnsureRoute())
+        private void LateUpdate()
+        {
+            if (!IsFollowing)
             {
-                cam.enabled = false;
                 return;
             }
 
-            cam.enabled = true;
-            phase += Time.deltaTime * speed;
-            if (phase >= route.Count - 1)
+            if (followTarget == null || !followTarget.gameObject.activeInHierarchy)
             {
-                route = null;                                 // 종점 — 다음 프레임 최장 경로 재선택
-                phase = 0f;
+                StopFollowing();
                 return;
             }
 
-            int index = Mathf.FloorToInt(phase);
-            float t = phase - index;
-            Vector3 a = TileToLocal(route[index]);
-            Vector3 b = TileToLocal(route[index + 1]);
-            Vector3 dir = (b - a).normalized;
-            cam.transform.localPosition = Vector3.Lerp(a, b, t) + new Vector3(0f, 0f, -height);
-            // 전방 = 진행 방향 + 아래 틸트, up = 보드에서 카메라 쪽(−z) — 큐브 도시를 스치는 저공 시점.
-            Vector3 forward = (dir + new Vector3(0f, 0f, lookDown)).normalized;
-            cam.transform.localRotation = Quaternion.LookRotation(forward, Vector3.back);
+            GetTargetPose(out Vector3 desiredPosition, out Quaternion desiredRotation);
+            driveCamera.transform.localPosition = Vector3.SmoothDamp(
+                driveCamera.transform.localPosition,
+                desiredPosition,
+                ref positionVelocity,
+                positionSmoothTime);
+
+            float rotationT = 1f - Mathf.Exp(-rotationSharpness * Time.deltaTime);
+            driveCamera.transform.localRotation = Quaternion.Slerp(
+                driveCamera.transform.localRotation,
+                desiredRotation,
+                rotationT);
         }
 
-        // 최장 활성 경로 선택 — 신호를 가장 많이 지나는 경로가 그린웨이브 과시에 최적(스펙 §핵심결정).
-        // 개별 경로 List는 재계획 시 새로 할당되는 불변 고아 리스트(RoutePlanner 소유권 계약) —
-        // 잡은 참조는 길이가 안 변해 인덱스 안전. 소멸한 경로는 종점까지 완주 후 재선택(의도 — 뷰 전용).
-        private bool EnsureRoute()
+        private void SnapToTarget()
         {
-            if (route != null && route.Count >= 2)
-            {
-                return true;
-            }
-
-            IReadOnlyList<List<Vector2Int>> routes = simEngine.ActiveRoutes;
-            List<Vector2Int> longest = null;
-            for (int i = 0; i < routes.Count; i++)
-            {
-                if (routes[i] != null && routes[i].Count >= 2
-                    && (longest == null || routes[i].Count > longest.Count))
-                {
-                    longest = routes[i];
-                }
-            }
-
-            route = longest;
-            phase = 0f;
-            return route != null;
+            GetTargetPose(out Vector3 desiredPosition, out Quaternion desiredRotation);
+            driveCamera.transform.SetLocalPositionAndRotation(desiredPosition, desiredRotation);
         }
 
-        private Vector3 TileToLocal(Vector2Int tile)
+        private void GetTargetPose(out Vector3 position, out Quaternion rotation)
         {
-            return new Vector3((tile.x + 0.5f) * tileSize, (tile.y + 0.5f) * tileSize, 0f);
+            Vector3 targetPosition = viewRoot.InverseTransformPoint(followTarget.position);
+            Vector3 direction = viewRoot.InverseTransformDirection(followTarget.right);
+            direction.z = 0f;
+            direction = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.up;
+
+            position = targetPosition
+                - direction * followDistance
+                + new Vector3(0f, 0f, -height);
+            Vector3 forward = (direction + new Vector3(0f, 0f, lookDown)).normalized;
+            rotation = Quaternion.LookRotation(forward, Vector3.back);
+        }
+
+        private void OnDestroy()
+        {
+            if (mainCamera != null)
+            {
+                mainCamera.enabled = true;
+            }
+
+            if (driveCamera != null)
+            {
+                Destroy(driveCamera.gameObject);
+            }
         }
     }
 }

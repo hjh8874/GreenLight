@@ -29,6 +29,8 @@ namespace CityFlow.UI
         private MenuType _currentMenu = MenuType.None;
         private bool _isBound;
 
+        public bool IsAnyMenuOpen => _currentMenu != MenuType.None;
+
         public void Configure(
             Button build,
             Button research,
@@ -168,6 +170,16 @@ namespace CityFlow.UI
         {
             _currentMenu = MenuType.None;
             UpdatePanelVisibility();
+        }
+
+        public void SetDriveViewActive(bool isActive)
+        {
+            if (isActive)
+            {
+                CloseAllPanels();
+            }
+
+            gameObject.SetActive(!isActive);
         }
 
         private void UpdatePanelVisibility()
