@@ -69,6 +69,7 @@ namespace CityFlow.UI
         private void Start()
         {
             BindButtons();
+            LocalizeDockLabels();
             EnsureEscapeController();
 
             if (normalizeLayoutOnStart)
@@ -77,6 +78,31 @@ namespace CityFlow.UI
             }
 
             CloseAllPanels();
+        }
+
+        /// <summary>
+        /// 도크 버튼의 텍스트를 한글로 설정합니다.
+        /// 씬에 저장된 문자열에 의존하지 않고 스크립트에서 일괄 지정하여
+        /// 모든 통합 씬에서 동일한 한글 문구가 표시되도록 합니다.
+        /// </summary>
+        private void LocalizeDockLabels()
+        {
+            SetButtonLabel(btnBuild, "건설");
+            SetButtonLabel(btnResearch, "연구");
+            SetButtonLabel(btnStats, "통계");
+            SetButtonLabel(btnSettings, "설정");
+            SetButtonLabel(btnFloatingMode, "플로팅");
+        }
+
+        private static void SetButtonLabel(Button button, string text)
+        {
+            if (button == null) return;
+
+            TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+            if (label != null)
+            {
+                label.text = text;
+            }
         }
 
         private void EnsureEscapeController()
