@@ -21,6 +21,7 @@ namespace CityFlow.Sim
 
         // 이번 틱에 실제로 흐른 경로들. RoadNetwork 캐시의 참조만 담음(소유 X, 틱 중 new 0).
         readonly List<List<Vector2Int>> _routes = new(128);
+        readonly List<Vector2Int> _routeSources = new(128);  // 경로별 출발 건물 타일(_routes와 나란히)
         readonly List<Vector2Int> _routeSinks = new(128);   // 경로별 도착 건물 타일(_routes와 나란히)
         readonly List<float> _routeDistances = new(128);
         readonly float[] _deliveredToSink;                  // 수요처 타일별 이번 틱 처리량(대/초)
@@ -36,6 +37,8 @@ namespace CityFlow.Sim
 
         // 이번 틱에 흐른 실제 경로들(뷰가 차를 이 위에 그림). 읽기 전용.
         public IReadOnlyList<List<Vector2Int>> Routes => _routes;
+        public IReadOnlyList<Vector2Int> RouteSources => _routeSources;
+        public IReadOnlyList<Vector2Int> RouteSinks => _routeSinks;
 
         public FlowSolver(int width, int height)
         {
@@ -61,6 +64,7 @@ namespace CityFlow.Sim
             Array.Clear(_flowH, 0, _flowH.Length);
             Array.Clear(_flowV, 0, _flowV.Length);
             _routes.Clear();
+            _routeSources.Clear();
             _routeSinks.Clear();
             _routeDistances.Clear();
             DemandRate = cfg.DemandPerHouse * demandScale;
@@ -82,6 +86,7 @@ namespace CityFlow.Sim
                     _flowV[i2] += DemandRate * wV;
                 }
                 _routes.Add(path);
+                _routeSources.Add(demands[i].Source);
                 _routeSinks.Add(demands[i].Sink);
                 _routeDistances.Add(PhysicalDistance(path));
             }
