@@ -43,6 +43,8 @@ namespace CityFlow.View
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
         [SerializeField] private float followGap = 0.4f;           // 차간 유지 거리(타일 비율)
+        [SerializeField, Range(0.3f, 2f)] private float crossYieldRange = 0.8f;   // 교차 양보 감지 반경(타일)
+        [SerializeField, Range(0.1f, 1f)] private float crossYieldFloor = 0.3f;   // 양보 최저 속도 배율(0 금지)
         [SerializeField, Range(0f, 1f)] private float slowSpeedMul = 0.55f;
         [SerializeField, Range(0f, 1f)] private float jamSpeedMul = 0.25f;
         [SerializeField, Range(0.02f, 1f)] private float vehicleStreamScale = 0.15f;   // 뷰 차량 스트림 배율 — 심 rate의 몇 %만 그릴지(화면 가독성). 심 수치·수익 불변
@@ -1356,6 +1358,7 @@ namespace CityFlow.View
             }
 
             targetSpeed = Mathf.Min(targetSpeed, LeaderSpeedCap(vehicle, targetSpeed));
+            targetSpeed = Mathf.Min(targetSpeed, CrossingYieldCap(vehicle, targetSpeed));
             bool mustStop = false;
             if (IsRouteVehicleBlocked(route, vehicle.Phase))
             {
@@ -1976,6 +1979,41 @@ namespace CityFlow.View
             }
             if (nearest == float.MaxValue) return freeSpeed;
             return Mathf.Lerp(0f, freeSpeed, Mathf.Clamp01((nearest - gap) / gap));
+        }
+
+        // 무신호 교차로는 오른쪽에서 오는 교차 차량에만 부드럽게 양보한다.
+        // 비대칭 우선순위와 양수 속도 바닥으로 상호 정지·기아 데드락을 막는다.
+        private float CrossingYieldCap(RouteVehicle vehicle, float freeSpeed)
+        {
+            if (vehicle.Dir.sqrMagnitude < 0.001f) return freeSpeed;
+
+            Vector3 myDirection = vehicle.Dir.normalized;
+            Vector3 rightDirection = new Vector3(myDirection.y, -myDirection.x, 0f);
+            float range = tileSize * Mathf.Max(0.3f, crossYieldRange);
+            float nearest = float.MaxValue;
+
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                RouteVehicle other = vehicles[i];
+                if (other == vehicle || !other.Object.activeSelf || other.Dir.sqrMagnitude < 0.001f) continue;
+
+                Vector3 to = other.Pos - vehicle.Pos;
+                float distance = to.magnitude;
+                if (distance < 0.0001f || distance >= range) continue;
+
+                Vector3 otherDirection = other.Dir.normalized;
+                if (Mathf.Abs(Vector3.Dot(myDirection, otherDirection)) >= 0.5f) continue;
+                if (Vector3.Dot(rightDirection, to) <= 0f) continue;
+                if (Vector3.Dot(myDirection, to) <= 0f) continue;
+                if (distance < nearest) nearest = distance;
+            }
+
+            if (nearest == float.MaxValue) return freeSpeed;
+            float floor = Mathf.Clamp(crossYieldFloor, 0.1f, 1f);
+            return Mathf.Lerp(
+                freeSpeed * floor,
+                freeSpeed,
+                Mathf.Clamp01(nearest / range));
         }
 
         private void OnFlowBurstSpeedBoost(FlowBurstEvent e)
