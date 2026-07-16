@@ -2734,7 +2734,13 @@ namespace CityFlow.View
 
             vehicle.Dir = s.Dir;   // Leader/Yield 캡이 읽음(이동차만 방향 보유)
             targetSpeed = Mathf.Min(targetSpeed, LeaderSpeedCap(vehicle, targetSpeed));
-            targetSpeed = Mathf.Min(targetSpeed, CrossingYieldCap(vehicle, targetSpeed));
+            if (!s.IsSpur)
+            {
+                // QA C: 교차 양보는 도로 구간 계약(기존 MoveVehicle L1366과 동위) — 스퍼는 MergeYieldCap 담당.
+                targetSpeed = Mathf.Min(targetSpeed, CrossingYieldCap(vehicle, targetSpeed));
+                // QA D: 로터리 진입 소프트 양보 — 링 위에 도는 차가 있으면 경계 접근에서 바닥 감속.
+                targetSpeed = Mathf.Min(targetSpeed, RoundaboutEntryYieldCap(vehicle, poly, s, targetSpeed));
+            }
 
             bool mustStop = !s.IsSpur && IsRouteVehicleBlocked(poly, s);
             if (mustStop)
@@ -2861,6 +2867,52 @@ namespace CityFlow.View
 
             float floor = Mathf.Clamp(crossYieldFloor, 0.1f, 1f);
             return Mathf.Lerp(freeSpeed * floor, freeSpeed, Mathf.Clamp01(nearest / range));
+        }
+
+        // 로터리 진입 소프트 양보(라이브 QA D): 다음 타일이 로터리이고(자기는 아직 밖) 경계 접근
+        // 중(SegT≥0.5)일 때, 그 링 타일 위에 도는 차가 있으면 crossYieldFloor 바닥까지 감속만.
+        // 하드 대기 금지 — PR#101에서 삭제한 RoundaboutHasCarInArc 기아 데드락의 재발 경로(교훈:
+        // 뷰의 발명 정지 장치는 하나라도 남으면 재발). 바닥>0이라 기어서라도 반드시 진입한다.
+        // 링 위 차끼리는 적용 금지(진입차만) — 링 내부 상호 감속은 LeaderSpeedCap 담당.
+        // 점유 판정은 통근 차 목록의 현재 타일(뷰 내부 시각 판정, 속도 캡뿐 — Sim 역류 아님).
+        // 신규 튜닝 필드 없음 — crossYieldFloor 재사용, 통근 차는 소수라 O(n) 스캔 유지(ponytail).
+        private float RoundaboutEntryYieldCap(RouteVehicle vehicle, RoutePolyline poly, in Sample s, float freeSpeed)
+        {
+            if (s.SegT < 0.5f || s.TileIndex + 1 >= poly.TileCount)
+            {
+                return freeSpeed;
+            }
+
+            Vector2Int ringTile = poly.TileAt(s.TileIndex + 1);
+            if (!IsRoundaboutTile(ringTile) || IsRoundaboutTile(poly.TileAt(s.TileIndex)))
+            {
+                return freeSpeed;   // 다음이 링이 아니거나 자기가 이미 링 위 = 진입 상황 아님
+            }
+
+            bool occupied = false;
+            foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
+            {
+                RouteVehicle other = kv.Value;
+                if (other == vehicle || !other.Object.activeSelf || other.Dir.sqrMagnitude < 0.001f)
+                {
+                    continue;   // 자신·비활성·주차(Dir=zero) 제외
+                }
+
+                if (other.HasCurrentTile && other.CurrentTile == ringTile)
+                {
+                    occupied = true;
+                    break;
+                }
+            }
+
+            if (!occupied)
+            {
+                return freeSpeed;
+            }
+
+            // CrossingYieldCap 리턴식과 같은 Lerp 패턴(0 금지): 경계(SegT=1)로 갈수록 바닥까지.
+            float floor = Mathf.Clamp(crossYieldFloor, 0.1f, 1f);
+            return Mathf.Lerp(freeSpeed * floor, freeSpeed, Mathf.Clamp01((1f - s.SegT) * 2f));
         }
 
         private static void SetVehicleRenderersEnabled(RouteVehicle vehicle, bool enabled)
