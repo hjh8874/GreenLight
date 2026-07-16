@@ -60,6 +60,8 @@ namespace CityFlow.UI
         }
         private void Start()
         {
+            LocalizeCategoryTabs();
+
             // DOTween 등장 팝업 슬라이드 인 애니메이션
             RectTransform rect = GetComponent<RectTransform>();
             if (rect != null)
@@ -183,6 +185,27 @@ namespace CityFlow.UI
                 return;
             }
             _isBound = true;
+        }
+
+        /// <summary>
+        /// 씬에 하드코딩된 영문 카테고리 탭 텍스트를 한글로 일괄 설정합니다.
+        /// </summary>
+        private void LocalizeCategoryTabs()
+        {
+            if (categoryTabs == null) return;
+            
+            string[] titles = { "인프라", "주거", "상업", "공공장소" };
+            for (int i = 0; i < categoryTabs.Length && i < titles.Length; i++)
+            {
+                if (categoryTabs[i] != null)
+                {
+                    var label = categoryTabs[i].GetComponentInChildren<TMPro.TMP_Text>(true);
+                    if (label != null)
+                    {
+                        label.text = titles[i];
+                    }
+                }
+            }
         }
     }
 }
