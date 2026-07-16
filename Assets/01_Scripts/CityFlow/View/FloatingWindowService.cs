@@ -121,6 +121,7 @@ namespace CityFlow.View
                 }
                 else if (titleBarController != null)
                 {
+                    titleBarController.ApplyContentInset();
                     titleBarController.gameObject.SetActive(false);
                 }
             }
@@ -224,12 +225,13 @@ namespace CityFlow.View
 
             if (titleBarController != null)
             {
+                titleBarController.ApplyContentInset();
                 titleBarController.gameObject.SetActive(false);
             }
 
             state = FloatingState.Normal;
             OnFloatingStateChanged?.Invoke(false);
-            
+
             Debug.Log("[FloatingWindowService] Exited floating mode. Restored to normal window.");
         }
 

@@ -111,7 +111,7 @@ namespace CityFlow.View
             RefreshStateVisuals(force: false);
         }
 
-        private void ApplyContentInset()
+        public void ApplyContentInset()
         {
             if (contentCanvas == null || contentRoot == null)
             {
@@ -120,9 +120,10 @@ namespace CityFlow.View
 
             float scaleFactor = Mathf.Max(0.01f, contentCanvas.scaleFactor);
             float reservedHeight = floatingWindowService != null
-                && floatingWindowService.IsMaximized
-                    ? 0f
-                    : TitleBarHeight;
+                && floatingWindowService.IsFloating
+                && !floatingWindowService.IsMaximized
+                    ? TitleBarHeight
+                    : 0f;
             contentRoot.offsetMin = Vector2.zero;
             contentRoot.offsetMax = new Vector2(0f, -reservedHeight / scaleFactor);
         }
