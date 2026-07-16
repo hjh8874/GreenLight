@@ -287,7 +287,7 @@ namespace CityFlow.UI.Controllers
 
             if (_services != null && _services.Events != null)
             {
-                _services.Events.Publish(new InfrastructureChangedEvent(coord, _currentData.Kind, false));
+                _services.Events.Publish(new InfrastructureChangedEvent(coord, false));
             }
 
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
@@ -387,7 +387,7 @@ namespace CityFlow.UI.Controllers
             
             if (_services != null && _services.Events != null)
             {
-                _services.Events.Publish(new InfrastructureChangedEvent(coord, kind, true));
+                _services.Events.Publish(new InfrastructureChangedEvent(coord, true));
             }
             
             Debug.Log($"[InfrastructurePlacementCoordinator] Demolished {kind}. Refunded {refundAmount} coins (Original Cost: {originalCost}, Rate: {DEMOLISH_REFUND_RATE}).");

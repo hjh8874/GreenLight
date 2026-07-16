@@ -177,8 +177,8 @@ namespace CityFlow.Gameplay.Save
             string action = e.IsRemove ? "removed" : "placed";
 
             Debug.Log(saved
-                ? $"[AutoSaveService] Auto saved after {action} {e.Kind} at {e.Tile}."
-                : $"[AutoSaveService] Auto save failed after {action} {e.Kind} at {e.Tile}.");
+                ? $"[AutoSaveService] Auto saved after {action} infrastructure at {e.Tile}."
+                : $"[AutoSaveService] Auto save failed after {action} infrastructure at {e.Tile}.");
         }
 
         // Unity setup: Attach this beside GameCalendarService. Saves update the single default save file.

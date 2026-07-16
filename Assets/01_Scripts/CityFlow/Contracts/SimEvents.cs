@@ -89,13 +89,11 @@ namespace CityFlow.Contracts
     public readonly struct InfrastructureChangedEvent
     {
         public readonly Vector2Int Tile;
-        public readonly InfrastructureKind Kind;
         public readonly bool IsRemove;
 
-        public InfrastructureChangedEvent(Vector2Int tile, InfrastructureKind kind, bool isRemove)
+        public InfrastructureChangedEvent(Vector2Int tile, bool isRemove)
         {
             Tile = tile;
-            Kind = kind;
             IsRemove = isRemove;
         }
     }
