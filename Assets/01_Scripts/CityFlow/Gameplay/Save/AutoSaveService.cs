@@ -25,6 +25,7 @@ namespace CityFlow.Gameplay.Save
             this.services = services;
             services.GameCalendarRegistered += OnGameCalendarRegistered;
             services.Events.Placed += OnPlaced;
+            services.Events.InfrastructureChanged += OnInfrastructureChanged;
 
             if (services.GameCalendar != null)
             {
@@ -40,6 +41,7 @@ namespace CityFlow.Gameplay.Save
             {
                 services.GameCalendarRegistered -= OnGameCalendarRegistered;
                 services.Events.Placed -= OnPlaced;
+                services.Events.InfrastructureChanged -= OnInfrastructureChanged;
             }
 
             if (gameCalendar != null)
@@ -137,6 +139,46 @@ namespace CityFlow.Gameplay.Save
             Debug.Log(saved
                 ? $"[AutoSaveService] Auto saved after {action} {placedEvent.Type} at {placedEvent.Tile}."
                 : $"[AutoSaveService] Auto save failed after {action} {placedEvent.Type} at {placedEvent.Tile}.");
+        }
+
+        private void OnInfrastructureChanged(InfrastructureChangedEvent e)
+        {
+            if (!saveOnPlacementChanged
+                || services?.Save == null
+                || services.Save.IsRestoring)
+            {
+                return;
+            }
+
+            if (placementSaveCoroutine != null)
+            {
+                StopCoroutine(placementSaveCoroutine);
+            }
+
+            placementSaveCoroutine = StartCoroutine(
+                SaveAfterInfrastructureDelay(e));
+        }
+
+        private IEnumerator SaveAfterInfrastructureDelay(InfrastructureChangedEvent e)
+        {
+            if (placementSaveDelaySeconds > 0f)
+            {
+                yield return new WaitForSecondsRealtime(placementSaveDelaySeconds);
+            }
+
+            placementSaveCoroutine = null;
+
+            if (services?.Save == null || services.Save.IsRestoring)
+            {
+                yield break;
+            }
+
+            bool saved = services?.Save?.Save() == true;
+            string action = e.IsRemove ? "removed" : "placed";
+
+            Debug.Log(saved
+                ? $"[AutoSaveService] Auto saved after {action} {e.Kind} at {e.Tile}."
+                : $"[AutoSaveService] Auto save failed after {action} {e.Kind} at {e.Tile}.");
         }
 
         // Unity setup: Attach this beside GameCalendarService. Saves update the single default save file.

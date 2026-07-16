@@ -285,10 +285,9 @@ namespace CityFlow.UI.Controllers
                 return;
             }
 
-            if (_services != null && _services.Events != null && _services.TileData != null)
+            if (_services != null && _services.Events != null)
             {
-                TileType baseType = _services.TileData.GetTileType(coord);
-                _services.Events.Publish(new PlacedEvent(coord, baseType, false));
+                _services.Events.Publish(new InfrastructureChangedEvent(coord, _currentData.Kind, false));
             }
 
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
@@ -386,10 +385,9 @@ namespace CityFlow.UI.Controllers
                 _economy.AddCoins(refundAmount, "Demolish Refund");
             }
             
-            if (_services != null && _services.Events != null && _services.TileData != null)
+            if (_services != null && _services.Events != null)
             {
-                TileType baseType = _services.TileData.GetTileType(coord);
-                _services.Events.Publish(new PlacedEvent(coord, baseType, true));
+                _services.Events.Publish(new InfrastructureChangedEvent(coord, kind, true));
             }
             
             Debug.Log($"[InfrastructurePlacementCoordinator] Demolished {kind}. Refunded {refundAmount} coins (Original Cost: {originalCost}, Rate: {DEMOLISH_REFUND_RATE}).");
