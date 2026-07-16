@@ -3,6 +3,7 @@ using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using CityFlow.Sim;
+using CityFlow.ViewKit;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -52,6 +53,15 @@ namespace CityFlow.View
         [SerializeField] private float roundaboutOrbitRadius = 0.68f;  // 로터리 궤도 반경(타일 비율)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
+        [Header("Commute (2차 빌드)")]
+        [SerializeField] private bool useCommuteMode = false;   // Task 7에서 기본화 후 제거 — off면 기존 핑퐁 경로 100% 유지
+        [SerializeField, Range(1, 12)] private int officeSlots = 6;
+        [SerializeField, Range(1, 2)] private int homeSlots = 1;
+        [SerializeField] private Vector2 morningWindow = new Vector2(6f, 10f);
+        [SerializeField] private Vector2 eveningWindow = new Vector2(17f, 21f);
+        [SerializeField, Range(0.1f, 1f)] private float parkingApproachSpeedMul = 0.4f;
+        [SerializeField] private float parkingSlotInset = 0.32f;   // 건물 타일 내 칸 오프셋(타일 비율)
+
         [Header("Camera View")]
         [SerializeField, Range(1f, 89f)] private float angledViewDegrees = 35.264f;
         [Tooltip("지면에서 가장 가까운 A 줌 지점까지의 거리")]
@@ -91,6 +101,17 @@ namespace CityFlow.View
         private readonly List<RouteVehicle> vehicles = new();
         private readonly List<RouteSpawnState> routeSpawns = new();
         private readonly List<FlowBurstSpeedZone> flowBurstSpeedZones = new();
+
+        // 통근 모드 상태(useCommuteMode=true일 때만 활성). off면 아래 컬렉션은 전부 비어 있어 무영향.
+        private readonly CommuteScheduler commuteScheduler = new();
+        private readonly Dictionary<int, BakedRoutePair> bakedRoutes = new();   // 키 = RouteIndex, 해시 변경 시 재베이크
+        private readonly Dictionary<CommuteCar, RouteVehicle> carVehicles = new();
+        private readonly Dictionary<Vector2Int, List<GameObject>> parkingSlotVisuals = new();
+        private IGameCalendarService calendar;
+        private Transform parkingRoot;
+        private int commuteRoutesHash;
+        private bool commuteRoutesBuilt;
+        private float gameHourFraction;
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
@@ -193,6 +214,14 @@ namespace CityFlow.View
             public float Until;
         }
 
+        // 방향별 별도 베이크(외부 리뷰 치명 판정): Inbound는 브리지 타일을 뒤집고 앵커를 스왑해 다시 베이크.
+        // 이동은 항상 정방향 SampleAt — 역샘플 절대 금지.
+        private sealed class BakedRoutePair
+        {
+            public RoutePolyline Outbound;
+            public RoutePolyline Inbound;
+        }
+
         public void Initialize(CityFlowServices services)
         {
             if (!isActiveAndEnabled)
@@ -214,6 +243,17 @@ namespace CityFlow.View
             if (services.Save != null)
             {
                 services.Save.RestoreCompleted += OnRestoreCompleted;
+            }
+
+            // 통근 캘린더 배선: 이미 등록됐으면 즉시, 아니면 지연 획득(CityFlowServices L56-70).
+            // 구독은 fraction 리셋만 건드림 — 핑퐁 차량 동작에 무영향(스위치 off 시).
+            if (services.GameCalendar != null)
+            {
+                BindGameCalendar(services.GameCalendar);
+            }
+            else
+            {
+                services.GameCalendarRegistered += BindGameCalendar;
             }
 
             BuildRoots();
@@ -246,6 +286,12 @@ namespace CityFlow.View
             if (services.Save != null)
             {
                 services.Save.RestoreCompleted -= OnRestoreCompleted;
+            }
+
+            services.GameCalendarRegistered -= BindGameCalendar;
+            if (calendar != null)
+            {
+                calendar.HourChanged -= OnGameHourChanged;
             }
         }
 
@@ -488,6 +534,7 @@ namespace CityFlow.View
             ClearChildren(vehicleRoot);
             vehicles.Clear();
             routeSpawns.Clear();
+            ResetCommuteState();   // 위상 리빌드: 통근 베이크/차량 매핑/주차칸 폐기 → RefreshVehicles가 재구성
 
             selectedSignalIndex = 0;
 
@@ -1116,6 +1163,12 @@ namespace CityFlow.View
 
         private void RefreshVehicles()
         {
+            if (useCommuteMode)
+            {
+                RefreshCommuteVehicles();
+                return;
+            }
+
             if (simEngine == null)
             {
                 return;
@@ -2129,6 +2182,618 @@ namespace CityFlow.View
             }
 
             return ContainsSignal(intersectionFacility.RoundaboutTiles, tile);   // 선형 목록 검색 헬퍼 공용
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // 통근 모드(useCommuteMode). 스위치 off면 이 영역은 호출되지 않음(RefreshVehicles 분기).
+        // 뷰는 번역기: 폴리라인 정방향 샘플 × 혼잡 3단 × 신호 × LeaderSpeedCap(+주차 감속)만.
+        // 차를 세우는 자체 판단·Sim 역류 금지.
+        // ─────────────────────────────────────────────────────────────────────────
+
+        private void BindGameCalendar(IGameCalendarService gameCalendar)
+        {
+            if (gameCalendar == null || calendar == gameCalendar)
+            {
+                return;
+            }
+
+            if (calendar != null)
+            {
+                calendar.HourChanged -= OnGameHourChanged;
+            }
+
+            calendar = gameCalendar;
+            calendar.HourChanged += OnGameHourChanged;
+            gameHourFraction = 0f;
+        }
+
+        private void OnGameHourChanged(int _)
+        {
+            gameHourFraction = 0f;   // 시간 눈금 갱신 시 프레임 누적분 리셋(스펙 §시간)
+        }
+
+        // 매 프레임 fraction 누적(0..1 클램프). 이동 루프 전용 — 누적·hour 산출은 여기서만.
+        private float AdvanceGameHour()
+        {
+            if (calendar == null)
+            {
+                return 0f;
+            }
+
+            float perHour = Mathf.Max(0.0001f, calendar.RealSecondsPerGameHour);
+            gameHourFraction = Mathf.Clamp01(gameHourFraction + Time.deltaTime / perHour);
+            return calendar.Hour + gameHourFraction;
+        }
+
+        // 읽기 전용 hour(누적하지 않음) — SnapToHour 등 리빌드 시점 스냅용.
+        private float CurrentGameHour()
+        {
+            return calendar != null ? calendar.Hour + gameHourFraction : 0f;
+        }
+
+        private void RefreshCommuteVehicles()
+        {
+            if (simEngine == null)
+            {
+                return;
+            }
+
+            EnsureVehicleCount(maxMovingVehicles);
+            SyncCommutePopulation();
+
+            float hour = AdvanceGameHour();
+            commuteScheduler.UpdateDepartures(hour);
+
+            IReadOnlyList<CommuteCar> cars = commuteScheduler.Cars;
+            for (int i = 0; i < cars.Count; i++)
+            {
+                CommuteCar car = cars[i];
+                if (!carVehicles.TryGetValue(car, out RouteVehicle vehicle) || vehicle == null)
+                {
+                    continue;
+                }
+
+                if (!vehicle.Object.activeSelf)
+                {
+                    continue;
+                }
+
+                MoveCommuteVehicle(car, vehicle);
+            }
+        }
+
+        // ActiveRoutes(브리지 포함) 또는 출/도착지가 하나라도 바뀌면 리빌드+재베이크.
+        private void SyncCommutePopulation()
+        {
+            IReadOnlyList<List<Vector2Int>> routes = simEngine.ActiveRoutes;
+            int hash = ComputeCommuteRoutesHash(routes, simEngine.ActiveRouteSources, simEngine.ActiveRouteSinks);
+            if (commuteRoutesBuilt && hash == commuteRoutesHash)
+            {
+                return;
+            }
+
+            commuteRoutesHash = hash;
+            commuteRoutesBuilt = true;
+            RebuildCommute(routes);
+        }
+
+        private int ComputeCommuteRoutesHash(
+            IReadOnlyList<List<Vector2Int>> routes,
+            IReadOnlyList<Vector2Int> sources,
+            IReadOnlyList<Vector2Int> sinks)
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 31 + routes.Count;
+                for (int i = 0; i < routes.Count; i++)
+                {
+                    hash = hash * 31 + (routes[i].Count > 1 ? ComputeDisplayRouteHash(routes[i]) : routes[i].Count);
+                    if (i < sources.Count)
+                    {
+                        hash = hash * 31 + sources[i].GetHashCode();
+                    }
+
+                    if (i < sinks.Count)
+                    {
+                        hash = hash * 31 + sinks[i].GetHashCode();
+                    }
+                }
+
+                return hash;
+            }
+        }
+
+        private void RebuildCommute(IReadOnlyList<List<Vector2Int>> routes)
+        {
+            commuteScheduler.Rebuild(
+                simEngine.ActiveRouteSources, simEngine.ActiveRouteSinks,
+                officeSlots, homeSlots, maxMovingVehicles,
+                morningWindow.x, morningWindow.y, eveningWindow.x, eveningWindow.y);
+
+            bakedRoutes.Clear();
+            IReadOnlyList<CommuteCar> cars = commuteScheduler.Cars;
+            for (int i = 0; i < cars.Count; i++)
+            {
+                CommuteCar car = cars[i];
+                if (car.RouteIndex < 0 || car.RouteIndex >= routes.Count)
+                {
+                    continue;
+                }
+
+                List<Vector2Int> source = routes[car.RouteIndex];
+                if (source.Count <= 1)
+                {
+                    continue;
+                }
+
+                // 각 폴리라인은 자기 타일 리스트를 참조 보관(RoutePolyline._tiles) — 공유·재사용 금지.
+                List<Vector2Int> outboundTiles = new List<Vector2Int>(source.Count);
+                BuildBridgedRoute(source, outboundTiles);
+                if (outboundTiles.Count <= 1)
+                {
+                    continue;
+                }
+
+                Vector3 homeAnchor = GetParkingAnchor(car.Home, outboundTiles[0], car.HomeSlot, homeSlots);
+                Vector3 workAnchor = GetParkingAnchor(car.Work, outboundTiles[outboundTiles.Count - 1], car.WorkSlot, officeSlots);
+
+                List<Vector2Int> inboundTiles = new List<Vector2Int>(outboundTiles);
+                inboundTiles.Reverse();   // 방향별 별도 베이크: 역순 타일 + 앵커 스왑(역샘플 금지)
+
+                bakedRoutes[car.RouteIndex] = new BakedRoutePair
+                {
+                    Outbound = BakeCommuteRoute(outboundTiles, homeAnchor, workAnchor),
+                    Inbound = BakeCommuteRoute(inboundTiles, workAnchor, homeAnchor),
+                };
+            }
+
+            AssignCommuteVehicles();
+            RebuildParkingVisuals();
+            commuteScheduler.SnapToHour(CurrentGameHour());   // Rebuild는 전 차를 ParkedHome으로 초기화 → 현재 시각으로 스냅
+        }
+
+        // GetDisplayRoute(L1536)의 대각 브리지 삽입 로직을 차량 상태 없이 재현(원본 무접촉).
+        private void BuildBridgedRoute(List<Vector2Int> source, List<Vector2Int> dest)
+        {
+            dest.Clear();
+            if (source.Count == 0)
+            {
+                return;
+            }
+
+            dest.Add(source[0]);
+            for (int i = 0; i < source.Count - 1; i++)
+            {
+                if (TryGetDiagonalTurnBridge(source, i, out Vector2Int bridge)
+                    && dest[dest.Count - 1] != bridge)
+                {
+                    dest.Add(bridge);
+                }
+
+                Vector2Int next = source[i + 1];
+                if (dest[dest.Count - 1] != next)
+                {
+                    dest.Add(next);
+                }
+            }
+        }
+
+        private RoutePolyline BakeCommuteRoute(IReadOnlyList<Vector2Int> tiles, Vector3 startAnchor, Vector3 endAnchor)
+        {
+            return RoutePolyline.Bake(new BakeInput
+            {
+                Tiles = tiles,
+                TileSize = tileSize,
+                LaneOffset = laneOffset,
+                CornerRadiusFraction = GetCornerTurnRadiusFraction(),   // 베이커는 클램프 안 함 — 여기서 해석해 전달(리뷰 #2)
+                OrbitRadius = roundaboutOrbitRadius,
+                Z = vehicleZ,
+                IsRoundabout = IsRoundaboutTile,   // 항상 non-null(리뷰 #6)
+                StartAnchor = startAnchor,
+                EndAnchor = endAnchor,
+                SamplesPerSegment = 8,
+            });
+        }
+
+        // 건물 프리팹에 "ParkingSlot_N" 자식이 있으면 그 위치(뷰 로컬), 없으면 절차 폴백.
+        // slotCount = 건물 타입별 칸 수(회사=officeSlots, 집=homeSlots) — 집 1칸은 중앙 정렬.
+        private Vector3 GetParkingAnchor(Vector2Int building, Vector2Int frontageRoad, int slotIndex, int slotCount)
+        {
+            if (tileVisuals.TryGetValue(building, out TileVisual visual))
+            {
+                Transform named = visual.Object.transform.Find($"ParkingSlot_{slotIndex}");
+                if (named != null)
+                {
+                    // 폴리라인/차량 로컬 좌표계(transform 기준)와 정합 — world→view-local 변환.
+                    return transform.InverseTransformPoint(named.position);
+                }
+            }
+
+            Vector3 center = GridToLocal(building, vehicleZ);
+            Vector3 toRoad = (GridToLocal(frontageRoad, vehicleZ) - center).normalized;
+            Vector3 side = new Vector3(toRoad.y, -toRoad.x, 0f);
+            float spread = slotCount <= 1
+                ? 0f
+                : (slotIndex - (slotCount - 1) * 0.5f) / (slotCount - 1);
+            return center + toRoad * (tileSize * parkingSlotInset)
+                          + side * (tileSize * 0.6f * spread);
+        }
+
+        // 주차칸 얇은 마크: 배정된 칸마다 1개(CreateDetailCube 패턴). 위상 리빌드 시 전부 재생성.
+        private void RebuildParkingVisuals()
+        {
+            DestroyParkingVisuals();
+
+            if (parkingRoot == null)
+            {
+                parkingRoot = CreateChildRoot("Parking");
+            }
+
+            Color slotColor = Color.Lerp(roadFreeColor, Color.white, 0.35f);   // 도로색 명도업
+            HashSet<(Vector2Int, int)> seen = new HashSet<(Vector2Int, int)>();
+            IReadOnlyList<CommuteCar> cars = commuteScheduler.Cars;
+            for (int i = 0; i < cars.Count; i++)
+            {
+                CommuteCar car = cars[i];
+                if (!bakedRoutes.TryGetValue(car.RouteIndex, out BakedRoutePair pair))
+                {
+                    continue;
+                }
+
+                Vector3 homeAnchor = pair.Outbound.SampleAt(0f).Pos;
+                Vector3 workAnchor = pair.Outbound.SampleAt(pair.Outbound.Length).Pos;
+                AddParkingMark(car.Home, car.HomeSlot, homeAnchor, slotColor, seen);
+                AddParkingMark(car.Work, car.WorkSlot, workAnchor, slotColor, seen);
+            }
+        }
+
+        private void AddParkingMark(Vector2Int building, int slot, Vector3 anchor, Color color, HashSet<(Vector2Int, int)> seen)
+        {
+            if (!seen.Add((building, slot)))
+            {
+                return;
+            }
+
+            Renderer renderer = CreateDetailCube(
+                parkingRoot,
+                $"ParkingMark_{building.x}_{building.y}_{slot}",
+                new Vector3(tileSize * 0.34f, tileSize * 0.34f, tileSize * 0.06f),
+                anchor);
+            ApplyRendererColor(renderer, color);
+
+            if (!parkingSlotVisuals.TryGetValue(building, out List<GameObject> list))
+            {
+                list = new List<GameObject>();
+                parkingSlotVisuals[building] = list;
+            }
+
+            list.Add(renderer.gameObject);
+        }
+
+        private void DestroyParkingVisuals()
+        {
+            foreach (KeyValuePair<Vector2Int, List<GameObject>> kv in parkingSlotVisuals)
+            {
+                for (int i = 0; i < kv.Value.Count; i++)
+                {
+                    if (kv.Value[i] != null)
+                    {
+                        Destroy(kv.Value[i]);
+                    }
+                }
+            }
+
+            parkingSlotVisuals.Clear();
+        }
+
+        // 차량 풀에서 car당 1대 할당(총 인구 상한 = 풀 크기 = maxMovingVehicles — 리뷰 #7).
+        private void AssignCommuteVehicles()
+        {
+            carVehicles.Clear();
+            IReadOnlyList<CommuteCar> cars = commuteScheduler.Cars;
+            int next = 0;
+            for (int i = 0; i < cars.Count; i++)
+            {
+                CommuteCar car = cars[i];
+                if (!bakedRoutes.ContainsKey(car.RouteIndex))
+                {
+                    continue;   // 경로 너무 짧아 베이크 실패 → 이 car는 그리지 않음
+                }
+
+                if (next >= vehicles.Count)
+                {
+                    break;
+                }
+
+                RouteVehicle vehicle = vehicles[next++];
+                ResetVehicleForCommute(vehicle, car.RouteIndex);
+                carVehicles[car] = vehicle;
+            }
+
+            for (; next < vehicles.Count; next++)
+            {
+                DeactivateCommuteVehicle(vehicles[next]);
+            }
+        }
+
+        private void ResetVehicleForCommute(RouteVehicle vehicle, int routeIndex)
+        {
+            vehicle.RouteIndex = routeIndex;
+            vehicle.RouteHash = 0;
+            vehicle.Phase = 0f;
+            vehicle.CurrentSpeed = 0f;
+            vehicle.Dir = Vector3.zero;
+            vehicle.HasCurrentTile = false;
+            vehicle.DisplayRouteHash = 0;
+            vehicle.DisplayRoute.Clear();
+            HideJamMarks(vehicle);
+            if (vehicle.Renderer != null)
+            {
+                vehicle.Renderer.enabled = true;
+            }
+
+            if (vehicle.DetailRenderer != null)
+            {
+                vehicle.DetailRenderer.enabled = true;
+            }
+
+            vehicle.Object.SetActive(true);
+        }
+
+        private void DeactivateCommuteVehicle(RouteVehicle vehicle)
+        {
+            vehicle.Object.SetActive(false);
+            vehicle.RouteIndex = -1;
+            vehicle.RouteHash = 0;
+            vehicle.HasCurrentTile = false;
+            vehicle.CurrentSpeed = 0f;
+            vehicle.Dir = Vector3.zero;
+            HideJamMarks(vehicle);
+        }
+
+        private void MoveCommuteVehicle(CommuteCar car, RouteVehicle vehicle)
+        {
+            if (!bakedRoutes.TryGetValue(car.RouteIndex, out BakedRoutePair pair))
+            {
+                // 위상 변경으로 경로 소실: 페이드아웃 후 다음 리빌드에서 재배치(순간이동 금지).
+                SetVehicleRenderersEnabled(vehicle, false);
+                return;
+            }
+
+            bool inbound = car.State == CarState.Inbound;
+            bool moving = car.State == CarState.Outbound || car.State == CarState.Inbound;
+
+            if (!moving)
+            {
+                // 주차: 앵커 고정(비용 0). Outbound 양끝이 home(0)·work(Length) 앵커.
+                float anchorDistance = car.State == CarState.ParkedWork ? pair.Outbound.Length : 0f;
+                Vector3 anchorPos = pair.Outbound.SampleAt(anchorDistance).Pos;
+                vehicle.Object.transform.localPosition = anchorPos;
+                vehicle.Pos = anchorPos;
+                vehicle.Dir = Vector3.zero;   // LeaderSpeedCap(Dot≤0.5)/CrossingYieldCap(sqr<0.001) 자동 제외(리뷰 #3)
+                vehicle.CurrentSpeed = 0f;
+                vehicle.CurrentTile = car.State == CarState.ParkedWork ? car.Work : car.Home;
+                vehicle.HasCurrentTile = true;
+                SetVehicleRenderersEnabled(vehicle, true);
+                HideJamMarks(vehicle);
+                return;
+            }
+
+            RoutePolyline poly = inbound ? pair.Inbound : pair.Outbound;
+            Sample s = poly.SampleAt(car.Distance);
+            Vector2Int currentTile = poly.TileAt(Mathf.Clamp(s.TileIndex, 0, poly.TileCount - 1));
+
+            float targetSpeed = vehicleSpeed;
+            bool boostedByFlowBurst = false;
+            if (s.IsSpur)
+            {
+                targetSpeed *= parkingApproachSpeedMul;   // 주차 진입/이탈 감속(신호·혼잡 판정 제외 구간)
+            }
+            else
+            {
+                CongestionLevel congestion = tileData.GetCongestion(currentTile);
+                if (congestion == CongestionLevel.Slow)
+                {
+                    targetSpeed *= slowSpeedMul;
+                }
+                else if (congestion == CongestionLevel.Jam)
+                {
+                    targetSpeed *= jamSpeedMul;
+                }
+
+                boostedByFlowBurst = IsInFlowBurstSpeedZone(currentTile);
+                if (boostedByFlowBurst)
+                {
+                    targetSpeed *= flowBurstSpeedMultiplier;
+                }
+
+                if (signalControl != null
+                    && TryGetNextSignalTile(poly, s, out _, out Vector2Int aheadSignal, out _)
+                    && signalControl.GetOverrideSecondsLeft(aheadSignal) > 0f)
+                {
+                    targetSpeed *= overrideSpeedMul;
+                }
+            }
+
+            vehicle.Dir = s.Dir;   // Leader/Yield 캡이 읽음(이동차만 방향 보유)
+            targetSpeed = Mathf.Min(targetSpeed, LeaderSpeedCap(vehicle, targetSpeed));
+            targetSpeed = Mathf.Min(targetSpeed, CrossingYieldCap(vehicle, targetSpeed));
+
+            bool mustStop = !s.IsSpur && IsRouteVehicleBlocked(poly, s);
+            if (mustStop)
+            {
+                vehicle.CurrentSpeed = 0f;   // 신호 정지는 연출보다 우선 — 논리 이동 즉시 정지
+            }
+            else
+            {
+                float acceleration = targetSpeed < vehicle.CurrentSpeed
+                    ? vehicleDeceleration
+                    : vehicleAcceleration * (boostedByFlowBurst ? flowBurstAccelerationMultiplier : 1f);
+                vehicle.CurrentSpeed = Mathf.MoveTowards(vehicle.CurrentSpeed, targetSpeed, acceleration * Time.deltaTime);
+            }
+
+            // 아크렝스 적분: phase-속도(타일/초)를 월드거리로 환산(1세그먼트 ≈ tileSize).
+            // 폴리라인이 이미 아크렝스 정규화라 코너 보정(GetTurnPhaseSpeedMultiplier) 불필요.
+            car.Distance += vehicle.CurrentSpeed * tileSize * Time.deltaTime;
+            if (car.Distance >= poly.Length)
+            {
+                commuteScheduler.NotifyArrived(car);   // Distance=0 리셋 + 상태 전이(Parked)
+                Vector3 endPos = poly.SampleAt(poly.Length).Pos;
+                vehicle.Object.transform.localPosition = endPos;
+                vehicle.Pos = endPos;
+                vehicle.Dir = Vector3.zero;
+                vehicle.CurrentSpeed = 0f;
+                vehicle.CurrentTile = currentTile;
+                vehicle.HasCurrentTile = true;
+                HideJamMarks(vehicle);
+                return;
+            }
+
+            Vector3 pos = s.Pos;
+            vehicle.Object.transform.localPosition = pos;
+            vehicle.CurrentTile = currentTile;
+            vehicle.HasCurrentTile = true;
+            if (s.Dir.sqrMagnitude > 0.001f)
+            {
+                float angle = Mathf.Atan2(s.Dir.y, s.Dir.x) * Mathf.Rad2Deg;
+                vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
+            }
+
+            // 역주행 유령 숨김(스펙 §3 해법①, !forward→Inbound 대입): Inbound가 일방 타일을
+            // 방향 반대로 지나면 렌더러 off. 매 프레임 재평가 → 조건 해제 시 자연 복원.
+            bool hiddenAsGhost = false;
+            if (inbound && !s.IsSpur && trafficRule != null)
+            {
+                Vector2Int onewayDir = trafficRule.GetOnewayDir(currentTile);
+                if (onewayDir != Vector2Int.zero)
+                {
+                    Vector3 onewayWorldDir = new Vector3(onewayDir.x, onewayDir.y, 0f);
+                    hiddenAsGhost = Vector3.Dot(s.Dir, onewayWorldDir) < -0.9f;
+                }
+            }
+
+            if (vehicle.Renderer != null)
+            {
+                vehicle.Renderer.enabled = !hiddenAsGhost;
+                Color routeColor = Color.HSVToRGB((vehicle.RouteIndex * 0.137f) % 1f, 0.7f, 0.95f);
+                ApplyRendererColor(vehicle.Renderer, routeColor);
+
+                if (vehicle.DetailRenderer != null)
+                {
+                    vehicle.DetailRenderer.enabled = !hiddenAsGhost;
+                    ApplyRendererColor(vehicle.DetailRenderer, Color.Lerp(routeColor, Color.white, 0.3f));
+                }
+            }
+
+            // Jam 분노 팝업(!)+매연 — 스퍼/유령 제외(기존 L1484-1505 패턴 재사용).
+            bool jammed = !hiddenAsGhost && !s.IsSpur
+                && tileData.GetCongestion(currentTile) == CongestionLevel.Jam;
+            if (jammed && vehicle.AngryMark == null)
+            {
+                vehicle.AngryMark = CreateTextMark(vehicleRoot, "!", Color.red, tileSize * 0.14f);
+                vehicle.SmokePuff = CreateSmokePuff();
+            }
+
+            if (vehicle.AngryMark != null)
+            {
+                vehicle.AngryMark.SetActive(jammed);
+                vehicle.SmokePuff.SetActive(jammed);
+                if (jammed)
+                {
+                    Vector3 basePos = vehicle.Object.transform.localPosition;
+                    float pulse = 1f + 0.2f * Mathf.Abs(Mathf.Sin(Time.time * 6f));
+                    vehicle.AngryMark.transform.localPosition = basePos + Vector3.back * (tileSize * 0.45f);
+                    AlignTextMarkPerpendicularToGround(vehicle.AngryMark.transform);
+                    vehicle.AngryMark.transform.localScale = Vector3.one * pulse;
+                    vehicle.SmokePuff.transform.localPosition = basePos - s.Dir * (tileSize * 0.28f)
+                        + Vector3.back * (tileSize * (0.12f + 0.06f * Mathf.Sin(Time.time * 2f)));
+                }
+            }
+
+            vehicle.Pos = vehicle.Object.transform.localPosition;
+            vehicle.Dir = s.Dir;
+        }
+
+        private static void SetVehicleRenderersEnabled(RouteVehicle vehicle, bool enabled)
+        {
+            if (vehicle.Renderer != null)
+            {
+                vehicle.Renderer.enabled = enabled;
+            }
+
+            if (vehicle.DetailRenderer != null)
+            {
+                vehicle.DetailRenderer.enabled = enabled;
+            }
+        }
+
+        private static void HideJamMarks(RouteVehicle vehicle)
+        {
+            if (vehicle.AngryMark != null)
+            {
+                vehicle.AngryMark.SetActive(false);
+            }
+
+            if (vehicle.SmokePuff != null)
+            {
+                vehicle.SmokePuff.SetActive(false);
+            }
+        }
+
+        // 폴리라인용 신호 오버로드(기존 List 버전 무접촉). Sample이 이미 current/progress를 들고 있어 재계산 없음.
+        private bool TryGetNextSignalTile(RoutePolyline poly, in Sample sample, out Vector2Int current, out Vector2Int next, out float progress)
+        {
+            current = default;
+            next = default;
+            progress = 0f;
+            if (poly == null || sample.IsSpur)
+            {
+                return false;
+            }
+
+            int index = sample.TileIndex;
+            if (index < 0 || index + 1 >= poly.TileCount)
+            {
+                return false;
+            }
+
+            current = poly.TileAt(index);
+            next = poly.TileAt(index + 1);
+            progress = sample.SegT;
+            if (current == next || !IsSignalTile(next))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool IsRouteVehicleBlocked(RoutePolyline poly, in Sample sample)
+        {
+            if (simEngine == null
+                || !TryGetNextSignalTile(poly, sample, out Vector2Int current, out Vector2Int next, out float progress))
+            {
+                return false;
+            }
+
+            // 경계 0.5 이미 넘은 차는 노란불 정리 규칙으로 통과(기존 L2075 규칙 이항).
+            if (progress >= 0.5f)
+            {
+                return false;
+            }
+
+            bool horizontal = current.y == next.y;
+            return !simEngine.IsSignalGreen(next, horizontal);
+        }
+
+        private void ResetCommuteState()
+        {
+            bakedRoutes.Clear();
+            carVehicles.Clear();
+            DestroyParkingVisuals();
+            commuteRoutesBuilt = false;
+            commuteRoutesHash = 0;
         }
 
         private void HandleSignalInput()
