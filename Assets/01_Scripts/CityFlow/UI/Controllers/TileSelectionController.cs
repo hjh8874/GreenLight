@@ -3,11 +3,18 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using CityFlow.Contracts;
 using CityFlow.UI.Controllers;
+using CityFlow.Bootstrap;
 
 namespace CityFlow.UI
 {
-    public class TileSelectionController : MonoBehaviour
+    public class TileSelectionController : MonoBehaviour, ICityFlowServiceConsumer
     {
+        private CityFlowServices _services;
+
+        public void Initialize(CityFlowServices services)
+        {
+            _services = services;
+        }
         [Header("References")]
         [SerializeField] private AnalysisCardController analysisCard;
         [SerializeField] private PlacementController placementController;
@@ -80,7 +87,20 @@ namespace CityFlow.UI
                 
                 if (gridCoord.HasValue && GridUtil.IsInside(gridCoord.Value))
                 {
-                    SelectTile(gridCoord.Value);
+                    bool isEmpty = false;
+                    if (_services != null && _services.TileData != null)
+                    {
+                        isEmpty = _services.TileData.GetTileType(gridCoord.Value) == TileType.Empty;
+                    }
+
+                    if (!isEmpty)
+                    {
+                        SelectTile(gridCoord.Value);
+                    }
+                    else
+                    {
+                        DeselectTile();
+                    }
                 }
                 else
                 {

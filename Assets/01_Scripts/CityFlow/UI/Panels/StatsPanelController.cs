@@ -161,6 +161,7 @@ namespace CityFlow.UI
             text.color = new Color(0.12f, 0.12f, 0.12f, 1f);
             text.alignment = TextAlignmentOptions.MidlineLeft;
             text.textWrappingMode = TextWrappingModes.NoWrap;
+            text.raycastTarget = false;
             return text;
         }
     }
