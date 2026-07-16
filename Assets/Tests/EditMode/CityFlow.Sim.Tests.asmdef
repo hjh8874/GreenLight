@@ -6,6 +6,7 @@
         "CityFlow.Contracts",
         "CityFlow.Authoring",
         "CityFlow.Save",
+        "CityFlow.ViewKit",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

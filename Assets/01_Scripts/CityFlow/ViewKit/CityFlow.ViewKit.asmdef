@@ -1,0 +1,6 @@
+{
+    "name": "CityFlow.ViewKit",
+    "rootNamespace": "CityFlow.ViewKit",
+    "references": [],
+    "autoReferenced": true
+}
