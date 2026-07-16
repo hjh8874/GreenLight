@@ -288,14 +288,19 @@ namespace CityFlow.View
             if (mouse != null)
             {
                 float scrollY = mouse.scroll.ReadValue().y;
-                float nextZoomDistance = Mathf.Clamp(
-                    zoomDistance - scrollY * zoomScrollSensitivity,
-                    minimumZoomDistance,
-                    minimumZoomDistance + zoomDistanceRange);
-                if (!Mathf.Approximately(nextZoomDistance, zoomDistance))
+                bool isOverUI = UnityEngine.EventSystems.EventSystem.current != null &&
+                                UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+                if (!isOverUI)
                 {
-                    zoomDistance = nextZoomDistance;
-                    cameraViewChanged = true;
+                    float nextZoomDistance = Mathf.Clamp(
+                        zoomDistance - scrollY * zoomScrollSensitivity,
+                        minimumZoomDistance,
+                        minimumZoomDistance + zoomDistanceRange);
+                    if (!Mathf.Approximately(nextZoomDistance, zoomDistance))
+                    {
+                        zoomDistance = nextZoomDistance;
+                        cameraViewChanged = true;
+                    }
                 }
 
                 if (mouse.middleButton.isPressed)

@@ -112,10 +112,7 @@ namespace CityFlow.UI
 
             if (_floatingService == null) return;
 
-            if (!_floatingService.IsFloating && tglFloatingMode != null)
-            {
-                tglFloatingMode.isOn = true;
-            }
+
 
             _floatingService.SetPreset(index);
             Debug.Log($"[FloatingPanel] 플로팅 창 프리셋 변경: {(index == 0 ? "S (480x270)" : index == 1 ? "M (960x540)" : "L (1440x810)")}");
@@ -123,9 +120,9 @@ namespace CityFlow.UI
 
         private void UpdatePresetButtonInteractable(bool floating)
         {
-            if (btnPresetS != null) btnPresetS.interactable = floating;
-            if (btnPresetM != null) btnPresetM.interactable = floating;
-            if (btnPresetL != null) btnPresetL.interactable = floating;
+            if (btnPresetS != null) btnPresetS.interactable = true;
+            if (btnPresetM != null) btnPresetM.interactable = true;
+            if (btnPresetL != null) btnPresetL.interactable = true;
         }
     }
 }

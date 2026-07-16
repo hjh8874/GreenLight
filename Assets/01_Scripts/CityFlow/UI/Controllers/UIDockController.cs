@@ -52,6 +52,18 @@ namespace CityFlow.UI
             BindButtons();
         }
 
+        private void Awake()
+        {
+            var scalers = FindObjectsByType<CanvasScaler>(FindObjectsInactive.Include);
+            foreach (var scaler in scalers)
+            {
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1920f, 1080f);
+                scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+                scaler.matchWidthOrHeight = 0.5f;
+            }
+        }
+
         private void Start()
         {
             BindButtons();

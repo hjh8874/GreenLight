@@ -276,16 +276,7 @@ namespace CityFlow.UI
             // 1. 시간 표시 (00:00 포맷 및 게임 달력 연동)
             if (timeText != null)
             {
-                if (_gameCalendar != null)
-                {
-                    timeText.text = $"시간: {_gameCalendar.Year}년 {_gameCalendar.Month:00}월 {_gameCalendar.Day:00}일 {_gameCalendar.Hour:00}:00";
-                }
-                else
-                {
-                    int minutes = Mathf.FloorToInt(Time.time / 60f);
-                    int seconds = Mathf.FloorToInt(Time.time % 60f);
-                    timeText.text = $"시간: {minutes:00}:{seconds:00}";
-                }
+                timeText.text = System.DateTime.Now.ToString("MM월 dd일 HH:mm");
             }
 
             // 2. 계약 계층에서 제공하는 실제 활성 차량 수

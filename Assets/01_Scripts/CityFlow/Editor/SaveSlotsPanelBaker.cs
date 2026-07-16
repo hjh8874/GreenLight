@@ -341,7 +341,7 @@ namespace CityFlow.EditorTools
                 "NameText",
                 "Save name",
                 new Vector2(216f, 8f),
-                new Vector2(430f, 30f),
+                new Vector2(320f, 30f),
                 18f,
                 FontStyles.Bold,
                 Color.white);
