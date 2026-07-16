@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using CityFlow.ViewKit;
@@ -99,6 +100,36 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2, two.Cars.Count, "homeSlots=2 → 집당 2대");
             Assert.AreEqual(0, two.Cars[0].HomeSlot);
             Assert.AreEqual(1, two.Cars[1].HomeSlot);
+        }
+
+        // sticky 리빌드: 동일 목록 재빌드는 이동 중 차의 상태·거리를 보존한다.
+        [Test]
+        public void Rebuild_SameLists_PreservesMovingCarState()
+        {
+            var s = Build(homes: 3, officeSlots: 4);
+            var car = s.Cars[1];
+            car.State = CarState.Outbound; car.Distance = 3.5f;
+            var sources = new List<Vector2Int> { V(0, 0), V(1, 0), V(2, 0) };
+            var sinks = new List<Vector2Int> { V(50, 50), V(50, 50), V(50, 50) };
+            s.Rebuild(sources, sinks, 4, 1, 96, 6f, 10f, 17f, 21f);
+            var same = s.Cars.First(c => c.Home == V(1, 0));
+            Assert.AreEqual(CarState.Outbound, same.State, "생존 짝은 상태 보존");
+            Assert.AreEqual(3.5f, same.Distance, 1e-4f);
+        }
+
+        // sticky 리빌드: 새 집 추가가 기존 차를 리셋하지 않고, 슬롯 유일성도 유지된다.
+        [Test]
+        public void Rebuild_AddedHome_DoesNotResetOthers_SlotsStayUnique()
+        {
+            var s = Build(homes: 3, officeSlots: 8);
+            s.Cars[0].State = CarState.ParkedWork;
+            var sources = new List<Vector2Int> { V(0, 0), V(1, 0), V(2, 0), V(3, 0) };
+            var sinks = new List<Vector2Int> { V(50, 50), V(50, 50), V(50, 50), V(50, 50) };
+            s.Rebuild(sources, sinks, 8, 1, 96, 6f, 10f, 17f, 21f);
+            Assert.AreEqual(4, s.Cars.Count);
+            Assert.AreEqual(CarState.ParkedWork, s.Cars.First(c => c.Home == V(0, 0)).State);
+            var seen = new HashSet<(Vector2Int, int)>();
+            foreach (var c in s.Cars) Assert.IsTrue(seen.Add((c.Work, c.WorkSlot)), "슬롯 유일성");
         }
     }
 }
