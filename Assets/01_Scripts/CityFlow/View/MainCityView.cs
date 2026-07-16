@@ -466,8 +466,14 @@ namespace CityFlow.View
         private void ExitDriveView()
         {
             selectedVehicle = null;
-            driveViewCamera?.StopFollowing();
-            dockController?.SetDriveViewActive(false);
+            if (driveViewCamera != null)
+            {
+                driveViewCamera.StopFollowing();
+            }
+            if (dockController != null)
+            {
+                dockController.SetDriveViewActive(false);
+            }
         }
 
         public bool IsPointerOverVehicle(Vector2 screenPosition)
