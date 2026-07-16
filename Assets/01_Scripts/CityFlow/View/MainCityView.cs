@@ -43,6 +43,7 @@ namespace CityFlow.View
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
         [SerializeField] private float followGap = 0.4f;           // 차간 유지 거리(타일 비율)
+        [SerializeField, Range(0.02f, 1f)] private float vehicleStreamScale = 0.15f;   // 뷰 차량 스트림 배율 — 심 rate의 몇 %만 그릴지(화면 가독성). 심 수치·수익 불변
         [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
         [SerializeField] private float roundaboutOrbitRadius = 0.3f;   // 로터리 궤도 반경(타일 비율)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
@@ -84,6 +85,7 @@ namespace CityFlow.View
         private readonly Dictionary<Vector2Int, TurnSignVisual> turnSignVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> priorityRoadVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
+        private readonly List<RouteSpawnState> routeSpawns = new();
         private readonly List<FlowBurstSpeedZone> flowBurstSpeedZones = new();
         private readonly HashSet<Vector2Int> signalTileSet = new();
 
@@ -175,6 +177,16 @@ namespace CityFlow.View
             public bool IntersectionClaimHorizontal;
             public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
             public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
+            public int RouteIndex = -1;
+            public int RouteHash;
+        }
+
+        private sealed class RouteSpawnState
+        {
+            public int RouteHash;
+            public float Countdown;
+            public int Target;        // 이 경로의 목표 대수(rate×왕복시간 근사) — 차는 순환 유지, 대수만 조절
+            public int ActiveCount;   // 현재 이 경로에서 도는 대수
         }
 
         private struct FlowBurstSpeedZone
@@ -472,6 +484,7 @@ namespace CityFlow.View
 
             ClearChildren(vehicleRoot);
             vehicles.Clear();
+            routeSpawns.Clear();
 
             selectedSignalIndex = 0;
 
@@ -1086,37 +1099,179 @@ namespace CityFlow.View
             }
 
             IReadOnlyList<List<Vector2Int>> routes = simEngine.ActiveRoutes;
-            int visibleCount = Mathf.Min(maxMovingVehicles, routes.Count);
-            EnsureVehicleCount(visibleCount);
+            EnsureVehicleCount(maxMovingVehicles);
+            SyncRouteSpawnStates(routes);
+            SpawnRouteVehicles(routes);
 
             for (int i = 0; i < vehicles.Count; i++)
             {
-                bool active = i < visibleCount && routes[i].Count > 1;
-                vehicles[i].Object.SetActive(active);
-
-                if (!active)
+                RouteVehicle vehicle = vehicles[i];
+                if (!vehicle.Object.activeSelf)
                 {
-                    vehicles[i].HasCurrentTile = false;
-                    vehicles[i].HasOccupiedTile = false;
-                    vehicles[i].HasIntersectionClaim = false;
-                    vehicles[i].CurrentSpeed = 0f;
-                    if (vehicles[i].AngryMark != null)
-                    {
-                        vehicles[i].AngryMark.SetActive(false);
-                        vehicles[i].SmokePuff.SetActive(false);
-                    }
+                    continue;
+                }
+
+                if (vehicle.RouteIndex < 0
+                    || vehicle.RouteIndex >= routes.Count
+                    || routes[vehicle.RouteIndex].Count <= 1
+                    || vehicle.RouteHash != routeSpawns[vehicle.RouteIndex].RouteHash)
+                {
+                    DeactivateVehicle(vehicle);
                 }
             }
 
             PrepareIntersectionTrafficState();
 
-            for (int i = 0; i < visibleCount; i++)
+            for (int i = 0; i < vehicles.Count; i++)
             {
                 if (!vehicles[i].Object.activeSelf)
                 {
                     continue;
                 }
-                MoveVehicle(vehicles[i], routes[i], i);
+
+                MoveVehicle(vehicles[i], routes[vehicles[i].RouteIndex], i);
+            }
+        }
+
+        private void SyncRouteSpawnStates(IReadOnlyList<List<Vector2Int>> routes)
+        {
+            while (routeSpawns.Count < routes.Count)
+            {
+                routeSpawns.Add(new RouteSpawnState());
+            }
+
+            if (routeSpawns.Count > routes.Count)
+            {
+                routeSpawns.RemoveRange(routes.Count, routeSpawns.Count - routes.Count);
+            }
+
+            for (int i = 0; i < routes.Count; i++)
+            {
+                int routeHash = routes[i].Count > 1 ? ComputeDisplayRouteHash(routes[i]) : 0;
+                RouteSpawnState spawn = routeSpawns[i];
+                if (spawn.RouteHash == routeHash)
+                {
+                    continue;
+                }
+
+                spawn.RouteHash = routeHash;
+                spawn.Countdown = 0f;
+                spawn.ActiveCount = 0;   // 구 해시 차량은 Deactivate에서 해시 불일치로 감산 안 됨(이중감산 방지)
+            }
+        }
+
+        private void SpawnRouteVehicles(IReadOnlyList<List<Vector2Int>> routes)
+        {
+            // 뷰 전용 배율: 심 rate 그대로면 화면이 차로 도배됨(경로당 rate×왕복시간 대).
+            // 심 수치는 불변 — 그리는 밀도만 줄이는 번역 배율(원칙①). 인스펙터 라이브 튜닝.
+            float demandRate = simEngine != null ? simEngine.DemandRate * vehicleStreamScale : 0f;
+            if (demandRate <= 0f)
+            {
+                return;
+            }
+
+            float spawnInterval = 1f / demandRate;
+            for (int routeIndex = 0; routeIndex < routes.Count && routeIndex < routeSpawns.Count; routeIndex++)
+            {
+                if (routes[routeIndex].Count <= 1)
+                {
+                    continue;
+                }
+
+                RouteSpawnState spawn = routeSpawns[routeIndex];
+
+                // 목표 대수 = rate × 왕복시간 근사(긴 경로일수록 많이). 차는 순환 유지 —
+                // 수요가 늘면 서서히 합류, 줄면 왕복 마친 차만 은퇴(생겼다 사라졌다 처닝 방지).
+                float cycleTime = (routes[routeIndex].Count - 1) * 2f / Mathf.Max(0.01f, vehicleSpeed);
+                spawn.Target = Mathf.Max(1, Mathf.CeilToInt(demandRate * cycleTime));
+
+                if (spawn.ActiveCount >= spawn.Target)
+                {
+                    spawn.Countdown = 0f;   // 충원 필요 없음 — 다음 부족 시 즉시 1대부터
+                    continue;
+                }
+
+                spawn.Countdown -= Time.deltaTime;
+                if (spawn.Countdown <= 0f && TrySpawnVehicle(routeIndex, routes))
+                {
+                    spawn.ActiveCount++;
+                    spawn.Countdown = spawnInterval;   // 간격당 1대씩만 합류(뿅 러시 방지)
+                }
+            }
+        }
+
+        private bool TrySpawnVehicle(int routeIndex, IReadOnlyList<List<Vector2Int>> routes)
+        {
+            RouteVehicle vehicle = null;
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                if (!vehicles[i].Object.activeSelf)
+                {
+                    vehicle = vehicles[i];
+                    break;
+                }
+            }
+
+            if (vehicle == null)
+            {
+                return false;
+            }
+
+            List<Vector2Int> route = routes[routeIndex];
+            vehicle.RouteIndex = routeIndex;
+            vehicle.RouteHash = routeSpawns[routeIndex].RouteHash;
+            vehicle.Phase = 0f;
+            vehicle.CurrentSpeed = 0f;
+            vehicle.HasCurrentTile = false;
+            vehicle.HasOccupiedTile = false;
+            vehicle.HasIntersectionClaim = false;
+            vehicle.DisplayRouteHash = 0;
+            vehicle.DisplayRoute.Clear();
+
+            if (vehicle.AngryMark != null)
+            {
+                vehicle.AngryMark.SetActive(false);
+                vehicle.SmokePuff.SetActive(false);
+            }
+
+            List<Vector2Int> displayRoute = GetDisplayRoute(vehicle, route);
+            if (displayRoute.Count > 1)
+            {
+                EvaluateVehiclePose(displayRoute, 0, 0f, true, out Vector3 pos, out Vector3 travelDir, out Vector2Int insideTile);
+                vehicle.Object.transform.localPosition = pos;
+                vehicle.Pos = pos;
+                vehicle.Dir = travelDir;
+                vehicle.CurrentTile = displayRoute[0];
+                vehicle.HasCurrentTile = true;
+                vehicle.OccupiedTile = insideTile;
+                vehicle.HasOccupiedTile = true;
+            }
+
+            vehicle.Object.SetActive(true);
+            return true;
+        }
+
+        private void DeactivateVehicle(RouteVehicle vehicle)
+        {
+            // 현 해시로 카운트된 차만 감산(위상 변경 직후 구 해시 차량 이중감산 방지)
+            if (vehicle.RouteIndex >= 0 && vehicle.RouteIndex < routeSpawns.Count
+                && routeSpawns[vehicle.RouteIndex].RouteHash == vehicle.RouteHash)
+            {
+                RouteSpawnState spawn = routeSpawns[vehicle.RouteIndex];
+                spawn.ActiveCount = Mathf.Max(0, spawn.ActiveCount - 1);
+            }
+
+            vehicle.Object.SetActive(false);
+            vehicle.RouteIndex = -1;
+            vehicle.RouteHash = 0;
+            vehicle.HasCurrentTile = false;
+            vehicle.HasOccupiedTile = false;
+            vehicle.HasIntersectionClaim = false;
+            vehicle.CurrentSpeed = 0f;
+            if (vehicle.AngryMark != null)
+            {
+                vehicle.AngryMark.SetActive(false);
+                vehicle.SmokePuff.SetActive(false);
             }
         }
 
@@ -1141,6 +1296,7 @@ namespace CityFlow.View
                     ApplyRendererColor(detailRenderer, Color.Lerp(vehicleColor, Color.white, 0.3f));
                 }
 
+                vehicle.SetActive(false);
                 vehicles.Add(new RouteVehicle
                 {
                     Object = vehicle,
@@ -1151,7 +1307,7 @@ namespace CityFlow.View
             }
         }
 
-        private void MoveVehicle(RouteVehicle vehicle, List<Vector2Int> sourceRoute, int routeIndex)
+        private void MoveVehicle(RouteVehicle vehicle, List<Vector2Int> sourceRoute, int vehicleIndex)
         {
             List<Vector2Int> route = GetDisplayRoute(vehicle, sourceRoute);
             int segmentCount = route.Count - 1;
@@ -1185,7 +1341,7 @@ namespace CityFlow.View
 
             // 팀 디버그 뷰와 같은 순서로 앞차를 먼저 확인한다.
             // 앞차에 막힌 차량이 교차로를 선점하면 실제 선두 차량까지 막혀 교착이 생긴다.
-            bool blockedByLeader = IsBlockedByLeader(vehicle, routeIndex);
+            bool blockedByLeader = IsBlockedByLeader(vehicle, vehicleIndex);
             bool mustStop = false;
             if (blockedByLeader)
             {
@@ -1224,9 +1380,25 @@ namespace CityFlow.View
                     acceleration * Time.deltaTime);
             }
             float previousPhase = vehicle.Phase;
-            vehicle.Phase = Mathf.Repeat(
-                vehicle.Phase + Time.deltaTime * vehicle.CurrentSpeed,
-                segmentCount * 2f);
+            float nextPhase = vehicle.Phase + Time.deltaTime * vehicle.CurrentSpeed;
+            float cycleLength = segmentCount * 2f;
+            if (nextPhase >= cycleLength)
+            {
+                // 왕복 완료 = 집 도착. 목표 초과분만 이 지점에서 자연 은퇴,
+                // 아니면 다음 왕복 이어감 — 차가 화면에서 사라지지 않는다(처닝 방지).
+                RouteSpawnState spawn = vehicle.RouteIndex >= 0 && vehicle.RouteIndex < routeSpawns.Count
+                    ? routeSpawns[vehicle.RouteIndex]
+                    : null;
+                if (spawn == null || spawn.ActiveCount > spawn.Target)
+                {
+                    DeactivateVehicle(vehicle);
+                    return;
+                }
+
+                nextPhase -= cycleLength;
+            }
+
+            vehicle.Phase = nextPhase;
 
             float folded = Fold(vehicle.Phase, segmentCount);
             int index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
@@ -1235,7 +1407,7 @@ namespace CityFlow.View
             bool forward = vehicle.Phase <= segmentCount;
             EvaluateVehiclePose(route, index, t, forward, out Vector3 pos, out Vector3 travelDir, out Vector2Int insideTile);
 
-            if (WouldOverlapAfterMove(vehicle, routeIndex, pos, travelDir))
+            if (WouldOverlapAfterMove(vehicle, vehicleIndex, pos, travelDir))
             {
                 vehicle.Phase = previousPhase;
                 vehicle.CurrentSpeed = 0f;
@@ -1288,7 +1460,7 @@ namespace CityFlow.View
             if (vehicle.Renderer != null)
             {
                 vehicle.Renderer.enabled = !hiddenAsGhost;
-                Color routeColor = Color.HSVToRGB((routeIndex * 0.137f) % 1f, 0.7f, 0.95f);
+                Color routeColor = Color.HSVToRGB((vehicle.RouteIndex * 0.137f) % 1f, 0.7f, 0.95f);
                 ApplyRendererColor(vehicle.Renderer, routeColor);
 
                 if (vehicle.DetailRenderer != null)
