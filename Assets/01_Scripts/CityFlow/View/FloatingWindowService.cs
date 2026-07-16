@@ -225,6 +225,9 @@ namespace CityFlow.View
                 originalWindowPositionCaptured = false;
             }
 
+            isMaximized = false;
+            isDockedToTop = false;
+
             if (titleBarController != null)
             {
                 titleBarController.ApplyContentInset();
