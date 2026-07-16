@@ -21,6 +21,7 @@ namespace CityFlow.Sim.Tests
             c.RoadCapacity = 10f;
             c.CoinBase = 1f;
             c.OfflineCapHours = capHours;
+            c.RoadMaintPerSec = 0f;
 
             var hub = new SimEventHub();
             var s = new List<SettlementEvent>();
@@ -87,6 +88,7 @@ namespace CityFlow.Sim.Tests
             c.RoadCapacity = 10f;
             c.CoinBase = 1f;
             c.OfflineCapHours = 8f;
+            c.RoadMaintPerSec = 0f;
 
             var hub = new SimEventHub();
             var s = new List<SettlementEvent>();
@@ -116,6 +118,103 @@ namespace CityFlow.Sim.Tests
 
             Assert.AreEqual(controlSettlements[0].Coins, tappedSettlements[0].Coins);  // 오버라이드 무시
             Assert.AreEqual(0f, tapped.GetOverrideSecondsLeft(V(4, 0)));               // 잔여 오버라이드 소멸
+        }
+
+        static SimEngine BuildRoadCostCity(
+            bool carpet,
+            float maintenanceRate,
+            out List<SettlementEvent> settlements,
+            out List<MaintenanceEvent> maintenance)
+        {
+            var c = SimConfig.Default();
+            c.TickInterval = 0.25f;
+            c.GridWidth = 5;
+            c.GridHeight = 5;
+            c.DemandPerHouse = 5f;
+            c.RoadCapacity = 100f;
+            c.CoinBase = 1f;
+            c.OfflineCapHours = 8f;
+            c.AutoDetectSignals = false;
+            c.RoadMaintPerSec = maintenanceRate;
+
+            var hub = new SimEventHub();
+            var s = new List<SettlementEvent>();
+            var m = new List<MaintenanceEvent>();
+            hub.SettlementComputed += e => s.Add(e);
+            hub.Maintenance += e => m.Add(e);
+            settlements = s;
+            maintenance = m;
+
+            var eng = new SimEngine(c, hub);
+            eng.Place(V(0, 1), TileType.House);
+            eng.Place(V(4, 1), TileType.Office);
+
+            if (carpet)
+            {
+                for (int y = 0; y < c.GridHeight; y++)
+                for (int x = 0; x < c.GridWidth; x++)
+                {
+                    if ((x == 0 || x == 4) && y == 1) continue;
+                    eng.Place(V(x, y), TileType.Road);
+                }
+            }
+            else
+            {
+                for (int x = 0; x < c.GridWidth; x++)
+                {
+                    eng.Place(V(x, 0), TileType.Road);
+                }
+            }
+
+            return eng;
+        }
+
+        static long MaintenanceTotal(List<MaintenanceEvent> events)
+        {
+            long total = 0L;
+            for (int i = 0; i < events.Count; i++) total += events[i].Cost;
+            return total;
+        }
+
+        [Test]
+        public void CarpetSpam_NetProfitLowerThanOptimal()
+        {
+            var optimal = BuildRoadCostCity(false, 0.1f, out var optimalSettlements, out _);
+            var spam = BuildRoadCostCity(true, 0.1f, out var spamSettlements, out _);
+
+            optimal.SettleOffline(100.0);
+            spam.SettleOffline(100.0);
+
+            Assert.Less(spamSettlements[0].Coins, optimalSettlements[0].Coins,
+                "도배가 최적보다 이득이면 익스플로잇이 살아있음");
+        }
+
+        [Test]
+        public void OnlineMaintenance_AccumulatesRoadCountTimesRateTimesSeconds()
+        {
+            var eng = BuildRoadCostCity(false, 0.4f, out _, out var maintenance);
+
+            for (int i = 0; i < 8; i++) eng.Tick(0.25f);
+
+            Assert.AreEqual(4L, MaintenanceTotal(maintenance)); // 5 roads × 0.4/s × 2s
+        }
+
+        [Test]
+        public void Maintenance_OnlineAndOfflineCostsMatch()
+        {
+            const float rate = 0.2f;
+            const double seconds = 10.0;
+
+            var online = BuildRoadCostCity(false, rate, out _, out var maintenance);
+            for (int i = 0; i < 40; i++) online.Tick(0.25f);
+
+            var baseline = BuildRoadCostCity(false, 0f, out var baselineSettlements, out _);
+            baseline.SettleOffline(seconds);
+            var offline = BuildRoadCostCity(false, rate, out var offlineSettlements, out _);
+            offline.SettleOffline(seconds);
+
+            long offlineCost = baselineSettlements[0].Coins - offlineSettlements[0].Coins;
+            Assert.AreEqual(MaintenanceTotal(maintenance), offlineCost);
         }
     }
 }

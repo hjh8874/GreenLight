@@ -43,7 +43,7 @@ namespace CityFlow.UI
                 return;
             }
 
-            floatingService = FindFirstObjectByType<FloatingWindowService>();
+            floatingService = FindAnyObjectByType<FloatingWindowService>();
             if (floatingService != null)
             {
                 floatingService.OnFloatingStateChanged += OnFloatingStateChanged;

@@ -34,7 +34,6 @@ namespace CityFlow.Sim.Tests
             var c = SimConfig.Default();      // tick 0.1, Jam 진입 1.0, Free 복귀 0.6
             c.RoadCapacity = 10f;
             c.BurstRewardThreshold = 0.5f;
-            c.BurstRewardMultiplier = 5f;
             return c;
         }
 
@@ -42,7 +41,7 @@ namespace CityFlow.Sim.Tests
         public void JamThenRelief_FiresSingleBurst_AtBottleneck()
         {
             // 계획 3: 과수요로 Jam(pending 0.6 적립) → 해소 → 전이에서 Burst 딱 1회,
-            // 금액 = round(0.6×5) = 3, 위치 = 병목 타일.
+            // magnitude = round(0.6) = 1, 위치 = 병목 타일.
             var g = StraightCity();
             var cfg = BurstCfg();
             var dm = new DemandMap(cfg); dm.Reassign(g, new RoadNetwork(g));
@@ -53,8 +52,8 @@ namespace CityFlow.Sim.Tests
             var detector = new BurstDetector(g.Width, g.Height);
 
             var hub = new SimEventHub();
-            int bursts = 0, reward = 0; Vector2Int tile = default;
-            hub.FlowBurst += e => { bursts++; reward += e.Reward; tile = e.Tile; };
+            int bursts = 0, magnitude = 0; Vector2Int tile = default;
+            hub.FlowBurst += e => { bursts++; magnitude += e.Reward; tile = e.Tile; };
             var buffer = new SimEventBuffer(hub);
 
             Step(15f, ref cfg, g, dm, planner, solver, detector, buffer); // ratio 1.5 → Jam 진입
@@ -62,7 +61,7 @@ namespace CityFlow.Sim.Tests
 
             Step(1f, ref cfg, g, dm, planner, solver, detector, buffer);  // ratio 0.1 → Free 복귀 = 전이
             Assert.AreEqual(1, bursts);
-            Assert.AreEqual(3, reward);                               // round(0.6 × 5)
+            Assert.AreEqual(1, magnitude);                            // round(0.6)
             Assert.AreEqual(V(0, 0), tile);                           // 병목(경로 첫 최대 ratio 타일)
 
             Step(1f, ref cfg, g, dm, planner, solver, detector, buffer);  // 계속 Free → 추가 발행 없음
@@ -70,11 +69,11 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void JamThenRelief_RewardScalesWithCoinBase()
+        public void JamThenRelief_MagnitudeIgnoresCoinBase()
         {
-            // pending은 '잃은 차량 수' 단위 — 도착 코인과 같은 환율(CoinBase)로 환전해야
-            // 파밍 중립이 CoinBase≠1에서도 유지된다(감사 2026-07-12). CoinBase=2면 보상 정확히 2배.
-            int RunAndGetReward(float coinBase)
+            // FlowBurst Reward는 호환용 필드명일 뿐 코인이 아니다. CoinBase가 달라도
+            // 같은 pending이면 연출 magnitude는 같아야 한다.
+            int RunAndGetMagnitude(float coinBase)
             {
                 var g = StraightCity();
                 var cfg = BurstCfg();
@@ -86,20 +85,20 @@ namespace CityFlow.Sim.Tests
                 var solver = new FlowSolver(g.Width, g.Height);
                 var detector = new BurstDetector(g.Width, g.Height);
                 var hub = new SimEventHub();
-                int reward = 0;
-                hub.FlowBurst += e => reward += e.Reward;
+                int magnitude = 0;
+                hub.FlowBurst += e => magnitude += e.Reward;
                 var buffer = new SimEventBuffer(hub);
 
                 Step(15f, ref cfg, g, dm, planner, solver, detector, buffer);  // Jam 진입
                 Step(1f, ref cfg, g, dm, planner, solver, detector, buffer);   // Free 복귀 → Burst
 
-                return reward;
+                return magnitude;
             }
 
-            int reward1 = RunAndGetReward(1f);
-            int reward2 = RunAndGetReward(2f);
+            int magnitude1 = RunAndGetMagnitude(1f);
+            int magnitude2 = RunAndGetMagnitude(2f);
 
-            Assert.AreEqual(reward1 * 2, reward2);
+            Assert.AreEqual(magnitude1, magnitude2);
         }
 
         [Test]

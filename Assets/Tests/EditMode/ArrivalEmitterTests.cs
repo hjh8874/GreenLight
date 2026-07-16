@@ -28,6 +28,7 @@ namespace CityFlow.Sim.Tests
             cfg.DemandPerHouse = 0.5f;
             cfg.RoadCapacity = 10f;
             cfg.CoinBase = 3f;
+            cfg.RoadMaintPerSec = 0f;
 
             var g = StraightCity();
             var dm = new DemandMap(cfg);

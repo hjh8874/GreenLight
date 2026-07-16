@@ -39,6 +39,8 @@ namespace CityFlow.Sim
         readonly List<Vector2Int> _houses = new(64);
         readonly List<Vector2Int> _sinks = new(16);
         readonly List<Demand> _demands = new(128);
+        // 홈타일+sink종류 → 배정 sink. sink 철거/도로 단절 때만 해제해 차량 순간이동을 막는다.
+        readonly Dictionary<(Vector2Int home, TileType sink), Vector2Int> _sticky = new(128);
         readonly List<Vector2Int> _houseFrontageBuffer = new(8);   // 집 프론티지 전수 스캔용 재사용 버퍼
 
         public IReadOnlyList<Demand> Demands => _demands;
@@ -67,7 +69,7 @@ namespace CityFlow.Sim
             {
                 _sinks.Clear();
                 Collect(grid, sinkType, _sinks);
-                AssignType(_houses, _sinks, CapacityFor(sinkType), net);
+                AssignType(_houses, _sinks, sinkType, CapacityFor(sinkType), net);
             }
         }
 
@@ -96,22 +98,38 @@ namespace CityFlow.Sim
         // K=1이면 항상 최근접. 도달 가능한 곳이 하나도 없으면 최근접 폴백(흐름 0).
         // 감사 픽스 2: 건물의 프론티지가 여러 개(다른 Region)일 수 있어 전수 검사 — 첫 접점만
         // 보면 실제로는 연결된 건물을 도달불가로 오판한다(막다른 스텁이 스캔 1순위일 때).
-        void AssignType(List<Vector2Int> sources, List<Vector2Int> sinks, int capPerSink, RoadNetwork net)
+        void AssignType(List<Vector2Int> sources, List<Vector2Int> sinks, TileType sinkType, int capPerSink, RoadNetwork net)
         {
-            if (sinks.Count == 0) return;
+            if (sinks.Count == 0)
+            {
+                RemoveStickyForSinkType(sinkType);
+                return;
+            }
 
             var remaining = new int[sinks.Count]; // ponytail: 재배정 드물어 지역 할당 OK
             var sinkFrontages = new List<Vector2Int>[sinks.Count];   // 수요처 프론티지 전수(스캔 순서)
+            var sinkIndices = new Dictionary<Vector2Int, int>(sinks.Count);
             for (int i = 0; i < sinks.Count; i++)
             {
                 remaining[i] = capPerSink;
                 sinkFrontages[i] = new List<Vector2Int>(4);
                 net.CollectAccessRoads(sinks[i], sinkFrontages[i]);
+                sinkIndices[sinks[i]] = i;
             }
 
             int pool = Mathf.Max(1, _config.DemandChoicePool);
             // 같은 Region 매칭 + 채택된 접점 쌍(RoutePlanner 단일 출처화용)까지 함께 후보에 담음.
             var candidates = new List<(int idx, int dist, Vector2Int houseRoad, Vector2Int sinkRoad)>(sinks.Count);
+            PruneSticky(sources, sinkType, sinkIndices, sinkFrontages, net);
+            int[] stickyIdxBySource = ReserveStickyAssignments(
+                sources,
+                sinkType,
+                remaining,
+                sinkIndices,
+                sinkFrontages,
+                net,
+                out Vector2Int[] stickyHouseRoads,
+                out Vector2Int[] stickySinkRoads);
 
             for (int h = 0; h < sources.Count; h++)
             {
@@ -119,50 +137,149 @@ namespace CityFlow.Sim
                 _houseFrontageBuffer.Clear();
                 net.CollectAccessRoads(house, _houseFrontageBuffer);
 
-                candidates.Clear();
-                int bestAny = -1, bestAnyDist = int.MaxValue;   // 섬 무관 최근접(폴백)
-                Vector2Int bestAnyHouseRoad = NoRoad, bestAnySinkRoad = NoRoad;
-                for (int i = 0; i < sinks.Count; i++)
-                {
-                    if (remaining[i] <= 0) continue;
-                    int d = Manhattan(house, sinks[i]);
-                    if (d < bestAnyDist)   // strict < → 동점 시 낮은 인덱스 유지
-                    {
-                        bestAnyDist = d;
-                        bestAny = i;
-                        bestAnyHouseRoad = _houseFrontageBuffer.Count > 0 ? _houseFrontageBuffer[0] : NoRoad;
-                        bestAnySinkRoad = sinkFrontages[i].Count > 0 ? sinkFrontages[i][0] : NoRoad;
-                    }
-                    if (TryFirstRegionMatch(net, _houseFrontageBuffer, sinkFrontages[i], out var houseRoad, out var sinkRoad))
-                        candidates.Add((i, d, houseRoad, sinkRoad));
-                }
-
+                var key = (house, sinkType);
                 int best;
                 Vector2Int chosenHouseRoad, chosenSinkRoad;
-                if (candidates.Count > 0)
+                if (stickyIdxBySource[h] >= 0)
                 {
-                    // 거리순(동점은 flat 인덱스순) 상위 pool곳 중 집 좌표 해시로 택1.
-                    candidates.Sort((a, b) => a.dist != b.dist ? a.dist - b.dist : a.idx - b.idx);
-                    int span = Mathf.Min(pool, candidates.Count);
-                    var picked = candidates[HashPick(house, span)];
-                    best = picked.idx;
-                    chosenHouseRoad = picked.houseRoad;
-                    chosenSinkRoad = picked.sinkRoad;
+                    best = stickyIdxBySource[h];
+                    chosenHouseRoad = stickyHouseRoads[h];
+                    chosenSinkRoad = stickySinkRoads[h];
                 }
                 else
                 {
-                    best = bestAny;   // 도달 가능한 수요처 0개 → 기존 동작(배정하되 흐름 0)
-                    if (best < 0) continue;   // 모든 sink 만석 → 이 집은 이 종류 수요 없음
-                    chosenHouseRoad = bestAnyHouseRoad;
-                    chosenSinkRoad = bestAnySinkRoad;
+                    candidates.Clear();
+                    int bestAny = -1, bestAnyDist = int.MaxValue;   // 섬 무관 최근접(폴백)
+                    Vector2Int bestAnyHouseRoad = NoRoad, bestAnySinkRoad = NoRoad;
+                    for (int i = 0; i < sinks.Count; i++)
+                    {
+                        if (remaining[i] <= 0) continue;
+                        int d = Manhattan(house, sinks[i]);
+                        if (d < bestAnyDist)   // strict < → 동점 시 낮은 인덱스 유지
+                        {
+                            bestAnyDist = d;
+                            bestAny = i;
+                            bestAnyHouseRoad = _houseFrontageBuffer.Count > 0 ? _houseFrontageBuffer[0] : NoRoad;
+                            bestAnySinkRoad = sinkFrontages[i].Count > 0 ? sinkFrontages[i][0] : NoRoad;
+                        }
+                        if (TryFirstRegionMatch(net, _houseFrontageBuffer, sinkFrontages[i], out var houseRoad, out var sinkRoad))
+                            candidates.Add((i, d, houseRoad, sinkRoad));
+                    }
+
+                    if (candidates.Count > 0)
+                    {
+                        // 거리순(동점은 flat 인덱스순) 상위 pool곳 중 집 좌표 해시로 택1.
+                        candidates.Sort((a, b) => a.dist != b.dist ? a.dist - b.dist : a.idx - b.idx);
+                        int span = Mathf.Min(pool, candidates.Count);
+                        var picked = candidates[HashPick(house, span)];
+                        best = picked.idx;
+                        chosenHouseRoad = picked.houseRoad;
+                        chosenSinkRoad = picked.sinkRoad;
+                    }
+                    else
+                    {
+                        best = bestAny;   // 도달 가능한 수요처 0개 → 기존 동작(배정하되 흐름 0)
+                        if (best < 0) continue;   // 모든 sink 만석 → 이 집은 이 종류 수요 없음
+                        chosenHouseRoad = bestAnyHouseRoad;
+                        chosenSinkRoad = bestAnySinkRoad;
+                    }
+
+                    remaining[best]--;
                 }
 
-                remaining[best]--;
+                _sticky[key] = sinks[best];
                 _demands.Add(new Demand
                 {
                     Source = house, Sink = sinks[best],
                     SourceRoad = chosenHouseRoad, SinkRoad = chosenSinkRoad,
                 });
+            }
+        }
+
+        void RemoveStickyForSinkType(TileType sinkType)
+        {
+            var dead = new List<(Vector2Int home, TileType sink)>();
+            foreach (var pair in _sticky)
+            {
+                if (pair.Key.sink == sinkType)
+                {
+                    dead.Add(pair.Key);
+                }
+            }
+
+            for (int i = 0; i < dead.Count; i++)
+            {
+                _sticky.Remove(dead[i]);
+            }
+        }
+
+        int[] ReserveStickyAssignments(List<Vector2Int> sources, TileType sinkType, int[] remaining,
+            Dictionary<Vector2Int, int> sinkIndices, List<Vector2Int>[] sinkFrontages, RoadNetwork net,
+            out Vector2Int[] houseRoads, out Vector2Int[] sinkRoads)
+        {
+            var stickyIdxBySource = new int[sources.Count];
+            houseRoads = new Vector2Int[sources.Count];
+            sinkRoads = new Vector2Int[sources.Count];
+
+            for (int h = 0; h < sources.Count; h++)
+            {
+                stickyIdxBySource[h] = -1;
+                var house = sources[h];
+                var key = (house, sinkType);
+                if (!_sticky.TryGetValue(key, out var stickySink)
+                    || !sinkIndices.TryGetValue(stickySink, out int stickyIdx)
+                    || remaining[stickyIdx] <= 0)
+                {
+                    continue;
+                }
+
+                _houseFrontageBuffer.Clear();
+                net.CollectAccessRoads(house, _houseFrontageBuffer);
+                if (!TryFirstRegionMatch(net, _houseFrontageBuffer, sinkFrontages[stickyIdx], out var houseRoad, out var sinkRoad))
+                {
+                    continue;
+                }
+
+                stickyIdxBySource[h] = stickyIdx;
+                houseRoads[h] = houseRoad;
+                sinkRoads[h] = sinkRoad;
+                remaining[stickyIdx]--;
+            }
+
+            return stickyIdxBySource;
+        }
+
+        void PruneSticky(List<Vector2Int> sources, TileType sinkType, Dictionary<Vector2Int, int> sinkIndices,
+            List<Vector2Int>[] sinkFrontages, RoadNetwork net)
+        {
+            var liveSources = new HashSet<Vector2Int>(sources);
+            var dead = new List<(Vector2Int home, TileType sink)>();
+
+            foreach (var pair in _sticky)
+            {
+                if (pair.Key.sink != sinkType)
+                {
+                    continue;
+                }
+
+                if (!liveSources.Contains(pair.Key.home)
+                    || !sinkIndices.TryGetValue(pair.Value, out int sinkIndex))
+                {
+                    dead.Add(pair.Key);
+                    continue;
+                }
+
+                _houseFrontageBuffer.Clear();
+                net.CollectAccessRoads(pair.Key.home, _houseFrontageBuffer);
+                if (!TryFirstRegionMatch(net, _houseFrontageBuffer, sinkFrontages[sinkIndex], out _, out _))
+                {
+                    dead.Add(pair.Key);
+                }
+            }
+
+            for (int i = 0; i < dead.Count; i++)
+            {
+                _sticky.Remove(dead[i]);
             }
         }
 

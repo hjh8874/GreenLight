@@ -6,6 +6,8 @@ using UnityEngine;
 
 namespace CityFlow.Gameplay.Economy
 {
+    // Player coins are earned from completed trips (ArrivalEvent) only.
+    // FlowBurst is an effect-only event and must not affect the economy.
     public sealed class EconomyService :
         MonoBehaviour,
         ICityFlowServiceConsumer,
@@ -45,7 +47,7 @@ namespace CityFlow.Gameplay.Economy
             services.RegisterEconomy(this);
 
             services.Events.Arrival += OnArrival;
-            services.Events.FlowBurst += OnFlowBurst;
+            services.Events.Maintenance += OnMaintenance;
             services.Events.SettlementComputed += OnSettlementComputed;
 
             PublishCoinsChanged();
@@ -63,7 +65,7 @@ namespace CityFlow.Gameplay.Economy
             }
 
             services.Events.Arrival -= OnArrival;
-            services.Events.FlowBurst -= OnFlowBurst;
+            services.Events.Maintenance -= OnMaintenance;
             services.Events.SettlementComputed -= OnSettlementComputed;
         }
 
@@ -175,11 +177,27 @@ namespace CityFlow.Gameplay.Economy
         }
 
         /// <summary>
-        /// Flow Burst가 발생했을 때 호출됩니다.
+        /// Deducts road maintenance without allowing a negative balance.
         /// </summary>
-        private void OnFlowBurst(FlowBurstEvent e)
+        private void OnMaintenance(MaintenanceEvent e)
         {
-            AddCoins(e.Reward, "flow burst");
+            if (e.Cost <= 0L)
+            {
+                return;
+            }
+
+            long deducted = Math.Min(Coins, e.Cost);
+            Coins -= deducted;
+            if (deducted > 0L)
+            {
+                PublishCoinsChanged();
+            }
+
+            Debug.Log(
+                "[EconomyService] Deducted " + deducted +
+                " coins from maintenance. Requested: " + e.Cost +
+                ", Current coins: " + Coins
+            );
         }
 
         /// <summary>

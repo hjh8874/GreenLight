@@ -17,7 +17,7 @@ namespace CityFlow.Sim
         readonly float[] _ratioH;  // 축별 ratio. 교차로가 아니면 양축 동일(합산/C = 기존 규약)
         readonly float[] _ratioV;
         readonly CongestionLevel[] _level;
-        readonly float[] _pendingReward;   // 병목 타일에 쌓인 잃은 처리량(틱 넘어 누적, D4가 소비)
+        readonly float[] _pendingReward;   // 연출 크기 산정용 휘발 데이터. 세이브 불필요, BurstDetector가 소비.
 
         // 이번 틱에 실제로 흐른 경로들. RoadNetwork 캐시의 참조만 담음(소유 X, 틱 중 new 0).
         readonly List<List<Vector2Int>> _routes = new(128);
@@ -28,6 +28,7 @@ namespace CityFlow.Sim
         float _distanceWeightedDeliveredTotal;
 
         public float DeliveredTotal { get; private set; }   // 이번 틱 총 처리량(대/초)
+        public float JamTileRatio { get; private set; }      // jam 도로 타일 / 전체 도로 타일
 
         // 이번 틱의 가구당 수요율(대/초) = DemandPerHouse × 맥동 배율. Assign이 기록,
         // Resolve·SimStats가 같은 값을 쓴다 — 분자·분모가 못 갈라짐.
@@ -214,6 +215,8 @@ namespace CityFlow.Sim
                     }
             }
 
+            UpdateJamTileRatio(grid);
+
             // ② 경로별: 병목(최대 ratio) → E → delivered + 잃은 만큼 병목 타일에 pending 적립
             DeliveredTotal = 0f;
             _distanceWeightedDeliveredTotal = 0f;
@@ -245,8 +248,8 @@ namespace CityFlow.Sim
                 _distanceWeightedDeliveredToSink[sinkIndex] += distanceWeightedDelivered;
                 _distanceWeightedDeliveredTotal += distanceWeightedDelivered;
 
-                // 잃은 처리량(rate×틱=대수)을 병목에 적립 — 나중에 그 타일을 고치면 Burst 보상의 원료.
-                // 신호 손실은 pending에 안 넣음: 조율의 보상은 Burst가 아니라 그린웨이브 처리량 자체(설계 §2).
+                // 잃은 처리량(rate×틱=대수)을 병목에 적립 — 타일을 고쳤을 때 Burst 연출 크기의 원료.
+                // 신호 손실은 pending에 안 넣음: 조율 결과는 그린웨이브 처리량 자체로 드러난다(설계 §2).
                 if (e < 1f && bottleneckIdx >= 0)
                     _pendingReward[bottleneckIdx] += DemandRate * (1f - e) * cfg.TickInterval;
             }
@@ -340,6 +343,30 @@ namespace CityFlow.Sim
         public void ClearPendingReward(Vector2Int t) => _pendingReward[Index(t)] = 0f;     // 철거 소각용
         // 장부는 도시 상태와 생명주기 공유 — 세이브 복원 시 이전 도시의 유령 장부 방지(리뷰 2026-07-11).
         public void ClearAllPendingRewards() => Array.Clear(_pendingReward, 0, _pendingReward.Length);
+
+        void UpdateJamTileRatio(CityGrid grid)
+        {
+            if (grid == null || grid.RoadTileCount <= 0)
+            {
+                JamTileRatio = 0f;
+                return;
+            }
+
+            int jamTiles = 0;
+            for (int y = 0; y < grid.Height; y++)
+            {
+                for (int x = 0; x < grid.Width; x++)
+                {
+                    var tile = new Vector2Int(x, y);
+                    if (grid.GetTile(tile) == TileType.Road && GetCongestion(tile) == CongestionLevel.Jam)
+                    {
+                        jamTiles++;
+                    }
+                }
+            }
+
+            JamTileRatio = jamTiles / (float)grid.RoadTileCount;
+        }
 
         static CongestionLevel Classify(float ratio, in SimConfig cfg) =>
             ratio > cfg.JamRatio ? CongestionLevel.Jam

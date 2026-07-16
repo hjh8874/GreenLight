@@ -121,6 +121,9 @@ Assets/06_Radio/ThirdParty/gree-unity-webview~/
 # Local Codex instructions
 /AGENTS.md
 
+# Local generated artifacts
+/output/
+
 # 교통 디버그 씬은 Tools/GreenLight 메뉴로 재생성되는 산출물 — 커밋 안 함
 Assets/00_Scenes/*_Debug.unity
 Assets/00_Scenes/*_Debug.unity.meta
