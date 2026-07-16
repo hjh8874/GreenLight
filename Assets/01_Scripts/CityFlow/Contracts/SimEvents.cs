@@ -18,6 +18,7 @@ namespace CityFlow.Contracts
     public readonly struct FlowBurstEvent
     {
         public readonly Vector2Int Tile;
+        // 호환을 위해 이름은 유지한다. 코인이 아니라 SFX/쉐이크용 연출 magnitude다.
         public readonly int Reward;
 
         public FlowBurstEvent(Vector2Int tile, int reward)

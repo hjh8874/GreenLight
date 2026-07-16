@@ -17,7 +17,7 @@ namespace CityFlow.Sim
         readonly float[] _ratioH;  // 축별 ratio. 교차로가 아니면 양축 동일(합산/C = 기존 규약)
         readonly float[] _ratioV;
         readonly CongestionLevel[] _level;
-        readonly float[] _pendingReward;   // 병목 타일에 쌓인 잃은 처리량(틱 넘어 누적, D4가 소비)
+        readonly float[] _pendingReward;   // 연출 크기 산정용 휘발 데이터. 세이브 불필요, BurstDetector가 소비.
 
         // 이번 틱에 실제로 흐른 경로들. RoadNetwork 캐시의 참조만 담음(소유 X, 틱 중 new 0).
         readonly List<List<Vector2Int>> _routes = new(128);
@@ -248,8 +248,8 @@ namespace CityFlow.Sim
                 _distanceWeightedDeliveredToSink[sinkIndex] += distanceWeightedDelivered;
                 _distanceWeightedDeliveredTotal += distanceWeightedDelivered;
 
-                // 잃은 처리량(rate×틱=대수)을 병목에 적립 — 나중에 그 타일을 고치면 Burst 보상의 원료.
-                // 신호 손실은 pending에 안 넣음: 조율의 보상은 Burst가 아니라 그린웨이브 처리량 자체(설계 §2).
+                // 잃은 처리량(rate×틱=대수)을 병목에 적립 — 타일을 고쳤을 때 Burst 연출 크기의 원료.
+                // 신호 손실은 pending에 안 넣음: 조율 결과는 그린웨이브 처리량 자체로 드러난다(설계 §2).
                 if (e < 1f && bottleneckIdx >= 0)
                     _pendingReward[bottleneckIdx] += DemandRate * (1f - e) * cfg.TickInterval;
             }

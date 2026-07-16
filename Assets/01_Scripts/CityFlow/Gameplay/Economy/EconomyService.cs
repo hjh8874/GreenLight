@@ -6,6 +6,8 @@ using UnityEngine;
 
 namespace CityFlow.Gameplay.Economy
 {
+    // Player coins are earned from completed trips (ArrivalEvent) only.
+    // FlowBurst is an effect-only event and must not affect the economy.
     public sealed class EconomyService :
         MonoBehaviour,
         ICityFlowServiceConsumer,
@@ -45,7 +47,6 @@ namespace CityFlow.Gameplay.Economy
             services.RegisterEconomy(this);
 
             services.Events.Arrival += OnArrival;
-            services.Events.FlowBurst += OnFlowBurst;
             services.Events.SettlementComputed += OnSettlementComputed;
 
             PublishCoinsChanged();
@@ -63,7 +64,6 @@ namespace CityFlow.Gameplay.Economy
             }
 
             services.Events.Arrival -= OnArrival;
-            services.Events.FlowBurst -= OnFlowBurst;
             services.Events.SettlementComputed -= OnSettlementComputed;
         }
 
@@ -172,14 +172,6 @@ namespace CityFlow.Gameplay.Economy
             }
 
             AddCoins(e.Coins, "arrival");
-        }
-
-        /// <summary>
-        /// Flow Burst가 발생했을 때 호출됩니다.
-        /// </summary>
-        private void OnFlowBurst(FlowBurstEvent e)
-        {
-            AddCoins(e.Reward, "flow burst");
         }
 
         /// <summary>
