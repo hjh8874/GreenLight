@@ -126,5 +126,20 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(g.TopologyDirty);                       // 다음 Step이 경로·수요·신호 재구축
             Assert.Greater(g.TopologyVersion, versionBefore);     // RoadNetwork 캐시 무효화 키 갱신
         }
+
+        [Test]
+        public void RoadTileCount_CountsOnlyRoads()
+        {
+            var g = new CityGrid(5, 4);
+            g.Place(new Vector2Int(0, 0), TileType.Road);
+            g.Place(new Vector2Int(1, 0), TileType.Road);
+            g.Place(new Vector2Int(2, 0), TileType.House);
+
+            Assert.AreEqual(2, g.RoadTileCount);
+
+            g.Remove(new Vector2Int(0, 0));
+
+            Assert.AreEqual(1, g.RoadTileCount);
+        }
     }
 }

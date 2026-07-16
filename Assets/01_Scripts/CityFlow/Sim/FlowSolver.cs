@@ -28,6 +28,7 @@ namespace CityFlow.Sim
         float _distanceWeightedDeliveredTotal;
 
         public float DeliveredTotal { get; private set; }   // 이번 틱 총 처리량(대/초)
+        public float JamTileRatio { get; private set; }      // jam 도로 타일 / 전체 도로 타일
 
         // 이번 틱의 가구당 수요율(대/초) = DemandPerHouse × 맥동 배율. Assign이 기록,
         // Resolve·SimStats가 같은 값을 쓴다 — 분자·분모가 못 갈라짐.
@@ -214,6 +215,8 @@ namespace CityFlow.Sim
                     }
             }
 
+            UpdateJamTileRatio(grid);
+
             // ② 경로별: 병목(최대 ratio) → E → delivered + 잃은 만큼 병목 타일에 pending 적립
             DeliveredTotal = 0f;
             _distanceWeightedDeliveredTotal = 0f;
@@ -340,6 +343,30 @@ namespace CityFlow.Sim
         public void ClearPendingReward(Vector2Int t) => _pendingReward[Index(t)] = 0f;     // 철거 소각용
         // 장부는 도시 상태와 생명주기 공유 — 세이브 복원 시 이전 도시의 유령 장부 방지(리뷰 2026-07-11).
         public void ClearAllPendingRewards() => Array.Clear(_pendingReward, 0, _pendingReward.Length);
+
+        void UpdateJamTileRatio(CityGrid grid)
+        {
+            if (grid == null || grid.RoadTileCount <= 0)
+            {
+                JamTileRatio = 0f;
+                return;
+            }
+
+            int jamTiles = 0;
+            for (int y = 0; y < grid.Height; y++)
+            {
+                for (int x = 0; x < grid.Width; x++)
+                {
+                    var tile = new Vector2Int(x, y);
+                    if (grid.GetTile(tile) == TileType.Road && GetCongestion(tile) == CongestionLevel.Jam)
+                    {
+                        jamTiles++;
+                    }
+                }
+            }
+
+            JamTileRatio = jamTiles / (float)grid.RoadTileCount;
+        }
 
         static CongestionLevel Classify(float ratio, in SimConfig cfg) =>
             ratio > cfg.JamRatio ? CongestionLevel.Jam
