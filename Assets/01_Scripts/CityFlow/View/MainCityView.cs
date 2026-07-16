@@ -47,7 +47,7 @@ namespace CityFlow.View
         [SerializeField, Range(0f, 1f)] private float jamSpeedMul = 0.25f;
         [SerializeField, Range(0.02f, 1f)] private float vehicleStreamScale = 0.15f;   // 뷰 차량 스트림 배율 — 심 rate의 몇 %만 그릴지(화면 가독성). 심 수치·수익 불변
         [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
-        [SerializeField] private float roundaboutOrbitRadius = 0.3f;   // 로터리 궤도 반경(타일 비율)
+        [SerializeField] private float roundaboutOrbitRadius = 0.68f;  // 로터리 궤도 반경(타일 비율)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
         [Header("Camera View")]
@@ -1425,15 +1425,26 @@ namespace CityFlow.View
                 EvaluateVehiclePose(route, index, t, forward, out pos, out travelDir, out insideTile);
             }
 
-            // 로터리 연출(뷰 전용 — 엔진 무관): 타일 안에선 진행 방향 오른쪽으로 부풀어
-            // 중앙 섬을 반시계로 돌아가는 궤적. 경계에서 0(직선과 연속), 중심에서 최대.
+            // 로터리 경계에서는 차선 포즈를 유지하고, 안쪽에서만 CCW 링 포즈로 전환한다.
             if (IsRoundaboutTile(insideTile))
             {
-                Vector3 center = GridToLocal(insideTile, vehicleZ);
-                float along = Vector3.Dot(pos - center, travelDir);   // lane은 수직이라 영향 없음
-                float bulge = Mathf.Cos(Mathf.PI * Mathf.Clamp(along / tileSize, -0.5f, 0.5f));
-                float extra = Mathf.Max(0f, tileSize * (roundaboutOrbitRadius - laneOffset)) * bulge;
-                pos += new Vector3(travelDir.y, -travelDir.x, 0f) * extra;
+                int ci = t < 0.5f ? index : index + 1;
+                if (TryRoundaboutOrbit(route, ci, folded, forward, out Vector3 ringPos, out Vector3 ringDir))
+                {
+                    float arcU = Mathf.Clamp01(forward ? folded - ci + 0.5f : ci + 0.5f - folded);
+                    const float edge = 0.35f;
+                    float blend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(arcU / edge))
+                                * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((1f - arcU) / edge));
+                    pos = Vector3.Lerp(pos, ringPos, blend);
+                    if (ringDir.sqrMagnitude > 0.0001f)
+                    {
+                        Vector3 blendedDir = Vector3.Lerp(travelDir.normalized, ringDir.normalized, blend);
+                        if (blendedDir.sqrMagnitude > 0.0001f)
+                        {
+                            travelDir = blendedDir.normalized;
+                        }
+                    }
+                }
             }
 
             vehicle.Object.transform.localPosition = pos;
@@ -1635,7 +1646,8 @@ namespace CityFlow.View
             }
 
             bridge = horizontalFirst ? horizontalBridge : verticalBridge;
-            return !IsRoundaboutTile(bridge);
+            // 로터리 중심도 표시 경로에 넣어 꺾는 차가 대각선으로 섬을 가로지르지 않게 한다.
+            return true;
         }
 
         // 일반 교차로 회전 연출(뷰 전용 — 엔진 무관): 진입선과 이탈선에 접하는 90도 원호로
@@ -1699,6 +1711,23 @@ namespace CityFlow.View
             float radiusFraction = GetCornerTurnRadiusFraction();
             int cornerIndex = -1;
 
+            int orbitIndex = segmentT < 0.5f ? segmentIndex : segmentIndex + 1;
+            bool fwd = Mathf.Repeat(phase, segmentCount * 2f) <= segmentCount;
+            if (orbitIndex > 0
+                && orbitIndex < route.Count - 1
+                && Mathf.Abs(folded - orbitIndex) <= 0.5f
+                && IsRoundaboutTile(route[orbitIndex]))
+            {
+                if (roundaboutOrbitRadius > 0.01f
+                    && TryGetRoundaboutArc(route, orbitIndex, fwd, out _, out float ccwSweep)
+                    && ccwSweep > 0.01f)
+                {
+                    return 1f / (roundaboutOrbitRadius * ccwSweep);
+                }
+
+                return 1f;
+            }
+
             if (segmentT >= 1f - radiusFraction && segmentIndex + 2 < route.Count)
             {
                 cornerIndex = segmentIndex + 1;
@@ -1724,6 +1753,72 @@ namespace CityFlow.View
 
             // phase상 곡선 길이(2×중심선 반경)를 실제 차량 원호 길이(π/2×차선 반경)에 맞춘다.
             return 4f * centerRadius / (Mathf.PI * actualRadius);
+        }
+
+        // 진행 방향 기준 진입·이탈을 잡고 우측통행 로터리의 CCW 스윕을 계산한다.
+        private bool TryGetRoundaboutArc(
+            List<Vector2Int> route,
+            int centerIndex,
+            bool forward,
+            out float entryAngle,
+            out float ccwSweep)
+        {
+            entryAngle = 0f;
+            ccwSweep = 0f;
+            if (centerIndex <= 0 || centerIndex >= route.Count - 1)
+            {
+                return false;
+            }
+
+            Vector2Int previous = forward ? route[centerIndex - 1] : route[centerIndex + 1];
+            Vector2Int next = forward ? route[centerIndex + 1] : route[centerIndex - 1];
+            Vector3 incoming = new Vector3(
+                route[centerIndex].x - previous.x,
+                route[centerIndex].y - previous.y,
+                0f).normalized;
+            Vector3 outgoing = new Vector3(
+                next.x - route[centerIndex].x,
+                next.y - route[centerIndex].y,
+                0f).normalized;
+            if (incoming.sqrMagnitude < 0.5f || outgoing.sqrMagnitude < 0.5f)
+            {
+                return false;
+            }
+
+            entryAngle = Mathf.Atan2(-incoming.y, -incoming.x);
+            float exitAngle = Mathf.Atan2(outgoing.y, outgoing.x);
+            ccwSweep = Mathf.Repeat(exitAngle - entryAngle, 2f * Mathf.PI);
+            if (ccwSweep < 0.05f)
+            {
+                ccwSweep = 2f * Mathf.PI;
+            }
+
+            return true;
+        }
+
+        private bool TryRoundaboutOrbit(
+            List<Vector2Int> route,
+            int centerIndex,
+            float folded,
+            bool forward,
+            out Vector3 position,
+            out Vector3 tangent)
+        {
+            position = default;
+            tangent = default;
+            if (!TryGetRoundaboutArc(route, centerIndex, forward, out float entryAngle, out float ccwSweep))
+            {
+                return false;
+            }
+
+            float arcU = Mathf.Clamp01(
+                forward ? folded - centerIndex + 0.5f : centerIndex + 0.5f - folded);
+            float angle = entryAngle + arcU * ccwSweep;
+            float radius = tileSize * roundaboutOrbitRadius;
+            Vector3 center = GridToLocal(route[centerIndex], vehicleZ);
+            position = center + new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * radius;
+            tangent = new Vector3(-Mathf.Sin(angle), Mathf.Cos(angle), 0f);
+            return true;
         }
 
         private float GetCornerTurnRadiusFraction()
