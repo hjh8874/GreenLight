@@ -181,6 +181,8 @@ namespace CityFlow.View
             public Vector3 Dir;
             public Vector2Int CurrentTile;
             public bool HasCurrentTile;
+            public Vector2Int RoundaboutTile;
+            public bool IsInRoundabout;
             public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
             public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
             public int RouteIndex = -1;
@@ -1387,6 +1389,7 @@ namespace CityFlow.View
             vehicle.Phase = 0f;
             vehicle.CurrentSpeed = 0f;
             vehicle.HasCurrentTile = false;
+            vehicle.IsInRoundabout = false;
             vehicle.DisplayRouteHash = 0;
             vehicle.DisplayRoute.Clear();
 
@@ -1430,6 +1433,7 @@ namespace CityFlow.View
             vehicle.RouteIndex = -1;
             vehicle.RouteHash = 0;
             vehicle.HasCurrentTile = false;
+            vehicle.IsInRoundabout = false;
             vehicle.CurrentSpeed = 0f;
             if (vehicle.AngryMark != null)
             {
@@ -1599,6 +1603,8 @@ namespace CityFlow.View
             vehicle.Object.transform.localPosition = pos;
             vehicle.CurrentTile = currentTile;
             vehicle.HasCurrentTile = true;
+            vehicle.RoundaboutTile = insideTile;
+            vehicle.IsInRoundabout = IsRoundaboutTile(insideTile);
 
             if (travelDir.sqrMagnitude > 0.001f)
             {
@@ -2121,17 +2127,51 @@ namespace CityFlow.View
             return Mathf.Abs(Vector3.Dot(incoming, outgoing)) < 0.001f;
         }
 
-        // 앞차와의 거리를 [gap, 2*gap]에서 [0, freeSpeed]로 매핑. 없으면 freeSpeed.
+        // 직선에서는 전방 투영 거리, 로터리에서는 CCW 원호 거리로 앞차를 판정한다.
+        // 거리를 [gap, 2*gap]에서 [0, freeSpeed]로 매핑. 없으면 freeSpeed.
         // 차량 수가 수백 대 규모인 동안은 O(n) 스캔을 유지하고, 병목이 되면 공간 해시로 승급한다.
         private float LeaderSpeedCap(RouteVehicle vehicle, float freeSpeed)
         {
             if (vehicle.Dir.sqrMagnitude < 0.001f) return freeSpeed;
             float gap = tileSize * followGap;
             float nearest = float.MaxValue;
+
+            if (vehicle.IsInRoundabout)
+            {
+                Vector3 center = GridToLocal(vehicle.RoundaboutTile, vehicleZ);
+                Vector3 myRadius = vehicle.Pos - center;
+                if (myRadius.sqrMagnitude < 0.0001f) return freeSpeed;
+
+                float myAngle = Mathf.Atan2(myRadius.y, myRadius.x);
+                float orbitRadius = Mathf.Max(tileSize * roundaboutOrbitRadius, 0.01f);
+                for (int i = 0; i < vehicles.Count; i++)
+                {
+                    RouteVehicle other = vehicles[i];
+                    if (other == vehicle || !other.Object.activeSelf
+                        || !other.IsInRoundabout || other.RoundaboutTile != vehicle.RoundaboutTile)
+                    {
+                        continue;
+                    }
+
+                    Vector3 otherRadius = other.Pos - center;
+                    if (otherRadius.sqrMagnitude < 0.0001f) continue;
+
+                    float otherAngle = Mathf.Atan2(otherRadius.y, otherRadius.x);
+                    float arcDistance = Mathf.Repeat(otherAngle - myAngle, 2f * Mathf.PI) * orbitRadius;
+                    if (arcDistance > 0.0001f && arcDistance <= 2f * gap && arcDistance < nearest)
+                    {
+                        nearest = arcDistance;
+                    }
+                }
+
+                if (nearest == float.MaxValue) return freeSpeed;
+                return Mathf.Lerp(0f, freeSpeed, Mathf.Clamp01((nearest - gap) / gap));
+            }
+
             for (int i = 0; i < vehicles.Count; i++)
             {
                 RouteVehicle other = vehicles[i];
-                if (other == vehicle || !other.Object.activeSelf) continue;
+                if (other == vehicle || !other.Object.activeSelf || other.IsInRoundabout) continue;
                 Vector3 to = other.Pos - vehicle.Pos;
                 float d = to.magnitude;
                 if (d < 0.0001f || d > 2f * gap) continue;
@@ -2147,7 +2187,7 @@ namespace CityFlow.View
         // 비대칭 우선순위와 양수 속도 바닥으로 상호 정지·기아 데드락을 막는다.
         private float CrossingYieldCap(RouteVehicle vehicle, float freeSpeed)
         {
-            if (vehicle.Dir.sqrMagnitude < 0.001f) return freeSpeed;
+            if (vehicle.IsInRoundabout || vehicle.Dir.sqrMagnitude < 0.001f) return freeSpeed;
 
             Vector3 myDirection = vehicle.Dir.normalized;
             Vector3 rightDirection = new Vector3(myDirection.y, -myDirection.x, 0f);
