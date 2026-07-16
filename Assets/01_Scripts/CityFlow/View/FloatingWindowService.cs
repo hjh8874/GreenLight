@@ -97,7 +97,7 @@ namespace CityFlow.View
                 ? FloatingWindowTitleBarController.TitleBarHeight
                 : 0f;
 
-            isFloating = true;
+            isFloating = PlayerPrefs.GetInt(FloatingPrefKey, 1) == 1;
             isAlwaysOnTop = PlayerPrefs.GetInt(TopmostPrefKey, 1) == 1;
             presetIndex = Mathf.Clamp(
                 PlayerPrefs.GetInt(PresetPrefKey, 1),
@@ -107,12 +107,24 @@ namespace CityFlow.View
 
             if (Application.isEditor)
             {
-                state = FloatingState.Floating;
-                titleBarController?.Initialize(this, null);
+                if (isFloating)
+                {
+                    state = FloatingState.Floating;
+                    titleBarController?.Initialize(this, null);
+                }
+                ApplyContentViewport();
             }
             else
             {
-                EnterFloating();
+                if (isFloating)
+                {
+                    EnterFloating();
+                }
+                else if (titleBarController != null)
+                {
+                    titleBarController.ApplyContentInset();
+                    titleBarController.gameObject.SetActive(false);
+                }
             }
 
             ApplyPerformanceMode();
@@ -161,23 +173,97 @@ namespace CityFlow.View
             PollResolutionChange();
         }
 
-        public void ToggleFloating()
+        public void SetFloatingMode(bool enable)
         {
-            if (isFloating)
+            if (isFloating == enable) return;
+            isFloating = enable;
+
+            if (Application.isEditor)
             {
-                Debug.Log("[FloatingWindowService] Windowed mode is disabled. The game remains in floating mode.");
+                if (isFloating)
+                {
+                    state = FloatingState.Floating;
+                    if (titleBarController != null)
+                    {
+                        titleBarController.gameObject.SetActive(true);
+                        titleBarController.Initialize(this, null);
+                    }
+                }
+                else
+                {
+                    isMaximized = false;
+                    isDockedToTop = false;
+
+                    if (titleBarController != null)
+                    {
+                        titleBarController.ApplyContentInset();
+                        titleBarController.gameObject.SetActive(false);
+                    }
+
+                    state = FloatingState.Normal;
+                }
+
+                ApplyContentViewport();
+
+                SavePrefs();
+                OnFloatingStateChanged?.Invoke(isFloating);
                 return;
             }
 
-            isFloating = true;
-            if (!Application.isEditor && state == FloatingState.Normal)
+            if (isFloating)
             {
-                notifyFloatingEntry = true;
-                EnterFloating();
+                if (state == FloatingState.Normal)
+                {
+                    notifyFloatingEntry = true;
+                    EnterFloating();
+                }
+            }
+            else
+            {
+                ExitFloating();
             }
 
             ApplyPerformanceMode();
             SavePrefs();
+        }
+
+        private void ExitFloating()
+        {
+            if (state == FloatingState.Normal) return;
+
+            StopRunningCoroutines();
+
+            ApplyTransparentCamera(false);
+
+            if (windowController != null)
+            {
+                windowController.isTransparent = false;
+                windowController.isTopmost = false;
+                windowController.isHitTestEnabled = false;
+            }
+
+            if (!Application.isEditor && windowStateCaptured)
+            {
+                windowsWindowHost?.RestoreWindowed();
+                RequestOriginalWindowState();
+                RestoreOriginalWindowPosition();
+                windowStateCaptured = false;
+                originalWindowPositionCaptured = false;
+            }
+
+            isMaximized = false;
+            isDockedToTop = false;
+
+            if (titleBarController != null)
+            {
+                titleBarController.ApplyContentInset();
+                titleBarController.gameObject.SetActive(false);
+            }
+
+            state = FloatingState.Normal;
+            OnFloatingStateChanged?.Invoke(false);
+
+            Debug.Log("[FloatingWindowService] Exited floating mode. Restored to normal window.");
         }
 
         public void SetPreset(int index)
@@ -189,6 +275,13 @@ namespace CityFlow.View
 
             if (Application.isEditor || state == FloatingState.Entering)
             {
+                return;
+            }
+
+            if (!isFloating)
+            {
+                Vector2 size = ContentPresets[presetIndex];
+                Screen.SetResolution((int)size.x, (int)size.y, Screen.fullScreenMode);
                 return;
             }
 
@@ -325,7 +418,11 @@ namespace CityFlow.View
 
             ApplyTransparentCamera(true);
             ApplyContentViewport();
-            titleBarController?.Initialize(this, windowController);
+            if (titleBarController != null)
+            {
+                titleBarController.gameObject.SetActive(true);
+                titleBarController.Initialize(this, windowController);
+            }
             SubscribeMonitorChanges();
 
             state = FloatingState.Floating;
@@ -711,7 +808,7 @@ namespace CityFlow.View
 
         private float GetReservedTitleBarHeight()
         {
-            return isMaximized ? 0f : titleBarHeight;
+            return isFloating && !isMaximized ? titleBarHeight : 0f;
         }
 
         private void UpdateDockedState(FloatingWindowPlacement placement)
@@ -773,7 +870,7 @@ namespace CityFlow.View
 
         private void SavePrefs()
         {
-            PlayerPrefs.SetInt(FloatingPrefKey, 1);
+            PlayerPrefs.SetInt(FloatingPrefKey, isFloating ? 1 : 0);
             PlayerPrefs.SetInt(PresetPrefKey, presetIndex);
             PlayerPrefs.SetInt(TopmostPrefKey, isAlwaysOnTop ? 1 : 0);
             PlayerPrefs.Save();

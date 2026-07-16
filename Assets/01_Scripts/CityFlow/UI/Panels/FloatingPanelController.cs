@@ -19,7 +19,6 @@ namespace CityFlow.UI
         {
             FindAndSubscribeService();
             BindButtons();
-            HideWindowModeToggle();
             SyncFloatingUI();
         }
 
@@ -60,15 +59,21 @@ namespace CityFlow.UI
             if (btnPresetS != null) btnPresetS.onClick.AddListener(() => OnPresetClicked(0));
             if (btnPresetM != null) btnPresetM.onClick.AddListener(() => OnPresetClicked(1));
             if (btnPresetL != null) btnPresetL.onClick.AddListener(() => OnPresetClicked(2));
+
+            if (tglFloatingMode != null)
+            {
+                tglFloatingMode.onValueChanged.AddListener(OnFloatingModeToggled);
+            }
+
             isBound = true;
         }
 
-        private void HideWindowModeToggle()
+        private void OnFloatingModeToggled(bool isOn)
         {
-            if (tglFloatingMode != null)
+            FindAndSubscribeService();
+            if (floatingService != null)
             {
-                tglFloatingMode.SetIsOnWithoutNotify(true);
-                tglFloatingMode.gameObject.SetActive(false);
+                floatingService.SetFloatingMode(isOn);
             }
         }
 
@@ -76,9 +81,9 @@ namespace CityFlow.UI
         {
             FindAndSubscribeService();
 
-            if (tglFloatingMode != null)
+            if (tglFloatingMode != null && floatingService != null)
             {
-                tglFloatingMode.SetIsOnWithoutNotify(true);
+                tglFloatingMode.SetIsOnWithoutNotify(floatingService.IsFloating);
             }
 
             UpdatePresetButtonInteractable(floatingService != null);
@@ -88,7 +93,7 @@ namespace CityFlow.UI
         {
             if (tglFloatingMode != null)
             {
-                tglFloatingMode.SetIsOnWithoutNotify(true);
+                tglFloatingMode.SetIsOnWithoutNotify(isFloating);
             }
 
             UpdatePresetButtonInteractable(floatingService != null);

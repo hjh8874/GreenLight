@@ -117,6 +117,32 @@ namespace CityFlow.View
 #endif
         }
 
+        public void RestoreWindowed()
+        {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            if (!TryAttach())
+            {
+                return;
+            }
+
+            int style = GetWindowLong(windowHandle, WindowStyleIndex);
+            style |= (WindowStyleCaption | WindowStyleThickFrame);
+            style &= ~WindowStylePopup;
+            SetWindowLong(windowHandle, WindowStyleIndex, style);
+            SetWindowPos(
+                windowHandle,
+                IntPtr.Zero,
+                0,
+                0,
+                0,
+                0,
+                SetWindowPositionNoMove
+                | SetWindowPositionNoSize
+                | SetWindowPositionNoZOrder
+                | SetWindowPositionFrameChanged);
+#endif
+        }
+
         public void MinimizeToTaskbar()
         {
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
