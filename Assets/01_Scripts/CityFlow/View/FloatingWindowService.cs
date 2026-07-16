@@ -112,6 +112,7 @@ namespace CityFlow.View
                     state = FloatingState.Floating;
                     titleBarController?.Initialize(this, null);
                 }
+                ApplyContentViewport();
             }
             else
             {
@@ -201,6 +202,8 @@ namespace CityFlow.View
 
                     state = FloatingState.Normal;
                 }
+
+                ApplyContentViewport();
 
                 SavePrefs();
                 OnFloatingStateChanged?.Invoke(isFloating);
