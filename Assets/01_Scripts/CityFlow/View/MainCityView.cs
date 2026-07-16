@@ -43,6 +43,8 @@ namespace CityFlow.View
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
         [SerializeField] private float followGap = 0.4f;           // 차간 유지 거리(타일 비율)
+        [SerializeField, Range(0f, 1f)] private float slowSpeedMul = 0.55f;
+        [SerializeField, Range(0f, 1f)] private float jamSpeedMul = 0.25f;
         [SerializeField, Range(0.02f, 1f)] private float vehicleStreamScale = 0.15f;   // 뷰 차량 스트림 배율 — 심 rate의 몇 %만 그릴지(화면 가독성). 심 수치·수익 불변
         [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
         [SerializeField] private float roundaboutOrbitRadius = 0.3f;   // 로터리 궤도 반경(타일 비율)
@@ -87,7 +89,6 @@ namespace CityFlow.View
         private readonly List<RouteVehicle> vehicles = new();
         private readonly List<RouteSpawnState> routeSpawns = new();
         private readonly List<FlowBurstSpeedZone> flowBurstSpeedZones = new();
-        private readonly HashSet<Vector2Int> signalTileSet = new();
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
@@ -170,11 +171,6 @@ namespace CityFlow.View
             public Vector3 Dir;
             public Vector2Int CurrentTile;
             public bool HasCurrentTile;
-            public Vector2Int OccupiedTile;
-            public bool HasOccupiedTile;
-            public Vector2Int ClaimedIntersection;
-            public bool HasIntersectionClaim;
-            public bool IntersectionClaimHorizontal;
             public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
             public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
             public int RouteIndex = -1;
@@ -1140,8 +1136,6 @@ namespace CityFlow.View
                 }
             }
 
-            PrepareIntersectionTrafficState();
-
             for (int i = 0; i < vehicles.Count; i++)
             {
                 if (!vehicles[i].Object.activeSelf)
@@ -1243,8 +1237,6 @@ namespace CityFlow.View
             vehicle.Phase = 0f;
             vehicle.CurrentSpeed = 0f;
             vehicle.HasCurrentTile = false;
-            vehicle.HasOccupiedTile = false;
-            vehicle.HasIntersectionClaim = false;
             vehicle.DisplayRouteHash = 0;
             vehicle.DisplayRoute.Clear();
 
@@ -1257,14 +1249,12 @@ namespace CityFlow.View
             List<Vector2Int> displayRoute = GetDisplayRoute(vehicle, route);
             if (displayRoute.Count > 1)
             {
-                EvaluateVehiclePose(displayRoute, 0, 0f, true, out Vector3 pos, out Vector3 travelDir, out Vector2Int insideTile);
+                EvaluateVehiclePose(displayRoute, 0, 0f, true, out Vector3 pos, out Vector3 travelDir, out _);
                 vehicle.Object.transform.localPosition = pos;
                 vehicle.Pos = pos;
                 vehicle.Dir = travelDir;
                 vehicle.CurrentTile = displayRoute[0];
                 vehicle.HasCurrentTile = true;
-                vehicle.OccupiedTile = insideTile;
-                vehicle.HasOccupiedTile = true;
             }
 
             vehicle.Object.SetActive(true);
@@ -1285,8 +1275,6 @@ namespace CityFlow.View
             vehicle.RouteIndex = -1;
             vehicle.RouteHash = 0;
             vehicle.HasCurrentTile = false;
-            vehicle.HasOccupiedTile = false;
-            vehicle.HasIntersectionClaim = false;
             vehicle.CurrentSpeed = 0f;
             if (vehicle.AngryMark != null)
             {
@@ -1340,12 +1328,20 @@ namespace CityFlow.View
 
             // 실제 렌더 위치와 같은 Fold 인덱스로 현재 타일을 잡는다. Phase%route.Count는
             // 복귀 구간에서 접힌 위치와 어긋나 정체 벗어난 차가 엉뚱한(정체) 타일을 읽어
-            // !표·저속이 남던 버그(밀도·Jam 둘 다 이 타일 사용).
+            // !표·저속이 남던 버그(정체 연출과 속도 모두 이 타일 사용).
             Vector2Int currentTile = route[Mathf.Clamp(Mathf.FloorToInt(Fold(vehicle.Phase, segmentCount)), 0, route.Count - 1)];
-            targetSpeed *= Mathf.Lerp(1f, 0.25f, tileData.GetDensity01(currentTile));
+            CongestionLevel congestion = tileData.GetCongestion(currentTile);
+            if (congestion == CongestionLevel.Slow)
+            {
+                targetSpeed *= slowSpeedMul;
+            }
+            else if (congestion == CongestionLevel.Jam)
+            {
+                targetSpeed *= jamSpeedMul;
+            }
 
             // 정체 해소 직후에는 팀 디버그 뷰와 같은 반경 가속을 적용한다.
-            // 신호·앞차 정지는 아래 판정에서 여전히 0으로 덮어써 안전 규칙을 우선한다.
+            // 신호 정지는 아래에서 우선하고, 앞차 간격은 속도 상한으로 부드럽게 반영한다.
             bool boostedByFlowBurst = IsInFlowBurstSpeedZone(currentTile);
             if (boostedByFlowBurst)
             {
@@ -1359,19 +1355,10 @@ namespace CityFlow.View
                 targetSpeed *= overrideSpeedMul;
             }
 
-            // 팀 디버그 뷰와 같은 순서로 앞차를 먼저 확인한다.
-            // 앞차에 막힌 차량이 교차로를 선점하면 실제 선두 차량까지 막혀 교착이 생긴다.
-            bool blockedByLeader = IsBlockedByLeader(vehicle, vehicleIndex);
+            targetSpeed = Mathf.Min(targetSpeed, LeaderSpeedCap(vehicle, targetSpeed));
             bool mustStop = false;
-            if (blockedByLeader)
+            if (IsRouteVehicleBlocked(route, vehicle.Phase))
             {
-                ReleaseApproachIntersectionClaims(vehicle);
-                targetSpeed = 0f;
-                mustStop = true;
-            }
-            else if (IsRouteVehicleBlocked(vehicle, route, vehicle.Phase))
-            {
-                ReleaseApproachIntersectionClaims(vehicle);
                 targetSpeed = 0f;
                 mustStop = true;
             }
@@ -1385,8 +1372,8 @@ namespace CityFlow.View
 
             if (mustStop)
             {
-                // 신호와 차간 거리 판정은 연출보다 우선한다. 감속 중 Phase가 전진하면
-                // 정지선이나 앞차 경계를 넘을 수 있으므로 논리 이동을 즉시 멈춘다.
+                // 신호 판정은 연출보다 우선한다. 감속 중 Phase가 전진하면
+                // 정지선을 넘을 수 있으므로 논리 이동을 즉시 멈춘다.
                 vehicle.CurrentSpeed = 0f;
             }
             else
@@ -1431,7 +1418,6 @@ namespace CityFlow.View
             {
                 vehicle.Phase = previousPhase;
                 vehicle.CurrentSpeed = 0f;
-                ReleaseApproachIntersectionClaims(vehicle);
                 folded = Fold(vehicle.Phase, segmentCount);
                 index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
                 t = folded - index;
@@ -1453,8 +1439,6 @@ namespace CityFlow.View
             vehicle.Object.transform.localPosition = pos;
             vehicle.CurrentTile = currentTile;
             vehicle.HasCurrentTile = true;
-            vehicle.OccupiedTile = insideTile;
-            vehicle.HasOccupiedTile = true;
 
             if (travelDir.sqrMagnitude > 0.001f)
             {
@@ -1889,56 +1873,26 @@ namespace CityFlow.View
             return Mathf.Abs(Vector3.Dot(incoming, outgoing)) < 0.001f;
         }
 
-        // 반대 차선(마주 오는 차)은 무시 — 차선 오프셋으로 이미 분리. 같은 방향 추종만이라 순환 대기 없음
-        // (SimDebug 렌더러의 데드락 근본수정과 같은 규약). 96대 전수 검사 = 프레임당 ~9천 회, 무해.
-        private bool IsBlockedByLeader(RouteVehicle vehicle, int vehicleIndex)
+        // 앞차와의 거리를 [gap, 2*gap]에서 [0, freeSpeed]로 매핑. 없으면 freeSpeed.
+        // 차량 수가 수백 대 규모인 동안은 O(n) 스캔을 유지하고, 병목이 되면 공간 해시로 승급한다.
+        private float LeaderSpeedCap(RouteVehicle vehicle, float freeSpeed)
         {
-            if (vehicle.Dir.sqrMagnitude < 0.001f)
-            {
-                return false;   // 첫 프레임(이력 없음)
-            }
-
+            if (vehicle.Dir.sqrMagnitude < 0.001f) return freeSpeed;
             float gap = tileSize * followGap;
-            float lateralGap = tileSize * 0.2f;
-            Vector3 direction = vehicle.Dir.normalized;
-            Vector3 lateralDirection = new Vector3(-direction.y, direction.x, 0f);
-
+            float nearest = float.MaxValue;
             for (int i = 0; i < vehicles.Count; i++)
             {
                 RouteVehicle other = vehicles[i];
-
-                if (other == vehicle || !other.Object.activeSelf)
-                {
-                    continue;
-                }
-
+                if (other == vehicle || !other.Object.activeSelf) continue;
                 Vector3 to = other.Pos - vehicle.Pos;
-
-                if (to.sqrMagnitude < 0.0001f)
-                {
-                    return i < vehicleIndex;
-                }
-
-                if (Vector3.Dot(vehicle.Dir, other.Dir) <= 0.5f)
-                {
-                    continue;   // 같은 방향만 추종
-                }
-
-                float longitudinalDistance = Vector3.Dot(direction, to);
-                if (longitudinalDistance <= 0f || longitudinalDistance > gap)
-                {
-                    continue;
-                }
-
-                if (Mathf.Abs(Vector3.Dot(lateralDirection, to)) >= lateralGap)
-                {
-                    continue;
-                }
-
-                return true;
+                float d = to.magnitude;
+                if (d < 0.0001f || d > 2f * gap) continue;
+                if (Vector3.Dot(vehicle.Dir, other.Dir) <= 0.5f) continue;
+                if (Vector3.Dot(vehicle.Dir, to.normalized) <= 0.6f) continue;
+                if (d < nearest) nearest = d;
             }
-
-            return false;
+            if (nearest == float.MaxValue) return freeSpeed;
+            return Mathf.Lerp(0f, freeSpeed, Mathf.Clamp01((nearest - gap) / gap));
         }
 
         private bool WouldOverlapAfterMove(
@@ -1998,57 +1952,6 @@ namespace CityFlow.View
             return false;
         }
 
-        private void PrepareIntersectionTrafficState()
-        {
-            signalTileSet.Clear();
-            if (simEngine != null)
-            {
-                IReadOnlyList<Vector2Int> signalTiles = simEngine.SignalTiles;
-                for (int i = 0; i < signalTiles.Count; i++)
-                {
-                    signalTileSet.Add(signalTiles[i]);
-                }
-            }
-
-            for (int i = 0; i < vehicles.Count; i++)
-            {
-                RouteVehicle vehicle = vehicles[i];
-                if (!vehicle.HasIntersectionClaim)
-                {
-                    continue;
-                }
-
-                bool keepsClaim = vehicle.Object.activeSelf
-                    && ((vehicle.HasOccupiedTile && vehicle.OccupiedTile == vehicle.ClaimedIntersection)
-                        || IsVehicleHeadingToSignal(vehicle, vehicle.ClaimedIntersection));
-                if (!keepsClaim)
-                {
-                    vehicle.HasIntersectionClaim = false;
-                }
-            }
-        }
-
-        private bool IsVehicleHeadingToSignal(RouteVehicle vehicle, Vector2Int signalTile)
-        {
-            return vehicle.DisplayRoute.Count > 1
-                && TryGetNextSignalTile(
-                    vehicle.DisplayRoute,
-                    vehicle.Phase,
-                    out _,
-                    out Vector2Int next,
-                    out _)
-                && next == signalTile;
-        }
-
-        private void ReleaseApproachIntersectionClaims(RouteVehicle vehicle)
-        {
-            if (vehicle.HasIntersectionClaim
-                && (!vehicle.HasOccupiedTile || vehicle.OccupiedTile != vehicle.ClaimedIntersection))
-            {
-                vehicle.HasIntersectionClaim = false;
-            }
-        }
-
         private void OnFlowBurstSpeedBoost(FlowBurstEvent e)
         {
             flowBurstSpeedZones.Add(new FlowBurstSpeedZone
@@ -2087,7 +1990,7 @@ namespace CityFlow.View
             return p <= segmentCount ? p : cycle - p;
         }
 
-        private bool IsRouteVehicleBlocked(RouteVehicle vehicle, List<Vector2Int> route, float phase)
+        private bool IsRouteVehicleBlocked(List<Vector2Int> route, float phase)
         {
             if (simEngine == null || !TryGetNextSignalTile(route, phase, out Vector2Int current, out Vector2Int next, out float progress))
             {
@@ -2102,44 +2005,7 @@ namespace CityFlow.View
             }
 
             bool horizontal = current.y == next.y;
-            if (!simEngine.IsSignalGreen(next, horizontal))
-            {
-                return true;
-            }
-
-            for (int i = 0; i < vehicles.Count; i++)
-            {
-                RouteVehicle other = vehicles[i];
-                if (other == vehicle || !other.Object.activeSelf)
-                {
-                    continue;
-                }
-
-                if (other.HasIntersectionClaim && other.ClaimedIntersection == next)
-                {
-                    if (other.IntersectionClaimHorizontal != horizontal)
-                    {
-                        return true;
-                    }
-
-                    continue;
-                }
-
-                if (other.HasOccupiedTile && other.OccupiedTile == next
-                    && other.Dir.sqrMagnitude > 0.001f)
-                {
-                    bool otherHorizontal = Mathf.Abs(other.Dir.x) >= Mathf.Abs(other.Dir.y);
-                    if (otherHorizontal != horizontal)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            vehicle.ClaimedIntersection = next;
-            vehicle.HasIntersectionClaim = true;
-            vehicle.IntersectionClaimHorizontal = horizontal;
-            return false;
+            return !simEngine.IsSignalGreen(next, horizontal);
         }
 
         // 차의 현재 위상에서 진행 방향의 현재/다음 타일. 다음 타일이 신호일 때만 true — 부스트·블록 판정 공용.
@@ -2158,7 +2024,7 @@ namespace CityFlow.View
             current = forward ? route[index] : route[index + 1];
             next = forward ? route[index + 1] : route[index];
             progress = forward ? folded - index : index + 1f - folded;
-            if (current == next || !signalTileSet.Contains(next)) return false;
+            if (current == next || !IsSignalTile(next)) return false;
             return true;
         }
 
