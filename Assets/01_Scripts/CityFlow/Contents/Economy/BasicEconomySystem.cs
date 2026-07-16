@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace CityFlow.Content
 {
+    // 수익은 트립(Arrival)뿐 — 건물 수 기반 passive 수익 금지(엔진 방향 문서 §P1).
     public class BasicEconomySystem : MonoBehaviour
     {
         [Header("경제 설정 파일")]
@@ -69,45 +70,6 @@ namespace CityFlow.Content
                     this
                 );
             }
-        }
-
-        /// <summary>
-        /// 현재 배치된 건물 수를 기준으로
-        /// 주간 건물 수익을 계산하여 누적합니다.
-        ///
-        /// 차량 도착 보상은 EconomyService가 처리하므로
-        /// 이 코드에서는 별도로 중복 누적하지 않습니다.
-        ///
-        /// 계산 결과는 정수 코인만 사용합니다.
-        /// </summary>
-        public void AddWeeklyBuildingIncome(
-            int buildingCount
-        )
-        {
-            if (!CanCalculate())
-            {
-                return;
-            }
-
-            if (buildingCount <= 0)
-            {
-                Debug.Log(
-                    "[BasicEconomySystem] " +
-                    "주간 수익을 발생시킬 건물이 없습니다."
-                );
-
-                return;
-            }
-
-            int income =
-                economyConfig.GetWeeklyBuildingIncome(
-                    buildingCount
-                );
-
-            AddWeeklyIncome(
-                income,
-                "building income"
-            );
         }
 
         /// <summary>

@@ -33,14 +33,6 @@ namespace CityFlow.Content
         [SerializeField]
         private int settlementDays = 7;
 
-        [Tooltip(
-            "건물 1개당 주간 정산에 추가되는 기본 코인입니다. " +
-            "도착 보상과 별도로 사용할 때만 설정합니다."
-        )]
-        [Min(0)]
-        [SerializeField]
-        private int weeklyCoinPerBuilding = 20;
-
         [Header("도시 성장 비용")]
         [Tooltip(
             "도시 단계별 승급 비용입니다. " +
@@ -150,9 +142,6 @@ namespace CityFlow.Content
 
         public int SettlementDays => settlementDays;
 
-        public int WeeklyCoinPerBuilding =>
-            weeklyCoinPerBuilding;
-
         public int InitialRefundPercent =>
             initialRefundPercent;
 
@@ -215,21 +204,6 @@ namespace CityFlow.Content
             return GetArrivalCoin(
                 flowBurstRewardPercent
             );
-        }
-
-        /// <summary>
-        /// 배치된 건물 수를 기준으로
-        /// 주간 건물 수익을 계산합니다.
-        /// </summary>
-        public int GetWeeklyBuildingIncome(
-            int buildingCount
-        )
-        {
-            int safeBuildingCount =
-                Mathf.Max(0, buildingCount);
-
-            return safeBuildingCount *
-                   weeklyCoinPerBuilding;
         }
 
         /// <summary>
@@ -415,12 +389,6 @@ namespace CityFlow.Content
 
             settlementDays =
                 Mathf.Max(1, settlementDays);
-
-            weeklyCoinPerBuilding =
-                Mathf.Max(
-                    0,
-                    weeklyCoinPerBuilding
-                );
 
             refundDecreaseIntervalDays =
                 Mathf.Max(
