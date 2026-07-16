@@ -29,6 +29,28 @@ namespace CityFlow.Sim
         // flat 인덱스. 주석님 GridUtil엔 Index가 없어 여기서 직접(index = y*W+x).
         int Index(Vector2Int t) => t.y * _width + t.x;
 
+        int _roadCount = -1;
+        int _roadCountVersion = -1;
+        public int RoadTileCount
+        {
+            get
+            {
+                if (_roadCountVersion == TopologyVersion) return _roadCount;
+                int n = 0;
+                for (int i = 0; i < _tiles.Length; i++)
+                {
+                    if (_tiles[i] == TileType.Road)
+                    {
+                        n++;
+                    }
+                }
+
+                _roadCount = n;
+                _roadCountVersion = TopologyVersion;
+                return n;
+            }
+        }
+
         // internal(private→승격): SimEngine의 IReadOnlyTileData OOB 가드가 같은 어셈블리에서 재사용(감사 2026-07-12).
         internal bool InBounds(Vector2Int t) =>
             t.x >= 0 && t.x < _width && t.y >= 0 && t.y < _height;

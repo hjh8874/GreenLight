@@ -15,6 +15,7 @@ namespace CityFlow.Sim.Tests
             var c = SimConfig.Default();
             c.TickInterval = tick;
             c.MaxStepsPerFrame = cap;
+            c.StabilityJamWeight = 0f;   // 기존 파사드 안정도 테스트는 전역 delivered 비율 계약만 검증
             return c;
         }
 
