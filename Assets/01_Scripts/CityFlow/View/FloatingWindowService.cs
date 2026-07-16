@@ -349,9 +349,9 @@ namespace CityFlow.View
                 return;
             }
 
-            if (keyboard.f2Key.wasPressedThisFrame) SetPreset(0);
-            if (keyboard.f3Key.wasPressedThisFrame) SetPreset(1);
-            if (keyboard.f4Key.wasPressedThisFrame) SetPreset(2);
+            if (keyboard.digit1Key.wasPressedThisFrame) SetPreset(0);
+            if (keyboard.digit2Key.wasPressedThisFrame) SetPreset(1);
+            if (keyboard.digit3Key.wasPressedThisFrame) SetPreset(2);
         }
 
         private void HandleNativeWindowRequests()
