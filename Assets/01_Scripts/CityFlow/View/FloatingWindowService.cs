@@ -221,6 +221,8 @@ namespace CityFlow.View
                 windowsWindowHost?.RestoreWindowed();
                 RequestOriginalWindowState();
                 RestoreOriginalWindowPosition();
+                windowStateCaptured = false;
+                originalWindowPositionCaptured = false;
             }
 
             if (titleBarController != null)
