@@ -1143,7 +1143,7 @@ namespace CityFlow.View
                     continue;
                 }
 
-                MoveVehicle(vehicles[i], routes[vehicles[i].RouteIndex], i);
+                MoveVehicle(vehicles[i], routes[vehicles[i].RouteIndex]);
             }
         }
 
@@ -1315,7 +1315,7 @@ namespace CityFlow.View
             }
         }
 
-        private void MoveVehicle(RouteVehicle vehicle, List<Vector2Int> sourceRoute, int vehicleIndex)
+        private void MoveVehicle(RouteVehicle vehicle, List<Vector2Int> sourceRoute)
         {
             List<Vector2Int> route = GetDisplayRoute(vehicle, sourceRoute);
             int segmentCount = route.Count - 1;
@@ -1386,7 +1386,6 @@ namespace CityFlow.View
                     targetSpeed,
                     acceleration * Time.deltaTime);
             }
-            float previousPhase = vehicle.Phase;
             float nextPhase = vehicle.Phase + Time.deltaTime * vehicle.CurrentSpeed;
             float cycleLength = segmentCount * 2f;
             if (nextPhase >= cycleLength)
@@ -1413,17 +1412,6 @@ namespace CityFlow.View
             // 왕복 유령: 접힌 복귀 구간이면 실제 진행은 역방향 — 차선·바라보기 둘 다 이 방향 기준.
             bool forward = vehicle.Phase <= segmentCount;
             EvaluateVehiclePose(route, index, t, forward, out Vector3 pos, out Vector3 travelDir, out Vector2Int insideTile);
-
-            if (WouldOverlapAfterMove(vehicle, vehicleIndex, pos, travelDir))
-            {
-                vehicle.Phase = previousPhase;
-                vehicle.CurrentSpeed = 0f;
-                folded = Fold(vehicle.Phase, segmentCount);
-                index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
-                t = folded - index;
-                forward = vehicle.Phase <= segmentCount;
-                EvaluateVehiclePose(route, index, t, forward, out pos, out travelDir, out insideTile);
-            }
 
             // 로터리 경계에서는 차선 포즈를 유지하고, 안쪽에서만 CCW 링 포즈로 전환한다.
             if (IsRoundaboutTile(insideTile))
@@ -1988,63 +1976,6 @@ namespace CityFlow.View
             }
             if (nearest == float.MaxValue) return freeSpeed;
             return Mathf.Lerp(0f, freeSpeed, Mathf.Clamp01((nearest - gap) / gap));
-        }
-
-        private bool WouldOverlapAfterMove(
-            RouteVehicle vehicle,
-            int vehicleIndex,
-            Vector3 candidatePosition,
-            Vector3 candidateDirection)
-        {
-            if (candidateDirection.sqrMagnitude < 0.001f)
-            {
-                return false;
-            }
-
-            float longitudinalGap = tileSize * followGap;
-            float lateralGap = tileSize * 0.2f;
-            float crossingGapSq = tileSize * tileSize * 0.05f;
-            Vector3 direction = candidateDirection.normalized;
-            Vector3 lateralDirection = new Vector3(-direction.y, direction.x, 0f);
-
-            for (int i = 0; i < vehicles.Count; i++)
-            {
-                RouteVehicle other = vehicles[i];
-                if (other == vehicle || !other.Object.activeSelf || !other.HasCurrentTile)
-                {
-                    continue;
-                }
-
-                Vector3 toOther = other.Pos - candidatePosition;
-                if (toOther.sqrMagnitude < 0.0001f)
-                {
-                    return i < vehicleIndex;
-                }
-
-                float alignment = other.Dir.sqrMagnitude > 0.001f
-                    ? Vector3.Dot(direction, other.Dir.normalized)
-                    : 1f;
-                if (alignment > 0.5f)
-                {
-                    float longitudinalDistance = Vector3.Dot(direction, toOther);
-                    float lateralDistance = Mathf.Abs(Vector3.Dot(lateralDirection, toOther));
-                    if (longitudinalDistance >= 0f
-                        && longitudinalDistance < longitudinalGap
-                        && lateralDistance < lateralGap)
-                    {
-                        return true;
-                    }
-
-                    continue;
-                }
-
-                if (i < vehicleIndex && toOther.sqrMagnitude < crossingGapSq)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private void OnFlowBurstSpeedBoost(FlowBurstEvent e)
