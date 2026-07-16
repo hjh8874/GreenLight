@@ -1578,24 +1578,16 @@ namespace CityFlow.View
             bool forward = vehicle.Phase <= segmentCount;
             EvaluateVehiclePose(route, index, t, forward, out Vector3 pos, out Vector3 travelDir, out Vector2Int insideTile);
 
-            // 로터리 경계에서는 차선 포즈를 유지하고, 안쪽에서만 CCW 링 포즈로 전환한다.
-            if (IsRoundaboutTile(insideTile))
+            // 직선 차선과 원호가 만나는 접점부터 CCW 링 포즈를 사용해 중앙 섬을 가로지르지 않게 한다.
+            if (TryGetRoundaboutCenterIndex(route, folded, out int ci))
             {
-                int ci = t < 0.5f ? index : index + 1;
                 if (TryRoundaboutOrbit(route, ci, folded, forward, out Vector3 ringPos, out Vector3 ringDir))
                 {
-                    float arcU = Mathf.Clamp01(forward ? folded - ci + 0.5f : ci + 0.5f - folded);
-                    const float edge = 0.35f;
-                    float blend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(arcU / edge))
-                                * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((1f - arcU) / edge));
-                    pos = Vector3.Lerp(pos, ringPos, blend);
+                    pos = ringPos;
+                    insideTile = route[ci];
                     if (ringDir.sqrMagnitude > 0.0001f)
                     {
-                        Vector3 blendedDir = Vector3.Lerp(travelDir.normalized, ringDir.normalized, blend);
-                        if (blendedDir.sqrMagnitude > 0.0001f)
-                        {
-                            travelDir = blendedDir.normalized;
-                        }
+                        travelDir = ringDir.normalized;
                     }
                 }
             }
@@ -1866,18 +1858,15 @@ namespace CityFlow.View
             float radiusFraction = GetCornerTurnRadiusFraction();
             int cornerIndex = -1;
 
-            int orbitIndex = segmentT < 0.5f ? segmentIndex : segmentIndex + 1;
             bool fwd = Mathf.Repeat(phase, segmentCount * 2f) <= segmentCount;
-            if (orbitIndex > 0
-                && orbitIndex < route.Count - 1
-                && Mathf.Abs(folded - orbitIndex) <= 0.5f
-                && IsRoundaboutTile(route[orbitIndex]))
+            if (TryGetRoundaboutCenterIndex(route, folded, out int orbitIndex))
             {
                 if (roundaboutOrbitRadius > 0.01f
                     && TryGetRoundaboutArc(route, orbitIndex, fwd, out _, out float ccwSweep)
                     && ccwSweep > 0.01f)
                 {
-                    return 1f / (roundaboutOrbitRadius * ccwSweep);
+                    float phaseSpan = 2f * GetRoundaboutApproachDistance();
+                    return phaseSpan / (roundaboutOrbitRadius * ccwSweep);
                 }
 
                 return 1f;
@@ -1970,14 +1959,59 @@ namespace CityFlow.View
                 return false;
             }
 
+            float approachDistance = GetRoundaboutApproachDistance();
             float arcU = Mathf.Clamp01(
-                forward ? folded - centerIndex + 0.5f : centerIndex + 0.5f - folded);
+                (forward
+                    ? folded - centerIndex + approachDistance
+                    : centerIndex + approachDistance - folded)
+                / (2f * approachDistance));
             float angle = entryAngle + arcU * ccwSweep;
             float radius = tileSize * roundaboutOrbitRadius;
             Vector3 center = GridToLocal(route[centerIndex], vehicleZ);
             position = center + new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * radius;
             tangent = new Vector3(-Mathf.Sin(angle), Mathf.Cos(angle), 0f);
             return true;
+        }
+
+        private bool TryGetRoundaboutCenterIndex(List<Vector2Int> route, float folded, out int centerIndex)
+        {
+            int lowerIndex = Mathf.FloorToInt(folded);
+            int upperIndex = Mathf.CeilToInt(folded);
+            float approachDistance = GetRoundaboutApproachDistance();
+
+            if (IsRoundaboutCenterInRange(route, lowerIndex, folded, approachDistance))
+            {
+                centerIndex = lowerIndex;
+                return true;
+            }
+
+            if (IsRoundaboutCenterInRange(route, upperIndex, folded, approachDistance))
+            {
+                centerIndex = upperIndex;
+                return true;
+            }
+
+            centerIndex = -1;
+            return false;
+        }
+
+        private bool IsRoundaboutCenterInRange(
+            List<Vector2Int> route,
+            int centerIndex,
+            float folded,
+            float approachDistance)
+        {
+            return centerIndex > 0
+                && centerIndex < route.Count - 1
+                && IsRoundaboutTile(route[centerIndex])
+                && Mathf.Abs(folded - centerIndex) <= approachDistance;
+        }
+
+        private float GetRoundaboutApproachDistance()
+        {
+            float radius = Mathf.Max(roundaboutOrbitRadius, 0.01f);
+            float lateralOffset = Mathf.Min(Mathf.Abs(laneOffset), radius);
+            return Mathf.Sqrt(Mathf.Max(0.0001f, radius * radius - lateralOffset * lateralOffset));
         }
 
         private float GetCornerTurnRadiusFraction()
