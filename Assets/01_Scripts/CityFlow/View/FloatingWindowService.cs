@@ -119,6 +119,10 @@ namespace CityFlow.View
                 {
                     EnterFloating();
                 }
+                else if (titleBarController != null)
+                {
+                    titleBarController.gameObject.SetActive(false);
+                }
             }
 
             ApplyPerformanceMode();
@@ -771,7 +775,7 @@ namespace CityFlow.View
 
         private float GetReservedTitleBarHeight()
         {
-            return isMaximized ? 0f : titleBarHeight;
+            return isFloating && !isMaximized ? titleBarHeight : 0f;
         }
 
         private void UpdateDockedState(FloatingWindowPlacement placement)
