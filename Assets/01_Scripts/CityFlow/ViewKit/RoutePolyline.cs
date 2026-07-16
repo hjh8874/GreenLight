@@ -295,8 +295,8 @@ namespace CityFlow.ViewKit
         // 대부분에서 중앙 딥(실측 0.498 / 반경 0.68). 근본 교체: 로터리 타일 구간의 정점을
         //   [진입 전이 베지어] → [순수 CCW 원호(TryGetRoundaboutArc entryAngle/ccwSweep)] → [이탈 전이 베지어]
         // 로 통째로 재구성한다. 링/차선 교점(laneShift가 인코딩 — 중심 전방 √(R²−λ²) 지점)이
-        // 반경 위 C0 접점이고, 차선 직선은 링과 λ<R라 진정한 접선이 될 수 없으므로(75° 꺾임)
-        // 전이 베지어(양끝 접선 일치)로 C1을 만든다. 전이 최저 중심거리 ≈ 0.61R — 딥 해소.
+        // 반경 위 C0 접점이고, 차선 직선은 링과 λ<R라 진정한 접선이 될 수 없으므로(~78° 꺾임)
+        // 전이 베지어(양끝 접선 일치)로 C1을 만든다 — 딥 해소(궤도-풋프린트 정합은 QA F: R=0.9).
         // 구간 경계 포즈는 실제 베이스 포즈(코너 베지어 포함)에서 취해 코너-인접 진입도 연속.
         private static void ApplyRoundaboutGeometry(
             in BakeInput input,
@@ -357,12 +357,38 @@ namespace CityFlow.ViewKit
                 AppendTransitionBezier(built, RingPoint(center, worldRadius, arcEndAngle), RingTangent(arcEndAngle),
                     exitPos, exitDir, includeStart: false);
 
+                ClampIslandIntrusion(built, center, input.TileSize);
                 AssignPhasesByChordLength(built, startPhase, endPhase, segmentCount);
                 SpliceVertices(vertices, built, startPhase, endPhase);
             }
         }
 
-        // 접선 일치 전이(C1): from/to의 접선을 핸들로 쓰는 쿼터 베지어. 링 안쪽 최저 ≈ 0.61R.
+        // 섬 침범 절대 금지(QA F): 풋프린트 섬 반경 0.45 + 차 반폭 ~0.15 + 여유 = 0.62타일.
+        // R=0.9 기하에서 전이 최저 ≈ 0.80타일이라 평시 무동작 보험 — 인스펙터가 R을 줄여도
+        // 섬 안쪽으로는 절대 못 들어간다(반경 방향 클램프, 위상 배정 전에 적용).
+        private const float IslandClearance = 0.62f;
+
+        private static void ClampIslandIntrusion(List<Vertex> built, Vector3 center, float tileSize)
+        {
+            float minRadius = IslandClearance * tileSize;
+            for (int j = 0; j < built.Count; j++)
+            {
+                Vector3 radial = built[j].Pos - center;
+                radial.z = 0f;
+                float distance = radial.magnitude;
+                if (distance >= minRadius || distance < 1e-5f)
+                {
+                    continue;
+                }
+
+                Vertex v = built[j];
+                v.Pos = new Vector3(center.x, center.y, v.Pos.z) + radial * (minRadius / distance);
+                built[j] = v;
+            }
+        }
+
+        // 접선 일치 전이(C1): from/to의 접선을 핸들로 쓰는 쿼터 베지어.
+        // 링 안쪽 최저 중심거리 ≈ 0.89R(R=0.9, λ=0.18 실계산 0.80타일) — 섬 클램프는 보험.
         private static void AppendTransitionBezier(
             List<Vertex> built, Vector3 from, Vector3 fromDir, Vector3 to, Vector3 toDir, bool includeStart)
         {

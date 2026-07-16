@@ -11,7 +11,7 @@ namespace CityFlow.Sim.Tests
         {
             Tiles = new List<Vector2Int> { new(0, 0), new(1, 0), new(2, 0) },
             TileSize = 1f, LaneOffset = 0.18f, CornerRadiusFraction = 0.75f,
-            OrbitRadius = 0.68f, Z = 0f, IsRoundabout = _ => false,
+            OrbitRadius = 0.9f, Z = 0f, IsRoundabout = _ => false,   // 풋프린트 차도 중앙(QA F — 뷰 기본값과 일치)
             EndAnchor = end, SamplesPerSegment = 8,
         };
 
@@ -86,32 +86,34 @@ namespace CityFlow.Sim.Tests
             Assert.IsFalse(s.IsSpur);
         }
 
-        // 로터리 링: 완전 블렌드 창(뷰 SmoothStep edge=0.35 → arcU 0.35~0.65 = 경계 ±0.15 세그)의
-        // 샘플만 링 반경 위를 요구한다. TileIndex==2 전체 검사(±15%)는 링 이후 직선 구간(1.016)과
-        // 블렌드 딥(0.498)을 포함해 기하적으로 만족 불가 — Task 2 실측(파이썬 시뮬+Unity 1e-5 일치) 정정.
+        // 로터리 링: 경계 ±0.15 세그 창(구 완전 블렌드 창)의 샘플은 링 반경 위 —
+        // 접선 기하 재구성(QA E-1) 이후 이 창은 항상 순수 원호라 더 강하게 성립.
+        // 반경은 input.OrbitRadius 파생(QA F — 하드코딩 제거).
         [Test]
         public void RoundaboutTile_SamplesOnRing()
         {
             var input = Straight3();
             input.Tiles = new List<Vector2Int> { new(0, 0), new(1, 0), new(2, 0), new(3, 0) };
             input.IsRoundabout = t => t == new Vector2Int(2, 0);
+            float radius = input.OrbitRadius;
             var p = RoutePolyline.Bake(input);
             Vector3 center = new Vector3(2.5f, 0.5f, 0f);
             int ringSamples = 0;
             for (float d = 0f; d <= p.Length; d += 0.02f)
             {
                 Sample s = p.SampleAt(d);
-                bool fullBlendWindow = (s.TileIndex == 1 && s.SegT >= 0.9f)
-                                    || (s.TileIndex == 2 && s.SegT <= 0.1f);
-                if (!fullBlendWindow) continue;
+                bool ringWindow = (s.TileIndex == 1 && s.SegT >= 0.9f)
+                               || (s.TileIndex == 2 && s.SegT <= 0.1f);
+                if (!ringWindow) continue;
                 ringSamples++;
-                Assert.AreEqual(0.68f, Vector3.Distance(s.Pos, center), 0.68f * 0.15f,
-                    $"완전 블렌드 창(d={d:F2})은 링 반경 위");
+                Assert.AreEqual(radius, Vector3.Distance(s.Pos, center), radius * 0.15f,
+                    $"링 창(d={d:F2})은 링 반경 위");
             }
-            Assert.Greater(ringSamples, 0, "링 완전 블렌드 창 샘플 존재");
+            Assert.Greater(ringSamples, 0, "링 창 샘플 존재");
         }
 
-        // 링 구간(로터리 타일 안쪽 반)에서 중심 거리의 최소값이 반경의 70% 이상 — 중앙 파고듦 회귀 방지.
+        // 섬 침범 절대 금지(QA F): 로터리 구간 전체(전이 베지어 포함 — 경로 전 샘플 스캔이 자연히 포함)에서
+        // 중심 거리 최소값 > 0.62타일(섬 0.45 + 차 반폭 ~0.15 + 여유). 구간 밖 직선은 항상 이보다 멀다.
         [Test]
         public void RoundaboutTile_NoCenterDip()
         {
@@ -124,10 +126,9 @@ namespace CityFlow.Sim.Tests
             for (float d = 0f; d <= p.Length; d += 0.02f)
             {
                 Sample s = p.SampleAt(d);
-                if (s.TileIndex != 2 || s.SegT > 0.5f) continue;   // 로터리 타일 진입 반쪽
                 minDist = Mathf.Min(minDist, Vector3.Distance(s.Pos, center));
             }
-            Assert.Greater(minDist, 0.68f * 0.7f, "링 구간이 중앙으로 파고들면 회귀");
+            Assert.Greater(minDist, 0.62f, "로터리 구간(전이 포함)이 섬을 침범하면 회귀");
         }
     }
 }

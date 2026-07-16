@@ -50,7 +50,7 @@ namespace CityFlow.View
         [SerializeField, Range(0f, 1f)] private float jamSpeedMul = 0.25f;
         [SerializeField, Range(0.02f, 1f)] private float vehicleStreamScale = 0.15f;   // 뷰 차량 스트림 배율 — 심 rate의 몇 %만 그릴지(화면 가독성). 심 수치·수익 불변
         [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
-        [SerializeField] private float roundaboutOrbitRadius = 0.68f;  // 로터리 궤도 반경(타일 비율)
+        [SerializeField] private float roundaboutOrbitRadius = 0.9f;   // 로터리 궤도 반경(타일 비율) — 풋프린트 차도 중앙(섬 0.45~판 1.1의 중간). 씬 직렬화 값이 우선: 기존 씬은 인스펙터에서 0.9로 갱신 필요(QA F)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
         [Header("Commute (2차 빌드)")]
