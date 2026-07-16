@@ -86,6 +86,9 @@ namespace CityFlow.Sim
         // ── 도착 코인 환율 ─────────────────────
         public float CoinBase;          // 🔓 공식 형태·가중치 잠정
 
+        // ── 도로 카운터코스트 ──────────────────
+        public float RoadMaintPerSec;   // 도로 타일 1칸당 초당 유지비 🔓
+
         // ── Burst 감지 (히스테리시스 + 쿨다운) ──
         public float BurstJamEnterRatio;    // Jam 진입 1.0
         public float BurstFreeReturnRatio;  // Free 복귀 0.6 (경계 진동 방지)
@@ -128,6 +131,7 @@ namespace CityFlow.Sim
             RoutingCongestionWeight = 2f,
             AutoDetectSignals = true,
             CoinBase = 1f,
+            RoadMaintPerSec = 0.1f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,
             BurstCooldownSeconds = 10f,

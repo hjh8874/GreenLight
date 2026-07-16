@@ -47,6 +47,7 @@ namespace CityFlow.Gameplay.Economy
             services.RegisterEconomy(this);
 
             services.Events.Arrival += OnArrival;
+            services.Events.Maintenance += OnMaintenance;
             services.Events.SettlementComputed += OnSettlementComputed;
 
             PublishCoinsChanged();
@@ -64,6 +65,7 @@ namespace CityFlow.Gameplay.Economy
             }
 
             services.Events.Arrival -= OnArrival;
+            services.Events.Maintenance -= OnMaintenance;
             services.Events.SettlementComputed -= OnSettlementComputed;
         }
 
@@ -172,6 +174,30 @@ namespace CityFlow.Gameplay.Economy
             }
 
             AddCoins(e.Coins, "arrival");
+        }
+
+        /// <summary>
+        /// Deducts road maintenance without allowing a negative balance.
+        /// </summary>
+        private void OnMaintenance(MaintenanceEvent e)
+        {
+            if (e.Cost <= 0L)
+            {
+                return;
+            }
+
+            long deducted = Math.Min(Coins, e.Cost);
+            Coins -= deducted;
+            if (deducted > 0L)
+            {
+                PublishCoinsChanged();
+            }
+
+            Debug.Log(
+                "[EconomyService] Deducted " + deducted +
+                " coins from maintenance. Requested: " + e.Cost +
+                ", Current coins: " + Coins
+            );
         }
 
         /// <summary>

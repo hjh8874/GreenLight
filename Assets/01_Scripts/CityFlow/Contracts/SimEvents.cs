@@ -15,6 +15,16 @@ namespace CityFlow.Contracts
         }
     }
 
+    public readonly struct MaintenanceEvent
+    {
+        public readonly long Cost;
+
+        public MaintenanceEvent(long cost)
+        {
+            Cost = Math.Max(0L, cost);
+        }
+    }
+
     public readonly struct FlowBurstEvent
     {
         public readonly Vector2Int Tile;
@@ -79,6 +89,7 @@ namespace CityFlow.Contracts
     public sealed class SimEventHub
     {
         public event Action<ArrivalEvent> Arrival;
+        public event Action<MaintenanceEvent> Maintenance;
         public event Action<FlowBurstEvent> FlowBurst;
         public event Action<CongestionEvent> CongestionChanged;
         public event Action<StabilityEvent> StabilityChanged;
@@ -86,6 +97,8 @@ namespace CityFlow.Contracts
         public event Action<PlacedEvent> Placed;
 
         public void Publish(ArrivalEvent e) => Arrival?.Invoke(e);
+
+        public void Publish(MaintenanceEvent e) => Maintenance?.Invoke(e);
 
         public void Publish(FlowBurstEvent e) => FlowBurst?.Invoke(e);
 
