@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 namespace CityFlow.UI
 {
-    public class FloatingPanelController : MonoBehaviour
+    public sealed class FloatingPanelController : MonoBehaviour
     {
         [Header("Floating Window")]
         [SerializeField] private Toggle tglFloatingMode;
@@ -12,17 +12,15 @@ namespace CityFlow.UI
         [SerializeField] private Button btnPresetM;
         [SerializeField] private Button btnPresetL;
 
-        private bool _isBound;
-        private FloatingWindowService _floatingService;
+        private bool isBound;
+        private FloatingWindowService floatingService;
 
         private void Start()
         {
-            _floatingService = FindFirstObjectByType<FloatingWindowService>();
-            if (_floatingService != null)
-            {
-                _floatingService.OnFloatingStateChanged += OnFloatingStateChangedEvent;
-            }
+            FindAndSubscribeService();
             BindButtons();
+            HideWindowModeToggle();
+            SyncFloatingUI();
         }
 
         private void OnEnable()
@@ -32,97 +30,91 @@ namespace CityFlow.UI
 
         private void OnDestroy()
         {
-            if (_floatingService != null)
+            if (floatingService != null)
             {
-                _floatingService.OnFloatingStateChanged -= OnFloatingStateChangedEvent;
+                floatingService.OnFloatingStateChanged -= OnFloatingStateChanged;
             }
         }
 
-        private void OnFloatingStateChangedEvent(bool isFloating)
+        private void FindAndSubscribeService()
         {
-            if (tglFloatingMode != null)
+            if (floatingService != null)
             {
-                tglFloatingMode.SetIsOnWithoutNotify(isFloating);
+                return;
             }
-            UpdatePresetButtonInteractable(isFloating);
+
+            floatingService = FindAnyObjectByType<FloatingWindowService>();
+            if (floatingService != null)
+            {
+                floatingService.OnFloatingStateChanged += OnFloatingStateChanged;
+            }
         }
 
         private void BindButtons()
         {
-            if (_isBound) return;
-
-            if (tglFloatingMode != null)
+            if (isBound)
             {
-                tglFloatingMode.onValueChanged.AddListener(OnFloatingToggleChanged);
+                return;
             }
 
             if (btnPresetS != null) btnPresetS.onClick.AddListener(() => OnPresetClicked(0));
             if (btnPresetM != null) btnPresetM.onClick.AddListener(() => OnPresetClicked(1));
             if (btnPresetL != null) btnPresetL.onClick.AddListener(() => OnPresetClicked(2));
+            isBound = true;
+        }
 
-            _isBound = true;
+        private void HideWindowModeToggle()
+        {
+            if (tglFloatingMode != null)
+            {
+                tglFloatingMode.SetIsOnWithoutNotify(true);
+                tglFloatingMode.gameObject.SetActive(false);
+            }
         }
 
         private void SyncFloatingUI()
         {
-            if (_floatingService == null)
-            {
-                _floatingService = FindFirstObjectByType<FloatingWindowService>();
-            }
-
-            if (_floatingService == null) return;
+            FindAndSubscribeService();
 
             if (tglFloatingMode != null)
             {
-                tglFloatingMode.SetIsOnWithoutNotify(_floatingService.IsFloating);
+                tglFloatingMode.SetIsOnWithoutNotify(true);
             }
 
-            UpdatePresetButtonInteractable(_floatingService.IsFloating);
+            UpdatePresetButtonInteractable(floatingService != null);
         }
 
-        private void OnFloatingToggleChanged(bool isOn)
+        private void OnFloatingStateChanged(bool isFloating)
         {
-            if (_floatingService == null)
+            if (tglFloatingMode != null)
             {
-                _floatingService = FindFirstObjectByType<FloatingWindowService>();
+                tglFloatingMode.SetIsOnWithoutNotify(true);
             }
 
-            if (_floatingService == null) return;
-
-            if (_floatingService.IsFloating != isOn)
-            {
-                _floatingService.ToggleFloating();
-                Debug.Log($"[FloatingPanel] 플로팅 모드 토글: {(isOn ? "ON (창 모드)" : "OFF (전체 화면)")}");
-            }
-
-            // 전환 중 무시되었을 경우를 대비하여, 실제 서비스 상태로 UI 강제 재동기화
-            if (tglFloatingMode != null && tglFloatingMode.isOn != _floatingService.IsFloating)
-            {
-                tglFloatingMode.SetIsOnWithoutNotify(_floatingService.IsFloating);
-            }
-            UpdatePresetButtonInteractable(_floatingService.IsFloating);
+            UpdatePresetButtonInteractable(floatingService != null);
         }
 
         private void OnPresetClicked(int index)
         {
-            if (_floatingService == null)
+            FindAndSubscribeService();
+            if (floatingService == null)
             {
-                _floatingService = FindFirstObjectByType<FloatingWindowService>();
+                return;
             }
 
-            if (_floatingService == null) return;
-
-
-
-            _floatingService.SetPreset(index);
-            Debug.Log($"[FloatingPanel] 플로팅 창 프리셋 변경: {(index == 0 ? "S (480x270)" : index == 1 ? "M (960x540)" : "L (1440x810)")}");
+            floatingService.SetPreset(index);
+            Debug.Log(
+                $"[FloatingPanel] Preset selected: " +
+                $"{(index == 0 ? "S (480x270)" : index == 1 ? "M (960x540)" : "L (1440x810)")}.");
         }
 
-        private void UpdatePresetButtonInteractable(bool floating)
+        private void UpdatePresetButtonInteractable(bool interactable)
         {
-            if (btnPresetS != null) btnPresetS.interactable = true;
-            if (btnPresetM != null) btnPresetM.interactable = true;
-            if (btnPresetL != null) btnPresetL.interactable = true;
+            if (btnPresetS != null) btnPresetS.interactable = interactable;
+            if (btnPresetM != null) btnPresetM.interactable = interactable;
+            if (btnPresetL != null) btnPresetL.interactable = interactable;
         }
+
+        // Unity setup: Assign the S/M/L buttons. The legacy floating toggle is hidden at runtime.
     }
 }

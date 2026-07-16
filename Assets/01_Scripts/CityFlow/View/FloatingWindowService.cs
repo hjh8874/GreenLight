@@ -5,9 +5,6 @@ using UnityEngine.InputSystem;
 
 namespace CityFlow.View
 {
-    // 데스크톱 플로팅 창 글루(스펙 2026-07-12): UniWindowController(MIT, com.kirurobo.uniwinc) 위 얇은 서비스.
-    // 씬 배선 0 — MainCityView.Initialize가 런타임 AddComponent. 기본 = 일반 창, F1로 옵트인(스펙 §핵심결정).
-    // 에디터 = no-op — 창/카메라 API 전부 스킵, 상태·프리셋·저부하 로직만 살아있음(스펙 §핵심결정).
     public sealed class FloatingWindowService : MonoBehaviour
     {
         private enum FloatingState
@@ -15,39 +12,51 @@ namespace CityFlow.View
             Normal,
             Entering,
             Floating,
-            Exiting,
+            Resizing,
+            Maximizing,
         }
 
         private const string FloatingPrefKey = "cityflow.window.floating";
         private const string PresetPrefKey = "cityflow.window.preset";
-        private const float Margin = 0.5f;
+        private const string TopmostPrefKey = "cityflow.window.topmost";
+        private const float BoardFitMargin = 0.5f;
 
-        // S / M / L — 방치형 유저는 "구석에 작게↔볼 때 크게" 두 모드만 씀(자유 리사이즈는 YAGNI, 스펙 §핵심결정).
-        private static readonly Vector2[] Presets =
+        private static readonly Vector2[] ContentPresets =
         {
             new Vector2(480f, 270f),
             new Vector2(960f, 540f),
             new Vector2(1440f, 810f),
         };
 
-        private float boardW;
-        private float boardH;
+        private float boardWidth;
+        private float boardHeight;
+        private float titleBarHeight;
         private bool shouldFitBoardToScreen = true;
-        private bool isFloating;
-        private int presetIndex = 1;   // 기본 M
+        private bool isFloating = true;
+        private bool isAlwaysOnTop = true;
+        private bool isMaximized;
+        private bool isDockedToTop;
+        private bool notifyFloatingEntry;
+        private int presetIndex = 1;
+        private int appliedPresetIndex = -1;
         private FloatingState state = FloatingState.Normal;
 
-        private UniWindowController uniWinController;
+        private UniWindowController windowController;
+        private FloatingWindowPlacementService placementService;
+        private FloatingWindowTitleBarController titleBarController;
+        private WindowsFloatingWindowHost windowsWindowHost;
+
         private bool cameraStateSaved;
         private CameraClearFlags savedClearFlags;
         private Color savedBackground;
         private bool savedAllowHdr;
         private bool savedAllowMsaa;
+        private Rect savedCameraRect;
+        private Camera clearCamera;
 
         private int lastScreenWidth = -1;
         private int lastScreenHeight = -1;
-
-        private int originalTargetFrameRate;   // 리뷰 픽스 — Destroy 시 무조건 60이 아니라 진입 시점 값으로 복원
+        private int originalTargetFrameRate;
         private bool originalRunInBackground;
         private bool windowStateCaptured;
         private int originalScreenWidth;
@@ -55,52 +64,84 @@ namespace CityFlow.View
         private FullScreenMode originalFullScreenMode;
         private Vector2 originalWindowPosition;
         private bool originalWindowPositionCaptured;
-        private Vector2 resizeAnchorPosition;
-        private bool resizeAnchorCaptured;
+
+        private Vector2 restoreWindowPosition;
+        private Vector2 restoreWindowSize;
+
         private Coroutine transitionCoroutine;
         private Coroutine resizeCoroutine;
+        private Coroutine snapCoroutine;
+        private Coroutine windowModeCoroutine;
 
         public bool IsFloating => isFloating;
+        public bool IsAlwaysOnTop => isAlwaysOnTop;
+        public bool IsMaximized => isMaximized;
+        public bool ShouldKeepTitleBarVisible => isDockedToTop && !isMaximized;
         public int PresetIndex => presetIndex;
+
         public event System.Action<bool> OnFloatingStateChanged;
 
         public void Init(float width, float height, bool fitBoardToScreen = true)
         {
-            boardW = width;
-            boardH = height;
+            boardWidth = width;
+            boardHeight = height;
             shouldFitBoardToScreen = fitBoardToScreen;
 
             originalTargetFrameRate = Application.targetFrameRate;
             originalRunInBackground = Application.runInBackground;
             Application.runInBackground = true;
 
-            isFloating = PlayerPrefs.GetInt(FloatingPrefKey, 0) == 1;
-            presetIndex = Mathf.Clamp(PlayerPrefs.GetInt(PresetPrefKey, 1), 0, Presets.Length - 1);
+            titleBarController = FindAnyObjectByType<FloatingWindowTitleBarController>(
+                FindObjectsInactive.Include);
+            titleBarHeight = titleBarController != null
+                ? FloatingWindowTitleBarController.TitleBarHeight
+                : 0f;
 
-            if (!Application.isEditor && isFloating)
+            isFloating = true;
+            isAlwaysOnTop = PlayerPrefs.GetInt(TopmostPrefKey, 1) == 1;
+            presetIndex = Mathf.Clamp(
+                PlayerPrefs.GetInt(PresetPrefKey, 1),
+                0,
+                ContentPresets.Length - 1);
+            SavePrefs();
+
+            if (Application.isEditor)
+            {
+                state = FloatingState.Floating;
+                titleBarController?.Initialize(this, null);
+            }
+            else
             {
                 EnterFloating();
             }
 
-            ApplyPerfMode();
+            ApplyPerformanceMode();
             if (shouldFitBoardToScreen)
             {
                 FitBoardToScreen();
+            }
+
+            if (titleBarController == null)
+            {
+                Debug.LogWarning(
+                    "[FloatingWindowService] Baked title bar was not found. " +
+                    "Run Tools > GreenLight > UI > Bake Floating Window Title Bar.");
             }
         }
 
         private void OnDestroy()
         {
-            if (transitionCoroutine != null)
+            StopRunningCoroutines();
+
+            if (windowController != null)
             {
-                StopCoroutine(transitionCoroutine);
+                windowController.OnMonitorChanged -= OnMonitorConfigurationChanged;
+                windowController.isTransparent = false;
+                windowController.isTopmost = false;
             }
 
-            if (resizeCoroutine != null)
-            {
-                StopCoroutine(resizeCoroutine);
-            }
-
+            windowsWindowHost?.Dispose();
+            windowsWindowHost = null;
             ApplyTransparentCamera(false);
 
             if (!Application.isEditor && windowStateCaptured)
@@ -115,187 +156,435 @@ namespace CityFlow.View
 
         private void Update()
         {
-            Keyboard keyboard = Keyboard.current;
-
-            if (keyboard != null)
-            {
-                if (keyboard.f1Key.wasPressedThisFrame)
-                {
-                    ToggleFloating();
-                }
-
-                if (keyboard.f2Key.wasPressedThisFrame)
-                {
-                    SetPreset(0);
-                }
-
-                if (keyboard.f3Key.wasPressedThisFrame)
-                {
-                    SetPreset(1);
-                }
-
-                if (keyboard.f4Key.wasPressedThisFrame)
-                {
-                    SetPreset(2);
-                }
-            }
-
+            HandleKeyboardShortcuts();
+            HandleNativeWindowRequests();
             PollResolutionChange();
         }
 
         public void ToggleFloating()
         {
-            if (Application.isEditor)
+            if (isFloating)
             {
-                isFloating = !isFloating;
-            }
-            else if (state == FloatingState.Normal)
-            {
-                isFloating = true;
-                EnterFloating();
-            }
-            else if (state == FloatingState.Floating)
-            {
-                isFloating = false;
-                ExitFloating();
-            }
-            else
-            {
-                Debug.Log("[FloatingWindowService] Floating toggle ignored during a window transition.");
+                Debug.Log("[FloatingWindowService] Windowed mode is disabled. The game remains in floating mode.");
                 return;
             }
 
-            OnFloatingStateChanged?.Invoke(isFloating);
-            ApplyPerfMode();
+            isFloating = true;
+            if (!Application.isEditor && state == FloatingState.Normal)
+            {
+                notifyFloatingEntry = true;
+                EnterFloating();
+            }
+
+            ApplyPerformanceMode();
             SavePrefs();
         }
 
         public void SetPreset(int index)
         {
-            presetIndex = Mathf.Clamp(index, 0, Presets.Length - 1);
+            presetIndex = Mathf.Clamp(index, 0, ContentPresets.Length - 1);
+            isMaximized = false;
+            ApplyPerformanceMode();
+            SavePrefs();
 
-            if (!Application.isEditor)
+            if (Application.isEditor || state == FloatingState.Entering)
             {
-                if (state != FloatingState.Entering && state != FloatingState.Exiting)
-                {
-                    ResizeToPresetKeepingPosition();
-                }
+                return;
             }
 
-            ApplyPerfMode();
+            BeginResizeToPreset();
+        }
+
+        public void ToggleAlwaysOnTop()
+        {
+            isAlwaysOnTop = !isAlwaysOnTop;
+            if (windowController != null)
+            {
+                windowController.isTopmost = isAlwaysOnTop;
+            }
+
             SavePrefs();
+            Debug.Log($"[FloatingWindowService] Always on top: {isAlwaysOnTop}.");
+        }
+
+        public void MinimizeToTaskbar()
+        {
+            if (Application.isEditor)
+            {
+                Debug.Log("[FloatingWindowService] Minimize is available in a Windows player build.");
+                return;
+            }
+
+            windowsWindowHost?.MinimizeToTaskbar();
+        }
+
+        public void ToggleMaximized()
+        {
+            if (Application.isEditor || state == FloatingState.Entering)
+            {
+                isMaximized = !isMaximized;
+                return;
+            }
+
+            BeginMaximizeChange(!isMaximized);
+        }
+
+        public void HideToSystemTray()
+        {
+            if (Application.isEditor)
+            {
+                Debug.Log("[FloatingWindowService] System tray mode is available in a Windows player build.");
+                return;
+            }
+
+            windowsWindowHost?.HideToSystemTray();
+        }
+
+        public void HandleTitleBarDragEnded()
+        {
+            if (!isMaximized)
+            {
+                BeginConstrainWindow("title bar drag completed");
+            }
+        }
+
+        private void HandleKeyboardShortcuts()
+        {
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null)
+            {
+                return;
+            }
+
+            if (keyboard.f2Key.wasPressedThisFrame) SetPreset(0);
+            if (keyboard.f3Key.wasPressedThisFrame) SetPreset(1);
+            if (keyboard.f4Key.wasPressedThisFrame) SetPreset(2);
+        }
+
+        private void HandleNativeWindowRequests()
+        {
+            if (windowsWindowHost == null)
+            {
+                return;
+            }
+
+            windowsWindowHost.PollRequests(out bool shouldRestore, out bool shouldExit);
+            if (shouldRestore)
+            {
+                windowsWindowHost.RestoreFromSystemTray();
+                windowsWindowHost.ApplyBorderless();
+                BeginConstrainWindow("system tray restore");
+            }
+
+            if (shouldExit)
+            {
+                Application.Quit();
+            }
         }
 
         private void EnterFloating()
         {
             state = FloatingState.Entering;
-            transitionCoroutine = StartCoroutine(EnterFloatingAtCurrentPosition());
+            transitionCoroutine = StartCoroutine(EnterFloatingAtBottomRight());
         }
 
-        private void ExitFloating()
+        private IEnumerator EnterFloatingAtBottomRight()
         {
-            state = FloatingState.Exiting;
-            transitionCoroutine = StartCoroutine(ExitFloatingAtOriginalPosition());
-        }
-
-        private IEnumerator EnterFloatingAtCurrentPosition()
-        {
-            if (resizeCoroutine != null)
-            {
-                yield return resizeCoroutine;
-            }
-
-            EnsureUniWinController();
-
-            // UniWinC attaches the native window handle from its first Update.
+            EnsureWindowController();
+            EnsurePlacementService();
             yield return null;
             yield return null;
+
+            EnsureWindowsWindowHost();
 
             CaptureOriginalWindowState();
             CaptureOriginalWindowPosition();
-            ApplyPresetResolution();
 
-            yield return null;
-            yield return null;
+            int targetPresetIndex = presetIndex;
+            WindowWorkArea initialWorkArea = placementService.SelectWorkArea(
+                windowController.windowPosition,
+                windowController.windowSize,
+                windowController.cursorPosition);
+            FloatingWindowPlacement placement = placementService.PlaceAtBottomRight(
+                GetWindowSizeForPreset(targetPresetIndex),
+                initialWorkArea);
 
             ConfigureFloatingWindow();
-            ApplyPresetWindowSize();
-            RestoreOriginalWindowPosition();
-
+            windowsWindowHost?.ApplyBorderless();
+            ApplyResolution(placement.Size);
             yield return null;
-            RestoreOriginalWindowPosition();
+            yield return null;
+
+            windowsWindowHost?.ApplyBorderless();
+            ApplyWindowSize(placement.Size);
+            ApplyWindowPosition(placement.Position);
+            yield return null;
+            ApplyWindowPosition(placement.Position);
+            yield return ApplyNativeWorkAreaCorrection(maximize: false);
+            UpdateDockedState(placement);
+
             ApplyTransparentCamera(true);
+            ApplyContentViewport();
+            titleBarController?.Initialize(this, windowController);
+            SubscribeMonitorChanges();
 
             state = FloatingState.Floating;
+            appliedPresetIndex = targetPresetIndex;
             transitionCoroutine = null;
 
-            Vector2 size = Presets[presetIndex];
-            Debug.Log($"[FloatingWindowService] Entered floating mode at {size.x:0}x{size.y:0} without changing window position.");
+            if (notifyFloatingEntry)
+            {
+                notifyFloatingEntry = false;
+                OnFloatingStateChanged?.Invoke(true);
+            }
+
+            Debug.Log(
+                $"[FloatingWindowService] Started borderless on monitor {placement.WorkArea.MonitorIndex} " +
+                $"at {placement.Size.x:0}x{placement.Size.y:0} (bottom-right).");
+
+            if (appliedPresetIndex != presetIndex)
+            {
+                BeginResizeToPreset();
+            }
         }
 
-        private IEnumerator ExitFloatingAtOriginalPosition()
+        private void BeginResizeToPreset()
+        {
+            if (windowModeCoroutine != null)
+            {
+                StopCoroutine(windowModeCoroutine);
+                windowModeCoroutine = null;
+            }
+
+            if (resizeCoroutine != null)
+            {
+                StopCoroutine(resizeCoroutine);
+            }
+
+            resizeCoroutine = StartCoroutine(ResizeToPresetRoutine());
+        }
+
+        private IEnumerator ResizeToPresetRoutine()
+        {
+            state = FloatingState.Resizing;
+            EnsureWindowController();
+            EnsurePlacementService();
+            yield return null;
+
+            int targetPresetIndex = presetIndex;
+            FloatingWindowPlacement placement = placementService.ResizeWithinWorkArea(
+                windowController.windowPosition,
+                windowController.windowSize,
+                GetWindowSizeForPreset(targetPresetIndex),
+                windowController.cursorPosition);
+
+            yield return ApplyWindowPlacement(placement);
+            appliedPresetIndex = targetPresetIndex;
+            isMaximized = false;
+            state = FloatingState.Floating;
+            resizeCoroutine = null;
+
+            Debug.Log(
+                $"[FloatingWindowService] Resized to {placement.Size.x:0}x{placement.Size.y:0} " +
+                $"inside monitor {placement.WorkArea.MonitorIndex} ({placement.Anchor}).");
+
+            if (appliedPresetIndex != presetIndex)
+            {
+                BeginResizeToPreset();
+            }
+        }
+
+        private void BeginMaximizeChange(bool maximize)
         {
             if (resizeCoroutine != null)
             {
-                yield return resizeCoroutine;
+                StopCoroutine(resizeCoroutine);
+                resizeCoroutine = null;
             }
 
-            if (uniWinController != null)
+            if (windowModeCoroutine != null)
             {
-                uniWinController.isTransparent = false;
-                uniWinController.isTopmost = false;
+                StopCoroutine(windowModeCoroutine);
             }
 
-            ApplyTransparentCamera(false);
-            RequestOriginalWindowState();
+            windowModeCoroutine = StartCoroutine(ChangeMaximizedStateRoutine(maximize));
+        }
 
+        private IEnumerator ChangeMaximizedStateRoutine(bool maximize)
+        {
+            state = FloatingState.Maximizing;
+            EnsurePlacementService();
+
+            FloatingWindowPlacement placement;
+            if (maximize)
+            {
+                Vector2 currentPosition = windowController.windowPosition;
+                Vector2 currentSize = windowController.windowSize;
+                if (!isMaximized)
+                {
+                    restoreWindowPosition = currentPosition;
+                    restoreWindowSize = currentSize;
+                }
+
+                WindowWorkArea workArea = placementService.SelectWorkArea(
+                    currentPosition,
+                    currentSize,
+                    windowController.cursorPosition);
+                placement = new FloatingWindowPlacement(
+                    workArea.Bounds.position,
+                    workArea.Bounds.size,
+                    workArea,
+                    FloatingWindowAnchor.TopLeft);
+            }
+            else
+            {
+                Vector2 requestedSize = restoreWindowSize.sqrMagnitude > 1f
+                    ? restoreWindowSize
+                    : GetWindowSizeForPreset(presetIndex);
+                placement = placementService.ConstrainAfterDrag(
+                    restoreWindowPosition,
+                    requestedSize,
+                    windowController.cursorPosition);
+            }
+
+            isMaximized = maximize;
+            yield return ApplyWindowPlacement(placement);
+            state = FloatingState.Floating;
+            windowModeCoroutine = null;
+
+            Debug.Log(maximize
+                ? $"[FloatingWindowService] Expanded to monitor {placement.WorkArea.MonitorIndex} work area."
+                : "[FloatingWindowService] Restored the floating window size.");
+        }
+
+        private IEnumerator ApplyWindowPlacement(FloatingWindowPlacement placement)
+        {
+            ApplyResolution(placement.Size);
             yield return null;
             yield return null;
-            RestoreOriginalWindowPosition();
 
+            windowsWindowHost?.ApplyBorderless();
+            ApplyWindowSize(placement.Size);
+            ApplyWindowPosition(placement.Position);
             yield return null;
-            RestoreOriginalWindowPosition();
-            ClearOriginalWindowState();
+            ApplyWindowPosition(placement.Position);
+            yield return ApplyNativeWorkAreaCorrection(isMaximized);
+            UpdateDockedState(placement);
+            ApplyContentViewport();
+        }
 
-            state = FloatingState.Normal;
-            transitionCoroutine = null;
-            Debug.Log("[FloatingWindowService] Exited floating mode and restored the original window state.");
+        private void OnMonitorConfigurationChanged()
+        {
+            if (isMaximized)
+            {
+                BeginMaximizeChange(true);
+                return;
+            }
+
+            BeginConstrainWindow("monitor configuration changed");
+        }
+
+        private void BeginConstrainWindow(string reason)
+        {
+            if (Application.isEditor || state != FloatingState.Floating)
+            {
+                return;
+            }
+
+            if (snapCoroutine != null)
+            {
+                StopCoroutine(snapCoroutine);
+            }
+
+            snapCoroutine = StartCoroutine(ConstrainWindowRoutine(reason));
+        }
+
+        private IEnumerator ConstrainWindowRoutine(string reason)
+        {
+            yield return null;
+            EnsurePlacementService();
+
+            FloatingWindowPlacement placement = placementService.ConstrainAfterDrag(
+                windowController.windowPosition,
+                windowController.windowSize,
+                windowController.cursorPosition);
+
+            if ((placement.Size - windowController.windowSize).sqrMagnitude > 1f)
+            {
+                ApplyResolution(placement.Size);
+                yield return null;
+                yield return null;
+                windowsWindowHost?.ApplyBorderless();
+                ApplyWindowSize(placement.Size);
+            }
+
+            ApplyWindowPosition(placement.Position);
+            yield return null;
+            ApplyWindowPosition(placement.Position);
+            yield return ApplyNativeWorkAreaCorrection(maximize: false);
+            UpdateDockedState(placement);
+
+            snapCoroutine = null;
+            Debug.Log(
+                $"[FloatingWindowService] Window constrained after {reason}: " +
+                $"monitor {placement.WorkArea.MonitorIndex}, {placement.Anchor}.");
         }
 
         private void ConfigureFloatingWindow()
         {
-            if (uniWinController == null)
+            if (windowController == null)
             {
                 return;
             }
 
-            uniWinController.isTransparent = true;
-            uniWinController.isTopmost = true;
-            uniWinController.isHitTestEnabled = true;
-            uniWinController.hitTestType = UniWindowController.HitTestType.Opacity;
+            windowController.isTransparent = true;
+            windowController.isTopmost = isAlwaysOnTop;
+            windowController.isHitTestEnabled = true;
+            windowController.hitTestType = UniWindowController.HitTestType.Opacity;
         }
 
-        private void EnsureUniWinController()
+        private void EnsureWindowController()
         {
-            if (uniWinController != null)
+            if (windowController != null)
             {
                 return;
             }
 
-            // 전용 자식 GO에 부착(리뷰 픽스): UniWinC 싱글턴 Awake는 중복 감지 시 그 GameObject 전체를
-            // Destroy한다 — MainCityView와 같은 GO에 붙이면 뷰가 통째로 죽는 지뢰.
             GameObject host = new GameObject("FloatingWindow");
             host.transform.SetParent(transform, false);
-            uniWinController = host.AddComponent<UniWindowController>();
-            uniWinController.forceWindowed = true;
-            uniWinController.autoSwitchCameraBackground = false;   // 카메라 전환은 이 서비스가 직접 소유(중복 방지)
+            windowController = host.AddComponent<UniWindowController>();
+            windowController.forceWindowed = true;
+            windowController.autoSwitchCameraBackground = false;
         }
 
-        // 투명창의 전제(스펙 §핵심결정). DriveViewCamera(PiP)는 건드리지 않음 — Camera.main만.
+        private void EnsurePlacementService()
+        {
+            placementService ??= new FloatingWindowPlacementService(
+                new WindowsWindowWorkAreaProvider(),
+                edgeMargin: 0f);
+        }
+
+        private void EnsureWindowsWindowHost()
+        {
+            windowsWindowHost ??= new WindowsFloatingWindowHost();
+            windowsWindowHost.TryAttach();
+        }
+
+        private void SubscribeMonitorChanges()
+        {
+            if (windowController == null)
+            {
+                return;
+            }
+
+            windowController.OnMonitorChanged -= OnMonitorConfigurationChanged;
+            windowController.OnMonitorChanged += OnMonitorConfigurationChanged;
+        }
+
         private void ApplyTransparentCamera(bool transparent)
         {
-            Camera cam = Camera.main;
-            if (cam == null)
+            Camera camera = Camera.main;
+            if (camera == null)
             {
                 return;
             }
@@ -304,85 +593,132 @@ namespace CityFlow.View
             {
                 if (!cameraStateSaved)
                 {
-                    savedClearFlags = cam.clearFlags;
-                    savedBackground = cam.backgroundColor;
-                    savedAllowHdr = cam.allowHDR;
-                    savedAllowMsaa = cam.allowMSAA;
+                    savedClearFlags = camera.clearFlags;
+                    savedBackground = camera.backgroundColor;
+                    savedAllowHdr = camera.allowHDR;
+                    savedAllowMsaa = camera.allowMSAA;
+                    savedCameraRect = camera.rect;
                     cameraStateSaved = true;
                 }
 
-                cam.allowHDR = false;
-                cam.allowMSAA = false;
-                cam.clearFlags = CameraClearFlags.SolidColor;
-                cam.backgroundColor = Color.clear;   // 투명 블랙(리뷰 픽스) — premultiplied alpha 합성 전제, 패키지 컨벤션과 일치
+                camera.allowHDR = false;
+                camera.allowMSAA = false;
+                camera.clearFlags = CameraClearFlags.SolidColor;
+                camera.backgroundColor = Color.clear;
+                EnsureClearCamera(camera);
             }
             else if (cameraStateSaved)
             {
-                cam.allowHDR = savedAllowHdr;
-                cam.allowMSAA = savedAllowMsaa;
-                cam.clearFlags = savedClearFlags;
-                cam.backgroundColor = savedBackground;
+                camera.allowHDR = savedAllowHdr;
+                camera.allowMSAA = savedAllowMsaa;
+                camera.clearFlags = savedClearFlags;
+                camera.backgroundColor = savedBackground;
+                camera.rect = savedCameraRect;
                 cameraStateSaved = false;
+
+                if (clearCamera != null)
+                {
+                    Destroy(clearCamera.gameObject);
+                    clearCamera = null;
+                }
             }
         }
 
-        private void ApplyPresetWindowSize()
+        private void EnsureClearCamera(Camera mainCamera)
         {
-            if (uniWinController == null)
+            if (clearCamera == null)
+            {
+                GameObject clearObject = new GameObject("FloatingWindowTransparentClearCamera");
+                clearObject.transform.SetParent(transform, false);
+                clearCamera = clearObject.AddComponent<Camera>();
+            }
+
+            clearCamera.clearFlags = CameraClearFlags.SolidColor;
+            clearCamera.backgroundColor = Color.clear;
+            clearCamera.cullingMask = 0;
+            clearCamera.depth = mainCamera.depth - 100f;
+            clearCamera.allowHDR = false;
+            clearCamera.allowMSAA = false;
+            clearCamera.rect = new Rect(0f, 0f, 1f, 1f);
+        }
+
+        private void ApplyContentViewport()
+        {
+            Camera camera = Camera.main;
+            if (camera == null || Screen.height <= 0)
             {
                 return;
             }
 
-            uniWinController.windowSize = Presets[presetIndex];
+            float contentHeight = Mathf.Max(1f, Screen.height - GetReservedTitleBarHeight());
+            camera.rect = new Rect(0f, 0f, 1f, contentHeight / Screen.height);
+
+            if (shouldFitBoardToScreen)
+            {
+                FitBoardToScreen();
+            }
         }
 
-        private void ApplyPresetResolution()
+        private void ApplyWindowSize(Vector2 size)
         {
-            Vector2 size = Presets[presetIndex];
+            if (windowController != null)
+            {
+                windowController.windowSize = size;
+            }
+        }
+
+        private void ApplyWindowPosition(Vector2 position)
+        {
+            if (windowController != null)
+            {
+                windowController.windowPosition = position;
+            }
+        }
+
+        private static void ApplyResolution(Vector2 size)
+        {
             Screen.SetResolution(
                 Mathf.RoundToInt(size.x),
                 Mathf.RoundToInt(size.y),
                 FullScreenMode.Windowed);
         }
 
-        private void ResizeToPresetKeepingPosition()
+        private Vector2 GetWindowSizeForPreset(int index)
         {
-            if (resizeCoroutine != null)
-            {
-                StopCoroutine(resizeCoroutine);
-            }
-
-            resizeCoroutine = StartCoroutine(ResizeToPresetKeepingPositionRoutine());
+            Vector2 contentSize = ContentPresets[Mathf.Clamp(index, 0, ContentPresets.Length - 1)];
+            return new Vector2(contentSize.x, contentSize.y + titleBarHeight);
         }
 
-        private IEnumerator ResizeToPresetKeepingPositionRoutine()
+        private IEnumerator ApplyNativeWorkAreaCorrection(bool maximize)
         {
-            EnsureUniWinController();
-
-            yield return null;
-            yield return null;
-
-            if (!resizeAnchorCaptured)
+            if (Application.isEditor || windowsWindowHost == null)
             {
-                resizeAnchorPosition = uniWinController.windowPosition;
-                resizeAnchorCaptured = true;
+                yield break;
             }
 
-            ApplyPresetResolution();
+            bool corrected = maximize
+                ? windowsWindowHost.FitToNearestMonitorWorkArea()
+                : windowsWindowHost.ConstrainToNearestMonitorWorkArea();
+            if (!corrected)
+            {
+                Debug.LogWarning("[FloatingWindowService] Native work-area correction failed.");
+                yield break;
+            }
 
             yield return null;
-            yield return null;
-            ApplyPresetWindowSize();
-            uniWinController.windowPosition = resizeAnchorPosition;
+            ApplyContentViewport();
+        }
 
-            yield return null;
-            uniWinController.windowPosition = resizeAnchorPosition;
+        private float GetReservedTitleBarHeight()
+        {
+            return isMaximized ? 0f : titleBarHeight;
+        }
 
-            resizeAnchorCaptured = false;
-            resizeCoroutine = null;
-
-            Vector2 size = Presets[presetIndex];
-            Debug.Log($"[FloatingWindowService] Resized window to {size.x:0}x{size.y:0} at the current position.");
+        private void UpdateDockedState(FloatingWindowPlacement placement)
+        {
+            isDockedToTop = placement.Anchor == FloatingWindowAnchor.Top
+                || placement.Anchor == FloatingWindowAnchor.TopLeft
+                || placement.Anchor == FloatingWindowAnchor.TopRight;
         }
 
         private void CaptureOriginalWindowState()
@@ -400,12 +736,12 @@ namespace CityFlow.View
 
         private void CaptureOriginalWindowPosition()
         {
-            if (uniWinController == null)
+            if (windowController == null)
             {
                 return;
             }
 
-            originalWindowPosition = uniWinController.windowPosition;
+            originalWindowPosition = windowController.windowPosition;
             originalWindowPositionCaptured = true;
         }
 
@@ -424,30 +760,23 @@ namespace CityFlow.View
 
         private void RestoreOriginalWindowPosition()
         {
-            if (uniWinController == null || !originalWindowPositionCaptured)
+            if (windowController != null && originalWindowPositionCaptured)
             {
-                return;
+                windowController.windowPosition = originalWindowPosition;
             }
-
-            uniWinController.windowPosition = originalWindowPosition;
         }
 
-        private void ClearOriginalWindowState()
+        private void ApplyPerformanceMode()
         {
-            windowStateCaptured = false;
-            originalWindowPositionCaptured = false;
-        }
-
-        // 저부하(스펙 §핵심결정): 플로팅+S면 30, 그 외 60. 창 API가 아니라 에디터에서도 적용·검증 가능.
-        private void ApplyPerfMode()
-        {
-            Application.targetFrameRate = (isFloating && presetIndex == 0) ? 30 : 60;
+            Application.targetFrameRate = presetIndex == 0 ? 30 : 60;
         }
 
         private void SavePrefs()
         {
-            PlayerPrefs.SetInt(FloatingPrefKey, isFloating ? 1 : 0);
+            PlayerPrefs.SetInt(FloatingPrefKey, 1);
             PlayerPrefs.SetInt(PresetPrefKey, presetIndex);
+            PlayerPrefs.SetInt(TopmostPrefKey, isAlwaysOnTop ? 1 : 0);
+            PlayerPrefs.Save();
         }
 
         private void PollResolutionChange()
@@ -459,23 +788,36 @@ namespace CityFlow.View
 
             lastScreenWidth = Screen.width;
             lastScreenHeight = Screen.height;
-            if (shouldFitBoardToScreen)
-            {
-                FitBoardToScreen();
-            }
+            ApplyContentViewport();
         }
 
-        // 띠 비율 창에서 도시가 안 잘리게(스펙 §핵심결정): orthoSize = max(보드 반높이, 반너비/화면비) + margin.
         private void FitBoardToScreen()
         {
-            Camera cam = Camera.main;
-            if (cam == null || boardW <= 0f || boardH <= 0f || Screen.height <= 0)
+            Camera camera = Camera.main;
+            float contentHeight = Screen.height - GetReservedTitleBarHeight();
+            if (camera == null
+                || boardWidth <= 0f
+                || boardHeight <= 0f
+                || contentHeight <= 0f)
             {
                 return;
             }
 
-            float aspect = (float)Screen.width / Screen.height;
-            cam.orthographicSize = Mathf.Max(boardH * 0.5f, boardW / (2f * aspect)) + Margin;
+            float aspect = Screen.width / contentHeight;
+            camera.orthographicSize = Mathf.Max(
+                boardHeight * 0.5f,
+                boardWidth / (2f * aspect)) + BoardFitMargin;
         }
+
+        private void StopRunningCoroutines()
+        {
+            if (transitionCoroutine != null) StopCoroutine(transitionCoroutine);
+            if (resizeCoroutine != null) StopCoroutine(resizeCoroutine);
+            if (snapCoroutine != null) StopCoroutine(snapCoroutine);
+            if (windowModeCoroutine != null) StopCoroutine(windowModeCoroutine);
+        }
+
+        // Unity setup: MainCityView creates this service at runtime.
+        // Bake the custom title bar through Tools > GreenLight > UI before making a Windows build.
     }
 }
