@@ -97,7 +97,7 @@ namespace CityFlow.View
                 ? FloatingWindowTitleBarController.TitleBarHeight
                 : 0f;
 
-            isFloating = true;
+            isFloating = PlayerPrefs.GetInt(FloatingPrefKey, 1) == 1;
             isAlwaysOnTop = PlayerPrefs.GetInt(TopmostPrefKey, 1) == 1;
             presetIndex = Mathf.Clamp(
                 PlayerPrefs.GetInt(PresetPrefKey, 1),
@@ -107,12 +107,18 @@ namespace CityFlow.View
 
             if (Application.isEditor)
             {
-                state = FloatingState.Floating;
-                titleBarController?.Initialize(this, null);
+                if (isFloating)
+                {
+                    state = FloatingState.Floating;
+                    titleBarController?.Initialize(this, null);
+                }
             }
             else
             {
-                EnterFloating();
+                if (isFloating)
+                {
+                    EnterFloating();
+                }
             }
 
             ApplyPerformanceMode();
@@ -827,7 +833,7 @@ namespace CityFlow.View
 
         private void SavePrefs()
         {
-            PlayerPrefs.SetInt(FloatingPrefKey, 1);
+            PlayerPrefs.SetInt(FloatingPrefKey, isFloating ? 1 : 0);
             PlayerPrefs.SetInt(PresetPrefKey, presetIndex);
             PlayerPrefs.SetInt(TopmostPrefKey, isAlwaysOnTop ? 1 : 0);
             PlayerPrefs.Save();
