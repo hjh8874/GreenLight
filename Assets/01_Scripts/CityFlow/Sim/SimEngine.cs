@@ -135,7 +135,7 @@ namespace CityFlow.Sim
             _solver.Resolve(_config, _signals, _grid, _roundaboutSet, _overpassSet, _priorityDirs, _simTime); // ② 혼잡·병목·그린웨이브·오버라이드·delivered
             _congestion.Scan(_solver, _events, _config);  // ②' 레벨 전이만 이벤트로
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
-            _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 보상
+            _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 국소 연출
             _stats.Update(_solver, _demand, _config);     // ⑤ 안정도 집계
             // ⑤' 안정도가 바뀐 틱만 이벤트로(매 틱 스팸 방지 — 혼잡 diff와 같은 철학).
             // Update 뒤에 체크해야 첫 틱·복원 직후에도 이번 틱의 진짜 값이 나간다.
@@ -244,7 +244,7 @@ namespace CityFlow.Sim
         public bool Remove(Vector2Int tile)
         {
             if (!_grid.TryRemove(tile, out var removed)) return false;
-            // 철거 = 조용: 그 타일의 밀린 보상 장부(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
+            // 철거 = 조용: 그 타일의 연출 원료(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
             _solver.ClearPendingReward(tile);
             _events.QueuePlaced(new PlacedEvent(tile, removed, isRemove: true));
             return true;

@@ -3,11 +3,11 @@ using CityFlow.Contracts;
 
 namespace CityFlow.Sim
 {
-    // Jam→Free '전이'를 감지해 그 타일에 쌓인 pendingReward를 Burst 보상으로 발행.
+    // Jam→Free '전이'를 감지해 그 타일에 쌓인 pendingReward를 Burst 연출 magnitude로 발행.
     // 감각의 안정성 장치 두 개(blueprint §2):
     //  - 히스테리시스: 진입선(≥1.0)과 복귀선(≤0.6)을 벌려 경계 진동에 무반응
     //  - 쿨다운: 타일당 10s — 같은 곳 연사 방지
-    // ★재미리서치: Burst는 화면 전체가 아니라 "고친 그 세그먼트"에 국소적, 보상은 병목 크기에 비례.
+    // ★재미리서치: Burst는 화면 전체가 아니라 "고친 그 세그먼트"에 국소적, 연출은 병목 크기에 비례.
     internal sealed class BurstDetector
     {
         readonly int _w;
@@ -49,12 +49,12 @@ namespace CityFlow.Sim
                 if (pending < cfg.BurstRewardThreshold) continue; // 티끌 병목은 발행 안 함
                 if (_cooldownLeft[i] > 0f) continue;              // 연사 방지(pending은 유지)
 
-                // pending은 '잃은 차량 수' 단위 — 도착 코인과 같은 환율(CoinBase)로 환전해야 파밍 중립이 CoinBase≠1에서도 유지(감사 2026-07-12)
-                int reward = Mathf.RoundToInt(pending * cfg.BurstRewardMultiplier * cfg.CoinBase);
+                // pending은 '잃은 차량 수' 단위의 휘발 데이터. 코인이 아니라 연출 크기 산정용이다.
+                int magnitude = Mathf.RoundToInt(pending);
                 events.QueueBurst(new FlowBurstEvent(
                     new Vector2Int(i % _w, i / _w),
-                    reward));
-                solver.ClearPendingReward(i);                     // 보상은 1회만 — 소비
+                    magnitude));
+                solver.ClearPendingReward(i);                     // 연출은 1회만 — 소비
                 _cooldownLeft[i] = cfg.BurstCooldownSeconds;
             }
         }

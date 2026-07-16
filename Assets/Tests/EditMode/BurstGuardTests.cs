@@ -4,8 +4,8 @@ using CityFlow.Contracts;
 
 namespace CityFlow.Sim.Tests
 {
-    // pendingReward 파밍 가드(리뷰 2026-07-11): Burst 보상은 "밀린 돈 회수"지 이익 수단이 아니다.
-    //  - 파밍 중립성: 고의 정체→해소 총수익 ≤ 그냥 잘 굴린 총수익 (배수 >1로 올리면 이 테스트가 깨짐)
+    // pendingReward 연출 가드: Burst magnitude는 잃은 처리량을 보여주는 휘발 연출값이다.
+    //  - 연출 중립성: magnitude가 고의 정체로 잃은 도착량을 부풀리지 않는다.
     //  - 철거 소각: 병목 타일을 부수면 장부도 소각 — "부수면 폭죽" 금지
     //  - 복원 소각: 세이브 복원 시 이전 도시의 유령 장부 금지
     public class BurstGuardTests
@@ -37,27 +37,60 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void JamFarming_NeverBeatsHonestPlay()
+        public void JamFarming_LosesArrivalCoins_DespiteReliefMagnitude()
         {
-            // 성실왕: 8초 그냥 굴림. 꼼수왕: 5초 고의 정체(초록 1슬롯) 후 복구 + 3초.
-            // 배수 ≤1이면 꼼수 총수익(도착+Burst)이 성실을 절대 못 이긴다.
-            long steadyCoins = 0;
+            // 고의 정체는 Arrival 코인을 실제로 줄이고, 해소 시에는 별도 연출 magnitude만 남긴다.
+            long steadyArrivalCoins = 0;
             var steady = BuildCity(out var hubA, out _);
-            hubA.Arrival += a => steadyCoins += a.Coins;
-            hubA.FlowBurst += b => steadyCoins += b.Reward;
+            hubA.Arrival += a => steadyArrivalCoins += a.Coins;
             Tick(steady, 8f);
 
-            long farmCoins = 0;
+            long jammedArrivalCoins = 0;
+            int reliefMagnitude = 0;
             var farm = BuildCity(out var hubB, out _);
-            hubB.Arrival += a => farmCoins += a.Coins;
-            hubB.FlowBurst += b => farmCoins += b.Reward;
+            hubB.Arrival += a => jammedArrivalCoins += a.Coins;
+            hubB.FlowBurst += b => reliefMagnitude += b.Reward;
             farm.Tick(0.25f);                                        // 교차로 감지
             Assert.IsTrue(farm.TrySetSignalGreenSlots(V(4, 0), 1));  // 고의 정체 제조(공짜)
-            Tick(farm, 5f);                                          // 밀린 돈 적립
+            Tick(farm, 5f);                                          // 잃은 처리량 적립
             Assert.IsTrue(farm.TrySetSignalGreenSlots(V(4, 0), 8));  // 복구 → Burst 발행
             Tick(farm, 2.75f);                                       // 총 8초 동률(감지 틱 포함)
 
-            Assert.LessOrEqual(farmCoins, steadyCoins);
+            Assert.Less(jammedArrivalCoins, steadyArrivalCoins);
+            Assert.Greater(reliefMagnitude, 0);
+        }
+
+        [Test]
+        public void FlowBurstEvent_DoesNotAddPlayerCoins()
+        {
+            // Sim 이벤트 경계에서 플레이어 코인은 ArrivalEvent만 합산한다.
+            // FlowBurst Reward는 발행 여부와 magnitude만 관찰하며 코인 합계에는 넣지 않는다.
+            long playerCoins = 0;
+            long arrivalCoins = 0;
+            int bursts = 0;
+            int magnitude = 0;
+            var e = BuildCity(out var hub, out _);
+            hub.Arrival += a =>
+            {
+                arrivalCoins += a.Coins;
+                playerCoins += a.Coins;
+            };
+            hub.FlowBurst += b =>
+            {
+                bursts++;
+                magnitude += b.Reward;
+            };
+
+            e.Tick(0.25f);
+            Assert.IsTrue(e.TrySetSignalGreenSlots(V(4, 0), 1));
+            Tick(e, 5f);
+            Assert.IsTrue(e.TrySetSignalGreenSlots(V(4, 0), 8));
+            Tick(e, 2.75f);
+
+            Assert.Greater(bursts, 0);
+            Assert.Greater(magnitude, 0);
+            Assert.AreEqual(arrivalCoins, playerCoins);
+            Assert.AreNotEqual(arrivalCoins + magnitude, playerCoins);
         }
 
         [Test]
@@ -74,7 +107,7 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(e.Remove(V(4, 0)));                        // 병목 도로 철거
             Tick(e, 1f);                                             // ratio 0 → Jam→Free 전이 지점
 
-            Assert.AreEqual(0, bursts);                              // 부순 행위에 보상 없음
+            Assert.AreEqual(0, bursts);                              // 부순 행위에 연출 없음
         }
 
         [Test]
