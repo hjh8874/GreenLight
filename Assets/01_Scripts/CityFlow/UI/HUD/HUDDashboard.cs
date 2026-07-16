@@ -32,11 +32,7 @@ namespace CityFlow.UI
         private long _pendingCoins;
         private float _currentStability01 = 1f;
 
-        // Display state for DOTween
-        private float _displayedCoins;
-        private float _displayedVehicles;
-        
-        // Cache for DOTween target values
+        // Cache for target values to avoid redundant string allocations
         private int _lastTargetVehicles = -1;
         private long _lastTargetCoins = -1;
 
@@ -287,12 +283,7 @@ namespace CityFlow.UI
                 if (targetVehicleCount != _lastTargetVehicles)
                 {
                     _lastTargetVehicles = targetVehicleCount;
-                    vehicleCountText.DOKill();
-                    DOTween.To(() => _displayedVehicles, x => 
-                    {
-                        _displayedVehicles = x;
-                        vehicleCountText.text = $"차량: {Mathf.RoundToInt(_displayedVehicles):N0}대";
-                    }, targetVehicleCount, updateInterval).SetEase(Ease.Linear).SetTarget(vehicleCountText);
+                    vehicleCountText.text = $"차량: {targetVehicleCount:N0}대";
                 }
             }
 
@@ -302,12 +293,7 @@ namespace CityFlow.UI
                 if (_currentCoins != _lastTargetCoins)
                 {
                     _lastTargetCoins = _currentCoins;
-                    coinText.DOKill();
-                    DOTween.To(() => _displayedCoins, x => 
-                    {
-                        _displayedCoins = x;
-                        RefreshCoinText();
-                    }, _currentCoins, updateInterval).SetEase(Ease.Linear).SetTarget(coinText);
+                    RefreshCoinText();
                 }
             }
 
@@ -327,7 +313,7 @@ namespace CityFlow.UI
             }
 
             coinText.text =
-                $"재화: {Mathf.RoundToInt(_displayedCoins):N0}  " +
+                $"재화: {_currentCoins:N0}  " +
                 $"대기: {_pendingCoins:N0}";
         }
     }

@@ -15,6 +15,7 @@ namespace CityFlow.UI.Controllers
         [SerializeField] private Color colorValid = new Color(0f, 1f, 0f, 0.5f);
         [SerializeField] private Color colorInvalid = new Color(1f, 0f, 0f, 0.5f);
 
+        private CityFlowServices _services;
         private IEconomyService _economy;
         private IIntersectionFacilityService _facilityService;
         private ITrafficRuleService _trafficRuleService;
@@ -36,6 +37,7 @@ namespace CityFlow.UI.Controllers
 
         public void Initialize(CityFlowServices services)
         {
+            _services = services;
             _economy = services.Economy;
             _placement = services.Placement;
             _facilityService = services.Placement as IIntersectionFacilityService;
@@ -283,6 +285,12 @@ namespace CityFlow.UI.Controllers
                 return;
             }
 
+            if (_services != null && _services.Events != null && _services.TileData != null)
+            {
+                TileType baseType = _services.TileData.GetTileType(coord);
+                _services.Events.Publish(new PlacedEvent(coord, baseType, false));
+            }
+
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
             
         }
@@ -297,7 +305,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_trafficRuleService.TryRemoveTurnSign(coord))
                 {
-                    ProcessRefund(InfrastructureKind.TurnRestriction);
+                    ProcessRefundAndEvent(InfrastructureKind.TurnRestriction, coord);
                     return true;
                 }
             }
@@ -308,7 +316,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_facilityService.TryRemoveSignal(coord))
                 {
-                    ProcessRefund(InfrastructureKind.Signal);
+                    ProcessRefundAndEvent(InfrastructureKind.Signal, coord);
                     return true;
                 }
             }
@@ -319,7 +327,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_facilityService.TryRemoveRoundabout(coord))
                 {
-                    ProcessRefund(InfrastructureKind.Roundabout);
+                    ProcessRefundAndEvent(InfrastructureKind.Roundabout, coord);
                     return true;
                 }
             }
@@ -330,7 +338,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_facilityService.TryRemoveOverpass(coord))
                 {
-                    ProcessRefund(InfrastructureKind.Overpass);
+                    ProcessRefundAndEvent(InfrastructureKind.Overpass, coord);
                     return true;
                 }
             }
@@ -341,7 +349,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_facilityService.TryRemovePriorityRoad(coord))
                 {
-                    ProcessRefund(InfrastructureKind.PriorityRoad);
+                    ProcessRefundAndEvent(InfrastructureKind.PriorityRoad, coord);
                     return true;
                 }
             }
@@ -351,7 +359,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_trafficRuleService.TryRemoveOneway(coord))
                 {
-                    ProcessRefund(InfrastructureKind.Oneway);
+                    ProcessRefundAndEvent(InfrastructureKind.Oneway, coord);
                     return true;
                 }
             }
@@ -359,7 +367,7 @@ namespace CityFlow.UI.Controllers
             return false;
         }
 
-        private void ProcessRefund(InfrastructureKind kind)
+        private void ProcessRefundAndEvent(InfrastructureKind kind, Vector2Int coord)
         {
             long originalCost = 0;
             
@@ -376,6 +384,12 @@ namespace CityFlow.UI.Controllers
             if (_economy != null && refundAmount > 0)
             {
                 _economy.AddCoins(refundAmount, "Demolish Refund");
+            }
+            
+            if (_services != null && _services.Events != null && _services.TileData != null)
+            {
+                TileType baseType = _services.TileData.GetTileType(coord);
+                _services.Events.Publish(new PlacedEvent(coord, baseType, true));
             }
             
             Debug.Log($"[InfrastructurePlacementCoordinator] Demolished {kind}. Refunded {refundAmount} coins (Original Cost: {originalCost}, Rate: {DEMOLISH_REFUND_RATE}).");

@@ -246,6 +246,7 @@ namespace CityFlow.UI
                 _services.Economy.AddCoins(refundCost, "Demolish Refund");
             }
 
+            _services.Events.Publish(new PlacedEvent(coord, previousType, true));
             Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 철거 명령 전달 (환불 {refundCost}).");
             return true;
         }
@@ -392,6 +393,7 @@ namespace CityFlow.UI
                         if (_services.Economy != null && refundCost > 0)
                             _services.Economy.AddCoins(refundCost, "Demolish Refund");
                             
+                        _services.Events.Publish(new PlacedEvent(coord, previousType, true));
                         Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 철거 명령 전달 (환불 {refundCost}).");
                     }
                 }
@@ -411,7 +413,6 @@ namespace CityFlow.UI
                             return;
                         }
 
-                        // 먼저 기존 건물 철거
                         if (_services.Placement.Remove(coord))
                         {
                             if (_services.Placement.Place(coord, _currentType))
@@ -422,6 +423,8 @@ namespace CityFlow.UI
                                     else if (netCost < 0) _services.Economy.AddCoins(-netCost, "Overwrite Refund");
                                 }
                                 
+                                _services.Events.Publish(new PlacedEvent(coord, previousType, true));
+                                _services.Events.Publish(new PlacedEvent(coord, _currentType, false));
                                 Debug.Log($"[Real Mode] 덮어쓰기 성공! {previousType} -> {_currentType}. 차액: {netCost}");
                             }
                             else
@@ -439,12 +442,12 @@ namespace CityFlow.UI
                             return;
                         }
 
-                        // 순수 빈땅 건설 시도
                         if (_services.Placement.Place(coord, _currentType))
                         {
                             if (_services.Economy != null && buildCost > 0)
                                 _services.Economy.TrySpend(buildCost);
                                 
+                            _services.Events.Publish(new PlacedEvent(coord, _currentType, false));
                             Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 {_currentType} 건설 명령 전달 (비용 {buildCost}).");
                         }
                     }
