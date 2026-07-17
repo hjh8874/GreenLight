@@ -63,6 +63,7 @@ namespace CityFlow.View
         [SerializeField] private Vector2 eveningWindow = new Vector2(17f, 21f);
         [SerializeField, Range(0.1f, 1f)] private float parkingApproachSpeedMul = 0.4f;
         [SerializeField] private float parkingSlotInset = 0.32f;   // 건물 타일 내 칸 오프셋(타일 비율)
+        [SerializeField, Range(0f, 1f)] private float parkingSettleSeconds = 0.3f;   // 도착 후 슬롯 정착 정지 안무(초)
 
         [Header("Camera View")]
         [SerializeField, Range(1f, 89f)] private float angledViewDegrees = 35.264f;
@@ -198,6 +199,16 @@ namespace CityFlow.View
             public int RouteIndex = -1;
             public bool OnRing;            // 통근 전용(Task 6R): 링 원 안(공유 링 레인 소속) — 핑퐁 무관
             public Vector2Int RingTile;    // OnRing일 때의 로터리 center 타일
+
+            // 차량 개성(개성 패스 2/2): 바인딩 시 (Home, HomeSlot) 해시로 캐시. 판단 없음 — 연출용.
+            public CarStyle Style;         // 스케일·팔레트·속도/가속 배수·출발 지연 프로파일
+            public CarState LastState;     // 상태 전환 감지(출발 지연·정착 안무 트리거)
+            public bool HasLastState;
+            public float DepartHold;       // 출발 지연 잔여(초) — >0이면 출발 앵커 고정(적분 보류)
+            public float SettleHold;       // 주차 정착 잔여(초) — >0이면 도착 앵커 정지 안무 중
+            public bool Settling;          // 정착 안무 진행 플래그(도착 프레임 재진입 게이트)
+            public GameObject BrakeLight;  // 후방 제동등(기본 off) — CreateDetailCube 패턴
+            public bool BrakeOn;           // 제동등 상태 캐시(매 프레임 SetActive 금지)
         }
 
         private struct FlowBurstSpeedZone
@@ -1173,11 +1184,19 @@ namespace CityFlow.View
                 ApplyRendererColor(renderer, vehicleColor);
 
                 Renderer detailRenderer = null;
+                GameObject brakeLight = null;
                 if (vehiclePrefab == null)
                 {
                     detailRenderer = CreateDetailCube(vehicle.transform, "Cabin",
                         new Vector3(0.55f, 0.72f, 0.42f), new Vector3(-0.05f, 0f, -0.65f));
                     ApplyRendererColor(detailRenderer, Color.Lerp(vehicleColor, Color.white, 0.3f));
+
+                    // 제동등: 후방(-x = 진행 반대) 얇은 빨간 큐브, 기본 off. 감속 상태 진입 시에만 SetActive.
+                    Renderer brakeRenderer = CreateDetailCube(vehicle.transform, "BrakeLight",
+                        new Vector3(0.1f, 0.7f, 0.55f), new Vector3(-0.52f, 0f, 0f));
+                    ApplyRendererColor(brakeRenderer, new Color(0.9f, 0.15f, 0.1f));
+                    brakeLight = brakeRenderer.gameObject;
+                    brakeLight.SetActive(false);
                 }
 
                 vehicle.SetActive(false);
@@ -1185,7 +1204,8 @@ namespace CityFlow.View
                 {
                     Object = vehicle,
                     Renderer = renderer,
-                    DetailRenderer = detailRenderer
+                    DetailRenderer = detailRenderer,
+                    BrakeLight = brakeLight
                 });
             }
         }
@@ -1779,7 +1799,7 @@ namespace CityFlow.View
                 bool hasBake = bakedRoutes.TryGetValue(car.RouteIndex, out BakedRoutePair pair);
                 if (carVehicles.TryGetValue(car, out RouteVehicle vehicle))
                 {
-                    vehicle.RouteIndex = car.RouteIndex;   // 경로색 동기화(짝 보존이라 색 연속)
+                    vehicle.RouteIndex = car.RouteIndex;   // bakedRoutes 짝 키 동기화(색은 개성 팔레트로 분리됨)
                     if (!hasBake)
                     {
                         // 새 위상에서 경로 소실(미연결 등): 페이드 후 다음 리빌드에서 재배치.
@@ -1813,6 +1833,7 @@ namespace CityFlow.View
                     }
 
                     ResetVehicleForCommute(fresh, car.RouteIndex);
+                    ApplyCarStyle(fresh, car);
                     carVehicles[car] = fresh;
                 }
             }
@@ -1859,6 +1880,31 @@ namespace CityFlow.View
             return true;
         }
 
+        // 개성 바인딩(Step 1): (Home, HomeSlot) 해시로 스케일·본색 적용. FromHash는 순수·저비용이라
+        // 바인딩 시 1회 계산해 캐시(색은 여기서만 적용 — 이동 루프의 프레임당 색 재적용 제거).
+        // 진행축 = 로컬 x(회전 Euler(0,0,angle), dir.x/dir.y) → 길이=x, 폭=y(지면 평면), 높이=z(불변).
+        private void ApplyCarStyle(RouteVehicle vehicle, CommuteCar car)
+        {
+            CarStyle style = CarStyle.FromHash(car.Home, car.HomeSlot);
+            vehicle.Style = style;
+
+            vehicle.Object.transform.localScale = new Vector3(
+                tileSize * 0.38f * style.LengthScale,
+                tileSize * 0.2f * style.WidthScale,
+                tileSize * 0.28f);
+
+            Color body = CarStyle.Palette[style.ColorIndex];
+            if (vehicle.Renderer != null)
+            {
+                ApplyRendererColor(vehicle.Renderer, body);
+            }
+
+            if (vehicle.DetailRenderer != null)
+            {
+                ApplyRendererColor(vehicle.DetailRenderer, Color.Lerp(body, Color.white, 0.3f));
+            }
+        }
+
         private void ResetVehicleForCommute(RouteVehicle vehicle, int routeIndex)
         {
             vehicle.RouteIndex = routeIndex;
@@ -1866,6 +1912,15 @@ namespace CityFlow.View
             vehicle.Dir = Vector3.zero;
             vehicle.OnRing = false;
             vehicle.HasCurrentTile = false;
+            vehicle.DepartHold = 0f;
+            vehicle.SettleHold = 0f;
+            vehicle.Settling = false;
+            vehicle.HasLastState = false;
+            vehicle.BrakeOn = false;
+            if (vehicle.BrakeLight != null)
+            {
+                vehicle.BrakeLight.SetActive(false);   // 하드 리셋(캐시 가드 우회) — 풀 재사용 desync 방지
+            }
             HideJamMarks(vehicle);
             if (vehicle.Renderer != null)
             {
@@ -1888,7 +1943,28 @@ namespace CityFlow.View
             vehicle.CurrentSpeed = 0f;
             vehicle.Dir = Vector3.zero;
             vehicle.OnRing = false;
+            vehicle.DepartHold = 0f;
+            vehicle.SettleHold = 0f;
+            vehicle.Settling = false;
+            vehicle.HasLastState = false;
+            vehicle.BrakeOn = false;
+            if (vehicle.BrakeLight != null)
+            {
+                vehicle.BrakeLight.SetActive(false);
+            }
             HideJamMarks(vehicle);
+        }
+
+        // 제동등 토글 — 상태 캐시로 매 프레임 SetActive 금지(진입/이탈 순간에만 호출).
+        private static void SetBrakeLight(RouteVehicle vehicle, bool on)
+        {
+            if (vehicle.BrakeLight == null || vehicle.BrakeOn == on)
+            {
+                return;
+            }
+
+            vehicle.BrakeOn = on;
+            vehicle.BrakeLight.SetActive(on);
         }
 
         private void MoveCommuteVehicle(CommuteCar car, RouteVehicle vehicle)
@@ -1903,6 +1979,20 @@ namespace CityFlow.View
             bool inbound = car.State == CarState.Inbound;
             bool moving = car.State == CarState.Outbound || car.State == CarState.Inbound;
 
+            // 상태 전환 감지(Step 3/5): 이동 상태 진입 시 출발 지연 시작, 정착 안무 리셋. 시간 기반 안무만 — 정지 판단 아님.
+            if (!vehicle.HasLastState || vehicle.LastState != car.State)
+            {
+                if (moving)
+                {
+                    vehicle.DepartHold = vehicle.Style.DepartDelaySec;   // 전환 직후 출발 지연 적립
+                }
+
+                vehicle.SettleHold = 0f;
+                vehicle.Settling = false;
+                vehicle.LastState = car.State;
+                vehicle.HasLastState = true;
+            }
+
             if (!moving)
             {
                 // 주차: 앵커 고정(비용 0). Outbound 양끝이 home(0)·work(Length) 앵커.
@@ -1916,6 +2006,26 @@ namespace CityFlow.View
                 vehicle.CurrentTile = car.State == CarState.ParkedWork ? car.Work : car.Home;
                 vehicle.HasCurrentTile = true;
                 SetVehicleRenderersEnabled(vehicle, true);
+                SetBrakeLight(vehicle, false);
+                HideJamMarks(vehicle);
+                return;
+            }
+
+            // 출발 지연 안무(Step 3): 전환 직후 DepartDelaySec 동안 출발 앵커 고정 — 적분 보류(교통 판단 아님).
+            if (vehicle.DepartHold > 0f)
+            {
+                vehicle.DepartHold -= Time.deltaTime;
+                RoutePolyline startPoly = inbound ? pair.Inbound : pair.Outbound;
+                Vector3 startPos = startPoly.SampleAt(car.Distance).Pos;
+                vehicle.Object.transform.localPosition = startPos;
+                vehicle.Pos = startPos;
+                vehicle.Dir = Vector3.zero;
+                vehicle.OnRing = false;
+                vehicle.CurrentSpeed = 0f;
+                vehicle.CurrentTile = inbound ? car.Work : car.Home;
+                vehicle.HasCurrentTile = true;
+                SetVehicleRenderersEnabled(vehicle, true);
+                SetBrakeLight(vehicle, false);
                 HideJamMarks(vehicle);
                 return;
             }
@@ -1987,6 +2097,9 @@ namespace CityFlow.View
                 }
             }
 
+            // 개성 속도 배수(Step 2): 번역·캡 곱이 전부 끝난 뒤 적용(±10% 연출 편차 — 라이브 튜닝 전제).
+            targetSpeed *= vehicle.Style.SpeedMul;
+
             bool mustStop = !s.IsSpur && IsRouteVehicleBlocked(poly, s);
             if (mustStop)
             {
@@ -1994,9 +2107,10 @@ namespace CityFlow.View
             }
             else
             {
-                float acceleration = targetSpeed < vehicle.CurrentSpeed
+                float acceleration = (targetSpeed < vehicle.CurrentSpeed
                     ? vehicleDeceleration
-                    : vehicleAcceleration * (boostedByFlowBurst ? flowBurstAccelerationMultiplier : 1f);
+                    : vehicleAcceleration * (boostedByFlowBurst ? flowBurstAccelerationMultiplier : 1f))
+                    * vehicle.Style.AccelMul;   // 개성 가감속 배수(Step 2)
                 vehicle.CurrentSpeed = Mathf.MoveTowards(vehicle.CurrentSpeed, targetSpeed, acceleration * Time.deltaTime);
             }
 
@@ -2005,16 +2119,38 @@ namespace CityFlow.View
             car.Distance += vehicle.CurrentSpeed * tileSize * Time.deltaTime;
             if (car.Distance >= poly.Length)
             {
-                commuteScheduler.NotifyArrived(car);   // Distance=0 리셋 + 상태 전이(Parked)
-                Vector3 endPos = poly.SampleAt(poly.Length).Pos;
-                vehicle.Object.transform.localPosition = endPos;
-                vehicle.Pos = endPos;
-                vehicle.Dir = Vector3.zero;
+                // 주차 정착 안무(Step 5): 즉시 스냅 대신 parkingSettleSeconds 동안 슬롯 앵커 정지 후
+                // 슬롯(최종 진입) 방향 회전 정렬 → 그 후 NotifyArrived. 스케줄러는 통지 기반이라 지연 무해.
+                Sample endSample = poly.SampleAt(poly.Length);
+                vehicle.Object.transform.localPosition = endSample.Pos;
+                vehicle.Pos = endSample.Pos;
+                vehicle.Dir = Vector3.zero;   // 정지 → 타 차 Leader/Yield 판정에서 제외(주차와 동일)
                 vehicle.OnRing = false;
                 vehicle.CurrentSpeed = 0f;
                 vehicle.CurrentTile = currentTile;
                 vehicle.HasCurrentTile = true;
                 HideJamMarks(vehicle);
+                SetBrakeLight(vehicle, false);
+
+                if (!vehicle.Settling)
+                {
+                    vehicle.Settling = true;
+                    vehicle.SettleHold = parkingSettleSeconds;
+                }
+
+                vehicle.SettleHold -= Time.deltaTime;
+                if (vehicle.SettleHold <= 0f)
+                {
+                    if (endSample.Dir.sqrMagnitude > 0.001f)
+                    {
+                        float slotAngle = Mathf.Atan2(endSample.Dir.y, endSample.Dir.x) * Mathf.Rad2Deg;
+                        vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, slotAngle);
+                    }
+
+                    vehicle.Settling = false;
+                    commuteScheduler.NotifyArrived(car);   // Distance=0 리셋 + 상태 전이(Parked)
+                }
+
                 return;
             }
 
@@ -2041,18 +2177,18 @@ namespace CityFlow.View
                 }
             }
 
+            // 색은 바인딩 시(ApplyCarStyle) 팔레트로 1회 적용 — 여기선 유령 가시성만 토글(프레임당 색 재적용·MPB 할당 제거).
             if (vehicle.Renderer != null)
             {
                 vehicle.Renderer.enabled = !hiddenAsGhost;
-                Color routeColor = Color.HSVToRGB((vehicle.RouteIndex * 0.137f) % 1f, 0.7f, 0.95f);
-                ApplyRendererColor(vehicle.Renderer, routeColor);
-
                 if (vehicle.DetailRenderer != null)
                 {
                     vehicle.DetailRenderer.enabled = !hiddenAsGhost;
-                    ApplyRendererColor(vehicle.DetailRenderer, Color.Lerp(routeColor, Color.white, 0.3f));
                 }
             }
+
+            // 제동등(Step 4): 감속 의도(targetSpeed < CurrentSpeed - 0.05) 진입/이탈 시에만 토글. 유령 숨김 시 off.
+            SetBrakeLight(vehicle, !hiddenAsGhost && targetSpeed < vehicle.CurrentSpeed - 0.05f);
 
             // Jam 분노 팝업(!)+매연 — 스퍼/유령 제외(기존 L1484-1505 패턴 재사용).
             bool jammed = !hiddenAsGhost && !s.IsSpur
