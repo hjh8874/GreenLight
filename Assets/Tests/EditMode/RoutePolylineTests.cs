@@ -11,7 +11,10 @@ namespace CityFlow.Sim.Tests
         {
             Tiles = new List<Vector2Int> { new(0, 0), new(1, 0), new(2, 0) },
             TileSize = 1f, LaneOffset = 0.18f, CornerRadiusFraction = 0.75f,
-            OrbitRadius = 0.9f, Z = 0f, IsRoundabout = _ => false,   // 풋프린트 차도 중앙(QA F — 뷰 기본값과 일치)
+            OrbitRadius = 0.9f,                              // 풋프린트 차도 중앙(QA F — 뷰 기본값과 일치)
+            EntryExitOffsetRad = 45f * Mathf.Deg2Rad,       // α — 뷰 기본값(QA G)
+            TransitionLength = 0.5f,                         // 전이 창(뷰 기본값; 내부 하한 0.66으로 클램프)
+            Z = 0f, IsRoundabout = _ => false,
             EndAnchor = end, SamplesPerSegment = 8,
         };
 

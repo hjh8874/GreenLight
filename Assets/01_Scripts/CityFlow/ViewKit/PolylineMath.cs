@@ -77,19 +77,21 @@ namespace CityFlow.ViewKit
                 + 3f * t * t * (end - controlOut)).normalized;
         }
 
-        // 우측통행 로터리 CCW 스윕. incoming/outgoing = 진입·이탈 방향(정규화).
-        // laneShift(δ=asin(laneOffset/R))로 진입/이탈 접선 연속 — 왼쪽 끌림 수정(a982075) 보존.
+        // 우측통행 로터리 CCW 스윕 — 실제 로터리 표준 mouth±α(QA G). incoming/outgoing = 진입·이탈 방향(정규화).
+        //   θ_entry = 진입구 방위각(atan2(-in)) + α,  θ_exit = 출구 방위각(atan2(out)) − α.
+        // α만큼 진입/이탈점을 링 둘레(CCW 진행쪽)로 밀어 진입 헤딩과 링 접선의 각차를 줄인다 —
+        // 옛 mouth-정면 모델(α=0)은 진입구 정면에 합류해 접선이 헤딩과 90° 어긋나 섬 정면 돌진 후
+        // 급선회했다(라이브 "섬 부딪힌 뒤 돌아감"). 기대 스윕(α=45°): 우회전≈0 / 직진 π/2 / 좌회전 π / U턴 3π/2.
+        // sweep<0.1(우회전이 링을 스침) 링 생략 판정은 호출부(ApplyRoundaboutGeometry)가 담당한다.
         public static bool TryGetRoundaboutArc(
-            Vector3 incoming, Vector3 outgoing, float laneOffset, float orbitRadius,
+            Vector3 incoming, Vector3 outgoing, float entryExitOffsetRad,
             out float entryAngle, out float ccwSweep)
         {
             entryAngle = 0f; ccwSweep = 0f;
             if (incoming.sqrMagnitude < 0.5f || outgoing.sqrMagnitude < 0.5f) return false;
-            float laneShift = Mathf.Asin(Mathf.Clamp01(laneOffset / Mathf.Max(0.01f, orbitRadius)));
-            entryAngle = Mathf.Atan2(-incoming.y, -incoming.x) + laneShift;
-            float exitAngle = Mathf.Atan2(outgoing.y, outgoing.x) - laneShift;
+            entryAngle = Mathf.Atan2(-incoming.y, -incoming.x) + entryExitOffsetRad;
+            float exitAngle = Mathf.Atan2(outgoing.y, outgoing.x) - entryExitOffsetRad;
             ccwSweep = Mathf.Repeat(exitAngle - entryAngle, 2f * Mathf.PI);
-            if (ccwSweep < 0.05f) ccwSweep = 2f * Mathf.PI;
             return true;
         }
     }

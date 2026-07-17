@@ -41,20 +41,40 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1f, PolylineMath.RemapBezierParameterByArcLength(a, c1, c2, b, 1f), 1e-3f);
         }
 
-        // 로터리 arc: 직진(→ 진입, → 이탈) = 180° 스윕, laneShift 반영.
+        // 로터리 arc(mouth±α, QA G): 직진(→ 진입, → 이탈)은 진입각 = mouth+α, 스윕 = π/2.
+        static readonly float Alpha = 45f * Mathf.Deg2Rad;
+
         [Test]
         public void RoundaboutArc_StraightThrough_HalfSweep()
         {
             bool ok = PolylineMath.TryGetRoundaboutArc(
-                Vector3.right, Vector3.right, laneOffset: 0.18f, orbitRadius: 0.68f,
-                out float entry, out float sweep);
+                Vector3.right, Vector3.right, Alpha, out float entry, out float sweep);
             Assert.IsTrue(ok);
-            float laneShift = Mathf.Asin(0.18f / 0.68f);
             // 진입각은 브랜치 불문 mod 2π 동치로 비교 — IEEE-754 signed zero로
             // Atan2(-0f,-1f) = -π (+π 아님)라 절대값 비교는 같은 각도를 기각한다(Task 1 실측).
-            float entryDelta = Mathf.Repeat(entry - (Mathf.PI + laneShift) + Mathf.PI, 2f * Mathf.PI) - Mathf.PI;
-            Assert.AreEqual(0f, entryDelta, 1e-4f, "진입각 ≡ π+δ (mod 2π)");
-            Assert.AreEqual(Mathf.PI - 2f * laneShift, sweep, 1e-4f, "직진 스윕 = π − 2δ");
+            float entryDelta = Mathf.Repeat(entry - (Mathf.PI + Alpha) + Mathf.PI, 2f * Mathf.PI) - Mathf.PI;
+            Assert.AreEqual(0f, entryDelta, 1e-4f, "진입각 ≡ π+α (mod 2π)");
+            Assert.AreEqual(Mathf.PI / 2f, sweep, 1e-3f, "직진 스윕 = π/2");
+        }
+
+        // 좌회전(+x 진입, +y 이탈): CCW 스윕 = π(반바퀴).
+        [Test]
+        public void RoundaboutArc_LeftTurn_FullSweep()
+        {
+            bool ok = PolylineMath.TryGetRoundaboutArc(
+                Vector3.right, Vector3.up, Alpha, out _, out float sweep);
+            Assert.IsTrue(ok);
+            Assert.AreEqual(Mathf.PI, sweep, 1e-3f, "좌회전 스윕 = π");
+        }
+
+        // 우회전(+x 진입, −y 이탈): α=45°에서 스윕 ≈ 0 → 호출부가 링 생략(< 0.1) 판정.
+        [Test]
+        public void RoundaboutArc_RightTurn_RingSkipped()
+        {
+            bool ok = PolylineMath.TryGetRoundaboutArc(
+                Vector3.right, Vector3.down, Alpha, out _, out float sweep);
+            Assert.IsTrue(ok);
+            Assert.Less(sweep, 0.1f, "우회전 스윕 ≈ 0 → 링 생략");
         }
     }
 }

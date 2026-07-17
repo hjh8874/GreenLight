@@ -50,8 +50,12 @@ namespace CityFlow.View
         [SerializeField, Range(0f, 1f)] private float jamSpeedMul = 0.25f;
         [SerializeField, Range(0.02f, 1f)] private float vehicleStreamScale = 0.15f;   // 뷰 차량 스트림 배율 — 심 rate의 몇 %만 그릴지(화면 가독성). 심 수치·수익 불변
         [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
-        [SerializeField] private float roundaboutOrbitRadius = 0.9f;   // 로터리 궤도 반경(타일 비율) — 풋프린트 차도 중앙(섬 0.45~판 1.1의 중간). 씬 직렬화 값이 우선: 기존 씬은 인스펙터에서 0.9로 갱신 필요(QA F)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
+
+        [Header("Roundabout Tuning")]   // 재생 중 슬라이더 조정 → 통근 폴리라인 즉시 리베이크(QA G)
+        [SerializeField, Range(0.5f, 1.1f)] private float roundaboutOrbitRadius = 0.9f;    // 궤도 반경(타일 비율) — 풋프린트 차도 중앙(섬 0.45~판 1.1). 씬 직렬화 값 우선
+        [SerializeField, Range(10f, 80f)] private float roundaboutEntryExitDeg = 45f;      // α — 진입/이탈을 링 둘레로 미는 각. 클수록 링 체류 짧아짐
+        [SerializeField, Range(0.2f, 1.2f)] private float roundaboutTransitionTiles = 0.5f; // 전이 곡선 길이(타일) — 클수록 진입/이탈 완만
 
         [Header("Commute (2차 빌드)")]
         [SerializeField] private bool useCommuteMode = false;   // Task 7에서 기본화 후 제거 — off면 기존 핑퐁 경로 100% 유지
@@ -110,6 +114,7 @@ namespace CityFlow.View
         private IGameCalendarService calendar;
         private Transform parkingRoot;
         private int commuteRoutesHash;
+        private int commuteTuningHash;   // 로터리 노브(반경/α/전이) 해시 — 변경 시 지오메트리만 리베이크(QA G)
         private bool commuteRoutesBuilt;
         private float gameHourFraction;
 
@@ -2271,14 +2276,33 @@ namespace CityFlow.View
         {
             IReadOnlyList<List<Vector2Int>> routes = simEngine.ActiveRoutes;
             int hash = ComputeCommuteRoutesHash(routes, simEngine.ActiveRouteSources, simEngine.ActiveRouteSinks);
+            int tuningHash = ComputeRoundaboutTuningHash();
             if (commuteRoutesBuilt && hash == commuteRoutesHash)
             {
+                // 경로는 그대로 — 로터리 노브만 바뀌었으면 스케줄러/차량 진행 보존한 채 폴리라인만 재베이크(QA G).
+                if (tuningHash != commuteTuningHash)
+                {
+                    commuteTuningHash = tuningHash;
+                    RebakeCommuteGeometry(routes);
+                }
+
                 return;
             }
 
             commuteRoutesHash = hash;
+            commuteTuningHash = tuningHash;
             commuteRoutesBuilt = true;
             RebuildCommute(routes);
+        }
+
+        // 로터리 라이브 노브 3종의 해시 — 재생 중 슬라이더 조정 감지용(QA G).
+        private int ComputeRoundaboutTuningHash()
+        {
+            int hash = 17;
+            hash = hash * 31 + roundaboutOrbitRadius.GetHashCode();
+            hash = hash * 31 + roundaboutEntryExitDeg.GetHashCode();
+            hash = hash * 31 + roundaboutTransitionTiles.GetHashCode();
+            return hash;
         }
 
         private int ComputeCommuteRoutesHash(
@@ -2325,6 +2349,33 @@ namespace CityFlow.View
                 officeSlots, homeSlots, maxMovingVehicles,
                 morningWindow.x, morningWindow.y, eveningWindow.x, eveningWindow.y);
 
+            BakeAllRoutes(routes);
+
+            commuteScheduler.SnapNewToHour(CurrentGameHour());   // 신규 차만 현재 시각 수렴 — 생존 차 상태 보존(QA A)
+            SyncCommuteVehicleBindings(previousBakes);
+            RebuildParkingVisuals();
+        }
+
+        // 로터리 노브만 바뀐 경우: 스케줄러·차량 진행을 건드리지 않고 폴리라인만 재베이크(QA G).
+        // 경로 타일은 동일하므로 sticky previousBakes로 각 차가 새 지오메트리에 이어붙는다(위상 보존).
+        private void RebakeCommuteGeometry(IReadOnlyList<List<Vector2Int>> routes)
+        {
+            var previousBakes = new Dictionary<CommuteCar, BakedRoutePair>(carVehicles.Count);
+            foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
+            {
+                if (bakedRoutes.TryGetValue(kv.Key.RouteIndex, out BakedRoutePair old))
+                {
+                    previousBakes[kv.Key] = old;
+                }
+            }
+
+            BakeAllRoutes(routes);
+            SyncCommuteVehicleBindings(previousBakes);
+        }
+
+        // bakedRoutes를 현재 스케줄러 차량·라이브 로터리 노브로 다시 채운다(RebuildCommute·RebakeCommuteGeometry 공용).
+        private void BakeAllRoutes(IReadOnlyList<List<Vector2Int>> routes)
+        {
             bakedRoutes.Clear();
             IReadOnlyList<CommuteCar> cars = commuteScheduler.Cars;
             for (int i = 0; i < cars.Count; i++)
@@ -2363,10 +2414,6 @@ namespace CityFlow.View
                     InboundMerge = ComputeMergePoint(inboundTiles),
                 };
             }
-
-            commuteScheduler.SnapNewToHour(CurrentGameHour());   // 신규 차만 현재 시각 수렴 — 생존 차 상태 보존(QA A)
-            SyncCommuteVehicleBindings(previousBakes);
-            RebuildParkingVisuals();
         }
 
         // 출발 스퍼가 도로 차선에 닿는 점 ≈ 첫 도로 세그먼트 시작의 차선 오프셋 위치(베이크 phase 0 포즈).
@@ -2414,6 +2461,8 @@ namespace CityFlow.View
                 LaneOffset = laneOffset,
                 CornerRadiusFraction = GetCornerTurnRadiusFraction(),   // 베이커는 클램프 안 함 — 여기서 해석해 전달(리뷰 #2)
                 OrbitRadius = roundaboutOrbitRadius,
+                EntryExitOffsetRad = roundaboutEntryExitDeg * Mathf.Deg2Rad,   // α (QA G)
+                TransitionLength = roundaboutTransitionTiles,
                 Z = vehicleZ,
                 IsRoundabout = IsRoundaboutTile,   // 항상 non-null(리뷰 #6)
                 StartAnchor = startAnchor,
@@ -3168,6 +3217,7 @@ namespace CityFlow.View
             commuteScheduler.Clear();   // 복원 = sticky 없이 전원 신규 → SnapNewToHour가 전체 수렴
             commuteRoutesBuilt = false;
             commuteRoutesHash = 0;
+            commuteTuningHash = 0;
         }
 
         private void HandleSignalInput()

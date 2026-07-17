@@ -12,6 +12,8 @@ namespace CityFlow.ViewKit
         public float LaneOffset;
         public float CornerRadiusFraction;
         public float OrbitRadius;
+        public float EntryExitOffsetRad;   // α — 로터리 진입/이탈 링 오프셋(라디안, mouth±α). 뷰 노브 roundaboutEntryExitDeg 파생.
+        public float TransitionLength;      // 전이 곡선 길이(타일=phase 단위). 진입/이탈 완만함. 뷰 노브 roundaboutTransitionTiles.
         public float Z;
         public Func<Vector2Int, bool> IsRoundabout;
         public Vector3? StartAnchor;
@@ -290,14 +292,17 @@ namespace CityFlow.ViewKit
             return tangent.sqrMagnitude > 0.0001f;
         }
 
-        // ── 로터리 접선 기하 재구성(라이브 QA E-1) ──────────────────────────────────────
-        // 옛 SmoothStep 블렌드는 "차선 중심선(로터리 중앙 관통) ↔ 링" 위치 보간이라 궤도 창
-        // 대부분에서 중앙 딥(실측 0.498 / 반경 0.68). 근본 교체: 로터리 타일 구간의 정점을
-        //   [진입 전이 베지어] → [순수 CCW 원호(TryGetRoundaboutArc entryAngle/ccwSweep)] → [이탈 전이 베지어]
-        // 로 통째로 재구성한다. 링/차선 교점(laneShift가 인코딩 — 중심 전방 √(R²−λ²) 지점)이
-        // 반경 위 C0 접점이고, 차선 직선은 링과 λ<R라 진정한 접선이 될 수 없으므로(~78° 꺾임)
-        // 전이 베지어(양끝 접선 일치)로 C1을 만든다 — 딥 해소(궤도-풋프린트 정합은 QA F: R=0.9).
-        // 구간 경계 포즈는 실제 베이스 포즈(코너 베지어 포함)에서 취해 코너-인접 진입도 연속.
+        // sweep가 이보다 작으면(우회전이 링을 스침) 링 궤도를 생략하고 일반 코너 베지어로 통과(QA G).
+        private const float RingSkipSweep = 0.1f;
+
+        // ── 로터리 접선 기하 재구성(라이브 QA E-1 + 각도 모델 mouth±α QA G) ──────────────────
+        // 옛 SmoothStep 블렌드는 중앙 딥, 옛 mouth-정면 각도(α=0)는 섬 정면 돌진 결함이었다. 현재:
+        // TryGetRoundaboutArc(mouth±α)로 진입/이탈을 링 둘레로 밀어 각차를 줄인 뒤, 로터리 타일 구간을
+        //   [진입 전이 베지어] → [순수 CCW 원호] → [이탈 전이 베지어]
+        // 로 통째로 재구성한다. 전이 베지어(양끝 접선 일치)가 접근 차선↔링 사이 C1을 만든다.
+        // 전이 창 = ci ± transitionSpan(노브 TransitionLength; 옛 √(R²−λ²) 대체, 클수록 완만·길다).
+        // sweep<0.1(우회전) → 링 없이 일반 코너 베지어로 스치듯 통과(entry/exit 포즈 직결).
+        // ClampIslandIntrusion(섬 하한 0.62타일)은 두 경로 모두에 적용 — 섬 침범 절대 금지.
         private static void ApplyRoundaboutGeometry(
             in BakeInput input,
             IReadOnlyList<Vector2Int> tiles,
@@ -305,8 +310,10 @@ namespace CityFlow.ViewKit
             List<Vertex> vertices)
         {
             float radius = Mathf.Max(0.05f, input.OrbitRadius);
-            // 링/차선 교점까지의 중심 전방 거리(타일=페이즈 단위). λ≥R 퇴화는 하한 가드.
-            float halfSpan = Mathf.Sqrt(Mathf.Max(0.0001f, radius * radius - input.LaneOffset * input.LaneOffset));
+            // 전이 창 반폭(타일=phase). 클수록 진입/이탈 완만·길다(노브). 상한 0.95(이웃 타일 중심 ±1 안).
+            // 하한 MinTransitionSpan: 직진 접근 차선(중심 관통, 오프셋 λ)이 창 밖에서 섬을 스치지 않게
+            //   base 차선 거리 √(span²+λ²) > 섬 하한이 되는 최소 span. 이보다 짧으면 NoCenterDip 회귀.
+            float transitionSpan = Mathf.Clamp(input.TransitionLength, MinTransitionSpan, 0.95f);
 
             for (int ci = 1; ci < tiles.Count - 1; ci++)
             {
@@ -325,37 +332,49 @@ namespace CityFlow.ViewKit
                     tiles[ci + 1].y - tiles[ci].y,
                     0f).normalized;
 
-                if (!PolylineMath.TryGetRoundaboutArc(incoming, outgoing, input.LaneOffset, radius, out float entryAngle, out float ccwSweep))
+                if (!PolylineMath.TryGetRoundaboutArc(incoming, outgoing, input.EntryExitOffsetRad, out float entryAngle, out float ccwSweep))
                 {
                     continue;
                 }
 
-                float startPhase = ci - halfSpan;   // ci ∈ [1, Count-2], halfSpan < 1 → 항상 경로 내부
-                float endPhase = ci + halfSpan;
+                float startPhase = ci - transitionSpan;   // ci ∈ [1, Count-2], span ≤ 0.95 → 항상 경로 내부
+                float endPhase = ci + transitionSpan;
                 PoseAt(input, tiles, segmentCount, startPhase, out Vector3 entryPos, out Vector3 entryDir);
                 PoseAt(input, tiles, segmentCount, endPhase, out Vector3 exitPos, out Vector3 exitDir);
-
-                // 전이 스윕: 양끝 각각 min(29°, 전체 스윕 30%) — 남는 가운데가 순수 원호.
-                float beta = Mathf.Min(0.5f, ccwSweep * 0.3f);
-                float arcStartAngle = entryAngle + beta;
-                float arcEndAngle = entryAngle + ccwSweep - beta;
                 Vector3 center = TileToLocal(tiles[ci], input.TileSize, input.Z);
-                float worldRadius = input.TileSize * radius;
 
                 var built = new List<Vertex>(32);
-                AppendTransitionBezier(built, entryPos, entryDir,
-                    RingPoint(center, worldRadius, arcStartAngle), RingTangent(arcStartAngle), includeStart: true);
 
-                // 원호: 스윕 12°당 1정점 이상.
-                int arcSamples = Mathf.Max(2, Mathf.CeilToInt((arcEndAngle - arcStartAngle) * Mathf.Rad2Deg / 12f));
-                for (int k = 1; k <= arcSamples; k++)   // k=0은 전이 베지어 끝점과 중복 — 스킵
+                if (ccwSweep < RingSkipSweep)
                 {
-                    float angle = Mathf.Lerp(arcStartAngle, arcEndAngle, (float)k / arcSamples);
-                    built.Add(new Vertex { Pos = RingPoint(center, worldRadius, angle), Dir = RingTangent(angle) });
+                    // 링을 스치는 우회전: 링 궤도 없이 진입→이탈 포즈를 잇는 일반 코너 베지어.
+                    // (섬 클램프가 안쪽 컷을 0.62타일로 막아 섬 침범 방지)
+                    AppendTransitionBezier(built, entryPos, entryDir, exitPos, exitDir, includeStart: true);
                 }
+                else
+                {
+                    // mouth±α 모델: 순수 원호는 θ_entry(=mouth+α) → θ_exit(=θ_entry+sweep) 그대로.
+                    // 진입 전이는 접근 차선 포즈 → RingPoint(θ_entry)로 잇고(끝 접선 = 링 접선 → 원호와 C1),
+                    // 이탈 전이는 RingPoint(θ_exit) → 이탈 포즈. α가 각차를 45°로 줄여 전이가 완만·섬 회피
+                    // (옛 mouth-정면 α=0은 90° 각차라 전이가 섬 정면 돌진 후 급선회했다).
+                    float arcStartAngle = entryAngle;
+                    float arcEndAngle = entryAngle + ccwSweep;
+                    float worldRadius = input.TileSize * radius;
 
-                AppendTransitionBezier(built, RingPoint(center, worldRadius, arcEndAngle), RingTangent(arcEndAngle),
-                    exitPos, exitDir, includeStart: false);
+                    AppendTransitionBezier(built, entryPos, entryDir,
+                        RingPoint(center, worldRadius, arcStartAngle), RingTangent(arcStartAngle), includeStart: true);
+
+                    // 원호: 스윕 12°당 1정점 이상.
+                    int arcSamples = Mathf.Max(2, Mathf.CeilToInt((arcEndAngle - arcStartAngle) * Mathf.Rad2Deg / 12f));
+                    for (int k = 1; k <= arcSamples; k++)   // k=0은 전이 베지어 끝점과 중복 — 스킵
+                    {
+                        float angle = Mathf.Lerp(arcStartAngle, arcEndAngle, (float)k / arcSamples);
+                        built.Add(new Vertex { Pos = RingPoint(center, worldRadius, angle), Dir = RingTangent(angle) });
+                    }
+
+                    AppendTransitionBezier(built, RingPoint(center, worldRadius, arcEndAngle), RingTangent(arcEndAngle),
+                        exitPos, exitDir, includeStart: false);
+                }
 
                 ClampIslandIntrusion(built, center, input.TileSize);
                 AssignPhasesByChordLength(built, startPhase, endPhase, segmentCount);
@@ -364,9 +383,13 @@ namespace CityFlow.ViewKit
         }
 
         // 섬 침범 절대 금지(QA F): 풋프린트 섬 반경 0.45 + 차 반폭 ~0.15 + 여유 = 0.62타일.
-        // R=0.9 기하에서 전이 최저 ≈ 0.80타일이라 평시 무동작 보험 — 인스펙터가 R을 줄여도
-        // 섬 안쪽으로는 절대 못 들어간다(반경 방향 클램프, 위상 배정 전에 적용).
+        // mouth±α 기본 기하(R=0.9·α=45°·span=0.66)에서 실측 최저 ≈ 0.68타일이라 평시 무동작 보험 —
+        // 인스펙터가 R/α/전이를 줄여도 섬 안쪽으론 절대 못 들어간다(반경 방향 클램프, 위상 배정 전 적용).
         private const float IslandClearance = 0.62f;
+
+        // 전이 창 최소 반폭(타일). base 직진 차선(오프셋 λ=0.18)이 창 밖에서 섬 하한 0.62를 스치지 않으려면
+        // √(span²+λ²) > 0.62 → span > 0.593. 여유 포함 0.66으로 잡아 NoCenterDip(>0.62) 마진 확보.
+        private const float MinTransitionSpan = 0.66f;
 
         private static void ClampIslandIntrusion(List<Vertex> built, Vector3 center, float tileSize)
         {
@@ -388,7 +411,7 @@ namespace CityFlow.ViewKit
         }
 
         // 접선 일치 전이(C1): from/to의 접선을 핸들로 쓰는 쿼터 베지어.
-        // 링 안쪽 최저 중심거리 ≈ 0.89R(R=0.9, λ=0.18 실계산 0.80타일) — 섬 클램프는 보험.
+        // mouth±α 모델에선 α가 진입 각차를 45°로 줄여 전이가 완만 — 섬 클램프는 보험(평시 무동작).
         private static void AppendTransitionBezier(
             List<Vertex> built, Vector3 from, Vector3 fromDir, Vector3 to, Vector3 toDir, bool includeStart)
         {
