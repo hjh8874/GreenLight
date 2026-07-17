@@ -86,8 +86,10 @@ namespace CityFlow.Sim
         // ── 도착 코인 환율 ─────────────────────
         public float CoinBase;          // 🔓 공식 형태·가중치 잠정
 
-        // ── 도로 카운터코스트 ──────────────────
-        public float RoadMaintPerSec;   // 도로 타일 1칸당 초당 유지비 🔓
+        // ── 도로 카운터코스트: 예산제(스펙 2026-07-17, 기획 결정 환) ──
+        // 유지비(러닝코스트) → 도로 타일 스톡 상한. 도배 방어를 "손해"→"물리적 불가"로 전환.
+        // 기존 RoadMaintPerSec 유지비 체인은 삭제됨(MaintenanceEvent dead chain 포함).
+        public int MaxRoadTiles;        // 배치 가능한 도로 타일 총량 상한 🔓 (환 라이브 밸런스)
 
         // ── Burst 감지 (히스테리시스 + 쿨다운) ──
         public float BurstJamEnterRatio;    // Jam 진입 1.0
@@ -131,7 +133,7 @@ namespace CityFlow.Sim
             RoutingCongestionWeight = 2f,
             AutoDetectSignals = true,
             CoinBase = 1f,
-            RoadMaintPerSec = 0.1f,
+            MaxRoadTiles = 60,   // 임시 — "필요 연결을 다 못 하는 빠듯함"이 목표(20×20=400칸의 15%)
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,
             BurstCooldownSeconds = 10f,

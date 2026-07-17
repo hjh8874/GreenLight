@@ -1,6 +1,7 @@
 using System;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using CityFlow.UI.Controllers;
@@ -31,6 +32,8 @@ namespace CityFlow.UI
         
         [Header("UI References")]
         [SerializeField] private ConfirmPopupController confirmPopup;
+        [Tooltip("도로 예산제(스펙 2026-07-17): 도로 배치 모드에서 \"도로 N/M\" 카운터. 미할당 시 표시 생략.")]
+        [SerializeField] private TextMeshProUGUI roadBudgetText;
         
         private CityFlowServices _services;
         private bool _isBuildingMode = false;
@@ -111,6 +114,8 @@ namespace CityFlow.UI
 
         private void Update()
         {
+            UpdateRoadBudgetLabel();   // 도로 예산제(스펙 2026-07-17): 도로 모드에서만 "도로 N/M" 표시
+
             // 6. 마우스 우클릭 시 철거 확인창 호출 (도로는 드래그 즉시 철거 지원)
             if (Mouse.current != null)
             {
@@ -208,6 +213,21 @@ namespace CityFlow.UI
                     _lastPlacedCoord = null;
                 }
             }
+        }
+
+        // 도로 예산제 카운터(스펙 2026-07-17): 도로 배치 모드일 때만 "도로 N/M"을 노출.
+        // 라벨 미할당(씬 미연동)이면 조용히 생략 — HUDDashboard의 null-safe TMP 패턴 재사용.
+        private void UpdateRoadBudgetLabel()
+        {
+            if (roadBudgetText == null) return;
+
+            bool showRoad = _isBuildingMode && _currentType == TileType.Road
+                            && _services != null && _services.Stats != null;
+            if (roadBudgetText.gameObject.activeSelf != showRoad)
+                roadBudgetText.gameObject.SetActive(showRoad);
+
+            if (showRoad)
+                roadBudgetText.text = $"도로 {_services.Stats.RoadTileCount}/{_services.Stats.MaxRoadTiles}";
         }
 
         public bool TryDemolishAt(Vector2Int coord)

@@ -47,7 +47,6 @@ namespace CityFlow.Sim
         readonly SimStats _stats = new SimStats();
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
-        double _maintenanceAcc;   // 도로 유지비 소수 이월(온라인·오프라인 공용)
         float _lastStability = -1f;   // 직전 발행한 안정도(-1=아직 없음 → 첫 틱은 무조건 발행)
 
         // 테스트 관찰용 seam. internal이라 테스트 어셈블리만 봄(InternalsVisibleTo).
@@ -136,9 +135,6 @@ namespace CityFlow.Sim
             _solver.Resolve(_config, _signals, _grid, _roundaboutSet, _overpassSet, _priorityDirs, _simTime); // ② 혼잡·병목·그린웨이브·오버라이드·delivered
             _congestion.Scan(_solver, _events, _config);  // ②' 레벨 전이만 이벤트로
             _arrivals.Emit(_solver, _events, _config);    // ③ 도착 정수 방출(소수 이월)
-            long maintenanceCost = AccumulateRoadMaintenance(_config.TickInterval);
-            if (maintenanceCost > 0L)
-                _events.QueueMaintenance(new MaintenanceEvent(maintenanceCost)); // ③' 도로 유지비 정수 방출(소수 이월)
             _bursts.Scan(_solver, _events, _config);      // ④ Jam→Free 감지 → 국소 연출
             _stats.Update(_solver, _demand, _config);     // ⑤ 안정도 집계
             // ⑤' 안정도가 바뀐 틱만 이벤트로(매 틱 스팸 방지 — 혼잡 diff와 같은 철학).
@@ -227,29 +223,25 @@ namespace CityFlow.Sim
             double capSeconds = Math.Max(0.0, _config.OfflineCapHours * 3600.0);
             double capped = Math.Min(elapsedSeconds, capSeconds);
             long coins = _arrivals.SettleOffline(_solver, capped, _config);
-            long maintenanceCost = AccumulateRoadMaintenance(capped);
-            coins = Math.Max(0L, coins - maintenanceCost);
 
             _events.QueueSettlement(new SettlementEvent(capped / 60.0, coins));
             _events.Drain();
             return capped;
         }
 
-        long AccumulateRoadMaintenance(double elapsedSeconds)
-        {
-            double rate = Math.Max(0.0, _config.RoadMaintPerSec);
-            _maintenanceAcc += _grid.RoadTileCount * rate * Math.Max(0.0, elapsedSeconds);
-            long cost = (long)_maintenanceAcc;
-            _maintenanceAcc -= cost;
-            return cost;
-        }
+        // 도로 예산제(스펙 2026-07-17, 기획 결정 환): 도로 타일 스톡이 상한에 닿으면 신규 도로 배치 금지.
+        // 비도로 타입은 무영향. RoadTileCount는 TopologyVersion 캐시(CityGrid) 재사용 — 매 호출 O(1).
+        bool WithinRoadBudget(TileType type) =>
+            type != TileType.Road || _grid.RoadTileCount < _config.MaxRoadTiles;
 
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
         public bool CanPlace(Vector2Int tile, TileType type) =>
-            !(IsBuildingTile(type) && IsInRoundaboutFootprint(tile)) && _grid.CanPlace(tile, type);
+            WithinRoadBudget(type)
+            && !(IsBuildingTile(type) && IsInRoundaboutFootprint(tile)) && _grid.CanPlace(tile, type);
 
         public bool Place(Vector2Int tile, TileType type)
         {
+            if (!WithinRoadBudget(type)) return false;   // 예산 초과 도로는 Place도 거부(CanPlace 우회 방지)
             if (IsBuildingTile(type) && IsInRoundaboutFootprint(tile)) return false;   // 로터리 풋프린트에 건물 금지
             if (!_grid.Place(tile, type)) return false;
             _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false));
@@ -271,6 +263,10 @@ namespace CityFlow.Sim
         public IReadOnlyList<Vector2Int> ActiveRouteSources => _solver.RouteSources;
         public IReadOnlyList<Vector2Int> ActiveRouteSinks => _solver.RouteSinks;
         public int ActiveVehicleCount => _solver.Routes.Count;
+
+        // 도로 예산제(스펙 2026-07-17): UI 카운터용. RoadTileCount는 TopologyVersion 캐시(무비용).
+        public int RoadTileCount => _grid.RoadTileCount;
+        public int MaxRoadTiles => _config.MaxRoadTiles;
         
         // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게 
         public float DeliveredTotal => _solver.DeliveredTotal;
@@ -690,7 +686,6 @@ namespace CityFlow.Sim
             _grid.Clear();
             _solver.ClearAllPendingRewards();   // 이전 도시의 유령 장부가 새 도시에서 터지는 것 방지
             _arrivals.ClearAll();   // 이월 소수도 유령 장부의 일종(감사 2026-07-12)
-            _maintenanceAcc = 0.0;  // 이전 도시의 소수 유지비가 복원 도시로 넘어가지 않게 소각
             _bursts.ClearAll();     // jam 히스테리시스·쿨다운도 이전 도시 잔재
             if (snapshot.PlacedTiles != null)
                 foreach (var t in snapshot.PlacedTiles)
