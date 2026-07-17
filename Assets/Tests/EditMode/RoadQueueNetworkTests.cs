@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using CityFlow.Contracts;
 using CityFlow.Sim;
 
 namespace CityFlow.Sim.Tests
@@ -254,6 +255,121 @@ namespace CityFlow.Sim.Tests
             q.TryEnqueue(V(1, 0), Dir.E, 2);
             q.TryEnqueue(V(2, 0), Dir.E, 3);
             return q;
+        }
+
+        [Test]
+        public void Step_IntersectionExitFull_DoesNotEnterIntersection()
+        {
+            SimConfig cfg = Cfg();
+            cfg.QueueCapacityPerTile = 1;
+            cfg.GridlockValveTicks = 8;
+            var q = new RoadQueueNetwork(5, 3, cfg);
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid);
+
+            var routes = new FakeRouteProvider();
+            routes.AddRoute(0, true, V(1, 1), V(2, 1), V(3, 1));
+            routes.AddRoute(10, destinationAtEnd: false, V(3, 1));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.E, 10));
+
+            q.Step(routes);
+
+            Assert.AreEqual(0, q.CarAtHead(V(1, 1), Dir.E), "출구가 차면 진입 전 대기");
+            Assert.AreEqual(0, q.QueueCount(V(2, 1), Dir.E), "교차로 내부 점유 금지");
+        }
+
+        [Test]
+        public void Step_FullCycle_ValveActivatesOnConfiguredTick()
+        {
+            SimConfig cfg = Cfg();
+            cfg.QueueCapacityPerTile = 1;
+            cfg.GridlockValveTicks = 8;
+            RoadQueueNetwork q = BuildFullCycle(cfg, out FakeRouteProvider routes);
+
+            for (int tick = 1; tick < cfg.GridlockValveTicks; tick++)
+            {
+                StepResult beforeThreshold = q.Step(routes);
+                Assert.AreEqual(
+                    0,
+                    beforeThreshold.ValveActivations,
+                    $"tick {tick} 조기 밸브 금지");
+            }
+
+            StepResult atThreshold = q.Step(routes);
+            Assert.Greater(atThreshold.ValveActivations, 0, "설정 틱에 순환 데드락 탈출");
+        }
+
+        [Test]
+        public void Step_ValveActivation_PreservesTotalCarCount()
+        {
+            SimConfig cfg = Cfg();
+            cfg.QueueCapacityPerTile = 1;
+            cfg.GridlockValveTicks = 8;
+            RoadQueueNetwork q = BuildFullCycle(cfg, out FakeRouteProvider routes);
+            int before = TotalCars(q, width: 2, height: 2);
+
+            int activations = 0;
+            for (int tick = 0; tick < cfg.GridlockValveTicks; tick++)
+            {
+                activations += q.Step(routes).ValveActivations;
+            }
+
+            Assert.Greater(activations, 0);
+            Assert.AreEqual(before, TotalCars(q, width: 2, height: 2), "밸브 후 증발·복제 금지");
+        }
+
+        private static CityGrid BuildCrossIntersection()
+        {
+            var grid = new CityGrid(5, 3);
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 0), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
+            Assert.IsTrue(grid.IsIntersection(V(2, 1)));
+            return grid;
+        }
+
+        private static RoadQueueNetwork BuildFullCycle(
+            SimConfig cfg,
+            out FakeRouteProvider routes)
+        {
+            var q = new RoadQueueNetwork(2, 2, cfg);
+            routes = new FakeRouteProvider();
+            Vector2Int a = V(0, 0);
+            Vector2Int b = V(1, 0);
+            Vector2Int c = V(1, 1);
+            Vector2Int d = V(0, 1);
+
+            routes.AddRoute(0, false, a, b, c, d, a);
+            routes.AddRoute(1, false, b, c, d, a, b);
+            routes.AddRoute(2, false, c, d, a, b, c);
+            routes.AddRoute(3, false, d, a, b, c, d);
+
+            // 큐 키는 다음 진행 방향이 아니라 현재 타일에 들어온 방향이다.
+            Assert.IsTrue(q.TryEnqueue(a, Dir.S, 0));
+            Assert.IsTrue(q.TryEnqueue(b, Dir.E, 1));
+            Assert.IsTrue(q.TryEnqueue(c, Dir.N, 2));
+            Assert.IsTrue(q.TryEnqueue(d, Dir.W, 3));
+            return q;
+        }
+
+        private static int TotalCars(RoadQueueNetwork q, int width, int height)
+        {
+            int total = 0;
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    total += q.QueueCount(V(x, y), Dir.N);
+                    total += q.QueueCount(V(x, y), Dir.E);
+                    total += q.QueueCount(V(x, y), Dir.S);
+                    total += q.QueueCount(V(x, y), Dir.W);
+                }
+            }
+
+            return total;
         }
     }
 }

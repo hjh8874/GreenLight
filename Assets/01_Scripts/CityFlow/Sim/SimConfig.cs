@@ -25,6 +25,7 @@ namespace CityFlow.Sim
         // 통해 인스펙터에 자동 노출되며 기존 .asset은 0이므로 전환 전 수동 설정이 필요하다. 🔓
         public int QueueCapacityPerTile;
         public int QueueServicePerTick;   // 한 방향 큐가 틱당 서비스할 최대 차 수 🔓
+        public int GridlockValveTicks;    // 머리 차 연속 막힘 후 강제 전이까지의 틱 수 🔓
 
         // ── 혼잡 임계 (ratio = flow/capacity) ────
         public float SlowRatio;         // <0.7 Free / 0.7~1.0 Slow / >1.0 Jam
@@ -123,6 +124,7 @@ namespace CityFlow.Sim
             DemandPerHouse = 1f,
             QueueCapacityPerTile = 4,
             QueueServicePerTick = 1,
+            GridlockValveTicks = 8,
             SlowRatio = 0.7f,
             JamRatio = 1.0f,
             EfficiencyMin = 0.2f,
