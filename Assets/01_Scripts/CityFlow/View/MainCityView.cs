@@ -48,7 +48,6 @@ namespace CityFlow.View
         [SerializeField, Range(0.1f, 1f)] private float crossYieldFloor = 0.3f;   // 양보 최저 속도 배율(0 금지)
         [SerializeField, Range(0f, 1f)] private float slowSpeedMul = 0.55f;
         [SerializeField, Range(0f, 1f)] private float jamSpeedMul = 0.25f;
-        [SerializeField, Range(0.02f, 1f)] private float vehicleStreamScale = 0.15f;   // 뷰 차량 스트림 배율 — 심 rate의 몇 %만 그릴지(화면 가독성). 심 수치·수익 불변
         [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
@@ -58,7 +57,6 @@ namespace CityFlow.View
         [SerializeField, Range(0.2f, 1.2f)] private float roundaboutTransitionTiles = 0.5f; // 전이 곡선 길이(타일) — 클수록 진입/이탈 완만
 
         [Header("Commute (2차 빌드)")]
-        [SerializeField] private bool useCommuteMode = false;   // Task 7에서 기본화 후 제거 — off면 기존 핑퐁 경로 100% 유지
         [SerializeField, Range(1, 12)] private int officeSlots = 6;
         [SerializeField, Range(1, 2)] private int homeSlots = 1;
         [SerializeField] private Vector2 morningWindow = new Vector2(6f, 10f);
@@ -103,10 +101,9 @@ namespace CityFlow.View
         private readonly Dictionary<Vector2Int, TurnSignVisual> turnSignVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> priorityRoadVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
-        private readonly List<RouteSpawnState> routeSpawns = new();
         private readonly List<FlowBurstSpeedZone> flowBurstSpeedZones = new();
 
-        // 통근 모드 상태(useCommuteMode=true일 때만 활성). off면 아래 컬렉션은 전부 비어 있어 무영향.
+        // 통근 상태(유일 경로). 위상 리빌드 시 재구성된다.
         private readonly CommuteScheduler commuteScheduler = new();
         private readonly Dictionary<int, BakedRoutePair> bakedRoutes = new();   // 키 = RouteIndex, 해시 변경 시 재베이크
         private readonly Dictionary<CommuteCar, RouteVehicle> carVehicles = new();
@@ -191,7 +188,6 @@ namespace CityFlow.View
             public GameObject Object;
             public Renderer Renderer;
             public Renderer DetailRenderer;
-            public float Phase;
             public float CurrentSpeed;
             public readonly List<Vector2Int> DisplayRoute = new();
             public int DisplayRouteHash;
@@ -205,14 +201,6 @@ namespace CityFlow.View
             public int RouteHash;
             public bool OnRing;            // 통근 전용(Task 6R): 링 원 안(공유 링 레인 소속) — 핑퐁 무관
             public Vector2Int RingTile;    // OnRing일 때의 로터리 center 타일
-        }
-
-        private sealed class RouteSpawnState
-        {
-            public int RouteHash;
-            public float Countdown;
-            public int Target;        // 이 경로의 목표 대수(rate×왕복시간 근사) — 차는 순환 유지, 대수만 조절
-            public int ActiveCount;   // 현재 이 경로에서 도는 대수
         }
 
         private struct FlowBurstSpeedZone
@@ -542,7 +530,6 @@ namespace CityFlow.View
 
             ClearChildren(vehicleRoot);
             vehicles.Clear();
-            routeSpawns.Clear();
             ResetCommuteState();   // 위상 리빌드: 통근 베이크/차량 매핑/주차칸 폐기 → RefreshVehicles가 재구성
 
             selectedSignalIndex = 0;
@@ -1172,184 +1159,7 @@ namespace CityFlow.View
 
         private void RefreshVehicles()
         {
-            if (useCommuteMode)
-            {
-                RefreshCommuteVehicles();
-                return;
-            }
-
-            if (simEngine == null)
-            {
-                return;
-            }
-
-            IReadOnlyList<List<Vector2Int>> routes = simEngine.ActiveRoutes;
-            EnsureVehicleCount(maxMovingVehicles);
-            SyncRouteSpawnStates(routes);
-            SpawnRouteVehicles(routes);
-
-            for (int i = 0; i < vehicles.Count; i++)
-            {
-                RouteVehicle vehicle = vehicles[i];
-                if (!vehicle.Object.activeSelf)
-                {
-                    continue;
-                }
-
-                if (vehicle.RouteIndex < 0
-                    || vehicle.RouteIndex >= routes.Count
-                    || routes[vehicle.RouteIndex].Count <= 1
-                    || vehicle.RouteHash != routeSpawns[vehicle.RouteIndex].RouteHash)
-                {
-                    DeactivateVehicle(vehicle);
-                }
-            }
-
-            for (int i = 0; i < vehicles.Count; i++)
-            {
-                if (!vehicles[i].Object.activeSelf)
-                {
-                    continue;
-                }
-
-                MoveVehicle(vehicles[i], routes[vehicles[i].RouteIndex]);
-            }
-        }
-
-        private void SyncRouteSpawnStates(IReadOnlyList<List<Vector2Int>> routes)
-        {
-            while (routeSpawns.Count < routes.Count)
-            {
-                routeSpawns.Add(new RouteSpawnState());
-            }
-
-            if (routeSpawns.Count > routes.Count)
-            {
-                routeSpawns.RemoveRange(routes.Count, routeSpawns.Count - routes.Count);
-            }
-
-            for (int i = 0; i < routes.Count; i++)
-            {
-                int routeHash = routes[i].Count > 1 ? ComputeDisplayRouteHash(routes[i]) : 0;
-                RouteSpawnState spawn = routeSpawns[i];
-                if (spawn.RouteHash == routeHash)
-                {
-                    continue;
-                }
-
-                spawn.RouteHash = routeHash;
-                spawn.Countdown = 0f;
-                spawn.ActiveCount = 0;   // 구 해시 차량은 Deactivate에서 해시 불일치로 감산 안 됨(이중감산 방지)
-            }
-        }
-
-        private void SpawnRouteVehicles(IReadOnlyList<List<Vector2Int>> routes)
-        {
-            // 뷰 전용 배율: 심 rate 그대로면 화면이 차로 도배됨(경로당 rate×왕복시간 대).
-            // 심 수치는 불변 — 그리는 밀도만 줄이는 번역 배율(원칙①). 인스펙터 라이브 튜닝.
-            float demandRate = simEngine != null ? simEngine.DemandRate * vehicleStreamScale : 0f;
-            if (demandRate <= 0f)
-            {
-                return;
-            }
-
-            float spawnInterval = 1f / demandRate;
-            for (int routeIndex = 0; routeIndex < routes.Count && routeIndex < routeSpawns.Count; routeIndex++)
-            {
-                if (routes[routeIndex].Count <= 1)
-                {
-                    continue;
-                }
-
-                RouteSpawnState spawn = routeSpawns[routeIndex];
-
-                // 목표 대수 = rate × 왕복시간 근사(긴 경로일수록 많이). 차는 순환 유지 —
-                // 수요가 늘면 서서히 합류, 줄면 왕복 마친 차만 은퇴(생겼다 사라졌다 처닝 방지).
-                float cycleTime = (routes[routeIndex].Count - 1) * 2f / Mathf.Max(0.01f, vehicleSpeed);
-                spawn.Target = Mathf.Max(1, Mathf.CeilToInt(demandRate * cycleTime));
-
-                if (spawn.ActiveCount >= spawn.Target)
-                {
-                    spawn.Countdown = 0f;   // 충원 필요 없음 — 다음 부족 시 즉시 1대부터
-                    continue;
-                }
-
-                spawn.Countdown -= Time.deltaTime;
-                if (spawn.Countdown <= 0f && TrySpawnVehicle(routeIndex, routes))
-                {
-                    spawn.ActiveCount++;
-                    spawn.Countdown = spawnInterval;   // 간격당 1대씩만 합류(뿅 러시 방지)
-                }
-            }
-        }
-
-        private bool TrySpawnVehicle(int routeIndex, IReadOnlyList<List<Vector2Int>> routes)
-        {
-            RouteVehicle vehicle = null;
-            for (int i = 0; i < vehicles.Count; i++)
-            {
-                if (!vehicles[i].Object.activeSelf)
-                {
-                    vehicle = vehicles[i];
-                    break;
-                }
-            }
-
-            if (vehicle == null)
-            {
-                return false;
-            }
-
-            List<Vector2Int> route = routes[routeIndex];
-            vehicle.RouteIndex = routeIndex;
-            vehicle.RouteHash = routeSpawns[routeIndex].RouteHash;
-            vehicle.Phase = 0f;
-            vehicle.CurrentSpeed = 0f;
-            vehicle.HasCurrentTile = false;
-            vehicle.DisplayRouteHash = 0;
-            vehicle.DisplayRoute.Clear();
-
-            if (vehicle.AngryMark != null)
-            {
-                vehicle.AngryMark.SetActive(false);
-                vehicle.SmokePuff.SetActive(false);
-            }
-
-            List<Vector2Int> displayRoute = GetDisplayRoute(vehicle, route);
-            if (displayRoute.Count > 1)
-            {
-                EvaluateVehiclePose(displayRoute, 0, 0f, true, out Vector3 pos, out Vector3 travelDir, out _);
-                vehicle.Object.transform.localPosition = pos;
-                vehicle.Pos = pos;
-                vehicle.Dir = travelDir;
-                vehicle.CurrentTile = displayRoute[0];
-                vehicle.HasCurrentTile = true;
-            }
-
-            vehicle.Object.SetActive(true);
-            return true;
-        }
-
-        private void DeactivateVehicle(RouteVehicle vehicle)
-        {
-            // 현 해시로 카운트된 차만 감산(위상 변경 직후 구 해시 차량 이중감산 방지)
-            if (vehicle.RouteIndex >= 0 && vehicle.RouteIndex < routeSpawns.Count
-                && routeSpawns[vehicle.RouteIndex].RouteHash == vehicle.RouteHash)
-            {
-                RouteSpawnState spawn = routeSpawns[vehicle.RouteIndex];
-                spawn.ActiveCount = Mathf.Max(0, spawn.ActiveCount - 1);
-            }
-
-            vehicle.Object.SetActive(false);
-            vehicle.RouteIndex = -1;
-            vehicle.RouteHash = 0;
-            vehicle.HasCurrentTile = false;
-            vehicle.CurrentSpeed = 0f;
-            if (vehicle.AngryMark != null)
-            {
-                vehicle.AngryMark.SetActive(false);
-                vehicle.SmokePuff.SetActive(false);
-            }
+            RefreshCommuteVehicles();
         }
 
         private void EnsureVehicleCount(int targetCount)
@@ -1378,196 +1188,9 @@ namespace CityFlow.View
                 {
                     Object = vehicle,
                     Renderer = renderer,
-                    DetailRenderer = detailRenderer,
-                    Phase = vehicles.Count * 0.618f
+                    DetailRenderer = detailRenderer
                 });
             }
-        }
-
-        private void MoveVehicle(RouteVehicle vehicle, List<Vector2Int> sourceRoute)
-        {
-            List<Vector2Int> route = GetDisplayRoute(vehicle, sourceRoute);
-            int segmentCount = route.Count - 1;
-            float targetSpeed = vehicleSpeed;
-
-            if (segmentCount <= 0)
-            {
-                return;
-            }
-
-            // 실제 렌더 위치와 같은 Fold 인덱스로 현재 타일을 잡는다. Phase%route.Count는
-            // 복귀 구간에서 접힌 위치와 어긋나 정체 벗어난 차가 엉뚱한(정체) 타일을 읽어
-            // !표·저속이 남던 버그(정체 연출과 속도 모두 이 타일 사용).
-            Vector2Int currentTile = route[Mathf.Clamp(Mathf.FloorToInt(Fold(vehicle.Phase, segmentCount)), 0, route.Count - 1)];
-            CongestionLevel congestion = tileData.GetCongestion(currentTile);
-            if (congestion == CongestionLevel.Slow)
-            {
-                targetSpeed *= slowSpeedMul;
-            }
-            else if (congestion == CongestionLevel.Jam)
-            {
-                targetSpeed *= jamSpeedMul;
-            }
-
-            // 정체 해소 직후에는 팀 디버그 뷰와 같은 반경 가속을 적용한다.
-            // 신호 정지는 아래에서 우선하고, 앞차 간격은 속도 상한으로 부드럽게 반영한다.
-            bool boostedByFlowBurst = IsInFlowBurstSpeedZone(currentTile);
-            if (boostedByFlowBurst)
-            {
-                targetSpeed *= flowBurstSpeedMultiplier;
-            }
-
-            // 오버라이드 = 양축 초록이라 전방 신호가 오버라이드면 축 무관 가속이 정답(스펙 2026-07-11 §3).
-            if (signalControl != null && TryGetNextSignalTile(route, vehicle.Phase, out _, out Vector2Int aheadSignal, out _)
-                && signalControl.GetOverrideSecondsLeft(aheadSignal) > 0f)
-            {
-                targetSpeed *= overrideSpeedMul;
-            }
-
-            targetSpeed = Mathf.Min(targetSpeed, LeaderSpeedCap(vehicle, targetSpeed));
-            targetSpeed = Mathf.Min(targetSpeed, CrossingYieldCap(vehicle, targetSpeed));
-            bool mustStop = false;
-            if (IsRouteVehicleBlocked(route, vehicle.Phase))
-            {
-                targetSpeed = 0f;
-                mustStop = true;
-            }
-
-            // 90도 원호 길이는 같은 반경의 두 직선 합보다 짧으므로, phase 진행량을 보정해
-            // 직선과 원호에서 차량의 실제 화면 이동속도가 같게 유지되도록 한다.
-            if (targetSpeed > 0f)
-            {
-                targetSpeed *= GetTurnPhaseSpeedMultiplier(route, vehicle.Phase);
-            }
-
-            if (mustStop)
-            {
-                // 신호 판정은 연출보다 우선한다. 감속 중 Phase가 전진하면
-                // 정지선을 넘을 수 있으므로 논리 이동을 즉시 멈춘다.
-                vehicle.CurrentSpeed = 0f;
-            }
-            else
-            {
-                float acceleration = targetSpeed < vehicle.CurrentSpeed
-                    ? vehicleDeceleration
-                    : vehicleAcceleration * (boostedByFlowBurst ? flowBurstAccelerationMultiplier : 1f);
-                vehicle.CurrentSpeed = Mathf.MoveTowards(
-                    vehicle.CurrentSpeed,
-                    targetSpeed,
-                    acceleration * Time.deltaTime);
-            }
-            float nextPhase = vehicle.Phase + Time.deltaTime * vehicle.CurrentSpeed;
-            float cycleLength = segmentCount * 2f;
-            if (nextPhase >= cycleLength)
-            {
-                // 왕복 완료 = 집 도착. 목표 초과분만 이 지점에서 자연 은퇴,
-                // 아니면 다음 왕복 이어감 — 차가 화면에서 사라지지 않는다(처닝 방지).
-                RouteSpawnState spawn = vehicle.RouteIndex >= 0 && vehicle.RouteIndex < routeSpawns.Count
-                    ? routeSpawns[vehicle.RouteIndex]
-                    : null;
-                if (spawn == null || spawn.ActiveCount > spawn.Target)
-                {
-                    DeactivateVehicle(vehicle);
-                    return;
-                }
-
-                nextPhase -= cycleLength;
-            }
-
-            vehicle.Phase = nextPhase;
-
-            float folded = Fold(vehicle.Phase, segmentCount);
-            int index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
-            float t = folded - index;
-            // 왕복 유령: 접힌 복귀 구간이면 실제 진행은 역방향 — 차선·바라보기 둘 다 이 방향 기준.
-            bool forward = vehicle.Phase <= segmentCount;
-            EvaluateVehiclePose(route, index, t, forward, out Vector3 pos, out Vector3 travelDir, out Vector2Int insideTile);
-
-            // 로터리 경계에서는 차선 포즈를 유지하고, 안쪽에서만 CCW 링 포즈로 전환한다.
-            if (IsRoundaboutTile(insideTile))
-            {
-                int ci = t < 0.5f ? index : index + 1;
-                if (TryRoundaboutOrbit(route, ci, folded, forward, out Vector3 ringPos, out Vector3 ringDir))
-                {
-                    float arcU = Mathf.Clamp01(forward ? folded - ci + 0.5f : ci + 0.5f - folded);
-                    const float edge = 0.35f;
-                    float blend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(arcU / edge))
-                                * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((1f - arcU) / edge));
-                    pos = Vector3.Lerp(pos, ringPos, blend);
-                    if (ringDir.sqrMagnitude > 0.0001f)
-                    {
-                        Vector3 blendedDir = Vector3.Lerp(travelDir.normalized, ringDir.normalized, blend);
-                        if (blendedDir.sqrMagnitude > 0.0001f)
-                        {
-                            travelDir = blendedDir.normalized;
-                        }
-                    }
-                }
-            }
-
-            vehicle.Object.transform.localPosition = pos;
-            vehicle.CurrentTile = currentTile;
-            vehicle.HasCurrentTile = true;
-
-            if (travelDir.sqrMagnitude > 0.001f)
-            {
-                // 복귀 구간도 진짜 진행 방향을 바라봄(뒷걸음 유령 제거).
-                float angle = Mathf.Atan2(travelDir.y, travelDir.x) * Mathf.Rad2Deg;
-                vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
-            }
-
-            // 역주행 유령 숨김(스펙 §3 해법①): 복귀 구간(!forward)에서 지금 서 있는 타일이 일방이고
-            // 실제 진행 방향이 그 일방 방향과 거의 정반대(역주행)면 렌더러를 숨긴다. 조건이 매 프레임
-            // 재평가되므로 조건 해제(순방향 복귀 등) 시 별도 상태 없이 자연히 복원됨.
-            bool hiddenAsGhost = false;
-            if (!forward && trafficRule != null)
-            {
-                Vector2Int onewayDir = trafficRule.GetOnewayDir(insideTile);
-                if (onewayDir != Vector2Int.zero)
-                {
-                    Vector3 onewayWorldDir = new Vector3(onewayDir.x, onewayDir.y, 0f);
-                    hiddenAsGhost = Vector3.Dot(travelDir, onewayWorldDir) < -0.9f;
-                }
-            }
-
-            if (vehicle.Renderer != null)
-            {
-                vehicle.Renderer.enabled = !hiddenAsGhost;
-                Color routeColor = Color.HSVToRGB((vehicle.RouteIndex * 0.137f) % 1f, 0.7f, 0.95f);
-                ApplyRendererColor(vehicle.Renderer, routeColor);
-
-                if (vehicle.DetailRenderer != null)
-                {
-                    vehicle.DetailRenderer.enabled = !hiddenAsGhost;
-                    ApplyRendererColor(vehicle.DetailRenderer, Color.Lerp(routeColor, Color.white, 0.3f));
-                }
-            }
-
-            // Jam 분노 팝업(스펙 2026-07-12 §1): 내가 서 있는 타일이 Jam이면 ! + 매연 — 가짜 디테일.
-            bool jammed = !hiddenAsGhost && tileData.GetCongestion(currentTile) == CongestionLevel.Jam;
-            if (jammed && vehicle.AngryMark == null)
-            {
-                vehicle.AngryMark = CreateTextMark(vehicleRoot, "!", Color.red, tileSize * 0.14f);
-                vehicle.SmokePuff = CreateSmokePuff();
-            }
-            if (vehicle.AngryMark != null)
-            {
-                vehicle.AngryMark.SetActive(jammed);
-                vehicle.SmokePuff.SetActive(jammed);
-                if (jammed)
-                {
-                    Vector3 basePos = vehicle.Object.transform.localPosition;
-                    float pulse = 1f + 0.2f * Mathf.Abs(Mathf.Sin(Time.time * 6f));
-                    vehicle.AngryMark.transform.localPosition = basePos + Vector3.back * (tileSize * 0.45f);
-                    AlignTextMarkPerpendicularToGround(vehicle.AngryMark.transform);
-                    vehicle.AngryMark.transform.localScale = Vector3.one * pulse;
-                    vehicle.SmokePuff.transform.localPosition = basePos - travelDir * (tileSize * 0.28f)
-                        + Vector3.back * (tileSize * (0.12f + 0.06f * Mathf.Sin(Time.time * 2f)));
-                }
-            }
-
-            vehicle.Pos = vehicle.Object.transform.localPosition;
-            vehicle.Dir = travelDir;
         }
 
         private void AlignTextMarkPerpendicularToGround(Transform textMark)
@@ -1591,58 +1214,6 @@ namespace CityFlow.View
             }
 
             textMark.rotation = Quaternion.LookRotation(facing.normalized, groundUp);
-        }
-
-        // 시뮬레이션의 대각 지름길은 유지하되, 실제 직각 회전으로 보이는 구간은 표시 경로에
-        // 교차로 타일을 삽입한다. 한 대각 구간에 두 타일 이동을 압축하지 않아 직선과 같은 속도를 유지한다.
-        private List<Vector2Int> GetDisplayRoute(RouteVehicle vehicle, List<Vector2Int> sourceRoute)
-        {
-            int routeHash = ComputeDisplayRouteHash(sourceRoute);
-            if (vehicle.DisplayRoute.Count > 0 && vehicle.DisplayRouteHash == routeHash)
-            {
-                return vehicle.DisplayRoute;
-            }
-
-            int previousSegmentCount = Mathf.Max(0, vehicle.DisplayRoute.Count - 1);
-            float normalizedPhase = previousSegmentCount > 0
-                ? vehicle.Phase / (previousSegmentCount * 2f)
-                : 0f;
-
-            vehicle.DisplayRoute.Clear();
-            if (sourceRoute.Count == 0)
-            {
-                vehicle.DisplayRouteHash = routeHash;
-                return vehicle.DisplayRoute;
-            }
-
-            vehicle.DisplayRoute.Add(sourceRoute[0]);
-            for (int i = 0; i < sourceRoute.Count - 1; i++)
-            {
-                if (TryGetDiagonalTurnBridge(sourceRoute, i, out Vector2Int bridge)
-                    && vehicle.DisplayRoute[vehicle.DisplayRoute.Count - 1] != bridge)
-                {
-                    vehicle.DisplayRoute.Add(bridge);
-                }
-
-                Vector2Int next = sourceRoute[i + 1];
-                if (vehicle.DisplayRoute[vehicle.DisplayRoute.Count - 1] != next)
-                {
-                    vehicle.DisplayRoute.Add(next);
-                }
-            }
-
-            int newSegmentCount = Mathf.Max(0, vehicle.DisplayRoute.Count - 1);
-            if (previousSegmentCount > 0 && newSegmentCount > 0)
-            {
-                vehicle.Phase = normalizedPhase * newSegmentCount * 2f;
-            }
-            else if (newSegmentCount > 0)
-            {
-                vehicle.Phase = Mathf.Repeat(vehicle.Phase, newSegmentCount * 2f);
-            }
-
-            vehicle.DisplayRouteHash = routeHash;
-            return vehicle.DisplayRoute;
         }
 
         private int ComputeDisplayRouteHash(List<Vector2Int> route)
@@ -1708,181 +1279,6 @@ namespace CityFlow.View
             return true;
         }
 
-        // 일반 교차로 회전 연출(뷰 전용 — 엔진 무관): 진입선과 이탈선에 접하는 90도 원호로
-        // 연결해 교차로 중심에서 방향이 한 번에 꺾이지 않도록 한다.
-        private void EvaluateVehiclePose(
-            List<Vector2Int> route,
-            int segmentIndex,
-            float segmentT,
-            bool forward,
-            out Vector3 pos,
-            out Vector3 travelDir,
-            out Vector2Int insideTile)
-        {
-            Vector3 a = GridToLocal(route[segmentIndex], vehicleZ);
-            Vector3 b = GridToLocal(route[segmentIndex + 1], vehicleZ);
-            Vector3 centerline = Vector3.Lerp(a, b, segmentT);
-            Vector3 routeTangent = (b - a).normalized;
-            insideTile = segmentT < 0.5f ? route[segmentIndex] : route[segmentIndex + 1];
-
-            float radiusFraction = GetCornerTurnRadiusFraction();
-
-            int cornerIndex = -1;
-            float curveT = 0f;
-
-            if (segmentT >= 1f - radiusFraction && segmentIndex + 2 < route.Count)
-            {
-                cornerIndex = segmentIndex + 1;
-                curveT = (segmentT - (1f - radiusFraction)) / (radiusFraction * 2f);
-            }
-            else if (segmentT < radiusFraction && segmentIndex > 0)
-            {
-                cornerIndex = segmentIndex;
-                curveT = 0.5f + segmentT / (radiusFraction * 2f);
-            }
-
-            if (cornerIndex >= 0 && TryEvaluateTurnBezier(route, cornerIndex, curveT, radiusFraction, out Vector3 curvePosition, out Vector3 curveTangent))
-            {
-                centerline = curvePosition;
-                routeTangent = curveTangent;
-                insideTile = route[cornerIndex];
-            }
-
-            travelDir = forward ? routeTangent : -routeTangent;
-
-            // 곡선의 접선을 기준으로 오른쪽 차선을 계산해야 회전 중에도 차선이 끊기지 않는다.
-            Vector3 laneRight = new Vector3(travelDir.y, -travelDir.x, 0f);
-            pos = centerline + laneRight * (tileSize * laneOffset);
-        }
-
-        private float GetTurnPhaseSpeedMultiplier(List<Vector2Int> route, float phase)
-        {
-            int segmentCount = route.Count - 1;
-            if (segmentCount <= 0)
-            {
-                return 1f;
-            }
-
-            float folded = Fold(phase, segmentCount);
-            int segmentIndex = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
-            float segmentT = folded - segmentIndex;
-            float radiusFraction = GetCornerTurnRadiusFraction();
-            int cornerIndex = -1;
-
-            int orbitIndex = segmentT < 0.5f ? segmentIndex : segmentIndex + 1;
-            bool fwd = Mathf.Repeat(phase, segmentCount * 2f) <= segmentCount;
-            if (orbitIndex > 0
-                && orbitIndex < route.Count - 1
-                && Mathf.Abs(folded - orbitIndex) <= 0.5f
-                && IsRoundaboutTile(route[orbitIndex]))
-            {
-                if (roundaboutOrbitRadius > 0.01f
-                    && TryGetRoundaboutArc(route, orbitIndex, fwd, out _, out float ccwSweep)
-                    && ccwSweep > 0.01f)
-                {
-                    return 1f / (roundaboutOrbitRadius * ccwSweep);
-                }
-
-                return 1f;
-            }
-
-            if (segmentT >= 1f - radiusFraction && segmentIndex + 2 < route.Count)
-            {
-                cornerIndex = segmentIndex + 1;
-            }
-            else if (segmentT < radiusFraction && segmentIndex > 0)
-            {
-                cornerIndex = segmentIndex;
-            }
-
-            if (cornerIndex < 0 || !TryGetTurnDirections(route, cornerIndex, out Vector3 incoming, out Vector3 outgoing))
-            {
-                return 1f;
-            }
-
-            // 우측 차선 오프셋으로 실제 차량 궤도의 반경은 중심선 반경과 달라진다.
-            // 좌회전은 바깥쪽, 우회전은 안쪽 반경을 사용하며 복귀 구간에서는 회전 방향도 반전된다.
-            bool forward = phase <= segmentCount;
-            float routeCross = incoming.x * outgoing.y - incoming.y * outgoing.x;
-            float travelCross = forward ? routeCross : -routeCross;
-            float centerRadius = GetCornerTurnRadiusFraction();
-            float actualRadius = centerRadius + (travelCross > 0f ? laneOffset : -laneOffset);
-            actualRadius = Mathf.Max(actualRadius, 0.05f);
-
-            // phase상 곡선 길이(2×중심선 반경)를 실제 차량 원호 길이(π/2×차선 반경)에 맞춘다.
-            return 4f * centerRadius / (Mathf.PI * actualRadius);
-        }
-
-        // 진행 방향 기준 진입·이탈을 잡고 우측통행 로터리의 CCW 스윕을 계산한다.
-        private bool TryGetRoundaboutArc(
-            List<Vector2Int> route,
-            int centerIndex,
-            bool forward,
-            out float entryAngle,
-            out float ccwSweep)
-        {
-            entryAngle = 0f;
-            ccwSweep = 0f;
-            if (centerIndex <= 0 || centerIndex >= route.Count - 1)
-            {
-                return false;
-            }
-
-            Vector2Int previous = forward ? route[centerIndex - 1] : route[centerIndex + 1];
-            Vector2Int next = forward ? route[centerIndex + 1] : route[centerIndex - 1];
-            Vector3 incoming = new Vector3(
-                route[centerIndex].x - previous.x,
-                route[centerIndex].y - previous.y,
-                0f).normalized;
-            Vector3 outgoing = new Vector3(
-                next.x - route[centerIndex].x,
-                next.y - route[centerIndex].y,
-                0f).normalized;
-            if (incoming.sqrMagnitude < 0.5f || outgoing.sqrMagnitude < 0.5f)
-            {
-                return false;
-            }
-
-            // 차선 정렬: 차는 우측 차선(중심선 오른쪽 laneOffset)으로 접근하므로
-            // 진입/이탈점을 중심선에서 차선 쪽으로 δ만큼 돌려 접선 연속으로 만든다.
-            // (중심선 기준이면 진입 시 차가 왼쪽으로 끌려 붙는 어색함 발생)
-            float laneShift = Mathf.Asin(Mathf.Clamp01(laneOffset / Mathf.Max(0.01f, roundaboutOrbitRadius)));
-            entryAngle = Mathf.Atan2(-incoming.y, -incoming.x) + laneShift;
-            float exitAngle = Mathf.Atan2(outgoing.y, outgoing.x) - laneShift;
-            ccwSweep = Mathf.Repeat(exitAngle - entryAngle, 2f * Mathf.PI);
-            if (ccwSweep < 0.05f)
-            {
-                ccwSweep = 2f * Mathf.PI;
-            }
-
-            return true;
-        }
-
-        private bool TryRoundaboutOrbit(
-            List<Vector2Int> route,
-            int centerIndex,
-            float folded,
-            bool forward,
-            out Vector3 position,
-            out Vector3 tangent)
-        {
-            position = default;
-            tangent = default;
-            if (!TryGetRoundaboutArc(route, centerIndex, forward, out float entryAngle, out float ccwSweep))
-            {
-                return false;
-            }
-
-            float arcU = Mathf.Clamp01(
-                forward ? folded - centerIndex + 0.5f : centerIndex + 0.5f - folded);
-            float angle = entryAngle + arcU * ccwSweep;
-            float radius = tileSize * roundaboutOrbitRadius;
-            Vector3 center = GridToLocal(route[centerIndex], vehicleZ);
-            position = center + new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * radius;
-            tangent = new Vector3(-Mathf.Sin(angle), Mathf.Cos(angle), 0f);
-            return true;
-        }
-
         private float GetCornerTurnRadiusFraction()
         {
             return cornerTurnRadius > 0f
@@ -1896,138 +1292,6 @@ namespace CityFlow.View
                 && tile.x >= 0 && tile.x < width
                 && tile.y >= 0 && tile.y < height
                 && tileData.GetTileType(tile) == TileType.Road;
-        }
-
-        private bool TryEvaluateTurnBezier(
-            List<Vector2Int> route,
-            int cornerIndex,
-            float curveT,
-            float radiusFraction,
-            out Vector3 position,
-            out Vector3 tangent)
-        {
-            position = default;
-            tangent = default;
-
-            if (!TryGetTurnDirections(route, cornerIndex, out Vector3 incoming, out Vector3 outgoing))
-            {
-                return false;
-            }
-
-            Vector3 corner = GridToLocal(route[cornerIndex], vehicleZ);
-            float radius = tileSize * radiusFraction;
-            Vector3 entry = corner - incoming * radius;
-            Vector3 exit = corner + outgoing * radius;
-            const float quarterCircleHandle = 0.55228475f;
-            Vector3 controlIn = entry + incoming * (radius * quarterCircleHandle);
-            Vector3 controlOut = exit - outgoing * (radius * quarterCircleHandle);
-            float u = RemapBezierParameterByArcLength(
-                entry, controlIn, controlOut, exit, Mathf.Clamp01(curveT));
-
-            position = EvaluateCubicBezier(entry, controlIn, controlOut, exit, u);
-            tangent = EvaluateCubicBezierTangent(entry, controlIn, controlOut, exit, u);
-            return tangent.sqrMagnitude > 0.0001f;
-        }
-
-        private static float RemapBezierParameterByArcLength(
-            Vector3 start,
-            Vector3 controlIn,
-            Vector3 controlOut,
-            Vector3 end,
-            float normalizedDistance)
-        {
-            const int samples = 12;
-            float totalLength = 0f;
-            Vector3 previous = start;
-
-            for (int i = 1; i <= samples; i++)
-            {
-                float sampleT = i / (float)samples;
-                Vector3 sample = EvaluateCubicBezier(start, controlIn, controlOut, end, sampleT);
-                totalLength += Vector3.Distance(previous, sample);
-                previous = sample;
-            }
-
-            float targetLength = totalLength * normalizedDistance;
-            float accumulated = 0f;
-            previous = start;
-
-            for (int i = 1; i <= samples; i++)
-            {
-                float sampleT = i / (float)samples;
-                Vector3 sample = EvaluateCubicBezier(start, controlIn, controlOut, end, sampleT);
-                float segmentLength = Vector3.Distance(previous, sample);
-                if (accumulated + segmentLength >= targetLength)
-                {
-                    float localT = segmentLength > 0.0001f
-                        ? (targetLength - accumulated) / segmentLength
-                        : 0f;
-                    return Mathf.Lerp((i - 1) / (float)samples, sampleT, localT);
-                }
-
-                accumulated += segmentLength;
-                previous = sample;
-            }
-
-            return 1f;
-        }
-
-        private static Vector3 EvaluateCubicBezier(
-            Vector3 start,
-            Vector3 controlIn,
-            Vector3 controlOut,
-            Vector3 end,
-            float t)
-        {
-            float oneMinusT = 1f - t;
-            return oneMinusT * oneMinusT * oneMinusT * start
-                + 3f * oneMinusT * oneMinusT * t * controlIn
-                + 3f * oneMinusT * t * t * controlOut
-                + t * t * t * end;
-        }
-
-        private static Vector3 EvaluateCubicBezierTangent(
-            Vector3 start,
-            Vector3 controlIn,
-            Vector3 controlOut,
-            Vector3 end,
-            float t)
-        {
-            float oneMinusT = 1f - t;
-            return (3f * oneMinusT * oneMinusT * (controlIn - start)
-                + 6f * oneMinusT * t * (controlOut - controlIn)
-                + 3f * t * t * (end - controlOut)).normalized;
-        }
-
-        private bool TryGetTurnDirections(
-            List<Vector2Int> route,
-            int cornerIndex,
-            out Vector3 incoming,
-            out Vector3 outgoing)
-        {
-            incoming = default;
-            outgoing = default;
-
-            // 로터리는 아래의 기존 전용 궤도 연출을 그대로 사용해 원호를 중복 적용하지 않는다.
-            if (cornerIndex <= 0 || cornerIndex >= route.Count - 1 || IsRoundaboutTile(route[cornerIndex]))
-            {
-                return false;
-            }
-
-            Vector3 previous = GridToLocal(route[cornerIndex - 1], vehicleZ);
-            Vector3 corner = GridToLocal(route[cornerIndex], vehicleZ);
-            Vector3 next = GridToLocal(route[cornerIndex + 1], vehicleZ);
-            incoming = corner - previous;
-            outgoing = next - corner;
-
-            if (incoming.sqrMagnitude < 0.0001f || outgoing.sqrMagnitude < 0.0001f)
-            {
-                return false;
-            }
-
-            incoming.Normalize();
-            outgoing.Normalize();
-            return Mathf.Abs(Vector3.Dot(incoming, outgoing)) < 0.001f;
         }
 
         // 앞차와의 거리를 [gap, 2*gap]에서 [0, freeSpeed]로 매핑. 없으면 freeSpeed.
@@ -2050,41 +1314,6 @@ namespace CityFlow.View
             }
             if (nearest == float.MaxValue) return freeSpeed;
             return Mathf.Lerp(0f, freeSpeed, Mathf.Clamp01((nearest - gap) / gap));
-        }
-
-        // 무신호 교차로는 오른쪽에서 오는 교차 차량에만 부드럽게 양보한다.
-        // 비대칭 우선순위와 양수 속도 바닥으로 상호 정지·기아 데드락을 막는다.
-        private float CrossingYieldCap(RouteVehicle vehicle, float freeSpeed)
-        {
-            if (vehicle.Dir.sqrMagnitude < 0.001f) return freeSpeed;
-
-            Vector3 myDirection = vehicle.Dir.normalized;
-            Vector3 rightDirection = new Vector3(myDirection.y, -myDirection.x, 0f);
-            float range = tileSize * Mathf.Max(0.3f, crossYieldRange);
-            float nearest = float.MaxValue;
-
-            for (int i = 0; i < vehicles.Count; i++)
-            {
-                RouteVehicle other = vehicles[i];
-                if (other == vehicle || !other.Object.activeSelf || other.Dir.sqrMagnitude < 0.001f) continue;
-
-                Vector3 to = other.Pos - vehicle.Pos;
-                float distance = to.magnitude;
-                if (distance < 0.0001f || distance >= range) continue;
-
-                Vector3 otherDirection = other.Dir.normalized;
-                if (Mathf.Abs(Vector3.Dot(myDirection, otherDirection)) >= 0.5f) continue;
-                if (Vector3.Dot(rightDirection, to) <= 0f) continue;
-                if (Vector3.Dot(myDirection, to) <= 0f) continue;
-                if (distance < nearest) nearest = distance;
-            }
-
-            if (nearest == float.MaxValue) return freeSpeed;
-            float floor = Mathf.Clamp(crossYieldFloor, 0.1f, 1f);
-            return Mathf.Lerp(
-                freeSpeed * floor,
-                freeSpeed,
-                Mathf.Clamp01(nearest / range));
         }
 
         private void OnFlowBurstSpeedBoost(FlowBurstEvent e)
@@ -2118,51 +1347,6 @@ namespace CityFlow.View
             return false;
         }
 
-        private static float Fold(float phase, int segmentCount)
-        {
-            float cycle = segmentCount * 2f;
-            float p = Mathf.Repeat(phase, cycle);
-            return p <= segmentCount ? p : cycle - p;
-        }
-
-        private bool IsRouteVehicleBlocked(List<Vector2Int> route, float phase)
-        {
-            if (simEngine == null || !TryGetNextSignalTile(route, phase, out Vector2Int current, out Vector2Int next, out float progress))
-            {
-                return false;
-            }
-
-            // 타일 중앙 사이 절반이 교차로 경계. 이미 경계를 넘은 차는 노란불의
-            // "진입 금지, 정리 준비" 규칙에 따라 멈추지 않고 교차로를 빠져나간다.
-            if (progress >= 0.5f)
-            {
-                return false;
-            }
-
-            bool horizontal = current.y == next.y;
-            return !simEngine.IsSignalGreen(next, horizontal);
-        }
-
-        // 차의 현재 위상에서 진행 방향의 현재/다음 타일. 다음 타일이 신호일 때만 true — 부스트·블록 판정 공용.
-        private bool TryGetNextSignalTile(List<Vector2Int> route, float phase, out Vector2Int current, out Vector2Int next, out float progress)
-        {
-            current = default;
-            next = default;
-            progress = 0f;
-            if (route == null || route.Count < 2) return false;
-            int segmentCount = route.Count - 1;
-            float cycle = segmentCount * 2f;
-            float p = Mathf.Repeat(phase, cycle);
-            bool forward = p <= segmentCount;
-            float folded = forward ? p : cycle - p;
-            int index = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
-            current = forward ? route[index] : route[index + 1];
-            next = forward ? route[index + 1] : route[index];
-            progress = forward ? folded - index : index + 1f - folded;
-            if (current == next || !IsSignalTile(next)) return false;
-            return true;
-        }
-
         private bool IsSignalTile(Vector2Int tile)
         {
             if (simEngine == null)
@@ -2194,7 +1378,7 @@ namespace CityFlow.View
         }
 
         // ─────────────────────────────────────────────────────────────────────────
-        // 통근 모드(useCommuteMode). 스위치 off면 이 영역은 호출되지 않음(RefreshVehicles 분기).
+        // 통근 이동(유일 경로 — RefreshVehicles가 항상 진입).
         // 뷰는 번역기: 폴리라인 정방향 샘플 × 혼잡 3단 × 신호 × LeaderSpeedCap(+주차 감속)만.
         // 차를 세우는 자체 판단·Sim 역류 금지.
         // ─────────────────────────────────────────────────────────────────────────
@@ -2426,7 +1610,7 @@ namespace CityFlow.View
             return a + laneRight * (tileSize * laneOffset);
         }
 
-        // GetDisplayRoute(L1536)의 대각 브리지 삽입 로직을 차량 상태 없이 재현(원본 무접촉).
+        // 대각 브리지 삽입 로직을 차량 상태 없이 재현(베이크 입력용).
         private void BuildBridgedRoute(List<Vector2Int> source, List<Vector2Int> dest)
         {
             dest.Clear();
@@ -2682,7 +1866,6 @@ namespace CityFlow.View
         {
             vehicle.RouteIndex = routeIndex;
             vehicle.RouteHash = 0;
-            vehicle.Phase = 0f;
             vehicle.CurrentSpeed = 0f;
             vehicle.Dir = Vector3.zero;
             vehicle.OnRing = false;
@@ -2734,7 +1917,7 @@ namespace CityFlow.View
                 Vector3 anchorPos = pair.Outbound.SampleAt(anchorDistance).Pos;
                 vehicle.Object.transform.localPosition = anchorPos;
                 vehicle.Pos = anchorPos;
-                vehicle.Dir = Vector3.zero;   // LeaderSpeedCap(Dot≤0.5)/CrossingYieldCap(sqr<0.001) 자동 제외(리뷰 #3)
+                vehicle.Dir = Vector3.zero;   // LeaderSpeedCap(Dot≤0.5)/CommuteCrossingYieldCap(sqr<0.001) 자동 제외(리뷰 #3)
                 vehicle.OnRing = false;
                 vehicle.CurrentSpeed = 0f;
                 vehicle.CurrentTile = car.State == CarState.ParkedWork ? car.Work : car.Home;
@@ -2825,7 +2008,7 @@ namespace CityFlow.View
             }
 
             // 아크렝스 적분: phase-속도(타일/초)를 월드거리로 환산(1세그먼트 ≈ tileSize).
-            // 폴리라인이 이미 아크렝스 정규화라 코너 보정(GetTurnPhaseSpeedMultiplier) 불필요.
+            // 폴리라인이 이미 아크렝스 정규화라 코너 속도 보정 불필요.
             car.Distance += vehicle.CurrentSpeed * tileSize * Time.deltaTime;
             if (car.Distance >= poly.Length)
             {
@@ -2908,7 +2091,7 @@ namespace CityFlow.View
         }
 
         // 합류 양보 캡(라이브 QA B): 스퍼→도로 진입 시 합류 지점 근방의 이동 차가 있으면
-        // CrossingYieldCap 패턴으로 바닥(crossYieldFloor)까지만 감속 — 하드스톱 없음(데드락 금지).
+        // 무신호 양보 패턴으로 바닥(crossYieldFloor)까지만 감속 — 하드스톱 없음(데드락 금지).
         // 방향 무관(합류는 어느 방향 차와도 겹칠 수 있음 — LeaderSpeedCap의 Dot>0.5 필터가 못 잡는 케이스),
         // 주차 차(Dir=zero)는 제외. 신규 튜닝 필드 없음 — followGap·crossYieldFloor 재사용(ponytail).
         private float MergeYieldCap(RouteVehicle vehicle, Vector3 mergePoint, float freeSpeed)
@@ -3043,9 +2226,8 @@ namespace CityFlow.View
             return Mathf.Lerp(0f, freeSpeed, Mathf.Clamp01((gap - follow) / follow));
         }
 
-        // CrossingYieldCap의 통근판(Task 6R): 링 소속(OnRing) 또는 로터리 타일 위 차는 교차
-        // 상대에서 제외 — 링 레인이 전담하는 차에 이중 제동 금지. 레거시 원본은 핑퐁 경로용으로
-        // 무접촉(스위치 off 가드레일 유지, Task 7에서 원본 삭제 시 이 판이 유일본이 된다).
+        // 무신호 교차로 양보(통근판, Task 6R): 링 소속(OnRing) 또는 로터리 타일 위 차는 교차
+        // 상대에서 제외 — 링 레인이 전담하는 차에 이중 제동 금지.
         private float CommuteCrossingYieldCap(RouteVehicle vehicle, float freeSpeed)
         {
             if (vehicle.Dir.sqrMagnitude < 0.001f)
