@@ -198,6 +198,8 @@ namespace CityFlow.View
             public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
             public int RouteIndex = -1;
             public int RouteHash;
+            public bool OnRing;            // 통근 전용(Task 6R): 링 원 안(공유 링 레인 소속) — 핑퐁 무관
+            public Vector2Int RingTile;    // OnRing일 때의 로터리 center 타일
         }
 
         private sealed class RouteSpawnState
@@ -2634,6 +2636,7 @@ namespace CityFlow.View
             vehicle.Phase = 0f;
             vehicle.CurrentSpeed = 0f;
             vehicle.Dir = Vector3.zero;
+            vehicle.OnRing = false;
             vehicle.HasCurrentTile = false;
             vehicle.DisplayRouteHash = 0;
             vehicle.DisplayRoute.Clear();
@@ -2659,6 +2662,7 @@ namespace CityFlow.View
             vehicle.HasCurrentTile = false;
             vehicle.CurrentSpeed = 0f;
             vehicle.Dir = Vector3.zero;
+            vehicle.OnRing = false;
             HideJamMarks(vehicle);
         }
 
@@ -2682,6 +2686,7 @@ namespace CityFlow.View
                 vehicle.Object.transform.localPosition = anchorPos;
                 vehicle.Pos = anchorPos;
                 vehicle.Dir = Vector3.zero;   // LeaderSpeedCap(Dot≤0.5)/CrossingYieldCap(sqr<0.001) 자동 제외(리뷰 #3)
+                vehicle.OnRing = false;
                 vehicle.CurrentSpeed = 0f;
                 vehicle.CurrentTile = car.State == CarState.ParkedWork ? car.Work : car.Home;
                 vehicle.HasCurrentTile = true;
@@ -2733,21 +2738,27 @@ namespace CityFlow.View
             }
 
             vehicle.Dir = s.Dir;   // Leader/Yield 캡이 읽음(이동차만 방향 보유)
-            targetSpeed = Mathf.Min(targetSpeed, LeaderSpeedCap(vehicle, targetSpeed));
-            if (!s.IsSpur)
-            {
-                // QA C: 교차 양보는 도로 구간 계약(기존 MoveVehicle L1366과 동위) — 스퍼는 MergeYieldCap 담당.
-                targetSpeed = Mathf.Min(targetSpeed, CrossingYieldCap(vehicle, targetSpeed));
-                // QA D: 로터리 진입 소프트 양보 — 링 위에 도는 차가 있으면 경계 접근에서 바닥 감속.
-                targetSpeed = Mathf.Min(targetSpeed, RoundaboutEntryYieldCap(vehicle, poly, s, targetSpeed));
+            UpdateRingState(vehicle, poly, s);   // 다른 차의 OnRing은 지난 프레임 값 — Pos/Dir 관례와 동일한 1프레임 근사
 
-                // QA E-2: 링 위 차간 간격 — insideTile 기준(경계 반쪽부터)으로 링 점유 시 각도 순서 리더 캡.
-                Vector2Int ringInsideTile = s.SegT < 0.5f
-                    ? currentTile
-                    : poly.TileAt(Mathf.Min(s.TileIndex + 1, poly.TileCount - 1));
-                if (IsRoundaboutTile(ringInsideTile))
+            // 공유 링 레인(Task 6R): 우선권 = 링 절대·단방향. 링 차는 CCW 앞차 간격만 보고
+            // (진입 차 때문에 절대 감속하지 않음 → 상호 대기 불가 = 데드락 원천 차단),
+            // 진입 차는 합류점 상류 창 게이트로 대기(0 도달 허용 = 합류선 정지, 차선 의미론).
+            if (vehicle.OnRing)
+            {
+                targetSpeed = Mathf.Min(targetSpeed, RingLaneLeaderCap(vehicle, targetSpeed));   // 링 차는 RingLane 경로만
+            }
+            else
+            {
+                targetSpeed = Mathf.Min(targetSpeed, LeaderSpeedCap(vehicle, targetSpeed));
+                if (!s.IsSpur)
                 {
-                    targetSpeed = Mathf.Min(targetSpeed, RingLeaderCap(vehicle, ringInsideTile, targetSpeed));
+                    // QA C: 교차 양보(도로 구간 계약). 로터리 타일은 스킵 — 링 레인과 이중 제동 방지.
+                    if (!IsRoundaboutTile(currentTile))
+                    {
+                        targetSpeed = Mathf.Min(targetSpeed, CommuteCrossingYieldCap(vehicle, targetSpeed));
+                    }
+
+                    targetSpeed = Mathf.Min(targetSpeed, RingMergeGateCap(vehicle, poly, s, targetSpeed));
                 }
             }
 
@@ -2774,6 +2785,7 @@ namespace CityFlow.View
                 vehicle.Object.transform.localPosition = endPos;
                 vehicle.Pos = endPos;
                 vehicle.Dir = Vector3.zero;
+                vehicle.OnRing = false;
                 vehicle.CurrentSpeed = 0f;
                 vehicle.CurrentTile = currentTile;
                 vehicle.HasCurrentTile = true;
@@ -2878,102 +2890,202 @@ namespace CityFlow.View
             return Mathf.Lerp(freeSpeed * floor, freeSpeed, Mathf.Clamp01(nearest / range));
         }
 
-        // 로터리 진입 소프트 양보(라이브 QA D): 다음 타일이 로터리이고(자기는 아직 밖) 경계 접근
-        // 중(SegT≥0.5)일 때, 그 링 타일 위에 도는 차가 있으면 crossYieldFloor 바닥까지 감속만.
-        // 하드 대기 금지 — PR#101에서 삭제한 RoundaboutHasCarInArc 기아 데드락의 재발 경로(교훈:
-        // 뷰의 발명 정지 장치는 하나라도 남으면 재발). 바닥>0이라 기어서라도 반드시 진입한다.
-        // 링 위 차끼리는 적용 금지(진입차만) — 링 내부 상호 감속은 LeaderSpeedCap 담당.
-        // 점유 판정은 통근 차 목록의 현재 타일(뷰 내부 시각 판정, 속도 캡뿐 — Sim 역류 아님).
-        // 신규 튜닝 필드 없음 — crossYieldFloor 재사용, 통근 차는 소수라 O(n) 스캔 유지(ponytail).
-        private float RoundaboutEntryYieldCap(RouteVehicle vehicle, RoutePolyline poly, in Sample s, float freeSpeed)
+        // ── 공유 링 레인(Task 6R) — QA D(EntryYieldCap)·E-2(RingLeaderCap) 대체 ─────────
+        // 기하는 RingLane(순수 static)이 담당, 여기는 좌표 환산(atan2→호 길이)과 속도 매핑만.
+        // 우선권 = 링 절대·단방향(진입만 대기) — 상호 대기 불가 = 데드락 원천 차단.
+        // 합류 대기가 0까지 가는 건 의도된 차선 의미론(리더 갭)이다.
+
+        private readonly List<float> ringArcScratch = new();   // 프레임 내 재사용 버퍼
+
+        // 링 소속 판정: 링 원 안(중심거리 ≤ R+ε)이면 공유 레인 소속. 전이 베지어·원호 전 구간이
+        // 원 안이라 이 판정 하나로 커버되고, 접근 차는 링/차선 교점 통과 순간부터 자동 편입.
+        // 다른 차가 읽는 값은 지난 프레임 — Pos/Dir와 같은 1프레임 근사 관례.
+        private void UpdateRingState(RouteVehicle vehicle, RoutePolyline poly, in Sample s)
         {
-            if (s.SegT < 0.5f || s.TileIndex + 1 >= poly.TileCount)
+            vehicle.OnRing = false;
+            if (s.IsSpur)
             {
-                return freeSpeed;
+                return;   // 주차 스퍼는 링일 수 없음(건물 근방 오검출 방지)
             }
 
-            Vector2Int ringTile = poly.TileAt(s.TileIndex + 1);
-            if (!IsRoundaboutTile(ringTile) || IsRoundaboutTile(poly.TileAt(s.TileIndex)))
+            Vector2Int current = poly.TileAt(Mathf.Clamp(s.TileIndex, 0, poly.TileCount - 1));
+            Vector2Int next = poly.TileAt(Mathf.Clamp(s.TileIndex + 1, 0, poly.TileCount - 1));
+            Vector2Int candidate;
+            if (IsRoundaboutTile(current))
             {
-                return freeSpeed;   // 다음이 링이 아니거나 자기가 이미 링 위 = 진입 상황 아님
+                candidate = current;
+            }
+            else if (IsRoundaboutTile(next))
+            {
+                candidate = next;
+            }
+            else
+            {
+                return;
             }
 
-            bool occupied = false;
-            foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
+            Vector3 rel = s.Pos - GridToLocal(candidate, vehicleZ);
+            rel.z = 0f;
+            if (rel.magnitude <= RingRadius() + tileSize * 0.05f)
             {
-                RouteVehicle other = kv.Value;
-                if (other == vehicle || !other.Object.activeSelf || other.Dir.sqrMagnitude < 0.001f)
-                {
-                    continue;   // 자신·비활성·주차(Dir=zero) 제외
-                }
-
-                if (other.HasCurrentTile && other.CurrentTile == ringTile)
-                {
-                    occupied = true;
-                    break;
-                }
+                vehicle.OnRing = true;
+                vehicle.RingTile = candidate;
             }
-
-            if (!occupied)
-            {
-                return freeSpeed;
-            }
-
-            // CrossingYieldCap 리턴식과 같은 Lerp 패턴(0 금지): 경계(SegT=1)로 갈수록 바닥까지.
-            float floor = Mathf.Clamp(crossYieldFloor, 0.1f, 1f);
-            return Mathf.Lerp(freeSpeed * floor, freeSpeed, Mathf.Clamp01((1f - s.SegT) * 2f));
         }
 
-        // 링 전용 각도 순서 리더 캡(라이브 QA E-2): LeaderSpeedCap의 같은 방향 필터(Dot>0.5)는
-        // 링에서 무력(90° 떨어진 차끼리 dot≈0) → 링 위 간격 유지 없음. CCW 진행이므로 내 각도
-        // 기준 CCW 앞쪽 최근접 차와의 각도 간격이 작을수록 감속 — crossYieldFloor 바닥 Lerp(0 금지:
-        // 링은 순환이라 하드스톱 체인이 기아 데드락 재발 경로, 바닥으로 차단). 링 근방 판정은
-        // 위치 기반(반경+followGap) — TileIndex 기반은 링 전반부(중심 통과 전) 차를 놓친다.
-        // 새 튜닝 필드 없음(followGap→각도 환산, crossYieldFloor 재사용), O(n) 스캔(ponytail).
-        private float RingLeaderCap(RouteVehicle vehicle, Vector2Int ringTile, float freeSpeed)
+        // 링 위 차: CCW 앞차와의 호 간격을 기존 [gap, 2gap]→[0, v] 매핑(LeaderSpeedCap 컨벤션,
+        // 바닥 없음 — 차선 의미론). 링 차가 로드 정체로 출구에서 막히면 링도 서는 건 정상 동작.
+        private float RingLaneLeaderCap(RouteVehicle vehicle, float freeSpeed)
         {
-            Vector3 center = GridToLocal(ringTile, vehicleZ);
-            float ringRadius = tileSize * Mathf.Max(0.05f, roundaboutOrbitRadius);
-            float nearRange = ringRadius + tileSize * followGap;
-            Vector3 rel = vehicle.Pos - center;
-            float myAngle = Mathf.Atan2(rel.y, rel.x);
+            float radius = RingRadius();
+            Vector3 center = GridToLocal(vehicle.RingTile, vehicleZ);
+            float circumference = 2f * Mathf.PI * radius;
+            CollectRingArcs(vehicle, vehicle.RingTile, center, radius);
+            float gap = RingLane.LeaderGap(ArcOf(vehicle.Pos, center, radius), ringArcScratch, circumference);
 
-            float nearestGap = float.MaxValue;
-            foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
-            {
-                RouteVehicle other = kv.Value;
-                if (other == vehicle || !other.Object.activeSelf || other.Dir.sqrMagnitude < 0.001f)
-                {
-                    continue;   // 자신·비활성·주차(Dir=zero) 제외
-                }
-
-                Vector3 otherRel = other.Pos - center;
-                if (otherRel.magnitude > nearRange)
-                {
-                    continue;   // 링 근방 아님
-                }
-
-                float gap = Mathf.Repeat(Mathf.Atan2(otherRel.y, otherRel.x) - myAngle, 2f * Mathf.PI);
-                if (gap > 0.001f && gap < nearestGap)
-                {
-                    nearestGap = gap;   // CCW 앞쪽 최근접
-                }
-            }
-
-            if (nearestGap == float.MaxValue)
+            float follow = tileSize * followGap;
+            if (gap >= 2f * follow)
             {
                 return freeSpeed;
             }
 
-            // followGap 거리→링 각도 환산. [1×, 2×] 간격 구간을 [바닥, 자유]로 매핑(LeaderSpeedCap 컨벤션).
-            float gapRad = (tileSize * followGap) / ringRadius;
-            if (nearestGap >= 2f * gapRad)
+            return Mathf.Lerp(0f, freeSpeed, Mathf.Clamp01((gap - follow) / follow));
+        }
+
+        // 진입 차(링 전이 직전 ~0.3타일): 합류점 상류 2×followGap 창 안의 링 차가 리더 —
+        // 같은 매핑으로 감속(0 도달 허용 = 합류선 대기), 창이 비면 진입. 합류점 arc는 자기 현재
+        // 각도로 근사(접근 차선은 링/차선 교점으로 수렴 — 창 0.8타일 대비 오차 ~0.04타일, 무상태).
+        private float RingMergeGateCap(RouteVehicle vehicle, RoutePolyline poly, in Sample s, float freeSpeed)
+        {
+            Vector2Int current = poly.TileAt(Mathf.Clamp(s.TileIndex, 0, poly.TileCount - 1));
+            Vector2Int next = poly.TileAt(Mathf.Clamp(s.TileIndex + 1, 0, poly.TileCount - 1));
+            Vector2Int ringTile;
+            if (IsRoundaboutTile(current))
+            {
+                ringTile = current;
+            }
+            else if (IsRoundaboutTile(next))
+            {
+                ringTile = next;
+            }
+            else
+            {
+                return freeSpeed;
+            }
+
+            float radius = RingRadius();
+            Vector3 center = GridToLocal(ringTile, vehicleZ);
+            Vector3 rel = vehicle.Pos - center;
+            rel.z = 0f;
+            if (rel.magnitude > radius + tileSize * 0.3f)
+            {
+                return freeSpeed;   // 아직 멀다(전이 직전 아님). 원 안이면 OnRing이라 이 경로로 안 옴.
+            }
+
+            float circumference = 2f * Mathf.PI * radius;
+            float follow = tileSize * followGap;
+            CollectRingArcs(vehicle, ringTile, center, radius);
+            float gap = RingLane.MergeGap(ArcOf(vehicle.Pos, center, radius), ringArcScratch, 2f * follow, circumference);
+            if (gap >= 2f * follow)
+            {
+                return freeSpeed;   // 창 비어 있음(MaxValue 포함) — 진입
+            }
+
+            return Mathf.Lerp(0f, freeSpeed, Mathf.Clamp01((gap - follow) / follow));
+        }
+
+        // CrossingYieldCap의 통근판(Task 6R): 링 소속(OnRing) 또는 로터리 타일 위 차는 교차
+        // 상대에서 제외 — 링 레인이 전담하는 차에 이중 제동 금지. 레거시 원본은 핑퐁 경로용으로
+        // 무접촉(스위치 off 가드레일 유지, Task 7에서 원본 삭제 시 이 판이 유일본이 된다).
+        private float CommuteCrossingYieldCap(RouteVehicle vehicle, float freeSpeed)
+        {
+            if (vehicle.Dir.sqrMagnitude < 0.001f)
+            {
+                return freeSpeed;
+            }
+
+            Vector3 myDirection = vehicle.Dir.normalized;
+            Vector3 rightDirection = new Vector3(myDirection.y, -myDirection.x, 0f);
+            float range = tileSize * Mathf.Max(0.3f, crossYieldRange);
+            float nearest = float.MaxValue;
+
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                RouteVehicle other = vehicles[i];
+                if (other == vehicle || !other.Object.activeSelf || other.Dir.sqrMagnitude < 0.001f)
+                {
+                    continue;
+                }
+
+                if (other.OnRing || (other.HasCurrentTile && IsRoundaboutTile(other.CurrentTile)))
+                {
+                    continue;   // 로터리 관할 차 제외(이중 제동 방지)
+                }
+
+                Vector3 to = other.Pos - vehicle.Pos;
+                float distance = to.magnitude;
+                if (distance < 0.0001f || distance >= range)
+                {
+                    continue;
+                }
+
+                Vector3 otherDirection = other.Dir.normalized;
+                if (Mathf.Abs(Vector3.Dot(myDirection, otherDirection)) >= 0.5f)
+                {
+                    continue;
+                }
+
+                if (Vector3.Dot(rightDirection, to) <= 0f)
+                {
+                    continue;
+                }
+
+                if (Vector3.Dot(myDirection, to) <= 0f)
+                {
+                    continue;
+                }
+
+                if (distance < nearest)
+                {
+                    nearest = distance;
+                }
+            }
+
+            if (nearest == float.MaxValue)
             {
                 return freeSpeed;
             }
 
             float floor = Mathf.Clamp(crossYieldFloor, 0.1f, 1f);
-            return Mathf.Lerp(freeSpeed * floor, freeSpeed, Mathf.Clamp01((nearestGap - gapRad) / gapRad));
+            return Mathf.Lerp(freeSpeed * floor, freeSpeed, Mathf.Clamp01(nearest / range));
+        }
+
+        private float RingRadius()
+        {
+            return tileSize * Mathf.Max(0.05f, roundaboutOrbitRadius);
+        }
+
+        // 각도 좌표 → 호 길이(RingLane 규약). [0, 2πR).
+        private static float ArcOf(Vector3 pos, Vector3 center, float radius)
+        {
+            Vector3 rel = pos - center;
+            return Mathf.Repeat(Mathf.Atan2(rel.y, rel.x), 2f * Mathf.PI) * radius;
+        }
+
+        // 같은 링(RingTile)에 소속된 다른 차들의 호 좌표 수집 — 자기 자신 제외(RingLane 규약).
+        private void CollectRingArcs(RouteVehicle exclude, Vector2Int ringTile, Vector3 center, float radius)
+        {
+            ringArcScratch.Clear();
+            foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
+            {
+                RouteVehicle other = kv.Value;
+                if (other == exclude || !other.OnRing || other.RingTile != ringTile || !other.Object.activeSelf)
+                {
+                    continue;
+                }
+
+                ringArcScratch.Add(ArcOf(other.Pos, center, radius));
+            }
         }
 
         private static void SetVehicleRenderersEnabled(RouteVehicle vehicle, bool enabled)
