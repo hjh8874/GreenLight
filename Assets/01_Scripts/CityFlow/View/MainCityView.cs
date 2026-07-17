@@ -1252,8 +1252,11 @@ namespace CityFlow.View
 
             if (!isIsometricView && mainCamera != null)
             {
+                // TextMesh 정면 규약: 글리프는 트랜스폼 -Z 쪽에서 볼 때 정상 판독(identity 회전 + 기본
+                // 카메라(+Z 응시) 구도가 정독 구도). 즉 forward(+Z)는 카메라 "반대"를 향해야 한다 —
+                // forward를 카메라로 향하게 하면 거울상("+1" 반전, "!"는 좌우대칭이라 안 보였음).
                 Vector3 toCamera = mainCamera.transform.position - textMark.position;
-                textMark.rotation = Quaternion.LookRotation(toCamera.normalized, mainCamera.transform.up);
+                textMark.rotation = Quaternion.LookRotation(-toCamera.normalized, mainCamera.transform.up);
                 return;
             }
 
@@ -1266,7 +1269,8 @@ namespace CityFlow.View
                 facing = transform.up;
             }
 
-            textMark.rotation = Quaternion.LookRotation(facing.normalized, groundUp);
+            // 동일 규약: forward = 카메라 반대(-facing) — 지면 수직 세움은 up(groundUp)이 유지한다.
+            textMark.rotation = Quaternion.LookRotation(-facing.normalized, groundUp);
         }
 
         private int ComputeDisplayRouteHash(List<Vector2Int> route)
