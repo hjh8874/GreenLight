@@ -54,7 +54,7 @@ namespace CityFlow.View
         [Header("Roundabout Tuning")]   // 재생 중 슬라이더 조정 → 통근 폴리라인 즉시 리베이크(QA G)
         [SerializeField, Range(0.5f, 1.1f)] private float roundaboutOrbitRadius = 0.9f;    // 궤도 반경(타일 비율) — 풋프린트 차도 중앙(섬 0.45~판 1.1). 씬 직렬화 값 우선
         [SerializeField, Range(10f, 80f)] private float roundaboutEntryExitDeg = 45f;      // α — 진입/이탈을 링 둘레로 미는 각. 클수록 링 체류 짧아짐
-        [SerializeField, Range(0.2f, 1.2f)] private float roundaboutTransitionTiles = 0.5f; // 전이 곡선 길이(타일) — 클수록 진입/이탈 완만
+        [SerializeField, Range(0.66f, 0.95f)] private float roundaboutTransitionTiles = 0.66f; // 전이 곡선 길이(타일) — 클수록 진입/이탈 완만. 하한 0.66 = 섬 스침 방지 실측(√(span²+λ²)>0.62, RoutePolyline.cs:316,392)
 
         [Header("Commute (2차 빌드)")]
         [SerializeField, Range(1, 12)] private int officeSlots = 6;
@@ -189,8 +189,6 @@ namespace CityFlow.View
             public Renderer Renderer;
             public Renderer DetailRenderer;
             public float CurrentSpeed;
-            public readonly List<Vector2Int> DisplayRoute = new();
-            public int DisplayRouteHash;
             public Vector3 Pos;   // 지난 프레임 위치·진행 방향 — 차간 유지 판정용(1프레임 지연 근사)
             public Vector3 Dir;
             public Vector2Int CurrentTile;
@@ -198,7 +196,6 @@ namespace CityFlow.View
             public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
             public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
             public int RouteIndex = -1;
-            public int RouteHash;
             public bool OnRing;            // 통근 전용(Task 6R): 링 원 안(공유 링 레인 소속) — 핑퐁 무관
             public Vector2Int RingTile;    // OnRing일 때의 로터리 center 타일
         }
@@ -1865,13 +1862,10 @@ namespace CityFlow.View
         private void ResetVehicleForCommute(RouteVehicle vehicle, int routeIndex)
         {
             vehicle.RouteIndex = routeIndex;
-            vehicle.RouteHash = 0;
             vehicle.CurrentSpeed = 0f;
             vehicle.Dir = Vector3.zero;
             vehicle.OnRing = false;
             vehicle.HasCurrentTile = false;
-            vehicle.DisplayRouteHash = 0;
-            vehicle.DisplayRoute.Clear();
             HideJamMarks(vehicle);
             if (vehicle.Renderer != null)
             {
@@ -1890,7 +1884,6 @@ namespace CityFlow.View
         {
             vehicle.Object.SetActive(false);
             vehicle.RouteIndex = -1;
-            vehicle.RouteHash = 0;
             vehicle.HasCurrentTile = false;
             vehicle.CurrentSpeed = 0f;
             vehicle.Dir = Vector3.zero;
