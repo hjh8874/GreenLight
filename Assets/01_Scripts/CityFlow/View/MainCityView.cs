@@ -1839,7 +1839,7 @@ namespace CityFlow.View
                     {
                         // 이동 중 경로 변경: Distance가 새 폴리라인과 무의미 — 페이드 + 주차로 개별 수렴.
                         SetVehicleRenderersEnabled(vehicle, false);
-                        CommuteScheduler.SnapCar(car, CurrentGameHour());
+                        commuteScheduler.SnapCar(car, CurrentGameHour());
                     }
 
                     // 주차 차/경로 불변 이동 차: 무접촉 — 위치·상태 그대로(주차 앵커는 다음 프레임 재계산).

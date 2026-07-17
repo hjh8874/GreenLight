@@ -22,7 +22,7 @@ namespace CityFlow.ViewKit
     {
         readonly List<CommuteCar> _cars = new(96);
         readonly List<CommuteCar> _newCars = new(32);   // 직전 Rebuild에서 신규 생성된 차 — SnapNewToHour 대상
-        float _morningEnd, _eveningEnd;
+        float _morningEnd, _eveningStart, _eveningEnd;
 
         public IReadOnlyList<CommuteCar> Cars => _cars;
 
@@ -34,7 +34,7 @@ namespace CityFlow.ViewKit
             int officeSlots, int homeSlots, int maxCars,
             float morningStart, float morningEnd, float eveningStart, float eveningEnd)
         {
-            _morningEnd = morningEnd; _eveningEnd = eveningEnd;
+            _morningEnd = morningEnd; _eveningStart = eveningStart; _eveningEnd = eveningEnd;
 
             var survivors = new Dictionary<(Vector2Int, Vector2Int), Queue<CommuteCar>>(_cars.Count);
             for (int i = 0; i < _cars.Count; i++)
@@ -166,10 +166,13 @@ namespace CityFlow.ViewKit
         }
 
         // 단일 차 스냅 — 뷰가 경로 소실 차를 개별 수렴시킬 때도 사용(순간이동 대신 주차 재배치).
-        public static void SnapCar(CommuteCar car, float hour)
+        // 정책(기획 결정 2026-07-17 환): 저녁 창[eveningStart, eveningEnd) 안만 ParkedWork(퇴근이 자연),
+        // 그 외(새벽·아침·낮·밤 전부) = ParkedHome. 낮 로드 = 전원 지각 출근(즉시 파도) 의도 —
+        // UpdateDepartures가 다음 틱에 곧바로 Outbound로 전이시킨다. 첫 움직임은 항상 출근이어야 한다.
+        public void SnapCar(CommuteCar car, float hour)
         {
-            bool atWork = hour >= car.DepartHomeHour && hour < car.DepartWorkHour;
-            car.State = atWork ? CarState.ParkedWork : CarState.ParkedHome;
+            bool inEveningWindow = hour >= _eveningStart && hour < _eveningEnd;
+            car.State = inEveningWindow ? CarState.ParkedWork : CarState.ParkedHome;
             car.Distance = 0f;
         }
 
