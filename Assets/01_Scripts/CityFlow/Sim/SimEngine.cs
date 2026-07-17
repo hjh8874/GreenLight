@@ -8,7 +8,7 @@ namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IOfflineSettlementSource, IRouteDistanceProvider
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IOfflineSettlementSource, IRouteDistanceProvider, IRoadExpansionService
     {
         SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
@@ -229,10 +229,33 @@ namespace CityFlow.Sim
             return capped;
         }
 
-        // 도로 예산제(스펙 2026-07-17, 기획 결정 환): 도로 타일 스톡이 상한에 닿으면 신규 도로 배치 금지.
+        // 도로 예산제(스펙 2026-07-17, 기획 결정 환): 도로 타일 스톡이 유효 캡에 닿으면 신규 도로 배치 금지.
         // 비도로 타입은 무영향. RoadTileCount는 TopologyVersion 캐시(CityGrid) 재사용 — 매 호출 O(1).
         bool WithinRoadBudget(TileType type) =>
-            type != TileType.Road || _grid.RoadTileCount < _config.MaxRoadTiles;
+            type != TileType.Road || _grid.RoadTileCount < MaxRoadTiles;
+
+        // ── IRoadExpansionService(스펙 §2단계): "+10칸" 확장권 — 코인 구매·가격 에스컬레이션·세이브 영속 ──
+        // 칸 수 10은 기획 고정("도로 +10칸" 상품명 자체) — 튜닝 축은 가격 2종(SimConfig 🔓)이다.
+        const int RoadExpandChunkTiles = 10;
+        int _roadCapacityPurchases;   // 세이브 영속(SimSaveData.RoadCapacityPurchases)
+
+        public int RoadCapacityPurchases => _roadCapacityPurchases;
+
+        // 가격 = 기본가 × 성장률^구매횟수, 반올림 정수. 퇴화 config(성장률<1)는 1로 클램프(가격 역주행 방지).
+        public long NextRoadExpandCost =>
+            (long)Math.Round(Math.Max(0, _config.RoadExpandBaseCost)
+                             * Math.Pow(Math.Max(1f, _config.RoadExpandCostGrowth), _roadCapacityPurchases));
+
+        // 소유권 경계: 차감은 경제 레이어의 TrySpend 안에서만 일어남 — 실패 시 캡·잔고 전부 무변화(원자성).
+        public bool TryPurchaseRoadExpansion(IEconomyService economy)
+        {
+            if (economy == null) return false;
+            if (!economy.TrySpend(NextRoadExpandCost)) return false;
+            AddRoadCapacity();
+            return true;
+        }
+
+        public void AddRoadCapacity() => _roadCapacityPurchases++;
 
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
         public bool CanPlace(Vector2Int tile, TileType type) =>
@@ -264,9 +287,10 @@ namespace CityFlow.Sim
         public IReadOnlyList<Vector2Int> ActiveRouteSinks => _solver.RouteSinks;
         public int ActiveVehicleCount => _solver.Routes.Count;
 
-        // 도로 예산제(스펙 2026-07-17): UI 카운터용. RoadTileCount는 TopologyVersion 캐시(무비용).
+        // 도로 예산제(스펙 2026-07-17): UI 카운터·배치 가드 공용. RoadTileCount는 TopologyVersion 캐시(무비용).
         public int RoadTileCount => _grid.RoadTileCount;
-        public int MaxRoadTiles => _config.MaxRoadTiles;
+        // 유효 캡 = 기본 상한 + 확장권 구매횟수 × 10 (스펙 §2단계).
+        public int MaxRoadTiles => _config.MaxRoadTiles + _roadCapacityPurchases * RoadExpandChunkTiles;
         
         // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게 
         public float DeliveredTotal => _solver.DeliveredTotal;
@@ -673,7 +697,7 @@ namespace CityFlow.Sim
                 priorityRoads[i] = new PriorityRoadSaveData { X = t.x, Y = t.y, Axis = (int)_priorityDirs[t] };
             }
 
-            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses, Oneways = oneways, TurnSigns = turnSigns, PriorityRoads = priorityRoads };
+            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses, Oneways = oneways, TurnSigns = turnSigns, PriorityRoads = priorityRoads, RoadCapacityPurchases = _roadCapacityPurchases };
         }
 
         // 주의: _overrideReadyAt은 복원해도 유지(의도) — 세이브 로드로 쿨다운을 리셋하는 악용 방지.
@@ -687,6 +711,8 @@ namespace CityFlow.Sim
             _solver.ClearAllPendingRewards();   // 이전 도시의 유령 장부가 새 도시에서 터지는 것 방지
             _arrivals.ClearAll();   // 이월 소수도 유령 장부의 일종(감사 2026-07-12)
             _bursts.ClearAll();     // jam 히스테리시스·쿨다운도 이전 도시 잔재
+            // 확장권 구매횟수 복원(스펙 §2단계 — 로드 시 캡 리셋 금지). 구세이브는 필드 부재 = 0(미구매) 우아 복원.
+            _roadCapacityPurchases = Math.Max(0, snapshot.RoadCapacityPurchases);
             if (snapshot.PlacedTiles != null)
                 foreach (var t in snapshot.PlacedTiles)
                     _grid.Place(new Vector2Int(t.X, t.Y), t.Type);   // OOB·중복은 Place가 거름(무사고)
