@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace CityFlow.ViewKit
+namespace CityFlow.Sim
 {
     public enum CarState { ParkedHome, Outbound, ParkedWork, Inbound }
 

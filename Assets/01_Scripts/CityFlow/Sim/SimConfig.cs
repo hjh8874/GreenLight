@@ -26,6 +26,14 @@ namespace CityFlow.Sim
         public int QueueCapacityPerTile;
         public int QueueServicePerTick;   // 한 방향 큐가 틱당 서비스할 최대 차 수 🔓
         public int GridlockValveTicks;    // 머리 차 연속 막힘 후 강제 전이까지의 틱 수 🔓
+        public int CoinPerTrip;           // 회사 도착 1회 보상 🔓
+        public int CarsPerHouse;          // 집 주차 슬롯/차량 상한 🔓
+        public float MorningStartHour;
+        public float MorningEndHour;
+        public float EveningStartHour;
+        public float EveningEndHour;
+        public int OfficeParkingSlots;
+        public int MaxSimCars;
 
         // ── 혼잡 임계 (ratio = flow/capacity) ────
         public float SlowRatio;         // <0.7 Free / 0.7~1.0 Slow / >1.0 Jam
@@ -125,6 +133,14 @@ namespace CityFlow.Sim
             QueueCapacityPerTile = 4,
             QueueServicePerTick = 1,
             GridlockValveTicks = 8,
+            CoinPerTrip = 10,
+            CarsPerHouse = 1,
+            MorningStartHour = 6f,
+            MorningEndHour = 10f,
+            EveningStartHour = 17f,
+            EveningEndHour = 21f,
+            OfficeParkingSlots = 6,
+            MaxSimCars = 96,
             SlowRatio = 0.7f,
             JamRatio = 1.0f,
             EfficiencyMin = 0.2f,

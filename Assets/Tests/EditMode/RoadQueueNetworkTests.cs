@@ -319,6 +319,40 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(before, TotalCars(q, width: 2, height: 2), "밸브 후 증발·복제 금지");
         }
 
+        [Test]
+        public void Step_DestinationRecordsCarAndTile_ThenResetsNextStep()
+        {
+            var q = new RoadQueueNetwork(2, 1, Cfg());
+            var routes = new FakeRouteProvider();
+            routes.AddRoute(70, true, V(0, 0), V(1, 0));
+            Assert.IsTrue(q.TryEnqueue(V(1, 0), Dir.E, 70));
+
+            StepResult arrived = q.Step(routes);
+
+            Assert.AreEqual(1, arrived.Arrivals);
+            Assert.AreEqual(arrived.Arrivals, q.ArrivalCount);
+            ArrivalRecord record = q.GetArrival(0);
+            Assert.AreEqual(70, record.CarId);
+            Assert.AreEqual(V(1, 0), record.Tile);
+
+            q.Step(routes);
+            Assert.AreEqual(0, q.ArrivalCount, "Step 시작 시 관찰 버퍼 리셋");
+        }
+
+        [Test]
+        public void RemoveAllCars_ClearsQueuesAndAllowsPoolReuse()
+        {
+            var q = new RoadQueueNetwork(2, 1, Cfg());
+            Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 80));
+            Assert.IsTrue(q.TryEnqueue(V(1, 0), Dir.W, 81));
+
+            q.RemoveAllCars();
+
+            Assert.AreEqual(0, TotalCars(q, width: 2, height: 1));
+            Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 82), "고정 노드 풀 재사용");
+            Assert.AreEqual(82, q.CarAtHead(V(0, 0), Dir.E));
+        }
+
         private static CityGrid BuildCrossIntersection()
         {
             var grid = new CityGrid(5, 3);

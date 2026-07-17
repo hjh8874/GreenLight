@@ -29,6 +29,12 @@ namespace CityFlow.Sim
         public int ValveActivations;
     }
 
+    public struct ArrivalRecord
+    {
+        public int CarId;
+        public Vector2Int Tile;
+    }
+
     public enum Dir { N = 0, E = 1, S = 2, W = 3 }
     public enum RoadAxis { None = 0, Horizontal = 1, Vertical = 2 }
 
@@ -72,9 +78,11 @@ namespace CityFlow.Sim
         private readonly bool[] _turnAllowed;
         private readonly int[] _ringNodes;
         private readonly Intent[] _intents;
+        private readonly ArrivalRecord[] _arrivals;
         private int _freeHead;
 
         public int TurnRestrictionBlockCount { get; private set; }
+        public int ArrivalCount { get; private set; }
 
         public RoadQueueNetwork(int width, int height, in SimConfig cfg)
         {
@@ -105,6 +113,7 @@ namespace CityFlow.Sim
             _turnAllowed = new bool[tileCount * DirectionCount * DirectionCount];
             _ringNodes = new int[tileCount * DirectionCount];
             _intents = new Intent[queueCount];
+            _arrivals = new ArrivalRecord[maxCars];
 
             Array.Fill(_heads, NoNode);
             Array.Fill(_tails, NoNode);
@@ -181,6 +190,64 @@ namespace CityFlow.Sim
             return node == NoNode ? NoNode : _cars[node];
         }
 
+        internal bool TryLocateCar(int carId, out Vector2Int tile, out Dir direction, out int slot)
+        {
+            for (int queue = 0; queue < _heads.Length; queue++)
+            {
+                int node = _heads[queue];
+                int queueSlot = 0;
+                while (node != NoNode)
+                {
+                    if (_cars[node] == carId)
+                    {
+                        tile = TileAt(queue / DirectionCount);
+                        direction = (Dir)(queue % DirectionCount);
+                        slot = queueSlot;
+                        return true;
+                    }
+                    node = _nextNodes[node];
+                    queueSlot++;
+                }
+            }
+            for (int ring = 0; ring < _ringNodes.Length; ring++)
+            {
+                int node = _ringNodes[ring];
+                if (node == NoNode || _cars[node] != carId) continue;
+                tile = TileAt(ring / DirectionCount);
+                direction = (Dir)(ring % DirectionCount);
+                slot = 0;
+                return true;
+            }
+            tile = default;
+            direction = default;
+            slot = -1;
+            return false;
+        }
+
+        public ArrivalRecord GetArrival(int index)
+        {
+            if (index < 0 || index >= ArrivalCount)
+                throw new ArgumentOutOfRangeException(nameof(index));
+            return _arrivals[index];
+        }
+
+        public void RemoveAllCars()
+        {
+            Array.Fill(_heads, NoNode);
+            Array.Fill(_tails, NoNode);
+            Array.Clear(_counts, 0, _counts.Length);
+            Array.Fill(_ringNodes, NoNode);
+            for (int node = 0; node < _cars.Length; node++)
+            {
+                _cars[node] = NoNode;
+                _movedThisTick[node] = false;
+                _blockedTicks[node] = 0;
+                _nextNodes[node] = node + 1 < _cars.Length ? node + 1 : NoNode;
+            }
+            _freeHead = _cars.Length > 0 ? 0 : NoNode;
+            ArrivalCount = 0;
+        }
+
         public float MaxOccupancy01(Vector2Int tile)
         {
             if (!InBounds(tile)) return 0f;
@@ -201,6 +268,7 @@ namespace CityFlow.Sim
         public StepResult Step(ICarRouteProvider routes, ISignalGate signalGate, int tick)
         {
             if (routes == null) throw new ArgumentNullException(nameof(routes));
+            ArrivalCount = 0;
             Array.Clear(_movedThisTick, 0, _movedThisTick.Length);
             StepResult result = default;
 
@@ -299,6 +367,7 @@ namespace CityFlow.Sim
             switch (intent.Kind)
             {
                 case IntentKind.Arrival:
+                    RecordArrival(_cars[intent.Node], TileAt(intent.TileIndex));
                     ReleaseNode(DetachHead(intent.FromQueue));
                     result.Arrivals++;
                     return;
@@ -341,6 +410,7 @@ namespace CityFlow.Sim
                     int carId = _cars[node];
                     if (routes.IsDestination(carId, position))
                     {
+                        RecordArrival(carId, position);
                         _ringNodes[ring] = NoNode;
                         ReleaseNode(node);
                         result.Arrivals++;
@@ -382,6 +452,11 @@ namespace CityFlow.Sim
         private Intent NewIntent(IntentKind kind, int queue, int node, int tile, Dir entry, Dir exit) =>
             new Intent { Kind = kind, FromQueue = queue, ToQueue = NoNode, Node = node,
                 TileIndex = tile, Entry = entry, Exit = exit, RingIndex = NoNode };
+
+        private void RecordArrival(int carId, Vector2Int tile)
+        {
+            _arrivals[ArrivalCount++] = new ArrivalRecord { CarId = carId, Tile = tile };
+        }
 
         private bool UsesSharedBudget(int tile) =>
             _intersections[tile] && !_overpasses[tile] && !_roundabouts[tile];

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
-using CityFlow.ViewKit;
+using CityFlow.Sim;
 
 namespace CityFlow.Sim.Tests
 {

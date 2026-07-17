@@ -33,9 +33,13 @@ namespace CityFlow.Sim
         readonly int[] _turnCameFrom;
 
         readonly List<List<Vector2Int>> _routes = new(128);   // 수요 인덱스 정렬, 미연결 = null
+        readonly List<List<Vector2Int>> _carRoutes = new(128);
+        readonly List<List<Vector2Int>> _returnRoutes = new(128);
 
         // 소유권: 내부 List를 그대로 노출 — 소비자(FlowSolver·뷰)는 읽기 전용 계약. 변형 금지.
         public IReadOnlyList<List<Vector2Int>> Routes => _routes;
+        public IReadOnlyList<List<Vector2Int>> CarRoutes => _carRoutes;
+        public IReadOnlyList<List<Vector2Int>> ReturnRoutes => _returnRoutes;
 
         public RoutePlanner(int width, int height)
         {
@@ -70,14 +74,22 @@ namespace CityFlow.Sim
                           IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
         {
             _routes.Clear();
+            _carRoutes.Clear();
+            _returnRoutes.Clear();
             Array.Clear(_load, 0, _load.Length);
 
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
             {
                 var path = Search(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg, oneways, turnSigns);   // 경계 밖(NoRoad)도 IsRoad가 자연히 걸러 null
+                // CarSim은 직교 도로만 실제 연결로 인정한다. 대각 코너컷은 일방 우회 구멍과
+                // 공짜 예산 연결을 만들고 차 큐(N/E/S/W)로 표현할 수도 없어 3차 빌드에서 은퇴한다.
+                var carPath = SearchCardinal(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg, oneways, turnSigns);
+                var returnPath = SearchCardinal(grid, demands[i].SinkRoad, demands[i].SourceRoad, cfg, oneways, turnSigns);
 
                 _routes.Add(path);                            // null = 이 수요는 흐르지 않음(무사고)
+                _carRoutes.Add(carPath);
+                _returnRoutes.Add(returnPath);
                 if (path == null) continue;
                 for (int p = 0; p < path.Count; p++)
                     _load[path[p].y * _w + path[p].x] += cfg.DemandPerHouse;
@@ -95,6 +107,10 @@ namespace CityFlow.Sim
         // 역주행을 못 걸러서 별도로 필요). oneways가 null/빈 경우 Dictionary 조회 없이 스킵(무비용).
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
+            => SearchCore(grid, from, to, cfg, oneways, 8);
+
+        private List<Vector2Int> SearchCore(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                             IReadOnlyDictionary<Vector2Int, Vector2Int> oneways, int neighborCount)
         {
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
             bool hasOneways = oneways != null && oneways.Count > 0;
@@ -126,7 +142,7 @@ namespace CityFlow.Sim
                 Vector2Int curDir = default;
                 if (hasOneways) curOneway = oneways.TryGetValue(new Vector2Int(cx, cy), out curDir);
 
-                for (int d = 0; d < DX.Length; d++)
+                for (int d = 0; d < neighborCount; d++)
                 {
                     int nx = cx + DX[d], ny = cy + DY[d];
                     if (!IsRoad(grid, nx, ny)) continue;
@@ -181,6 +197,21 @@ namespace CityFlow.Sim
         internal List<Vector2Int> SearchWithTurnState(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                                        IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
                                                        IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
+            => SearchWithTurnState(grid, from, to, cfg, oneways, turnSigns, 8);
+
+        private List<Vector2Int> SearchCardinal(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                                 IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
+                                                 IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
+        {
+            if (turnSigns == null || turnSigns.Count == 0)
+                return SearchCore(grid, from, to, cfg, oneways, 4);
+            return SearchWithTurnState(grid, from, to, cfg, oneways, turnSigns, 4);
+        }
+
+        private List<Vector2Int> SearchWithTurnState(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                                      IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
+                                                      IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
+                                                      int neighborCount)
         {
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
             if (from == to) return new List<Vector2Int> { from };   // legacy Search_SameTile_ReturnsSingle과 동형
@@ -201,7 +232,7 @@ namespace CityFlow.Sim
             if (hasOneways) startOneway = oneways.TryGetValue(from, out startOnewayDir);
             bool startIsSign = turnSigns.ContainsKey(from);
 
-            for (int d = 0; d < DX.Length; d++)
+            for (int d = 0; d < neighborCount; d++)
             {
                 int nx = sx + DX[d], ny = sy + DY[d];
                 if (!IsRoad(grid, nx, ny)) continue;
@@ -253,7 +284,7 @@ namespace CityFlow.Sim
                 Vector2Int curOnewayDir = default;
                 if (hasOneways) curOneway = oneways.TryGetValue(curTile, out curOnewayDir);
 
-                for (int d = 0; d < DX.Length; d++)
+                for (int d = 0; d < neighborCount; d++)
                 {
                     int nx = cx + DX[d], ny = cy + DY[d];
                     if (!IsRoad(grid, nx, ny)) continue;
