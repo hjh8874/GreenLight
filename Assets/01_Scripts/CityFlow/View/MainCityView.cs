@@ -1192,6 +1192,7 @@ namespace CityFlow.View
                     ApplyRendererColor(detailRenderer, Color.Lerp(vehicleColor, Color.white, 0.3f));
 
                     // 제동등: 후방(-x = 진행 반대) 얇은 빨간 큐브, 기본 off. 감속 상태 진입 시에만 SetActive.
+                    // vehiclePrefab == null 게이트 안 = 의도적 스코프(기존 Cabin 디테일 큐브 패턴과 동일 — 프리팹은 자체 룩 소유).
                     Renderer brakeRenderer = CreateDetailCube(vehicle.transform, "BrakeLight",
                         new Vector3(0.1f, 0.7f, 0.55f), new Vector3(-0.52f, 0f, 0f));
                     ApplyRendererColor(brakeRenderer, new Color(0.9f, 0.15f, 0.1f));
@@ -1833,6 +1834,7 @@ namespace CityFlow.View
                     }
 
                     ResetVehicleForCommute(fresh, car.RouteIndex);
+                    // 리바인드 불변식: 언바운드 차는 Distance≈0(신규/스냅 직후)에서만 발생 — 바인딩 로직 변경 시 재검토.
                     ApplyCarStyle(fresh, car);
                     carVehicles[car] = fresh;
                 }
@@ -2011,14 +2013,54 @@ namespace CityFlow.View
                 return;
             }
 
+            // 주차 정착 안무(Step 5 early-out): 정착 창 동안 파이프라인 전체 차단(혼잡/신호/캡 스캔·적분 없음)
+            // — 주차 차와 동일한 "앵커 고정·비용 0" 패턴. 만료 시 슬롯 방향 정렬 후 NotifyArrived.
+            if (vehicle.Settling)
+            {
+                RoutePolyline settlePoly = inbound ? pair.Inbound : pair.Outbound;
+                Sample settleEnd = settlePoly.SampleAt(settlePoly.Length);
+                vehicle.Object.transform.localPosition = settleEnd.Pos;
+                vehicle.Pos = settleEnd.Pos;
+                vehicle.Dir = Vector3.zero;   // 정지 → 타 차 Leader/Yield 판정에서 제외(주차와 동일)
+                vehicle.OnRing = false;
+                vehicle.CurrentSpeed = 0f;
+                vehicle.CurrentTile = inbound ? car.Home : car.Work;
+                vehicle.HasCurrentTile = true;
+                SetVehicleRenderersEnabled(vehicle, true);
+                SetBrakeLight(vehicle, false);
+                HideJamMarks(vehicle);
+
+                vehicle.SettleHold -= Time.deltaTime;
+                if (vehicle.SettleHold <= 0f)
+                {
+                    if (settleEnd.Dir.sqrMagnitude > 0.001f)
+                    {
+                        float slotAngle = Mathf.Atan2(settleEnd.Dir.y, settleEnd.Dir.x) * Mathf.Rad2Deg;
+                        vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, slotAngle);
+                    }
+
+                    vehicle.Settling = false;
+                    commuteScheduler.NotifyArrived(car);   // Distance=0 리셋 + 상태 전이(Parked)
+                }
+
+                return;
+            }
+
             // 출발 지연 안무(Step 3): 전환 직후 DepartDelaySec 동안 출발 앵커 고정 — 적분 보류(교통 판단 아님).
             if (vehicle.DepartHold > 0f)
             {
                 vehicle.DepartHold -= Time.deltaTime;
                 RoutePolyline startPoly = inbound ? pair.Inbound : pair.Outbound;
-                Vector3 startPos = startPoly.SampleAt(car.Distance).Pos;
-                vehicle.Object.transform.localPosition = startPos;
-                vehicle.Pos = startPos;
+                Sample start = startPoly.SampleAt(car.Distance);
+                vehicle.Object.transform.localPosition = start.Pos;
+                if (start.Dir.sqrMagnitude > 0.001f)
+                {
+                    // 풀 재사용 차의 이전 회전 노출 방지(리뷰 픽스 2): 지연 창 동안 출발 방향으로 즉시 정렬.
+                    float startAngle = Mathf.Atan2(start.Dir.y, start.Dir.x) * Mathf.Rad2Deg;
+                    vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, startAngle);
+                }
+
+                vehicle.Pos = start.Pos;
                 vehicle.Dir = Vector3.zero;
                 vehicle.OnRing = false;
                 vehicle.CurrentSpeed = 0f;
@@ -2119,11 +2161,11 @@ namespace CityFlow.View
             car.Distance += vehicle.CurrentSpeed * tileSize * Time.deltaTime;
             if (car.Distance >= poly.Length)
             {
-                // 주차 정착 안무(Step 5): 즉시 스냅 대신 parkingSettleSeconds 동안 슬롯 앵커 정지 후
-                // 슬롯(최종 진입) 방향 회전 정렬 → 그 후 NotifyArrived. 스케줄러는 통지 기반이라 지연 무해.
-                Sample endSample = poly.SampleAt(poly.Length);
-                vehicle.Object.transform.localPosition = endSample.Pos;
-                vehicle.Pos = endSample.Pos;
+                // 주차 정착 안무(Step 5): 즉시 스냅 대신 앵커 정지 + Settling 게이트 무장 —
+                // 이후 프레임은 상단 early-out이 파이프라인 없이 처리(카운트다운·정렬·NotifyArrived).
+                Vector3 endPos = poly.SampleAt(poly.Length).Pos;
+                vehicle.Object.transform.localPosition = endPos;
+                vehicle.Pos = endPos;
                 vehicle.Dir = Vector3.zero;   // 정지 → 타 차 Leader/Yield 판정에서 제외(주차와 동일)
                 vehicle.OnRing = false;
                 vehicle.CurrentSpeed = 0f;
@@ -2131,26 +2173,8 @@ namespace CityFlow.View
                 vehicle.HasCurrentTile = true;
                 HideJamMarks(vehicle);
                 SetBrakeLight(vehicle, false);
-
-                if (!vehicle.Settling)
-                {
-                    vehicle.Settling = true;
-                    vehicle.SettleHold = parkingSettleSeconds;
-                }
-
-                vehicle.SettleHold -= Time.deltaTime;
-                if (vehicle.SettleHold <= 0f)
-                {
-                    if (endSample.Dir.sqrMagnitude > 0.001f)
-                    {
-                        float slotAngle = Mathf.Atan2(endSample.Dir.y, endSample.Dir.x) * Mathf.Rad2Deg;
-                        vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, slotAngle);
-                    }
-
-                    vehicle.Settling = false;
-                    commuteScheduler.NotifyArrived(car);   // Distance=0 리셋 + 상태 전이(Parked)
-                }
-
+                vehicle.Settling = true;
+                vehicle.SettleHold = parkingSettleSeconds;
                 return;
             }
 
