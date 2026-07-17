@@ -14,6 +14,11 @@ namespace CityFlow.Sim
         bool IsDestination(int carId, Vector2Int tile);
     }
 
+    internal interface ISignalGate
+    {
+        bool IsServiceOpen(Vector2Int tile, Dir entryDir, int tick);
+    }
+
     public struct StepResult
     {
         public int Arrivals;
@@ -168,6 +173,14 @@ namespace CityFlow.Sim
 
         public StepResult Step(ICarRouteProvider routes)
         {
+            return Step(routes, signalGate: null, tick: 0);
+        }
+
+        public StepResult Step(
+            ICarRouteProvider routes,
+            ISignalGate signalGate,
+            int tick)
+        {
             if (routes == null)
             {
                 throw new ArgumentNullException(nameof(routes));
@@ -195,6 +208,16 @@ namespace CityFlow.Sim
                         int node = _heads[queueIndex];
                         if (_movedThisTick[node])
                         {
+                            break;
+                        }
+
+                        if (signalGate != null
+                            && !signalGate.IsServiceOpen(
+                                tile,
+                                (Dir)direction,
+                                tick))
+                        {
+                            // 빨강은 정상 제어 대기다. Gridlock 밸브로 신호를 우회하지 않는다.
                             break;
                         }
 
