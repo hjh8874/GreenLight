@@ -265,7 +265,7 @@ namespace CityFlow.Sim.Tests
             cfg.GridlockValveTicks = 8;
             var q = new RoadQueueNetwork(5, 3, cfg);
             CityGrid grid = BuildCrossIntersection();
-            q.RebuildTopology(grid);
+            q.RebuildTopology(grid, new FakeDeviceState());
 
             var routes = new FakeRouteProvider();
             routes.AddRoute(0, true, V(1, 1), V(2, 1), V(3, 1));

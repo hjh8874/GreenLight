@@ -5,12 +5,7 @@ namespace CityFlow.Sim
 {
     internal interface ICarRouteProvider
     {
-        bool TryGetNextTile(
-            int carId,
-            Vector2Int current,
-            out Vector2Int next,
-            out Dir entryDirAtNext);
-
+        bool TryGetNextTile(int carId, Vector2Int current, out Vector2Int next, out Dir entryDirAtNext);
         bool IsDestination(int carId, Vector2Int tile);
     }
 
@@ -19,55 +14,72 @@ namespace CityFlow.Sim
         bool IsServiceOpen(Vector2Int tile, Dir entryDir, int tick);
     }
 
+    internal interface IDeviceState
+    {
+        bool IsRoundabout(Vector2Int tile);
+        bool IsOverpass(Vector2Int tile);
+        RoadAxis PriorityAxis(Vector2Int tile);
+        Vector2Int OnewayDir(Vector2Int tile);
+        bool IsTurnAllowed(Vector2Int tile, Dir entry, Dir exit);
+    }
+
     public struct StepResult
     {
         public int Arrivals;
         public int ValveActivations;
     }
 
-    public enum Dir
-    {
-        N = 0,
-        E = 1,
-        S = 2,
-        W = 3
-    }
+    public enum Dir { N = 0, E = 1, S = 2, W = 3 }
+    public enum RoadAxis { None = 0, Horizontal = 1, Vertical = 2 }
 
     internal sealed class RoadQueueNetwork
     {
         private const int DirectionCount = 4;
         private const int NoNode = -1;
 
+        private enum IntentKind { Arrival, Move, RingEntry }
+
+        private struct Intent
+        {
+            public IntentKind Kind;
+            public int FromQueue;
+            public int ToQueue;
+            public int Node;
+            public int TileIndex;
+            public Dir Entry;
+            public Dir Exit;
+            public int RingIndex;
+            public bool Force;
+        }
+
         private readonly int _width;
         private readonly int _height;
         private readonly int _capacity;
         private readonly int _servicePerTick;
         private readonly int _gridlockValveTicks;
-
-        // 모든 차 토큰 노드를 생성자에서 한 번만 할당한다. 큐는 노드 인덱스로 FIFO를
-        // 연결하므로 탈출 밸브가 만석 큐로 강제 이동해도 새 메모리나 차 복제가 필요 없다.
         private readonly int[] _cars;
         private readonly int[] _nextNodes;
         private readonly bool[] _movedThisTick;
         private readonly int[] _blockedTicks;
-
         private readonly int[] _heads;
         private readonly int[] _tails;
         private readonly int[] _counts;
         private readonly bool[] _intersections;
+        private readonly bool[] _roundabouts;
+        private readonly bool[] _overpasses;
+        private readonly RoadAxis[] _priorityAxes;
+        private readonly bool[] _queueActive;
+        private readonly bool[] _turnAllowed;
+        private readonly int[] _ringNodes;
+        private readonly Intent[] _intents;
         private int _freeHead;
+
+        public int TurnRestrictionBlockCount { get; private set; }
 
         public RoadQueueNetwork(int width, int height, in SimConfig cfg)
         {
-            if (width <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(width));
-            }
-
-            if (height <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(height));
-            }
+            if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
+            if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
 
             _width = width;
             _height = height;
@@ -75,7 +87,8 @@ namespace CityFlow.Sim
             _servicePerTick = Math.Max(1, cfg.QueueServicePerTick);
             _gridlockValveTicks = Math.Max(1, cfg.GridlockValveTicks);
 
-            int queueCount = checked(width * height * DirectionCount);
+            int tileCount = checked(width * height);
+            int queueCount = checked(tileCount * DirectionCount);
             int maxCars = checked(queueCount * _capacity);
             _cars = new int[maxCars];
             _nextNodes = new int[maxCars];
@@ -84,241 +97,345 @@ namespace CityFlow.Sim
             _heads = new int[queueCount];
             _tails = new int[queueCount];
             _counts = new int[queueCount];
-            _intersections = new bool[width * height];
+            _intersections = new bool[tileCount];
+            _roundabouts = new bool[tileCount];
+            _overpasses = new bool[tileCount];
+            _priorityAxes = new RoadAxis[tileCount];
+            _queueActive = new bool[queueCount];
+            _turnAllowed = new bool[tileCount * DirectionCount * DirectionCount];
+            _ringNodes = new int[tileCount * DirectionCount];
+            _intents = new Intent[queueCount];
 
-            for (int queue = 0; queue < queueCount; queue++)
-            {
-                _heads[queue] = NoNode;
-                _tails[queue] = NoNode;
-            }
-
+            Array.Fill(_heads, NoNode);
+            Array.Fill(_tails, NoNode);
+            Array.Fill(_ringNodes, NoNode);
+            Array.Fill(_queueActive, true);
+            Array.Fill(_turnAllowed, true);
             for (int node = 0; node < maxCars; node++)
             {
                 _cars[node] = NoNode;
                 _nextNodes[node] = node + 1 < maxCars ? node + 1 : NoNode;
             }
-
             _freeHead = maxCars > 0 ? 0 : NoNode;
-
-            // ponytail: 전역 고정 노드 풀은 큐별 고정 링버퍼와 같은 총 메모리를 쓰되,
-            // 밸브 순간에 큐별 용량 분포만 바꿀 수 있어 GC 0과 차 수 보존을 함께 지킨다.
         }
 
-        public void RebuildTopology(CityGrid grid)
+        public void RebuildTopology(CityGrid grid) => RebuildTopology(grid, null);
+
+        public void RebuildTopology(CityGrid grid, IDeviceState devices)
         {
-            if (grid == null)
-            {
-                throw new ArgumentNullException(nameof(grid));
-            }
-
+            if (grid == null) throw new ArgumentNullException(nameof(grid));
             if (grid.Width != _width || grid.Height != _height)
-            {
-                throw new ArgumentException(
-                    "RoadQueueNetwork와 CityGrid 크기가 일치해야 합니다.",
-                    nameof(grid));
-            }
+                throw new ArgumentException("RoadQueueNetwork와 CityGrid 크기가 일치해야 합니다.", nameof(grid));
 
+            TurnRestrictionBlockCount = 0;
             for (int y = 0; y < _height; y++)
+            for (int x = 0; x < _width; x++)
             {
-                for (int x = 0; x < _width; x++)
+                var tile = new Vector2Int(x, y);
+                int tileIndex = TileIndex(tile);
+                _intersections[tileIndex] = grid.IsIntersection(tile);
+                _roundabouts[tileIndex] = devices?.IsRoundabout(tile) ?? false;
+                _overpasses[tileIndex] = devices?.IsOverpass(tile) ?? false;
+                _priorityAxes[tileIndex] = devices?.PriorityAxis(tile) ?? RoadAxis.None;
+
+                Vector2Int oneway = devices?.OnewayDir(tile) ?? Vector2Int.zero;
+                bool hasOneway = TryDir(oneway, out Dir allowedDir);
+                for (int entry = 0; entry < DirectionCount; entry++)
                 {
-                    var tile = new Vector2Int(x, y);
-                    _intersections[TileIndex(tile)] = grid.IsIntersection(tile);
+                    int queue = tileIndex * DirectionCount + entry;
+                    _queueActive[queue] = !hasOneway || entry == (int)allowedDir;
+                    for (int exit = 0; exit < DirectionCount; exit++)
+                    {
+                        _turnAllowed[TurnIndex(tileIndex, (Dir)entry, (Dir)exit)] =
+                            devices?.IsTurnAllowed(tile, (Dir)entry, (Dir)exit) ?? true;
+                    }
                 }
             }
-
-            // Task 4~5에서 도로 방향과 장치 상태를 추가 주입한다.
         }
 
         public bool TryEnqueue(Vector2Int tile, Dir entryDir, int carId)
         {
-            if (carId < 0
-                || !TryQueueIndex(tile, entryDir, out int queueIndex)
-                || !CanAcceptNormally(queueIndex)
-                || !TryAllocateNode(out int node))
-            {
-                return false;
-            }
-
+            if (carId < 0 || !TryQueueIndex(tile, entryDir, out int queue)
+                || !CanAcceptNormally(queue) || !TryAllocateNode(out int node)) return false;
             _cars[node] = carId;
             _movedThisTick[node] = false;
             _blockedTicks[node] = 0;
-            AppendNode(queueIndex, node);
+            AppendNode(queue, node);
             return true;
         }
 
-        public int QueueCount(Vector2Int tile, Dir entryDir)
+        public int QueueCount(Vector2Int tile, Dir entryDir) =>
+            TryQueueIndex(tile, entryDir, out int queue) ? _counts[queue] : 0;
+
+        public int CarAtHead(Vector2Int tile, Dir entryDir)
         {
-            return TryQueueIndex(tile, entryDir, out int queueIndex)
-                ? _counts[queueIndex]
-                : 0;
+            if (!TryQueueIndex(tile, entryDir, out int queue)) return NoNode;
+            int node = _heads[queue];
+            return node == NoNode ? NoNode : _cars[node];
+        }
+
+        public int RingCellCar(Vector2Int tile, Dir cell)
+        {
+            if (!InBounds(tile) || (int)cell < 0 || (int)cell >= DirectionCount) return NoNode;
+            int node = _ringNodes[TileIndex(tile) * DirectionCount + (int)cell];
+            return node == NoNode ? NoNode : _cars[node];
         }
 
         public float MaxOccupancy01(Vector2Int tile)
         {
-            if (!InBounds(tile))
-            {
-                return 0f;
-            }
-
-            int firstQueue = TileIndex(tile) * DirectionCount;
+            if (!InBounds(tile)) return 0f;
+            int tileIndex = TileIndex(tile);
             int maxCount = 0;
-            for (int direction = 0; direction < DirectionCount; direction++)
-            {
-                maxCount = Math.Max(maxCount, _counts[firstQueue + direction]);
-            }
-
-            return Mathf.Clamp01((float)maxCount / _capacity);
+            for (int d = 0; d < DirectionCount; d++)
+                maxCount = Math.Max(maxCount, _counts[tileIndex * DirectionCount + d]);
+            float approach = (float)maxCount / _capacity;
+            if (!_roundabouts[tileIndex]) return Mathf.Clamp01(approach);
+            int ringCount = 0;
+            for (int d = 0; d < DirectionCount; d++)
+                if (_ringNodes[tileIndex * DirectionCount + d] != NoNode) ringCount++;
+            return Mathf.Clamp01(Math.Max(approach, ringCount / 4f));
         }
 
-        public StepResult Step(ICarRouteProvider routes)
-        {
-            return Step(routes, signalGate: null, tick: 0);
-        }
+        public StepResult Step(ICarRouteProvider routes) => Step(routes, null, 0);
 
-        public StepResult Step(
-            ICarRouteProvider routes,
-            ISignalGate signalGate,
-            int tick)
+        public StepResult Step(ICarRouteProvider routes, ISignalGate signalGate, int tick)
         {
-            if (routes == null)
-            {
-                throw new ArgumentNullException(nameof(routes));
-            }
-
+            if (routes == null) throw new ArgumentNullException(nameof(routes));
             Array.Clear(_movedThisTick, 0, _movedThisTick.Length);
             StepResult result = default;
-            int tileCount = _width * _height;
 
-            for (int tileIndex = 0; tileIndex < tileCount; tileIndex++)
+            for (int serviceRound = 0; serviceRound < _servicePerTick; serviceRound++)
             {
-                Vector2Int tile = new Vector2Int(
-                    tileIndex % _width,
-                    tileIndex / _width);
-                int firstQueue = tileIndex * DirectionCount;
-
-                for (int direction = 0; direction < DirectionCount; direction++)
-                {
-                    int queueIndex = firstQueue + direction;
-                    int serviced = 0;
-
-                    while (serviced < _servicePerTick
-                        && _heads[queueIndex] != NoNode)
-                    {
-                        int node = _heads[queueIndex];
-                        if (_movedThisTick[node])
-                        {
-                            break;
-                        }
-
-                        if (signalGate != null
-                            && !signalGate.IsServiceOpen(
-                                tile,
-                                (Dir)direction,
-                                tick))
-                        {
-                            // 빨강은 정상 제어 대기다. Gridlock 밸브로 신호를 우회하지 않는다.
-                            break;
-                        }
-
-                        int carId = _cars[node];
-                        if (routes.IsDestination(carId, tile))
-                        {
-                            int arrivedNode = DetachHead(queueIndex);
-                            ReleaseNode(arrivedNode);
-                            result.Arrivals++;
-                            serviced++;
-                            continue;
-                        }
-
-                        if (!routes.TryGetNextTile(
-                                carId,
-                                tile,
-                                out Vector2Int next,
-                                out Dir entryDirAtNext)
-                            || !TryQueueIndex(
-                                next,
-                                entryDirAtNext,
-                                out int nextQueueIndex))
-                        {
-                            // 경로 부재는 교통 데드락이 아니므로 밸브 카운터를 올리지 않는다.
-                            break;
-                        }
-
-                        bool blocked = !CanAcceptNormally(nextQueueIndex)
-                            || IsIntersectionExitBlocked(
-                                routes,
-                                carId,
-                                next,
-                                tileIndex: TileIndex(next));
-
-                        if (blocked)
-                        {
-                            _blockedTicks[node]++;
-                            if (_blockedTicks[node] < _gridlockValveTicks)
-                            {
-                                // FIFO: 머리가 막히면 같은 큐의 뒤차도 이번 틱 대기한다.
-                                break;
-                            }
-
-                            MoveHead(queueIndex, nextQueueIndex);
-                            result.ValveActivations++;
-                            serviced++;
-                            continue;
-                        }
-
-                        MoveHead(queueIndex, nextQueueIndex);
-                        serviced++;
-                    }
-                }
+                ServiceRoundaboutRings(routes, ref result);
+                int intentCount = CollectIntents(routes, signalGate, tick);
+                ResolveIntents(intentCount, ref result);
             }
-
             return result;
         }
 
-        public int CarAtHead(Vector2Int tile, Dir entryDir)
+        private int CollectIntents(ICarRouteProvider routes, ISignalGate signalGate, int tick)
         {
-            if (!TryQueueIndex(tile, entryDir, out int queueIndex))
+            int count = 0;
+            for (int queue = 0; queue < _heads.Length; queue++)
             {
-                return NoNode;
-            }
+                int node = _heads[queue];
+                if (node == NoNode || _movedThisTick[node]) continue;
+                int tileIndex = queue / DirectionCount;
+                Dir entry = (Dir)(queue % DirectionCount);
+                Vector2Int tile = TileAt(tileIndex);
+                if (signalGate != null && !signalGate.IsServiceOpen(tile, entry, tick)) continue;
 
-            int node = _heads[queueIndex];
-            return node == NoNode ? NoNode : _cars[node];
+                int carId = _cars[node];
+                if (routes.IsDestination(carId, tile))
+                {
+                    _intents[count++] = NewIntent(IntentKind.Arrival, queue, node, tileIndex, entry, entry);
+                    continue;
+                }
+                if (!routes.TryGetNextTile(carId, tile, out Vector2Int next, out Dir exit)
+                    || !TryQueueIndex(next, exit, out int nextQueue)) continue;
+
+                if (!_turnAllowed[TurnIndex(tileIndex, entry, exit)])
+                {
+                    TurnRestrictionBlockCount++;
+                    continue;
+                }
+
+                if (_roundabouts[tileIndex])
+                {
+                    int ringIndex = tileIndex * DirectionCount + (int)Opposite(entry);
+                    if (_ringNodes[ringIndex] == NoNode)
+                    {
+                        Intent intent = NewIntent(IntentKind.RingEntry, queue, node, tileIndex, entry, exit);
+                        intent.RingIndex = ringIndex;
+                        _intents[count++] = intent;
+                    }
+                    else _blockedTicks[node]++;
+                    continue;
+                }
+
+                bool blocked = !CanAcceptNormally(nextQueue)
+                    || IsIntersectionExitBlocked(routes, carId, next, TileIndex(next));
+                Intent move = NewIntent(IntentKind.Move, queue, node, tileIndex, entry, exit);
+                move.ToQueue = nextQueue;
+                if (blocked)
+                {
+                    _blockedTicks[node]++;
+                    if (_blockedTicks[node] < _gridlockValveTicks) continue;
+                    move.Force = true;
+                }
+                _intents[count++] = move;
+            }
+            return count;
         }
 
-        private bool IsIntersectionExitBlocked(
-            ICarRouteProvider routes,
-            int carId,
-            Vector2Int intersection,
-            int tileIndex)
+        private void ResolveIntents(int intentCount, ref StepResult result)
         {
-            if (!_intersections[tileIndex]
-                || routes.IsDestination(carId, intersection))
+            for (int tile = 0; tile < _intersections.Length; tile++)
             {
-                return false;
+                if (!UsesSharedBudget(tile)) continue;
+                int winner = NoNode;
+                for (int i = 0; i < intentCount; i++)
+                {
+                    if (_intents[i].TileIndex != tile) continue;
+                    if (winner == NoNode || IsBetter(_intents[i], _intents[winner])) winner = i;
+                }
+                if (winner == NoNode) continue;
+                for (int i = 0; i < intentCount; i++)
+                {
+                    if (i == winner || _intents[i].TileIndex != tile) continue;
+                    int node = _intents[i].Node;
+                    if (node != NoNode) _blockedTicks[node]++;
+                }
+                ExecuteIntent(_intents[winner], ref result);
             }
 
-            return !routes.TryGetNextTile(
-                    carId,
-                    intersection,
-                    out Vector2Int exit,
-                    out Dir entryDirAtExit)
-                || !TryQueueIndex(exit, entryDirAtExit, out int exitQueueIndex)
-                || !CanAcceptNormally(exitQueueIndex);
+            for (int i = 0; i < intentCount; i++)
+                if (!UsesSharedBudget(_intents[i].TileIndex)) ExecuteIntent(_intents[i], ref result);
         }
 
-        private bool CanAcceptNormally(int queueIndex) =>
-            _counts[queueIndex] < _capacity;
+        private void ExecuteIntent(Intent intent, ref StepResult result)
+        {
+            if (_heads[intent.FromQueue] != intent.Node || _movedThisTick[intent.Node]) return;
+            switch (intent.Kind)
+            {
+                case IntentKind.Arrival:
+                    ReleaseNode(DetachHead(intent.FromQueue));
+                    result.Arrivals++;
+                    return;
+                case IntentKind.RingEntry:
+                    if (_ringNodes[intent.RingIndex] != NoNode)
+                    {
+                        _blockedTicks[intent.Node]++;
+                        return;
+                    }
+                    _ringNodes[intent.RingIndex] = DetachHead(intent.FromQueue);
+                    _movedThisTick[intent.Node] = true;
+                    _blockedTicks[intent.Node] = 0;
+                    return;
+                case IntentKind.Move:
+                    if (!intent.Force && !CanAcceptNormally(intent.ToQueue))
+                    {
+                        _blockedTicks[intent.Node]++;
+                        return;
+                    }
+                    MoveHead(intent.FromQueue, intent.ToQueue);
+                    if (intent.Force) result.ValveActivations++;
+                    return;
+            }
+        }
+
+        private void ServiceRoundaboutRings(ICarRouteProvider routes, ref StepResult result)
+        {
+            for (int tile = 0; tile < _roundabouts.Length; tile++)
+            {
+                if (!_roundabouts[tile]) continue;
+                Vector2Int position = TileAt(tile);
+                int first = tile * DirectionCount;
+                int heldMask = 0;
+
+                for (int cell = 0; cell < DirectionCount; cell++)
+                {
+                    int ring = first + cell;
+                    int node = _ringNodes[ring];
+                    if (node == NoNode || _movedThisTick[node]) continue;
+                    int carId = _cars[node];
+                    if (routes.IsDestination(carId, position))
+                    {
+                        _ringNodes[ring] = NoNode;
+                        ReleaseNode(node);
+                        result.Arrivals++;
+                        continue;
+                    }
+                    if (!routes.TryGetNextTile(carId, position, out Vector2Int next, out Dir exit)
+                        || (int)exit != cell || !TryQueueIndex(next, exit, out int toQueue)) continue;
+                    if (!CanAcceptNormally(toQueue))
+                    {
+                        _blockedTicks[node]++;
+                        heldMask |= 1 << cell;
+                        continue;
+                    }
+                    _ringNodes[ring] = NoNode;
+                    _movedThisTick[node] = true;
+                    _blockedTicks[node] = 0;
+                    AppendNode(toQueue, node);
+                }
+
+                // 이탈 대기차가 있으면 링 전체가 그 차의 점유를 존중해 정지한다.
+                // 그렇지 않으면 네 셀을 동시에 치환해 만석 링도 차 손실 없이 CCW 회전한다.
+                if (heldMask != 0) continue;
+                int north = _ringNodes[first + (int)Dir.N];
+                int east = _ringNodes[first + (int)Dir.E];
+                int south = _ringNodes[first + (int)Dir.S];
+                int west = _ringNodes[first + (int)Dir.W];
+                _ringNodes[first + (int)Dir.N] = east;
+                _ringNodes[first + (int)Dir.W] = north;
+                _ringNodes[first + (int)Dir.S] = west;
+                _ringNodes[first + (int)Dir.E] = south;
+                for (int cell = 0; cell < DirectionCount; cell++)
+                {
+                    int node = _ringNodes[first + cell];
+                    if (node != NoNode) _movedThisTick[node] = true;
+                }
+            }
+        }
+
+        private Intent NewIntent(IntentKind kind, int queue, int node, int tile, Dir entry, Dir exit) =>
+            new Intent { Kind = kind, FromQueue = queue, ToQueue = NoNode, Node = node,
+                TileIndex = tile, Entry = entry, Exit = exit, RingIndex = NoNode };
+
+        private bool UsesSharedBudget(int tile) =>
+            _intersections[tile] && !_overpasses[tile] && !_roundabouts[tile];
+
+        private bool IsBetter(Intent candidate, Intent current)
+        {
+            RoadAxis priority = _priorityAxes[candidate.TileIndex];
+            bool candidatePriority = priority != RoadAxis.None && Axis(candidate.Entry) == priority;
+            bool currentPriority = priority != RoadAxis.None && Axis(current.Entry) == priority;
+            if (candidatePriority != currentPriority) return candidatePriority;
+            int candidateTurn = TurnRank(candidate.Entry, candidate.Exit);
+            int currentTurn = TurnRank(current.Entry, current.Exit);
+            return candidateTurn != currentTurn
+                ? candidateTurn < currentTurn
+                : candidate.Entry < current.Entry;
+        }
+
+        private bool IsIntersectionExitBlocked(ICarRouteProvider routes, int carId, Vector2Int intersection, int tileIndex)
+        {
+            if (!_intersections[tileIndex] || _overpasses[tileIndex] || _roundabouts[tileIndex]
+                || routes.IsDestination(carId, intersection)) return false;
+            return !routes.TryGetNextTile(carId, intersection, out Vector2Int exit, out Dir exitDir)
+                || !TryQueueIndex(exit, exitDir, out int exitQueue) || !CanAcceptNormally(exitQueue);
+        }
+
+        private static int TurnRank(Dir entry, Dir exit)
+        {
+            if (exit == entry) return 0;
+            if ((int)exit == ((int)entry + 1) % DirectionCount) return 1;
+            if ((int)exit == ((int)entry + 3) % DirectionCount) return 2;
+            return 3;
+        }
+
+        private static RoadAxis Axis(Dir direction) =>
+            direction == Dir.E || direction == Dir.W ? RoadAxis.Horizontal : RoadAxis.Vertical;
+        private static Dir Opposite(Dir direction) => (Dir)(((int)direction + 2) % DirectionCount);
+        private static bool TryDir(Vector2Int vector, out Dir direction)
+        {
+            if (vector == Vector2Int.up) direction = Dir.N;
+            else if (vector == Vector2Int.right) direction = Dir.E;
+            else if (vector == Vector2Int.down) direction = Dir.S;
+            else if (vector == Vector2Int.left) direction = Dir.W;
+            else { direction = default; return false; }
+            return true;
+        }
+
+        private int TurnIndex(int tile, Dir entry, Dir exit) =>
+            ((tile * DirectionCount + (int)entry) * DirectionCount) + (int)exit;
+        private bool CanAcceptNormally(int queue) => _queueActive[queue] && _counts[queue] < _capacity;
 
         private bool TryAllocateNode(out int node)
         {
             node = _freeHead;
-            if (node == NoNode)
-            {
-                return false;
-            }
-
+            if (node == NoNode) return false;
             _freeHead = _nextNodes[node];
             _nextNodes[node] = NoNode;
             return true;
@@ -333,72 +450,47 @@ namespace CityFlow.Sim
             _freeHead = node;
         }
 
-        private void AppendNode(int queueIndex, int node)
+        private void AppendNode(int queue, int node)
         {
             _nextNodes[node] = NoNode;
-            if (_tails[queueIndex] == NoNode)
-            {
-                _heads[queueIndex] = node;
-                _tails[queueIndex] = node;
-            }
-            else
-            {
-                _nextNodes[_tails[queueIndex]] = node;
-                _tails[queueIndex] = node;
-            }
-
-            _counts[queueIndex]++;
+            if (_tails[queue] == NoNode) _heads[queue] = _tails[queue] = node;
+            else { _nextNodes[_tails[queue]] = node; _tails[queue] = node; }
+            _counts[queue]++;
         }
 
-        private int DetachHead(int queueIndex)
+        private int DetachHead(int queue)
         {
-            int node = _heads[queueIndex];
+            int node = _heads[queue];
             int next = _nextNodes[node];
-            _heads[queueIndex] = next;
-            _counts[queueIndex]--;
-
-            if (next == NoNode)
-            {
-                _tails[queueIndex] = NoNode;
-            }
-
+            _heads[queue] = next;
+            _counts[queue]--;
+            if (next == NoNode) _tails[queue] = NoNode;
             _nextNodes[node] = NoNode;
             return node;
         }
 
-        private void MoveHead(int fromQueueIndex, int toQueueIndex)
+        private void MoveHead(int from, int to)
         {
-            int node = DetachHead(fromQueueIndex);
+            int node = DetachHead(from);
             _movedThisTick[node] = true;
             _blockedTicks[node] = 0;
-            AppendNode(toQueueIndex, node);
+            AppendNode(to, node);
         }
 
-        private bool TryQueueIndex(
-            Vector2Int tile,
-            Dir entryDir,
-            out int queueIndex)
+        private bool TryQueueIndex(Vector2Int tile, Dir direction, out int queue)
         {
-            int direction = (int)entryDir;
-            if (!InBounds(tile)
-                || direction < 0
-                || direction >= DirectionCount)
+            int d = (int)direction;
+            if (!InBounds(tile) || d < 0 || d >= DirectionCount)
             {
-                queueIndex = NoNode;
+                queue = NoNode;
                 return false;
             }
-
-            queueIndex = (TileIndex(tile) * DirectionCount) + direction;
+            queue = TileIndex(tile) * DirectionCount + d;
             return true;
         }
 
-        private int TileIndex(Vector2Int tile) =>
-            (tile.y * _width) + tile.x;
-
-        private bool InBounds(Vector2Int tile) =>
-            tile.x >= 0
-            && tile.x < _width
-            && tile.y >= 0
-            && tile.y < _height;
+        private Vector2Int TileAt(int index) => new Vector2Int(index % _width, index / _width);
+        private int TileIndex(Vector2Int tile) => tile.y * _width + tile.x;
+        private bool InBounds(Vector2Int tile) => tile.x >= 0 && tile.x < _width && tile.y >= 0 && tile.y < _height;
     }
 }

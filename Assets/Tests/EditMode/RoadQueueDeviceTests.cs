@@ -5,6 +5,33 @@ using CityFlow.Sim;
 
 namespace CityFlow.Sim.Tests
 {
+    internal sealed class FakeDeviceState : IDeviceState
+    {
+        private readonly HashSet<Vector2Int> _roundabouts = new();
+        private readonly HashSet<Vector2Int> _overpasses = new();
+        private readonly Dictionary<Vector2Int, RoadAxis> _priority = new();
+        private readonly Dictionary<Vector2Int, Vector2Int> _oneways = new();
+        private readonly HashSet<(Vector2Int tile, Dir entry, Dir exit)> _blockedTurns = new();
+
+        public void AddRoundabout(Vector2Int tile) => _roundabouts.Add(tile);
+        public void AddOverpass(Vector2Int tile) => _overpasses.Add(tile);
+        public void SetPriority(Vector2Int tile, RoadAxis axis) => _priority[tile] = axis;
+        public void SetOneway(Vector2Int tile, Vector2Int direction) => _oneways[tile] = direction;
+        public void BlockTurn(Vector2Int tile, Dir entry, Dir exit) =>
+            _blockedTurns.Add((tile, entry, exit));
+
+        public bool IsRoundabout(Vector2Int tile) => _roundabouts.Contains(tile);
+        public bool IsOverpass(Vector2Int tile) => _overpasses.Contains(tile);
+        public RoadAxis PriorityAxis(Vector2Int tile) =>
+            _priority.TryGetValue(tile, out RoadAxis axis) ? axis : RoadAxis.None;
+        public Vector2Int OnewayDir(Vector2Int tile) =>
+            _oneways.TryGetValue(tile, out Vector2Int direction)
+                ? direction
+                : Vector2Int.zero;
+        public bool IsTurnAllowed(Vector2Int tile, Dir entry, Dir exit) =>
+            !_blockedTurns.Contains((tile, entry, exit));
+    }
+
     public class RoadQueueDeviceTests
     {
         static Vector2Int V(int x, int y) => new Vector2Int(x, y);
@@ -166,6 +193,165 @@ namespace CityFlow.Sim.Tests
             }
 
             closedAttempts = signals.ClosedAttempts;
+        }
+
+        [Test]
+        public void Oneway_ReverseDirectionQueueRejectsEnqueue()
+        {
+            var grid = StraightGrid(3);
+            var devices = new FakeDeviceState();
+            devices.SetOneway(V(1, 0), Vector2Int.right);
+            var q = new RoadQueueNetwork(3, 1, Cfg());
+            q.RebuildTopology(grid, devices);
+
+            Assert.IsFalse(q.TryEnqueue(V(1, 0), Dir.W, 10));
+            Assert.AreEqual(0, q.QueueCount(V(1, 0), Dir.W));
+            Assert.IsTrue(q.TryEnqueue(V(1, 0), Dir.E, 11));
+        }
+
+        [Test]
+        public void TurnRestriction_BlocksIntentAndIncrementsCounterWithoutLosingCar()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            var devices = new FakeDeviceState();
+            devices.BlockTurn(center, Dir.E, Dir.N);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, devices);
+            var routes = new FakeRouteProvider();
+            routes.Add(20, center, V(1, 2));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.E, 20));
+
+            q.Step(routes);
+
+            Assert.AreEqual(1, q.TurnRestrictionBlockCount);
+            Assert.AreEqual(20, q.CarAtHead(center, Dir.E));
+            Assert.AreEqual(0, q.QueueCount(V(1, 2), Dir.N));
+        }
+
+        [Test]
+        public void IntersectionSharedBudget_PriorityAxisWinsAndOtherQueueRemains()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            var devices = new FakeDeviceState();
+            devices.SetPriority(center, RoadAxis.Horizontal);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, devices);
+            var routes = new FakeRouteProvider();
+            routes.Add(30, center, V(2, 1));
+            routes.Add(31, center, V(1, 2));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.E, 30));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.N, 31));
+
+            q.Step(routes);
+
+            Assert.AreEqual(0, q.QueueCount(center, Dir.E), "우선 가로축 먼저 서비스");
+            Assert.AreEqual(1, q.QueueCount(center, Dir.N), "비우선 세로축 대기");
+        }
+
+        [Test]
+        public void IntersectionSharedBudget_WithoutPriority_UsesTurnOrder()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, new FakeDeviceState());
+            var routes = new FakeRouteProvider();
+            routes.Add(40, center, V(2, 1));       // E→E 직진
+            routes.Add(41, center, V(1, 0));       // W→S 좌회전
+            routes.Add(42, center, V(2, 1));       // N→E 우회전
+            Assert.IsTrue(q.TryEnqueue(center, Dir.E, 40));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.W, 41));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.N, 42));
+
+            q.Step(routes);
+            Assert.AreEqual(0, q.QueueCount(center, Dir.E), "직진 1순위");
+
+            q.Step(routes);
+            Assert.AreEqual(0, q.QueueCount(center, Dir.N), "우회전 2순위");
+            Assert.AreEqual(1, q.QueueCount(center, Dir.W), "좌회전은 계속 대기");
+        }
+
+        [Test]
+        public void Overpass_CrossAxesServiceIndependentlyInSameTick()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            var devices = new FakeDeviceState();
+            devices.AddOverpass(center);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, devices);
+            var routes = new FakeRouteProvider();
+            routes.Add(50, center, V(2, 1));
+            routes.Add(51, center, V(1, 2));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.E, 50));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.N, 51));
+
+            q.Step(routes);
+
+            Assert.AreEqual(0, q.QueueCount(center, Dir.E));
+            Assert.AreEqual(0, q.QueueCount(center, Dir.N));
+            Assert.AreEqual(50, q.CarAtHead(V(2, 1), Dir.E));
+            Assert.AreEqual(51, q.CarAtHead(V(1, 2), Dir.N));
+        }
+
+        [Test]
+        public void Roundabout_FullRingCirculates_BlocksEntry_ThenExitsAndResumes()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, devices);
+            var routes = new FakeRouteProvider();
+
+            routes.Add(60, center, V(1, 0)); // E 진입→W 셀, 다음 CCW S에서 이탈
+            routes.Add(61, center, V(2, 1)); // N 진입→S 셀, 다음 CCW E에서 이탈
+            routes.Add(62, center, V(1, 2)); // W 진입→E 셀, 다음 CCW N에서 이탈
+            routes.Add(63, center, V(0, 1)); // S 진입→N 셀, 다음 CCW W에서 이탈
+            Assert.IsTrue(q.TryEnqueue(center, Dir.E, 60));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.N, 61));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.W, 62));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.S, 63));
+
+            q.Step(routes);
+            Assert.AreEqual(60, q.RingCellCar(center, Dir.W));
+            Assert.AreEqual(61, q.RingCellCar(center, Dir.S));
+            Assert.AreEqual(62, q.RingCellCar(center, Dir.E));
+            Assert.AreEqual(63, q.RingCellCar(center, Dir.N));
+            Assert.AreEqual(1f, q.MaxOccupancy01(center), 1e-4f);
+
+            routes.Add(64, center, V(1, 0));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.E, 64));
+            q.Step(routes);
+
+            Assert.AreEqual(63, q.RingCellCar(center, Dir.W), "만석 링은 CCW 무감속 순환");
+            Assert.AreEqual(64, q.CarAtHead(center, Dir.E), "점유 셀 진입 차는 대기");
+
+            q.Step(routes);
+            Assert.AreEqual(64, q.RingCellCar(center, Dir.W), "링 이탈 후 접근 차 진입 재개");
+            Assert.AreEqual(-1, q.CarAtHead(center, Dir.E));
+        }
+
+        private static CityGrid StraightGrid(int width)
+        {
+            var grid = new CityGrid(width, 1);
+            for (int x = 0; x < width; x++)
+                Assert.IsTrue(grid.Place(V(x, 0), CityFlow.Contracts.TileType.Road));
+            return grid;
+        }
+
+        private static CityGrid CrossGrid()
+        {
+            var grid = new CityGrid(3, 3);
+            Assert.IsTrue(grid.Place(V(1, 1), CityFlow.Contracts.TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 2), CityFlow.Contracts.TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), CityFlow.Contracts.TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 0), CityFlow.Contracts.TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 1), CityFlow.Contracts.TileType.Road));
+            return grid;
         }
     }
 }
