@@ -73,6 +73,8 @@ namespace CityFlow.Bootstrap
             }
             else
             {
+                if (simEngine != null && Services?.GameCalendar != null)
+                    simEngine.SetGameHour(Services.GameCalendar.Hour);
                 simEngine?.Tick(Time.deltaTime);
             }
         }

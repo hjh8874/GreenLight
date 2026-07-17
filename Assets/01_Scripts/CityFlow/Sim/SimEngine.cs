@@ -16,6 +16,11 @@ namespace CityFlow.Sim
         readonly DemandMap _demand;
         readonly FlowSolver _solver;
         readonly RoutePlanner _planner;
+        readonly RoadQueueNetwork _roadQueues;
+        readonly CarSim _carSim;
+        readonly DeviceStateAdapter _deviceState;
+        readonly SignalGateAdapter _signalGate;
+        readonly CongestionLevel[] _carCongestion;
         readonly SignalMap _signals = new SignalMap();
         // 배치 모드(AutoDetectSignals=false) 소유 상태: flat 정렬 유지 = SignalMap 순회 순서(결정론).
         readonly List<Vector2Int> _placedSignals = new();
@@ -48,6 +53,7 @@ namespace CityFlow.Sim
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
         float _lastStability = -1f;   // 직전 발행한 안정도(-1=아직 없음 → 첫 틱은 무조건 발행)
+        float _gameHour;
 
         // 테스트 관찰용 seam. internal이라 테스트 어셈블리만 봄(InternalsVisibleTo).
         internal int StepCount { get; private set; }
@@ -55,6 +61,7 @@ namespace CityFlow.Sim
         internal SimConfig CurrentConfig => _config;
         // 관찰 seam: 일방 배치/철거가 재계획(dirty)을 강제하는지 테스트가 직접 핀(리뷰 위임분).
         internal bool TopologyDirtyForTest => _grid.TopologyDirty;
+        internal float TripSuccessRateForTest => _stats.TripSuccessRate;
 
         public SimEngine(SimConfig config, SimEventHub hub)
         {
@@ -64,10 +71,49 @@ namespace CityFlow.Sim
             _demand = new DemandMap(config);
             _solver = new FlowSolver(config.GridWidth, config.GridHeight);
             _planner = new RoutePlanner(config.GridWidth, config.GridHeight);
+            _roadQueues = new RoadQueueNetwork(config.GridWidth, config.GridHeight, config);
+            _carSim = new CarSim(config);
+            _deviceState = new DeviceStateAdapter(this);
+            _signalGate = new SignalGateAdapter(this);
+            _carCongestion = new CongestionLevel[config.GridWidth * config.GridHeight];
             _arrivals = new ArrivalEmitter(config.GridWidth, config.GridHeight);
             _bursts = new BurstDetector(config.GridWidth, config.GridHeight);
             _congestion = new CongestionNotifier(config.GridWidth, config.GridHeight);
             _events = new SimEventBuffer(hub);   // 계산 중 발행 금지 — 큐/Drain으로 재진입 차단
+        }
+
+        private sealed class DeviceStateAdapter : IDeviceState
+        {
+            private readonly SimEngine _engine;
+            public DeviceStateAdapter(SimEngine engine) => _engine = engine;
+            public bool IsRoundabout(Vector2Int tile) => _engine._roundaboutSet.Contains(tile);
+            public bool IsOverpass(Vector2Int tile) => _engine._overpassSet.Contains(tile);
+            public RoadAxis PriorityAxis(Vector2Int tile)
+            {
+                if (_engine._priorityDirs.TryGetValue(tile, out Axis axis))
+                    return axis == Axis.Horizontal ? RoadAxis.Horizontal : RoadAxis.Vertical;
+                return RoadAxis.None;
+            }
+            public Vector2Int OnewayDir(Vector2Int tile) =>
+                _engine._onewayDirs.TryGetValue(tile, out Vector2Int direction)
+                    ? direction
+                    : Vector2Int.zero;
+            public bool IsTurnAllowed(Vector2Int tile, Dir entry, Dir exit)
+            {
+                if (!_engine._turnSigns.TryGetValue(tile, out TurnMode mode)) return true;
+                Dir allowed = mode == TurnMode.LeftOnly
+                    ? (Dir)(((int)entry + 3) % 4)
+                    : (Dir)(((int)entry + 1) % 4);
+                return exit == allowed;
+            }
+        }
+
+        private sealed class SignalGateAdapter : ISignalGate
+        {
+            private readonly SimEngine _engine;
+            public SignalGateAdapter(SimEngine engine) => _engine = engine;
+            public bool IsServiceOpen(Vector2Int tile, Dir entryDir, int tick) =>
+                _engine.IsSignalGreen(tile, entryDir == Dir.E || entryDir == Dir.W);
         }
 
         // SimConfig 런타임 재주입 seam(스펙 2026-07-12) — 정책 서비스(진우) 창구.
@@ -114,6 +160,8 @@ namespace CityFlow.Sim
             // ponytail: 캡에 걸린 잔여 _acc는 다음 프레임들로 이월(백로그). 폭주보단 지연 선택.
         }
 
+        public void SetGameHour(float gameHour) => _gameHour = Mathf.Repeat(gameHour, 24f);
+
         // 고정 0.1s 시뮬 한 칸. 순서가 곧 파이프라인(blueprint §2 Step).
         void Step()
         {
@@ -127,7 +175,28 @@ namespace CityFlow.Sim
                 _demand.Reassign(_grid, _network);            // 도달성(같은 섬) 우선 배정
                 RebuildSignals();                              // 교차로 재감지(살아남은 신호 오프셋 보존)
                 _planner.Plan(_demand, _network, _grid, _config, _onewayDirs, _turnSigns);   // 혼잡 인지 증분 배정(경로 테이블) + 일방통행 간선 필터 + 턴 제한 상태 확장(조회만)
+                if (_config.UseCarSim)
+                {
+                    _roadQueues.RebuildTopology(_grid, _deviceState);
+                    _carSim.Rebuild(_demand, _planner, _roadQueues);
+                }
                 _grid.ClearTopologyDirty();
+            }
+
+            if (_config.UseCarSim)
+            {
+                StepResult carResult = _carSim.Step(_gameHour, _roadQueues, _events, _signalGate, StepCount);
+                float jamRatio = ScanCarCongestion();
+                _stats.UpdateCarSim(
+                    _gameHour,
+                    carResult.Arrivals,
+                    _carSim.CarCount,
+                    _carSim.LastStepJumped,
+                    jamRatio,
+                    _config);
+                PublishStabilityIfChanged();
+                _events.Drain();
+                return;
             }
 
             // ① 수요→세그먼트 흐름 배정 (러시아워 맥동 배율 반영 — 기획 §1 '수요의 맥동')
@@ -139,12 +208,44 @@ namespace CityFlow.Sim
             _stats.Update(_solver, _demand, _config);     // ⑤ 안정도 집계
             // ⑤' 안정도가 바뀐 틱만 이벤트로(매 틱 스팸 방지 — 혼잡 diff와 같은 철학).
             // Update 뒤에 체크해야 첫 틱·복원 직후에도 이번 틱의 진짜 값이 나간다.
-            if (Mathf.Abs(_stats.Stability01 - _lastStability) > 0.001f)
-            {
-                _lastStability = _stats.Stability01;
-                _events.QueueStability(new StabilityEvent(_stats.Stability01));
-            }
+            PublishStabilityIfChanged();
             _events.Drain();                              // ⑥ 모인 이벤트 일괄 발행 (항상 마지막!)
+        }
+
+        private float ScanCarCongestion()
+        {
+            int jammed = 0;
+            int roads = _grid.RoadTileCount;
+            for (int y = 0; y < _grid.Height; y++)
+            for (int x = 0; x < _grid.Width; x++)
+            {
+                var tile = new Vector2Int(x, y);
+                if (_grid.GetTile(tile) != TileType.Road) continue;
+                float occupancy = _roadQueues.MaxOccupancy01(tile);
+                CongestionLevel level = CongestionForOccupancy(occupancy, _config);
+                int index = y * _grid.Width + x;
+                if (_carCongestion[index] != level)
+                {
+                    _carCongestion[index] = level;
+                    _events.QueueCongestion(new CongestionEvent(tile, level));
+                }
+                if (level == CongestionLevel.Jam) jammed++;
+            }
+            return roads <= 0 ? 0f : (float)jammed / roads;
+        }
+
+        internal static CongestionLevel CongestionForOccupancy(float occupancy, in SimConfig cfg) =>
+            occupancy >= cfg.QueueJamRatio
+                ? CongestionLevel.Jam
+                : occupancy >= cfg.QueueSlowRatio
+                    ? CongestionLevel.Slow
+                    : CongestionLevel.Free;
+
+        private void PublishStabilityIfChanged()
+        {
+            if (Mathf.Abs(_stats.Stability01 - _lastStability) <= 0.001f) return;
+            _lastStability = _stats.Stability01;
+            _events.QueueStability(new StabilityEvent(_stats.Stability01));
         }
 
         // 신호 재구축 단일 창구: 자동 = 전 교차로 스캔 / 배치 = 배치 목록(비교차로는 먼저 소멸).
@@ -204,6 +305,20 @@ namespace CityFlow.Sim
                 return 0.0;
             }
 
+            if (_config.UseCarSim)
+            {
+                EnsureCarTopologyCurrent();
+                double carCapSeconds = Math.Max(0.0, _config.OfflineCapHours * 3600.0);
+                double carCapped = Math.Min(elapsedSeconds, carCapSeconds);
+                double daySeconds = Math.Max(0.0001, _config.DayLengthSeconds);
+                double trips = carCapped / daySeconds * _carSim.CarCount;
+                long carCoins = (long)Math.Floor(
+                    trips * Math.Max(0, _config.CoinPerTrip) * _stats.TripSuccessRate);
+                _events.QueueSettlement(new SettlementEvent(carCapped / 60.0, carCoins));
+                _events.Drain();
+                return carCapped;
+            }
+
             // 마지막 배치가 아직 시뮬에 반영 전이면 반영부터(정산은 최신 도시 기준).
             if (_grid.TopologyDirty)
             {
@@ -227,6 +342,17 @@ namespace CityFlow.Sim
             _events.QueueSettlement(new SettlementEvent(capped / 60.0, coins));
             _events.Drain();
             return capped;
+        }
+
+        private void EnsureCarTopologyCurrent()
+        {
+            if (!_grid.TopologyDirty) return;
+            _demand.Reassign(_grid, _network);
+            RebuildSignals();
+            _planner.Plan(_demand, _network, _grid, _config, _onewayDirs, _turnSigns);
+            _roadQueues.RebuildTopology(_grid, _deviceState);
+            _carSim.Rebuild(_demand, _planner, _roadQueues);
+            _grid.ClearTopologyDirty();
         }
 
         // 도로 예산제(스펙 2026-07-17, 기획 결정 환): 도로 타일 스톡이 유효 캡에 닿으면 신규 도로 배치 금지.
@@ -285,7 +411,8 @@ namespace CityFlow.Sim
         public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _solver.Routes;
         public IReadOnlyList<Vector2Int> ActiveRouteSources => _solver.RouteSources;
         public IReadOnlyList<Vector2Int> ActiveRouteSinks => _solver.RouteSinks;
-        public int ActiveVehicleCount => _solver.Routes.Count;
+        public int ActiveVehicleCount => _config.UseCarSim ? _carSim.CarCount : _solver.Routes.Count;
+        public CarSnapshot GetCarSnapshot(int index) => _carSim.GetCar(index);
 
         // 도로 예산제(스펙 2026-07-17): UI 카운터·배치 가드 공용. RoadTileCount는 TopologyVersion 캐시(무비용).
         public int RoadTileCount => _grid.RoadTileCount;
@@ -407,6 +534,7 @@ namespace CityFlow.Sim
             int idx = _placedRoundabouts.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
             if (idx < 0) _placedRoundabouts.Add(tile); else _placedRoundabouts.Insert(idx, tile);
             _roundaboutSet.Add(tile);
+            if (_config.UseCarSim) _grid.MarkTopologyDirty();
             return true;
         }
 
@@ -414,6 +542,7 @@ namespace CityFlow.Sim
         {
             if (_config.AutoDetectSignals || !_roundaboutSet.Remove(tile)) return false;
             _placedRoundabouts.Remove(tile);
+            if (_config.UseCarSim) _grid.MarkTopologyDirty();
             return true;
         }
 
@@ -434,6 +563,7 @@ namespace CityFlow.Sim
             int idx = _placedOverpasses.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
             if (idx < 0) _placedOverpasses.Add(tile); else _placedOverpasses.Insert(idx, tile);
             _overpassSet.Add(tile);
+            if (_config.UseCarSim) _grid.MarkTopologyDirty();
             return true;
         }
 
@@ -441,6 +571,7 @@ namespace CityFlow.Sim
         {
             if (_config.AutoDetectSignals || !_overpassSet.Remove(tile)) return false;
             _placedOverpasses.Remove(tile);
+            if (_config.UseCarSim) _grid.MarkTopologyDirty();
             return true;
         }
 
@@ -464,13 +595,15 @@ namespace CityFlow.Sim
             int idx = _placedPriorityRoads.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
             if (idx < 0) _placedPriorityRoads.Add(tile); else _placedPriorityRoads.Insert(idx, tile);
             _priorityDirs[tile] = mainAxis;
-            return true;                          // MarkTopologyDirty 안 함(로터리 규약 — 라우팅 무관)
+            if (_config.UseCarSim) _grid.MarkTopologyDirty();
+            return true; // 유량은 무관, CarSim은 공유 예산 캡처를 갱신해야 하므로 스위치 on에서만 dirty.
         }
 
         public bool TryRemovePriorityRoad(Vector2Int tile)
         {
             if (_config.AutoDetectSignals || !_priorityDirs.Remove(tile)) return false;
             _placedPriorityRoads.Remove(tile);
+            if (_config.UseCarSim) _grid.MarkTopologyDirty();
             return true;
         }
 
@@ -697,7 +830,21 @@ namespace CityFlow.Sim
                 priorityRoads[i] = new PriorityRoadSaveData { X = t.x, Y = t.y, Axis = (int)_priorityDirs[t] };
             }
 
-            return new SimSaveData { PlacedTiles = tiles.ToArray(), SignalOffsets = signals.ToArray(), Roundabouts = roundabouts, Overpasses = overpasses, Oneways = oneways, TurnSigns = turnSigns, PriorityRoads = priorityRoads, RoadCapacityPurchases = _roadCapacityPurchases };
+            return new SimSaveData
+            {
+                PlacedTiles = tiles.ToArray(),
+                SignalOffsets = signals.ToArray(),
+                Roundabouts = roundabouts,
+                Overpasses = overpasses,
+                Oneways = oneways,
+                TurnSigns = turnSigns,
+                PriorityRoads = priorityRoads,
+                RoadCapacityPurchases = _roadCapacityPurchases,
+                HasCarSimStats = _config.UseCarSim,
+                CarTripSuccessRate = _stats.TripSuccessRate,
+                CarDayArrivalCount = _stats.DayArrivalCount,
+                CarSkipCurrentDay = _stats.SkipCurrentDay,
+            };
         }
 
         // 주의: _overrideReadyAt은 복원해도 유지(의도) — 세이브 로드로 쿨다운을 리셋하는 악용 방지.
@@ -711,6 +858,12 @@ namespace CityFlow.Sim
             _solver.ClearAllPendingRewards();   // 이전 도시의 유령 장부가 새 도시에서 터지는 것 방지
             _arrivals.ClearAll();   // 이월 소수도 유령 장부의 일종(감사 2026-07-12)
             _bursts.ClearAll();     // jam 히스테리시스·쿨다운도 이전 도시 잔재
+            _roadQueues.RemoveAllCars();
+            _stats.RestoreCarSim(
+                snapshot.CarTripSuccessRate,
+                snapshot.CarDayArrivalCount,
+                snapshot.CarSkipCurrentDay,
+                snapshot.HasCarSimStats);
             // 확장권 구매횟수 복원(스펙 §2단계 — 로드 시 캡 리셋 금지). 구세이브는 필드 부재 = 0(미구매) 우아 복원.
             _roadCapacityPurchases = Math.Max(0, snapshot.RoadCapacityPurchases);
             if (snapshot.PlacedTiles != null)
@@ -831,9 +984,17 @@ namespace CityFlow.Sim
         public float Stability01 => _stats.Stability01;
         // OOB는 예외가 아니라 중립값 — 뷰의 화면 밖 클릭/스캔이 트러스트 경계(감사 2026-07-12).
         public CongestionLevel GetCongestion(Vector2Int tile) =>
-            _grid.InBounds(tile) ? _solver.GetCongestion(tile) : CongestionLevel.Free;
+            _grid.InBounds(tile)
+                ? (_config.UseCarSim
+                    ? _carCongestion[tile.y * _grid.Width + tile.x]
+                    : _solver.GetCongestion(tile))
+                : CongestionLevel.Free;
         public float GetDensity01(Vector2Int tile) =>
-            _grid.InBounds(tile) ? Mathf.Clamp01(_solver.GetRatio(tile)) : 0f;
+            _grid.InBounds(tile)
+                ? (_config.UseCarSim
+                    ? _roadQueues.MaxOccupancy01(tile)
+                    : Mathf.Clamp01(_solver.GetRatio(tile)))
+                : 0f;
         public TileType GetTileType(Vector2Int tile) =>
             _grid.InBounds(tile) ? _grid.GetTile(tile) : TileType.Empty;
     }

@@ -35,6 +35,7 @@ namespace CityFlow.Sim
         private bool _needsSnap;
 
         public int CarCount => _scheduler.Cars.Count;
+        internal bool LastStepJumped { get; private set; }
 
         public CarSim(in SimConfig cfg)
         {
@@ -88,6 +89,14 @@ namespace CityFlow.Sim
         }
 
         public StepResult Step(float gameHour, RoadQueueNetwork net, SimEventBuffer events)
+            => Step(gameHour, net, events, null, 0);
+
+        internal StepResult Step(
+            float gameHour,
+            RoadQueueNetwork net,
+            SimEventBuffer events,
+            ISignalGate signalGate,
+            int tick)
         {
             if (net == null) throw new ArgumentNullException(nameof(net));
             if (events == null) throw new ArgumentNullException(nameof(events));
@@ -95,6 +104,7 @@ namespace CityFlow.Sim
 
             bool jumped = _hasLastHour
                 && Mathf.Repeat(gameHour - _lastHour, 24f) > JumpThresholdHours;
+            LastStepJumped = jumped;
             if (_needsSnap || jumped)
             {
                 net.RemoveAllCars();
@@ -108,7 +118,7 @@ namespace CityFlow.Sim
 
             _scheduler.UpdateDepartures(gameHour);
             TryEnqueueDepartures(net);
-            StepResult result = net.Step(this);
+            StepResult result = net.Step(this, signalGate, tick);
             for (int i = 0; i < net.ArrivalCount; i++)
             {
                 ArrivalRecord arrival = net.GetArrival(i);

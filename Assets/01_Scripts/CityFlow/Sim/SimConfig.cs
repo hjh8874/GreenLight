@@ -34,6 +34,9 @@ namespace CityFlow.Sim
         public float EveningEndHour;
         public int OfficeParkingSlots;
         public int MaxSimCars;
+        public bool UseCarSim;
+        public float QueueSlowRatio;
+        public float QueueJamRatio;
 
         // ── 혼잡 임계 (ratio = flow/capacity) ────
         public float SlowRatio;         // <0.7 Free / 0.7~1.0 Slow / >1.0 Jam
@@ -141,6 +144,9 @@ namespace CityFlow.Sim
             EveningEndHour = 21f,
             OfficeParkingSlots = 6,
             MaxSimCars = 96,
+            UseCarSim = false,
+            QueueSlowRatio = 0.5f,
+            QueueJamRatio = 0.99f,
             SlowRatio = 0.7f,
             JamRatio = 1.0f,
             EfficiencyMin = 0.2f,
