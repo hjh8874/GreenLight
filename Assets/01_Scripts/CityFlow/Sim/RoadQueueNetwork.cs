@@ -3,6 +3,22 @@ using UnityEngine;
 
 namespace CityFlow.Sim
 {
+    internal interface ICarRouteProvider
+    {
+        bool TryGetNextTile(
+            int carId,
+            Vector2Int current,
+            out Vector2Int next,
+            out Dir entryDirAtNext);
+
+        bool IsDestination(int carId, Vector2Int tile);
+    }
+
+    public struct StepResult
+    {
+        public int Arrivals;
+    }
+
     public enum Dir
     {
         N = 0,
@@ -18,7 +34,9 @@ namespace CityFlow.Sim
         private readonly int _width;
         private readonly int _height;
         private readonly int _capacity;
+        private readonly int _servicePerTick;
         private readonly int[] _cars;
+        private readonly bool[] _movedThisTick;
         private readonly int[] _heads;
         private readonly int[] _counts;
 
@@ -37,9 +55,11 @@ namespace CityFlow.Sim
             _width = width;
             _height = height;
             _capacity = Math.Max(1, cfg.QueueCapacityPerTile);
+            _servicePerTick = Math.Max(1, cfg.QueueServicePerTick);
 
             int queueCount = checked(width * height * DirectionCount);
             _cars = new int[checked(queueCount * _capacity)];
+            _movedThisTick = new bool[_cars.Length];
             _heads = new int[queueCount];
             _counts = new int[queueCount];
 
@@ -59,6 +79,15 @@ namespace CityFlow.Sim
 
         public bool TryEnqueue(Vector2Int tile, Dir entryDir, int carId)
         {
+            return TryEnqueue(tile, entryDir, carId, movedThisTick: false);
+        }
+
+        private bool TryEnqueue(
+            Vector2Int tile,
+            Dir entryDir,
+            int carId,
+            bool movedThisTick)
+        {
             if (carId < 0 || !TryQueueIndex(tile, entryDir, out int queueIndex))
             {
                 return false;
@@ -71,7 +100,9 @@ namespace CityFlow.Sim
             }
 
             int tail = (_heads[queueIndex] + count) % _capacity;
-            _cars[(queueIndex * _capacity) + tail] = carId;
+            int slot = (queueIndex * _capacity) + tail;
+            _cars[slot] = carId;
+            _movedThisTick[slot] = movedThisTick;
             _counts[queueIndex] = count + 1;
             return true;
         }
@@ -100,9 +131,69 @@ namespace CityFlow.Sim
             return (float)maxCount / _capacity;
         }
 
-        public void Step()
+        public StepResult Step(ICarRouteProvider routes)
         {
-            // Task 2에서 ICarRouteProvider를 받아 FIFO 전이를 수행한다.
+            if (routes == null)
+            {
+                throw new ArgumentNullException(nameof(routes));
+            }
+
+            Array.Clear(_movedThisTick, 0, _movedThisTick.Length);
+            StepResult result = default;
+
+            int tileCount = _width * _height;
+            for (int tileIndex = 0; tileIndex < tileCount; tileIndex++)
+            {
+                Vector2Int tile = new Vector2Int(
+                    tileIndex % _width,
+                    tileIndex / _width);
+                int firstQueue = tileIndex * DirectionCount;
+
+                for (int direction = 0; direction < DirectionCount; direction++)
+                {
+                    int queueIndex = firstQueue + direction;
+                    int serviced = 0;
+
+                    while (serviced < _servicePerTick
+                        && _counts[queueIndex] > 0)
+                    {
+                        int headSlot = HeadSlot(queueIndex);
+                        if (_movedThisTick[headSlot])
+                        {
+                            break;
+                        }
+
+                        int carId = _cars[headSlot];
+                        if (routes.IsDestination(carId, tile))
+                        {
+                            Dequeue(queueIndex);
+                            result.Arrivals++;
+                            serviced++;
+                            continue;
+                        }
+
+                        if (!routes.TryGetNextTile(
+                                carId,
+                                tile,
+                                out Vector2Int next,
+                                out Dir entryDirAtNext)
+                            || !TryEnqueue(
+                                next,
+                                entryDirAtNext,
+                                carId,
+                                movedThisTick: true))
+                        {
+                            // FIFO: 머리가 막히면 같은 큐의 뒤차도 이번 틱 대기한다.
+                            break;
+                        }
+
+                        Dequeue(queueIndex);
+                        serviced++;
+                    }
+                }
+            }
+
+            return result;
         }
 
         public int CarAtHead(Vector2Int tile, Dir entryDir)
@@ -114,6 +205,18 @@ namespace CityFlow.Sim
             }
 
             return _cars[(queueIndex * _capacity) + _heads[queueIndex]];
+        }
+
+        private int HeadSlot(int queueIndex) =>
+            (queueIndex * _capacity) + _heads[queueIndex];
+
+        private void Dequeue(int queueIndex)
+        {
+            int slot = HeadSlot(queueIndex);
+            _cars[slot] = -1;
+            _movedThisTick[slot] = false;
+            _heads[queueIndex] = (_heads[queueIndex] + 1) % _capacity;
+            _counts[queueIndex]--;
         }
 
         private bool TryQueueIndex(
