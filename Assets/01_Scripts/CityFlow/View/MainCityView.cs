@@ -57,10 +57,6 @@ namespace CityFlow.View
         [SerializeField, Range(0.66f, 0.95f)] private float roundaboutTransitionTiles = 0.66f; // 전이 곡선 길이(타일) — 클수록 진입/이탈 완만. 하한 0.66 = 섬 스침 방지 실측(√(span²+λ²)>0.62, RoutePolyline.cs:316,392)
 
         [Header("Commute (2차 빌드)")]
-        [SerializeField, Range(1, 12)] private int officeSlots = 6;
-        [SerializeField, Range(1, 2)] private int homeSlots = 1;
-        [SerializeField] private Vector2 morningWindow = new Vector2(6f, 10f);
-        [SerializeField] private Vector2 eveningWindow = new Vector2(17f, 21f);
         [SerializeField, Range(0.1f, 1f)] private float parkingApproachSpeedMul = 0.4f;
         [SerializeField] private float parkingSlotInset = 0.32f;   // 건물 타일 내 칸 오프셋(타일 비율)
         [SerializeField, Range(0f, 1f)] private float parkingSettleSeconds = 0.3f;   // 도착 후 슬롯 정착 정지 안무(초)
@@ -107,6 +103,7 @@ namespace CityFlow.View
 
         // 통근 상태(유일 경로). 위상 리빌드 시 재구성된다.
         private readonly CommuteScheduler commuteScheduler = new();
+        private readonly List<CommuteCar> carSimMirrors = new();
         private readonly Dictionary<int, BakedRoutePair> bakedRoutes = new();   // 키 = RouteIndex, 해시 변경 시 재베이크
         private readonly Dictionary<CommuteCar, RouteVehicle> carVehicles = new();
         private readonly Dictionary<Vector2Int, List<GameObject>> parkingSlotVisuals = new();
@@ -1488,13 +1485,30 @@ namespace CityFlow.View
                 return;
             }
 
-            EnsureVehicleCount(maxMovingVehicles);
+            EnsureVehicleCount(simEngine.UseCarSim ? simEngine.CarSimMaxCars : maxMovingVehicles);
             SyncCommutePopulation();
+
+            if (simEngine.UseCarSim)
+            {
+                for (int i = 0; i < carSimMirrors.Count; i++)
+                {
+                    CommuteCar car = carSimMirrors[i];
+                    CarSnapshot snapshot = simEngine.GetCarSnapshot(i);
+                    car.State = snapshot.State;
+                    if (carVehicles.TryGetValue(car, out RouteVehicle vehicle)
+                        && vehicle != null
+                        && vehicle.Object.activeSelf)
+                    {
+                        MoveCarSimVehicle(car, snapshot, vehicle);
+                    }
+                }
+                return;
+            }
 
             float hour = AdvanceGameHour();
             commuteScheduler.UpdateDepartures(hour);
 
-            IReadOnlyList<CommuteCar> cars = commuteScheduler.Cars;
+            IReadOnlyList<CommuteCar> cars = CurrentCommuteCars();
             for (int i = 0; i < cars.Count; i++)
             {
                 CommuteCar car = cars[i];
@@ -1516,7 +1530,10 @@ namespace CityFlow.View
         private void SyncCommutePopulation()
         {
             IReadOnlyList<List<Vector2Int>> routes = simEngine.ActiveRoutes;
-            int hash = ComputeCommuteRoutesHash(routes, simEngine.ActiveRouteSources, simEngine.ActiveRouteSinks);
+            if (simEngine.UseCarSim) SyncCarSimMirrors();
+            int hash = simEngine.UseCarSim
+                ? ComputeCarSimRoutesHash(routes)
+                : ComputeCommuteRoutesHash(routes, simEngine.ActiveRouteSources, simEngine.ActiveRouteSinks);
             int tuningHash = ComputeRoundaboutTuningHash();
             if (commuteRoutesBuilt && hash == commuteRoutesHash)
             {
@@ -1534,6 +1551,49 @@ namespace CityFlow.View
             commuteTuningHash = tuningHash;
             commuteRoutesBuilt = true;
             RebuildCommute(routes);
+        }
+
+        private void SyncCarSimMirrors()
+        {
+            int count = simEngine.ActiveVehicleCount;
+            while (carSimMirrors.Count < count) carSimMirrors.Add(new CommuteCar());
+            while (carSimMirrors.Count > count) carSimMirrors.RemoveAt(carSimMirrors.Count - 1);
+            for (int i = 0; i < count; i++)
+            {
+                CarSnapshot snapshot = simEngine.GetCarSnapshot(i);
+                CommuteCar car = carSimMirrors[i];
+                car.Home = snapshot.Home;
+                car.Work = snapshot.Work;
+                car.RouteIndex = snapshot.RouteIndex;
+                car.HomeSlot = i % simEngine.CarSimHomeParkingSlots;
+                car.WorkSlot = i % simEngine.CarSimOfficeParkingSlots;
+                car.State = snapshot.State;
+            }
+        }
+
+        private int ComputeCarSimRoutesHash(IReadOnlyList<List<Vector2Int>> routes)
+        {
+            unchecked
+            {
+                int hash = 17;
+                for (int i = 0; i < carSimMirrors.Count; i++)
+                {
+                    CommuteCar car = carSimMirrors[i];
+                    hash = hash * 31 + car.RouteIndex;
+                    hash = hash * 31 + car.Home.GetHashCode();
+                    hash = hash * 31 + car.Work.GetHashCode();
+                    List<Vector2Int> route = car.RouteIndex >= 0 && car.RouteIndex < routes.Count
+                        ? routes[car.RouteIndex]
+                        : null;
+                    hash = hash * 31 + (route == null ? -1 : ComputeDisplayRouteHash(route));
+                    List<Vector2Int> returnRoute = car.RouteIndex >= 0
+                        && car.RouteIndex < simEngine.ActiveReturnRoutes.Count
+                        ? simEngine.ActiveReturnRoutes[car.RouteIndex]
+                        : null;
+                    hash = hash * 31 + (returnRoute == null ? -1 : ComputeDisplayRouteHash(returnRoute));
+                }
+                return hash;
+            }
         }
 
         // 로터리 라이브 노브 3종의 해시 — 재생 중 슬라이더 조정 감지용(QA G).
@@ -1557,7 +1617,8 @@ namespace CityFlow.View
                 hash = hash * 31 + routes.Count;
                 for (int i = 0; i < routes.Count; i++)
                 {
-                    hash = hash * 31 + (routes[i].Count > 1 ? ComputeDisplayRouteHash(routes[i]) : routes[i].Count);
+                    List<Vector2Int> route = routes[i];
+                    hash = hash * 31 + (route == null ? -1 : route.Count > 1 ? ComputeDisplayRouteHash(route) : route.Count);
                     if (i < sources.Count)
                     {
                         hash = hash * 31 + sources[i].GetHashCode();
@@ -1587,14 +1648,23 @@ namespace CityFlow.View
                 }
             }
 
-            commuteScheduler.Rebuild(
-                simEngine.ActiveRouteSources, simEngine.ActiveRouteSinks,
-                officeSlots, homeSlots, maxMovingVehicles,
-                morningWindow.x, morningWindow.y, eveningWindow.x, eveningWindow.y);
+            if (!simEngine.UseCarSim)
+            {
+                commuteScheduler.Rebuild(
+                    simEngine.ActiveRouteSources, simEngine.ActiveRouteSinks,
+                    simEngine.CarSimOfficeParkingSlots,
+                    simEngine.CarSimHomeParkingSlots,
+                    maxMovingVehicles,
+                    simEngine.CarSimMorningStartHour,
+                    simEngine.CarSimMorningEndHour,
+                    simEngine.CarSimEveningStartHour,
+                    simEngine.CarSimEveningEndHour);
+            }
 
             BakeAllRoutes(routes);
 
-            commuteScheduler.SnapNewToHour(CurrentGameHour());   // 신규 차만 현재 시각 수렴 — 생존 차 상태 보존(QA A)
+            if (!simEngine.UseCarSim)
+                commuteScheduler.SnapNewToHour(CurrentGameHour());
             SyncCommuteVehicleBindings(previousBakes);
             RebuildParkingVisuals();
         }
@@ -1620,7 +1690,7 @@ namespace CityFlow.View
         private void BakeAllRoutes(IReadOnlyList<List<Vector2Int>> routes)
         {
             bakedRoutes.Clear();
-            IReadOnlyList<CommuteCar> cars = commuteScheduler.Cars;
+            IReadOnlyList<CommuteCar> cars = CurrentCommuteCars();
             for (int i = 0; i < cars.Count; i++)
             {
                 CommuteCar car = cars[i];
@@ -1630,7 +1700,7 @@ namespace CityFlow.View
                 }
 
                 List<Vector2Int> source = routes[car.RouteIndex];
-                if (source.Count <= 1)
+                if (source == null || source.Count <= 1)
                 {
                     continue;
                 }
@@ -1643,11 +1713,23 @@ namespace CityFlow.View
                     continue;
                 }
 
-                Vector3 homeAnchor = GetParkingAnchor(car.Home, outboundTiles[0], car.HomeSlot, homeSlots);
-                Vector3 workAnchor = GetParkingAnchor(car.Work, outboundTiles[outboundTiles.Count - 1], car.WorkSlot, officeSlots);
+                Vector3 homeAnchor = GetParkingAnchor(car.Home, outboundTiles[0], car.HomeSlot, simEngine.CarSimHomeParkingSlots);
+                Vector3 workAnchor = GetParkingAnchor(car.Work, outboundTiles[outboundTiles.Count - 1], car.WorkSlot, simEngine.CarSimOfficeParkingSlots);
 
-                List<Vector2Int> inboundTiles = new List<Vector2Int>(outboundTiles);
-                inboundTiles.Reverse();   // 방향별 별도 베이크: 역순 타일 + 앵커 스왑(역샘플 금지)
+                List<Vector2Int> inboundTiles;
+                if (simEngine.UseCarSim
+                    && car.RouteIndex < simEngine.ActiveReturnRoutes.Count
+                    && simEngine.ActiveReturnRoutes[car.RouteIndex] != null)
+                {
+                    inboundTiles = new List<Vector2Int>(simEngine.ActiveReturnRoutes[car.RouteIndex].Count);
+                    BuildBridgedRoute(simEngine.ActiveReturnRoutes[car.RouteIndex], inboundTiles);
+                }
+                else
+                {
+                    inboundTiles = new List<Vector2Int>(outboundTiles);
+                    inboundTiles.Reverse();
+                }
+                if (inboundTiles.Count <= 1) continue;
 
                 bakedRoutes[car.RouteIndex] = new BakedRoutePair
                 {
@@ -1658,6 +1740,9 @@ namespace CityFlow.View
                 };
             }
         }
+
+        private IReadOnlyList<CommuteCar> CurrentCommuteCars() =>
+            simEngine != null && simEngine.UseCarSim ? carSimMirrors : commuteScheduler.Cars;
 
         // 출발 스퍼가 도로 차선에 닿는 점 ≈ 첫 도로 세그먼트 시작의 차선 오프셋 위치(베이크 phase 0 포즈).
         private Vector3 ComputeMergePoint(List<Vector2Int> tiles)
@@ -1750,7 +1835,7 @@ namespace CityFlow.View
 
             Color slotColor = Color.Lerp(roadFreeColor, Color.white, 0.35f);   // 도로색 명도업
             HashSet<(Vector2Int, int)> seen = new HashSet<(Vector2Int, int)>();
-            IReadOnlyList<CommuteCar> cars = commuteScheduler.Cars;
+            IReadOnlyList<CommuteCar> cars = CurrentCommuteCars();
             for (int i = 0; i < cars.Count; i++)
             {
                 CommuteCar car = cars[i];
@@ -1810,7 +1895,7 @@ namespace CityFlow.View
         // 총 인구 상한 = 풀 크기 = maxMovingVehicles(리뷰 #7).
         private void SyncCommuteVehicleBindings(Dictionary<CommuteCar, BakedRoutePair> previousBakes)
         {
-            IReadOnlyList<CommuteCar> cars = commuteScheduler.Cars;
+            IReadOnlyList<CommuteCar> cars = CurrentCommuteCars();
             var alive = new HashSet<CommuteCar>();
             for (int i = 0; i < cars.Count; i++)
             {
@@ -1856,7 +1941,7 @@ namespace CityFlow.View
                     {
                         // 이동 중 경로 변경: Distance가 새 폴리라인과 무의미 — 페이드 + 주차로 개별 수렴.
                         SetVehicleRenderersEnabled(vehicle, false);
-                        commuteScheduler.SnapCar(car, CurrentGameHour());
+                        if (!simEngine.UseCarSim) commuteScheduler.SnapCar(car, CurrentGameHour());
                     }
 
                     // 주차 차/경로 불변 이동 차: 무접촉 — 위치·상태 그대로(주차 앵커는 다음 프레임 재계산).
@@ -2008,6 +2093,75 @@ namespace CityFlow.View
 
             vehicle.BrakeOn = on;
             vehicle.BrakeLight.SetActive(on);
+        }
+
+        private void MoveCarSimVehicle(CommuteCar car, CarSnapshot snapshot, RouteVehicle vehicle)
+        {
+            if (!bakedRoutes.TryGetValue(car.RouteIndex, out BakedRoutePair pair))
+            {
+                SetVehicleRenderersEnabled(vehicle, false);
+                return;
+            }
+
+            bool inbound = snapshot.State == CarState.Inbound;
+            bool moving = snapshot.State == CarState.Outbound || inbound;
+            CarState previous = vehicle.LastState;
+            bool hadPrevious = vehicle.HasLastState;
+            if (!moving)
+            {
+                float parkedDistance = snapshot.State == CarState.ParkedWork ? pair.Outbound.Length : 0f;
+                Sample parked = pair.Outbound.SampleAt(parkedDistance);
+                Vector3 parkedPos = hadPrevious
+                    ? Vector3.MoveTowards(vehicle.Pos, parked.Pos, vehicleSpeed * tileSize * Time.deltaTime)
+                    : parked.Pos;
+                vehicle.Object.transform.localPosition = parkedPos;
+                vehicle.Pos = parkedPos;
+                vehicle.Dir = Vector3.zero;
+                vehicle.CurrentSpeed = 0f;
+                vehicle.CurrentTile = snapshot.State == CarState.ParkedWork ? car.Work : car.Home;
+                vehicle.HasCurrentTile = true;
+                vehicle.OnRing = false;
+                SetVehicleRenderersEnabled(vehicle, true);
+                SetBrakeLight(vehicle, false);
+                HideJamMarks(vehicle);
+                if (hadPrevious && previous == CarState.Outbound && snapshot.State == CarState.ParkedWork)
+                    FlushPendingCoinPop(car.Work, vehicle.Object.transform.position);
+                vehicle.LastState = snapshot.State;
+                vehicle.HasLastState = true;
+                car.Distance = parkedDistance;
+                return;
+            }
+
+            RoutePolyline poly = inbound ? pair.Inbound : pair.Outbound;
+            if (!hadPrevious || previous != snapshot.State)
+                car.Distance = 0f;
+            int tileIndex = Mathf.Clamp(snapshot.TileIndex, 0, poly.TileCount - 1);
+            float queueBackoff = Mathf.Max(0, snapshot.QueueSlot) * followGap * tileSize;
+            float targetDistance = snapshot.QueueSlot < 0
+                ? 0f
+                : Mathf.Clamp(poly.DistanceAtTile(tileIndex) - queueBackoff, 0f, poly.Length);
+            car.Distance = Mathf.MoveTowards(
+                car.Distance,
+                targetDistance,
+                vehicleSpeed * vehicle.Style.SpeedMul * tileSize * Time.deltaTime);
+            Sample sample = poly.SampleAt(car.Distance);
+            vehicle.Object.transform.localPosition = sample.Pos;
+            vehicle.Pos = sample.Pos;
+            vehicle.Dir = sample.Dir;
+            vehicle.CurrentSpeed = vehicleSpeed * vehicle.Style.SpeedMul;
+            vehicle.CurrentTile = poly.TileAt(Mathf.Clamp(sample.TileIndex, 0, poly.TileCount - 1));
+            vehicle.HasCurrentTile = true;
+            UpdateRingState(vehicle, poly, sample);
+            if (sample.Dir.sqrMagnitude > 0.001f)
+            {
+                float angle = Mathf.Atan2(sample.Dir.y, sample.Dir.x) * Mathf.Rad2Deg;
+                vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
+            }
+            SetVehicleRenderersEnabled(vehicle, true);
+            SetBrakeLight(vehicle, targetDistance <= car.Distance + 0.001f);
+            HideJamMarks(vehicle);
+            vehicle.LastState = snapshot.State;
+            vehicle.HasLastState = true;
         }
 
         private void MoveCommuteVehicle(CommuteCar car, RouteVehicle vehicle)
@@ -2599,6 +2753,7 @@ namespace CityFlow.View
             carVehicles.Clear();
             DestroyParkingVisuals();
             commuteScheduler.Clear();   // 복원 = sticky 없이 전원 신규 → SnapNewToHour가 전체 수렴
+            carSimMirrors.Clear();
             commuteRoutesBuilt = false;
             commuteRoutesHash = 0;
             commuteTuningHash = 0;

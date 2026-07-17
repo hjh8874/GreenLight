@@ -178,6 +178,20 @@ namespace CityFlow.ViewKit
 
         public Vector2Int TileAt(int tileIndex) => _tiles[tileIndex];
 
+        public float DistanceAtTile(int tileIndex)
+        {
+            int target = Mathf.Clamp(tileIndex, 0, Mathf.Max(0, _tiles.Count - 1));
+            if (target >= _tiles.Count - 1)
+            {
+                for (int i = _vertices.Length - 1; i >= 0; i--)
+                    if (!_vertices[i].Spur) return _cumulative[i];
+                return Length;
+            }
+            for (int i = 0; i < _vertices.Length; i++)
+                if (!_vertices[i].Spur && _vertices[i].Seg >= target) return _cumulative[i];
+            return Length;
+        }
+
         // MainCityView.EvaluateVehiclePose(L1646-1689) + 로터리 궤도 오버라이드(L1419-1439,
         // TryRoundaboutOrbit L1794-1817)의 순수 재현.
         private static void PoseAt(

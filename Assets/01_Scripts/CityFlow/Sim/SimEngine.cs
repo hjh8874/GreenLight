@@ -408,7 +408,17 @@ namespace CityFlow.Sim
 
         // 뷰 연동: 엔진이 이번 틱 계산한 실제 통근 경로들. 차를 이 위에 그리면 라우팅을 눈으로 검증.
         // ponytail: 지금은 디버그 뷰용 public. 진짜 View 붙을 때 Contracts로 승격.
-        public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _solver.Routes;
+        public bool UseCarSim => _config.UseCarSim;
+        public int CarSimOfficeParkingSlots => Math.Max(1, _config.OfficeParkingSlots);
+        public int CarSimHomeParkingSlots => Math.Max(1, _config.CarsPerHouse);
+        public int CarSimMaxCars => Math.Max(1, _config.MaxSimCars);
+        public float CarSimMorningStartHour => _config.MorningStartHour;
+        public float CarSimMorningEndHour => _config.MorningEndHour;
+        public float CarSimEveningStartHour => _config.EveningStartHour;
+        public float CarSimEveningEndHour => _config.EveningEndHour;
+        public IReadOnlyList<List<Vector2Int>> ActiveRoutes =>
+            _config.UseCarSim ? _planner.CarRoutes : _solver.Routes;
+        public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _planner.ReturnRoutes;
         public IReadOnlyList<Vector2Int> ActiveRouteSources => _solver.RouteSources;
         public IReadOnlyList<Vector2Int> ActiveRouteSinks => _solver.RouteSinks;
         public int ActiveVehicleCount => _config.UseCarSim ? _carSim.CarCount : _solver.Routes.Count;
