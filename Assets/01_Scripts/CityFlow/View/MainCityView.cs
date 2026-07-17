@@ -64,6 +64,7 @@ namespace CityFlow.View
         [SerializeField, Range(0.1f, 1f)] private float parkingApproachSpeedMul = 0.4f;
         [SerializeField] private float parkingSlotInset = 0.32f;   // 건물 타일 내 칸 오프셋(타일 비율)
         [SerializeField, Range(0f, 1f)] private float parkingSettleSeconds = 0.3f;   // 도착 후 슬롯 정착 정지 안무(초)
+        [SerializeField, Min(0.5f)] private float coinPopFlushSeconds = 5f;   // 코인 팝 버퍼 타임아웃 — 차 도착이 이만큼 없으면 타일 팝으로 방출
 
         [Header("Camera View")]
         [SerializeField, Range(1f, 89f)] private float angledViewDegrees = 35.264f;
@@ -144,6 +145,20 @@ namespace CityFlow.View
         private bool coinPopPoolReady;
         private int coinPopCursor;
 
+        // 코인 팝 버퍼링(라이브 피드백 2026-07-17): ArrivalEvent는 Sim 연속 적분 리듬(누산기 1 돌파마다)이라
+        // 차 도착과 무관하게 발화 — 즉시 팝은 "틱마다 그냥 올라가는 +1"로 보인다. 그래서 sink 타일별로
+        // 코인을 적립만 하고, 방출은 (1) 통근 차 도착 순간 그 차 위에서, (2) 타임아웃 시 타일 중심에서,
+        // (3) 위상 리빌드 시 전액 타일 팝으로. 금액 보존 불변식: 발생한 Coins 합 = 팝 표시 합.
+        // 키는 제거하지 않고 Coins=0으로 리셋(sink 수 상한의 소형 딕셔너리 — 프레임 순회 중 구조 변경 회피).
+        private struct PendingCoinPop
+        {
+            public int Coins;
+            public float FirstQueuedTime;   // 마지막 방출 이후 첫 적립 시각 — 타임아웃 기준
+        }
+
+        private readonly Dictionary<Vector2Int, PendingCoinPop> pendingCoinPops = new();
+        private readonly List<Vector2Int> coinPopFlushBuffer = new();   // 타임아웃/리빌드 방출용 재사용 버퍼(순회 중 딕셔너리 쓰기 회피)
+
         public GameObject FlowBurstPrefab => burstPrefab;
         public Transform EffectRoot => effectRoot;
         public float TileSize => tileSize;
@@ -217,10 +232,6 @@ namespace CityFlow.View
             public bool Settling;          // 정착 안무 진행 플래그(도착 프레임 재진입 게이트)
             public GameObject BrakeLight;  // 후방 제동등(기본 off) — CreateDetailCube 패턴
             public bool BrakeOn;           // 제동등 상태 캐시(매 프레임 SetActive 금지)
-
-            // 도착 코인 팝 앵커링(ArrivalEvent 시각 앵커링): 정착 진입 시(도착 순간) Time.time 스탬프.
-            // 판단 없음 — OnArrival이 "최근 도착" 후보를 고를 때만 읽는다.
-            public float LastArrivedTime = float.NegativeInfinity;
         }
 
         // 도착 코인 팝: 소형 텍스트 마크 풀(고정 크기, 러시아워 다발 대비 — 매 도착마다 Instantiate 금지).
@@ -1560,6 +1571,8 @@ namespace CityFlow.View
 
         private void RebuildCommute(IReadOnlyList<List<Vector2Int>> routes)
         {
+            FlushAllPendingCoinPops();   // 위상 변경 전 대기 코인 전액 타일 팝 — 유실 금지(금액 보존 불변식)
+
             // sticky(QA A): 리빌드 전 각 차의 구 폴리라인을 붙잡아 "경로 타일이 실제로 바뀐 차"만 골라낸다.
             var previousBakes = new Dictionary<CommuteCar, BakedRoutePair>(carVehicles.Count);
             foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
@@ -2199,7 +2212,14 @@ namespace CityFlow.View
                 SetBrakeLight(vehicle, false);
                 vehicle.Settling = true;
                 vehicle.SettleHold = parkingSettleSeconds;
-                vehicle.LastArrivedTime = Time.time;   // 도착 코인 팝 앵커링용 스탬프(연출 전용, 판단 없음)
+
+                // 코인 팝 버퍼 방출: 출근 도착(sink=Work) 순간, 적립된 코인을 이 차 위에서 몰아서 팝.
+                // 연출 전용 — Sim 금액/타이밍 무접촉, pending 0이면 팝 없음.
+                if (!inbound)
+                {
+                    FlushPendingCoinPop(car.Work, vehicle.Object.transform.position);
+                }
+
                 return;
             }
 
@@ -2754,54 +2774,67 @@ namespace CityFlow.View
             RefreshSignals();
         }
 
-        // 도착 코인 팝(항목 A): Sim이 금액·타이밍을 결정(ArrivalEvent 그대로) — 뷰는 팝을 그릴 위치만 고른다.
-        // 수익·이벤트에 뷰 상태 역류 없음(읽기 전용 앵커 선택).
+        // 도착 코인 팝(항목 A, 버퍼링 개정): Sim이 금액·타이밍을 결정(ArrivalEvent 그대로) — 뷰는 표시
+        // 시점·위치만 고른다. 이벤트는 적립만 하고 방출은 차 도착/타임아웃/리빌드가 담당(HUD 숫자는 기존대로 틱 갱신).
         private void OnArrival(ArrivalEvent e)
         {
-            Vector3 anchor = GetArrivalPopAnchor(e.Destination);
-            SpawnCoinPop(anchor, e.Coins);
+            pendingCoinPops.TryGetValue(e.Destination, out PendingCoinPop pending);
+            pendingCoinPops[e.Destination] = new PendingCoinPop
+            {
+                Coins = pending.Coins + e.Coins,
+                FirstQueuedTime = pending.Coins > 0 ? pending.FirstQueuedTime : Time.time
+            };
         }
 
-        // 팝 위치 선택: e.Destination에 최근 도착(정착 중 포함)했거나 주차 중인 통근 차가 있으면 그 차 위,
-        // 없으면 타일 중심 폴백. 경제 이벤트(FlowSolver)와 통근 연출(CommuteScheduler)은 독립 시스템이라
-        // 항상 매칭되는 차가 있진 않다 — 폴백은 정상 경로다.
-        private Vector3 GetArrivalPopAnchor(Vector2Int tile)
+        // 타일의 적립 코인을 전액 팝으로 방출 후 0으로. pending 없으면 no-op(금액 보존 불변식의 방출 단일 경로).
+        private void FlushPendingCoinPop(Vector2Int tile, Vector3 worldPos)
         {
-            const float RecentArrivalWindowSeconds = 1f;
-
-            RouteVehicle best = null;
-            int bestPriority = int.MinValue;
-
-            foreach (KeyValuePair<CommuteCar, RouteVehicle> pair in carVehicles)
+            if (!pendingCoinPops.TryGetValue(tile, out PendingCoinPop pending) || pending.Coins <= 0)
             {
-                CommuteCar car = pair.Key;
-                RouteVehicle vehicle = pair.Value;
-                if (!vehicle.HasCurrentTile || vehicle.CurrentTile != tile)
-                {
-                    continue;
-                }
+                return;
+            }
 
-                bool settling = vehicle.Settling;
-                bool recentlyArrived = Time.time - vehicle.LastArrivedTime <= RecentArrivalWindowSeconds;
-                bool parkedHere = (car.State == CarState.ParkedHome && car.Home == tile)
-                    || (car.State == CarState.ParkedWork && car.Work == tile);
+            pendingCoinPops[tile] = default;
+            SpawnCoinPop(worldPos, pending.Coins);
+        }
 
-                if (!settling && !recentlyArrived && !parkedHere)
+        // 타임아웃 방출: 차 도착이 coinPopFlushSeconds 동안 없던 타일은 건물 중심 팝 —
+        // 통근 정원(maxCars/슬롯)에서 제외된 수요의 수익도 가시성 유지. 재사용 버퍼로 순회 중 쓰기 회피(할당 0).
+        private void FlushTimedOutCoinPops()
+        {
+            coinPopFlushBuffer.Clear();
+            foreach (KeyValuePair<Vector2Int, PendingCoinPop> pair in pendingCoinPops)
+            {
+                if (pair.Value.Coins > 0 && Time.time - pair.Value.FirstQueuedTime >= coinPopFlushSeconds)
                 {
-                    continue;
-                }
-
-                int priority = settling ? 2 : recentlyArrived ? 1 : 0;
-                if (best == null || priority > bestPriority)
-                {
-                    best = vehicle;
-                    bestPriority = priority;
+                    coinPopFlushBuffer.Add(pair.Key);
                 }
             }
 
-            return best != null
-                ? best.Object.transform.position
-                : transform.TransformPoint(GridToLocal(tile, vehicleZ));
+            for (int i = 0; i < coinPopFlushBuffer.Count; i++)
+            {
+                Vector2Int tile = coinPopFlushBuffer[i];
+                FlushPendingCoinPop(tile, transform.TransformPoint(GridToLocal(tile, vehicleZ)));
+            }
+        }
+
+        // 위상 리빌드 방출: 대기 중 전액을 타일 팝으로 비운다 — 리빌드로 차/경로가 갈려도 코인 유실 금지.
+        private void FlushAllPendingCoinPops()
+        {
+            coinPopFlushBuffer.Clear();
+            foreach (KeyValuePair<Vector2Int, PendingCoinPop> pair in pendingCoinPops)
+            {
+                if (pair.Value.Coins > 0)
+                {
+                    coinPopFlushBuffer.Add(pair.Key);
+                }
+            }
+
+            for (int i = 0; i < coinPopFlushBuffer.Count; i++)
+            {
+                Vector2Int tile = coinPopFlushBuffer[i];
+                FlushPendingCoinPop(tile, transform.TransformPoint(GridToLocal(tile, vehicleZ)));
+            }
         }
 
         private void SpawnCoinPop(Vector3 worldPos, int coins)
@@ -2855,6 +2888,8 @@ namespace CityFlow.View
         // 위로 떠오르며 페이드아웃(~0.8초). HUD로 날아가는 연출은 스코프 아웃(YAGNI).
         private void RefreshCoinPops()
         {
+            FlushTimedOutCoinPops();
+
             if (!coinPopPoolReady)
             {
                 return;
