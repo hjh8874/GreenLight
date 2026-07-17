@@ -20,6 +20,11 @@ namespace CityFlow.Sim
         public float RoadCapacity;      // 대/초, 도로 등급별(지금 단일) 🔓
         public float DemandPerHouse;    // 수요 1건(집→수요처)당 가상 차량 rate 🔓
 
+        // ── 차 단위 큐 Sim (3차 빌드, 스위치 전 병렬 신설) ──
+        // 타일의 진입방향별 FIFO가 각각 가질 수 있는 차 토큰 수. SimConfigAsset.Value를
+        // 통해 인스펙터에 자동 노출되며 기존 .asset은 0이므로 전환 전 수동 설정이 필요하다. 🔓
+        public int QueueCapacityPerTile;
+
         // ── 혼잡 임계 (ratio = flow/capacity) ────
         public float SlowRatio;         // <0.7 Free / 0.7~1.0 Slow / >1.0 Jam
         public float JamRatio;
@@ -115,6 +120,7 @@ namespace CityFlow.Sim
             GridHeight = 20,
             RoadCapacity = 10f,
             DemandPerHouse = 1f,
+            QueueCapacityPerTile = 4,
             SlowRatio = 0.7f,
             JamRatio = 1.0f,
             EfficiencyMin = 0.2f,
