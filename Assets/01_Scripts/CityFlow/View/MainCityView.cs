@@ -29,7 +29,7 @@ namespace CityFlow.View
 
         [Header("Runtime Visuals")]
         [SerializeField] private int maxMovingVehicles = 96;
-        [SerializeField] private float vehicleSpeed = 2f;
+        [SerializeField] private float vehicleSpeed = 1.6f;   // 개성 패스 라이브 튜닝(환 2026-07-17): 2.0에서 20% 감속
         [SerializeField, Min(0.1f)] private float vehicleAcceleration = 2.2f;
         [SerializeField, Min(0.1f)] private float vehicleDeceleration = 9f;
         [SerializeField] private float vehicleZ = -0.35f;
