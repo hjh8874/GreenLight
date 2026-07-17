@@ -136,6 +136,14 @@ namespace CityFlow.View
         private float zoomDistance;
         private bool isIsometricView;
 
+        // 도착 코인 팝(항목 A): 풀 고정 크기 — 전부 사용 중이면 가장 오래된 슬롯을 라운드로빈으로 재사용.
+        private const int CoinPopPoolSize = 12;
+        private const float CoinPopDuration = 0.8f;
+        private static readonly Color CoinPopColor = new Color(1f, 0.85f, 0.25f);
+        private readonly CoinPop[] coinPops = new CoinPop[CoinPopPoolSize];
+        private bool coinPopPoolReady;
+        private int coinPopCursor;
+
         public GameObject FlowBurstPrefab => burstPrefab;
         public Transform EffectRoot => effectRoot;
         public float TileSize => tileSize;
@@ -209,6 +217,19 @@ namespace CityFlow.View
             public bool Settling;          // 정착 안무 진행 플래그(도착 프레임 재진입 게이트)
             public GameObject BrakeLight;  // 후방 제동등(기본 off) — CreateDetailCube 패턴
             public bool BrakeOn;           // 제동등 상태 캐시(매 프레임 SetActive 금지)
+
+            // 도착 코인 팝 앵커링(ArrivalEvent 시각 앵커링): 정착 진입 시(도착 순간) Time.time 스탬프.
+            // 판단 없음 — OnArrival이 "최근 도착" 후보를 고를 때만 읽는다.
+            public float LastArrivedTime = float.NegativeInfinity;
+        }
+
+        // 도착 코인 팝: 소형 텍스트 마크 풀(고정 크기, 러시아워 다발 대비 — 매 도착마다 Instantiate 금지).
+        private sealed class CoinPop
+        {
+            public GameObject Object;
+            public TextMesh Text;
+            public Vector3 StartPos;
+            public float StartTime;
         }
 
         private struct FlowBurstSpeedZone
@@ -244,6 +265,7 @@ namespace CityFlow.View
 
             services.Events.Placed += OnPlaced;
             services.Events.FlowBurst += OnFlowBurstSpeedBoost;
+            services.Events.Arrival += OnArrival;
 
             if (services.Save != null)
             {
@@ -287,6 +309,7 @@ namespace CityFlow.View
 
             services.Events.Placed -= OnPlaced;
             services.Events.FlowBurst -= OnFlowBurstSpeedBoost;
+            services.Events.Arrival -= OnArrival;
 
             if (services.Save != null)
             {
@@ -428,6 +451,7 @@ namespace CityFlow.View
             RefreshTurnSigns();
             RefreshPriorityRoads();
             RefreshVehicles();
+            RefreshCoinPops();
         }
 
         private void BuildRoots()
@@ -2175,6 +2199,7 @@ namespace CityFlow.View
                 SetBrakeLight(vehicle, false);
                 vehicle.Settling = true;
                 vehicle.SettleHold = parkingSettleSeconds;
+                vehicle.LastArrivedTime = Time.time;   // 도착 코인 팝 앵커링용 스탬프(연출 전용, 판단 없음)
                 return;
             }
 
@@ -2727,6 +2752,137 @@ namespace CityFlow.View
         {
             RefreshTile(e.Tile, e.IsRemove ? TileType.Empty : e.Type);
             RefreshSignals();
+        }
+
+        // 도착 코인 팝(항목 A): Sim이 금액·타이밍을 결정(ArrivalEvent 그대로) — 뷰는 팝을 그릴 위치만 고른다.
+        // 수익·이벤트에 뷰 상태 역류 없음(읽기 전용 앵커 선택).
+        private void OnArrival(ArrivalEvent e)
+        {
+            Vector3 anchor = GetArrivalPopAnchor(e.Destination);
+            SpawnCoinPop(anchor, e.Coins);
+        }
+
+        // 팝 위치 선택: e.Destination에 최근 도착(정착 중 포함)했거나 주차 중인 통근 차가 있으면 그 차 위,
+        // 없으면 타일 중심 폴백. 경제 이벤트(FlowSolver)와 통근 연출(CommuteScheduler)은 독립 시스템이라
+        // 항상 매칭되는 차가 있진 않다 — 폴백은 정상 경로다.
+        private Vector3 GetArrivalPopAnchor(Vector2Int tile)
+        {
+            const float RecentArrivalWindowSeconds = 1f;
+
+            RouteVehicle best = null;
+            int bestPriority = int.MinValue;
+
+            foreach (KeyValuePair<CommuteCar, RouteVehicle> pair in carVehicles)
+            {
+                CommuteCar car = pair.Key;
+                RouteVehicle vehicle = pair.Value;
+                if (!vehicle.HasCurrentTile || vehicle.CurrentTile != tile)
+                {
+                    continue;
+                }
+
+                bool settling = vehicle.Settling;
+                bool recentlyArrived = Time.time - vehicle.LastArrivedTime <= RecentArrivalWindowSeconds;
+                bool parkedHere = (car.State == CarState.ParkedHome && car.Home == tile)
+                    || (car.State == CarState.ParkedWork && car.Work == tile);
+
+                if (!settling && !recentlyArrived && !parkedHere)
+                {
+                    continue;
+                }
+
+                int priority = settling ? 2 : recentlyArrived ? 1 : 0;
+                if (best == null || priority > bestPriority)
+                {
+                    best = vehicle;
+                    bestPriority = priority;
+                }
+            }
+
+            return best != null
+                ? best.Object.transform.position
+                : transform.TransformPoint(GridToLocal(tile, vehicleZ));
+        }
+
+        private void SpawnCoinPop(Vector3 worldPos, int coins)
+        {
+            EnsureCoinPopPool();
+            CoinPop pop = GetCoinPop();
+            pop.Text.text = $"+{coins}";
+            pop.StartPos = worldPos;
+            pop.StartTime = Time.time;
+            pop.Object.transform.position = worldPos;
+            Color color = CoinPopColor;
+            pop.Text.color = color;
+            pop.Object.SetActive(true);
+            AlignTextMarkPerpendicularToGround(pop.Object.transform);
+        }
+
+        private void EnsureCoinPopPool()
+        {
+            if (coinPopPoolReady)
+            {
+                return;
+            }
+
+            for (int i = 0; i < CoinPopPoolSize; i++)
+            {
+                GameObject go = CreateTextMark(vehicleRoot, "+0", CoinPopColor, tileSize * 0.16f);
+                go.SetActive(false);
+                coinPops[i] = new CoinPop { Object = go, Text = go.GetComponent<TextMesh>() };
+            }
+
+            coinPopPoolReady = true;
+        }
+
+        // 고정 크기 풀: 빈 슬롯 우선 재사용, 전부 사용 중이면 라운드로빈으로 가장 오래된 슬롯을 뺏는다
+        // (러시아워 다발 대비 — Instantiate 없이 항상 12개 안에서 순환, 프레임당 힙 할당 0).
+        private CoinPop GetCoinPop()
+        {
+            for (int i = 0; i < CoinPopPoolSize; i++)
+            {
+                if (!coinPops[i].Object.activeSelf)
+                {
+                    return coinPops[i];
+                }
+            }
+
+            CoinPop stolen = coinPops[coinPopCursor];
+            coinPopCursor = (coinPopCursor + 1) % CoinPopPoolSize;
+            return stolen;
+        }
+
+        // 위로 떠오르며 페이드아웃(~0.8초). HUD로 날아가는 연출은 스코프 아웃(YAGNI).
+        private void RefreshCoinPops()
+        {
+            if (!coinPopPoolReady)
+            {
+                return;
+            }
+
+            Vector3 groundUp = -transform.forward;
+            for (int i = 0; i < CoinPopPoolSize; i++)
+            {
+                CoinPop pop = coinPops[i];
+                if (pop == null || !pop.Object.activeSelf)
+                {
+                    continue;
+                }
+
+                float elapsed01 = Mathf.Clamp01((Time.time - pop.StartTime) / CoinPopDuration);
+                if (elapsed01 >= 1f)
+                {
+                    pop.Object.SetActive(false);
+                    continue;
+                }
+
+                pop.Object.transform.position = pop.StartPos + groundUp * (tileSize * 0.5f * elapsed01);
+                AlignTextMarkPerpendicularToGround(pop.Object.transform);
+
+                Color color = pop.Text.color;
+                color.a = 1f - elapsed01;
+                pop.Text.color = color;
+            }
         }
 
         private void OnRestoreCompleted(RestoreCompletedEvent _)
