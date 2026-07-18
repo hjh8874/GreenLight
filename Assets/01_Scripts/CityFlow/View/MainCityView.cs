@@ -32,6 +32,7 @@ namespace CityFlow.View
         [SerializeField] private float vehicleZ = -0.35f;
         [SerializeField] private float signalZ = -0.45f;
         [SerializeField] private float burstSeconds = 0.8f;
+        [SerializeField, Min(0)] private int flowBurstAnchorRadius = 3;
         [SerializeField] private float gridLineThickness = 0.045f;
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
@@ -2362,8 +2363,8 @@ namespace CityFlow.View
 
                 bool sameTile = vehicle.CurrentTile == tile;
                 Vector2Int tileDistance = vehicle.CurrentTile - tile;
-                if (Mathf.Abs(tileDistance.x) > flowBurstSpeedRadius
-                    || Mathf.Abs(tileDistance.y) > flowBurstSpeedRadius)
+                if (Mathf.Abs(tileDistance.x) > flowBurstAnchorRadius
+                    || Mathf.Abs(tileDistance.y) > flowBurstAnchorRadius)
                 {
                     continue;
                 }

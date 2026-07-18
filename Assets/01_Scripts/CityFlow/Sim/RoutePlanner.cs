@@ -183,11 +183,11 @@ namespace CityFlow.Sim
         internal List<Vector2Int> SearchWithTurnState(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                                        IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
                                                        IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
-            => SearchWithTurnState(grid, from, to, cfg, oneways, turnSigns);
+            => SearchWithTurnStateCore(grid, from, to, cfg, oneways, turnSigns);
 
-        private List<Vector2Int> SearchWithTurnState(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
-                                                      IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
-                                                      IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
+        private List<Vector2Int> SearchWithTurnStateCore(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
+                                                          IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
         {
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
             if (from == to) return new List<Vector2Int> { from };   // legacy Search_SameTile_ReturnsSingle과 동형
