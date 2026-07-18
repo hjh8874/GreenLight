@@ -353,7 +353,9 @@ namespace CityFlow.Sim
 
         // 뷰 연동: 엔진이 이번 틱 계산한 실제 통근 경로들. 차를 이 위에 그리면 라우팅을 눈으로 검증.
         // ponytail: 지금은 디버그 뷰용 public. 진짜 View 붙을 때 Contracts로 승격.
-        public int CarSimOfficeParkingSlots => Math.Max(1, _config.OfficeParkingSlots);
+        // 캡 통일(2026-07-18): CarSim이 일자리 용량만큼 WorkSlot을 발급하므로 뷰의 주차 앵커도
+        // 같은 수로 펼쳐야 한다(6으로 배치하면 슬롯 6~19가 겹침). 밀도 튜닝 = OfficeCapacity 단일 노브.
+        public int CarSimOfficeParkingSlots => Math.Max(1, Math.Max(_config.OfficeCapacity, _config.SchoolCapacity));
         public int CarSimHomeParkingSlots => Math.Max(1, _config.CarsPerHouse);
         public int CarSimMaxCars => Math.Max(1, _config.MaxSimCars);
         public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _planner.CarRoutes;

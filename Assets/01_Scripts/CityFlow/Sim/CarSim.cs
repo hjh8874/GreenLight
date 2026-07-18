@@ -86,7 +86,12 @@ namespace CityFlow.Sim
             _scheduler.Rebuild(
                 _sources,
                 _sinks,
-                Math.Max(1, _cfg.OfficeParkingSlots),
+                // 캡 통일(2026-07-18): work 슬롯 상한 = 일자리 용량(DemandMap이 배정에 쓰는 그 수).
+                // 예전엔 OfficeParkingSlots(6)를 넘겨서, DemandMap이 OfficeCapacity(20)까지 배정해도
+                // 6대만 통근하고 나머지는 사장됐다(단핵 도시 측정: 배정 76 → 통근 47, 38% 증발).
+                // 일자리 수 = 실제 통근 수 = 코인 지급 횟수가 되도록 단일 레버로 통일한다.
+                // 스케줄러는 sink 종류를 모르므로 두 용량의 최대값 — 종류별 상한은 DemandMap이 이미 건다.
+                Math.Max(1, Math.Max(_cfg.OfficeCapacity, _cfg.SchoolCapacity)),
                 Math.Max(1, _cfg.CarsPerHouse),
                 Math.Min(_enqueued.Length, Math.Max(1, _cfg.MaxSimCars)),
                 _cfg.MorningStartHour,
