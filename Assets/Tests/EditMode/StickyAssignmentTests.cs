@@ -23,7 +23,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void AddingCloserOffice_KeepsExistingHomeAssignment()
+        public void AddingCloserOffice_KeepsAssignmentUntilExplicitHomeRebalance()
         {
             var g = MakeGrid(9, 3,
                 (V(0, 0), TileType.House),
@@ -41,6 +41,12 @@ namespace CityFlow.Sim.Tests
             Vector2Int afterSink = FindSink(dm, V(0, 0), TileType.Office);
 
             Assert.AreEqual(firstSink, afterSink, "기존 집 배정은 위상 변경에도 불변이어야 한다");
+
+            dm.ClearStickyAssignments();
+            dm.Reassign(g, net2);
+
+            Assert.AreEqual(V(2, 1), FindSink(dm, V(0, 0), TileType.Office),
+                "귀가 안전시점에 sticky를 풀면 새 가까운 회사가 후보가 되어야 한다");
         }
 
         [Test]

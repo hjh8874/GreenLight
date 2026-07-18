@@ -7,6 +7,31 @@ namespace CityFlow.ViewKit
     {
         public const float QuarterCircleHandle = 0.55228475f;
 
+        // 모든 차량이 같은 고정 틱 위상을 사용하면 서로 다른 경로 테이블에서도
+        // 이전/현재 Sim 스냅샷의 간격을 줄이지 않고 자연스럽게 이어진다.
+        public static float InterpolateTickDistance(float previous, float current, float tickProgress01)
+        {
+            float eased = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(tickProgress01));
+            return Mathf.Lerp(previous, current, eased);
+        }
+
+        // 한 타일에 6대를 일렬로 놓으면 차폭보다 슬롯 간격이 좁아진다.
+        // 최대 3열의 2차원 배치로 바꿔 차체 크기를 줄이지 않고 주차 간격을 확보한다.
+        public static Vector2 ParkingSlotOffset(int slotIndex, int slotCount, float forwardInset)
+        {
+            int safeCount = Mathf.Max(1, slotCount);
+            if (safeCount == 1) return new Vector2(forwardInset, 0f);
+
+            int columns = Mathf.Min(3, safeCount);
+            int rows = Mathf.CeilToInt(safeCount / (float)columns);
+            int safeSlot = Mathf.Clamp(slotIndex, 0, safeCount - 1);
+            int row = safeSlot / columns;
+            int column = safeSlot % columns;
+            float forward = forwardInset + (row - (rows - 1) * 0.5f) * 0.4f;
+            float side = (column - (columns - 1) * 0.5f) * 0.3f;
+            return new Vector2(forward, side);
+        }
+
         public static float RemapBezierParameterByArcLength(
             Vector3 start,
             Vector3 controlIn,

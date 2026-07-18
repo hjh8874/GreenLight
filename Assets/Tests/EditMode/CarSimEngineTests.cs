@@ -88,6 +88,50 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void NewOffice_ReassignsOnlyAfterAllCarsReturnHome()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 9;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            for (int x = 1; x <= 7; x++) Assert.IsTrue(engine.Place(V(x, 0), TileType.Road));
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
+            Vector2Int oldOffice = V(8, 0);
+            Vector2Int newOffice = V(4, 1);
+            Assert.IsTrue(engine.Place(oldOffice, TileType.Office));
+            engine.SetGameHour(7f);
+            for (int i = 0; i < 12; i++) engine.Tick(0.25f);
+            Assert.AreEqual(CarState.ParkedWork, engine.GetCarSnapshot(0).State);
+            Assert.AreEqual(oldOffice, engine.GetCarSnapshot(0).Work);
+
+            Assert.IsTrue(engine.Place(newOffice, TileType.Office));
+            engine.Tick(0.25f);
+            Assert.AreEqual(oldOffice, engine.GetCarSnapshot(0).Work,
+                "회사에 있거나 이동 중인 차의 목적지는 즉시 바뀌면 안 된다");
+
+            engine.SetGameHour(17f);
+            engine.Tick(0.25f);
+            engine.SetGameHour(18f);
+            bool returnedHome = false;
+            for (int i = 0; i < 12; i++)
+            {
+                engine.Tick(0.25f);
+                if (engine.GetCarSnapshot(0).State != CarState.ParkedHome) continue;
+                returnedHome = true;
+                break;
+            }
+            Assert.IsTrue(returnedHome, "기존 회사에서 귀가 완료");
+            Assert.AreEqual(CarState.ParkedHome, engine.GetCarSnapshot(0).State);
+            Assert.AreEqual(oldOffice, engine.GetCarSnapshot(0).Work,
+                "귀가를 완료한 틱까지는 기존 왕복 짝을 유지한다");
+
+            engine.Tick(0.25f);
+
+            Assert.AreEqual(CarState.ParkedHome, engine.GetCarSnapshot(0).State);
+            Assert.AreEqual(newOffice, engine.GetCarSnapshot(0).Work,
+                "전 차량 귀가 다음 틱에 새 회사로 일괄 재배정");
+        }
+
+        [Test]
         public void CompletedDay_BlendsSuccessByHalf_AndPersistsAcrossSave()
         {
             SimEngine engine = BuildStraightCity(Cfg(), new SimEventHub());

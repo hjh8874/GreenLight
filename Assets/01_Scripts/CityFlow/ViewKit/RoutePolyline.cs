@@ -205,6 +205,18 @@ namespace CityFlow.ViewKit
             return Length;
         }
 
+        public float DistanceAtQueueSlot(
+            int tileIndex,
+            int queueSlot,
+            float slotGap,
+            float headInset = 0f)
+        {
+            float distance = DistanceAtTile(tileIndex)
+                - Mathf.Max(0f, headInset)
+                - Mathf.Max(0, queueSlot) * Mathf.Max(0f, slotGap);
+            return Mathf.Clamp(distance, 0f, Length);
+        }
+
         // MainCityView.EvaluateVehiclePose(L1646-1689) + 로터리 궤도 오버라이드(L1419-1439,
         // TryRoundaboutOrbit L1794-1817)의 순수 재현.
         private static void PoseAt(

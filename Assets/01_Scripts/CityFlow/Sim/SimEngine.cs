@@ -51,6 +51,7 @@ namespace CityFlow.Sim
         float _lastStability = -1f;   // 직전 발행한 안정도(-1=아직 없음 → 첫 틱은 무조건 발행)
         float _gameHour;
         int _lastStepArrivals;
+        bool _demandRebalancePending;
 
         // 테스트 관찰용 seam. internal이라 테스트 어셈블리만 봄(InternalsVisibleTo).
         internal int StepCount { get; private set; }
@@ -153,6 +154,13 @@ namespace CityFlow.Sim
             // ponytail: 캡에 걸린 잔여 _acc는 다음 프레임들로 이월(백로그). 폭주보단 지연 선택.
         }
 
+        // 뷰가 고정 Sim 스냅샷 사이를 같은 위상으로만 번역하도록 제공한다.
+        // 교통 판단에는 사용하지 않는 읽기 전용 관찰값이다.
+        public float TickProgress01 => _config.TickInterval > 0f
+            ? Mathf.Clamp01(_acc / _config.TickInterval)
+            : 1f;
+        public float TickInterval => _config.TickInterval;
+
         public void SetGameHour(float gameHour) => _gameHour = Mathf.Repeat(gameHour, 24f);
 
         // 고정 0.1s 시뮬 한 칸. 순서가 곧 파이프라인(blueprint §2 Step).
@@ -161,6 +169,15 @@ namespace CityFlow.Sim
             StepCount++;
 
             _simTime += _config.TickInterval;
+
+            // 신규 회사/학교 배정은 운행 중 목적지를 바꾸지 않는다. 전 차가 집에 돌아온
+            // 안전시점에 sticky를 한 번만 풀고, 같은 틱의 정상 topology 파이프라인으로 재구축한다.
+            if (_demandRebalancePending && _carSim.AllParkedHome)
+            {
+                _demand.ClearStickyAssignments();
+                _demandRebalancePending = false;
+                _grid.MarkTopologyDirty();
+            }
 
             // 배치도가 바뀐 틱에만 경로·수요 재계산(더티 플래그 — 매 틱 재계획 금지).
             if (_grid.TopologyDirty)
@@ -320,6 +337,8 @@ namespace CityFlow.Sim
             if (!WithinRoadBudget(type)) return false;   // 예산 초과 도로는 Place도 거부(CanPlace 우회 방지)
             if (IsBuildingTile(type) && IsInRoundaboutFootprint(tile)) return false;   // 로터리 풋프린트에 건물 금지
             if (!_grid.Place(tile, type)) return false;
+            if (type == TileType.Office || type == TileType.School)
+                _demandRebalancePending = true;
             _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false));
             return true;
         }
@@ -341,6 +360,10 @@ namespace CityFlow.Sim
         public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _planner.ReturnRoutes;
         public int ActiveVehicleCount => _carSim.CarCount;
         public CarSnapshot GetCarSnapshot(int index) => _carSim.GetCar(index);
+        public bool IsSharedCarIntersection(Vector2Int tile) =>
+            _grid.IsIntersection(tile)
+            && !_roundaboutSet.Contains(tile)
+            && !_overpassSet.Contains(tile);
 
         // 도로 예산제(스펙 2026-07-17): UI 카운터·배치 가드 공용. RoadTileCount는 TopologyVersion 캐시(무비용).
         public int RoadTileCount => _grid.RoadTileCount;

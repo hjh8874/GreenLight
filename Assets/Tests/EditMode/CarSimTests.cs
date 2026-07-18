@@ -49,6 +49,16 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2 * cfg.CoinPerTrip, coins);
             Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
             Assert.AreEqual(CarState.ParkedWork, sim.GetCar(1).State);
+            Assert.IsFalse(sim.AllParkedHome);
+
+            var occupied = new HashSet<(Vector2Int work, int slot)>();
+            for (int i = 0; i < sim.CarCount; i++)
+            {
+                CarSnapshot snapshot = sim.GetCar(i);
+                Assert.IsTrue(occupied.Add((snapshot.Work, snapshot.WorkSlot)),
+                    "뷰가 실제 회사 주차 슬롯을 받으려면 스냅샷 슬롯이 유일해야 한다");
+                Assert.AreEqual(0, snapshot.HomeSlot, "CarsPerHouse=1이면 집 슬롯은 0");
+            }
         }
 
         [Test]
@@ -74,6 +84,7 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2, arrivals, "귀가 도착은 ArrivalEvent 코인 없음");
             Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State);
             Assert.AreEqual(CarState.ParkedHome, sim.GetCar(1).State);
+            Assert.IsTrue(sim.AllParkedHome);
         }
 
         [Test]

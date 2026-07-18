@@ -41,6 +41,28 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1f, PolylineMath.RemapBezierParameterByArcLength(a, c1, c2, b, 1f), 1e-3f);
         }
 
+        [Test]
+        public void InterpolateTickDistance_PreservesSpacingBetweenSimSnapshots()
+        {
+            float lead = PolylineMath.InterpolateTickDistance(1f, 2f, 0.5f);
+            float follow = PolylineMath.InterpolateTickDistance(0.6f, 1.6f, 0.5f);
+
+            Assert.AreEqual(0.4f, lead - follow, 1e-4f,
+                "같은 틱 위상으로 보간하면 이전·현재 스냅샷의 차간격이 유지돼야 한다");
+        }
+
+        [Test]
+        public void ParkingSlotOffset_SixSlotsUseSpacedGrid()
+        {
+            var slots = new Vector2[6];
+            for (int i = 0; i < slots.Length; i++)
+                slots[i] = PolylineMath.ParkingSlotOffset(i, slots.Length, 0.32f);
+
+            for (int i = 0; i < slots.Length; i++)
+            for (int j = i + 1; j < slots.Length; j++)
+                Assert.GreaterOrEqual(Vector2.Distance(slots[i], slots[j]), 0.3f - 1e-4f);
+        }
+
         // 로터리 arc(mouth±α, QA G): 직진(→ 진입, → 이탈)은 진입각 = mouth+α, 스윕 = π/2.
         static readonly float Alpha = 45f * Mathf.Deg2Rad;
 

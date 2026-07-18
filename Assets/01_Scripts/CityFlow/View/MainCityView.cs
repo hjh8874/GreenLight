@@ -37,6 +37,7 @@ namespace CityFlow.View
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
         [SerializeField] private float followGap = 0.4f;           // 큐 슬롯 간 표시 거리(타일 비율)
+        [SerializeField, Range(0f, 0.45f)] private float intersectionQueueInset = 0.25f;
         [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
@@ -194,6 +195,12 @@ namespace CityFlow.View
             public Renderer Renderer;
             public Renderer DetailRenderer;
             public float CurrentSpeed;
+            public float PreviousTargetDistance;
+            public float TargetDistance;
+            public int TargetTileIndex;
+            public int TargetQueueSlot;
+            public int TargetRouteIndex;
+            public bool HasTickTarget;
             public Vector3 Pos;   // 지난 프레임 위치·진행 방향 — 차간 유지 판정용(1프레임 지연 근사)
             public Vector3 Dir;
             public Vector2Int CurrentTile;
@@ -1401,8 +1408,8 @@ namespace CityFlow.View
                 car.Home = snapshot.Home;
                 car.Work = snapshot.Work;
                 car.RouteIndex = snapshot.RouteIndex;
-                car.HomeSlot = i % simEngine.CarSimHomeParkingSlots;
-                car.WorkSlot = i % simEngine.CarSimOfficeParkingSlots;
+                car.HomeSlot = snapshot.HomeSlot;
+                car.WorkSlot = snapshot.WorkSlot;
                 car.State = snapshot.State;
             }
         }
@@ -1594,11 +1601,9 @@ namespace CityFlow.View
             Vector3 center = GridToLocal(building, vehicleZ);
             Vector3 toRoad = (GridToLocal(frontageRoad, vehicleZ) - center).normalized;
             Vector3 side = new Vector3(toRoad.y, -toRoad.x, 0f);
-            float spread = slotCount <= 1
-                ? 0f
-                : (slotIndex - (slotCount - 1) * 0.5f) / (slotCount - 1);
-            return center + toRoad * (tileSize * parkingSlotInset)
-                          + side * (tileSize * 0.6f * spread);
+            Vector2 offset = PolylineMath.ParkingSlotOffset(slotIndex, slotCount, parkingSlotInset);
+            return center + toRoad * (tileSize * offset.x)
+                          + side * (tileSize * offset.y);
         }
 
         // 주차칸 얇은 마크: 배정된 칸마다 1개(CreateDetailCube 패턴). 위상 리빌드 시 전부 재생성.
@@ -1814,6 +1819,12 @@ namespace CityFlow.View
         {
             vehicle.RouteIndex = routeIndex;
             vehicle.CurrentSpeed = 0f;
+            vehicle.PreviousTargetDistance = 0f;
+            vehicle.TargetDistance = 0f;
+            vehicle.TargetTileIndex = -1;
+            vehicle.TargetQueueSlot = -1;
+            vehicle.TargetRouteIndex = -1;
+            vehicle.HasTickTarget = false;
             vehicle.Dir = Vector3.zero;
             vehicle.HasCurrentTile = false;
             vehicle.DepartHold = 0f;
@@ -1845,6 +1856,7 @@ namespace CityFlow.View
             vehicle.RouteIndex = -1;
             vehicle.HasCurrentTile = false;
             vehicle.CurrentSpeed = 0f;
+            vehicle.HasTickTarget = false;
             vehicle.Dir = Vector3.zero;
             vehicle.DepartHold = 0f;
             vehicle.SettleHold = 0f;
@@ -1904,9 +1916,12 @@ namespace CityFlow.View
                 bool followingParkingPath = vehicle.Settling;
                 if (followingParkingPath)
                 {
+                    float settleSeconds = Mathf.Min(
+                        Mathf.Max(0.001f, parkingSettleSeconds),
+                        Mathf.Max(0.001f, simEngine.TickInterval * 0.9f));
                     parked = parkingPolyline.AdvanceTowardEnd(
                         ref car.Distance,
-                        vehicleSpeed * vehicle.Style.SpeedMul * tileSize * Time.deltaTime);
+                        parkingPolyline.Length / settleSeconds * Time.deltaTime);
                     vehicle.Settling = car.Distance < parkingPolyline.Length - 0.001f;
                 }
                 else
@@ -1941,22 +1956,49 @@ namespace CityFlow.View
 
             vehicle.Settling = false;
             RoutePolyline poly = inbound ? pair.Inbound : pair.Outbound;
-            if (!hadPrevious || previous != snapshot.State)
-                car.Distance = 0f;
             int tileIndex = Mathf.Clamp(snapshot.TileIndex, 0, poly.TileCount - 1);
-            float queueBackoff = Mathf.Max(0, snapshot.QueueSlot) * followGap * tileSize;
+            Vector2Int simTile = poly.TileAt(tileIndex);
+            float headInset = simEngine.IsSharedCarIntersection(simTile)
+                ? intersectionQueueInset * tileSize
+                : 0f;
             float targetDistance = snapshot.QueueSlot < 0
                 ? 0f
-                : Mathf.Clamp(poly.DistanceAtTile(tileIndex) - queueBackoff, 0f, poly.Length);
-            car.Distance = Mathf.MoveTowards(
-                car.Distance,
-                targetDistance,
-                vehicleSpeed * vehicle.Style.SpeedMul * tileSize * Time.deltaTime);
+                : poly.DistanceAtQueueSlot(
+                    tileIndex,
+                    snapshot.QueueSlot,
+                    followGap * tileSize,
+                    headInset);
+            float previousDistance = car.Distance;
+            bool stateChanged = hadPrevious && previous != snapshot.State;
+            bool targetChanged = !vehicle.HasTickTarget
+                || stateChanged
+                || vehicle.TargetTileIndex != tileIndex
+                || vehicle.TargetQueueSlot != snapshot.QueueSlot
+                || vehicle.TargetRouteIndex != car.RouteIndex
+                || Mathf.Abs(vehicle.TargetDistance - targetDistance) > 0.0001f;
+            if (targetChanged)
+            {
+                bool bindWhileAlreadyMoving = !hadPrevious && moving;
+                vehicle.PreviousTargetDistance = bindWhileAlreadyMoving
+                    ? targetDistance
+                    : stateChanged ? 0f : vehicle.TargetDistance;
+                vehicle.TargetDistance = targetDistance;
+                vehicle.TargetTileIndex = tileIndex;
+                vehicle.TargetQueueSlot = snapshot.QueueSlot;
+                vehicle.TargetRouteIndex = car.RouteIndex;
+                vehicle.HasTickTarget = true;
+            }
+            car.Distance = PolylineMath.InterpolateTickDistance(
+                vehicle.PreviousTargetDistance,
+                vehicle.TargetDistance,
+                simEngine.TickProgress01);
             Sample sample = poly.SampleAt(car.Distance);
             vehicle.Object.transform.localPosition = sample.Pos;
             vehicle.Pos = sample.Pos;
             vehicle.Dir = sample.Dir;
-            vehicle.CurrentSpeed = vehicleSpeed * vehicle.Style.SpeedMul;
+            vehicle.CurrentSpeed = Time.deltaTime > 0f
+                ? Mathf.Abs(car.Distance - previousDistance) / (tileSize * Time.deltaTime)
+                : 0f;
             vehicle.CurrentTile = poly.TileAt(Mathf.Clamp(sample.TileIndex, 0, poly.TileCount - 1));
             vehicle.HasCurrentTile = true;
             if (sample.Dir.sqrMagnitude > 0.001f)

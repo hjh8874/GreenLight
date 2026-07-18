@@ -67,5 +67,18 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(before.TickInterval, engine.CurrentConfig.TickInterval);
             Assert.AreEqual(before.QueueSlowRatio, engine.CurrentConfig.QueueSlowRatio);
         }
+
+        [Test]
+        public void TickProgress01_TracksFractionUntilNextFixedStep()
+        {
+            SimConfig cfg = BaseConfig();
+            var engine = new SimEngine(cfg, new SimEventHub());
+
+            engine.Tick(cfg.TickInterval * 0.5f);
+            Assert.AreEqual(0.5f, engine.TickProgress01, 1e-4f);
+
+            engine.Tick(cfg.TickInterval * 0.5f);
+            Assert.AreEqual(0f, engine.TickProgress01, 1e-4f);
+        }
     }
 }

@@ -58,6 +58,10 @@ namespace CityFlow.Sim
             _config = next;
         }
 
+        // 신규 수요처가 생겼을 때 전 차량 귀가 안전시점에서만 호출한다.
+        // 이동 중 sticky를 풀면 목적지가 순간 교체되므로 SimEngine이 시점을 중재한다.
+        internal void ClearStickyAssignments() => _sticky.Clear();
+
         public void Reassign(CityGrid grid, RoadNetwork net)
         {
             _demands.Clear();

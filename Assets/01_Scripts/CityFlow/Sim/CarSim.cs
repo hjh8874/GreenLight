@@ -13,6 +13,8 @@ namespace CityFlow.Sim
         public int RouteIndex;
         public int TileIndex;
         public int QueueSlot;
+        public int HomeSlot;
+        public int WorkSlot;
     }
 
     internal sealed class CarSim : ICarRouteProvider
@@ -35,6 +37,15 @@ namespace CityFlow.Sim
         private bool _needsSnap;
 
         public int CarCount => _scheduler.Cars.Count;
+        public bool AllParkedHome
+        {
+            get
+            {
+                for (int i = 0; i < _scheduler.Cars.Count; i++)
+                    if (_scheduler.Cars[i].State != CarState.ParkedHome) return false;
+                return true;
+            }
+        }
         internal bool LastStepJumped { get; private set; }
 
         public CarSim(in SimConfig cfg)
@@ -146,7 +157,9 @@ namespace CityFlow.Sim
                 State = car.State,
                 RouteIndex = _plannerRouteIndices[car.RouteIndex],
                 TileIndex = _tileIndices[index],
-                QueueSlot = _queueSlots[index]
+                QueueSlot = _queueSlots[index],
+                HomeSlot = car.HomeSlot,
+                WorkSlot = car.WorkSlot
             };
         }
 
