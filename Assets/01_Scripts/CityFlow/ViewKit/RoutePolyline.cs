@@ -165,18 +165,31 @@ namespace CityFlow.ViewKit
             Vector3 dir = Vector3.Lerp(a.Dir, b.Dir, t);
             dir = dir.sqrMagnitude > 1e-8f ? dir.normalized : a.Dir;
 
-            // SegT는 Lerp, TileIndex/IsSpur는 구간 시작 정점 값을 쓴다(이산 값은 보간 불가).
+            // 이산 메타데이터는 보간하지 않는다. 단, 정확히 upper 정점에 닿은 경우 위치와 같은
+            // upper 메타데이터를 써야 타일 경계/주차 스퍼 끝에서 한 정점 뒤처지지 않는다.
+            Vertex discrete = t >= 1f - 1e-5f ? b : a;
             return new Sample
             {
                 Pos = Vector3.Lerp(a.Pos, b.Pos, t),
                 Dir = dir,
-                TileIndex = a.Seg,
+                TileIndex = discrete.Seg,
                 SegT = Mathf.Lerp(a.SegT, b.SegT, t),
-                IsSpur = a.Spur,
+                IsSpur = discrete.Spur,
             };
         }
 
         public Vector2Int TileAt(int tileIndex) => _tiles[tileIndex];
+
+        // Sim 도착이 시각 진행보다 앞서도 월드 좌표 chord로 주차 앵커를 향하지 않는다.
+        // 현재 누적거리를 폴리라인 끝으로 전진시키고 반드시 경로 위 샘플을 반환한다.
+        public Sample AdvanceTowardEnd(ref float distance, float maxDistanceDelta)
+        {
+            distance = Mathf.MoveTowards(
+                Mathf.Clamp(distance, 0f, Length),
+                Length,
+                Mathf.Max(0f, maxDistanceDelta));
+            return SampleAt(distance);
+        }
 
         public float DistanceAtTile(int tileIndex)
         {

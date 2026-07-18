@@ -1884,28 +1884,62 @@ namespace CityFlow.View
             bool hadPrevious = vehicle.HasLastState;
             if (!moving)
             {
-                float parkedDistance = snapshot.State == CarState.ParkedWork ? pair.Outbound.Length : 0f;
-                Sample parked = pair.Outbound.SampleAt(parkedDistance);
-                Vector3 parkedPos = hadPrevious
-                    ? Vector3.MoveTowards(vehicle.Pos, parked.Pos, vehicleSpeed * tileSize * Time.deltaTime)
-                    : parked.Pos;
+                bool arrivedAtWork = hadPrevious
+                    && previous == CarState.Outbound
+                    && snapshot.State == CarState.ParkedWork;
+                bool arrivedAtHome = hadPrevious
+                    && previous == CarState.Inbound
+                    && snapshot.State == CarState.ParkedHome;
+                if (arrivedAtWork || arrivedAtHome)
+                {
+                    vehicle.Settling = true;
+                }
+
+                // Sim은 뷰보다 먼저 도착할 수 있다. 이때 현재 월드 위치→주차 앵커 MoveTowards는
+                // 꺾인 도로를 chord로 가로지르므로, 도착 방향 폴리라인의 누적거리 끝까지 따라간다.
+                RoutePolyline parkingPolyline = snapshot.State == CarState.ParkedWork
+                    ? pair.Outbound
+                    : pair.Inbound;
+                Sample parked;
+                bool followingParkingPath = vehicle.Settling;
+                if (followingParkingPath)
+                {
+                    parked = parkingPolyline.AdvanceTowardEnd(
+                        ref car.Distance,
+                        vehicleSpeed * vehicle.Style.SpeedMul * tileSize * Time.deltaTime);
+                    vehicle.Settling = car.Distance < parkingPolyline.Length - 0.001f;
+                }
+                else
+                {
+                    car.Distance = parkingPolyline.Length;
+                    parked = parkingPolyline.SampleAt(car.Distance);
+                }
+
+                Vector3 parkedPos = parked.Pos;
                 vehicle.Object.transform.localPosition = parkedPos;
                 vehicle.Pos = parkedPos;
-                vehicle.Dir = Vector3.zero;
-                vehicle.CurrentSpeed = 0f;
+                vehicle.Dir = followingParkingPath ? parked.Dir : Vector3.zero;
+                vehicle.CurrentSpeed = followingParkingPath
+                    ? vehicleSpeed * vehicle.Style.SpeedMul
+                    : 0f;
+                if (followingParkingPath && parked.Dir.sqrMagnitude > 0.001f)
+                {
+                    float angle = Mathf.Atan2(parked.Dir.y, parked.Dir.x) * Mathf.Rad2Deg;
+                    vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
+                }
                 vehicle.CurrentTile = snapshot.State == CarState.ParkedWork ? car.Work : car.Home;
                 vehicle.HasCurrentTile = true;
                 SetVehicleRenderersEnabled(vehicle, true);
                 SetBrakeLight(vehicle, false);
                 HideJamMarks(vehicle);
-                if (hadPrevious && previous == CarState.Outbound && snapshot.State == CarState.ParkedWork)
+                if (snapshot.State == CarState.ParkedWork && !vehicle.Settling)
                     FlushPendingCoinPop(car.Work, vehicle.Object.transform.position);
                 vehicle.LastState = snapshot.State;
                 vehicle.HasLastState = true;
-                car.Distance = parkedDistance;
                 return;
             }
 
+            vehicle.Settling = false;
             RoutePolyline poly = inbound ? pair.Inbound : pair.Outbound;
             if (!hadPrevious || previous != snapshot.State)
                 car.Distance = 0f;

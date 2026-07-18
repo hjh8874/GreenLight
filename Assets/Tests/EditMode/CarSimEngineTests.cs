@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using NUnit.Framework;
@@ -57,6 +58,33 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2, arrivals);
             Assert.AreEqual(20, coins);
             Assert.AreEqual(CarState.ParkedWork, engine.GetCarSnapshot(0).State);
+        }
+
+        [Test]
+        public void StraightSingleCommute_SnapshotIndicesMatchActiveRouteTable()
+        {
+            SimConfig cfg = Cfg();
+            var engine = new SimEngine(cfg, new SimEventHub());
+            for (int x = 0; x <= 4; x++) Assert.IsTrue(engine.Place(V(x, 1), TileType.Road));
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(engine.Place(V(5, 1), TileType.Office));
+            engine.SetGameHour(7f);
+
+            for (int tick = 0; tick < 6; tick++)
+            {
+                engine.Tick(0.25f);
+                Assert.AreEqual(1, engine.ActiveVehicleCount);
+                CarSnapshot snapshot = engine.GetCarSnapshot(0);
+                Assert.That(snapshot.RouteIndex, Is.InRange(0, engine.ActiveRoutes.Count - 1));
+                IReadOnlyList<Vector2Int> route = snapshot.State == CarState.Inbound
+                    ? engine.ActiveReturnRoutes[snapshot.RouteIndex]
+                    : engine.ActiveRoutes[snapshot.RouteIndex];
+                Assert.That(snapshot.TileIndex, Is.InRange(0, route.Count - 1));
+                Vector2Int tile = route[snapshot.TileIndex];
+                TestContext.WriteLine(
+                    $"tick={tick} route={snapshot.RouteIndex} tileIndex={snapshot.TileIndex} tile={tile} state={snapshot.State}");
+                Assert.AreEqual(1, tile.y, "직선 도시 스냅샷은 동일한 직교 도로 행을 가리켜야 한다");
+            }
         }
 
         [Test]
