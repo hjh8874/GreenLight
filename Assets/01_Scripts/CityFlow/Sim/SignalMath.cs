@@ -4,7 +4,7 @@ namespace CityFlow.Sim
     public enum SignalPhase { Green, Yellow, Red }
 
     // 교차로 신호 하나. 유저가 조작하는 노브 = OffsetSlots(그린웨이브) + GreenSlots(축 분배).
-    // ponytail: NodeId·차선 등은 FlowSolver 통합 결정 후. 지금은 순수 수학용 최소 필드.
+    // 신호 상태를 위한 순수 수학용 최소 필드.
     internal sealed class Signal
     {
         public int CycleSlots = 16;   // 주기(슬롯). 16슬롯 = 8초 (관찰·QA용으로 길게, 🔓 밸런스)
@@ -39,7 +39,7 @@ namespace CityFlow.Sim
         // 엔진(GreenWaveEfficiency)이 공유하는 단일 타이밍 — 여기서 파생하면 못 갈라짐.
         // 통일 부호: 오프셋↑ = 초록 늦게 열림(하류를 이동시간만큼 미뤄 그린웨이브 = 직관).
         // 축 분배 = GreenSlots 듀티: 가로 창 = 주기×듀티, 세로 창 = 나머지. 유저의 초록 레버가
-        // 용량 수치(FlowSolver)만이 아니라 화면 신호·차 정지에도 그대로 보인다("보는 것 = 버는 것").
+        // 화면 신호와 차 큐 진입 판단이 같은 위상을 읽는다("보는 것 = 버는 것").
         public static (double open, double greenLen) GreenWindowFor(Signal s, bool horizontal)
         {
             double cycle = s.CycleSlots * SlotSeconds;

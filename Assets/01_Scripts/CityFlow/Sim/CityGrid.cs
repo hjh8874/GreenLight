@@ -94,7 +94,7 @@ namespace CityFlow.Sim
             MarkDirty();
         }
 
-        // ── 교차로 판정(직각 도로 이웃 ≥3)의 단일 출처 — SignalMap·FlowSolver가 공유.
+        // ── 교차로 판정(직각 도로 이웃 ≥3)의 단일 출처 — SignalMap·RoadQueueNetwork가 공유.
         // TopologyVersion 키 lazy 캐시(RoadNetwork.EnsureRegions와 같은 패턴). 구매 피벗 2단계에서
         // "교차로 ≠ 신호"가 되므로 신호와 무관한 여기(grid)가 오너.
         static readonly Vector2Int[] OrthoDirs =

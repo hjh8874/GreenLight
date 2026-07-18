@@ -50,18 +50,6 @@ namespace CityFlow.Contracts
         }
     }
 
-    public readonly struct SettlementEvent
-    {
-        public readonly double Minutes;
-        public readonly long Coins;
-
-        public SettlementEvent(double minutes, long coins)
-        {
-            Minutes = minutes;
-            Coins = coins;
-        }
-    }
-
     public readonly struct PlacedEvent
     {
         public readonly Vector2Int Tile;
@@ -82,7 +70,6 @@ namespace CityFlow.Contracts
         public event Action<FlowBurstEvent> FlowBurst;
         public event Action<CongestionEvent> CongestionChanged;
         public event Action<StabilityEvent> StabilityChanged;
-        public event Action<SettlementEvent> SettlementComputed;
         public event Action<PlacedEvent> Placed;
 
         public void Publish(ArrivalEvent e) => Arrival?.Invoke(e);
@@ -92,8 +79,6 @@ namespace CityFlow.Contracts
         public void Publish(CongestionEvent e) => CongestionChanged?.Invoke(e);
 
         public void Publish(StabilityEvent e) => StabilityChanged?.Invoke(e);
-
-        public void Publish(SettlementEvent e) => SettlementComputed?.Invoke(e);
 
         public void Publish(PlacedEvent e) => Placed?.Invoke(e);
     }

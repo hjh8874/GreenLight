@@ -16,11 +16,10 @@ namespace CityFlow.Sim
         public int   GridWidth;         // blueprint 기준 20×20
         public int   GridHeight;
 
-        // ── 흐름 rate (단위 통일: 대/초 — 도착 누산기가 rate×TickInterval 전제) ──
+        // ── 도로/라우팅 튜닝 ───────────────────
         public float RoadCapacity;      // 대/초, 도로 등급별(지금 단일) 🔓
-        public float DemandPerHouse;    // 수요 1건(집→수요처)당 가상 차량 rate 🔓
 
-        // ── 차 단위 큐 Sim (3차 빌드, 스위치 전 병렬 신설) ──
+        // ── 차 단위 큐 Sim (3차 빌드) ──────────
         // 타일의 진입방향별 FIFO가 각각 가질 수 있는 차 토큰 수. SimConfigAsset.Value를
         // 통해 인스펙터에 자동 노출되며 기존 .asset은 0이므로 전환 전 수동 설정이 필요하다. 🔓
         public int QueueCapacityPerTile;
@@ -34,7 +33,6 @@ namespace CityFlow.Sim
         public float EveningEndHour;
         public int OfficeParkingSlots;
         public int MaxSimCars;
-        public bool UseCarSim;
         public float QueueSlowRatio;
         public float QueueJamRatio;
 
@@ -120,9 +118,6 @@ namespace CityFlow.Sim
         public float BurstCooldownSeconds;  // 타일당 10s (연사 방지)
         public float BurstRewardThreshold;  // pending magnitude가 이 값 넘어야 발행 🔓
 
-        // ── 정산 ───────────────────────────────
-        public float OfflineCapHours;   // 오프라인 상한 8h
-
         // 개발·테스트용 임시 한 벌. Bootstrap 주입 전까지 이걸로 굴림.
         // ponytail: Bootstrap/SO 붙으면 이 팩토리는 지워도 됨.
         public static SimConfig Default() => new SimConfig
@@ -132,7 +127,6 @@ namespace CityFlow.Sim
             GridWidth = 20,
             GridHeight = 20,
             RoadCapacity = 10f,
-            DemandPerHouse = 1f,
             QueueCapacityPerTile = 4,
             QueueServicePerTick = 1,
             GridlockValveTicks = 8,
@@ -144,7 +138,6 @@ namespace CityFlow.Sim
             EveningEndHour = 21f,
             OfficeParkingSlots = 6,
             MaxSimCars = 96,
-            UseCarSim = false,
             QueueSlowRatio = 0.5f,
             QueueJamRatio = 0.99f,
             SlowRatio = 0.7f,
@@ -177,7 +170,6 @@ namespace CityFlow.Sim
             BurstFreeReturnRatio = 0.6f,
             BurstCooldownSeconds = 10f,
             BurstRewardThreshold = 1f,
-            OfflineCapHours = 8f,
         };
 
         // 수요 맥동 배율(순수 함수 — 결정론·세이브 안전). sin(4πt/T)의 양수 구간만 취해

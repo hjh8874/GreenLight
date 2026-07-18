@@ -139,8 +139,8 @@ namespace CityFlow.Sim.Tests
 
             planner.Plan(demands, road, grid, cfg);
 
-            Assert.IsNotNull(planner.Routes[0], "Task 9 전 레거시 8연결은 보존");
-            Assert.IsNull(planner.CarRoutes[0], "CarSim은 대각 코너컷을 연결로 인정하지 않음");
+            Assert.IsNull(planner.Routes[0], "직교 단일 라우터는 대각 코너컷을 연결로 인정하지 않음");
+            Assert.IsNull(planner.CarRoutes[0]);
             Assert.IsNull(planner.ReturnRoutes[0]);
         }
 

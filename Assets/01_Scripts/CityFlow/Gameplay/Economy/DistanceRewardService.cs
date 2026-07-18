@@ -47,7 +47,6 @@ namespace CityFlow.Gameplay.Economy
 
             services = cityFlowServices;
             services.Events.Arrival += OnArrival;
-            services.Events.SettlementComputed += OnSettlementComputed;
             initialized = true;
 
             Debug.Log("[DistanceRewardService] Distance rewards initialized.", this);
@@ -61,7 +60,6 @@ namespace CityFlow.Gameplay.Economy
             }
 
             services.Events.Arrival -= OnArrival;
-            services.Events.SettlementComputed -= OnSettlementComputed;
         }
 
         private void OnArrival(ArrivalEvent arrival)
@@ -108,29 +106,6 @@ namespace CityFlow.Gameplay.Economy
                 services.Economy.Coins);
         }
 
-        private void OnSettlementComputed(SettlementEvent settlement)
-        {
-            if (settlement.Coins <= 0L || services.Economy == null ||
-                !routeDistanceProvider.TryGetCityAverageRouteDistance(
-                    out float distanceTiles))
-            {
-                return;
-            }
-
-            long bonus = AccumulateBonus(
-                settlement.Coins,
-                distanceTiles);
-            if (bonus > 0L)
-            {
-                services.Economy.AddCoins(bonus, "offline distance reward");
-                LogOfflineReward(
-                    distanceTiles,
-                    settlement.Coins,
-                    bonus,
-                    services.Economy.Coins);
-            }
-        }
-
         private void LogOnlineReward(
             Vector2Int destination,
             float distanceTiles,
@@ -149,26 +124,6 @@ namespace CityFlow.Gameplay.Economy
                 $"Multiplier: {rewardConfig.CalculateMultiplier(distanceTiles):F2}x, " +
                 $"Base: {baseCoins}, Bonus: {bonus}, " +
                 $"Current pending/balance: {currentAmount}.",
-                this);
-        }
-
-        private void LogOfflineReward(
-            float distanceTiles,
-            long baseCoins,
-            long bonus,
-            long currentBalance)
-        {
-            if (!logRewards)
-            {
-                return;
-            }
-
-            Debug.Log(
-                $"[DistanceRewardService] Offline distance bonus granted. " +
-                $"Average distance: {distanceTiles:F2} tiles, " +
-                $"Multiplier: {rewardConfig.CalculateMultiplier(distanceTiles):F2}x, " +
-                $"Base settlement: {baseCoins}, Bonus: {bonus}, " +
-                $"Current balance: {currentBalance}.",
                 this);
         }
 

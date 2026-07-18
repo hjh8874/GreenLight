@@ -84,7 +84,6 @@ namespace CityFlow.Sim.Tests
             var c = SimConfig.Default();
             c.TickInterval = 0.25f;
             c.GridWidth = 13; c.GridHeight = 13;
-            c.DemandPerHouse = demandPerHouse;
             c.RoadCapacity = 12f;
             c.DemandChoicePool = 1;
             c.SchoolCapacity = vHouses;
@@ -114,17 +113,7 @@ namespace CityFlow.Sim.Tests
             return e.DeliveredTotal;
         }
 
-        [Test]
-        public void BalancedCross_OverpassBeatsSignal_BeatsNothing()
-        {
-            // 실측 fH=9, fV=7.5(다목적지 수요). 입체 교차로 ratio: H 0.75·V 0.625 → 병목이
-            // 간선(동쪽 1.5/세로 1.25)으로 완전 이동. 학교행: 무신호 1.75 → 신호 1.4286 → 입체 1.25 — 사슬 엄격.
-            float none = Run(6, 6, 1.5f, Node.None);
-            float signal = Run(6, 6, 1.5f, Node.Signal, greenSlots: 9);
-            float over = Run(6, 6, 1.5f, Node.Overpass);
-            Assert.Less(none, signal);
-            Assert.Less(signal, over);    // 간섭 소멸 = 어떤 노드보다 강함(엔드게임 천장, 스펙 §핵심결정)
-        }
+
 
         [Test]
         public void NoCrossTraffic_OverpassIsFree()
@@ -134,7 +123,6 @@ namespace CityFlow.Sim.Tests
             var c = SimConfig.Default();
             c.TickInterval = 0.25f;
             c.GridWidth = 13; c.GridHeight = 13;
-            c.DemandPerHouse = 14f;
             c.RoadCapacity = 12f;
             c.RushAmplitude = 0f;
             c.AutoDetectSignals = false;

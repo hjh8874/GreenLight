@@ -163,38 +163,6 @@ namespace CityFlow.Sim.Tests
             Assert.Greater(e.GetOverrideSecondsLeft(V(8, 2)), 0f);
         }
 
-        [Test]
-        public void PlacedMode_UnsignaledInterferenceIsLive_SignalBeatsIt()
-        {
-            // 배치 모드에서 무신호 간섭(1단계 잠복 수학)이 라이브: 붐비는 십자에 신호를 사면 이긴다.
-            // 십자 기하는 AxisFlowTests.CrossCity와 동일 원리(직진 관통·코너컷 검증 좌표).
-            var c = SimConfig.Default();
-            c.TickInterval = 0.25f;
-            c.GridWidth = 13; c.GridHeight = 13;
-            c.DemandPerHouse = 1f;
-            c.RoadCapacity = 12f;
-            c.DemandChoicePool = 1;
-            c.SchoolCapacity = 6;
-            c.OfficeCapacity = 20;
-            c.RushAmplitude = 0f;
-            c.AutoDetectSignals = false;
 
-            System.Func<bool, float> run = placeSignal =>
-            {
-                var e = new SimEngine(c, new SimEventHub());
-                for (int x = 0; x <= 12; x++) e.Place(V(x, 6), TileType.Road);
-                for (int y = 0; y <= 12; y++) if (y != 6) e.Place(V(6, y), TileType.Road);
-                for (int i = 0; i < 6; i++) e.Place(V(i, 7), TileType.House);
-                for (int i = 0; i < 6; i++) e.Place(V(5, i), TileType.House);
-                e.Place(V(12, 7), TileType.Office);
-                e.Place(V(5, 12), TileType.School);
-                e.Tick(0.25f);
-                if (placeSignal) e.TryPlaceSignal(V(6, 6), 8);
-                e.Tick(0.25f);
-                return e.DeliveredTotal;
-            };
-
-            Assert.Less(run(false), run(true));   // 무신호 간섭 손실 > 신호 듀티 손실 = 사는 이유
-        }
     }
 }

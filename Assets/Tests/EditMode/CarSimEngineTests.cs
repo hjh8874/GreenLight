@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using NUnit.Framework;
@@ -13,7 +12,6 @@ namespace CityFlow.Sim.Tests
         static SimConfig Cfg()
         {
             SimConfig cfg = SimConfig.Default();
-            cfg.UseCarSim = true;
             cfg.GridWidth = 6;
             cfg.GridHeight = 3;
             cfg.TickInterval = 0.25f;
@@ -31,15 +29,8 @@ namespace CityFlow.Sim.Tests
             cfg.OfficeParkingSlots = 6;
             cfg.MaxSimCars = 96;
             cfg.DayLengthSeconds = 24f;
-            cfg.OfflineCapHours = 8f;
             cfg.DemandChoicePool = 1;
             return cfg;
-        }
-
-        [Test]
-        public void Default_SwitchIsOff()
-        {
-            Assert.IsFalse(SimConfig.Default().UseCarSim);
         }
 
         [Test]
@@ -52,7 +43,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void SwitchOn_MiniCityArrivesAndPaysPerCar()
+        public void MiniCityArrivesAndPaysPerCar()
         {
             var hub = new SimEventHub();
             int arrivals = 0, coins = 0;
@@ -114,23 +105,6 @@ namespace CityFlow.Sim.Tests
             engine.Tick(0.25f);
 
             Assert.AreEqual(1f, engine.TripSuccessRateForTest, "점프가 낀 날은 EMA 미산출");
-        }
-
-        [Test]
-        public void Offline_UsesDaysPopulationCoinAndPureSuccessRate()
-        {
-            SimConfig cfg = Cfg();
-            var settlements = new List<SettlementEvent>();
-            var hub = new SimEventHub();
-            hub.SettlementComputed += settlements.Add;
-            SimEngine engine = BuildStraightCity(cfg, hub);
-            engine.SetGameHour(7f);
-            engine.Tick(0.25f); // topology + CarCount=2
-
-            engine.SettleOffline(12.0); // DayLengthSeconds=24 → 0.5일
-
-            Assert.AreEqual(1, settlements.Count);
-            Assert.AreEqual(10L, settlements[0].Coins); // 0.5 × 2 × 10 × 초기 success 1
         }
 
         private static SimEngine BuildStraightCity(SimConfig cfg, SimEventHub hub)

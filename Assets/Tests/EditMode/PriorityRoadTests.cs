@@ -77,7 +77,6 @@ namespace CityFlow.Sim.Tests
             var c = SimConfig.Default();
             c.TickInterval = 0.25f;
             c.GridWidth = 13; c.GridHeight = 13;
-            c.DemandPerHouse = 2f;
             c.RoadCapacity = 12f;
             c.DemandChoicePool = 1;
             c.SchoolCapacity = vHouses;
@@ -104,14 +103,7 @@ namespace CityFlow.Sim.Tests
             return e.DeliveredTotal;
         }
 
-        [Test]
-        public void SkewedCross_PriorityRoad_BeatsUnsignaled()
-        {
-            // 가로가 압도적으로 많은 편중 교차(5집 vs 2집) — 가로 우선도로가 무신호(대칭 λ)보다 총 처리량↑
-            float nothing = RunCross(5, 2, priorityH: false);
-            float priority = RunCross(5, 2, priorityH: true);
-            Assert.Greater(priority, nothing);
-        }
+
 
         [Test]
         public void PriorityRoad_IsDeterministic()

@@ -47,7 +47,6 @@ namespace CityFlow.Gameplay.Economy
             services.RegisterEconomy(this);
 
             services.Events.Arrival += OnArrival;
-            services.Events.SettlementComputed += OnSettlementComputed;
 
             PublishCoinsChanged();
 
@@ -64,7 +63,6 @@ namespace CityFlow.Gameplay.Economy
             }
 
             services.Events.Arrival -= OnArrival;
-            services.Events.SettlementComputed -= OnSettlementComputed;
         }
 
         /// <summary>
@@ -174,18 +172,6 @@ namespace CityFlow.Gameplay.Economy
             AddCoins(e.Coins, "arrival");
         }
 
-        /// <summary>
-        /// 오프라인 정산 계산이 완료되었을 때 호출됩니다.
-        /// </summary>
-        private void OnSettlementComputed(SettlementEvent e)
-        {
-            if (e.Coins <= 0L)
-            {
-                return;
-            }
-
-            AddCoins(e.Coins, "offline settlement");
-        }
 
         /// <summary>
         /// 코인 변경 이벤트를 발생시킵니다.
