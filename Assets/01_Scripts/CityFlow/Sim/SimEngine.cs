@@ -356,6 +356,8 @@ namespace CityFlow.Sim
         public int CarSimOfficeParkingSlots => Math.Max(1, _config.OfficeParkingSlots);
         public int CarSimHomeParkingSlots => Math.Max(1, _config.CarsPerHouse);
         public int CarSimMaxCars => Math.Max(1, _config.MaxSimCars);
+        // 뷰가 큐 표시 간격을 타일 안에 담기 위해 필요(한 타일에 몇 대까지 서는가).
+        public int CarSimQueueCapacity => Math.Max(1, _config.QueueCapacityPerTile);
         public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _planner.CarRoutes;
         public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _planner.ReturnRoutes;
         public int ActiveVehicleCount => _carSim.CarCount;

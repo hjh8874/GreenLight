@@ -37,7 +37,11 @@ namespace CityFlow.View
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
         [SerializeField] private float followGap = 0.4f;           // 큐 슬롯 간 표시 거리(타일 비율)
-        [SerializeField, Range(0f, 0.45f)] private float intersectionQueueInset = 0.25f;
+        // 교차로 정지선 후퇴량. 이 값은 '틱 목표'에서 빼지므로 통과 차의 틱당 이동거리를
+        // 진입 1-inset / 이탈 1+inset 으로 갈라 속도 계단을 만든다(0.25면 1.66배).
+        // 0.12로 낮춰 계단을 1.27배로 완화 — 레인 오프셋(0.18)이 있어 교차 차량 분리는 유지된다.
+        // 완전 해소는 틱 위상 보간 대신 등속 리쉬로 가야 함(설계 과제, 감사 2026-07-18 Rank 1).
+        [SerializeField, Range(0f, 0.45f)] private float intersectionQueueInset = 0.12f;
         [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
@@ -1976,12 +1980,20 @@ namespace CityFlow.View
             float headInset = simEngine.IsSharedCarIntersection(simTile)
                 ? intersectionQueueInset * tileSize
                 : 0f;
+            // 큐 표시가 타일 밖으로 넘치면 안 된다. 예전엔 inset 0.25 + followGap 0.4×3 = 1.45타일이라
+            // 교차로 대기줄 뒷차가 '두 타일 뒤'에 그려졌고, 줄이 빠질 때 1.2타일을 순간 점프했다
+            // (환 라이브 "교차로에서 차가 사라짐" + 다른 타일 차와 겹침). 타일 안에 담기도록 간격을 조인다.
+            // ponytail: 용량 4는 기하학적으로 과포화(차 길이 0.38~0.44 × 4 = 1.5타일 > 1.0)라
+            // 조이면 겹침이 남는다. 완전 해소는 QueueCapacityPerTile을 3 이하로 — 밸런스 결정(환).
+            int queueCapacity = simEngine.CarSimQueueCapacity;
+            float maxSlotGap = (tileSize - headInset) / Mathf.Max(1, queueCapacity - 1);
+            float slotGap = Mathf.Min(followGap * tileSize, maxSlotGap);
             float targetDistance = snapshot.QueueSlot < 0
                 ? 0f
                 : poly.DistanceAtQueueSlot(
                     tileIndex,
                     snapshot.QueueSlot,
-                    followGap * tileSize,
+                    slotGap,
                     headInset);
             float previousDistance = car.Distance;
             bool stateChanged = hadPrevious && previous != snapshot.State;
