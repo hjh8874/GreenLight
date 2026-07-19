@@ -216,6 +216,7 @@ namespace CityFlow.View
             public float DepartHold;       // 출발 지연 잔여(초) — >0이면 출발 앵커 고정(적분 보류)
             public float SettleHold;       // 주차 정착 잔여(초) — >0이면 도착 앵커 정지 안무 중
             public bool Settling;          // 정착 안무 진행 플래그(도착 프레임 재진입 게이트)
+            public float SettleRate;       // 정착 등속 속도(유닛/초) — 정착 시작 시 남은거리/시간으로 1회 산출
             public GameObject BrakeLight;  // 후방 제동등(기본 off) — CreateDetailCube 패턴
             public bool BrakeOn;           // 제동등 상태 캐시(매 프레임 SetActive 금지)
         }
@@ -1830,6 +1831,7 @@ namespace CityFlow.View
             vehicle.DepartHold = 0f;
             vehicle.SettleHold = 0f;
             vehicle.Settling = false;
+            vehicle.SettleRate = 0f;
             vehicle.HasLastState = false;
             vehicle.BrakeOn = false;
             if (vehicle.BrakeLight != null)
@@ -1861,6 +1863,7 @@ namespace CityFlow.View
             vehicle.DepartHold = 0f;
             vehicle.SettleHold = 0f;
             vehicle.Settling = false;
+            vehicle.SettleRate = 0f;
             vehicle.HasLastState = false;
             vehicle.BrakeOn = false;
             if (vehicle.BrakeLight != null)
@@ -1905,6 +1908,7 @@ namespace CityFlow.View
                 if (arrivedAtWork || arrivedAtHome)
                 {
                     vehicle.Settling = true;
+                    vehicle.SettleRate = 0f;   // 이번 정착의 남은거리로 다시 산출
                 }
 
                 // Sim은 뷰보다 먼저 도착할 수 있다. 이때 현재 월드 위치→주차 앵커 MoveTowards는
@@ -1916,13 +1920,23 @@ namespace CityFlow.View
                 bool followingParkingPath = vehicle.Settling;
                 if (followingParkingPath)
                 {
-                    float settleSeconds = Mathf.Min(
-                        Mathf.Max(0.001f, parkingSettleSeconds),
-                        Mathf.Max(0.001f, simEngine.TickInterval * 0.9f));
+                    // 정착 속도는 '남은 스퍼 거리 / 정착시간'의 등속이어야 한다.
+                    // 예전엔 parkingPolyline.Length(경로 전체 길이)를 썼다 — 20타일 경로면
+                    // 20/0.09 ≈ 222유닛/초 = 60fps에서 프레임당 3.7타일이라, 남은 0.5~2타일을
+                    // 한 프레임에 주파했다. 즉 parkingSettleSeconds(0.3s) 연출은 한 번도
+                    // 실행된 적이 없고 항상 순간이동이었다(환 라이브 "주차장에 갑자기 생김").
+                    // TickInterval 클램프도 제거 — 도착한 차는 더 이상 Sim 갱신과 경합하지 않는다.
+                    if (vehicle.SettleRate <= 0f)
+                    {
+                        float settleSeconds = Mathf.Max(0.001f, parkingSettleSeconds);
+                        float remaining = Mathf.Max(0.0001f, parkingPolyline.Length - car.Distance);
+                        vehicle.SettleRate = remaining / settleSeconds;
+                    }
                     parked = parkingPolyline.AdvanceTowardEnd(
                         ref car.Distance,
-                        parkingPolyline.Length / settleSeconds * Time.deltaTime);
+                        vehicle.SettleRate * Time.deltaTime);
                     vehicle.Settling = car.Distance < parkingPolyline.Length - 0.001f;
+                    if (!vehicle.Settling) vehicle.SettleRate = 0f;
                 }
                 else
                 {
@@ -1955,6 +1969,7 @@ namespace CityFlow.View
             }
 
             vehicle.Settling = false;
+            vehicle.SettleRate = 0f;
             RoutePolyline poly = inbound ? pair.Inbound : pair.Outbound;
             int tileIndex = Mathf.Clamp(snapshot.TileIndex, 0, poly.TileCount - 1);
             Vector2Int simTile = poly.TileAt(tileIndex);
