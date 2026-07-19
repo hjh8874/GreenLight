@@ -221,6 +221,8 @@ namespace CityFlow.View
             public float SettleHold;       // 주차 정착 잔여(초) — >0이면 도착 앵커 정지 안무 중
             public bool Settling;          // 정착 안무 진행 플래그(도착 프레임 재진입 게이트)
             public float SettleRate;       // 정착 등속 속도(유닛/초) — 정착 시작 시 남은거리/시간으로 1회 산출
+            public bool WasAdvancing;      // 직전 틱에 목표가 전진했나(순항 판정용)
+            public bool Cruising;          // 순항 중 = 틱 보간을 등속(선형)으로 — 타일마다 멈추는 맥동 방지
             public GameObject BrakeLight;  // 후방 제동등(기본 off) — CreateDetailCube 패턴
             public bool BrakeOn;           // 제동등 상태 캐시(매 프레임 SetActive 금지)
         }
@@ -1836,6 +1838,8 @@ namespace CityFlow.View
             vehicle.SettleHold = 0f;
             vehicle.Settling = false;
             vehicle.SettleRate = 0f;
+            vehicle.WasAdvancing = false;
+            vehicle.Cruising = false;
             vehicle.HasLastState = false;
             vehicle.BrakeOn = false;
             if (vehicle.BrakeLight != null)
@@ -1868,6 +1872,8 @@ namespace CityFlow.View
             vehicle.SettleHold = 0f;
             vehicle.Settling = false;
             vehicle.SettleRate = 0f;
+            vehicle.WasAdvancing = false;
+            vehicle.Cruising = false;
             vehicle.HasLastState = false;
             vehicle.BrakeOn = false;
             if (vehicle.BrakeLight != null)
@@ -2014,11 +2020,21 @@ namespace CityFlow.View
                 vehicle.TargetQueueSlot = snapshot.QueueSlot;
                 vehicle.TargetRouteIndex = car.RouteIndex;
                 vehicle.HasTickTarget = true;
+                // 순항 판정: 직전 틱에도 전진했고 이번에도 전진 → 등속 구간.
+                // 정지 상태에서 막 출발했거나 상태가 바뀐 틱은 이징(자연 가감속).
+                vehicle.Cruising = vehicle.WasAdvancing && !stateChanged;
+                vehicle.WasAdvancing = true;
             }
-            car.Distance = PolylineMath.InterpolateTickDistance(
+            else
+            {
+                // 목표가 그대로 = 대기 중. 다음 전진은 정지에서 출발이므로 이징.
+                vehicle.Cruising = false;
+                vehicle.WasAdvancing = false;
+            }
+            car.Distance = Mathf.Lerp(
                 vehicle.PreviousTargetDistance,
                 vehicle.TargetDistance,
-                simEngine.TickProgress01);
+                PolylineMath.TickEase(simEngine.TickProgress01, vehicle.Cruising));
             Sample sample = poly.SampleAt(car.Distance);
             vehicle.Object.transform.localPosition = sample.Pos;
             vehicle.Pos = sample.Pos;
