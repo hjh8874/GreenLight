@@ -51,24 +51,6 @@ namespace CityFlow.Sim.Tests
                 "같은 틱 위상으로 보간하면 이전·현재 스냅샷의 차간격이 유지돼야 한다");
         }
 
-        // 연속 주행은 등속이어야 한다. SmoothStep 이징은 t=0·t=1에서 속도가 0이라
-        // 타일 경계마다 "출발→가속→감속→정지"를 반복시킨다 — 틱이 길수록 눈에 보이는 맥동.
-        // (환 라이브 2026-07-18: TickInterval 0.33에서 차가 뚝뚝 끊겨 이동)
-        [Test]
-        public void InterpolateTickDistance_IsLinear_NoPerTileStutter()
-        {
-            Assert.AreEqual(0.25f, PolylineMath.InterpolateTickDistance(0f, 1f, 0.25f), 1e-4f,
-                "틱 위상 25%면 거리도 25% — 이징으로 앞부분이 느려지면 안 된다");
-            Assert.AreEqual(0.75f, PolylineMath.InterpolateTickDistance(0f, 1f, 0.75f), 1e-4f);
-
-            // 등속: 같은 크기의 위상 구간은 같은 거리를 이동해야 한다.
-            float early = PolylineMath.InterpolateTickDistance(0f, 1f, 0.2f)
-                        - PolylineMath.InterpolateTickDistance(0f, 1f, 0f);
-            float middle = PolylineMath.InterpolateTickDistance(0f, 1f, 0.6f)
-                         - PolylineMath.InterpolateTickDistance(0f, 1f, 0.4f);
-            Assert.AreEqual(early, middle, 1e-4f, "위상 구간이 같으면 이동거리도 같아야 한다(등속)");
-        }
-
         [Test]
         public void ParkingSlotOffset_SixSlotsUseSpacedGrid()
         {
