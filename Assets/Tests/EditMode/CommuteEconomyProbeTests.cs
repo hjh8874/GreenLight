@@ -176,38 +176,10 @@ namespace CityFlow.Sim.Tests
             Assert.Greater(unified.DailyCoin, base6.DailyCoin, "일일 코인도 함께 열려야 한다");
         }
 
-        // ── 스텝 1: 캡 통일 (일자리 수 = 실제 통근 수) ────────────────────────
-        // CarSim이 CommuteScheduler에 넘기는 work 슬롯 상한이 '주차 슬롯'이 아니라
-        // '일자리 용량(OfficeCapacity/SchoolCapacity)'을 따라야 한다.
-        // 그래야 도심 오피스에 배정된 집이 슬롯 부족으로 사장되지 않는다.
-        [Test]
-        public void CarSim_WorkSlots_FollowJobCapacity_NotParkingSlots()
-        {
-            SimConfig cfg = SimConfig.Default();
-            cfg.DemandChoicePool = 1;
-            const int Houses = 8;   // ParkingSlots(6) 초과, OfficeCapacity(20) 이내
-
-            var grid = new CityGrid(12, 3);
-            for (int x = 0; x <= 10; x++) Assert.IsTrue(grid.Place(V(x, 1), TileType.Road));
-            for (int x = 0; x < Houses; x++) Assert.IsTrue(grid.Place(V(x, 0), TileType.House));
-            Assert.IsTrue(grid.Place(V(11, 1), TileType.Office));
-
-            var road = new RoadNetwork(grid);
-            var demands = new DemandMap(cfg);
-            demands.Reassign(grid, road);
-            Assert.AreEqual(Houses, demands.Demands.Count, "8집 전부 한 오피스에 배정(용량 20)");
-
-            var planner = new RoutePlanner(grid.Width, grid.Height);
-            planner.Plan(demands, road, grid, cfg);
-
-            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
-            net.RebuildTopology(grid);
-            var sim = new CarSim(cfg);
-            sim.Rebuild(demands, planner, net);
-
-            Assert.AreEqual(Houses, sim.CarCount,
-                "일자리 8개면 통근 차도 8대여야 한다 — 주차슬롯(6)이 경제를 조르면 안 된다");
-        }
+        // 주: 캡 통일(work 슬롯 상한을 일자리 용량으로) 시도는 2026-07-18 되돌렸다 —
+        // 슬롯 20이 되면 한 건물 타일에 20대가 주차해 뷰가 겹치고 도착 시 플래쉬가 생겼다(환 라이브).
+        // 위 측정 테스트들은 그대로 유효(명시적 officeSlots 인자로 측정) — 경제 병목 사실은 여전하나,
+        // 해법은 '뷰 주차 슬롯과 경제 일자리 수의 분리'가 선행돼야 한다.
 
         // ── 리빌드 연속성: 건설이 이동 중인 차를 주차장으로 텔레포트시키면 안 된다 ──────
         // 증상(환 라이브 2026-07-18): 무언가 배치할 때마다 도로 위 차가 사라졌다가 주차장에 생김.
