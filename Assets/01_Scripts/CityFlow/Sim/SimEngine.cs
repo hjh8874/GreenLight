@@ -808,6 +808,9 @@ namespace CityFlow.Sim
             // 복원 = 전체 교체: 비우고 → 재배치 → 교차로 재감지 → 조율 복원 (PR#8 합의 흐름)
             _grid.Clear();
             _roadQueues.RemoveAllCars();
+            // 스케줄러도 비운다 — 안 비우면 로드 이전 차가 sticky 생존 매칭에 새어든다.
+            // 예전엔 Rebuild의 무조건 전체 스냅이 이걸 가렸다(감사 nit 2026-07-18).
+            _carSim.ResetForRestore();
             _stats.RestoreCarSim(
                 snapshot.CarTripSuccessRate,
                 snapshot.CarDayArrivalCount,

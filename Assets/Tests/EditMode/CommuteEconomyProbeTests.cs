@@ -208,5 +208,53 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(Houses, sim.CarCount,
                 "일자리 8개면 통근 차도 8대여야 한다 — 주차슬롯(6)이 경제를 조르면 안 된다");
         }
+
+        // ── 리빌드 연속성: 건설이 이동 중인 차를 주차장으로 텔레포트시키면 안 된다 ──────
+        // 증상(환 라이브 2026-07-18): 무언가 배치할 때마다 도로 위 차가 사라졌다가 주차장에 생김.
+        // 원인: CarSim.Rebuild가 무조건 _needsSnap=true → 다음 Step이 RemoveAllCars + 전 차량
+        // SnapToHour. CommuteScheduler의 sticky 생존 매칭(State·Distance 보존)이 즉시 덮어써졌다.
+        [Test]
+        public void Rebuild_KeepsInTransitCars_NoTeleportToParking()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.DemandChoicePool = 1;
+            cfg.MorningStartHour = 6f;
+            cfg.MorningEndHour = 6.01f;    // 출발 시각을 6.0으로 고정
+            cfg.EveningStartHour = 17f;
+            cfg.EveningEndHour = 18f;
+
+            var grid = new CityGrid(12, 3);
+            for (int x = 0; x <= 10; x++) Assert.IsTrue(grid.Place(V(x, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(11, 1), TileType.Office));
+
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            var events = new SimEventBuffer(new SimEventHub());
+
+            for (int t = 0; t < 5; t++) sim.Step(6.5f, net, events);
+
+            CarSnapshot before = sim.GetCar(0);
+            Assert.AreEqual(CarState.Outbound, before.State, "사전조건: 차가 이동 중");
+            Assert.Greater(before.TileIndex, 0, "사전조건: 도로 중간까지 진행");
+
+            // 무관한 건설 = 토폴로지 리빌드 (경로는 그대로)
+            sim.Rebuild(demands, planner, net);
+            sim.Step(6.5f, net, events);
+
+            CarSnapshot after = sim.GetCar(0);
+            Assert.AreEqual(CarState.Outbound, after.State,
+                "리빌드가 이동 중인 차를 주차 상태로 되돌리면 안 된다");
+            Assert.GreaterOrEqual(after.TileIndex, before.TileIndex,
+                "진행 위치가 보존(또는 전진)돼야 한다 — 출발점으로 되감기 금지");
+        }
     }
 }
