@@ -237,24 +237,36 @@ namespace CityFlow.ViewKit
             Vector3 routeTangent = (b - a).normalized;
 
             float radiusFraction = input.CornerRadiusFraction;
-            int cornerIndex = -1;
-            float curveT = 0f;
+            // 코너 후보는 둘: 다음 타일이 코너면 '진출 반쪽', 이번 타일이 코너면 '진입 반쪽'.
+            // radiusFraction > 0.5면 두 창([1-RF,1)과 [0,RF))이 겹치는데, 예전엔 if/else-if라
+            // 첫 후보가 코너가 아니어도 두 번째를 시도하지 못하고 직선 중심선으로 떨어졌다.
+            // 결과: 모든 회전에서 코너 후반부가 통째로 누락 → 0.19타일 위치 불연속(일부 역방향)
+            // 으로 차가 회전 중간에 옆으로 튀었다(감사 2026-07-18, 베이크 수학 재현으로 검증).
+            // 첫 후보가 실패하면 두 번째 후보로 폴백한다 — 회전 반경(0.6)은 그대로 유지.
+            bool onCurve = false;
             if (segmentT >= 1f - radiusFraction && segmentIndex + 2 < tiles.Count)
             {
-                cornerIndex = segmentIndex + 1;
-                curveT = (segmentT - (1f - radiusFraction)) / (radiusFraction * 2f);
-            }
-            else if (segmentT < radiusFraction && segmentIndex > 0)
-            {
-                cornerIndex = segmentIndex;
-                curveT = 0.5f + segmentT / (radiusFraction * 2f);
+                onCurve = TryEvaluateTurnBezier(
+                    input, tiles, segmentIndex + 1,
+                    (segmentT - (1f - radiusFraction)) / (radiusFraction * 2f),
+                    radiusFraction, out Vector3 exitPos, out Vector3 exitTangent);
+                if (onCurve)
+                {
+                    centerline = exitPos;
+                    routeTangent = exitTangent;
+                }
             }
 
-            if (cornerIndex >= 0
-                && TryEvaluateTurnBezier(input, tiles, cornerIndex, curveT, radiusFraction, out Vector3 curvePosition, out Vector3 curveTangent))
+            if (!onCurve
+                && segmentT < radiusFraction
+                && segmentIndex > 0
+                && TryEvaluateTurnBezier(
+                    input, tiles, segmentIndex,
+                    0.5f + segmentT / (radiusFraction * 2f),
+                    radiusFraction, out Vector3 entryPos, out Vector3 entryTangent))
             {
-                centerline = curvePosition;
-                routeTangent = curveTangent;
+                centerline = entryPos;
+                routeTangent = entryTangent;
             }
 
             Vector3 travelDir = routeTangent;
