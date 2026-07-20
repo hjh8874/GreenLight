@@ -12,6 +12,10 @@ namespace CityFlow.Sim
         public float DepartHomeHour, DepartWorkHour;
         public CarState State;
         public float Distance;
+        // 리빌드(건설) 생존 차의 현재 월드 타일. 인덱스는 재배열되지만 이 인스턴스는
+        // sticky 매칭으로 유지되므로, 진행도를 차에 실어 리빌드를 건너보낸다.
+        public Vector2Int ResumeTile;
+        public bool HasResume;
     }
 
     // 하루 주기 통근 안무. 세이브 불필요 — 로드/큰 시각 점프 시 SnapToHour로 주차 상태에

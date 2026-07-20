@@ -63,6 +63,21 @@ namespace CityFlow.Sim
             if (demands == null) throw new ArgumentNullException(nameof(demands));
             if (planner == null) throw new ArgumentNullException(nameof(planner));
             _net = net ?? throw new ArgumentNullException(nameof(net));
+            // 클리어 전에 생존 차의 현재 월드 타일을 차 객체에 실어둔다. 이게 없으면
+            // 재큐잉이 route[0](집)에서 일어나 건설할 때마다 주행 차가 순간이동한다
+            // (라이브 계측 2026-07-20: 도로 1개 배치에 4대·최대 5.90타일).
+            for (int i = 0; i < CarCount; i++)
+            {
+                CommuteCar survivor = _scheduler.Cars[i];
+                bool onRoad = (survivor.State == CarState.Outbound || survivor.State == CarState.Inbound)
+                    && _enqueued[i]
+                    && TryRoute(i, out List<Vector2Int> oldRoute)
+                    && oldRoute.Count > 0;
+                if (!onRoad) { survivor.HasResume = false; continue; }
+                TryRoute(i, out List<Vector2Int> currentRoute);
+                survivor.ResumeTile = currentRoute[Mathf.Clamp(_tileIndices[i], 0, currentRoute.Count - 1)];
+                survivor.HasResume = true;
+            }
             _sources.Clear();
             _sinks.Clear();
             _outboundRoutes.Clear();
@@ -119,7 +134,18 @@ namespace CityFlow.Sim
             if (_needsSnap || jumped)
             {
                 net.RemoveAllCars();
-                _scheduler.SnapToHour(gameHour);
+                if (jumped)
+                {
+                    // 로드·배속 점프: 이동 연출을 복원하지 않는다 — 전 차 주차로 조대 수렴.
+                    _scheduler.SnapToHour(gameHour);
+                    for (int i = 0; i < CarCount; i++) _scheduler.Cars[i].HasResume = false;
+                }
+                else
+                {
+                    // 건설(토폴로지 리빌드): 신규 차만 수렴시키고 생존 차의 상태·진행도는 지킨다.
+                    // 전체 SnapToHour를 쓰면 주행 중이던 차가 전부 주차로 되돌아가 순간이동한다.
+                    _scheduler.SnapNewToHour(gameHour);
+                }
                 Array.Clear(_enqueued, 0, _enqueued.Length);
                 Array.Fill(_queueSlots, -1);
                 _needsSnap = false;
@@ -189,11 +215,21 @@ namespace CityFlow.Sim
                 CommuteCar car = _scheduler.Cars[i];
                 bool moving = car.State == CarState.Outbound || car.State == CarState.Inbound;
                 if (!moving || _enqueued[i] || !TryRoute(i, out List<Vector2Int> route)) continue;
+                // 리빌드 생존 차는 있던 자리에서 이어 달린다. 새 경로에 그 타일이 없으면
+                // (도로가 헐렸다 등) 진행도를 포기하고 route[0]에서 다시 출발한다.
+                int start = 0;
+                if (car.HasResume)
+                {
+                    car.HasResume = false;
+                    for (int p = 0; p < route.Count; p++)
+                        if (route[p] == car.ResumeTile) { start = p; break; }
+                }
                 Dir entry = Dir.N;
-                if (route.Count > 1 && !TryDirection(route[1] - route[0], out entry)) continue;
-                if (!net.TryEnqueue(route[0], entry, i)) continue;
+                if (start > 0 && !TryDirection(route[start] - route[start - 1], out entry)) start = 0;
+                if (start == 0 && route.Count > 1 && !TryDirection(route[1] - route[0], out entry)) continue;
+                if (!net.TryEnqueue(route[start], entry, i)) continue;
                 _enqueued[i] = true;
-                _tileIndices[i] = 0;
+                _tileIndices[i] = start;
                 _queueSlots[i] = 0;
             }
         }

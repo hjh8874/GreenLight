@@ -155,6 +155,39 @@ namespace CityFlow.Sim.Tests
             Assert.IsNull(planner.ReturnRoutes[0]);
         }
 
+        // 건설(=Rebuild)이 주행 중인 차를 집으로 되돌리면 안 된다.
+        // 라이브 계측(2026-07-20): 도로 1개 배치에 4대가 한 프레임에 최대 5.90타일 순간이동.
+        [Test]
+        public void Rebuild_MidRoute_DoesNotResetSurvivorToHome()
+        {
+            BuildStraightCity(out CityGrid grid, out DemandMap demands, out RoutePlanner planner);
+            SimConfig cfg = Cfg();
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            var hub = new SimEventHub();
+            var events = new SimEventBuffer(hub);
+
+            for (int t = 0; t < 3; t++) sim.Step(7f, net, events);
+            CarSnapshot before = sim.GetCar(0);
+            Assert.AreEqual(CarState.Outbound, before.State, "전제: 차가 주행 중이어야 한다");
+            Assert.Greater(before.TileIndex, 0, "전제: 차가 집 타일을 벗어나 있어야 한다");
+
+            // 토폴로지 변경(건설)과 같은 경로 — 경로 자체는 그대로다.
+            sim.Rebuild(demands, planner, net);
+            sim.Step(7f, net, events);
+
+            CarSnapshot after = sim.GetCar(0);
+            Assert.AreEqual(CarState.Outbound, after.State,
+                "건설이 주행 중인 차를 주차 상태로 되돌리면 안 된다");
+            // TileIndex>0만 보면 약하다 — 집에서 재출발해 한 칸 전진해도 통과한다.
+            // 진행도가 뒤로 가지 않았는지를 봐야 순간이동을 잡는다.
+            Assert.GreaterOrEqual(after.TileIndex, before.TileIndex,
+                $"건설이 주행 차의 진행도를 되돌렸다 ({before.TileIndex} -> {after.TileIndex})"
+                + " — 뷰에서 집으로 순간이동하는 것으로 보인다");
+        }
+
         private static void BuildStraightCity(
             out CityGrid grid,
             out DemandMap demands,
