@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -31,7 +32,9 @@ namespace CityFlow.UI.Controllers
 
             for (int i = 0; i < _raycastResults.Count; i++)
             {
-                if (_raycastResults[i].gameObject.GetComponentInParent<Selectable>() != null)
+                GameObject hitObject = _raycastResults[i].gameObject;
+                if (hitObject.GetComponentInParent<Selectable>() != null ||
+                    hitObject.GetComponentInParent<CityFlow.UI.BuildPanelController>() != null)
                 {
                     return true;
                 }

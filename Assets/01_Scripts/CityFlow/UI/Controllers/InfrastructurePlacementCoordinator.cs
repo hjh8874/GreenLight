@@ -27,6 +27,8 @@ namespace CityFlow.UI.Controllers
         private PlacementController _originalPlacementController;
         private int _frameStarted = 0;
         private bool _wasOriginalBuildingMode = false;
+        private Vector2Int? _lastRemovedCoord;
+        private Vector2Int? _rightClickStartCoord;
         private readonly UIRaycastBlocker _uiRaycastBlocker = new UIRaycastBlocker();
         
         // Configuration Constants (Balancing Defaults)
@@ -125,23 +127,22 @@ namespace CityFlow.UI.Controllers
             if (!_isBuildingMode) return;
             if (!_isDemolishMode && _currentData == null) return;
 
-            if (_uiRaycastBlocker.IsPointerOverBlockingUI())
+            Mouse mouse = Mouse.current;
+            if (mouse != null && mouse.rightButton.wasReleasedThisFrame)
+            {
+                _lastRemovedCoord = null;
+                _rightClickStartCoord = null;
+            }
+
+            bool isPointerOverBlockingUI = _uiRaycastBlocker.IsPointerOverBlockingUI();
+            if (isPointerOverBlockingUI)
             {
                 if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(false);
                 return;
             }
 
-            if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
+            if (HandleRightClickDemolition(mouse))
             {
-                Vector2Int clickedCoord = GetMouseGridCoordinate();
-                if (_originalPlacementController != null)
-                {
-                    _originalPlacementController.TryDemolishAt(clickedCoord);
-                }
-                else
-                {
-                    TryDemolishInfrastructureAt(clickedCoord);
-                }
                 return;
             }
 
@@ -151,14 +152,7 @@ namespace CityFlow.UI.Controllers
 
             if (ghostRenderer != null)
             {
-                if (_originalPlacementController != null)
-                {
-                    ghostRenderer.transform.position = _originalPlacementController.GetGhostPosition(gridCoord);
-                }
-                else
-                {
-                    ghostRenderer.transform.position = new Vector3(gridCoord.x, 0, gridCoord.y);
-                }
+                UpdateGhostPosition(gridCoord);
                 
                 if (_isDemolishMode)
                 {
@@ -191,6 +185,54 @@ namespace CityFlow.UI.Controllers
                     }
                 }
             }
+        }
+
+        private bool HandleRightClickDemolition(Mouse mouse)
+        {
+            if (mouse == null)
+            {
+                return false;
+            }
+
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                _rightClickStartCoord = GetMouseGridCoordinate();
+            }
+
+            if (!mouse.rightButton.isPressed || !_rightClickStartCoord.HasValue)
+            {
+                return false;
+            }
+
+            Vector2Int currentCoord = GetMouseGridCoordinate();
+            UpdateGhostPosition(currentCoord);
+
+            if (!_lastRemovedCoord.HasValue || _lastRemovedCoord.Value != currentCoord)
+            {
+                bool removed = _originalPlacementController != null
+                    ? _originalPlacementController.TryDemolishAt(currentCoord)
+                    : TryDemolishInfrastructureAt(currentCoord);
+
+                if (removed)
+                {
+                    _lastRemovedCoord = currentCoord;
+                }
+            }
+
+            return true;
+        }
+
+        private void UpdateGhostPosition(Vector2Int gridCoord)
+        {
+            if (ghostRenderer == null)
+            {
+                return;
+            }
+
+            ghostRenderer.gameObject.SetActive(true);
+            ghostRenderer.transform.position = _originalPlacementController != null
+                ? _originalPlacementController.GetGhostPosition(gridCoord)
+                : new Vector3(gridCoord.x, 0, gridCoord.y);
         }
 
         private Vector2Int GetMouseGridCoordinate()

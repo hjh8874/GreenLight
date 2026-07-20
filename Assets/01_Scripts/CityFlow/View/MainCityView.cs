@@ -8,6 +8,7 @@ using CityFlow.UI.Controllers;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
 using UnityEngine.Serialization;
 
 namespace CityFlow.View
@@ -65,6 +66,7 @@ namespace CityFlow.View
         [SerializeField, Min(0.001f)] private float zoomScrollSensitivity = 1f;
 
         private const float OrthographicSizePerDistance = 0.9375f;
+        private const int VehicleRenderQueue = (int)RenderQueue.Geometry + 10;
 
         [Header("Colors")]
         [SerializeField] private Color boardColor = new Color(0.78f, 0.82f, 0.78f);
@@ -181,6 +183,8 @@ namespace CityFlow.View
             public Vector3 Dir;
             public Vector2Int CurrentTile;
             public bool HasCurrentTile;
+            public Vector2Int RoundaboutTile;
+            public bool IsInRoundabout;
             public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
             public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
             public int RouteIndex = -1;
@@ -579,7 +583,7 @@ namespace CityFlow.View
             board.transform.localPosition = new Vector3(width * tileSize * 0.5f, height * tileSize * 0.5f, 0.15f);
             board.transform.localScale = new Vector3(width * tileSize, height * tileSize, 0.04f);
             Renderer boardRenderer = board.GetComponent<Renderer>();
-            boardRenderer.sharedMaterial = CreateGridMaterial();
+            boardRenderer.sharedMaterial = CreateGridMaterial(boardRenderer.sharedMaterial);
             boardRenderer.allowOcclusionWhenDynamic = false;
             boardRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             boardRenderer.receiveShadows = false;
@@ -1387,6 +1391,7 @@ namespace CityFlow.View
             vehicle.Phase = 0f;
             vehicle.CurrentSpeed = 0f;
             vehicle.HasCurrentTile = false;
+            vehicle.IsInRoundabout = false;
             vehicle.DisplayRouteHash = 0;
             vehicle.DisplayRoute.Clear();
 
@@ -1430,6 +1435,7 @@ namespace CityFlow.View
             vehicle.RouteIndex = -1;
             vehicle.RouteHash = 0;
             vehicle.HasCurrentTile = false;
+            vehicle.IsInRoundabout = false;
             vehicle.CurrentSpeed = 0f;
             if (vehicle.AngryMark != null)
             {
@@ -1453,7 +1459,7 @@ namespace CityFlow.View
                 }
 
                 Renderer renderer = vehicle.GetComponentInChildren<Renderer>();
-                PrepareRenderer(renderer);
+                PrepareRenderer(renderer, VehicleRenderQueue);
                 ApplyRendererColor(renderer, vehicleColor);
 
                 Renderer detailRenderer = null;
@@ -1461,6 +1467,7 @@ namespace CityFlow.View
                 {
                     detailRenderer = CreateDetailCube(vehicle.transform, "Cabin",
                         new Vector3(0.55f, 0.72f, 0.42f), new Vector3(-0.05f, 0f, -0.65f));
+                    SetRendererRenderQueue(detailRenderer, VehicleRenderQueue);
                     ApplyRendererColor(detailRenderer, Color.Lerp(vehicleColor, Color.white, 0.3f));
                 }
 
@@ -1574,24 +1581,16 @@ namespace CityFlow.View
             bool forward = vehicle.Phase <= segmentCount;
             EvaluateVehiclePose(route, index, t, forward, out Vector3 pos, out Vector3 travelDir, out Vector2Int insideTile);
 
-            // 로터리 경계에서는 차선 포즈를 유지하고, 안쪽에서만 CCW 링 포즈로 전환한다.
-            if (IsRoundaboutTile(insideTile))
+            // 직선 차선과 원호가 만나는 접점부터 CCW 링 포즈를 사용해 중앙 섬을 가로지르지 않게 한다.
+            if (TryGetRoundaboutCenterIndex(route, folded, out int ci))
             {
-                int ci = t < 0.5f ? index : index + 1;
                 if (TryRoundaboutOrbit(route, ci, folded, forward, out Vector3 ringPos, out Vector3 ringDir))
                 {
-                    float arcU = Mathf.Clamp01(forward ? folded - ci + 0.5f : ci + 0.5f - folded);
-                    const float edge = 0.35f;
-                    float blend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(arcU / edge))
-                                * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((1f - arcU) / edge));
-                    pos = Vector3.Lerp(pos, ringPos, blend);
+                    pos = ringPos;
+                    insideTile = route[ci];
                     if (ringDir.sqrMagnitude > 0.0001f)
                     {
-                        Vector3 blendedDir = Vector3.Lerp(travelDir.normalized, ringDir.normalized, blend);
-                        if (blendedDir.sqrMagnitude > 0.0001f)
-                        {
-                            travelDir = blendedDir.normalized;
-                        }
+                        travelDir = ringDir.normalized;
                     }
                 }
             }
@@ -1599,6 +1598,8 @@ namespace CityFlow.View
             vehicle.Object.transform.localPosition = pos;
             vehicle.CurrentTile = currentTile;
             vehicle.HasCurrentTile = true;
+            vehicle.RoundaboutTile = insideTile;
+            vehicle.IsInRoundabout = IsRoundaboutTile(insideTile);
 
             if (travelDir.sqrMagnitude > 0.001f)
             {
@@ -1767,12 +1768,8 @@ namespace CityFlow.View
 
             Vector2Int horizontalBridge = new Vector2Int(to.x, from.y);
             Vector2Int verticalBridge = new Vector2Int(from.x, to.y);
-            bool canTurnHorizontalFirst = IsRoadTile(horizontalBridge)
-                && IsRoadTile(new Vector2Int(from.x - dx, from.y))
-                && IsRoadTile(new Vector2Int(to.x, to.y + dy));
-            bool canTurnVerticalFirst = IsRoadTile(verticalBridge)
-                && IsRoadTile(new Vector2Int(from.x, from.y - dy))
-                && IsRoadTile(new Vector2Int(to.x + dx, to.y));
+            bool canTurnHorizontalFirst = IsRoadTile(horizontalBridge);
+            bool canTurnVerticalFirst = IsRoadTile(verticalBridge);
 
             if (!canTurnHorizontalFirst && !canTurnVerticalFirst)
             {
@@ -1860,18 +1857,15 @@ namespace CityFlow.View
             float radiusFraction = GetCornerTurnRadiusFraction();
             int cornerIndex = -1;
 
-            int orbitIndex = segmentT < 0.5f ? segmentIndex : segmentIndex + 1;
             bool fwd = Mathf.Repeat(phase, segmentCount * 2f) <= segmentCount;
-            if (orbitIndex > 0
-                && orbitIndex < route.Count - 1
-                && Mathf.Abs(folded - orbitIndex) <= 0.5f
-                && IsRoundaboutTile(route[orbitIndex]))
+            if (TryGetRoundaboutCenterIndex(route, folded, out int orbitIndex))
             {
                 if (roundaboutOrbitRadius > 0.01f
                     && TryGetRoundaboutArc(route, orbitIndex, fwd, out _, out float ccwSweep)
                     && ccwSweep > 0.01f)
                 {
-                    return 1f / (roundaboutOrbitRadius * ccwSweep);
+                    float phaseSpan = 2f * GetRoundaboutApproachDistance();
+                    return phaseSpan / (roundaboutOrbitRadius * ccwSweep);
                 }
 
                 return 1f;
@@ -1964,14 +1958,59 @@ namespace CityFlow.View
                 return false;
             }
 
+            float approachDistance = GetRoundaboutApproachDistance();
             float arcU = Mathf.Clamp01(
-                forward ? folded - centerIndex + 0.5f : centerIndex + 0.5f - folded);
+                (forward
+                    ? folded - centerIndex + approachDistance
+                    : centerIndex + approachDistance - folded)
+                / (2f * approachDistance));
             float angle = entryAngle + arcU * ccwSweep;
             float radius = tileSize * roundaboutOrbitRadius;
             Vector3 center = GridToLocal(route[centerIndex], vehicleZ);
             position = center + new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f) * radius;
             tangent = new Vector3(-Mathf.Sin(angle), Mathf.Cos(angle), 0f);
             return true;
+        }
+
+        private bool TryGetRoundaboutCenterIndex(List<Vector2Int> route, float folded, out int centerIndex)
+        {
+            int lowerIndex = Mathf.FloorToInt(folded);
+            int upperIndex = Mathf.CeilToInt(folded);
+            float approachDistance = GetRoundaboutApproachDistance();
+
+            if (IsRoundaboutCenterInRange(route, lowerIndex, folded, approachDistance))
+            {
+                centerIndex = lowerIndex;
+                return true;
+            }
+
+            if (IsRoundaboutCenterInRange(route, upperIndex, folded, approachDistance))
+            {
+                centerIndex = upperIndex;
+                return true;
+            }
+
+            centerIndex = -1;
+            return false;
+        }
+
+        private bool IsRoundaboutCenterInRange(
+            List<Vector2Int> route,
+            int centerIndex,
+            float folded,
+            float approachDistance)
+        {
+            return centerIndex > 0
+                && centerIndex < route.Count - 1
+                && IsRoundaboutTile(route[centerIndex])
+                && Mathf.Abs(folded - centerIndex) <= approachDistance;
+        }
+
+        private float GetRoundaboutApproachDistance()
+        {
+            float radius = Mathf.Max(roundaboutOrbitRadius, 0.01f);
+            float lateralOffset = Mathf.Min(Mathf.Abs(laneOffset), radius);
+            return Mathf.Sqrt(Mathf.Max(0.0001f, radius * radius - lateralOffset * lateralOffset));
         }
 
         private float GetCornerTurnRadiusFraction()
@@ -2121,17 +2160,51 @@ namespace CityFlow.View
             return Mathf.Abs(Vector3.Dot(incoming, outgoing)) < 0.001f;
         }
 
-        // 앞차와의 거리를 [gap, 2*gap]에서 [0, freeSpeed]로 매핑. 없으면 freeSpeed.
+        // 직선에서는 전방 투영 거리, 로터리에서는 CCW 원호 거리로 앞차를 판정한다.
+        // 거리를 [gap, 2*gap]에서 [0, freeSpeed]로 매핑. 없으면 freeSpeed.
         // 차량 수가 수백 대 규모인 동안은 O(n) 스캔을 유지하고, 병목이 되면 공간 해시로 승급한다.
         private float LeaderSpeedCap(RouteVehicle vehicle, float freeSpeed)
         {
             if (vehicle.Dir.sqrMagnitude < 0.001f) return freeSpeed;
             float gap = tileSize * followGap;
             float nearest = float.MaxValue;
+
+            if (vehicle.IsInRoundabout)
+            {
+                Vector3 center = GridToLocal(vehicle.RoundaboutTile, vehicleZ);
+                Vector3 myRadius = vehicle.Pos - center;
+                if (myRadius.sqrMagnitude < 0.0001f) return freeSpeed;
+
+                float myAngle = Mathf.Atan2(myRadius.y, myRadius.x);
+                float orbitRadius = Mathf.Max(tileSize * roundaboutOrbitRadius, 0.01f);
+                for (int i = 0; i < vehicles.Count; i++)
+                {
+                    RouteVehicle other = vehicles[i];
+                    if (other == vehicle || !other.Object.activeSelf
+                        || !other.IsInRoundabout || other.RoundaboutTile != vehicle.RoundaboutTile)
+                    {
+                        continue;
+                    }
+
+                    Vector3 otherRadius = other.Pos - center;
+                    if (otherRadius.sqrMagnitude < 0.0001f) continue;
+
+                    float otherAngle = Mathf.Atan2(otherRadius.y, otherRadius.x);
+                    float arcDistance = Mathf.Repeat(otherAngle - myAngle, 2f * Mathf.PI) * orbitRadius;
+                    if (arcDistance > 0.0001f && arcDistance <= 2f * gap && arcDistance < nearest)
+                    {
+                        nearest = arcDistance;
+                    }
+                }
+
+                if (nearest == float.MaxValue) return freeSpeed;
+                return Mathf.Lerp(0f, freeSpeed, Mathf.Clamp01((nearest - gap) / gap));
+            }
+
             for (int i = 0; i < vehicles.Count; i++)
             {
                 RouteVehicle other = vehicles[i];
-                if (other == vehicle || !other.Object.activeSelf) continue;
+                if (other == vehicle || !other.Object.activeSelf || other.IsInRoundabout) continue;
                 Vector3 to = other.Pos - vehicle.Pos;
                 float d = to.magnitude;
                 if (d < 0.0001f || d > 2f * gap) continue;
@@ -2147,7 +2220,7 @@ namespace CityFlow.View
         // 비대칭 우선순위와 양수 속도 바닥으로 상호 정지·기아 데드락을 막는다.
         private float CrossingYieldCap(RouteVehicle vehicle, float freeSpeed)
         {
-            if (vehicle.Dir.sqrMagnitude < 0.001f) return freeSpeed;
+            if (vehicle.IsInRoundabout || vehicle.Dir.sqrMagnitude < 0.001f) return freeSpeed;
 
             Vector3 myDirection = vehicle.Dir.normalized;
             Vector3 rightDirection = new Vector3(myDirection.y, -myDirection.x, 0f);
@@ -2524,11 +2597,13 @@ namespace CityFlow.View
             return prefab != null ? Instantiate(prefab) : GameObject.CreatePrimitive(primitive);
         }
 
-        private static Renderer PrepareRenderer(Renderer renderer)
+        private static Renderer PrepareRenderer(
+            Renderer renderer,
+            int renderQueue = (int)RenderQueue.Geometry)
         {
             if (renderer != null)
             {
-                renderer.sharedMaterial = CreateUnlitMaterial();
+                renderer.sharedMaterial = CreateUnlitMaterial(renderer.sharedMaterial, renderQueue);
                 renderer.enabled = true;
                 renderer.forceRenderingOff = false;
                 renderer.allowOcclusionWhenDynamic = false;
@@ -2537,21 +2612,72 @@ namespace CityFlow.View
             return renderer;
         }
 
-        private static Material CreateUnlitMaterial()
+        private static Material CreateUnlitMaterial(
+            Material fallbackMaterial = null,
+            int renderQueue = (int)RenderQueue.Geometry)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            Shader shader = Resources.Load<Shader>("CityFlowOpaqueUnlit");
+            shader ??= Shader.Find("GreenLight/CityFlow Opaque Unlit");
+            shader ??= Shader.Find("Universal Render Pipeline/Unlit");
+            shader ??= Shader.Find("Universal Render Pipeline/Simple Lit");
+            shader ??= Shader.Find("Universal Render Pipeline/Lit");
             shader ??= Shader.Find("Unlit/Color");
-            shader ??= Shader.Find("Sprites/Default");
             shader ??= Shader.Find("Standard");
-            return new Material(shader);
+
+            Material material = shader != null
+                ? new Material(shader)
+                : new Material(fallbackMaterial);
+            ConfigureOpaqueMaterial(material, renderQueue);
+            return material;
         }
 
-        private Material CreateGridMaterial()
+        private static void ConfigureOpaqueMaterial(Material material, int renderQueue)
         {
-            Material material = CreateUnlitMaterial();
+            material.SetOverrideTag("RenderType", "Opaque");
+            material.renderQueue = renderQueue;
+            material.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.DisableKeyword("_ALPHATEST_ON");
+
+            if (material.HasProperty("_Surface"))
+            {
+                material.SetFloat("_Surface", 0f);
+            }
+
+            if (material.HasProperty("_AlphaClip"))
+            {
+                material.SetFloat("_AlphaClip", 0f);
+            }
+
+            if (material.HasProperty("_ZWrite"))
+            {
+                material.SetFloat("_ZWrite", 1f);
+            }
+
+            if (material.HasProperty("_SrcBlend"))
+            {
+                material.SetFloat("_SrcBlend", (float)BlendMode.One);
+            }
+
+            if (material.HasProperty("_DstBlend"))
+            {
+                material.SetFloat("_DstBlend", (float)BlendMode.Zero);
+            }
+        }
+
+        private static void SetRendererRenderQueue(Renderer renderer, int renderQueue)
+        {
+            if (renderer != null && renderer.sharedMaterial != null)
+            {
+                renderer.sharedMaterial.renderQueue = renderQueue;
+            }
+        }
+
+        private Material CreateGridMaterial(Material fallbackMaterial)
+        {
+            Material material = CreateUnlitMaterial(fallbackMaterial, 1900);
             Texture2D texture = CreateGridTexture();
 
-            material.renderQueue = 1900;
             material.mainTexture = texture;
 
             if (material.HasProperty("_ZWrite"))

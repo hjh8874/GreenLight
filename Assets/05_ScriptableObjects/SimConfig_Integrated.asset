@@ -23,6 +23,7 @@ MonoBehaviour:
     JamRatio: 1
     EfficiencyMin: 0.2
     EfficiencyMinRatio: 2
+    StabilityJamWeight: 0.5
     GreenWaveFloor: 0.5
     OfficeCapacity: 20
     SchoolCapacity: 10
@@ -35,12 +36,14 @@ MonoBehaviour:
     UnsignaledInterference: 1.5
     RoundaboutInterference: 0.25
     RoundaboutCapacityFactor: 0.7
+    PriorityMainInterference: 0.1
+    PriorityYieldInterference: 2.5
     RoutingCongestionWeight: 2
     AutoDetectSignals: 0
     CoinBase: 1
+    RoadMaintPerSec: 0.1
     BurstJamEnterRatio: 1
     BurstFreeReturnRatio: 0.6
     BurstCooldownSeconds: 10
     BurstRewardThreshold: 1
-    BurstRewardMultiplier: 1
     OfflineCapHours: 8
