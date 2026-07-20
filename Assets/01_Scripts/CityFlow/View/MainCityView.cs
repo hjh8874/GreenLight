@@ -107,6 +107,8 @@ namespace CityFlow.View
         private IReadOnlyTileData tileData;
         private IPlacementService placement;
         private SimEngine simEngine;
+        private float lastTickProgress;   // 틱 경계 검출용 직전 프레임 위상
+        private bool tickEdge;            // 이번 프레임에 Sim이 한 틱 넘어갔나(순항 판정 갱신 시점)
         private ISignalControl signalControl;
         private IIntersectionFacilityService intersectionFacility;
         private ITrafficRuleService trafficRule;
@@ -1364,6 +1366,13 @@ namespace CityFlow.View
             EnsureVehicleCount(simEngine.CarSimMaxCars);
             SyncCommutePopulation();
 
+            // 틱 경계 검출: 위상은 틱 안에서 단조증가하다 Step 프레임에만 되감긴다.
+            // 순항 판정은 "직전 '틱'에 전진했나"라는 틱 단위 상태라, 프레임마다 갱신하면
+            // 틱 사이 39프레임이 플래그를 지워 영원히 false가 된다(계측: Cruising 0.00%).
+            float tickProgress = simEngine.TickProgress01;
+            tickEdge = tickProgress < lastTickProgress - 0.0001f;
+            lastTickProgress = tickProgress;
+
             for (int i = 0; i < carSimMirrors.Count; i++)
             {
                 CommuteCar car = carSimMirrors[i];
@@ -2025,9 +2034,10 @@ namespace CityFlow.View
                 vehicle.Cruising = vehicle.WasAdvancing && !stateChanged;
                 vehicle.WasAdvancing = true;
             }
-            else
+            else if (tickEdge)
             {
-                // 목표가 그대로 = 대기 중. 다음 전진은 정지에서 출발이므로 이징.
+                // 틱이 지났는데 목표가 그대로 = 대기 중. 다음 전진은 정지에서 출발이므로 이징.
+                // tickEdge 없이 매 프레임 지우면 틱 중간 프레임이 순항 플래그를 없앤다.
                 vehicle.Cruising = false;
                 vehicle.WasAdvancing = false;
             }
