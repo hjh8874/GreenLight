@@ -7,23 +7,6 @@ namespace CityFlow.ViewKit
     {
         public const float QuarterCircleHandle = 0.55228475f;
 
-        // 모든 차량이 같은 고정 틱 위상을 사용하면 서로 다른 경로 테이블에서도
-        // 이전/현재 Sim 스냅샷의 간격을 줄이지 않고 자연스럽게 이어진다.
-        public static float InterpolateTickDistance(float previous, float current, float tickProgress01)
-            => Mathf.Lerp(previous, current, TickEase(tickProgress01, cruising: false));
-
-        // 틱 위상 → 보간 계수.
-        // 순항(직전 틱에도 전진했고 이번에도 전진) = 선형. SmoothStep은 t=0·t=1에서 미분이 0이라
-        // 매 틱(=타일 하나)마다 "출발→가속→감속→정지"를 반복시킨다. 계속 달리는 차까지 타일
-        // 경계마다 멈추는 셈이라, 틱이 길어질수록 맥동이 눈에 보인다(환 라이브: TickInterval
-        // 0.33에서 뚝뚝 끊김). 반대로 전 구간 선형은 출발·정지가 딱딱해진다.
-        // → 가감속이 실제로 일어나는 순간(정지 상태에서 출발, 대기 진입)에만 이징한다.
-        public static float TickEase(float tickProgress01, bool cruising)
-        {
-            float t = Mathf.Clamp01(tickProgress01);
-            return cruising ? t : Mathf.SmoothStep(0f, 1f, t);
-        }
-
         // 한 타일에 6대를 일렬로 놓으면 차폭보다 슬롯 간격이 좁아진다.
         // 최대 3열의 2차원 배치로 바꿔 차체 크기를 줄이지 않고 주차 간격을 확보한다.
         public static Vector2 ParkingSlotOffset(int slotIndex, int slotCount, float forwardInset)

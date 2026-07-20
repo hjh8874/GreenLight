@@ -42,42 +42,6 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void InterpolateTickDistance_PreservesSpacingBetweenSimSnapshots()
-        {
-            float lead = PolylineMath.InterpolateTickDistance(1f, 2f, 0.5f);
-            float follow = PolylineMath.InterpolateTickDistance(0.6f, 1.6f, 0.5f);
-
-            Assert.AreEqual(0.4f, lead - follow, 1e-4f,
-                "같은 틱 위상으로 보간하면 이전·현재 스냅샷의 차간격이 유지돼야 한다");
-        }
-
-        // 순항 중에는 등속이어야 한다. SmoothStep 이징은 t=0·t=1에서 미분이 0이라
-        // 매 틱(=타일 하나)마다 차를 세웠다 출발시켜, 틱이 길수록 맥동이 보인다
-        // (환 라이브 2026-07-18: TickInterval 0.33에서 뚝뚝 끊김).
-        [Test]
-        public void TickEase_Cruising_IsLinear()
-        {
-            Assert.AreEqual(0.25f, PolylineMath.TickEase(0.25f, cruising: true), 1e-4f);
-            Assert.AreEqual(0.75f, PolylineMath.TickEase(0.75f, cruising: true), 1e-4f);
-
-            float early = PolylineMath.TickEase(0.2f, true) - PolylineMath.TickEase(0.0f, true);
-            float middle = PolylineMath.TickEase(0.6f, true) - PolylineMath.TickEase(0.4f, true);
-            Assert.AreEqual(early, middle, 1e-4f, "순항은 같은 위상구간 = 같은 이동(등속)");
-        }
-
-        // 출발·정지 틱은 이징 유지 — 가감속이 실제로 일어나는 순간이라 자연스럽다.
-        [Test]
-        public void TickEase_NotCruising_EasesEnds()
-        {
-            Assert.Less(PolylineMath.TickEase(0.25f, cruising: false), 0.25f,
-                "출발 구간은 천천히 시작해야 한다");
-            Assert.Greater(PolylineMath.TickEase(0.75f, cruising: false), 0.75f,
-                "정지 직전은 감속해 붙어야 한다");
-            Assert.AreEqual(0f, PolylineMath.TickEase(0f, false), 1e-4f);
-            Assert.AreEqual(1f, PolylineMath.TickEase(1f, false), 1e-4f);
-        }
-
-        [Test]
         public void ParkingSlotOffset_SixSlotsUseSpacedGrid()
         {
             var slots = new Vector2[6];
