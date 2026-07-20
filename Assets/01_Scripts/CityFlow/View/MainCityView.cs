@@ -37,10 +37,10 @@ namespace CityFlow.View
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
         [SerializeField] private float followGap = 0.4f;           // 큐 슬롯 간 표시 거리(타일 비율)
-        // 주행 가감속(타일/초²). 실차처럼 제동이 가속보다 강하다. 라이브 튜닝 노브.
+        // 주행 가감속(월드유닛/초²). 실차처럼 제동이 가속보다 강하다. 라이브 튜닝 노브.
         [SerializeField] private float vehicleDriveAccel = 2.5f;
         [SerializeField] private float vehicleBrakeAccel = 4.0f;
-        [SerializeField] private float vehicleCatchUpBoost = 1.25f;   // 뒤처졌을 때 순항 상한 배수
+        [SerializeField] private float vehicleCatchUpRange = 0.5f;   // 뒤처졌을 때 순항 여유(최대 +50%)
         // 교차로 정지선 후퇴량. 이 값은 '틱 목표'에서 빼지므로 통과 차의 틱당 이동거리를
         // 진입 1-inset / 이탈 1+inset 으로 갈라 속도 계단을 만든다(0.25면 1.66배).
         // 0.12로 낮춰 계단을 1.27배로 완화 — 레인 오프셋(0.18)이 있어 교차 차량 분리는 유지된다.
@@ -205,7 +205,6 @@ namespace CityFlow.View
             public Renderer Renderer;
             public Renderer DetailRenderer;
             public float CurrentSpeed;
-            public float PreviousTargetDistance;
             public float TargetDistance;
             public int TargetTileIndex;
             public int TargetQueueSlot;
@@ -227,7 +226,8 @@ namespace CityFlow.View
             public float SettleHold;       // 주차 정착 잔여(초) — >0이면 도착 앵커 정지 안무 중
             public bool Settling;          // 정착 안무 진행 플래그(도착 프레임 재진입 게이트)
             public float SettleRate;       // 정착 등속 속도(유닛/초) — 정착 시작 시 남은거리/시간으로 1회 산출
-            public float TravelSpeed;      // 현재 주행 속도(타일/초) — 가감속으로 수렴시킨다
+            public float TravelSpeed;      // 현재 주행 속도(월드유닛/초) — 가감속으로 수렴시킨다
+            public bool TargetAdvancing;   // 직전 틱에 목표가 전진했나(제동 기준선 전방 여유)
             public GameObject BrakeLight;  // 후방 제동등(기본 off) — CreateDetailCube 패턴
             public bool BrakeOn;           // 제동등 상태 캐시(매 프레임 SetActive 금지)
         }
@@ -1838,7 +1838,6 @@ namespace CityFlow.View
         {
             vehicle.RouteIndex = routeIndex;
             vehicle.CurrentSpeed = 0f;
-            vehicle.PreviousTargetDistance = 0f;
             vehicle.TargetDistance = 0f;
             vehicle.TargetTileIndex = -1;
             vehicle.TargetQueueSlot = -1;
@@ -2031,6 +2030,12 @@ namespace CityFlow.View
                 vehicle.TargetQueueSlot = snapshot.QueueSlot;
                 vehicle.TargetRouteIndex = car.RouteIndex;
                 vehicle.HasTickTarget = true;
+                vehicle.TargetAdvancing = true;    // 흐르는 중 — 제동 기준선에 앞을 더 준다
+            }
+            else if (tickEdge)
+            {
+                // 틱이 지났는데 목표가 그대로 = 막혔다. 이제부터 목표를 정지선으로 보고 제동한다.
+                vehicle.TargetAdvancing = false;
             }
 
             // 속도 기반 추종(2026-07-20). 예전엔 틱 위상으로 prev→target을 lerp했는데,
@@ -2039,20 +2044,37 @@ namespace CityFlow.View
             // 갖고, 목표까지 남은 거리로 제동 한계를 계산해 스스로 감속한다 —
             // 앞차·신호로 목표가 멈추면 브레이크를 밟고 서고, 풀리면 가속한다.
             float dt = Mathf.Max(0f, Time.deltaTime);
-            float toTarget = Mathf.Max(0f, vehicle.TargetDistance - car.Distance);
+            float brakeAccel = Mathf.Max(0.01f, vehicleBrakeAccel);
+            // 평균 속도는 Sim이 정한다(틱당 1타일) — 개성으로 최고속도를 바꾸면 느린 차는
+            // 영원히 목표를 못 따라잡는다. 개성은 가속도(AccelMul)에만 건다.
             float nominal = tileSize / Mathf.Max(0.0001f, simEngine.TickInterval);
-            float cruise = nominal * vehicle.Style.SpeedMul;
-            // 뒤처졌으면(목표가 한 타일 이상 앞) 따라잡기 여유를 준다 — 없으면 영구 지연.
-            if (toTarget > tileSize) cruise *= vehicleCatchUpBoost;
-            // v² = 2·a·s — 남은 거리에서 정확히 멈출 수 있는 속도 상한(제동 곡선).
-            float stopLimited = Mathf.Sqrt(2f * Mathf.Max(0.01f, vehicleBrakeAccel) * toTarget);
-            float desired = Mathf.Min(cruise, stopLimited);
-            bool braking = desired < vehicle.TravelSpeed - 0.01f;
-            vehicle.TravelSpeed = Mathf.MoveTowards(
-                vehicle.TravelSpeed,
-                desired,
-                (braking ? vehicleBrakeAccel : vehicleDriveAccel) * dt);
-            car.Distance = Mathf.Min(vehicle.TargetDistance, car.Distance + vehicle.TravelSpeed * dt);
+
+            if (vehicle.TargetDistance < car.Distance)
+            {
+                // 목표가 뒤로 갔다(밸브 초과 슬롯·재베이크). 스냅하면 순간이동이므로 굴러서 물러난다.
+                car.Distance = Mathf.MoveTowards(car.Distance, vehicle.TargetDistance, nominal * dt);
+                vehicle.TravelSpeed = 0f;
+            }
+            else
+            {
+                float toTarget = vehicle.TargetDistance - car.Distance;
+                // 순항 상한이 Sim 속도와 정확히 같으면 제동으로 잃은 시간을 영원히 못 만회해
+                // 지연이 발산한다(계측: 1.03 -> 1.98타일). 뒤처진 만큼 연속적으로 여유를 준다.
+                // 계단식 임계값을 쓰면 그 위에서 진동하며 브레이크등이 고속 주행 중에 깜빡인다.
+                float behind = Mathf.Clamp01((toTarget - tileSize * 0.5f) / tileSize);
+                float cruise = nominal * (1f + behind * vehicleCatchUpRange);
+                // 제동 기준선. 목표가 매 틱 전진 중이면 그만큼 앞을 더 보고 달린다 —
+                // 이게 없으면 흐르는 차도 항상 제동 곡선에 눌려 v²/2a 만큼(0.78타일) 뒤처진다.
+                float stopLine = toTarget + (vehicle.TargetAdvancing ? tileSize : 0f);
+                float stopLimited = Mathf.Sqrt(2f * brakeAccel * stopLine);
+                float desired = Mathf.Min(cruise, stopLimited);
+                bool decelerating = desired < vehicle.TravelSpeed - 0.01f;
+                float rate = decelerating
+                    ? brakeAccel
+                    : Mathf.Max(0.01f, vehicleDriveAccel) * vehicle.Style.AccelMul;
+                vehicle.TravelSpeed = Mathf.MoveTowards(vehicle.TravelSpeed, desired, rate * dt);
+                car.Distance = Mathf.Min(vehicle.TargetDistance, car.Distance + vehicle.TravelSpeed * dt);
+            }
             Sample sample = poly.SampleAt(car.Distance);
             vehicle.Object.transform.localPosition = sample.Pos;
             vehicle.Pos = sample.Pos;
@@ -2068,8 +2090,14 @@ namespace CityFlow.View
                 vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
             }
             SetVehicleRenderersEnabled(vehicle, true);
-            // 브레이크등: 멈춘 순간이 아니라 '감속 중'에 켠다 — 실차처럼 서기 전에 들어온다.
-            SetBrakeLight(vehicle, braking || vehicle.TravelSpeed <= 0.01f);
+            // 브레이크등은 '순항보다 확연히 느린가'로 판정한다. desired 순간값으로 켜면
+            // 따라잡기 여유가 매 프레임 흔들려 고속 주행 중에도 깜빡인다(계측: 토글 256회).
+            // 점등/소등 문턱을 벌려(히스테리시스) 경계에서 떨지 않게 한다.
+            float brakeOnSpeed = nominal * 0.55f;
+            float brakeOffSpeed = nominal * 0.70f;
+            SetBrakeLight(vehicle, vehicle.BrakeOn
+                ? vehicle.TravelSpeed < brakeOffSpeed
+                : vehicle.TravelSpeed < brakeOnSpeed);
             HideJamMarks(vehicle);
             vehicle.LastState = snapshot.State;
             vehicle.HasLastState = true;

@@ -499,15 +499,21 @@ namespace CityFlow.Sim
             return 3;
         }
 
-        // 교차로 동시 통과 판정. 같은 축으로 들어와 같은 축으로 나가고 합류하지 않으면
-        // 경로가 교차하지 않는다(대표 사례 = 마주보는 직진). 좌·우회전은 이탈 축이
-        // 달라져 보수적으로 배제된다 — 처리량보다 안전을 택한다.
+        // 교차로 동시 통과 판정.
+        // 한 타일의 인텐트는 진입 방향이 서로 다르므로(큐가 방향별로 하나), 진입축이 같다는 건
+        // 두 차가 마주보고 들어온다는 뜻이다. 거기서 이탈축까지 같고 합류(같은 ToQueue)만
+        // 아니면 실제로 통과 가능한 조합은 셋뿐이다:
+        //   마주보는 직진(E→E, W→W) · 동시 좌회전(E→N, W→S) · 동시 우회전(E→S, W→N)
+        // 셋 다 경로가 교차하지 않는다. 단 **동시 U턴**(E→W, W→E)은 이탈축도 같고 ToQueue도
+        // 달라 위 조건을 통과하지만 서로를 정면으로 가로지르므로 명시적으로 배제한다.
         private static bool Compatible(Intent winner, Intent other) =>
             winner.Kind == IntentKind.Move
             && other.Kind == IntentKind.Move
             && winner.ToQueue != other.ToQueue
             && Axis(winner.Entry) == Axis(other.Entry)
-            && Axis(winner.Exit) == Axis(other.Exit);
+            && Axis(winner.Exit) == Axis(other.Exit)
+            && winner.Exit != Opposite(winner.Entry)
+            && other.Exit != Opposite(other.Entry);
 
         private static RoadAxis Axis(Dir direction) =>
             direction == Dir.E || direction == Dir.W ? RoadAxis.Horizontal : RoadAxis.Vertical;

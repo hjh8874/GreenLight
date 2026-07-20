@@ -398,6 +398,27 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1, remaining, "교차하는 축은 한 틱에 한 대만 빠져나가야 한다");
         }
 
+        // 동시 U턴은 이탈축·ToQueue 조건을 통과하지만 서로를 정면으로 가로지른다 — 배제해야 한다.
+        [Test]
+        public void Step_OpposingUTurns_DoNotPassTogether()
+        {
+            SimConfig cfg = Cfg();
+            var q = new RoadQueueNetwork(5, 3, cfg);
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid, new FakeDeviceState());
+
+            var routes = new FakeRouteProvider();
+            routes.AddRoute(0, true, V(2, 1), V(1, 1));   // 동쪽으로 들어와 서쪽으로 U턴
+            routes.AddRoute(1, true, V(2, 1), V(3, 1));   // 서쪽으로 들어와 동쪽으로 U턴
+            Assert.IsTrue(q.TryEnqueue(V(2, 1), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(2, 1), Dir.W, 1));
+
+            q.Step(routes);
+
+            int remaining = q.QueueCount(V(2, 1), Dir.E) + q.QueueCount(V(2, 1), Dir.W);
+            Assert.AreEqual(1, remaining, "마주보는 U턴은 교차하므로 한 틱에 한 대만 통과해야 한다");
+        }
+
         private static CityGrid BuildCrossIntersection()
         {
             var grid = new CityGrid(5, 3);
