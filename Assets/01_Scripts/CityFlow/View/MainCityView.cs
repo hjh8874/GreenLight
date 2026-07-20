@@ -2001,15 +2001,19 @@ namespace CityFlow.View
             // ponytail: 용량 4는 기하학적으로 과포화(차 길이 0.38~0.44 × 4 = 1.5타일 > 1.0)라
             // 조이면 겹침이 남는다. 완전 해소는 QueueCapacityPerTile을 3 이하로 — 밸런스 결정(환).
             int queueCapacity = simEngine.CarSimQueueCapacity;
-            float maxSlotGap = (tileSize - headInset) / Mathf.Max(1, queueCapacity - 1);
+            // 분모는 capacity-1이 아니라 capacity다. 슬롯은 타일을 '균등 분할'해야 하며,
+            // capacity-1로 나누면 마지막 슬롯이 정확히 1타일 뒤 = 상류 타일 slot0과 좌표가 겹친다
+            // (cap4·inset0: 간격 0.000 = 100% 겹침). capacity로 나누면 0.250이 확보된다.
+            float maxSlotGap = (tileSize - headInset) / Mathf.Max(1, queueCapacity);
             float slotGap = Mathf.Min(followGap * tileSize, maxSlotGap);
-            float targetDistance = snapshot.QueueSlot < 0
-                ? 0f
-                : poly.DistanceAtQueueSlot(
-                    tileIndex,
-                    snapshot.QueueSlot,
-                    slotGap,
-                    headInset);
+            // QueueSlot<0(큐 진입 실패 등)이라도 0f로 떨어뜨리지 않는다. 0 = 폴리라인 시작 = 집이라
+            // 주행 중인 차가 도시 반대편으로 순간이동한다. DistanceAtQueueSlot은 이미 Mathf.Max(0, slot)
+            // 으로 음수에 안전하므로 그대로 통과시키면 '해당 타일의 머리'라는 옳은 위치가 나온다.
+            float targetDistance = poly.DistanceAtQueueSlot(
+                tileIndex,
+                snapshot.QueueSlot,
+                slotGap,
+                headInset);
             float previousDistance = car.Distance;
             bool stateChanged = hadPrevious && previous != snapshot.State;
             bool targetChanged = !vehicle.HasTickTarget
@@ -2040,6 +2044,10 @@ namespace CityFlow.View
                 // tickEdge 없이 매 프레임 지우면 틱 중간 프레임이 순항 플래그를 없앤다.
                 vehicle.Cruising = false;
                 vehicle.WasAdvancing = false;
+                // 도달한 목표에 눌러앉힌다. 이게 없으면 위상이 되감길 때 lerp가 prev부터 다시
+                // 시작해, 막힌 차가 매 틱 한 타일씩 뒤로 튀고 같은 구간을 반복 주행한다
+                // (계측: prev=2.366 tgt=3.680에서 dist가 3.658→2.367로 -1.31타일 반복).
+                vehicle.PreviousTargetDistance = vehicle.TargetDistance;
             }
             car.Distance = Mathf.Lerp(
                 vehicle.PreviousTargetDistance,
