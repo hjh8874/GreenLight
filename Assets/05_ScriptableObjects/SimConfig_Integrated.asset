@@ -13,16 +13,29 @@ MonoBehaviour:
   m_Name: SimConfig_Integrated
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.SimConfigAsset
   Value:
-    TickInterval: 0.1
+    TickInterval: 0.66
     MaxStepsPerFrame: 5
     GridWidth: 20
     GridHeight: 20
     RoadCapacity: 10
-    DemandPerHouse: 0.2
+    QueueCapacityPerTile: 4
+    QueueServicePerTick: 1
+    GridlockValveTicks: 8
+    CoinPerTrip: 10
+    CarsPerHouse: 1
+    MorningStartHour: 6
+    MorningEndHour: 10
+    EveningStartHour: 17
+    EveningEndHour: 21
+    OfficeParkingSlots: 6
+    MaxSimCars: 96
+    QueueSlowRatio: 0.5
+    QueueJamRatio: 0.99
     SlowRatio: 0.7
     JamRatio: 1
     EfficiencyMin: 0.2
     EfficiencyMinRatio: 2
+    StabilityJamWeight: 0.5
     GreenWaveFloor: 0.5
     OfficeCapacity: 20
     SchoolCapacity: 10
@@ -35,12 +48,15 @@ MonoBehaviour:
     UnsignaledInterference: 1.5
     RoundaboutInterference: 0.25
     RoundaboutCapacityFactor: 0.7
+    PriorityMainInterference: 0.1
+    PriorityYieldInterference: 2.5
     RoutingCongestionWeight: 2
     AutoDetectSignals: 0
     CoinBase: 1
+    MaxRoadTiles: 60
+    RoadExpandBaseCost: 100
+    RoadExpandCostGrowth: 1.5
     BurstJamEnterRatio: 1
     BurstFreeReturnRatio: 0.6
     BurstCooldownSeconds: 10
     BurstRewardThreshold: 1
-    BurstRewardMultiplier: 1
-    OfflineCapHours: 8
