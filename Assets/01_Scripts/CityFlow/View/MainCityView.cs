@@ -36,7 +36,7 @@ namespace CityFlow.View
         [SerializeField] private float gridLineThickness = 0.045f;
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
-        [SerializeField] private float followGap = 0.4f;           // 큐 슬롯 간 표시 거리(타일 비율)
+        [SerializeField] private float followGap = 0.5f;           // 큐 슬롯 간 표시 거리(타일 비율)
         // 주행 가감속(월드유닛/초²). 정지 1회당 쌓이는 지연 = 순항²/(2·가속도)이므로
         // 가속이 느리면 최고속을 안 올려도 뷰가 계속 뒤처진다(2.5 = 정지당 1.25타일,
         // 6.0 = 0.52타일). 최고속이 아니라 여기를 올려야 지연이 준다. 라이브 튜닝 노브.
@@ -2011,8 +2011,9 @@ namespace CityFlow.View
             // 큐 표시가 타일 밖으로 넘치면 안 된다. 예전엔 inset 0.25 + followGap 0.4×3 = 1.45타일이라
             // 교차로 대기줄 뒷차가 '두 타일 뒤'에 그려졌고, 줄이 빠질 때 1.2타일을 순간 점프했다
             // (환 라이브 "교차로에서 차가 사라짐" + 다른 타일 차와 겹침). 타일 안에 담기도록 간격을 조인다.
-            // ponytail: 용량 4는 기하학적으로 과포화(차 길이 0.38~0.44 × 4 = 1.5타일 > 1.0)라
-            // 조이면 겹침이 남는다. 완전 해소는 QueueCapacityPerTile을 3 이하로 — 밸런스 결정(환).
+            // 겹침은 정지 로직이 아니라 기하로 막는다(뷰가 차를 세우면 데드락이 재발한다 —
+            // dev-log-17). 타일 1.0에 차 길이 0.38~0.44이므로 한 타일에 2대가 상한이다:
+            // QueueCapacityPerTile=2 → 간격 0.5 > 최대 차 길이 0.44 → 구조적으로 겹치지 않는다.
             int queueCapacity = simEngine.CarSimQueueCapacity;
             // 분모는 capacity-1이 아니라 capacity다. 슬롯은 타일을 '균등 분할'해야 하며,
             // capacity-1로 나누면 마지막 슬롯이 정확히 1타일 뒤 = 상류 타일 slot0과 좌표가 겹친다
