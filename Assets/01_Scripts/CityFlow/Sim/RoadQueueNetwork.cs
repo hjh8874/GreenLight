@@ -348,13 +348,22 @@ namespace CityFlow.Sim
                     if (winner == NoNode || IsBetter(_intents[i], _intents[winner])) winner = i;
                 }
                 if (winner == NoNode) continue;
+                ExecuteIntent(_intents[winner], ref result);
+                // 승자와 충돌하지 않는 이동은 같은 틱에 함께 통과시킨다. 예전엔 교차로당
+                // 1대만 통과해, 마주보는 직진처럼 서로 방해하지 않는 차까지 순번을 기다렸다
+                // (환 라이브 2026-07-20: "앞에 차가 없는데 교차로에서 멈췄다 간다").
                 for (int i = 0; i < intentCount; i++)
                 {
                     if (i == winner || _intents[i].TileIndex != tile) continue;
+                    if (Compatible(_intents[winner], _intents[i]))
+                    {
+                        // 정원 미달로 못 가면 ExecuteIntent가 스스로 _blockedTicks를 올린다.
+                        ExecuteIntent(_intents[i], ref result);
+                        continue;
+                    }
                     int node = _intents[i].Node;
                     if (node != NoNode) _blockedTicks[node]++;
                 }
-                ExecuteIntent(_intents[winner], ref result);
             }
 
             for (int i = 0; i < intentCount; i++)
@@ -489,6 +498,16 @@ namespace CityFlow.Sim
             if ((int)exit == ((int)entry + 3) % DirectionCount) return 2;
             return 3;
         }
+
+        // 교차로 동시 통과 판정. 같은 축으로 들어와 같은 축으로 나가고 합류하지 않으면
+        // 경로가 교차하지 않는다(대표 사례 = 마주보는 직진). 좌·우회전은 이탈 축이
+        // 달라져 보수적으로 배제된다 — 처리량보다 안전을 택한다.
+        private static bool Compatible(Intent winner, Intent other) =>
+            winner.Kind == IntentKind.Move
+            && other.Kind == IntentKind.Move
+            && winner.ToQueue != other.ToQueue
+            && Axis(winner.Entry) == Axis(other.Entry)
+            && Axis(winner.Exit) == Axis(other.Exit);
 
         private static RoadAxis Axis(Dir direction) =>
             direction == Dir.E || direction == Dir.W ? RoadAxis.Horizontal : RoadAxis.Vertical;
