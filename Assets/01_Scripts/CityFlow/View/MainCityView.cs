@@ -37,10 +37,17 @@ namespace CityFlow.View
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
         [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
         [SerializeField] private float followGap = 0.4f;           // 큐 슬롯 간 표시 거리(타일 비율)
-        // 주행 가감속(월드유닛/초²). 실차처럼 제동이 가속보다 강하다. 라이브 튜닝 노브.
-        [SerializeField] private float vehicleDriveAccel = 2.5f;
-        [SerializeField] private float vehicleBrakeAccel = 4.0f;
-        [SerializeField] private float vehicleCatchUpRange = 0.5f;   // 뒤처졌을 때 순항 여유(최대 +50%)
+        // 주행 가감속(월드유닛/초²). 정지 1회당 쌓이는 지연 = 순항²/(2·가속도)이므로
+        // 가속이 느리면 최고속을 안 올려도 뷰가 계속 뒤처진다(2.5 = 정지당 1.25타일,
+        // 6.0 = 0.52타일). 최고속이 아니라 여기를 올려야 지연이 준다. 라이브 튜닝 노브.
+        [SerializeField] private float vehicleDriveAccel = 6.0f;
+        [SerializeField] private float vehicleBrakeAccel = 5.0f;
+        // 따라잡기: 지연이 이 문턱을 넘은 뒤부터 ramp 구간에 걸쳐 서서히 여유를 준다.
+        // 문턱을 낮추거나 여유를 키우면 대기 후 교차로를 튀어나가듯 통과한다(환 라이브).
+        [SerializeField] private float vehicleCatchUpRange = 0.3f;    // 순항 대비 최대 여유(+30%)
+        [SerializeField] private float vehicleCatchUpStart = 1.0f;    // 여유 시작 지연(타일)
+        [SerializeField] private float vehicleCatchUpRamp = 2.0f;     // 최대치까지의 지연 폭(타일)
+        [SerializeField] private float parkingApproachSpeedRatio = 0.9f;   // 주차 진입 속도 상한(순항 대비)
         // 교차로 정지선 후퇴량. 이 값은 '틱 목표'에서 빼지므로 통과 차의 틱당 이동거리를
         // 진입 1-inset / 이탈 1+inset 으로 갈라 속도 계단을 만든다(0.25면 1.66배).
         // 0.12로 낮춰 계단을 1.27배로 완화 — 레인 오프셋(0.18)이 있어 교차 차량 분리는 유지된다.
@@ -1949,7 +1956,13 @@ namespace CityFlow.View
                     {
                         float settleSeconds = Mathf.Max(0.001f, parkingSettleSeconds);
                         float remaining = Mathf.Max(0.0001f, parkingPolyline.Length - car.Distance);
-                        vehicle.SettleRate = remaining / settleSeconds;
+                        // 고정 시간(0.3s)으로만 나누면 남은 거리가 길수록 빨라진다. 뷰가 Sim을
+                        // 약 0.8타일 뒤에서 따라가므로 도착 시점의 남은 거리가 그만큼 늘었고,
+                        // 회사 진입이 순항보다 몇 배 빨라 보였다(환 라이브 2026-07-20).
+                        // 순항 속도를 상한으로 둬서 '주차장으로 들어가는 속도'를 유지한다.
+                        float cruiseCap = tileSize / Mathf.Max(0.0001f, simEngine.TickInterval)
+                            * parkingApproachSpeedRatio;
+                        vehicle.SettleRate = Mathf.Min(remaining / settleSeconds, cruiseCap);
                     }
                     parked = parkingPolyline.AdvanceTowardEnd(
                         ref car.Distance,
@@ -2061,7 +2074,8 @@ namespace CityFlow.View
                 // 순항 상한이 Sim 속도와 정확히 같으면 제동으로 잃은 시간을 영원히 못 만회해
                 // 지연이 발산한다(계측: 1.03 -> 1.98타일). 뒤처진 만큼 연속적으로 여유를 준다.
                 // 계단식 임계값을 쓰면 그 위에서 진동하며 브레이크등이 고속 주행 중에 깜빡인다.
-                float behind = Mathf.Clamp01((toTarget - tileSize * 0.5f) / tileSize);
+                float behind = Mathf.Clamp01(
+                    (toTarget - tileSize * vehicleCatchUpStart) / Mathf.Max(0.01f, tileSize * vehicleCatchUpRamp));
                 float cruise = nominal * (1f + behind * vehicleCatchUpRange);
                 // 제동 기준선. 목표가 매 틱 전진 중이면 그만큼 앞을 더 보고 달린다 —
                 // 이게 없으면 흐르는 차도 항상 제동 곡선에 눌려 v²/2a 만큼(0.78타일) 뒤처진다.
