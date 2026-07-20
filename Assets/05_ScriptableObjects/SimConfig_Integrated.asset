@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SimConfig_Integrated
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.SimConfigAsset
   Value:
-    TickInterval: 0.66
+    TickInterval: 0.4
     MaxStepsPerFrame: 5
     GridWidth: 20
     GridHeight: 20
