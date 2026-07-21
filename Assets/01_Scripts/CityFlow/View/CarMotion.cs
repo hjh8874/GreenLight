@@ -823,6 +823,15 @@ namespace CityFlow.View
             float corridor = Mathf.Min(
                 vehicle.TargetDistance + vehicleCorridorTiles * tileSize,
                 poly.Length);
+            bool signalEntryLimited = TryGetSignalEntryStopDistance(
+                poly,
+                tileIndex,
+                vehicle,
+                out float signalStopDistance);
+            if (signalEntryLimited)
+            {
+                corridor = Mathf.Min(corridor, signalStopDistance);
+            }
 
             if (corridor < car.Distance)
             {
@@ -844,7 +853,9 @@ namespace CityFlow.View
                 // 공식이라 이산 천장에선 여유가 줄 때마다 감속하는 톱니를 탄다(§4.6.1 계측:
                 // 정지의 81.4%가 앞차 없음 + 여유 0.000). 천장이 전진 중이면 v² 부스트로
                 // 계속 굴러가고, Sim이 잡으면(TargetAdvancing=false) 진짜 벽으로 보고 선다.
-                float ceilingSpeed = vehicle.TargetAdvancing ? nominal : 0f;
+                float ceilingSpeed = signalEntryLimited
+                    ? 0f
+                    : (vehicle.TargetAdvancing ? nominal : 0f);
                 float desired = Mathf.Min(cruise, Mathf.Sqrt(
                     ceilingSpeed * ceilingSpeed + 2f * brakeAccel * Mathf.Max(0f, corridor - car.Distance)));
 
