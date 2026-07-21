@@ -1333,7 +1333,14 @@ MonoBehaviour:
   gridLineThickness: 0.045
   overridePulseAmp: 0.25
   laneOffset: 0.18
-  followGap: 0.4
+  followGap: 0.5
+  vehicleDriveAccel: 6
+  vehicleBrakeAccel: 5
+  vehicleCatchUpRange: 0.3
+  vehicleCatchUpStart: 1
+  vehicleCatchUpRamp: 2
+  parkingApproachSpeedRatio: 0.9
+  intersectionQueueInset: 0.12
   cornerTurnRadius: 0.6
   turnSignZ: -0.5
   roundaboutOrbitRadius: 0.5
