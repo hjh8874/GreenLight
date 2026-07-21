@@ -122,28 +122,70 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void Signal_RedAccumulatesQueue_ThenGreenDrainsOnePerTick()
+        public void Signal_RedBlocksEntry_CarWaitsAtApproachTile()
+        {
+            var q = new RoadQueueNetwork(3, 1, Cfg());
+            var routes = new FakeRouteProvider();
+            var signals = new FakeSignalGate();
+            Vector2Int approach = V(0, 0);
+            Vector2Int signalTile = V(1, 0);
+            signals.AddWindow(signalTile, start: 3, end: 20);
+            routes.Add(0, approach, signalTile, V(2, 0));
+            Assert.IsTrue(q.TryEnqueue(approach, Dir.E, 0));
+
+            for (int tick = 0; tick < 3; tick++)
+            {
+                q.Step(routes, signals, tick);
+                Assert.AreEqual(0, q.QueueCount(signalTile, Dir.E), "적색 동안 교차로 진입 금지");
+                Assert.AreEqual(0, q.CarAtHead(approach, Dir.E), "정지선(접근 타일)에서 대기");
+            }
+
+            q.Step(routes, signals, tick: 3);
+            Assert.AreEqual(1, q.QueueCount(signalTile, Dir.E), "초록에 진입");
+        }
+
+        [Test]
+        public void Signal_RedStillDrainsCarInsideIntersection()
         {
             var q = new RoadQueueNetwork(3, 1, Cfg());
             var routes = new FakeRouteProvider();
             var signals = new FakeSignalGate();
             Vector2Int signalTile = V(1, 0);
+            signals.AddWindow(signalTile, start: 10, end: 20);   // 관측 구간 내내 적색
+            routes.Add(0, signalTile, V(2, 0));
+            Assert.IsTrue(q.TryEnqueue(signalTile, Dir.E, 0));
+
+            q.Step(routes, signals, tick: 0);
+
+            Assert.AreEqual(0, q.QueueCount(signalTile, Dir.E), "적색이어도 교차로 위의 차는 빠져나간다");
+            Assert.AreEqual(1, q.QueueCount(V(2, 0), Dir.E), "교차로 비우기");
+        }
+
+        // 진입 게이트 의미론(2026-07-21): 적색 동안 대기줄은 접근 타일(정지선)에 쌓이고,
+        // 초록이 열리면 틱당 1대(큐 머리)씩 교차로로 진입한다.
+        [Test]
+        public void Signal_RedAccumulatesQueue_ThenGreenDrainsOnePerTick()
+        {
+            var q = new RoadQueueNetwork(4, 1, Cfg());
+            var routes = new FakeRouteProvider();
+            var signals = new FakeSignalGate();
+            Vector2Int approach = V(0, 0);
+            Vector2Int signalTile = V(1, 0);
             signals.AddWindow(signalTile, start: 3, end: 20);
 
             for (int id = 0; id < 3; id++)
             {
-                routes.Add(id, signalTile);
-                Assert.IsTrue(q.TryEnqueue(signalTile, Dir.E, id));
-                StepResult red = q.Step(routes, signals, tick: id);
-                Assert.AreEqual(0, red.Arrivals);
-                Assert.AreEqual(id + 1, q.QueueCount(signalTile, Dir.E));
+                routes.Add(id, approach, signalTile, V(2, 0), V(3, 0));
+                Assert.IsTrue(q.TryEnqueue(approach, Dir.E, id));
+                q.Step(routes, signals, tick: id);
+                Assert.AreEqual(0, q.QueueCount(signalTile, Dir.E), "적색: 교차로는 비어 있어야");
+                Assert.AreEqual(id + 1, q.QueueCount(approach, Dir.E), "적색: 정지선에 누적");
             }
 
             for (int tick = 3; tick < 6; tick++)
             {
-                StepResult green = q.Step(routes, signals, tick);
-                Assert.AreEqual(1, green.Arrivals);
-                Assert.AreEqual(5 - tick, q.QueueCount(signalTile, Dir.E));
+                q.Step(routes, signals, tick);
+                Assert.AreEqual(5 - tick, q.QueueCount(approach, Dir.E), "초록: 틱당 1대 진입");
             }
         }
 
@@ -174,11 +216,13 @@ namespace CityFlow.Sim.Tests
             var signals = new FakeSignalGate();
             Vector2Int firstSignal = V(1, 0);
             Vector2Int secondSignal = V(3, 0);
-            signals.AddWindow(firstSignal, start: 1, end: 3);
+            // 진입 게이트 의미론: 검사가 접근 타일에서 이뤄지므로 창이 구(舊) 의미론보다
+            // 1틱 앞으로 당겨진다. 선두 타임라인: t0 진입1 → t2 진입2 검사 → t2~ 통과.
+            signals.AddWindow(firstSignal, start: 0, end: 2);
             signals.AddWindow(
                 secondSignal,
-                start: aligned ? 3 : 0,
-                end: aligned ? 5 : 2);
+                start: aligned ? 2 : 0,
+                end: aligned ? 4 : 1);
 
             for (int id = 0; id < 3; id++)
             {

@@ -291,7 +291,6 @@ namespace CityFlow.Sim
                 int tileIndex = queue / DirectionCount;
                 Dir entry = (Dir)(queue % DirectionCount);
                 Vector2Int tile = TileAt(tileIndex);
-                if (signalGate != null && !signalGate.IsServiceOpen(tile, entry, tick)) continue;
 
                 int carId = _cars[node];
                 if (routes.IsDestination(carId, tile))
@@ -301,6 +300,16 @@ namespace CityFlow.Sim
                 }
                 if (!routes.TryGetNextTile(carId, tile, out Vector2Int next, out Dir exit)
                     || !TryQueueIndex(next, exit, out int nextQueue)) continue;
+
+                // 신호는 '진입'을 게이트한다(2026-07-21, 환 결정). 예전엔 차가 밟고 있는
+                // 타일의 신호를 봤는데, 신호는 교차로 타일에만 있으므로 접근 도로에선 검사가
+                // 무사통과됐고 적색은 차를 정지선 앞이 아니라 **교차로 안에** 쌓았다 —
+                // 화면에선 원인이 안 보이는 "이유 없는 멈춤"(환 라이브 2026-07-21).
+                // 이제 다음 타일의 신호를 본다: 차는 접근 타일(정지선)에서 기다리고,
+                // 교차로 위의 차는 적색이어도 빠져나간다(교차로 비우기).
+                // 신호 대기는 시간이 반드시 풀어주므로 교착 밸브를 무장시키지 않는다(기존 동일).
+                // exit = 다음 타일 기준 진입방향 → 어댑터의 축 판정(E/W=수평)이 그대로 맞다.
+                if (signalGate != null && !signalGate.IsServiceOpen(next, exit, tick)) continue;
 
                 if (!_turnAllowed[TurnIndex(tileIndex, entry, exit)])
                 {
