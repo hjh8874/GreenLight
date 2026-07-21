@@ -77,6 +77,7 @@ namespace CityFlow.UI.Controllers
                 ghostRenderer.gameObject.SetActive(true);
                 if (data.Icon != null) ghostRenderer.sprite = data.Icon;
             }
+            BuildModeCursorFeedback.SetBuilding(this, true);
             Debug.Log($"[InfrastructurePlacementCoordinator] Started placement mode for: {data.InfrastructureName}");
         }
 
@@ -101,6 +102,7 @@ namespace CityFlow.UI.Controllers
                 ghostRenderer.sprite = null; // Maybe a hammer icon if we had one
                 ghostRenderer.color = Color.red;
             }
+            BuildModeCursorFeedback.SetBuilding(this, false);
             Debug.Log("[InfrastructurePlacementCoordinator] Started Demolish mode.");
         }
 
@@ -112,6 +114,7 @@ namespace CityFlow.UI.Controllers
             _isDemolishMode = false;
             _currentData = null;
             if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(false);
+            BuildModeCursorFeedback.SetBuilding(this, false);
 
             // 원래 PlacementController를 다시 활성화하여 도로/건물 건설이 가능하도록 복원
             if (_originalPlacementController != null)
@@ -120,6 +123,11 @@ namespace CityFlow.UI.Controllers
                 _originalPlacementController.ToggleBuildMode(_wasOriginalBuildingMode);
             }
             Debug.Log("[InfrastructurePlacementCoordinator] Cancelled placement mode. Original controller restored.");
+        }
+
+        private void OnDisable()
+        {
+            BuildModeCursorFeedback.SetBuilding(this, false);
         }
 
         private void Update()

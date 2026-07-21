@@ -56,6 +56,11 @@ namespace CityFlow.UI
 
         private void Update()
         {
+            if (OfflineSettlementPopup.IsInteractionBlocked)
+            {
+                return;
+            }
+
             // 동적 생성되는 컨트롤러들을 위해 Update에서 지연 검색 지원
             if (placementController == null)
             {
