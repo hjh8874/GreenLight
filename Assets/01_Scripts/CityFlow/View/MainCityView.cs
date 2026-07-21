@@ -241,18 +241,13 @@ namespace CityFlow.View
             public Vector3 Dir;
             public Vector2Int CurrentTile;
             public bool HasCurrentTile;
-            public Vector2Int RoundaboutTile;
-            public bool IsInRoundabout;
             public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
-            public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
             public int RouteIndex = -1;
 
             // 차량 개성(개성 패스 2/2): 바인딩 시 (Home, HomeSlot) 해시로 캐시. 판단 없음 — 연출용.
             public CarStyle Style;         // 스케일·팔레트·속도/가속 배수·출발 지연 프로파일
             public CarState LastState;     // 상태 전환 감지(출발 지연·정착 안무 트리거)
             public bool HasLastState;
-            public float DepartHold;       // 출발 지연 잔여(초) — >0이면 출발 앵커 고정(적분 보류)
-            public float SettleHold;       // 주차 정착 잔여(초) — >0이면 도착 앵커 정지 안무 중
             public bool Settling;          // 정착 안무 진행 플래그(도착 프레임 재진입 게이트)
             public float SettleRate;       // 정착 등속 속도(유닛/초) — 정착 시작 시 남은거리/시간으로 1회 산출
             public float TravelSpeed;      // 현재 주행 속도(월드유닛/초) — 가감속으로 수렴시킨다
@@ -1274,16 +1269,6 @@ namespace CityFlow.View
             return go;
         }
 
-        private GameObject CreateSmokePuff()
-        {
-            GameObject puff = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            puff.name = "SmokePuff";
-            puff.transform.SetParent(vehicleRoot, false);
-            puff.transform.localScale = Vector3.one * (tileSize * 0.12f);
-            ApplyRendererColor(PrepareRenderer(puff.GetComponent<Renderer>()), new Color(0.45f, 0.45f, 0.45f));
-            return puff;
-        }
-
         private void ApplySignalState(Vector2Int tile, SignalVisual visual, bool selected)
         {
             Color horizontal = GetSignalColor(tile, horizontal: true);
@@ -1486,26 +1471,6 @@ namespace CityFlow.View
                 && tile.x >= 0 && tile.x < width
                 && tile.y >= 0 && tile.y < height
                 && tileData.GetTileType(tile) == TileType.Road;
-        }
-
-        private bool IsSignalTile(Vector2Int tile)
-        {
-            if (simEngine == null)
-            {
-                return false;
-            }
-
-            IReadOnlyList<Vector2Int> signals = simEngine.SignalTiles;
-
-            for (int i = 0; i < signals.Count; i++)
-            {
-                if (signals[i] == tile)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private bool IsRoundaboutTile(Vector2Int tile)
@@ -2140,8 +2105,6 @@ namespace CityFlow.View
             vehicle.HasTickTarget = false;
             vehicle.Dir = Vector3.zero;
             vehicle.HasCurrentTile = false;
-            vehicle.DepartHold = 0f;
-            vehicle.SettleHold = 0f;
             vehicle.Settling = false;
             vehicle.SettleRate = 0f;
             vehicle.TravelSpeed = 0f;
@@ -2182,8 +2145,6 @@ namespace CityFlow.View
             vehicle.CurrentSpeed = 0f;
             vehicle.HasTickTarget = false;
             vehicle.Dir = Vector3.zero;
-            vehicle.DepartHold = 0f;
-            vehicle.SettleHold = 0f;
             vehicle.Settling = false;
             vehicle.SettleRate = 0f;
             vehicle.TravelSpeed = 0f;
@@ -2471,57 +2432,6 @@ namespace CityFlow.View
             {
                 vehicle.AngryMark.SetActive(false);
             }
-
-            if (vehicle.SmokePuff != null)
-            {
-                vehicle.SmokePuff.SetActive(false);
-            }
-        }
-
-        // 폴리라인용 신호 오버로드(기존 List 버전 무접촉). Sample이 이미 current/progress를 들고 있어 재계산 없음.
-        private bool TryGetNextSignalTile(RoutePolyline poly, in Sample sample, out Vector2Int current, out Vector2Int next, out float progress)
-        {
-            current = default;
-            next = default;
-            progress = 0f;
-            if (poly == null || sample.IsSpur)
-            {
-                return false;
-            }
-
-            int index = sample.TileIndex;
-            if (index < 0 || index + 1 >= poly.TileCount)
-            {
-                return false;
-            }
-
-            current = poly.TileAt(index);
-            next = poly.TileAt(index + 1);
-            progress = sample.SegT;
-            if (current == next || !IsSignalTile(next))
-            {
-                return false;
-            }
-
-            return true;
-        }
-
-        private bool IsRouteVehicleBlocked(RoutePolyline poly, in Sample sample)
-        {
-            if (simEngine == null
-                || !TryGetNextSignalTile(poly, sample, out Vector2Int current, out Vector2Int next, out float progress))
-            {
-                return false;
-            }
-
-            // 경계 0.5 이미 넘은 차는 노란불 정리 규칙으로 통과(기존 L2075 규칙 이항).
-            if (progress >= 0.5f)
-            {
-                return false;
-            }
-
-            bool horizontal = current.y == next.y;
-            return !simEngine.IsSignalGreen(next, horizontal);
         }
 
         private void ResetCommuteState()
