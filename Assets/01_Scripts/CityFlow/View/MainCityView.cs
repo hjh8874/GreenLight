@@ -76,7 +76,7 @@ namespace CityFlow.View
         // 직렬화 값은 그대로 쓰이므로, 값을 바꿀 때는 반드시 7개 씬을 함께 맞출 것.
         [SerializeField, Range(0.5f, 1.1f)] private float roundaboutOrbitRadius = 0.775f;
         [SerializeField, Range(10f, 80f)] private float roundaboutEntryExitDeg = 45f;      // α — 진입/이탈을 링 둘레로 미는 각. 클수록 링 체류 짧아짐
-        [SerializeField, Range(0.66f, 0.95f)] private float roundaboutTransitionTiles = 0.66f; // 전이 곡선 길이(타일) — 클수록 진입/이탈 완만. 하한 0.66 = 섬 스침 방지 실측(√(span²+λ²)>0.62, RoutePolyline.cs:316,392)
+        [SerializeField, Range(0.66f, 0.95f)] private float roundaboutTransitionTiles = 0.66f; // 전이 곡선 길이(타일). R=0.775·α=45°·λ=0.26 재측정에서 비우회전 최소 이격 0.654(섬 하한 0.62)
 
         [Header("Commute (2차 빌드)")]
         [SerializeField] private float parkingSlotInset = 0.32f;   // 건물 타일 내 칸 오프셋(타일 비율)
