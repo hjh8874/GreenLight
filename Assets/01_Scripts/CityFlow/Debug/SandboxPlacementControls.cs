@@ -26,6 +26,7 @@ namespace CityFlow.DebugTools
         private IReadOnlyTileData _data;
         private IIntersectionFacilityService _facility;
         private ITrafficRuleService _rule;
+        private IHighwayService _highway;
         private SimEngine _engine;           // DeliveredTotal 조회용(DebugSignalTuner와 동일 패턴)
         private bool _ready;
         private string _lastResult = "대기 중";
@@ -40,9 +41,10 @@ namespace CityFlow.DebugTools
             _data = services?.TileData;
             _facility = services?.Placement as IIntersectionFacilityService;
             _rule = services?.Placement as ITrafficRuleService;
+            _highway = services?.Placement as IHighwayService;
             _engine = services?.Placement as SimEngine;
 
-            if (_data == null || _facility == null || _rule == null)
+            if (_data == null || _facility == null || _rule == null || _highway == null)
             {
                 Debug.LogWarning("[SandboxPlacementControls] IIntersectionFacilityService/ITrafficRuleService/TileData 없음 — 배치 컨트롤 비활성.");
                 _ready = false;
@@ -89,6 +91,21 @@ namespace CityFlow.DebugTools
             else if (kb.digit5Key.wasPressedThisFrame)
             {
                 _lastResult = TryPlaceOrRotateTurnSign(hover);
+            }
+            else if (kb.digit7Key.wasPressedThisFrame)
+            {
+                if (_highway.IsHighway(hover))
+                {
+                    _lastResult = _highway.TryRemoveHighway(hover)
+                        ? $"고속도로 철거 성공 {hover}"
+                        : $"고속도로 철거 거부 {hover}";
+                }
+                else
+                {
+                    _lastResult = _highway.TryPlaceHighway(hover)
+                        ? $"고속도로 배치 성공 {hover}"
+                        : $"고속도로 배치 거부 {hover} — 직선 일반도로/인접 건물/장치 확인";
+                }
             }
             else if (kb.digit0Key.wasPressedThisFrame)
             {
@@ -182,6 +199,11 @@ namespace CityFlow.DebugTools
 
         private string TryRemoveAny(Vector2Int tile)
         {
+            if (_highway.TryRemoveHighway(tile))
+            {
+                return $"고속도로 철거 성공 {tile}";
+            }
+
             if (_facility.TryRemoveSignal(tile))
             {
                 return $"신호 철거 성공 {tile}";
@@ -214,7 +236,8 @@ namespace CityFlow.DebugTools
         {
             return Contains(_facility.SignalTiles, tile)
                 || Contains(_facility.RoundaboutTiles, tile)
-                || Contains(_facility.OverpassTiles, tile);
+                || Contains(_facility.OverpassTiles, tile)
+                || _highway.IsHighway(tile);
         }
 
         private static bool Contains(System.Collections.Generic.IReadOnlyList<Vector2Int> tiles, Vector2Int tile)
@@ -256,7 +279,7 @@ namespace CityFlow.DebugTools
 
             // 세이브 오염 방지: 이 씬은 AutoSaveService를 비활성해 라이브 세이브 슬롯을 건드리지 않는다.
             GUI.Label(new Rect(12, 100, 900, 30),
-                "1=신호  2=로터리  3=입체교차  4=일방통행(배치/회전)  5=턴제한(배치/회전, 신호와 공존)  0=철거(전부)  |  세이브 비활성 씬", style);
+                "1=신호  2=로터리  3=입체교차  4=일방통행  5=턴제한  7=고속도로  0=철거(전부)  |  세이브 비활성 씬", style);
 
             if (TryGetHoverTile(out Vector2Int hover))
             {
@@ -267,6 +290,7 @@ namespace CityFlow.DebugTools
                 string device = Contains(_facility.SignalTiles, hover) ? "신호"
                     : Contains(_facility.RoundaboutTiles, hover) ? "로터리"
                     : Contains(_facility.OverpassTiles, hover) ? "입체교차"
+                    : _highway.IsHighway(hover) ? "고속도로"
                     : onewayDir != Vector2Int.zero ? $"일방통행({DirGlyph(onewayDir)})"
                     : "없음";
 

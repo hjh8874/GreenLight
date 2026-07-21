@@ -36,6 +36,8 @@ MonoBehaviour:
     RoundaboutInterference: 0.25
     RoundaboutCapacityFactor: 0.7
     RoutingCongestionWeight: 2
+    HighwayRouteCostFactor: 0.5
+    HighwayMovesPerTick: 2
     AutoDetectSignals: 0
     CoinBase: 1
     BurstJamEnterRatio: 1

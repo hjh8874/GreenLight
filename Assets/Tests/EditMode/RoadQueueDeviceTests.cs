@@ -9,12 +9,15 @@ namespace CityFlow.Sim.Tests
     {
         private readonly HashSet<Vector2Int> _roundabouts = new();
         private readonly HashSet<Vector2Int> _overpasses = new();
+        private readonly HashSet<Vector2Int> _highways = new();
         private readonly Dictionary<Vector2Int, RoadAxis> _priority = new();
         private readonly Dictionary<Vector2Int, Vector2Int> _oneways = new();
         private readonly HashSet<(Vector2Int tile, Dir entry, Dir exit)> _blockedTurns = new();
 
         public void AddRoundabout(Vector2Int tile) => _roundabouts.Add(tile);
         public void AddOverpass(Vector2Int tile) => _overpasses.Add(tile);
+        public void AddHighway(Vector2Int tile) => _highways.Add(tile);
+        public void ClearHighways() => _highways.Clear();
         public void SetPriority(Vector2Int tile, RoadAxis axis) => _priority[tile] = axis;
         public void SetOneway(Vector2Int tile, Vector2Int direction) => _oneways[tile] = direction;
         public void BlockTurn(Vector2Int tile, Dir entry, Dir exit) =>
@@ -22,6 +25,7 @@ namespace CityFlow.Sim.Tests
 
         public bool IsRoundabout(Vector2Int tile) => _roundabouts.Contains(tile);
         public bool IsOverpass(Vector2Int tile) => _overpasses.Contains(tile);
+        public bool IsHighway(Vector2Int tile) => _highways.Contains(tile);
         public RoadAxis PriorityAxis(Vector2Int tile) =>
             _priority.TryGetValue(tile, out RoadAxis axis) ? axis : RoadAxis.None;
         public Vector2Int OnewayDir(Vector2Int tile) =>

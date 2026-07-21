@@ -93,6 +93,11 @@ namespace CityFlow.Sim
         // 2면 부하율 1.5 타일이 4배 비쌈 → 몇 칸 우회가 이득 🔓
         public float RoutingCongestionWeight;
 
+        // ── 고속도로(스펙 2026-07-21) ──
+        // 기존 Road 위 업그레이드. 내부 간선은 경로 비용이 낮고 연속 직진 구간은 한 틱에 여러 칸 이동한다.
+        public float HighwayRouteCostFactor; // (0,1], 기본 0.5
+        public int HighwayMovesPerTick;      // 런타임 [1,4] 클램프, 기본 2
+
         // ── 신호 배치 모드(구매 피벗 2단계) ──
         // true = 현행 자동 감지(모든 교차로에 신호). false = 배치된 곳에만 존재(TryPlaceSignal).
         // 상점 UI(김건) 도입 시 asset에서 false 전환 — 그날 무신호 간섭 λ가 라이브 활성화 🔓
@@ -161,6 +166,8 @@ namespace CityFlow.Sim
             PriorityMainInterference = 0.1f,
             PriorityYieldInterference = 2.5f,
             RoutingCongestionWeight = 2f,
+            HighwayRouteCostFactor = 0.5f,
+            HighwayMovesPerTick = 2,
             AutoDetectSignals = true,
             CoinBase = 1f,
             MaxRoadTiles = 60,   // 임시 — "필요 연결을 다 못 하는 빠듯함"이 목표(20×20=400칸의 15%)

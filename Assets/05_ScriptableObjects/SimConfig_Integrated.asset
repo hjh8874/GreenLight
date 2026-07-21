@@ -51,6 +51,8 @@ MonoBehaviour:
     PriorityMainInterference: 0.1
     PriorityYieldInterference: 2.5
     RoutingCongestionWeight: 2
+    HighwayRouteCostFactor: 0.5
+    HighwayMovesPerTick: 2
     AutoDetectSignals: 0
     CoinBase: 1
     MaxRoadTiles: 60
