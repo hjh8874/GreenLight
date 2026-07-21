@@ -16781,6 +16781,7 @@ MonoBehaviour:
   - {fileID: 1576363675}
   - {fileID: 1606631341}
   priorityRoadData: {fileID: 11400000, guid: 6326890673d7b4fefa366098947b09e1, type: 2}
+  highwayData: {fileID: 11400000, guid: 8ba531f701394883be78cdce4643b17b, type: 2}
 --- !u!1 &1673251727
 GameObject:
   m_ObjectHideFlags: 0

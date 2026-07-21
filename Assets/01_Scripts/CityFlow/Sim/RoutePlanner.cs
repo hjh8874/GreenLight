@@ -30,6 +30,7 @@ namespace CityFlow.Sim
         readonly float[] _turnCost;
         readonly bool[] _turnDone;
         readonly int[] _turnCameFrom;
+        readonly int[] _rampPartner;
 
         readonly List<List<Vector2Int>> _carRoutes = new(128);
         readonly List<List<Vector2Int>> _returnRoutes = new(128);
@@ -50,6 +51,8 @@ namespace CityFlow.Sim
             _turnCost = new float[n * 4];
             _turnDone = new bool[n * 4];
             _turnCameFrom = new int[n * 4];
+            _rampPartner = new int[n];
+            Array.Fill(_rampPartner, -1);
         }
 
         // 수요별 경로 테이블 계산. 각 경로는 차 토큰 1대의 부하를 적립한다.
@@ -70,10 +73,25 @@ namespace CityFlow.Sim
         public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg,
                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
                           IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
+            => Plan(demand, net, grid, cfg, oneways, turnSigns, null);
+
+        public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg,
+                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
+                          IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
+                          IReadOnlyList<HighwayLink> highways)
         {
             _carRoutes.Clear();
             _returnRoutes.Clear();
             Array.Clear(_load, 0, _load.Length);
+            Array.Fill(_rampPartner, -1);
+            if (highways != null)
+                for (int i = 0; i < highways.Count; i++)
+                {
+                    int a = highways[i].A.y * _w + highways[i].A.x;
+                    int b = highways[i].B.y * _w + highways[i].B.x;
+                    if (a >= 0 && a < _rampPartner.Length && b >= 0 && b < _rampPartner.Length)
+                    { _rampPartner[a] = b; _rampPartner[b] = a; }
+                }
 
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
@@ -150,6 +168,15 @@ namespace CityFlow.Sim
                     float step = 1f + w * _load[ni] * capInv;
                     float cand = _cost[cur] + step;
                     if (cand < _cost[ni]) { _cost[ni] = cand; _cameFrom[ni] = cur; }
+                }
+
+                int partner = _rampPartner[cur];
+                if (partner >= 0 && !_done[partner])
+                {
+                    int px = partner % _w, py = partner / _w;
+                    float linkCost = (Mathf.Abs(px - cx) + Mathf.Abs(py - cy)) / 2f;
+                    float cand = _cost[cur] + linkCost;
+                    if (cand < _cost[partner]) { _cost[partner] = cand; _cameFrom[partner] = cur; }
                 }
             }
 

@@ -15,6 +15,7 @@ namespace CityFlow.Sim
         public int QueueSlot;
         public int HomeSlot;
         public int WorkSlot;
+        public float LinkProgress01;
     }
 
     internal sealed class CarSim : ICarRouteProvider
@@ -31,6 +32,7 @@ namespace CityFlow.Sim
         private readonly bool[] _enqueued;
         private readonly int[] _tileIndices;
         private readonly int[] _queueSlots;
+        private readonly float[] _linkProgress;
         private RoadQueueNetwork _net;
         private float _lastHour;
         private bool _hasLastHour;
@@ -55,7 +57,9 @@ namespace CityFlow.Sim
             _enqueued = new bool[maxCars];
             _tileIndices = new int[maxCars];
             _queueSlots = new int[maxCars];
+            _linkProgress = new float[maxCars];
             Array.Fill(_queueSlots, -1);
+            Array.Clear(_linkProgress, 0, _linkProgress.Length);
         }
 
         public void Rebuild(DemandMap demands, RoutePlanner planner, RoadQueueNetwork net)
@@ -185,7 +189,8 @@ namespace CityFlow.Sim
                 TileIndex = _tileIndices[index],
                 QueueSlot = _queueSlots[index],
                 HomeSlot = car.HomeSlot,
-                WorkSlot = car.WorkSlot
+                WorkSlot = car.WorkSlot,
+                LinkProgress01 = _linkProgress[index]
             };
         }
 
@@ -198,7 +203,12 @@ namespace CityFlow.Sim
             {
                 if (route[i] != current) continue;
                 next = route[i + 1];
-                return TryDirection(next - current, out entryDirAtNext);
+                Vector2Int delta = next - current;
+                if (TryDirection(delta, out entryDirAtNext)) return true;
+                if (Mathf.Abs(delta.x) >= Mathf.Abs(delta.y))
+                    entryDirAtNext = delta.x >= 0 ? Dir.E : Dir.W;
+                else entryDirAtNext = delta.y >= 0 ? Dir.N : Dir.S;
+                return delta != Vector2Int.zero;
             }
             return false;
         }
@@ -239,14 +249,16 @@ namespace CityFlow.Sim
             for (int i = 0; i < CarCount; i++)
             {
                 CommuteCar car = _scheduler.Cars[i];
-                if (!_enqueued[i] || !net.TryLocateCar(i, out Vector2Int tile, out _, out int slot))
+                if (!_enqueued[i] || !net.TryLocateCar(i, out Vector2Int tile, out _, out int slot, out float linkProgress))
                 {
+                    _linkProgress[i] = 0f;
                     _queueSlots[i] = -1;
                     _tileIndices[i] = car.State == CarState.ParkedWork
                         ? _outboundRoutes[car.RouteIndex].Count - 1
                         : 0;
                     continue;
                 }
+                _linkProgress[i] = linkProgress;
                 _queueSlots[i] = slot;
                 List<Vector2Int> route = car.State == CarState.Inbound
                     ? _returnRoutes[car.RouteIndex]

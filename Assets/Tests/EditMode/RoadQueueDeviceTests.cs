@@ -12,6 +12,7 @@ namespace CityFlow.Sim.Tests
         private readonly Dictionary<Vector2Int, RoadAxis> _priority = new();
         private readonly Dictionary<Vector2Int, Vector2Int> _oneways = new();
         private readonly HashSet<(Vector2Int tile, Dir entry, Dir exit)> _blockedTurns = new();
+        private readonly Dictionary<Vector2Int, Vector2Int> _highways = new();
 
         public void AddRoundabout(Vector2Int tile) => _roundabouts.Add(tile);
         public void AddOverpass(Vector2Int tile) => _overpasses.Add(tile);
@@ -19,6 +20,11 @@ namespace CityFlow.Sim.Tests
         public void SetOneway(Vector2Int tile, Vector2Int direction) => _oneways[tile] = direction;
         public void BlockTurn(Vector2Int tile, Dir entry, Dir exit) =>
             _blockedTurns.Add((tile, entry, exit));
+        public void AddHighway(Vector2Int a, Vector2Int b)
+        {
+            _highways[a] = b;
+            _highways[b] = a;
+        }
 
         public bool IsRoundabout(Vector2Int tile) => _roundabouts.Contains(tile);
         public bool IsOverpass(Vector2Int tile) => _overpasses.Contains(tile);
@@ -30,6 +36,8 @@ namespace CityFlow.Sim.Tests
                 : Vector2Int.zero;
         public bool IsTurnAllowed(Vector2Int tile, Dir entry, Dir exit) =>
             !_blockedTurns.Contains((tile, entry, exit));
+        public bool TryGetHighwayPartner(Vector2Int ramp, out Vector2Int partner) =>
+            _highways.TryGetValue(ramp, out partner);
     }
 
     public class RoadQueueDeviceTests

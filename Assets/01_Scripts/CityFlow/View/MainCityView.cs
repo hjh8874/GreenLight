@@ -120,6 +120,7 @@ namespace CityFlow.View
         private readonly Dictionary<Vector2Int, GameObject> onewayVisuals = new();
         private readonly Dictionary<Vector2Int, TurnSignVisual> turnSignVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> priorityRoadVisuals = new();
+        private readonly Dictionary<Vector2Int, GameObject> highwayVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
 
         // 통근 상태(유일 경로). 위상 리빌드 시 재구성된다.
@@ -141,11 +142,13 @@ namespace CityFlow.View
         private ISignalControl signalControl;
         private IIntersectionFacilityService intersectionFacility;
         private ITrafficRuleService trafficRule;
+        private IHighwayService highwayService;
         private Transform gridRoot;
         private Transform boardRoot;
         private Transform tileRoot;
         private Transform vehicleRoot;
         private Transform signalRoot;
+        private Transform highwayRoot;
         private Transform effectRoot;
         private int selectedSignalIndex;
         private Camera mainCamera;
@@ -290,6 +293,7 @@ namespace CityFlow.View
             signalControl = services.Placement as ISignalControl;
             intersectionFacility = services.Placement as IIntersectionFacilityService;
             trafficRule = services.Placement as ITrafficRuleService;
+            highwayService = services.Placement as IHighwayService;
 
             services.Events.Placed += OnPlaced;
             services.Events.Arrival += OnArrival;
@@ -310,6 +314,7 @@ namespace CityFlow.View
             RefreshOneways();
             RefreshTurnSigns();
             RefreshPriorityRoads();
+            RefreshHighways();
             RefreshVehicles();
             InitializeCameraView();
             driveViewCamera = gameObject.AddComponent<DriveViewCamera>();
@@ -481,6 +486,7 @@ namespace CityFlow.View
             RefreshOneways();
             RefreshTurnSigns();
             RefreshPriorityRoads();
+            RefreshHighways();
             RefreshVehicles();
             RefreshCoinPops();
         }
@@ -606,6 +612,7 @@ namespace CityFlow.View
             tileRoot = CreateChildRoot("Tiles");
             vehicleRoot = CreateChildRoot("Vehicles");
             signalRoot = CreateChildRoot("Signals");
+            highwayRoot = CreateChildRoot("Highways");
             effectRoot = CreateChildRoot("Effects");
         }
 
@@ -704,6 +711,8 @@ namespace CityFlow.View
             onewayVisuals.Clear();
             turnSignVisuals.Clear();
             priorityRoadVisuals.Clear();
+            ClearChildren(highwayRoot);
+            highwayVisuals.Clear();
 
             ClearChildren(vehicleRoot);
             vehicles.Clear();
@@ -718,6 +727,7 @@ namespace CityFlow.View
             RefreshOneways();
             RefreshTurnSigns();
             RefreshPriorityRoads();
+            RefreshHighways();
             RefreshVehicles();
 
             Debug.Log("[MainCityView] Restored city visuals rebuilt.");
@@ -1038,6 +1048,54 @@ namespace CityFlow.View
             Renderer bar = CreateSignalBar(root.transform, "Bar",
                 new Vector3(tileSize * 0.5f, tileSize * 0.08f, 0.02f), Vector3.zero);
             ApplyRendererColor(bar, onewayColor);   // 기존 색 재사용(에셋 전)
+            return root;
+        }
+
+        private void RefreshHighways()
+        {
+            if (highwayService == null || highwayRoot == null) return;
+            IReadOnlyList<HighwayLink> links = highwayService.HighwayLinks;
+            for (int i = 0; i < links.Count; i++)
+                if (!highwayVisuals.ContainsKey(links[i].A))
+                    highwayVisuals.Add(links[i].A, CreateHighwayVisual(links[i]));
+
+            foreach (Vector2Int key in new List<Vector2Int>(highwayVisuals.Keys))
+            {
+                bool exists = false;
+                for (int i = 0; i < links.Count; i++) if (links[i].A == key) { exists = true; break; }
+                if (exists) continue;
+                Destroy(highwayVisuals[key]);
+                highwayVisuals.Remove(key);
+            }
+        }
+
+        private GameObject CreateHighwayVisual(HighwayLink link)
+        {
+            var root = new GameObject($"Highway_{link.A.x}_{link.A.y}_{link.B.x}_{link.B.y}");
+            root.transform.SetParent(highwayRoot, false);
+            Vector3 a = GridToLocal(link.A, signalZ - 0.35f);
+            Vector3 b = GridToLocal(link.B, signalZ - 0.35f);
+            Vector3 delta = b - a;
+            root.transform.localPosition = (a + b) * 0.5f;
+            root.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
+
+            GameObject deck = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            deck.name = "ElevatedDeck";
+            Destroy(deck.GetComponent<Collider>());
+            deck.transform.SetParent(root.transform, false);
+            deck.transform.localScale = new Vector3(delta.magnitude, tileSize * 0.32f, 0.08f);
+            ApplyRendererColor(PrepareRenderer(deck.GetComponent<Renderer>()), new Color(0.18f, 0.42f, 0.62f));
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                GameObject ramp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                ramp.name = side < 0 ? "RampA" : "RampB";
+                Destroy(ramp.GetComponent<Collider>());
+                ramp.transform.SetParent(root.transform, false);
+                ramp.transform.localPosition = new Vector3(side * delta.magnitude * 0.5f, 0f, 0.12f);
+                ramp.transform.localScale = new Vector3(tileSize * 0.7f, tileSize * 0.5f, 0.12f);
+                ApplyRendererColor(PrepareRenderer(ramp.GetComponent<Renderer>()), new Color(0.25f, 0.65f, 0.9f));
+            }
             return root;
         }
 

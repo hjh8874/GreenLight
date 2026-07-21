@@ -21,6 +21,7 @@ namespace CityFlow.Sim
         RoadAxis PriorityAxis(Vector2Int tile);
         Vector2Int OnewayDir(Vector2Int tile);
         bool IsTurnAllowed(Vector2Int tile, Dir entry, Dir exit);
+        bool TryGetHighwayPartner(Vector2Int ramp, out Vector2Int partner);
     }
 
     public struct StepResult
@@ -43,7 +44,7 @@ namespace CityFlow.Sim
         private const int DirectionCount = 4;
         private const int NoNode = -1;
 
-        private enum IntentKind { Arrival, Move, RingEntry }
+        private enum IntentKind { Arrival, Move, RingEntry, HighwayEntry }
 
         private struct Intent
         {
@@ -55,6 +56,7 @@ namespace CityFlow.Sim
             public Dir Entry;
             public Dir Exit;
             public int RingIndex;
+            public int HighwayLane;
             public bool Force;
         }
 
@@ -77,9 +79,26 @@ namespace CityFlow.Sim
         private readonly bool[] _queueActive;
         private readonly bool[] _turnAllowed;
         private readonly int[] _ringNodes;
+        private readonly int[] _highwayPartners;
+        private readonly System.Collections.Generic.List<HighwayState> _highways = new();
+        private System.Collections.Generic.List<LinkCar>[] _highwayCars = Array.Empty<System.Collections.Generic.List<LinkCar>>();
         private readonly Intent[] _intents;
         private readonly ArrivalRecord[] _arrivals;
         private int _freeHead;
+
+        private struct HighwayState
+        {
+            public int A;
+            public int B;
+            public int TransitTicks;
+            public int Capacity;
+        }
+
+        private struct LinkCar
+        {
+            public int Node;
+            public int ExitTick;
+        }
 
         public int TurnRestrictionBlockCount { get; private set; }
         public int ArrivalCount { get; private set; }
@@ -112,12 +131,14 @@ namespace CityFlow.Sim
             _queueActive = new bool[queueCount];
             _turnAllowed = new bool[tileCount * DirectionCount * DirectionCount];
             _ringNodes = new int[tileCount * DirectionCount];
+            _highwayPartners = new int[tileCount];
             _intents = new Intent[queueCount];
             _arrivals = new ArrivalRecord[maxCars];
 
             Array.Fill(_heads, NoNode);
             Array.Fill(_tails, NoNode);
             Array.Fill(_ringNodes, NoNode);
+            Array.Fill(_highwayPartners, NoNode);
             Array.Fill(_queueActive, true);
             Array.Fill(_turnAllowed, true);
             for (int node = 0; node < maxCars; node++)
@@ -137,6 +158,8 @@ namespace CityFlow.Sim
                 throw new ArgumentException("RoadQueueNetwork와 CityGrid 크기가 일치해야 합니다.", nameof(grid));
 
             TurnRestrictionBlockCount = 0;
+            _highways.Clear();
+            Array.Fill(_highwayPartners, NoNode);
             for (int y = 0; y < _height; y++)
             for (int x = 0; x < _width; x++)
             {
@@ -146,6 +169,24 @@ namespace CityFlow.Sim
                 _roundabouts[tileIndex] = devices?.IsRoundabout(tile) ?? false;
                 _overpasses[tileIndex] = devices?.IsOverpass(tile) ?? false;
                 _priorityAxes[tileIndex] = devices?.PriorityAxis(tile) ?? RoadAxis.None;
+
+                if (devices != null && devices.TryGetHighwayPartner(tile, out Vector2Int partner)
+                    && InBounds(partner))
+                {
+                    int partnerIndex = TileIndex(partner);
+                    _highwayPartners[tileIndex] = partnerIndex;
+                    if (tileIndex < partnerIndex)
+                    {
+                        int distance = Mathf.Abs(tile.x - partner.x) + Mathf.Abs(tile.y - partner.y);
+                        _highways.Add(new HighwayState
+                        {
+                            A = tileIndex,
+                            B = partnerIndex,
+                            TransitTicks = Mathf.Max(1, Mathf.CeilToInt(distance / 2f)),
+                            Capacity = Mathf.Max(1, distance)
+                        });
+                    }
+                }
 
                 Vector2Int oneway = devices?.OnewayDir(tile) ?? Vector2Int.zero;
                 bool hasOneway = TryDir(oneway, out Dir allowedDir);
@@ -160,6 +201,9 @@ namespace CityFlow.Sim
                     }
                 }
             }
+            _highwayCars = new System.Collections.Generic.List<LinkCar>[_highways.Count * 2];
+            for (int i = 0; i < _highwayCars.Length; i++)
+                _highwayCars[i] = new System.Collections.Generic.List<LinkCar>();
         }
 
         public bool TryEnqueue(Vector2Int tile, Dir entryDir, int carId)
@@ -224,6 +268,34 @@ namespace CityFlow.Sim
             return false;
         }
 
+        internal bool TryLocateCar(int carId, out Vector2Int tile, out Dir direction, out int slot, out float linkProgress01)
+        {
+            if (TryLocateCar(carId, out tile, out direction, out slot))
+            {
+                linkProgress01 = 0f;
+                return true;
+            }
+            for (int lane = 0; lane < _highwayCars.Length; lane++)
+            {
+                var cars = _highwayCars[lane];
+                for (int i = 0; i < cars.Count; i++)
+                {
+                    if (_cars[cars[i].Node] != carId) continue;
+                    HighwayState link = _highways[lane / 2];
+                    bool reverse = (lane & 1) != 0;
+                    tile = TileAt(reverse ? link.B : link.A);
+                    direction = DirectionBetween(TileAt(reverse ? link.B : link.A), TileAt(reverse ? link.A : link.B));
+                    slot = 0;
+                    linkProgress01 = Mathf.Clamp01(1f - (cars[i].ExitTick - _currentTick) / (float)link.TransitTicks);
+                    return true;
+                }
+            }
+            linkProgress01 = 0f;
+            return false;
+        }
+
+        private int _currentTick;
+
         public ArrivalRecord GetArrival(int index)
         {
             if (index < 0 || index >= ArrivalCount)
@@ -237,6 +309,7 @@ namespace CityFlow.Sim
             Array.Fill(_tails, NoNode);
             Array.Clear(_counts, 0, _counts.Length);
             Array.Fill(_ringNodes, NoNode);
+            for (int i = 0; i < _highwayCars.Length; i++) _highwayCars[i].Clear();
             for (int node = 0; node < _cars.Length; node++)
             {
                 _cars[node] = NoNode;
@@ -271,6 +344,8 @@ namespace CityFlow.Sim
             ArrivalCount = 0;
             Array.Clear(_movedThisTick, 0, _movedThisTick.Length);
             StepResult result = default;
+            _currentTick = tick;
+            ServiceHighwayLinks(ref result);
 
             for (int serviceRound = 0; serviceRound < _servicePerTick; serviceRound++)
             {
@@ -299,7 +374,27 @@ namespace CityFlow.Sim
                     continue;
                 }
                 if (!routes.TryGetNextTile(carId, tile, out Vector2Int next, out Dir exit)
-                    || !TryQueueIndex(next, exit, out int nextQueue)) continue;
+                    ) continue;
+
+                int partnerIndex = _highwayPartners[tileIndex];
+                if (partnerIndex != NoNode && partnerIndex == TileIndex(next))
+                {
+                    int linkIndex = FindHighway(tileIndex, partnerIndex, out bool reverse);
+                    if (linkIndex >= 0)
+                    {
+                        int lane = linkIndex * 2 + (reverse ? 1 : 0);
+                        if (_highwayCars[lane].Count < _highways[linkIndex].Capacity)
+                        {
+                            Intent highway = NewIntent(IntentKind.HighwayEntry, queue, node, tileIndex, entry, exit);
+                            highway.HighwayLane = lane;
+                            _intents[count++] = highway;
+                        }
+                        else _blockedTicks[node]++;
+                    }
+                    continue;
+                }
+
+                if (!TryQueueIndex(next, exit, out int nextQueue)) continue;
 
                 // 신호는 '진입'을 게이트한다(2026-07-21, 환 결정). 예전엔 차가 밟고 있는
                 // 타일의 신호를 봤는데, 신호는 교차로 타일에만 있으므로 접근 도로에선 검사가
@@ -399,6 +494,22 @@ namespace CityFlow.Sim
                     _movedThisTick[intent.Node] = true;
                     _blockedTicks[intent.Node] = 0;
                     return;
+                case IntentKind.HighwayEntry:
+                    int linkIndex = intent.HighwayLane / 2;
+                    if (_highwayCars[intent.HighwayLane].Count >= _highways[linkIndex].Capacity)
+                    {
+                        _blockedTicks[intent.Node]++;
+                        return;
+                    }
+                    DetachHead(intent.FromQueue);
+                    _highwayCars[intent.HighwayLane].Add(new LinkCar
+                    {
+                        Node = intent.Node,
+                        ExitTick = _currentTick + _highways[linkIndex].TransitTicks
+                    });
+                    _movedThisTick[intent.Node] = true;
+                    _blockedTicks[intent.Node] = 0;
+                    return;
                 case IntentKind.Move:
                     if (!intent.Force && !CanAcceptNormally(intent.ToQueue))
                     {
@@ -467,9 +578,51 @@ namespace CityFlow.Sim
             }
         }
 
+        private void ServiceHighwayLinks(ref StepResult result)
+        {
+            for (int lane = 0; lane < _highwayCars.Length; lane++)
+            {
+                var cars = _highwayCars[lane];
+                if (cars.Count == 0 || cars[0].ExitTick > _currentTick) continue;
+                HighwayState link = _highways[lane / 2];
+                bool reverse = (lane & 1) != 0;
+                int destination = reverse ? link.A : link.B;
+                Dir entry = DirectionBetween(TileAt(reverse ? link.B : link.A), TileAt(destination));
+                int queue = destination * DirectionCount + (int)entry;
+                if (!CanAcceptNormally(queue))
+                {
+                    _blockedTicks[cars[0].Node]++;
+                    continue;
+                }
+                int node = cars[0].Node;
+                cars.RemoveAt(0);
+                _movedThisTick[node] = true;
+                _blockedTicks[node] = 0;
+                AppendNode(queue, node);
+            }
+        }
+
+        private int FindHighway(int from, int to, out bool reverse)
+        {
+            for (int i = 0; i < _highways.Count; i++)
+            {
+                if (_highways[i].A == from && _highways[i].B == to) { reverse = false; return i; }
+                if (_highways[i].B == from && _highways[i].A == to) { reverse = true; return i; }
+            }
+            reverse = false;
+            return -1;
+        }
+
+        private static Dir DirectionBetween(Vector2Int from, Vector2Int to)
+        {
+            Vector2Int delta = to - from;
+            if (Mathf.Abs(delta.x) >= Mathf.Abs(delta.y)) return delta.x >= 0 ? Dir.E : Dir.W;
+            return delta.y >= 0 ? Dir.N : Dir.S;
+        }
+
         private Intent NewIntent(IntentKind kind, int queue, int node, int tile, Dir entry, Dir exit) =>
             new Intent { Kind = kind, FromQueue = queue, ToQueue = NoNode, Node = node,
-                TileIndex = tile, Entry = entry, Exit = exit, RingIndex = NoNode };
+                TileIndex = tile, Entry = entry, Exit = exit, RingIndex = NoNode, HighwayLane = NoNode };
 
         private void RecordArrival(int carId, Vector2Int tile)
         {
