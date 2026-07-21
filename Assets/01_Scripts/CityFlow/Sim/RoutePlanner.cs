@@ -70,13 +70,6 @@ namespace CityFlow.Sim
         public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg,
                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
                           IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
-            => Plan(demand, net, grid, cfg, oneways, turnSigns, null);
-
-        // 고속도로(스펙 2026-07-21): 내부 간선은 낮은 시간 비용, 일반도로 전환은 끝점에서만.
-        public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg,
-                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
-                          IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
-                          ISet<Vector2Int> highways)
         {
             _carRoutes.Clear();
             _returnRoutes.Clear();
@@ -85,8 +78,8 @@ namespace CityFlow.Sim
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
             {
-                var carPath = Search(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg, oneways, turnSigns, highways);
-                var returnPath = Search(grid, demands[i].SinkRoad, demands[i].SourceRoad, cfg, oneways, turnSigns, highways);
+                var carPath = Search(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg, oneways, turnSigns);
+                var returnPath = Search(grid, demands[i].SinkRoad, demands[i].SourceRoad, cfg, oneways, turnSigns);
                 _carRoutes.Add(carPath);
                 _returnRoutes.Add(returnPath);
                 if (carPath == null) continue;
@@ -104,11 +97,10 @@ namespace CityFlow.Sim
         // (역주행 진입 차단, 측면 합류는 허용). oneways가 null/빈 경우 Dictionary 조회 없이 스킵.
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
-            => SearchCore(grid, from, to, cfg, oneways, null);
+            => SearchCore(grid, from, to, cfg, oneways);
 
         private List<Vector2Int> SearchCore(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
-                                             IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
-                                             ISet<Vector2Int> highways)
+                                             IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
         {
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
             bool hasOneways = oneways != null && oneways.Count > 0;
@@ -144,9 +136,6 @@ namespace CityFlow.Sim
                 {
                     int nx = cx + DX[d], ny = cy + DY[d];
                     if (!IsRoad(grid, nx, ny)) continue;
-                    var currentTile = new Vector2Int(cx, cy);
-                    var nextTile = new Vector2Int(nx, ny);
-                    if (!IsHighwayEdgeAllowed(currentTile, nextTile, highways)) continue;
                     int ni = ny * _w + nx;
                     if (_done[ni]) continue;
 
@@ -158,7 +147,7 @@ namespace CityFlow.Sim
                         if (nbrOneway && stepDir == -nbrDir) continue;               // ② 들어가는 스텝 ≠ -D
                     }
 
-                    float step = EdgeCost(currentTile, nextTile, 1f + w * _load[ni] * capInv, cfg, highways);
+                    float step = 1f + w * _load[ni] * capInv;
                     float cand = _cost[cur] + step;
                     if (cand < _cost[ni]) { _cost[ni] = cand; _cameFrom[ni] = cur; }
                 }
@@ -184,18 +173,6 @@ namespace CityFlow.Sim
             return SearchWithTurnState(grid, from, to, cfg, oneways, turnSigns);
         }
 
-        internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
-                                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
-                                          IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
-                                          ISet<Vector2Int> highways)
-        {
-            if (highways == null || highways.Count == 0)
-                return Search(grid, from, to, cfg, oneways, turnSigns);
-            if (turnSigns == null || turnSigns.Count == 0)
-                return SearchCore(grid, from, to, cfg, oneways, highways);
-            return SearchWithTurnStateCore(grid, from, to, cfg, oneways, turnSigns, highways);
-        }
-
         // 상태 확장 Dijkstra: 상태 = (타일 × 진입방향, E=0/S=1/W=2/N=3 고정 순회 — CardinalToStateIdx).
         // 표지판 타일 T에 진입방향 d_in으로 들어온 상태에서 나가는 스텝 d_out은
         // Turn(d_in,모드)만 허용: LeftOnly→(d_in+3)%4, RightOnly→(d_in+1)%4 — U턴(+2)·직진(+0)·
@@ -206,12 +183,11 @@ namespace CityFlow.Sim
         internal List<Vector2Int> SearchWithTurnState(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                                        IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
                                                        IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
-            => SearchWithTurnStateCore(grid, from, to, cfg, oneways, turnSigns, null);
+            => SearchWithTurnStateCore(grid, from, to, cfg, oneways, turnSigns);
 
         private List<Vector2Int> SearchWithTurnStateCore(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
-                                                          IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
-                                                          ISet<Vector2Int> highways)
+                                                          IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
         {
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
             if (from == to) return new List<Vector2Int> { from };   // legacy Search_SameTile_ReturnsSingle과 동형
@@ -236,7 +212,6 @@ namespace CityFlow.Sim
                 int nx = sx + DX[d], ny = sy + DY[d];
                 if (!IsRoad(grid, nx, ny)) continue;
                 var nbrTile = new Vector2Int(nx, ny);
-                if (!IsHighwayEdgeAllowed(from, nbrTile, highways)) continue;
                 bool nbrOneway = false;
                 Vector2Int nbrOnewayDir = default;
                 if (hasOneways) nbrOneway = oneways.TryGetValue(nbrTile, out nbrOnewayDir);
@@ -249,7 +224,7 @@ namespace CityFlow.Sim
                 }
                 // 시작 타일 표지판은 무제약(진입이 아니므로) — 턴 필터 미적용.
 
-                float step = EdgeCost(from, nbrTile, 1f + w * _load[ny * _w + nx] * capInv, cfg, highways);
+                float step = 1f + w * _load[ny * _w + nx] * capInv;
                 int newDirIn = CardinalToStateIdx[d];
                 int state = (ny * _w + nx) * 4 + newDirIn;
                 if (step < _turnCost[state]) { _turnCost[state] = step; _turnCameFrom[state] = -1; }
@@ -283,7 +258,6 @@ namespace CityFlow.Sim
                     if (!IsRoad(grid, nx, ny)) continue;
                     int ni = ny * _w + nx;
                     var nbrTile = new Vector2Int(nx, ny);
-                    if (!IsHighwayEdgeAllowed(curTile, nbrTile, highways)) continue;
                     bool nbrOneway = false;
                     Vector2Int nbrOnewayDir = default;
                     if (hasOneways) nbrOneway = oneways.TryGetValue(nbrTile, out nbrOnewayDir);
@@ -303,7 +277,7 @@ namespace CityFlow.Sim
                         if (CardinalToStateIdx[d] != expected) continue;
                     }
 
-                    float step = EdgeCost(curTile, nbrTile, 1f + w * _load[ni] * capInv, cfg, highways);
+                    float step = 1f + w * _load[ni] * capInv;
                     float cand = _turnCost[cur] + step;
                     int newDirIn = CardinalToStateIdx[d];
                     int nState = ni * 4 + newDirIn;
@@ -322,33 +296,6 @@ namespace CityFlow.Sim
             path.Add(from);
             path.Reverse();
             return path;
-        }
-
-        internal static bool IsHighwayEdgeAllowed(
-            Vector2Int from, Vector2Int to, ISet<Vector2Int> highways)
-        {
-            if (highways == null || highways.Count == 0) return true;
-            bool fromHighway = highways.Contains(from);
-            bool toHighway = highways.Contains(to);
-            if (fromHighway == toHighway) return true;
-            Vector2Int highwayTile = fromHighway ? from : to;
-            return IsHighwayEndpoint(highwayTile, highways);
-        }
-
-        static bool IsHighwayEndpoint(Vector2Int tile, ISet<Vector2Int> highways)
-        {
-            int neighbors = 0;
-            for (int d = 0; d < 4; d++)
-                if (highways.Contains(tile + new Vector2Int(DX[d], DY[d]))) neighbors++;
-            return neighbors <= 1;
-        }
-
-        static float EdgeCost(Vector2Int from, Vector2Int to, float normalCost,
-                              in SimConfig cfg, ISet<Vector2Int> highways)
-        {
-            if (highways == null || !highways.Contains(from) || !highways.Contains(to)) return normalCost;
-            float factor = Mathf.Clamp(cfg.HighwayRouteCostFactor, 0.01f, 1f);
-            return normalCost * factor;
         }
 
         internal bool TryGetAverageRouteDistance(DemandMap demand, Vector2Int destination, out float distanceTiles)

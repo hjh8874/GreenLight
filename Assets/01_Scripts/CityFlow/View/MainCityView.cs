@@ -112,7 +112,6 @@ namespace CityFlow.View
         [SerializeField] private Color overpassColor = new Color(0.55f, 0.62f, 0.75f);
         [SerializeField] private Color onewayColor = new Color(0.95f, 0.85f, 0.15f);
         [SerializeField] private Color turnSignColor = new Color(0.95f, 0.35f, 0.75f);
-        [SerializeField] private Color highwayColor = new Color(0.2f, 0.72f, 0.95f);
 
         private readonly Dictionary<Vector2Int, TileVisual> tileVisuals = new();
         private readonly Dictionary<Vector2Int, SignalVisual> signalVisuals = new();
@@ -121,8 +120,6 @@ namespace CityFlow.View
         private readonly Dictionary<Vector2Int, GameObject> onewayVisuals = new();
         private readonly Dictionary<Vector2Int, TurnSignVisual> turnSignVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> priorityRoadVisuals = new();
-        private readonly Dictionary<Vector2Int, GameObject> highwayVisuals = new();
-        private readonly HashSet<Vector2Int> highwayVisualSet = new();
         private readonly List<RouteVehicle> vehicles = new();
 
         // 통근 상태(유일 경로). 위상 리빌드 시 재구성된다.
@@ -144,7 +141,6 @@ namespace CityFlow.View
         private ISignalControl signalControl;
         private IIntersectionFacilityService intersectionFacility;
         private ITrafficRuleService trafficRule;
-        private IHighwayService highwayService;
         private Transform gridRoot;
         private Transform boardRoot;
         private Transform tileRoot;
@@ -294,7 +290,6 @@ namespace CityFlow.View
             signalControl = services.Placement as ISignalControl;
             intersectionFacility = services.Placement as IIntersectionFacilityService;
             trafficRule = services.Placement as ITrafficRuleService;
-            highwayService = services.Placement as IHighwayService;
 
             services.Events.Placed += OnPlaced;
             services.Events.Arrival += OnArrival;
@@ -315,7 +310,6 @@ namespace CityFlow.View
             RefreshOneways();
             RefreshTurnSigns();
             RefreshPriorityRoads();
-            RefreshHighways();
             RefreshVehicles();
             InitializeCameraView();
             driveViewCamera = gameObject.AddComponent<DriveViewCamera>();
@@ -487,7 +481,6 @@ namespace CityFlow.View
             RefreshOneways();
             RefreshTurnSigns();
             RefreshPriorityRoads();
-            RefreshHighways();
             RefreshVehicles();
             RefreshCoinPops();
         }
@@ -711,7 +704,6 @@ namespace CityFlow.View
             onewayVisuals.Clear();
             turnSignVisuals.Clear();
             priorityRoadVisuals.Clear();
-            highwayVisuals.Clear();
 
             ClearChildren(vehicleRoot);
             vehicles.Clear();
@@ -726,7 +718,6 @@ namespace CityFlow.View
             RefreshOneways();
             RefreshTurnSigns();
             RefreshPriorityRoads();
-            RefreshHighways();
             RefreshVehicles();
 
             Debug.Log("[MainCityView] Restored city visuals rebuilt.");
@@ -1047,74 +1038,6 @@ namespace CityFlow.View
             Renderer bar = CreateSignalBar(root.transform, "Bar",
                 new Vector3(tileSize * 0.5f, tileSize * 0.08f, 0.02f), Vector3.zero);
             ApplyRendererColor(bar, onewayColor);   // 기존 색 재사용(에셋 전)
-            return root;
-        }
-
-        // 고속도로 마커: 기존 도로 위에 청색 이중 차선을 얹어 업그레이드 상태와 축을 표시한다.
-        private void RefreshHighways()
-        {
-            if (highwayService == null)
-            {
-                return;
-            }
-
-            IReadOnlyList<Vector2Int> tiles = highwayService.HighwayTiles;
-            highwayVisualSet.Clear();
-            for (int i = 0; i < tiles.Count; i++) highwayVisualSet.Add(tiles[i]);
-
-            for (int i = 0; i < tiles.Count; i++)
-            {
-                Vector2Int tile = tiles[i];
-                if (!highwayVisuals.TryGetValue(tile, out GameObject visual))
-                {
-                    visual = CreateHighwayVisual(tile);
-                    highwayVisuals.Add(tile, visual);
-                }
-
-                bool vertical = HighwayVisualMath.IsVertical(tile, highwayVisualSet);
-                visual.transform.localRotation = Quaternion.Euler(0f, 0f, vertical ? 90f : 0f);
-
-                bool endpointLike = HighwayVisualMath.Kind(tile, highwayVisualSet) != HighwayMarkerKind.Interior;
-                Vector2Int negative = vertical ? Vector2Int.down : Vector2Int.left;
-                Vector2Int positive = vertical ? Vector2Int.up : Vector2Int.right;
-                visual.transform.Find("RampNegative").gameObject.SetActive(
-                    endpointLike && !highwayVisualSet.Contains(tile + negative));
-                visual.transform.Find("RampPositive").gameObject.SetActive(
-                    endpointLike && !highwayVisualSet.Contains(tile + positive));
-            }
-
-            foreach (Vector2Int tile in new List<Vector2Int>(highwayVisuals.Keys))
-            {
-                if (highwayService.IsHighway(tile))
-                {
-                    continue;
-                }
-
-                Destroy(highwayVisuals[tile]);
-                highwayVisuals.Remove(tile);
-            }
-        }
-
-        private GameObject CreateHighwayVisual(Vector2Int tile)
-        {
-            GameObject root = new GameObject($"Highway_{tile.x}_{tile.y}");
-            root.transform.SetParent(signalRoot, false);
-            root.transform.localPosition = GridToLocal(tile, signalZ);
-
-            Renderer laneA = CreateSignalBar(root.transform, "LaneA",
-                new Vector3(tileSize, tileSize * 0.08f, 0.02f), new Vector3(0f, tileSize * 0.18f, 0f));
-            Renderer laneB = CreateSignalBar(root.transform, "LaneB",
-                new Vector3(tileSize, tileSize * 0.08f, 0.02f), new Vector3(0f, -tileSize * 0.18f, 0f));
-            Renderer rampNegative = CreateSignalBar(root.transform, "RampNegative",
-                new Vector3(tileSize * 0.28f, tileSize * 0.06f, 0.02f), new Vector3(-tileSize * 0.37f, 0f, 0f));
-            Renderer rampPositive = CreateSignalBar(root.transform, "RampPositive",
-                new Vector3(tileSize * 0.28f, tileSize * 0.06f, 0.02f), new Vector3(tileSize * 0.37f, 0f, 0f));
-            rampNegative.transform.localRotation = Quaternion.Euler(0f, 0f, -18f);
-            rampPositive.transform.localRotation = Quaternion.Euler(0f, 0f, 18f);
-            ApplyRendererColor(laneA, highwayColor);
-            ApplyRendererColor(laneB, highwayColor);
-            ApplyRendererColor(rampNegative, highwayColor);
-            ApplyRendererColor(rampPositive, highwayColor);
             return root;
         }
 

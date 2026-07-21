@@ -19,7 +19,6 @@ namespace CityFlow.UI.Controllers
         private IEconomyService _economy;
         private IIntersectionFacilityService _facilityService;
         private ITrafficRuleService _trafficRuleService;
-        private IHighwayService _highwayService;
         private IPlacementService _placement;
 
         private bool _isBuildingMode = false;
@@ -45,7 +44,6 @@ namespace CityFlow.UI.Controllers
             _placement = services.Placement;
             _facilityService = services.Placement as IIntersectionFacilityService;
             _trafficRuleService = services.Placement as ITrafficRuleService;
-            _highwayService = services.Placement as IHighwayService;
             
             if (_economy == null)
             {
@@ -262,7 +260,7 @@ namespace CityFlow.UI.Controllers
 
         private bool CheckCanPlace(Vector2Int coord, InfrastructureDataSO data)
         {
-            if (_facilityService == null || _trafficRuleService == null || _highwayService == null)
+            if (_facilityService == null || _trafficRuleService == null)
             {
                 Debug.LogWarning($"[InfrastructurePlacementCoordinator] Service null check failed: facility={_facilityService != null}, traffic={_trafficRuleService != null}. Initialize() was{(_placement == null ? " NOT" : "")} called.");
                 return false;
@@ -276,7 +274,6 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.Oneway => _trafficRuleService.CanPlaceOneway(coord),
                 InfrastructureKind.TurnRestriction => _trafficRuleService.CanPlaceTurnSign(coord),
                 InfrastructureKind.PriorityRoad => _facilityService.CanPlacePriorityRoad(coord),
-                InfrastructureKind.Highway => _highwayService.CanPlaceHighway(coord),
                 _ => false
             };
         }
@@ -316,7 +313,6 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.Oneway => _trafficRuleService.TryPlaceOneway(coord, _currentData.OnewayDir),
                 InfrastructureKind.TurnRestriction => _trafficRuleService.TryPlaceTurnSign(coord, _currentData.TurnMode),
                 InfrastructureKind.PriorityRoad => _facilityService.TryPlacePriorityRoad(coord, _currentData.PriorityAxis),
-                InfrastructureKind.Highway => _highwayService.TryPlaceHighway(coord),
                 _ => false
             };
 
@@ -343,14 +339,7 @@ namespace CityFlow.UI.Controllers
         // --- Demolish Logic (LIFO priority handling) ---
         public bool TryDemolishInfrastructureAt(Vector2Int coord)
         {
-            if (_facilityService == null || _trafficRuleService == null || _highwayService == null) return false;
-
-            // 고속도로는 기존 도로 위 업그레이드이므로 다른 장치보다 먼저 제거한다.
-            if (_highwayService.IsHighway(coord) && _highwayService.TryRemoveHighway(coord))
-            {
-                ProcessRefundAndEvent(InfrastructureKind.Highway, coord);
-                return true;
-            }
+            if (_facilityService == null || _trafficRuleService == null) return false;
 
             // 1. Try Turn Restriction first (Rule: TurnSign -> Signal)
             if (_trafficRuleService.GetTurnMode(coord).HasValue)

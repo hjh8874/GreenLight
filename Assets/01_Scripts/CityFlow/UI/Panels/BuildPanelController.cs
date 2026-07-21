@@ -27,10 +27,6 @@ namespace CityFlow.UI
         [Header("Infrastructure")]
         [Tooltip("Infra 탭에 별도 슬롯으로 추가할 우선도로 데이터")]
         [SerializeField] private InfrastructureDataSO priorityRoadData;
-        [Tooltip("Infra 탭에 별도 슬롯으로 추가할 고속도로 데이터")]
-        [SerializeField] private InfrastructureDataSO highwayData;
-
-        private InfrastructureDataSO _runtimeHighwayData;
 
         private bool _isBound;
         // [통합 테스트 호환용] 
@@ -82,7 +78,6 @@ namespace CityFlow.UI
             }
 
             ConfigureInfrastructureSlots();
-            EnsureHighwaySlot();
 
             // 인스펙터에서 할당 안 했으면 자식 오브젝트에서 자동으로 찾기 (우리의 새로운 슬롯 로직)
             if (buildSlots == null || buildSlots.Length == 0)
@@ -211,70 +206,6 @@ namespace CityFlow.UI
             if (roundaboutSlot != null)
             {
                 roundaboutSlot.transform.SetSiblingIndex(siblingIndex);
-            }
-        }
-
-        private void EnsureHighwaySlot()
-        {
-            if (categoryPages == null || categoryPages.Length == 0 || categoryPages[0] == null)
-            {
-                return;
-            }
-
-            Transform infraPage = categoryPages[0].transform;
-            InfrastructureSlotController[] slots =
-                infraPage.GetComponentsInChildren<InfrastructureSlotController>(true);
-            InfrastructureSlotController template = null;
-
-            foreach (InfrastructureSlotController slot in slots)
-            {
-                if (slot.InfraData != null && slot.InfraData.Kind == InfrastructureKind.Highway)
-                {
-                    slot.gameObject.SetActive(true);
-                    return;
-                }
-
-                if (template == null && slot.gameObject.activeSelf)
-                {
-                    template = slot;
-                }
-            }
-
-            if (template == null)
-            {
-                Debug.LogWarning("[BuildPanelController] 고속도로 슬롯을 복제할 인프라 슬롯이 없습니다.");
-                return;
-            }
-
-            InfrastructureDataSO data = highwayData != null ? highwayData : CreateRuntimeHighwayData();
-            InfrastructureSlotController highwaySlot = Instantiate(template, infraPage);
-            highwaySlot.name = "Highway_Slot";
-            highwaySlot.Configure(data);
-            highwaySlot.gameObject.SetActive(true);
-            highwaySlot.transform.SetSiblingIndex(Mathf.Min(3, infraPage.childCount - 1));
-        }
-
-        private InfrastructureDataSO CreateRuntimeHighwayData()
-        {
-            if (_runtimeHighwayData != null)
-            {
-                return _runtimeHighwayData;
-            }
-
-            _runtimeHighwayData = ScriptableObject.CreateInstance<InfrastructureDataSO>();
-            _runtimeHighwayData.hideFlags = HideFlags.HideAndDontSave;
-            _runtimeHighwayData.Kind = InfrastructureKind.Highway;
-            _runtimeHighwayData.InfrastructureName = "Highway";
-            _runtimeHighwayData.Description = "직선 구간을 빠르게 이동합니다. 진출입은 양 끝에서만 가능합니다.";
-            _runtimeHighwayData.Cost = 150;
-            return _runtimeHighwayData;
-        }
-
-        private void OnDestroy()
-        {
-            if (_runtimeHighwayData != null)
-            {
-                Destroy(_runtimeHighwayData);
             }
         }
 
