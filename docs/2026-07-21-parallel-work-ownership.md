@@ -60,17 +60,22 @@ CarMotion.cs → MoveCarSimVehicle()  (243줄)
 
 | 씬 | 담당 |
 |---|---|
-| `Assets/00_Scenes/CityFlowIntegrated_cmt.unity` | 주석 |
+| `Assets/00_Scenes/CityFlowIntegrated_cmt.unity` | 한주석 |
+| `Assets/00_Scenes/CityFlowIntegrated_han.unity` | 한주석 |
 | `Assets/00_Scenes/Debug/CityFlowIntegrated_hwan.unity` | 환 |
-| `Assets/00_Scenes/CityFlowIntegrated_Geon.unity` / `_Geon2.unity` | 김건 |
-| `Assets/00_Scenes/CityFlowIntegrated_han.unity` | ⚠️ 담당 확인 필요 |
-| `Assets/00_Scenes/CityFlowIntegrated_cmt_Debug.unity` | ⚠️ 담당 확인 필요 |
 | `Assets/00_Scenes/EngineSandbox_hwan.unity` | 환 |
+| `Assets/00_Scenes/CityFlowIntegrated_Geon.unity` / `_Geon2.unity` | 김건 |
 
-> **주의**: 씬별 튜닝값이 이미 어긋나 있습니다. `roundaboutOrbitRadius`가
-> `_cmt`=0.68, `Debug/_hwan`=0.5, `_Geon`/`_Geon2`/`_han`/`_cmt_Debug`/`EngineSandbox`=0.3.
-> `cornerTurnRadius`도 씬마다 0.6과 0.75가 섞여 있습니다.
-> 한 씬에서 맞춘 값이 다른 씬에서 깨져 보이는 건 버그가 아니라 이 상태 때문입니다.
+`Assets/00_Scenes/*_Debug.unity`는 `.gitignore` 대상입니다(예: `CityFlowIntegrated_cmt_Debug.unity`).
+**각자 로컬 전용 실험 씬**이므로 담당자가 없고, 커밋되지 않습니다. 마음대로 쓰세요.
+
+> **2026-07-21 통일 완료**: `roundaboutOrbitRadius`가 씬마다 0.68 / 0.5 / 0.3으로 갈려 있었고,
+> 그중 **5개 씬의 0.3은 섬 반지름 0.45보다 작아 차가 잔디 섬을 관통**하고 있었습니다.
+> 전 씬을 차도 정중앙 `0.775`로, `cornerTurnRadius`를 `0.75`로 맞췄고 코드 기본값도 동일하게 했습니다.
+> 실측 확인: 로터리 주행 차량의 중심 거리 r=0.773, 섬 관통 0건.
+>
+> ⚠️ `Range(0.5f, 1.1f)`는 **인스펙터 슬라이더만 막고 직렬화된 값은 그대로 런타임에 쓰입니다.**
+> 0.3이 오래 살아남은 이유가 이것입니다. 값을 바꿀 때는 반드시 위 5개 씬을 함께 맞추세요.
 
 ### 2. `MainCityView`에 `[SerializeField]`를 추가하지 않는다
 
@@ -120,6 +125,10 @@ L19-110에 몰려 있고, 주석의 그룹(L50-63)과 환의 그룹(L68-75)은 *
 이 상수가 조용히 무효가 되어 차가 섬을 파고듭니다.
 같은 식으로 `vehicleMinHeadway`의 기본값 0.55는 "최대 차 길이 0.437 + 여유"라는 **주석에만**
 근거가 있습니다.
+
+> **미해결 (환 확인 필요)**: 이 `0.66`이 **어느 궤도 반경에서 측정된 값인지 기록이 없습니다.**
+> 2026-07-21에 `roundaboutOrbitRadius`를 0.3~0.68에서 0.775로 올렸으므로 전제가 바뀌었습니다.
+> 로터리 작업 시작할 때 재측정하고, 이번엔 어떤 조건에서 쟀는지 함께 남겨주세요.
 
 ### 베이크 해시 게이트 (주석 자신)
 
