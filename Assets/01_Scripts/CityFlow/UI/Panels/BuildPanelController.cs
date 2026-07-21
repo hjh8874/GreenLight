@@ -60,6 +60,8 @@ namespace CityFlow.UI
         }
         private void Start()
         {
+            LocalizeCategoryTabs();
+
             // DOTween 등장 팝업 슬라이드 인 애니메이션
             RectTransform rect = GetComponent<RectTransform>();
             if (rect != null)
@@ -75,8 +77,7 @@ namespace CityFlow.UI
                 return;
             }
 
-            EnsurePriorityRoadSlot();
-            MoveRoadSlotFirst();
+            ConfigureInfrastructureSlots();
 
             // 인스펙터에서 할당 안 했으면 자식 오브젝트에서 자동으로 찾기 (우리의 새로운 슬롯 로직)
             if (buildSlots == null || buildSlots.Length == 0)
@@ -145,21 +146,66 @@ namespace CityFlow.UI
             priorityRoadSlot.transform.SetSiblingIndex(Mathf.Min(5, infraPage.childCount - 1));
         }
 
-        private void MoveRoadSlotFirst()
+        private void ConfigureInfrastructureSlots()
         {
             if (categoryPages == null || categoryPages.Length == 0 || categoryPages[0] == null)
             {
                 return;
             }
 
-            BuildSlotController[] slots = categoryPages[0].GetComponentsInChildren<BuildSlotController>(true);
-            foreach (BuildSlotController slot in slots)
+            Transform infraPage = categoryPages[0].transform;
+            BuildSlotController roadSlot = null;
+            BuildSlotController[] buildSlots = infraPage.GetComponentsInChildren<BuildSlotController>(true);
+            foreach (BuildSlotController slot in buildSlots)
             {
-                if (slot.TileData != null && slot.TileData.Category == TileType.Road)
+                bool isRoad = roadSlot == null &&
+                              slot.TileData != null &&
+                              slot.TileData.Category == TileType.Road;
+                slot.gameObject.SetActive(isRoad);
+
+                if (isRoad)
                 {
-                    slot.transform.SetSiblingIndex(0);
-                    return;
+                    roadSlot = slot;
                 }
+            }
+
+            InfrastructureSlotController signalSlot = null;
+            InfrastructureSlotController roundaboutSlot = null;
+            InfrastructureSlotController[] infrastructureSlots =
+                infraPage.GetComponentsInChildren<InfrastructureSlotController>(true);
+
+            foreach (InfrastructureSlotController slot in infrastructureSlots)
+            {
+                bool isSignal = signalSlot == null &&
+                                slot.InfraData != null &&
+                                slot.InfraData.Kind == InfrastructureKind.Signal;
+                bool isRoundabout = roundaboutSlot == null &&
+                                    slot.InfraData != null &&
+                                    slot.InfraData.Kind == InfrastructureKind.Roundabout;
+                slot.gameObject.SetActive(isSignal || isRoundabout);
+
+                if (isSignal)
+                {
+                    signalSlot = slot;
+                }
+                else if (isRoundabout)
+                {
+                    roundaboutSlot = slot;
+                }
+            }
+
+            int siblingIndex = 0;
+            if (roadSlot != null)
+            {
+                roadSlot.transform.SetSiblingIndex(siblingIndex++);
+            }
+            if (signalSlot != null)
+            {
+                signalSlot.transform.SetSiblingIndex(siblingIndex++);
+            }
+            if (roundaboutSlot != null)
+            {
+                roundaboutSlot.transform.SetSiblingIndex(siblingIndex);
             }
         }
 
@@ -183,6 +229,27 @@ namespace CityFlow.UI
                 return;
             }
             _isBound = true;
+        }
+
+        /// <summary>
+        /// 씬에 하드코딩된 영문 카테고리 탭 텍스트를 한글로 일괄 설정합니다.
+        /// </summary>
+        private void LocalizeCategoryTabs()
+        {
+            if (categoryTabs == null) return;
+            
+            string[] titles = { "인프라", "주거", "상업", "공공장소" };
+            for (int i = 0; i < categoryTabs.Length && i < titles.Length; i++)
+            {
+                if (categoryTabs[i] != null)
+                {
+                    var label = categoryTabs[i].GetComponentInChildren<TMPro.TMP_Text>(true);
+                    if (label != null)
+                    {
+                        label.text = titles[i];
+                    }
+                }
+            }
         }
     }
 }
