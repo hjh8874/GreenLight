@@ -138,5 +138,29 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1.5f, solver.DeliveredTotal, 1e-3f);
             Assert.AreEqual(1.5f, solver.DemandRate, 1e-4f);
         }
+
+        [Test]
+        public void RouteSources_AlignedWithRoutes()
+        {
+            // 경로별 출발 건물 타일이 Routes와 나란히 노출된다 (뷰 통근 인구 구성용).
+            var g = new CityGrid(9, 3);
+            g.Place(new Vector2Int(0, 0), TileType.House);
+            for (int x = 1; x <= 7; x++) g.Place(new Vector2Int(x, 0), TileType.Road);
+            g.Place(new Vector2Int(8, 0), TileType.Office);
+
+            var cfg = Cfg(demand: 1f, capacity: 10f);
+            var dm = new DemandMap(cfg);
+            dm.Reassign(g, new RoadNetwork(g));
+            var net = new RoadNetwork(g);
+            var planner = new RoutePlanner(g.Width, g.Height);
+            planner.Plan(dm, net, g, cfg);
+            var solver = new FlowSolver(g.Width, g.Height);
+            solver.Assign(dm, planner, cfg);
+
+            Assert.AreEqual(solver.Routes.Count, solver.RouteSources.Count);
+            Assert.AreEqual(solver.Routes.Count, solver.RouteSinks.Count);
+            Assert.AreEqual(new Vector2Int(0, 0), solver.RouteSources[0], "출발 = 집 건물 타일");
+            Assert.AreEqual(new Vector2Int(8, 0), solver.RouteSinks[0], "도착 = 회사 건물 타일");
+        }
     }
 }
