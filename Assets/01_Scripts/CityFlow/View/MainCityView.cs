@@ -460,10 +460,13 @@ namespace CityFlow.View
                 ExitDriveView();
             }
 
-            HandleVehicleSelectionInput();
-            if (!IsDriveViewActive)
+            if (!OfflineSettlementPopup.IsInteractionBlocked)
             {
-                HandleCameraViewInput();
+                HandleVehicleSelectionInput();
+                if (!IsDriveViewActive)
+                {
+                    HandleCameraViewInput();
+                }
             }
 
             if (tileData == null)
@@ -471,7 +474,7 @@ namespace CityFlow.View
                 return;
             }
 
-            if (!IsDriveViewActive)
+            if (!IsDriveViewActive && !OfflineSettlementPopup.IsInteractionBlocked)
             {
                 HandleSignalInput();
             }

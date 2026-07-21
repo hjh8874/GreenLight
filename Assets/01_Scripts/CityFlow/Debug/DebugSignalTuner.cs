@@ -29,6 +29,7 @@ namespace CityFlow.DebugTools
 
         private void Update()
         {
+            if (CityFlow.UI.OfflineSettlementPopup.IsInteractionBlocked) return;
             if (_engine == null) return;
             var tiles = _engine.SignalTiles;
             if (tiles.Count == 0) return;
