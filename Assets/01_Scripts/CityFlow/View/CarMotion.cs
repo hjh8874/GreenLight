@@ -131,6 +131,15 @@ namespace CityFlow.View
         private bool[] laneHasNext = System.Array.Empty<bool>();
         private int[] laneLeader = System.Array.Empty<int>();
 
+        private sealed class IntersectionMotionState
+        {
+            public int RouteIndex { get; set; } = -1;
+            public float AuthorizedDistance { get; set; }
+            public float AuthorizedSpeed { get; set; }
+        }
+
+        private readonly Dictionary<RouteVehicle, IntersectionMotionState> intersectionMotionStates = new();
+
         // 앞차 = "같은 차선에서 나보다 하나 앞" 또는 "내 다음 차선의 꼬리". 둘 다 Sim의
         // 전진 순서를 그대로 따르는 선형 관계라, 앞차 체인은 사이클을 만들지 않는다.
         // 교차 차선 차량은 후보에 아예 들어오지 않는다 — 기하 근접만으로 차를 세우면
@@ -602,6 +611,7 @@ namespace CityFlow.View
 
         private void ResetVehicleForCommute(RouteVehicle vehicle, int routeIndex)
         {
+            intersectionMotionStates.Remove(vehicle);
             vehicle.RouteIndex = routeIndex;
             vehicle.CurrentSpeed = 0f;
             vehicle.TargetDistance = 0f;
@@ -635,6 +645,7 @@ namespace CityFlow.View
 
         private void DeactivateCommuteVehicle(RouteVehicle vehicle)
         {
+            intersectionMotionStates.Remove(vehicle);
             // 선택 추적 중인 차가 stale 처리되면 드라이브 뷰를 먼저 종료한다(#103 방어 이식).
             // 비활성화 직후 같은 풀 오브젝트가 TakeFreeVehicle()로 신규 통근차에 재사용되면
             // DriveViewCamera가 볼 때 대상이 다시 active라 자동 종료 조건도 통과하지 못해,
@@ -676,6 +687,7 @@ namespace CityFlow.View
             bool hadPrevious = vehicle.HasLastState;
             if (!moving)
             {
+                intersectionMotionStates.Remove(vehicle);
                 bool arrivedAtWork = hadPrevious
                     && previous == CarState.Outbound
                     && snapshot.State == CarState.ParkedWork;
@@ -775,13 +787,56 @@ namespace CityFlow.View
             //     (선두면 다음 타일 큐의 꼬리) 줄이 상류로 자연스럽게 이어진다.
             // Sim 정원(=처리량·경제)은 하나도 건드리지 않는다.
             // QueueSlot<0(큐 진입 실패 등)이어도 안전하다 — 어차피 타일 머리를 쓴다.
+            bool stateChanged = hadPrevious && previous != snapshot.State;
+            if (stateChanged) car.Distance = 0f;
             float targetDistance = poly.DistanceAtQueueSlot(
                 tileIndex,
                 0,
                 0f,
                 headInset);
+            bool hasIntersectionAuthorization = snapshot.IntersectionProgress01 >= 0f;
+            float intersectionAuthorizedSpeed = 0f;
+            if (hasIntersectionAuthorization)
+            {
+                float intersectionCenter = poly.DistanceAtTile(tileIndex);
+                float stageOffset = (snapshot.IntersectionProgress01 - 0.5f) * tileSize;
+                targetDistance = Mathf.Clamp(
+                    intersectionCenter + stageOffset,
+                    0f,
+                    poly.Length);
+
+                if (!intersectionMotionStates.TryGetValue(vehicle, out IntersectionMotionState motion)
+                    || motion.RouteIndex != car.RouteIndex)
+                {
+                    motion = new IntersectionMotionState
+                    {
+                        RouteIndex = car.RouteIndex,
+                        AuthorizedDistance = Mathf.Min(car.Distance, targetDistance),
+                    };
+                    intersectionMotionStates[vehicle] = motion;
+                }
+
+                // The simulation value is an authorization boundary, not a render snap point.
+                // Pace each newly granted segment across one simulation tick so the next grant
+                // normally arrives before the vehicle has to stop at the boundary.
+                if (targetDistance > motion.AuthorizedDistance + 0.0001f)
+                {
+                    float tickInterval = Mathf.Max(0.0001f, simEngine.TickInterval);
+                    float minimumStageSpeed = tileSize * 0.25f / tickInterval;
+                    motion.AuthorizedSpeed = Mathf.Max(
+                        minimumStageSpeed,
+                        (targetDistance - motion.AuthorizedDistance) / tickInterval);
+                    motion.AuthorizedDistance = targetDistance;
+                }
+
+                targetDistance = Mathf.Max(car.Distance, targetDistance);
+                intersectionAuthorizedSpeed = Mathf.Max(0.01f, motion.AuthorizedSpeed);
+            }
+            else
+            {
+                intersectionMotionStates.Remove(vehicle);
+            }
             float previousDistance = car.Distance;
-            bool stateChanged = hadPrevious && previous != snapshot.State;
             // ⚠️ QueueSlot은 조건에 넣지 않는다. 슬롯이 위치에서 빠졌으므로(위) 슬롯 변화는
             // 목표 불변인데, 조건에 남겨두면 슬롯이 바뀔 때마다 "목표 전진"으로 오판해
             // 홀드 중에도 TargetAdvancing이 스퓨리어스로 켜졌다(계측 2026-07-21) —
@@ -793,7 +848,6 @@ namespace CityFlow.View
                 || Mathf.Abs(vehicle.TargetDistance - targetDistance) > 0.0001f;
             if (targetChanged)
             {
-                if (stateChanged) car.Distance = 0f;   // 방향 전환 = 새 폴리라인의 시작
                 vehicle.TargetDistance = targetDistance;
                 vehicle.TargetTileIndex = tileIndex;
                 vehicle.TargetRouteIndex = car.RouteIndex;
@@ -820,9 +874,11 @@ namespace CityFlow.View
             // 뷰가 Sim 스냅샷보다 최대 2타일 앞서 헌법의 "Sim+1 상한"을 어겼다.
             // 남는 중간 브레이크의 뿌리는 뷰가 아니라 **Sim 틱 양자화**다(0.4s 홀드) — §4.10.
             // 도로 끝 클램프는 poly.Length — 목적지 도달 차를 회사 앞에서 얼리지 않는다(§4.6.2).
-            float corridor = Mathf.Min(
-                vehicle.TargetDistance + vehicleCorridorTiles * tileSize,
-                poly.Length);
+            float corridor = hasIntersectionAuthorization
+                ? vehicle.TargetDistance
+                : Mathf.Min(
+                    vehicle.TargetDistance + vehicleCorridorTiles * tileSize,
+                    poly.Length);
             bool signalEntryLimited = TryGetSignalEntryStopDistance(
                 poly,
                 tileIndex,
@@ -831,6 +887,26 @@ namespace CityFlow.View
             if (signalEntryLimited)
             {
                 corridor = Mathf.Min(corridor, signalStopDistance);
+            }
+
+            float intersectionStopDistance = 0f;
+            bool intersectionEntryLimited = !hasIntersectionAuthorization
+                && TryGetIntersectionEntryLimitDistance(
+                    poly,
+                    tileIndex,
+                    vehicle,
+                    out intersectionStopDistance);
+            float intersectionApproachSpeed = nominal;
+            if (intersectionEntryLimited)
+            {
+                corridor = Mathf.Min(corridor, intersectionStopDistance);
+                float remainingTickSeconds = Mathf.Max(
+                    0.02f,
+                    (1f - simEngine.TickProgress01) * simEngine.TickInterval);
+                float distanceToBoundary = Mathf.Max(0f, corridor - car.Distance);
+                intersectionApproachSpeed = Mathf.Min(
+                    nominal,
+                    distanceToBoundary / remainingTickSeconds);
             }
 
             if (corridor < car.Distance)
@@ -847,15 +923,16 @@ namespace CityFlow.View
                 // 계단식 임계값을 쓰면 그 위에서 진동하며 브레이크등이 고속 주행 중에 깜빡인다.
                 float behind = Mathf.Clamp01(
                     (toTarget - tileSize * vehicleCatchUpStart) / Mathf.Max(0.01f, tileSize * vehicleCatchUpRamp));
-                float cruise = nominal * (1f + behind * vehicleCatchUpRange);
+                float authorizedCruise = hasIntersectionAuthorization
+                    ? intersectionAuthorizedSpeed
+                    : (intersectionEntryLimited ? intersectionApproachSpeed : nominal);
+                float cruise = authorizedCruise * (1f + behind * vehicleCatchUpRange);
 
                 // 제동식은 **상대가 움직이는지**를 반영해야 한다. √(2a·여유)는 '정지한 벽'
                 // 공식이라 이산 천장에선 여유가 줄 때마다 감속하는 톱니를 탄다(§4.6.1 계측:
                 // 정지의 81.4%가 앞차 없음 + 여유 0.000). 천장이 전진 중이면 v² 부스트로
                 // 계속 굴러가고, Sim이 잡으면(TargetAdvancing=false) 진짜 벽으로 보고 선다.
-                float ceilingSpeed = signalEntryLimited
-                    ? 0f
-                    : (vehicle.TargetAdvancing ? nominal : 0f);
+                float ceilingSpeed = vehicle.TargetAdvancing ? authorizedCruise : 0f;
                 float desired = Mathf.Min(cruise, Mathf.Sqrt(
                     ceilingSpeed * ceilingSpeed + 2f * brakeAccel * Mathf.Max(0f, corridor - car.Distance)));
 

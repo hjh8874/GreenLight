@@ -43,5 +43,36 @@ namespace CityFlow.View
                 tileSize * SignalStopMarginTiles);
             return true;
         }
+
+        private bool TryGetIntersectionEntryLimitDistance(
+            RoutePolyline polyline,
+            int currentTileIndex,
+            RouteVehicle vehicle,
+            out float stopDistance)
+        {
+            stopDistance = 0f;
+            if (simEngine == null || polyline == null)
+            {
+                return false;
+            }
+
+            int current = Mathf.Clamp(currentTileIndex, 0, polyline.TileCount - 1);
+            int next = current + 1;
+            if (next >= polyline.TileCount
+                || !simEngine.IsSharedCarIntersection(polyline.TileAt(next)))
+            {
+                return false;
+            }
+
+            float vehicleLength = tileSize
+                * BaseVehicleLengthTiles
+                * Mathf.Max(0.1f, vehicle.Style.LengthScale);
+            stopDistance = SignalStopLineMath.CalculateStopDistance(
+                polyline.DistanceAtTile(current),
+                polyline.DistanceAtTile(next),
+                vehicleLength,
+                tileSize * SignalStopMarginTiles);
+            return true;
+        }
     }
 }

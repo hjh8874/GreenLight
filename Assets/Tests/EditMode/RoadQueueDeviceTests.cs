@@ -295,7 +295,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void IntersectionSharedBudget_WithoutPriority_UsesTurnOrder()
+        public void IntersectionSharedBudget_PrioritizesStraightThenAllowsCompatibleTurns()
         {
             CityGrid grid = CrossGrid();
             Vector2Int center = V(1, 1);
@@ -313,8 +313,143 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0, q.QueueCount(center, Dir.E), "직진 1순위");
 
             q.Step(routes);
-            Assert.AreEqual(0, q.QueueCount(center, Dir.N), "우회전 2순위");
-            Assert.AreEqual(1, q.QueueCount(center, Dir.W), "좌회전은 계속 대기");
+            Assert.AreEqual(0, q.QueueCount(center, Dir.N), "충돌하지 않는 우회전 통과");
+            Assert.AreEqual(0, q.QueueCount(center, Dir.W), "분리된 셀을 쓰는 좌회전도 함께 통과");
+        }
+
+        [Test]
+        public void IntersectionEntry_ConflictingStraightPaths_YieldInsideByStage()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            Vector2Int west = V(0, 1);
+            Vector2Int north = V(1, 2);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, new FakeDeviceState());
+            var routes = new FakeRouteProvider();
+            routes.Add(43, west, center, V(2, 1));
+            routes.Add(44, north, center, V(1, 0));
+            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 43));
+            Assert.IsTrue(q.TryEnqueue(north, Dir.S, 44));
+
+            q.Step(routes);
+
+            Assert.AreEqual(43, q.CarAtHead(center, Dir.E));
+            Assert.AreEqual(44, q.CarAtHead(center, Dir.S));
+            Assert.IsTrue(q.TryLocateCar(43, out _, out _, out _, out float eastProgress));
+            Assert.IsTrue(q.TryLocateCar(44, out _, out _, out _, out float southProgress));
+            Assert.AreEqual(0.25f, eastProgress, 1e-4f);
+            Assert.AreEqual(0.25f, southProgress, 1e-4f);
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(43, out _, out _, out _, out eastProgress));
+            Assert.IsTrue(q.TryLocateCar(44, out _, out _, out _, out southProgress));
+            Assert.AreEqual(0.75f, eastProgress, 1e-4f);
+            Assert.AreEqual(0.25f, southProgress, 1e-4f);
+        }
+
+        [Test]
+        public void IntersectionEntry_OpposingStraightPaths_EnterTogether()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            Vector2Int west = V(0, 1);
+            Vector2Int east = V(2, 1);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, new FakeDeviceState());
+            var routes = new FakeRouteProvider();
+            routes.Add(45, west, center, east);
+            routes.Add(46, east, center, west);
+            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 45));
+            Assert.IsTrue(q.TryEnqueue(east, Dir.W, 46));
+
+            q.Step(routes);
+
+            Assert.AreEqual(45, q.CarAtHead(center, Dir.E));
+            Assert.AreEqual(46, q.CarAtHead(center, Dir.W));
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(45, out _, out _, out _, out float eastProgress));
+            Assert.IsTrue(q.TryLocateCar(46, out _, out _, out _, out float westProgress));
+            Assert.AreEqual(0.75f, eastProgress, 1e-4f);
+            Assert.AreEqual(0.75f, westProgress, 1e-4f);
+        }
+
+        [Test]
+        public void EmptyIntersection_DoesNotPersistConflictAsADwellStage()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            Vector2Int west = V(0, 1);
+            Vector2Int east = V(2, 1);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, new FakeDeviceState());
+            var routes = new FakeRouteProvider();
+            routes.Add(50, west, center, east);
+            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 50));
+
+            q.Step(routes);
+            Assert.AreEqual(50, q.CarAtHead(center, Dir.E));
+            Assert.IsTrue(q.TryLocateCar(50, out _, out _, out _, out float entryProgress));
+            Assert.AreEqual(0.25f, entryProgress, 1e-4f);
+
+            q.Step(routes);
+            Assert.IsTrue(q.TryLocateCar(50, out _, out _, out _, out float exitProgress));
+            Assert.AreEqual(0.75f, exitProgress, 1e-4f);
+
+            q.Step(routes);
+            Assert.AreEqual(50, q.CarAtHead(east, Dir.E));
+            Assert.AreEqual(0, q.QueueCount(center, Dir.E));
+        }
+
+        [Test]
+        public void IntersectionProgress_IsClearedWhenTopologyBecomesNormalRoad()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            Vector2Int west = V(0, 1);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, new FakeDeviceState());
+            var routes = new FakeRouteProvider();
+            routes.Add(49, west, center, V(2, 1));
+            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 49));
+
+            q.Step(routes);
+            Assert.IsTrue(q.TryLocateCar(49, out _, out _, out _, out float progress));
+            Assert.AreEqual(0.25f, progress, 1e-4f);
+
+            Assert.IsTrue(grid.Remove(V(1, 2)));
+            Assert.IsTrue(grid.Remove(V(1, 0)));
+            q.RebuildTopology(grid, new FakeDeviceState());
+
+            Assert.IsTrue(q.TryLocateCar(49, out _, out _, out _, out progress));
+            Assert.AreEqual(-1f, progress, 1e-4f);
+        }
+
+        [Test]
+        public void IntersectionEntry_ConflictingOccupant_ClearsBeforeNextEntry()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            Vector2Int west = V(0, 1);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, new FakeDeviceState());
+            var routes = new FakeRouteProvider();
+            routes.Add(47, center, V(1, 0));
+            routes.Add(48, west, center, V(2, 1));
+            Assert.IsTrue(q.TryEnqueue(center, Dir.S, 47));
+            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 48));
+
+            q.Step(routes);
+
+            Assert.AreEqual(47, q.CarAtHead(V(1, 0), Dir.S));
+            Assert.AreEqual(48, q.CarAtHead(west, Dir.E));
+
+            q.Step(routes);
+
+            Assert.AreEqual(48, q.CarAtHead(center, Dir.E));
         }
 
         [Test]
