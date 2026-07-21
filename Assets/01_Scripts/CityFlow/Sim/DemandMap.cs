@@ -6,7 +6,7 @@ using CityFlow.Contracts;
 namespace CityFlow.Sim
 {
     // 통근 수요 1건: 수요원(집) → 수요처(Office 등).
-    // ponytail: demandRate는 나중(FlowSolver)에서 SimConfig로. 지금은 배정 관계만.
+    // 수요는 차 토큰 생성의 배정 관계만 보관한다.
     // SourceRoad/SinkRoad: 배정 시 채택한 접점(감사 픽스 2 — 단일 출처화). RoutePlanner.Plan은
     // 이 값을 그대로 써서 경로를 잇는다 — 접점을 다시 계산하지 않음(두 시스템이 각자 접점을
     // 고르면 Region 불일치로 도달 가능한 수요가 흐름 0으로 죽는 버그의 온상이었음).
@@ -57,6 +57,10 @@ namespace CityFlow.Sim
         {
             _config = next;
         }
+
+        // 신규 수요처가 생겼을 때 전 차량 귀가 안전시점에서만 호출한다.
+        // 이동 중 sticky를 풀면 목적지가 순간 교체되므로 SimEngine이 시점을 중재한다.
+        internal void ClearStickyAssignments() => _sticky.Clear();
 
         public void Reassign(CityGrid grid, RoadNetwork net)
         {

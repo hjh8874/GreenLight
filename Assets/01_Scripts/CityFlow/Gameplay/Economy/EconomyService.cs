@@ -47,8 +47,6 @@ namespace CityFlow.Gameplay.Economy
             services.RegisterEconomy(this);
 
             services.Events.Arrival += OnArrival;
-            services.Events.Maintenance += OnMaintenance;
-            services.Events.SettlementComputed += OnSettlementComputed;
 
             PublishCoinsChanged();
 
@@ -65,8 +63,6 @@ namespace CityFlow.Gameplay.Economy
             }
 
             services.Events.Arrival -= OnArrival;
-            services.Events.Maintenance -= OnMaintenance;
-            services.Events.SettlementComputed -= OnSettlementComputed;
         }
 
         /// <summary>
@@ -176,42 +172,6 @@ namespace CityFlow.Gameplay.Economy
             AddCoins(e.Coins, "arrival");
         }
 
-        /// <summary>
-        /// Deducts road maintenance without allowing a negative balance.
-        /// </summary>
-        private void OnMaintenance(MaintenanceEvent e)
-        {
-            if (e.Cost <= 0L)
-            {
-                return;
-            }
-
-            long deducted = Math.Min(Coins, e.Cost);
-            Coins -= deducted;
-            if (deducted > 0L)
-            {
-                PublishCoinsChanged();
-            }
-
-            Debug.Log(
-                "[EconomyService] Deducted " + deducted +
-                " coins from maintenance. Requested: " + e.Cost +
-                ", Current coins: " + Coins
-            );
-        }
-
-        /// <summary>
-        /// 오프라인 정산 계산이 완료되었을 때 호출됩니다.
-        /// </summary>
-        private void OnSettlementComputed(SettlementEvent e)
-        {
-            if (e.Coins <= 0L)
-            {
-                return;
-            }
-
-            AddCoins(e.Coins, "offline settlement");
-        }
 
         /// <summary>
         /// 코인 변경 이벤트를 발생시킵니다.

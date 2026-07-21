@@ -1,6 +1,7 @@
 using System;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using CityFlow.UI.Controllers;
@@ -31,6 +32,14 @@ namespace CityFlow.UI
         
         [Header("UI References")]
         [SerializeField] private ConfirmPopupController confirmPopup;
+        [Tooltip("도로 예산제(스펙 2026-07-17): 도로 배치 모드에서 \"도로 N/M\" 카운터. 미할당 시 표시 생략.")]
+        [SerializeField] private TextMeshProUGUI roadBudgetText;
+        [Tooltip("도로 확장권(스펙 §2단계): \"+10칸\" 구매 버튼. 미할당 시 표시 생략.")]
+        [SerializeField] private UnityEngine.UI.Button roadExpandButton;
+        [Tooltip("확장권 가격 라벨. 코인 부족 시 빨강. 미할당 시 표시 생략.")]
+        [SerializeField] private TextMeshProUGUI roadExpandCostText;
+        [SerializeField] private Color expandAffordableColor = Color.white;
+        [SerializeField] private Color expandUnaffordableColor = new Color(1f, 0.35f, 0.35f);
         
         private CityFlowServices _services;
         private bool _isBuildingMode = false;
@@ -68,6 +77,26 @@ namespace CityFlow.UI
         {
             _services = services;
             PrepareGhostRenderer();
+
+            // 도로 확장권 버튼(스펙 §2단계): 미할당(씬 미연동)이면 조용히 생략.
+            if (roadExpandButton != null)
+            {
+                roadExpandButton.onClick.RemoveListener(OnRoadExpandClicked);   // 재초기화 중복 방지
+                roadExpandButton.onClick.AddListener(OnRoadExpandClicked);
+            }
+        }
+
+        // 구매 글루(소유권 경계): 차감은 경제 레이어(TrySpend) 안 — 성공 시에만 Sim이 캡 +10.
+        // 타일 건설의 TrySpend 선례(PlaceInfrastructure)와 같은 UI 레벨 흐름.
+        private void OnRoadExpandClicked()
+        {
+            var expansion = _services?.Placement as IRoadExpansionService;
+            if (expansion == null || _services.Economy == null) return;
+
+            if (expansion.TryPurchaseRoadExpansion(_services.Economy))
+                Debug.Log($"[PlacementController] 도로 확장권 구매 — 캡 +10, 다음 가격 {expansion.NextRoadExpandCost}");
+            else
+                Debug.LogWarning("[PlacementController] 코인이 부족하여 도로 확장권을 구매할 수 없습니다!");
         }
 
         public void ConfigureGhost(SpriteRenderer renderer)
@@ -111,6 +140,8 @@ namespace CityFlow.UI
 
         private void Update()
         {
+            UpdateRoadBudgetLabel();   // 도로 예산제(스펙 2026-07-17): 도로 모드에서만 "도로 N/M" 표시
+
             // 6. 마우스 우클릭 시 철거 확인창 호출 (도로는 드래그 즉시 철거 지원)
             if (Mouse.current != null)
             {
@@ -206,6 +237,51 @@ namespace CityFlow.UI
                 if (Mouse.current.leftButton.wasReleasedThisFrame)
                 {
                     _lastPlacedCoord = null;
+                }
+            }
+        }
+
+        // 도로 예산제 카운터(스펙 2026-07-17): 도로 배치 모드일 때만 "도로 N/M" + 확장 버튼을 노출.
+        // 라벨/버튼 미할당(씬 미연동)이면 조용히 생략 — HUDDashboard의 null-safe TMP 패턴 재사용.
+        private void UpdateRoadBudgetLabel()
+        {
+            bool showRoad = _isBuildingMode && _currentType == TileType.Road
+                            && _services != null && _services.Stats != null;
+
+            if (roadBudgetText != null)
+            {
+                if (roadBudgetText.gameObject.activeSelf != showRoad)
+                    roadBudgetText.gameObject.SetActive(showRoad);
+                if (showRoad)
+                    roadBudgetText.text = $"도로 {_services.Stats.RoadTileCount}/{_services.Stats.MaxRoadTiles}";
+            }
+
+            // 확장권 버튼(스펙 §2단계): 카운터와 같은 조건으로 표시, 코인 부족 시 비활성 + 가격 빨강.
+            var expansion = showRoad ? _services.Placement as IRoadExpansionService : null;
+            bool showExpand = expansion != null;
+
+            if (roadExpandButton != null)
+            {
+                if (roadExpandButton.gameObject.activeSelf != showExpand)
+                    roadExpandButton.gameObject.SetActive(showExpand);
+                if (showExpand)
+                {
+                    bool affordable = _services.Economy != null
+                                      && _services.Economy.Coins >= expansion.NextRoadExpandCost;
+                    roadExpandButton.interactable = affordable;
+                }
+            }
+
+            if (roadExpandCostText != null)
+            {
+                if (roadExpandCostText.gameObject.activeSelf != showExpand)
+                    roadExpandCostText.gameObject.SetActive(showExpand);
+                if (showExpand)
+                {
+                    bool affordable = _services.Economy != null
+                                      && _services.Economy.Coins >= expansion.NextRoadExpandCost;
+                    roadExpandCostText.text = $"+10칸 {expansion.NextRoadExpandCost:N0}";
+                    roadExpandCostText.color = affordable ? expandAffordableColor : expandUnaffordableColor;
                 }
             }
         }

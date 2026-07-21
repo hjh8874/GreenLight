@@ -14,7 +14,6 @@ namespace CityFlow.Sim.Tests
             SimConfig config = SimConfig.Default();
             config.GridWidth = 5;
             config.GridHeight = 2;
-            config.DemandPerHouse = 1f;
             config.RoadCapacity = 10f;
 
             var engine = new SimEngine(config, new SimEventHub());

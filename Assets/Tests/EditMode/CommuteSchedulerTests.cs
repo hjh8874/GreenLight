@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
-using CityFlow.ViewKit;
+using CityFlow.Sim;
 
 namespace CityFlow.Sim.Tests
 {
@@ -62,14 +62,19 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(CarState.ParkedHome, car.State);
         }
 
-        // 시각 점프 수렴: 로드 직후 한낮이면 전원 ParkedWork, 자정이면 전원 ParkedHome.
+        // 시각 점프 수렴(기획 결정 2026-07-17 환): 첫 움직임은 항상 출근이어야 하므로,
+        // 저녁 창[eveningStart, eveningEnd) 외 전부(새벽·아침·낮·밤)는 ParkedHome으로 수렴한다.
+        // 저녁 창 안(퇴근이 자연스러운 시간대)만 ParkedWork. 낮 로드(13시)는 UpdateDepartures가
+        // 즉시 지각 출근시키는 게 의도(전원 첫 파도 = 출근).
         [Test]
         public void SnapToHour_Converges()
         {
             var s = Build(homes: 5, officeSlots: 8);
-            s.SnapToHour(13f);
+            s.SnapToHour(13f);   // 낮 — 변경: 더 이상 ParkedWork가 아니다
+            foreach (var car in s.Cars) Assert.AreEqual(CarState.ParkedHome, car.State);
+            s.SnapToHour(18f);   // 저녁 창 안 — 퇴근이 자연스러움
             foreach (var car in s.Cars) Assert.AreEqual(CarState.ParkedWork, car.State);
-            s.SnapToHour(2f);
+            s.SnapToHour(2f);    // 새벽
             foreach (var car in s.Cars) Assert.AreEqual(CarState.ParkedHome, car.State);
         }
 

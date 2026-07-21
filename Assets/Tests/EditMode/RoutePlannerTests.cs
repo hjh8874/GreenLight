@@ -4,7 +4,7 @@ using CityFlow.Contracts;
 
 namespace CityFlow.Sim.Tests
 {
-    // 유기적 라우팅(스펙 2026-07-11): 증분 배정 + 물리 거리(√2).
+    // 직교 차 라우팅: 증분 배정 + 결정론적 타일 거리.
     // 기하 테스트(구 RoadNetworkTests에서 이관)는 Search seam으로, 분산·흡수는 Plan으로 핀.
     public class RoutePlannerTests
     {
@@ -22,7 +22,6 @@ namespace CityFlow.Sim.Tests
         static SimConfig Cfg()
         {
             var c = SimConfig.Default();
-            c.DemandPerHouse = 1f;
             c.RoadCapacity = 10f;
             c.DemandChoicePool = 1;
             return c;
@@ -39,26 +38,24 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void Search_LShaped_TakesDiagonalShortcut()
+        public void Search_LShaped_UsesCardinalRoadsOnly()
         {
-            // 안쪽 코너 대각(√2≈1.41)이 직각 2보다 물리적으로도 짧음 → 지름길 유지.
             var g = GridWithRoads(5, 5, V(0, 0), V(0, 1), V(0, 2), V(1, 2), V(2, 2));
-            Assert.AreEqual(new[] { V(0, 0), V(0, 1), V(1, 2), V(2, 2) },
+            Assert.AreEqual(new[] { V(0, 0), V(0, 1), V(0, 2), V(1, 2), V(2, 2) },
                 Fresh(g).Search(g, V(0, 0), V(2, 2), Cfg()));
         }
 
         [Test]
-        public void Search_DiagonalStaircase_ConnectsViaCornerCut()
+        public void Search_DiagonalStaircase_IsDisconnected()
         {
             var g = GridWithRoads(5, 5, V(0, 0), V(1, 1), V(2, 2));
-            Assert.AreEqual(new[] { V(0, 0), V(1, 1), V(2, 2) },
-                Fresh(g).Search(g, V(0, 0), V(2, 2), Cfg()));
+            Assert.IsNull(Fresh(g).Search(g, V(0, 0), V(2, 2), Cfg()));
         }
 
         [Test]
         public void Search_PrefersStraightOverZigzag_PhysicalDistance()
         {
-            // (0,0)→(4,0): 직선 4.0 vs 지그재그(대각 4개) 5.66 — √2 반영으로 직선이 strict 승리.
+            // (0,0)→(4,0): 직교 단일 경로는 직선을 선택한다.
             var g = GridWithRoads(5, 3,
                 V(0, 0), V(1, 0), V(2, 0), V(3, 0), V(4, 0),   // 직선
                 V(1, 1), V(3, 1));                               // 지그재그 유혹
@@ -97,22 +94,7 @@ namespace CityFlow.Sim.Tests
             return g;
         }
 
-        [Test]
-        public void Plan_ParallelRoads_SplitAcrossBoth()
-        {
-            var g = ParallelCity();
-            var cfg = Cfg();
-            var net = new RoadNetwork(g);
-            var dm = new DemandMap(cfg); dm.Reassign(g, net);
-            Assert.AreEqual(2, dm.Demands.Count);
 
-            var planner = Fresh(g);
-            planner.Plan(dm, net, g, cfg);
-
-            bool north0 = planner.Routes[0].Contains(V(3, 0));
-            bool north1 = planner.Routes[1].Contains(V(3, 0));
-            Assert.AreNotEqual(north0, north1);   // 한 수요는 북로, 다른 수요는 남로 — 분산 창발
-        }
 
         // 우회 도시: 간선 y=1 (1..7) — (1,1) 출발 기준 직선 6.0 / 우회 y=2 (대각 진입) 6.83.
         // w=2: 수요1이 간선을 채우면 간선 7.2 vs 우회 7.11 — 얇지만(0.086) 결정적 마진으로 우회가 이김.
@@ -128,28 +110,7 @@ namespace CityFlow.Sim.Tests
             return g;
         }
 
-        [Test]
-        public void Plan_CongestedTrunk_BypassAbsorbsOverflow()
-        {
-            var cfg = Cfg();
-            var g = BypassCity();
-            var net = new RoadNetwork(g);
-            var dm = new DemandMap(cfg); dm.Reassign(g, net);
-            Assert.AreEqual(6, dm.Demands.Count);
 
-            var planner = Fresh(g);
-            planner.Plan(dm, net, g, cfg);
-
-            bool anyTrunk = false, anyBypass = false;
-            foreach (var r in planner.Routes)
-            {
-                if (r == null) continue;
-                if (r.Contains(V(4, 1))) anyTrunk = true;
-                if (r.Contains(V(4, 2))) anyBypass = true;
-            }
-            Assert.IsTrue(anyTrunk, "간선은 여전히 주력");
-            Assert.IsTrue(anyBypass, "포화 후 우회로가 흡수");   // 현행 BFS에선 절대 불가능한 동작
-        }
 
         [Test]
         public void Plan_Deterministic_SameCitySamePlan()

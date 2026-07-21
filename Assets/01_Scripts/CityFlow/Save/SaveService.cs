@@ -14,7 +14,6 @@ namespace CityFlow.Save
         public IProgressionSaveSource ProgressionSaveSource { get; private set; }
         public IGameCalendarSaveSource GameCalendarSaveSource { get; private set; }
         public IRadioSaveSource RadioSaveSource { get; private set; }
-        public IOfflineCalendarProgressionSource OfflineCalendarProgressionSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
         public ISaveClock Clock { get; private set; }
         public SaveSlotRepository SaveSlots { get; private set; }
@@ -33,7 +32,6 @@ namespace CityFlow.Save
         private bool hasLoadedSave;
 
         public event Action<RestoreCompletedEvent> RestoreCompleted;
-        public event Action<OfflineSettlementCompletedEvent> OfflineSettlementCompleted;
         public event Action<SaveSlotMetadata> AutomaticSaveSlotCreated;
 
         public SaveService(
@@ -95,7 +93,6 @@ namespace CityFlow.Save
         public void RegisterGameCalendarSaveSource(IGameCalendarSaveSource gameCalendarSaveSource)
         {
             GameCalendarSaveSource = gameCalendarSaveSource;
-            OfflineCalendarProgressionSource = gameCalendarSaveSource as IOfflineCalendarProgressionSource;
         }
 
         public void RegisterRadioSaveSource(IRadioSaveSource radioSaveSource)
@@ -235,7 +232,7 @@ namespace CityFlow.Save
                 return false;
             }
 
-            return TryRestoreLoadedSnapshot(saveData, settleOffline: true);
+            return TryRestoreLoadedSnapshot(saveData);
         }
 
         public bool TryCreateManualSave(
@@ -258,10 +255,10 @@ namespace CityFlow.Save
                 out metadata);
         }
 
-        public bool TryLoadSaveSlot(string slotId, bool settleOffline = false)
+        public bool TryLoadSaveSlot(string slotId)
         {
             return SaveSlots.TryLoad(slotId, out GameSaveData saveData)
-                && TryRestoreLoadedSnapshot(saveData, settleOffline);
+                && TryRestoreLoadedSnapshot(saveData);
         }
 
         public bool TryDeleteSaveSlot(string slotId)
@@ -269,9 +266,7 @@ namespace CityFlow.Save
             return SaveSlots.TryDelete(slotId);
         }
 
-        private bool TryRestoreLoadedSnapshot(
-            GameSaveData saveData,
-            bool settleOffline)
+        private bool TryRestoreLoadedSnapshot(GameSaveData saveData)
         {
             if (saveData == null)
             {
@@ -289,113 +284,19 @@ namespace CityFlow.Save
             RetainOptionalSections(saveData);
             hasLoadedSave = true;
             IsRestoring = true;
-            double settledOfflineSeconds;
-            GameSaveData restoredSnapshot;
-
             try
             {
                 RestoreSnapshot(saveData);
-                restoredSnapshot = CreateSnapshot();
-                settledOfflineSeconds = settleOffline
-                    ? SettleOfflineProgress(saveData)
-                    : 0.0;
             }
             finally
             {
                 IsRestoring = false;
             }
 
-            RestoreCompleted?.Invoke(
-                new RestoreCompletedEvent(
-                    settledOfflineSeconds,
-                    settleOffline));
-
-            if (settleOffline)
-            {
-                bool persistedSettlement = Save(createAutomaticSlot: false);
-
-                if (!persistedSettlement)
-                {
-                    Debug.LogWarning(
-                        "Offline settlement completed, but its final state could not be persisted.");
-                }
-            }
-
-            OfflineSettlementCompletedEvent settlementSummary =
-                CreateOfflineSettlementSummary(
-                    restoredSnapshot,
-                    CreateSnapshot(),
-                    settledOfflineSeconds);
-
-            if (settledOfflineSeconds > 0.0 || settlementSummary.EarnedCoins > 0L)
-            {
-                OfflineSettlementCompleted?.Invoke(settlementSummary);
-            }
+            RestoreCompleted?.Invoke(new RestoreCompletedEvent(0.0, false));
 
             Debug.Log("Game save loaded and restored.");
             return true;
-        }
-
-        private static OfflineSettlementCompletedEvent CreateOfflineSettlementSummary(
-            GameSaveData beforeSettlement,
-            GameSaveData afterSettlement,
-            double settledOfflineSeconds)
-        {
-            long initialCoins = Math.Max(0L, beforeSettlement?.Economy?.Coins ?? 0L);
-            long currentCoins = Math.Max(0L, afterSettlement?.Economy?.Coins ?? initialCoins);
-            decimal earnedDifference = Math.Max(
-                0m,
-                (decimal)currentCoins - initialCoins);
-            long earnedCoins = earnedDifference >= long.MaxValue
-                ? long.MaxValue
-                : (long)earnedDifference;
-
-            return new OfflineSettlementCompletedEvent(
-                settledOfflineSeconds,
-                initialCoins,
-                earnedCoins,
-                currentCoins);
-        }
-
-        private double SettleOfflineProgress(GameSaveData saveData)
-        {
-            if (saveData == null || saveData.SavedAtUtcTicks <= 0L)
-            {
-                return 0.0;
-            }
-
-            if (!(SimSaveSource is IOfflineSettlementSource offlineSettlementSource))
-            {
-                return 0.0;
-            }
-
-            System.DateTime savedAtUtc;
-
-            try
-            {
-                savedAtUtc = new System.DateTime(saveData.SavedAtUtcTicks, System.DateTimeKind.Utc);
-            }
-            catch (System.ArgumentOutOfRangeException)
-            {
-                Debug.LogWarning("Offline settlement skipped because saved UTC ticks are invalid.");
-                return 0.0;
-            }
-
-            double elapsedSeconds = (Clock.UtcNow - savedAtUtc).TotalSeconds;
-
-            if (elapsedSeconds <= 0.0)
-            {
-                return 0.0;
-            }
-
-            double settledSeconds = offlineSettlementSource.SettleOffline(elapsedSeconds);
-            OfflineCalendarProgressionSource?.AdvanceOffline(settledSeconds);
-
-            Debug.Log(
-                $"Offline settlement completed for {settledSeconds:0.##} " +
-                $"of {elapsedSeconds:0.##} elapsed seconds.");
-
-            return settledSeconds;
         }
 
         private void RetainOptionalSections(GameSaveData saveData)

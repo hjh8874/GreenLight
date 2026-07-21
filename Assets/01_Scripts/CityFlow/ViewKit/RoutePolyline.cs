@@ -165,18 +165,57 @@ namespace CityFlow.ViewKit
             Vector3 dir = Vector3.Lerp(a.Dir, b.Dir, t);
             dir = dir.sqrMagnitude > 1e-8f ? dir.normalized : a.Dir;
 
-            // SegT는 Lerp, TileIndex/IsSpur는 구간 시작 정점 값을 쓴다(이산 값은 보간 불가).
+            // 이산 메타데이터는 보간하지 않는다. 단, 정확히 upper 정점에 닿은 경우 위치와 같은
+            // upper 메타데이터를 써야 타일 경계/주차 스퍼 끝에서 한 정점 뒤처지지 않는다.
+            Vertex discrete = t >= 1f - 1e-5f ? b : a;
             return new Sample
             {
                 Pos = Vector3.Lerp(a.Pos, b.Pos, t),
                 Dir = dir,
-                TileIndex = a.Seg,
+                TileIndex = discrete.Seg,
                 SegT = Mathf.Lerp(a.SegT, b.SegT, t),
-                IsSpur = a.Spur,
+                IsSpur = discrete.Spur,
             };
         }
 
         public Vector2Int TileAt(int tileIndex) => _tiles[tileIndex];
+
+        // Sim 도착이 시각 진행보다 앞서도 월드 좌표 chord로 주차 앵커를 향하지 않는다.
+        // 현재 누적거리를 폴리라인 끝으로 전진시키고 반드시 경로 위 샘플을 반환한다.
+        public Sample AdvanceTowardEnd(ref float distance, float maxDistanceDelta)
+        {
+            distance = Mathf.MoveTowards(
+                Mathf.Clamp(distance, 0f, Length),
+                Length,
+                Mathf.Max(0f, maxDistanceDelta));
+            return SampleAt(distance);
+        }
+
+        public float DistanceAtTile(int tileIndex)
+        {
+            int target = Mathf.Clamp(tileIndex, 0, Mathf.Max(0, _tiles.Count - 1));
+            if (target >= _tiles.Count - 1)
+            {
+                for (int i = _vertices.Length - 1; i >= 0; i--)
+                    if (!_vertices[i].Spur) return _cumulative[i];
+                return Length;
+            }
+            for (int i = 0; i < _vertices.Length; i++)
+                if (!_vertices[i].Spur && _vertices[i].Seg >= target) return _cumulative[i];
+            return Length;
+        }
+
+        public float DistanceAtQueueSlot(
+            int tileIndex,
+            int queueSlot,
+            float slotGap,
+            float headInset = 0f)
+        {
+            float distance = DistanceAtTile(tileIndex)
+                - Mathf.Max(0f, headInset)
+                - Mathf.Max(0, queueSlot) * Mathf.Max(0f, slotGap);
+            return Mathf.Clamp(distance, 0f, Length);
+        }
 
         // MainCityView.EvaluateVehiclePose(L1646-1689) + 로터리 궤도 오버라이드(L1419-1439,
         // TryRoundaboutOrbit L1794-1817)의 순수 재현.
@@ -198,24 +237,36 @@ namespace CityFlow.ViewKit
             Vector3 routeTangent = (b - a).normalized;
 
             float radiusFraction = input.CornerRadiusFraction;
-            int cornerIndex = -1;
-            float curveT = 0f;
+            // 코너 후보는 둘: 다음 타일이 코너면 '진출 반쪽', 이번 타일이 코너면 '진입 반쪽'.
+            // radiusFraction > 0.5면 두 창([1-RF,1)과 [0,RF))이 겹치는데, 예전엔 if/else-if라
+            // 첫 후보가 코너가 아니어도 두 번째를 시도하지 못하고 직선 중심선으로 떨어졌다.
+            // 결과: 모든 회전에서 코너 후반부가 통째로 누락 → 0.19타일 위치 불연속(일부 역방향)
+            // 으로 차가 회전 중간에 옆으로 튀었다(감사 2026-07-18, 베이크 수학 재현으로 검증).
+            // 첫 후보가 실패하면 두 번째 후보로 폴백한다 — 회전 반경(0.6)은 그대로 유지.
+            bool onCurve = false;
             if (segmentT >= 1f - radiusFraction && segmentIndex + 2 < tiles.Count)
             {
-                cornerIndex = segmentIndex + 1;
-                curveT = (segmentT - (1f - radiusFraction)) / (radiusFraction * 2f);
-            }
-            else if (segmentT < radiusFraction && segmentIndex > 0)
-            {
-                cornerIndex = segmentIndex;
-                curveT = 0.5f + segmentT / (radiusFraction * 2f);
+                onCurve = TryEvaluateTurnBezier(
+                    input, tiles, segmentIndex + 1,
+                    (segmentT - (1f - radiusFraction)) / (radiusFraction * 2f),
+                    radiusFraction, out Vector3 exitPos, out Vector3 exitTangent);
+                if (onCurve)
+                {
+                    centerline = exitPos;
+                    routeTangent = exitTangent;
+                }
             }
 
-            if (cornerIndex >= 0
-                && TryEvaluateTurnBezier(input, tiles, cornerIndex, curveT, radiusFraction, out Vector3 curvePosition, out Vector3 curveTangent))
+            if (!onCurve
+                && segmentT < radiusFraction
+                && segmentIndex > 0
+                && TryEvaluateTurnBezier(
+                    input, tiles, segmentIndex,
+                    0.5f + segmentT / (radiusFraction * 2f),
+                    radiusFraction, out Vector3 entryPos, out Vector3 entryTangent))
             {
-                centerline = curvePosition;
-                routeTangent = curveTangent;
+                centerline = entryPos;
+                routeTangent = entryTangent;
             }
 
             Vector3 travelDir = routeTangent;

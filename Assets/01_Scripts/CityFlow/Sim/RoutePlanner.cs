@@ -5,17 +5,16 @@ using CityFlow.Contracts;
 
 namespace CityFlow.Sim
 {
-    // 유기적 혼잡 라우팅(스펙 2026-07-11): 재건축 시 수요를 고정 순서로 하나씩 배정하고,
-    // 앞 수요가 채운 부하를 뒤 수요가 비용으로 회피 → 평행 분산·우회 흡수가 창발.
-    // 스텝 비용 = 물리거리(직각 1, 대각 √2) × (1 + w × load/용량). 재계획은 topology 변경 시에만 —
+    // 직교 차 라우팅: 재건축 시 수요를 고정 순서로 하나씩 배정하고,
+    // 앞 차량이 채운 부하를 뒤 차량이 비용으로 회피 → 평행 분산·우회 흡수가 창발.
+    // 스텝 비용 = 타일 1 × (1 + w × load/용량). 재계획은 topology 변경 시에만 —
     // 신호 레버·맥동은 트리거 아님("차들은 습관대로, 건설이 습관을 바꾼다").
     // ponytail: 20×20이라 배열 스캔 Dijkstra(O(n²))로 충분 — 힙 불요. 틱 밖이라 경로 List 할당 허용.
     internal sealed class RoutePlanner
     {
-        // 이웃 순서는 RoadNetwork(접점·Region)와 동일: 직각 4 → 대각 4 (결정론 공유 규약).
-        static readonly int[] DX = { 0, 1, 0, -1, 1, 1, -1, -1 };
-        static readonly int[] DY = { 1, 0, -1, 0, 1, -1, -1, 1 };
-        const float Sqrt2 = 1.4142135f;
+        // 이웃 순서 N,E,S,W 고정(결정론 공유 규약). 대각 연결은 차 큐로 표현할 수 없어 지원하지 않는다.
+        static readonly int[] DX = { 0, 1, 0, -1 };
+        static readonly int[] DY = { 1, 0, -1, 0 };
 
         // 턴 제한 표지판(스펙 2026-07-12): 상태 확장 탐색의 진입방향 인덱스 고정 순회(결정론).
         // DX/DY 카디널 부분(idx0..3 = N,E,S,W)을 이 순서로 재사상: N→3,E→0,S→1,W→2.
@@ -32,10 +31,13 @@ namespace CityFlow.Sim
         readonly bool[] _turnDone;
         readonly int[] _turnCameFrom;
 
-        readonly List<List<Vector2Int>> _routes = new(128);   // 수요 인덱스 정렬, 미연결 = null
+        readonly List<List<Vector2Int>> _carRoutes = new(128);
+        readonly List<List<Vector2Int>> _returnRoutes = new(128);
 
-        // 소유권: 내부 List를 그대로 노출 — 소비자(FlowSolver·뷰)는 읽기 전용 계약. 변형 금지.
-        public IReadOnlyList<List<Vector2Int>> Routes => _routes;
+        // 소유권: 내부 List를 그대로 노출 — 소비자는 읽기 전용 계약. 변형 금지.
+        public IReadOnlyList<List<Vector2Int>> Routes => _carRoutes;
+        public IReadOnlyList<List<Vector2Int>> CarRoutes => _carRoutes;
+        public IReadOnlyList<List<Vector2Int>> ReturnRoutes => _returnRoutes;
 
         public RoutePlanner(int width, int height)
         {
@@ -50,7 +52,7 @@ namespace CityFlow.Sim
             _turnCameFrom = new int[n * 4];
         }
 
-        // 수요별 경로 테이블 계산. 부하 적립은 DemandPerHouse(평균 — 맥동 무반영, 정산 철학과 동일).
+        // 수요별 경로 테이블 계산. 각 경로는 차 토큰 1대의 부하를 적립한다.
         // 접점(from/to)은 DemandMap이 배정 시 채택한 값을 그대로 쓴다(단일 출처화, 감사 픽스 2) —
         // 여기서 net.TryGetAccessRoad로 다시 계산하면 건물에 프론티지가 여러 개일 때 DemandMap과
         // 다른 접점을 고를 수 있고, 그 불일치가 "배정은 됐는데 흐름은 0"인 버그의 원인이었다.
@@ -69,18 +71,20 @@ namespace CityFlow.Sim
                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
                           IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
         {
-            _routes.Clear();
+            _carRoutes.Clear();
+            _returnRoutes.Clear();
             Array.Clear(_load, 0, _load.Length);
 
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
             {
-                var path = Search(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg, oneways, turnSigns);   // 경계 밖(NoRoad)도 IsRoad가 자연히 걸러 null
-
-                _routes.Add(path);                            // null = 이 수요는 흐르지 않음(무사고)
-                if (path == null) continue;
-                for (int p = 0; p < path.Count; p++)
-                    _load[path[p].y * _w + path[p].x] += cfg.DemandPerHouse;
+                var carPath = Search(grid, demands[i].SourceRoad, demands[i].SinkRoad, cfg, oneways, turnSigns);
+                var returnPath = Search(grid, demands[i].SinkRoad, demands[i].SourceRoad, cfg, oneways, turnSigns);
+                _carRoutes.Add(carPath);
+                _returnRoutes.Add(returnPath);
+                if (carPath == null) continue;
+                for (int p = 0; p < carPath.Count; p++)
+                    _load[carPath[p].y * _w + carPath[p].x] += 1f;
             }
         }
 
@@ -90,11 +94,13 @@ namespace CityFlow.Sim
 
         // 일방통행 간선 필터(스펙 2026-07-12 §핵심결정, 상태 확장 없음 — 이웃 확장에서 3규칙 조기 continue):
         // ① 일방 타일에서 나가는 스텝은 그 방향(D)만. ② 일방 타일로 들어가는 스텝은 -D 금지
-        // (역주행 진입 차단, 측면 합류는 허용). ③ 일방 타일이 관여하는 대각 스텝 금지(단순화 —
-        // 대각 벡터는 카디널 D와 절대 일치하지 않아 ①은 자연히 걸지만, ②는 대각으로 들어오는
-        // 역주행을 못 걸러서 별도로 필요). oneways가 null/빈 경우 Dictionary 조회 없이 스킵(무비용).
+        // (역주행 진입 차단, 측면 합류는 허용). oneways가 null/빈 경우 Dictionary 조회 없이 스킵.
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
+            => SearchCore(grid, from, to, cfg, oneways);
+
+        private List<Vector2Int> SearchCore(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                             IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
         {
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
             bool hasOneways = oneways != null && oneways.Count > 0;
@@ -126,7 +132,7 @@ namespace CityFlow.Sim
                 Vector2Int curDir = default;
                 if (hasOneways) curOneway = oneways.TryGetValue(new Vector2Int(cx, cy), out curDir);
 
-                for (int d = 0; d < DX.Length; d++)
+                for (int d = 0; d < 4; d++)
                 {
                     int nx = cx + DX[d], ny = cy + DY[d];
                     if (!IsRoad(grid, nx, ny)) continue;
@@ -135,16 +141,13 @@ namespace CityFlow.Sim
 
                     if (hasOneways)
                     {
-                        bool diag = d >= 4;
                         bool nbrOneway = oneways.TryGetValue(new Vector2Int(nx, ny), out var nbrDir);
-                        if (diag && (curOneway || nbrOneway)) continue;              // ③ 일방 관여 대각 금지
                         var stepDir = new Vector2Int(DX[d], DY[d]);
                         if (curOneway && stepDir != curDir) continue;                // ① 나가는 스텝 = D만
                         if (nbrOneway && stepDir == -nbrDir) continue;               // ② 들어가는 스텝 ≠ -D
                     }
 
-                    float phys = d < 4 ? 1f : Sqrt2;          // 물리 거리 — 선택과 그린웨이브 타이밍 일치
-                    float step = phys * (1f + w * _load[ni] * capInv);
+                    float step = 1f + w * _load[ni] * capInv;
                     float cand = _cost[cur] + step;
                     if (cand < _cost[ni]) { _cost[ni] = cand; _cameFrom[ni] = cur; }
                 }
@@ -173,14 +176,18 @@ namespace CityFlow.Sim
         // 상태 확장 Dijkstra: 상태 = (타일 × 진입방향, E=0/S=1/W=2/N=3 고정 순회 — CardinalToStateIdx).
         // 표지판 타일 T에 진입방향 d_in으로 들어온 상태에서 나가는 스텝 d_out은
         // Turn(d_in,모드)만 허용: LeftOnly→(d_in+3)%4, RightOnly→(d_in+1)%4 — U턴(+2)·직진(+0)·
-        // 반대턴은 이 산술만으로 자동 배제(별도 예외 처리 불요). 표지판 관여 대각 스텝은
-        // 진입·이탈 무관, 시작 타일 포함 예외 없이 금지(기하 규칙 — 회전 상태와 무관).
-        // 시작 타일은 진입방향 미확립 — 첫 스텝은 턴 필터 없이 확장(대각 금지·일방통행 3규칙은 그대로 적용).
+        // 반대턴은 이 산술만으로 자동 배제(별도 예외 처리 불요).
+        // 시작 타일은 진입방향 미확립 — 첫 스텝은 턴 필터 없이 확장(일방통행 규칙은 그대로 적용).
         // 일방통행 3규칙은 기존 5-인자 Search와 동일하게 이 경로에도 적용(두 도구 공존).
         // dist/cameFrom 배열은 생성자 1회 할당(_turnCost/_turnDone/_turnCameFrom) — 매 호출 클리어만.
         internal List<Vector2Int> SearchWithTurnState(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                                        IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
                                                        IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
+            => SearchWithTurnStateCore(grid, from, to, cfg, oneways, turnSigns);
+
+        private List<Vector2Int> SearchWithTurnStateCore(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
+                                                          IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
         {
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
             if (from == to) return new List<Vector2Int> { from };   // legacy Search_SameTile_ReturnsSingle과 동형
@@ -194,27 +201,20 @@ namespace CityFlow.Sim
             float capInv = cfg.RoadCapacity > 0f ? 1f / cfg.RoadCapacity : 0f;
             float w = cfg.RoutingCongestionWeight;
 
-            // ── 시작 타일 씨앗: 진입방향 미확립 — 턴 필터 없이 확장(대각 금지·일방통행은 그대로) ──
+            // ── 시작 타일 씨앗: 진입방향 미확립 — 턴 필터 없이 확장(일방통행은 그대로) ──
             int sx = from.x, sy = from.y;
             bool startOneway = false;
             Vector2Int startOnewayDir = default;
             if (hasOneways) startOneway = oneways.TryGetValue(from, out startOnewayDir);
-            bool startIsSign = turnSigns.ContainsKey(from);
 
-            for (int d = 0; d < DX.Length; d++)
+            for (int d = 0; d < 4; d++)
             {
                 int nx = sx + DX[d], ny = sy + DY[d];
                 if (!IsRoad(grid, nx, ny)) continue;
                 var nbrTile = new Vector2Int(nx, ny);
-                bool diag = d >= 4;
-
                 bool nbrOneway = false;
                 Vector2Int nbrOnewayDir = default;
                 if (hasOneways) nbrOneway = oneways.TryGetValue(nbrTile, out nbrOnewayDir);
-                bool nbrIsSign = turnSigns.ContainsKey(nbrTile);
-
-                if (diag && (startOneway || nbrOneway)) continue;             // 일방 규칙③
-                if (diag && (startIsSign || nbrIsSign)) continue;             // 표지판 관여 대각 금지(시작 예외 없음)
 
                 if (hasOneways)
                 {
@@ -224,9 +224,8 @@ namespace CityFlow.Sim
                 }
                 // 시작 타일 표지판은 무제약(진입이 아니므로) — 턴 필터 미적용.
 
-                float phys = d < 4 ? 1f : Sqrt2;
-                float step = phys * (1f + w * _load[ny * _w + nx] * capInv);
-                int newDirIn = d < 4 ? CardinalToStateIdx[d] : 0;             // 대각 도착은 자리표시(비표지판 타일 확정 — 무해)
+                float step = 1f + w * _load[ny * _w + nx] * capInv;
+                int newDirIn = CardinalToStateIdx[d];
                 int state = (ny * _w + nx) * 4 + newDirIn;
                 if (step < _turnCost[state]) { _turnCost[state] = step; _turnCameFrom[state] = -1; }
             }
@@ -253,21 +252,15 @@ namespace CityFlow.Sim
                 Vector2Int curOnewayDir = default;
                 if (hasOneways) curOneway = oneways.TryGetValue(curTile, out curOnewayDir);
 
-                for (int d = 0; d < DX.Length; d++)
+                for (int d = 0; d < 4; d++)
                 {
                     int nx = cx + DX[d], ny = cy + DY[d];
                     if (!IsRoad(grid, nx, ny)) continue;
                     int ni = ny * _w + nx;
                     var nbrTile = new Vector2Int(nx, ny);
-                    bool diag = d >= 4;
-
                     bool nbrOneway = false;
                     Vector2Int nbrOnewayDir = default;
                     if (hasOneways) nbrOneway = oneways.TryGetValue(nbrTile, out nbrOnewayDir);
-                    bool nbrIsSign = turnSigns.ContainsKey(nbrTile);
-
-                    if (diag && (curOneway || nbrOneway)) continue;           // 일방 규칙③
-                    if (diag && (curIsSign || nbrIsSign)) continue;           // 표지판 관여 대각 금지
 
                     if (hasOneways)
                     {
@@ -276,7 +269,7 @@ namespace CityFlow.Sim
                         if (nbrOneway && stepDir == -nbrOnewayDir) continue;  // ② 들어가는 스텝 ≠ -D
                     }
 
-                    if (curIsSign && !diag)                                  // 표지판 타일 이탈 = Turn(d_in,모드)만
+                    if (curIsSign)                                           // 표지판 타일 이탈 = Turn(d_in,모드)만
                     {
                         int expected = curMode == TurnMode.LeftOnly
                             ? (curDirIn + 3) % 4    // 좌회전(반시계 90°)
@@ -284,10 +277,9 @@ namespace CityFlow.Sim
                         if (CardinalToStateIdx[d] != expected) continue;
                     }
 
-                    float phys = d < 4 ? 1f : Sqrt2;
-                    float step = phys * (1f + w * _load[ni] * capInv);
+                    float step = 1f + w * _load[ni] * capInv;
                     float cand = _turnCost[cur] + step;
-                    int newDirIn = d < 4 ? CardinalToStateIdx[d] : curDirIn;  // 대각은 직전 방향 유지(비표지판 확정 — 무해)
+                    int newDirIn = CardinalToStateIdx[d];
                     int nState = ni * 4 + newDirIn;
                     if (cand < _turnCost[nState]) { _turnCost[nState] = cand; _turnCameFrom[nState] = cur; }
                 }
@@ -304,6 +296,36 @@ namespace CityFlow.Sim
             path.Add(from);
             path.Reverse();
             return path;
+        }
+
+        internal bool TryGetAverageRouteDistance(DemandMap demand, Vector2Int destination, out float distanceTiles)
+        {
+            float total = 0f;
+            int count = 0;
+            for (int i = 0; i < _carRoutes.Count && i < demand.Demands.Count; i++)
+            {
+                List<Vector2Int> route = _carRoutes[i];
+                if (route == null || demand.Demands[i].Sink != destination) continue;
+                total += Mathf.Max(0, route.Count - 1);
+                count++;
+            }
+            distanceTiles = count > 0 ? total / count : 0f;
+            return count > 0;
+        }
+
+        internal bool TryGetCityAverageRouteDistance(out float distanceTiles)
+        {
+            float total = 0f;
+            int count = 0;
+            for (int i = 0; i < _carRoutes.Count; i++)
+            {
+                List<Vector2Int> route = _carRoutes[i];
+                if (route == null) continue;
+                total += Mathf.Max(0, route.Count - 1);
+                count++;
+            }
+            distanceTiles = count > 0 ? total / count : 0f;
+            return count > 0;
         }
 
         bool IsRoad(CityGrid grid, int x, int y) =>

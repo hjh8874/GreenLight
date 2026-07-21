@@ -208,7 +208,6 @@ namespace CityFlow.Sim.Tests
         static SimConfig Cfg()
         {
             var c = SimConfig.Default();
-            c.DemandPerHouse = 1f;
             c.RoadCapacity = 10f;
             c.DemandChoicePool = 1;
             return c;

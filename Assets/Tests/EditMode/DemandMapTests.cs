@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using CityFlow.Contracts;
@@ -189,17 +190,14 @@ namespace CityFlow.Sim.Tests
             return g;
         }
 
-        static float DeliveredOf(CityGrid grid, in SimConfig cfg)
+        static List<Vector2Int> RouteOf(CityGrid grid, in SimConfig cfg)
         {
             var net = new RoadNetwork(grid);
             var dm = new DemandMap(cfg);
             dm.Reassign(grid, net);
             var planner = new RoutePlanner(grid.Width, grid.Height);
             planner.Plan(dm, net, grid, cfg);
-            var solver = new FlowSolver(grid.Width, grid.Height);
-            solver.Assign(dm, planner, cfg);
-            solver.Resolve(cfg);
-            return solver.DeliveredTotal;
+            return planner.CarRoutes.Count > 0 ? planner.CarRoutes[0] : null;
         }
 
         [Test]
@@ -207,8 +205,6 @@ namespace CityFlow.Sim.Tests
         {
             var g = MultiFrontageGrid();
             var cfg = SimConfig.Default();
-            cfg.DemandPerHouse = 1f;
-            cfg.RoadCapacity = 10f;
 
             var net = new RoadNetwork(g);
             var dm = new DemandMap(cfg);
@@ -217,23 +213,16 @@ namespace CityFlow.Sim.Tests
 
             var planner = new RoutePlanner(g.Width, g.Height);
             planner.Plan(dm, net, g, cfg);
-            var solver = new FlowSolver(g.Width, g.Height);
-            solver.Assign(dm, planner, cfg);
-            solver.Resolve(cfg);
-
-            Assert.Greater(solver.DeliveredTotal, 0f); // 북쪽 스텁만 봤다면 0(도달불가 오판)
+            Assert.IsNotNull(planner.CarRoutes[0]); // 북쪽 스텁만 봤다면 미연결 오판
         }
 
         [Test]
         public void MultiFrontage_Deterministic()
         {
             var cfg = SimConfig.Default();
-            cfg.DemandPerHouse = 1f;
-            cfg.RoadCapacity = 10f;
-
-            float a = DeliveredOf(MultiFrontageGrid(), cfg);
-            float b = DeliveredOf(MultiFrontageGrid(), cfg);
-            Assert.AreEqual(a, b, 1e-4f);
+            List<Vector2Int> a = RouteOf(MultiFrontageGrid(), cfg);
+            List<Vector2Int> b = RouteOf(MultiFrontageGrid(), cfg);
+            CollectionAssert.AreEqual(a, b);
         }
     }
 }

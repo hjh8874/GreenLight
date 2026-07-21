@@ -16,9 +16,25 @@ namespace CityFlow.Sim
         public int   GridWidth;         // blueprint 기준 20×20
         public int   GridHeight;
 
-        // ── 흐름 rate (단위 통일: 대/초 — 도착 누산기가 rate×TickInterval 전제) ──
+        // ── 도로/라우팅 튜닝 ───────────────────
         public float RoadCapacity;      // 대/초, 도로 등급별(지금 단일) 🔓
-        public float DemandPerHouse;    // 수요 1건(집→수요처)당 가상 차량 rate 🔓
+
+        // ── 차 단위 큐 Sim (3차 빌드) ──────────
+        // 타일의 진입방향별 FIFO가 각각 가질 수 있는 차 토큰 수. SimConfigAsset.Value를
+        // 통해 인스펙터에 자동 노출되며 기존 .asset은 0이므로 전환 전 수동 설정이 필요하다. 🔓
+        public int QueueCapacityPerTile;
+        public int QueueServicePerTick;   // 한 방향 큐가 틱당 서비스할 최대 차 수 🔓
+        public int GridlockValveTicks;    // 머리 차 연속 막힘 후 강제 전이까지의 틱 수 🔓
+        public int CoinPerTrip;           // 회사 도착 1회 보상 🔓
+        public int CarsPerHouse;          // 집 주차 슬롯/차량 상한 🔓
+        public float MorningStartHour;
+        public float MorningEndHour;
+        public float EveningStartHour;
+        public float EveningEndHour;
+        public int OfficeParkingSlots;
+        public int MaxSimCars;
+        public float QueueSlowRatio;
+        public float QueueJamRatio;
 
         // ── 혼잡 임계 (ratio = flow/capacity) ────
         public float SlowRatio;         // <0.7 Free / 0.7~1.0 Slow / >1.0 Jam
@@ -86,17 +102,21 @@ namespace CityFlow.Sim
         // ── 도착 코인 환율 ─────────────────────
         public float CoinBase;          // 🔓 공식 형태·가중치 잠정
 
-        // ── 도로 카운터코스트 ──────────────────
-        public float RoadMaintPerSec;   // 도로 타일 1칸당 초당 유지비 🔓
+        // ── 도로 카운터코스트: 예산제(스펙 2026-07-17, 기획 결정 환) ──
+        // 유지비(러닝코스트) → 도로 타일 스톡 상한. 도배 방어를 "손해"→"물리적 불가"로 전환.
+        // 기존 RoadMaintPerSec 유지비 체인은 삭제됨(MaintenanceEvent dead chain 포함).
+        public int MaxRoadTiles;        // 기본 도로 타일 상한(확장권 제외) 🔓 (환 라이브 밸런스)
+
+        // ── 도로 확장권(스펙 §2단계): "+10칸"을 코인으로 구매, 가격 = 기본가 × 성장률^구매횟수 ──
+        // 에스컬레이션이 도배의 수학적 소프트 캡(맵 도배 총비용 >> 현실 지평) 🔓
+        public int   RoadExpandBaseCost;     // 첫 확장권 가격(코인, 반올림 정수 산출의 기저)
+        public float RoadExpandCostGrowth;   // 구매마다 곱해지는 성장률(1.5 = +50%)
 
         // ── Burst 감지 (히스테리시스 + 쿨다운) ──
         public float BurstJamEnterRatio;    // Jam 진입 1.0
         public float BurstFreeReturnRatio;  // Free 복귀 0.6 (경계 진동 방지)
         public float BurstCooldownSeconds;  // 타일당 10s (연사 방지)
         public float BurstRewardThreshold;  // pending magnitude가 이 값 넘어야 발행 🔓
-
-        // ── 정산 ───────────────────────────────
-        public float OfflineCapHours;   // 오프라인 상한 8h
 
         // 개발·테스트용 임시 한 벌. Bootstrap 주입 전까지 이걸로 굴림.
         // ponytail: Bootstrap/SO 붙으면 이 팩토리는 지워도 됨.
@@ -107,7 +127,19 @@ namespace CityFlow.Sim
             GridWidth = 20,
             GridHeight = 20,
             RoadCapacity = 10f,
-            DemandPerHouse = 1f,
+            QueueCapacityPerTile = 4,
+            QueueServicePerTick = 1,
+            GridlockValveTicks = 8,
+            CoinPerTrip = 10,
+            CarsPerHouse = 1,
+            MorningStartHour = 6f,
+            MorningEndHour = 10f,
+            EveningStartHour = 17f,
+            EveningEndHour = 21f,
+            OfficeParkingSlots = 6,
+            MaxSimCars = 96,
+            QueueSlowRatio = 0.5f,
+            QueueJamRatio = 0.99f,
             SlowRatio = 0.7f,
             JamRatio = 1.0f,
             EfficiencyMin = 0.2f,
@@ -131,12 +163,13 @@ namespace CityFlow.Sim
             RoutingCongestionWeight = 2f,
             AutoDetectSignals = true,
             CoinBase = 1f,
-            RoadMaintPerSec = 0.1f,
+            MaxRoadTiles = 60,   // 임시 — "필요 연결을 다 못 하는 빠듯함"이 목표(20×20=400칸의 15%)
+            RoadExpandBaseCost = 100,
+            RoadExpandCostGrowth = 1.5f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,
             BurstCooldownSeconds = 10f,
             BurstRewardThreshold = 1f,
-            OfflineCapHours = 8f,
         };
 
         // 수요 맥동 배율(순수 함수 — 결정론·세이브 안전). sin(4πt/T)의 양수 구간만 취해

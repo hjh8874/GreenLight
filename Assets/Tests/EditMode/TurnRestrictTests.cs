@@ -291,7 +291,6 @@ namespace CityFlow.Sim.Tests
         static SimConfig Cfg()
         {
             var c = SimConfig.Default();
-            c.DemandPerHouse = 1f;
             c.RoadCapacity = 10f;
             c.DemandChoicePool = 1;
             return c;
@@ -337,10 +336,9 @@ namespace CityFlow.Sim.Tests
         // 스펙 §5.2 — P턴 창발: LeftOnly 교차로에서 직진 수요가 좌회전 우회(같은 타일 재방문)를 찾음.
         // (1,1)에서 진입방향 E로 (2,1) 도착 → LeftOnly가 직진(E)·U턴(W) 거부, 좌회전(N)만 허용
         // → (2,2) 곁가지로 강제 진입 → 되돌아와 (2,1) 재방문(진입방향 S) → 이번엔 좌회전이 E(원래
-        // 가려던 방향)라서 계속 진행. FlowSolver.AxisWeights/flow 배열이 중복 타일 인덱스를 예외 없이
-        // 누적 처리하는지도 delivered>0로 겸용 확인(계획 §Task2 "FlowSolver 중복 타일 안전 확인").
+        // 가려던 방향)라서 계속 진행. 경로 테이블도 같은 타일 재방문을 그대로 보존해야 한다.
         [Test]
-        public void Search_LeftOnly_PTurn_RevisitsSameTile_AndFlowSolverDelivers()
+        public void Search_LeftOnly_PTurn_RevisitsSameTile_AndPlannerPreservesPath()
         {
             var g = PTurnCity();
             var planner = new RoutePlanner(g.Width, g.Height);
@@ -358,14 +356,10 @@ namespace CityFlow.Sim.Tests
 
             var fullPlanner = new RoutePlanner(g.Width, g.Height);
             fullPlanner.Plan(dm, net, g, cfg, null, turnSigns);
-            var solver = new FlowSolver(g.Width, g.Height);
-            solver.Assign(dm, fullPlanner, cfg);
-            solver.Resolve(cfg);
-            Assert.Greater(solver.DeliveredTotal, 0f, "중복 타일 경로도 FlowSolver가 무사고로 처리 + 흐름 발생");
+            CollectionAssert.AreEqual(path, fullPlanner.CarRoutes[0]);
         }
 
-        // 스펙 §5.3 — 대각 금지: 표지판 타일이 관여하는 대각 스텝은 진입/이탈 무관 금지.
-        // 레거시(표지판 없음)에서는 대각 지름길이 정상 허용됨을 먼저 확인(대조).
+        // 직교 단일 라우터에서는 표지판 유무와 관계없이 대각 연결이 없다.
         [Test]
         public void Search_DiagonalTouchingSignTile_Forbidden()
         {
@@ -373,7 +367,7 @@ namespace CityFlow.Sim.Tests
             var planner = new RoutePlanner(g.Width, g.Height);
             var cfg = Cfg();
 
-            Assert.IsNotNull(planner.Search(g, V(0, 0), V(1, 1), cfg), "레거시: 대각 지름길 허용");
+            Assert.IsNull(planner.Search(g, V(0, 0), V(1, 1), cfg));
 
             var turnSigns = new Dictionary<Vector2Int, TurnMode> { [V(1, 1)] = TurnMode.LeftOnly };
             Assert.IsNull(planner.Search(g, V(0, 0), V(1, 1), cfg, null, turnSigns),

@@ -9,7 +9,7 @@ namespace CityFlow.Content
     /// 차량 도착 이벤트를 기준으로
     /// 게임 전체 누적 도착 횟수를 관리합니다.
     ///
-    /// FlowSolver.DeliveredTotal처럼 현재 틱 처리량을 나타내는 값과 달리,
+    /// Sim delivered total처럼 현재 틱 처리량을 나타내는 값과 달리,
     /// LifetimeDeliveredTotal은 새 게임 시작 이후 계속 누적되는 진행도 값입니다.
     ///
     /// 실제 해금 임계값은 이 클래스에 하드코딩하지 않습니다.
