@@ -35,8 +35,12 @@ namespace CityFlow.View
         [SerializeField, Min(0)] private int flowBurstAnchorRadius = 3;
         [SerializeField] private float gridLineThickness = 0.045f;
         [SerializeField] private float overridePulseAmp = 0.25f;   // 신호 펄스 진폭
-        [SerializeField] private float laneOffset = 0.18f;         // 우측통행 차선 오프셋(타일 비율)
-        [SerializeField] private float followGap = 0.5f;           // 큐 슬롯 간 표시 거리(타일 비율)
+        // 우측통행 차선 오프셋(타일 비율). 교차 차량의 분리 거리 = laneOffset × √2 이므로
+        // 이 값이 교차로 겹침을 직접 지배한다. 정규화 스윕(2026-07-20, 교대 3라운드):
+        //   0.18 → 교차겹침 17.24/1k차프레임 | 0.22 → 11.79 | **0.26 → 8.94** | 0.30 → 15.75
+        // 0.30에서 다시 나빠지는 건 차가 중앙선에서 너무 벗어나 코너 곡선과 어긋나기 때문.
+        // ⚠️ 씬에 직렬화된 값이 이 기본값을 덮는다 — 씬 인스펙터에서도 0.26으로 맞출 것.
+        [SerializeField] private float laneOffset = 0.26f;
         // 주행 가감속(월드유닛/초²). 정지 1회당 쌓이는 지연 = 순항²/(2·가속도)이므로
         // 가속이 느리면 최고속을 안 올려도 뷰가 계속 뒤처진다(2.5 = 정지당 1.25타일,
         // 6.0 = 0.52타일). 최고속이 아니라 여기를 올려야 지연이 준다. 라이브 튜닝 노브.
@@ -47,6 +51,12 @@ namespace CityFlow.View
         [SerializeField] private float vehicleCatchUpRange = 0.3f;    // 순항 대비 최대 여유(+30%)
         [SerializeField] private float vehicleCatchUpStart = 1.0f;    // 여유 시작 지연(타일)
         [SerializeField] private float vehicleCatchUpRamp = 2.0f;     // 최대치까지의 지연 폭(타일)
+        // MM 전환 Phase 2. 뷰 차가 프레임 단위로 스스로 달리고, Sim 위치는 '상한'이 된다.
+        // 정지 원인은 딱 둘 — (같은 차선 앞차 간격)과 (코리도 상한). 둘 다 선형 순서라
+        // 사이클(=데드락)을 만들 수 없다(계획서 2026-07-20-mm-continuous-motion §2).
+        // 교차 차선 차량은 절대 정지 사유가 되지 않는다 — 겹침은 기하로만 막는다(dev-log-17).
+        [SerializeField, Range(0f, 2f)] private float vehicleCorridorTiles = 1.0f;   // Sim 위치보다 얼마나 앞설 수 있나
+        [SerializeField, Range(0.3f, 1f)] private float vehicleMinHeadway = 0.55f;   // 앞차와 유지할 최소 간격(타일). 최대 차 길이 0.437 + 여유
         [SerializeField] private float parkingApproachSpeedRatio = 0.9f;   // 주차 진입 속도 상한(순항 대비)
         // 교차로 정지선 후퇴량. 이 값은 '틱 목표'에서 빼지므로 통과 차의 틱당 이동거리를
         // 진입 1-inset / 이탈 1+inset 으로 갈라 속도 계단을 만든다(0.25면 1.66배).
@@ -119,7 +129,7 @@ namespace CityFlow.View
         private IPlacementService placement;
         private SimEngine simEngine;
         private float lastTickProgress;   // 틱 경계 검출용 직전 프레임 위상
-        private bool tickEdge;            // 이번 프레임에 Sim이 한 틱 넘어갔나(순항 판정 갱신 시점)
+        private bool tickEdge;            // 이번 프레임에 Sim이 한 틱 넘어갔나
         private ISignalControl signalControl;
         private IIntersectionFacilityService intersectionFacility;
         private ITrafficRuleService trafficRule;
@@ -214,9 +224,9 @@ namespace CityFlow.View
             public float CurrentSpeed;
             public float TargetDistance;
             public int TargetTileIndex;
-            public int TargetQueueSlot;
             public int TargetRouteIndex;
             public bool HasTickTarget;
+            public bool TargetAdvancing;   // 직전 틱에 코리도 상한이 전진했나(=천장이 움직이는가)
             public Vector3 Pos;   // 지난 프레임 위치·진행 방향 — 차간 유지 판정용(1프레임 지연 근사)
             public Vector3 Dir;
             public Vector2Int CurrentTile;
@@ -234,7 +244,6 @@ namespace CityFlow.View
             public bool Settling;          // 정착 안무 진행 플래그(도착 프레임 재진입 게이트)
             public float SettleRate;       // 정착 등속 속도(유닛/초) — 정착 시작 시 남은거리/시간으로 1회 산출
             public float TravelSpeed;      // 현재 주행 속도(월드유닛/초) — 가감속으로 수렴시킨다
-            public bool TargetAdvancing;   // 직전 틱에 목표가 전진했나(제동 기준선 전방 여유)
             public GameObject BrakeLight;  // 후방 제동등(기본 off) — CreateDetailCube 패턴
             public bool BrakeOn;           // 제동등 상태 캐시(매 프레임 SetActive 금지)
         }
@@ -1377,11 +1386,13 @@ namespace CityFlow.View
             SyncCommutePopulation();
 
             // 틱 경계 검출: 위상은 틱 안에서 단조증가하다 Step 프레임에만 되감긴다.
-            // 순항 판정은 "직전 '틱'에 전진했나"라는 틱 단위 상태라, 프레임마다 갱신하면
-            // 틱 사이 39프레임이 플래그를 지워 영원히 false가 된다(계측: Cruising 0.00%).
+            // "천장이 움직이는가"는 틱 단위 상태라 프레임마다 갱신하면 틱 사이 39프레임이
+            // 플래그를 지워 영원히 false가 된다.
             float tickProgress = simEngine.TickProgress01;
             tickEdge = tickProgress < lastTickProgress - 0.0001f;
             lastTickProgress = tickProgress;
+
+            ResolveLaneLeaders();
 
             for (int i = 0; i < carSimMirrors.Count; i++)
             {
@@ -1392,9 +1403,138 @@ namespace CityFlow.View
                     && vehicle != null
                     && vehicle.Object.activeSelf)
                 {
-                    MoveCarSimVehicle(car, snapshot, vehicle);
+                    MoveCarSimVehicle(i, car, snapshot, vehicle);
                 }
             }
+        }
+
+        // 차선 = (타일, 진입방향). Sim의 큐 키와 같은 축이며, 뷰가 자기 폴리라인에서
+        // 동일하게 유도한다(Sim: route[p]-route[p-1], 뷰: TileAt(p)-TileAt(p-1)) —
+        // 그래서 CarSnapshot에 방향을 추가할 필요가 없다.
+        private Vector2Int[] laneTile = System.Array.Empty<Vector2Int>();
+        private Vector2Int[] laneDelta = System.Array.Empty<Vector2Int>();
+        private Vector2Int[] laneNextTile = System.Array.Empty<Vector2Int>();
+        private Vector2Int[] laneNextDelta = System.Array.Empty<Vector2Int>();
+        private int[] laneSlot = System.Array.Empty<int>();
+        private bool[] laneValid = System.Array.Empty<bool>();
+        private bool[] laneHasNext = System.Array.Empty<bool>();
+        private int[] laneLeader = System.Array.Empty<int>();
+
+        // 앞차 = "같은 차선에서 나보다 하나 앞" 또는 "내 다음 차선의 꼬리". 둘 다 Sim의
+        // 전진 순서를 그대로 따르는 선형 관계라, 앞차 체인은 사이클을 만들지 않는다.
+        // 교차 차선 차량은 후보에 아예 들어오지 않는다 — 기하 근접만으로 차를 세우면
+        // 교차 관계가 생겨 데드락이 재발한다(dev-log-17).
+        private void ResolveLaneLeaders()
+        {
+            int count = carSimMirrors.Count;
+            if (laneValid.Length < count)
+            {
+                laneTile = new Vector2Int[count];
+                laneDelta = new Vector2Int[count];
+                laneNextTile = new Vector2Int[count];
+                laneNextDelta = new Vector2Int[count];
+                laneSlot = new int[count];
+                laneValid = new bool[count];
+                laneHasNext = new bool[count];
+                laneLeader = new int[count];
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                laneValid[i] = false;
+                laneHasNext[i] = false;
+                laneLeader[i] = -1;
+
+                CarSnapshot snapshot = simEngine.GetCarSnapshot(i);
+                bool inbound = snapshot.State == CarState.Inbound;
+                if (snapshot.State != CarState.Outbound && !inbound) continue;
+                if (!bakedRoutes.TryGetValue(carSimMirrors[i].RouteIndex, out BakedRoutePair pair)) continue;
+
+                RoutePolyline poly = inbound ? pair.Inbound : pair.Outbound;
+                if (poly == null || poly.TileCount < 2) continue;
+
+                int tileIndex = Mathf.Clamp(snapshot.TileIndex, 0, poly.TileCount - 1);
+                Vector2Int tile = poly.TileAt(tileIndex);
+                laneTile[i] = tile;
+                // 진입방향: 출발 타일(0)만 다음 타일에서 유도 — Sim의 TryEnqueueDepartures와 동일.
+                laneDelta[i] = tileIndex > 0
+                    ? tile - poly.TileAt(tileIndex - 1)
+                    : poly.TileAt(1) - tile;
+                laneSlot[i] = Mathf.Max(0, snapshot.QueueSlot);
+                laneValid[i] = true;
+
+                if (tileIndex + 1 < poly.TileCount)
+                {
+                    Vector2Int next = poly.TileAt(tileIndex + 1);
+                    laneNextTile[i] = next;
+                    laneNextDelta[i] = next - tile;
+                    laneHasNext[i] = true;
+                }
+            }
+
+            // 앞차는 **Sim 슬롯이 아니라 화면 위치**로 고른다. 슬롯으로 고르면 순서가 뒤집힌다 —
+            // 차마다 지연이 달라(최대 2.86타일) Sim이 "앞"이라는 차가 화면에선 뒤에 있을 수 있고,
+            // 그러면 추종 모델이 엉뚱한 차를 붙잡아 진짜 앞차를 그대로 관통한다
+            // (계측 2026-07-20: 앞차와의 간격 최소 −0.378타일 = 앞차가 뒤에 있음).
+            // 위치로 고르면 순서 역전이 정의상 불가능하다. 후보는 여전히 **같은 차선뿐**이라
+            // (내 차선 + 경로상 다음 타일의 차선) 정지 관계는 선형이고 데드락 사이클이 없다.
+            for (int i = 0; i < count; i++)
+            {
+                if (!laneValid[i]) continue;
+                if (!carVehicles.TryGetValue(carSimMirrors[i], out RouteVehicle self) || self == null) continue;
+                if (self.Dir.sqrMagnitude < 0.0001f) continue;
+                Vector3 forward = self.Dir.normalized;
+
+                float bestAhead = float.MaxValue;
+                int simOrderFallback = -1;
+                int fallbackSlot = -1;
+                for (int j = 0; j < count; j++)
+                {
+                    if (j == i || !laneValid[j]) continue;
+                    bool sameLane = laneTile[j] == laneTile[i] && laneDelta[j] == laneDelta[i];
+                    bool nextLane = laneHasNext[i]
+                        && laneTile[j] == laneNextTile[i] && laneDelta[j] == laneNextDelta[i];
+                    if (!sameLane && !nextLane) continue;
+                    if (!carVehicles.TryGetValue(carSimMirrors[j], out RouteVehicle other) || other == null) continue;
+
+                    float ahead = Vector3.Dot(other.Pos - self.Pos, forward);
+                    if (ahead > 0f)
+                    {
+                        if (ahead < bestAhead) { bestAhead = ahead; laneLeader[i] = j; }
+                        continue;
+                    }
+
+                    // 화면상 앞에 아무도 없더라도, Sim 순서상 앞인 차가 나와 겹쳐 있으면
+                    // 그 차를 앞차로 삼는다 — 안 그러면 완전히 포개진 쌍이 서로 무제약이 된다.
+                    bool simAhead = sameLane
+                        ? laneSlot[j] < laneSlot[i]
+                        : true;
+                    if (simAhead && laneSlot[j] > fallbackSlot) { fallbackSlot = laneSlot[j]; simOrderFallback = j; }
+                }
+                if (laneLeader[i] < 0) laneLeader[i] = simOrderFallback;
+            }
+        }
+
+        // 앞차까지의 간격(월드 유닛). 직선거리가 아니라 **내 진행 방향 성분**을 쓴다 —
+        // 코너에서 직선거리를 쓰면 안쪽에 있는 앞차를 실제보다 가깝게 봐서 괜히 선다.
+        private bool TryGetLaneHeadway(int carIndex, RouteVehicle vehicle, out float headway, out float leaderSpeed)
+        {
+            headway = 0f;
+            leaderSpeed = 0f;
+            if (carIndex < 0 || carIndex >= laneLeader.Length) return false;
+            int leader = laneLeader[carIndex];
+            if (leader < 0 || leader >= carSimMirrors.Count) return false;
+            if (!carVehicles.TryGetValue(carSimMirrors[leader], out RouteVehicle ahead) || ahead == null) return false;
+            if (vehicle.Dir.sqrMagnitude < 0.0001f) return false;
+
+            leaderSpeed = ahead.TravelSpeed;
+            headway = Vector3.Dot(ahead.Pos - vehicle.Pos, vehicle.Dir.normalized);
+            // 예전엔 `headway > 0`일 때만 제약을 걸었다 — 앞차를 파고든 순간 제약이 통째로
+            // 사라져서 그대로 관통했다(계측 2026-07-20: 추종을 넣고도 SAME-DIR 겹침이
+            // 385→359로 거의 안 줄었다). 겹친 순간이야말로 가장 강하게 눌러야 한다.
+            // 여유가 0이면 desired = 앞차 속도 → 더 파고들지 않고 속도만 맞춘다.
+            // 앞차가 서면 나도 선다(같은 차선 = 정당한 정지), 앞차가 가면 나도 간다 → 데드락 불가.
+            return true;
         }
 
         // ActiveRoutes(브리지 포함) 또는 출/도착지가 하나라도 바뀌면 리빌드+재베이크.
@@ -1847,7 +1987,6 @@ namespace CityFlow.View
             vehicle.CurrentSpeed = 0f;
             vehicle.TargetDistance = 0f;
             vehicle.TargetTileIndex = -1;
-            vehicle.TargetQueueSlot = -1;
             vehicle.TargetRouteIndex = -1;
             vehicle.HasTickTarget = false;
             vehicle.Dir = Vector3.zero;
@@ -1911,7 +2050,7 @@ namespace CityFlow.View
             vehicle.BrakeLight.SetActive(on);
         }
 
-        private void MoveCarSimVehicle(CommuteCar car, CarSnapshot snapshot, RouteVehicle vehicle)
+        private void MoveCarSimVehicle(int carIndex, CommuteCar car, CarSnapshot snapshot, RouteVehicle vehicle)
         {
             if (!bakedRoutes.TryGetValue(car.RouteIndex, out BakedRoutePair pair))
             {
@@ -2008,32 +2147,36 @@ namespace CityFlow.View
             float headInset = simEngine.IsSharedCarIntersection(simTile)
                 ? intersectionQueueInset * tileSize
                 : 0f;
-            // 큐 표시가 타일 밖으로 넘치면 안 된다. 예전엔 inset 0.25 + followGap 0.4×3 = 1.45타일이라
-            // 교차로 대기줄 뒷차가 '두 타일 뒤'에 그려졌고, 줄이 빠질 때 1.2타일을 순간 점프했다
-            // (환 라이브 "교차로에서 차가 사라짐" + 다른 타일 차와 겹침). 타일 안에 담기도록 간격을 조인다.
-            // 겹침은 정지 로직이 아니라 기하로 막는다(뷰가 차를 세우면 데드락이 재발한다 —
-            // dev-log-17). 타일 1.0에 차 길이 0.38~0.44이므로 한 타일에 2대가 상한이다:
-            // QueueCapacityPerTile=2 → 간격 0.5 > 최대 차 길이 0.44 → 구조적으로 겹치지 않는다.
-            int queueCapacity = simEngine.CarSimQueueCapacity;
-            // 분모는 capacity-1이 아니라 capacity다. 슬롯은 타일을 '균등 분할'해야 하며,
-            // capacity-1로 나누면 마지막 슬롯이 정확히 1타일 뒤 = 상류 타일 slot0과 좌표가 겹친다
-            // (cap4·inset0: 간격 0.000 = 100% 겹침). capacity로 나누면 0.250이 확보된다.
-            float maxSlotGap = (tileSize - headInset) / Mathf.Max(1, queueCapacity);
-            float slotGap = Mathf.Min(followGap * tileSize, maxSlotGap);
-            // QueueSlot<0(큐 진입 실패 등)이라도 0f로 떨어뜨리지 않는다. 0 = 폴리라인 시작 = 집이라
-            // 주행 중인 차가 도시 반대편으로 순간이동한다. DistanceAtQueueSlot은 이미 Mathf.Max(0, slot)
-            // 으로 음수에 안전하므로 그대로 통과시키면 '해당 타일의 머리'라는 옳은 위치가 나온다.
+            // 큐 간격은 **뷰가 정한다**(MM 전환 레버 A, 2026-07-20). 예전엔 "대기줄이 타일 안에
+            // 들어가야 한다"는 제약 때문에 간격을 (타일−inset)/정원 = 0.250타일로 조였는데,
+            // 차 길이가 0.38~0.44라 **차 길이의 43%가 항상 앞차와 겹쳤다.** 이건 줌 불변이라
+            // (0.44 > 0.25는 타일 단위 비율) 카메라를 아무리 밀어도 안 사라진다 —
+            // 실측 2026-07-20: 최대확대 1080p에서 차 41.5px에 겹침 17.9px.
+            //
+            // **슬롯은 위치를 정하지 않는다.** 목표는 언제나 '내 타일의 머리'이고, 차 사이
+            // 간격은 앞차 추종이 낳는다. 이게 레버 A의 핵심이다 —
+            //   · 슬롯 간격을 0.25로 조이면: 차 길이 0.44의 43%가 항상 겹친다(줌 불변).
+            //   · 슬롯 간격만 0.55로 넓히면: 큐가 2.2타일로 늘어나 **상류 타일 slot0 차와 충돌**
+            //     한다(계측 2026-07-20: SAME-DIR 겹침 385→769). 타일별 슬롯 산술은 다른 타일의
+            //     차를 모르기 때문에, 간격을 넓히는 순간 타일 경계에서 깨진다.
+            //   · 추종이 간격을 낳으면: 앞차 관계가 이미 타일 경계를 넘어 정의돼 있어
+            //     (선두면 다음 타일 큐의 꼬리) 줄이 상류로 자연스럽게 이어진다.
+            // Sim 정원(=처리량·경제)은 하나도 건드리지 않는다.
+            // QueueSlot<0(큐 진입 실패 등)이어도 안전하다 — 어차피 타일 머리를 쓴다.
             float targetDistance = poly.DistanceAtQueueSlot(
                 tileIndex,
-                snapshot.QueueSlot,
-                slotGap,
+                0,
+                0f,
                 headInset);
             float previousDistance = car.Distance;
             bool stateChanged = hadPrevious && previous != snapshot.State;
+            // ⚠️ QueueSlot은 조건에 넣지 않는다. 슬롯이 위치에서 빠졌으므로(위) 슬롯 변화는
+            // 목표 불변인데, 조건에 남겨두면 슬롯이 바뀔 때마다 "목표 전진"으로 오판해
+            // 홀드 중에도 TargetAdvancing이 스퓨리어스로 켜졌다(계측 2026-07-21) —
+            // Sim이 잡고 있는 차에 v² 부스트가 들어가 남몰래 앞으로 기어나가는 버그.
             bool targetChanged = !vehicle.HasTickTarget
                 || stateChanged
                 || vehicle.TargetTileIndex != tileIndex
-                || vehicle.TargetQueueSlot != snapshot.QueueSlot
                 || vehicle.TargetRouteIndex != car.RouteIndex
                 || Mathf.Abs(vehicle.TargetDistance - targetDistance) > 0.0001f;
             if (targetChanged)
@@ -2041,32 +2184,38 @@ namespace CityFlow.View
                 if (stateChanged) car.Distance = 0f;   // 방향 전환 = 새 폴리라인의 시작
                 vehicle.TargetDistance = targetDistance;
                 vehicle.TargetTileIndex = tileIndex;
-                vehicle.TargetQueueSlot = snapshot.QueueSlot;
                 vehicle.TargetRouteIndex = car.RouteIndex;
                 vehicle.HasTickTarget = true;
-                vehicle.TargetAdvancing = true;    // 흐르는 중 — 제동 기준선에 앞을 더 준다
+                vehicle.TargetAdvancing = true;    // 흐르는 중 — 천장이 나와 같이 전진한다
             }
             else if (tickEdge)
             {
-                // 틱이 지났는데 목표가 그대로 = 막혔다. 이제부터 목표를 정지선으로 보고 제동한다.
+                // 틱이 지났는데 목표가 그대로 = Sim이 나를 잡고 있다(신호·정원). 천장이 멈췄다.
                 vehicle.TargetAdvancing = false;
             }
 
-            // 속도 기반 추종(2026-07-20). 예전엔 틱 위상으로 prev→target을 lerp했는데,
-            // 그건 "틱당 1타일 이동" ↔ "완전 정지"의 이진 전환이라 Sim이 차를 세울 때마다
-            // 뚝 끊겼다(환 라이브: 교차로에서 갑자기 멈췄다 감). 이제 차는 자기 속도를
-            // 갖고, 목표까지 남은 거리로 제동 한계를 계산해 스스로 감속한다 —
-            // 앞차·신호로 목표가 멈추면 브레이크를 밟고 서고, 풀리면 가속한다.
+            // 속도 기반 주행(MM 전환 Phase 2, 2026-07-20). 차가 프레임 위치의 주인이고,
+            // Sim 위치는 목표가 아니라 **코리도 상한**이다. 예전엔 Sim 목표에 닿으면 다음
+            // 틱까지 서 있었다(계측: 주행 차량의 프레임 정지 비율 0.898, 로터리 중간 정지).
+            // 이제 앞차만 비면 틱 사이에도 계속 굴러간다.
             float dt = Mathf.Max(0f, Time.deltaTime);
             float brakeAccel = Mathf.Max(0.01f, vehicleBrakeAccel);
             // 평균 속도는 Sim이 정한다(틱당 1타일) — 개성으로 최고속도를 바꾸면 느린 차는
             // 영원히 목표를 못 따라잡는다. 개성은 가속도(AccelMul)에만 건다.
             float nominal = tileSize / Mathf.Max(0.0001f, simEngine.TickInterval);
+            // 천장 = Sim 목표 + 1타일 (틱마다 이산 전진). 연속 천장(틱위상 보간)을 계측으로
+            // 시험했으나(2026-07-21) 기각했다: 감속 이벤트가 줄지 않았고(106 vs 101/1k)
+            // 뷰가 Sim 스냅샷보다 최대 2타일 앞서 헌법의 "Sim+1 상한"을 어겼다.
+            // 남는 중간 브레이크의 뿌리는 뷰가 아니라 **Sim 틱 양자화**다(0.4s 홀드) — §4.10.
+            // 도로 끝 클램프는 poly.Length — 목적지 도달 차를 회사 앞에서 얼리지 않는다(§4.6.2).
+            float corridor = Mathf.Min(
+                vehicle.TargetDistance + vehicleCorridorTiles * tileSize,
+                poly.Length);
 
-            if (vehicle.TargetDistance < car.Distance)
+            if (corridor < car.Distance)
             {
-                // 목표가 뒤로 갔다(밸브 초과 슬롯·재베이크). 스냅하면 순간이동이므로 굴러서 물러난다.
-                car.Distance = Mathf.MoveTowards(car.Distance, vehicle.TargetDistance, nominal * dt);
+                // 상한이 뒤로 갔다(밸브 초과 슬롯·재베이크). 스냅하면 순간이동이므로 굴러서 물러난다.
+                car.Distance = Mathf.MoveTowards(car.Distance, corridor, nominal * dt);
                 vehicle.TravelSpeed = 0f;
             }
             else
@@ -2078,17 +2227,44 @@ namespace CityFlow.View
                 float behind = Mathf.Clamp01(
                     (toTarget - tileSize * vehicleCatchUpStart) / Mathf.Max(0.01f, tileSize * vehicleCatchUpRamp));
                 float cruise = nominal * (1f + behind * vehicleCatchUpRange);
-                // 제동 기준선. 목표가 매 틱 전진 중이면 그만큼 앞을 더 보고 달린다 —
-                // 이게 없으면 흐르는 차도 항상 제동 곡선에 눌려 v²/2a 만큼(0.78타일) 뒤처진다.
-                float stopLine = toTarget + (vehicle.TargetAdvancing ? tileSize : 0f);
-                float stopLimited = Mathf.Sqrt(2f * brakeAccel * stopLine);
-                float desired = Mathf.Min(cruise, stopLimited);
+
+                // 제동식은 **상대가 움직이는지**를 반영해야 한다. √(2a·여유)는 '정지한 벽'
+                // 공식이라 이산 천장에선 여유가 줄 때마다 감속하는 톱니를 탄다(§4.6.1 계측:
+                // 정지의 81.4%가 앞차 없음 + 여유 0.000). 천장이 전진 중이면 v² 부스트로
+                // 계속 굴러가고, Sim이 잡으면(TargetAdvancing=false) 진짜 벽으로 보고 선다.
+                float ceilingSpeed = vehicle.TargetAdvancing ? nominal : 0f;
+                float desired = Mathf.Min(cruise, Mathf.Sqrt(
+                    ceilingSpeed * ceilingSpeed + 2f * brakeAccel * Mathf.Max(0f, corridor - car.Distance)));
+
+                // 정지 사유 둘 중 나머지: 같은 차선 앞차와의 간격. 교차 차선 차량은 후보에
+                // 들어오지 않으므로 정지 관계는 선형이고 사이클(=데드락)이 생기지 않는다.
+                float headway;
+                float leaderSpeed;
+                if (TryGetLaneHeadway(carIndex, vehicle, out headway, out leaderSpeed))
+                {
+                    // 상한 없이 노브 그대로 쓴다. 슬롯은 더 이상 위치의 주인이 아니므로
+                    // Sim 슬롯 간격(0.250)으로 누를 이유가 없다.
+                    float minHeadway = vehicleMinHeadway * tileSize;
+                    float slack = Mathf.Max(0f, headway - minHeadway);
+                    float follow = Mathf.Sqrt(leaderSpeed * leaderSpeed + 2f * brakeAccel * slack);
+                    // 간격이 최소치보다 좁으면 앞차보다 **느리게** 가야 간격이 다시 벌어진다.
+                    // 속도를 맞추기만 하면 한번 겹친 쌍이 영원히 겹친 채로 굳는다.
+                    // 부족분이 최소치만큼이면(=완전히 포개짐) 0 → 서서 앞차를 보낸다.
+                    // 앞차는 나에게 막히지 않으므로(선형 관계) 간격은 반드시 회복된다.
+                    if (headway < minHeadway)
+                    {
+                        float recover = Mathf.Clamp01(headway / Mathf.Max(0.0001f, minHeadway));
+                        follow = Mathf.Min(follow, leaderSpeed * recover);
+                    }
+                    desired = Mathf.Min(desired, follow);
+                }
+
                 bool decelerating = desired < vehicle.TravelSpeed - 0.01f;
                 float rate = decelerating
                     ? brakeAccel
                     : Mathf.Max(0.01f, vehicleDriveAccel) * vehicle.Style.AccelMul;
                 vehicle.TravelSpeed = Mathf.MoveTowards(vehicle.TravelSpeed, desired, rate * dt);
-                car.Distance = Mathf.Min(vehicle.TargetDistance, car.Distance + vehicle.TravelSpeed * dt);
+                car.Distance = Mathf.Min(corridor, car.Distance + vehicle.TravelSpeed * dt);
             }
             Sample sample = poly.SampleAt(car.Distance);
             vehicle.Object.transform.localPosition = sample.Pos;
