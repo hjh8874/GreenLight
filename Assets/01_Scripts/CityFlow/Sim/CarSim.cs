@@ -204,11 +204,7 @@ namespace CityFlow.Sim
                 if (route[i] != current) continue;
                 next = route[i + 1];
                 Vector2Int delta = next - current;
-                if (TryDirection(delta, out entryDirAtNext)) return true;
-                if (Mathf.Abs(delta.x) >= Mathf.Abs(delta.y))
-                    entryDirAtNext = delta.x >= 0 ? Dir.E : Dir.W;
-                else entryDirAtNext = delta.y >= 0 ? Dir.N : Dir.S;
-                return delta != Vector2Int.zero;
+                return TryRouteDirection(delta, out entryDirAtNext);
             }
             return false;
         }
@@ -235,8 +231,8 @@ namespace CityFlow.Sim
                         if (route[p] == car.ResumeTile) { start = p; break; }
                 }
                 Dir entry = Dir.N;
-                if (start > 0 && !TryDirection(route[start] - route[start - 1], out entry)) start = 0;
-                if (start == 0 && route.Count > 1 && !TryDirection(route[1] - route[0], out entry)) continue;
+                if (start > 0 && !TryRouteDirection(route[start] - route[start - 1], out entry)) start = 0;
+                if (start == 0 && route.Count > 1 && !TryRouteDirection(route[1] - route[0], out entry)) continue;
                 if (!net.TryEnqueue(route[start], entry, i)) continue;
                 _enqueued[i] = true;
                 _tileIndices[i] = start;
@@ -287,6 +283,17 @@ namespace CityFlow.Sim
             else if (delta == Vector2Int.down) direction = Dir.S;
             else if (delta == Vector2Int.left) direction = Dir.W;
             else { direction = default; return false; }
+            return true;
+        }
+
+        private static bool TryRouteDirection(Vector2Int delta, out Dir direction)
+        {
+            if (TryDirection(delta, out direction)) return true;
+            if (delta == Vector2Int.zero) return false;
+            if (Mathf.Abs(delta.x) >= Mathf.Abs(delta.y))
+                direction = delta.x >= 0 ? Dir.E : Dir.W;
+            else
+                direction = delta.y >= 0 ? Dir.N : Dir.S;
             return true;
         }
     }

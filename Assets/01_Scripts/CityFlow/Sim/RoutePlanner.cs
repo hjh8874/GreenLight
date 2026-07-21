@@ -272,6 +272,23 @@ namespace CityFlow.Sim
                 if (step < _turnCost[state]) { _turnCost[state] = step; _turnCameFrom[state] = -1; }
             }
 
+            // 출발 접점 자체가 램프면 첫 스텝부터 비인접 고속도로 간선을 탈 수 있어야 한다.
+            // 일반 인접 씨앗과 똑같이 cameFrom=-1로 두고, 재구성 시 from을 한 번만 앞에 붙인다.
+            int startNode = sy * _w + sx;
+            int startPartner = _rampPartner[startNode];
+            if (startPartner >= 0)
+            {
+                int px = startPartner % _w, py = startPartner / _w;
+                int linkDirIn = StateDirection(px - sx, py - sy);
+                int state = startPartner * 4 + linkDirIn;
+                float linkCost = (Mathf.Abs(px - sx) + Mathf.Abs(py - sy)) / 2f;
+                if (linkCost < _turnCost[state])
+                {
+                    _turnCost[state] = linkCost;
+                    _turnCameFrom[state] = -1;
+                }
+            }
+
             // ── 본 루프: flat 오름차순 스캔(결정론) — 노드가 아니라 상태 단위 ──
             int goalState = -1;
             while (true)
@@ -325,6 +342,29 @@ namespace CityFlow.Sim
                     int nState = ni * 4 + newDirIn;
                     if (cand < _turnCost[nState]) { _turnCost[nState] = cand; _turnCameFrom[nState] = cur; }
                 }
+
+                // 턴 제한 상태 탐색에서도 램프 쌍은 비인접 간선이다. 기존 구현은 일반
+                // Dijkstra에만 이 간선을 넣어, 도시에 턴 제한이 하나라도 있으면 모든 차가
+                // 고속도로를 무시했다.
+                int partner = _rampPartner[curNode];
+                if (partner >= 0)
+                {
+                    int px = partner % _w, py = partner / _w;
+                    int linkDirIn = StateDirection(px - cx, py - cy);
+                    if (!curIsSign || linkDirIn == (curMode == TurnMode.LeftOnly
+                        ? (curDirIn + 3) % 4
+                        : (curDirIn + 1) % 4))
+                    {
+                        float linkCost = (Mathf.Abs(px - cx) + Mathf.Abs(py - cy)) / 2f;
+                        float cand = _turnCost[cur] + linkCost;
+                        int partnerState = partner * 4 + linkDirIn;
+                        if (cand < _turnCost[partnerState])
+                        {
+                            _turnCost[partnerState] = cand;
+                            _turnCameFrom[partnerState] = cur;
+                        }
+                    }
+                }
             }
 
             // 재구성 = (타일,방향) 체인 → 타일 리스트. 타일 중복 허용(P턴 — 같은 노드를 다른
@@ -338,6 +378,14 @@ namespace CityFlow.Sim
             path.Add(from);
             path.Reverse();
             return path;
+        }
+
+        // 턴 상태 방향 인덱스는 E=0,S=1,W=2,N=3이다. 고속도로는 비인접이므로
+        // 델타의 우세 축으로 진입 방향을 결정한다(큐/뷰의 링크 방향 판정과 동일).
+        private static int StateDirection(int dx, int dy)
+        {
+            if (Mathf.Abs(dx) >= Mathf.Abs(dy)) return dx >= 0 ? 0 : 2;
+            return dy >= 0 ? 3 : 1;
         }
 
         internal bool TryGetAverageRouteDistance(DemandMap demand, Vector2Int destination, out float distanceTiles)

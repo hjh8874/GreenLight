@@ -188,6 +188,39 @@ namespace CityFlow.Sim.Tests
                 + " — 뷰에서 집으로 순간이동하는 것으로 보인다");
         }
 
+        [Test]
+        public void Departure_WhenAccessRoadIsRamp_EntersHighway()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(10, 3);
+            for (int x = 1; x <= 8; x++) Assert.IsTrue(grid.Place(V(x, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(9, 1), TileType.Office));
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            var links = new List<HighwayLink> { new HighwayLink(V(1, 1), V(7, 1)) };
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg, null, null, links);
+            CollectionAssert.AreEqual(
+                new[] { V(1, 1), V(7, 1), V(8, 1) },
+                planner.CarRoutes[0],
+                "test setup must begin with a highway jump");
+
+            var devices = new FakeDeviceState();
+            devices.AddHighway(V(1, 1), V(7, 1));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid, devices);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+
+            sim.Step(7f, net, new SimEventBuffer(new SimEventHub()));
+
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
+            Assert.AreEqual(0, sim.GetCar(0).QueueSlot,
+                "a car whose first route step is a highway jump must be enqueued on the link");
+        }
+
         private static void BuildStraightCity(
             out CityGrid grid,
             out DemandMap demands,
