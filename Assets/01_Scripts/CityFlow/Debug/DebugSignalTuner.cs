@@ -35,14 +35,22 @@ namespace CityFlow.DebugTools
             if (_sel >= tiles.Count) _sel = 0;
 
             // 마우스 좌클릭으로 신호 선택: 클릭 지점을 월드→타일로 환산해, 그 타일이 신호면 선택.
-            // 렌더러가 타일 1칸=월드 1유닛(원점 기준)으로 그리므로 floor로 타일 좌표가 나온다.
+            // 보드는 XY 평면(z=0)에 있고 카메라만 기울어지므로(MainCityView.ApplyCameraView의
+            // isIsometricView), ScreenToWorldPoint로는 지면을 맞출 수 없다 — 보드 평면과의
+            // 레이 교차로 구한다. 타일 1칸 = 월드 1유닛(GridUtil.TileSize)이라 floor면 타일 좌표.
             var mouse = Mouse.current;
             if (mouse != null && mouse.leftButton.wasPressedThisFrame && Camera.main != null)
             {
-                Vector3 wp = Camera.main.ScreenToWorldPoint(mouse.position.ReadValue());
-                var clicked = new Vector2Int(Mathf.FloorToInt(wp.x), Mathf.FloorToInt(wp.y));
-                for (int i = 0; i < tiles.Count; i++)
-                    if (tiles[i] == clicked) { _sel = i; break; }
+                Ray ray = Camera.main.ScreenPointToRay(mouse.position.ReadValue());
+                if (new Plane(Vector3.forward, Vector3.zero).Raycast(ray, out float enter))
+                {
+                    Vector3 wp = ray.GetPoint(enter);
+                    var clicked = new Vector2Int(
+                        Mathf.FloorToInt(wp.x / GridUtil.TileSize),
+                        Mathf.FloorToInt(wp.y / GridUtil.TileSize));
+                    for (int i = 0; i < tiles.Count; i++)
+                        if (tiles[i] == clicked) { _sel = i; break; }
+                }
             }
 
             var kb = Keyboard.current;
