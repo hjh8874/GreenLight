@@ -434,17 +434,20 @@ namespace CityFlow.ViewKit
         }
 
         // 섬 침범 절대 금지(QA F): 풋프린트 섬 반경 0.45 + 차 반폭 ~0.15 + 여유 = 0.62타일.
-        // mouth±α 기본 기하(R=0.9·α=45°·span=0.66)에서 실측 최저 ≈ 0.68타일이라 평시 무동작 보험 —
-        // 인스펙터가 R/α/전이를 줄여도 섬 안쪽으론 절대 못 들어간다(반경 방향 클램프, 위상 배정 전 적용).
+        // 2026-07-21 재측정(R=0.775·α=45°·span=0.66·λ=0.26): 직진·좌회전·U턴 최저
+        // 0.654타일로 통과. 링을 생략하는 우회전 베지어는 클램프 전 0.485라 상시 보정 대상이다.
+        // 위치 보정 뒤 Dir도 실제 현 방향으로 갱신하며, 둘 다 위상 배정 전에 적용한다.
         private const float IslandClearance = 0.62f;
 
-        // 전이 창 최소 반폭(타일). base 직진 차선(오프셋 λ=0.18)이 창 밖에서 섬 하한 0.62를 스치지 않으려면
-        // √(span²+λ²) > 0.62 → span > 0.593. 여유 포함 0.66으로 잡아 NoCenterDip(>0.62) 마진 확보.
+        // 전이 창 최소 반폭(타일). 현재 차선 오프셋 λ=0.26에서 √(span²+λ²)가 섬 하한 0.62를
+        // 넘도록 0.66을 유지한다. 위 조건의 2026-07-21 수치 재현에서 비우회전 최저 0.654.
         private const float MinTransitionSpan = 0.66f;
 
         private static void ClampIslandIntrusion(List<Vertex> built, Vector3 center, float tileSize)
         {
             float minRadius = IslandClearance * tileSize;
+            var clamped = new bool[built.Count];
+            bool anyClamped = false;
             for (int j = 0; j < built.Count; j++)
             {
                 Vector3 radial = built[j].Pos - center;
@@ -458,6 +461,44 @@ namespace CityFlow.ViewKit
                 Vertex v = built[j];
                 v.Pos = new Vector3(center.x, center.y, v.Pos.z) + radial * (minRadius / distance);
                 built[j] = v;
+                clamped[j] = true;
+                anyClamped = true;
+            }
+
+            if (!anyClamped)
+            {
+                return;
+            }
+
+            // 클램프는 베지어를 반경 0.62의 호로 성형한다. 원래 베지어 접선을 그대로 두면
+            // 차 헤딩과 실제 진행 현이 어긋나므로, 모든 위치 보정이 끝난 뒤 전방 현으로 갱신한다.
+            for (int j = 0; j < built.Count; j++)
+            {
+                if (!clamped[j])
+                {
+                    continue;
+                }
+
+                Vector3 chord = Vector3.zero;
+                for (int next = j + 1; next < built.Count && chord.sqrMagnitude < 1e-8f; next++)
+                {
+                    chord = built[next].Pos - built[j].Pos;
+                }
+
+                if (chord.sqrMagnitude < 1e-8f)
+                {
+                    for (int previous = j - 1; previous >= 0 && chord.sqrMagnitude < 1e-8f; previous--)
+                    {
+                        chord = built[j].Pos - built[previous].Pos;
+                    }
+                }
+
+                if (chord.sqrMagnitude > 1e-8f)
+                {
+                    Vertex v = built[j];
+                    v.Dir = chord.normalized;
+                    built[j] = v;
+                }
             }
         }
 
