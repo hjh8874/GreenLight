@@ -1,97 +1,188 @@
+using CityFlow.Configs;
+using CityFlow.Contracts;
+using DG.Tweening;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
-using CityFlow.Contracts;
-using CityFlow.Configs;
-using TMPro;
-using DG.Tweening;
 
 namespace CityFlow.UI
 {
-    public class BuildSlotController : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
+    public class BuildSlotController :
+        MonoBehaviour,
+        IPointerEnterHandler,
+        IPointerExitHandler,
+        IPointerClickHandler
     {
         [Header("Data")]
         [SerializeField] private TileDataSO tileData;
-        
+
         [Header("UI References (Self)")]
         [SerializeField] private Image iconImage;
         [SerializeField] private TextMeshProUGUI costText;
         [SerializeField] private Button btnBuy;
 
-        private PlacementController _placementController;
-        private TooltipController _tooltipController;
+        private PlacementController placementController;
+        private TooltipController tooltipController;
+        private bool isInitialized;
+        private bool isInteractable = true;
 
         public TileDataSO TileData => tileData;
 
-        public void Initialize(PlacementController placement, TooltipController tooltip)
+        public void Configure(TileDataSO data)
         {
-            _placementController = placement;
-            _tooltipController = tooltip;
+            tileData = data;
+            RefreshContent();
+        }
+
+        public void Initialize(
+            PlacementController placement,
+            TooltipController tooltip
+        )
+        {
+            placementController = placement;
+            tooltipController = tooltip;
 
             ResolveReferences();
             NormalizeLayout();
+            BindButton();
+            RefreshContent();
 
-            // UI 초기화
-            if (tileData != null)
+            isInitialized = true;
+        }
+
+        public void RefreshContent()
+        {
+            ResolveReferences();
+
+            if (tileData == null)
             {
-                if (iconImage != null && tileData.BuildingIcon != null)
+                if (iconImage != null)
                 {
-                    iconImage.sprite = tileData.BuildingIcon;
+                    iconImage.enabled = false;
                 }
-                
+
                 if (costText != null)
                 {
-                    costText.text = tileData.BuildCost.ToString();
+                    costText.text = "-";
                 }
+
+                SetInteractable(false);
+                return;
             }
+
+            if (iconImage != null)
+            {
+                iconImage.sprite = tileData.BuildingIcon;
+                iconImage.enabled = tileData.BuildingIcon != null;
+                iconImage.preserveAspect = true;
+            }
+
+            if (costText != null)
+            {
+                costText.text = tileData.BuildCost.ToString("N0");
+            }
+
+            SetInteractable(true);
+        }
+
+        public void SetInteractable(bool interactable)
+        {
+            isInteractable = interactable && tileData != null;
 
             if (btnBuy != null)
             {
-                btnBuy.onClick.RemoveAllListeners();
-                btnBuy.onClick.AddListener(OnBuyClicked);
-
-                // Add EventTrigger for DOTween Hover on btnBuy only
-                EventTrigger trigger = btnBuy.gameObject.GetComponent<EventTrigger>();
-                if (trigger == null) trigger = btnBuy.gameObject.AddComponent<EventTrigger>();
-                trigger.triggers.Clear();
-                
-                EventTrigger.Entry enterEntry = new EventTrigger.Entry();
-                enterEntry.eventID = EventTriggerType.PointerEnter;
-                enterEntry.callback.AddListener((data) => {
-                    btnBuy.transform.DOKill();
-                    btnBuy.transform.DOScale(1.1f, 0.2f).SetEase(Ease.OutBack);
-                });
-                trigger.triggers.Add(enterEntry);
-
-                EventTrigger.Entry exitEntry = new EventTrigger.Entry();
-                exitEntry.eventID = EventTriggerType.PointerExit;
-                exitEntry.callback.AddListener((data) => {
-                    btnBuy.transform.DOKill();
-                    btnBuy.transform.DOScale(1f, 0.15f).SetEase(Ease.OutQuad);
-                });
-                trigger.triggers.Add(exitEntry);
+                btnBuy.interactable = isInteractable;
             }
+
+            if (iconImage != null)
+            {
+                Color color = iconImage.color;
+                color.a = isInteractable ? 1f : 0.45f;
+                iconImage.color = color;
+            }
+
+            if (costText != null)
+            {
+                Color color = costText.color;
+                color.a = isInteractable ? 1f : 0.55f;
+                costText.color = color;
+            }
+        }
+
+        private void BindButton()
+        {
+            if (btnBuy == null)
+            {
+                return;
+            }
+
+            btnBuy.onClick.RemoveListener(OnBuyClicked);
+            btnBuy.onClick.AddListener(OnBuyClicked);
+
+            EventTrigger trigger = btnBuy.GetComponent<EventTrigger>();
+            if (trigger == null)
+            {
+                trigger = btnBuy.gameObject.AddComponent<EventTrigger>();
+            }
+
+            trigger.triggers.Clear();
+
+            EventTrigger.Entry enterEntry = new EventTrigger.Entry
+            {
+                eventID = EventTriggerType.PointerEnter
+            };
+            enterEntry.callback.AddListener(_ =>
+            {
+                if (!isInteractable)
+                {
+                    return;
+                }
+
+                btnBuy.transform.DOKill();
+                btnBuy.transform.DOScale(1.1f, 0.2f).SetEase(Ease.OutBack);
+            });
+            trigger.triggers.Add(enterEntry);
+
+            EventTrigger.Entry exitEntry = new EventTrigger.Entry
+            {
+                eventID = EventTriggerType.PointerExit
+            };
+            exitEntry.callback.AddListener(_ =>
+            {
+                btnBuy.transform.DOKill();
+                btnBuy.transform.DOScale(1f, 0.15f).SetEase(Ease.OutQuad);
+            });
+            trigger.triggers.Add(exitEntry);
         }
 
         private void ResolveReferences()
         {
-            Transform iconTransform = transform.Find("Icon");
-            Transform costTransform = transform.Find("CostText");
-            Transform buyTransform = transform.Find("Btn_Buy");
-
-            if (iconTransform != null)
+            if (iconImage == null)
             {
-                iconImage = iconTransform.GetComponent<Image>();
+                Transform iconTransform = transform.Find("Icon");
+                if (iconTransform != null)
+                {
+                    iconImage = iconTransform.GetComponent<Image>();
+                }
             }
 
-            if (costTransform != null)
+            if (costText == null)
             {
-                costText = costTransform.GetComponent<TextMeshProUGUI>();
+                Transform costTransform = transform.Find("CostText");
+                if (costTransform != null)
+                {
+                    costText = costTransform.GetComponent<TextMeshProUGUI>();
+                }
             }
 
-            if (buyTransform != null)
+            if (btnBuy == null)
             {
-                btnBuy = buyTransform.GetComponent<Button>();
+                Transform buyTransform = transform.Find("Btn_Buy");
+                if (buyTransform != null)
+                {
+                    btnBuy = buyTransform.GetComponent<Button>();
+                }
             }
         }
 
@@ -120,6 +211,7 @@ namespace CityFlow.UI
                 iconRect.pivot = new Vector2(0.5f, 1f);
                 iconRect.anchoredPosition = new Vector2(0f, -42f);
                 iconRect.sizeDelta = new Vector2(84f, 72f);
+                iconImage.preserveAspect = true;
             }
 
             if (btnBuy != null)
@@ -131,7 +223,9 @@ namespace CityFlow.UI
                 buttonRect.anchoredPosition = new Vector2(0f, 8f);
                 buttonRect.sizeDelta = new Vector2(100f, 38f);
 
-                TextMeshProUGUI buttonLabel = btnBuy.GetComponentInChildren<TextMeshProUGUI>(true);
+                TextMeshProUGUI buttonLabel =
+                    btnBuy.GetComponentInChildren<TextMeshProUGUI>(true);
+
                 if (buttonLabel != null)
                 {
                     buttonLabel.enableAutoSizing = true;
@@ -145,54 +239,81 @@ namespace CityFlow.UI
 
         public void OnPointerEnter(PointerEventData eventData)
         {
-            // Tooltip 표시 (DOTween 애니메이션은 btnBuy의 EventTrigger로 이동)
-
-            if (_tooltipController != null && tileData != null)
+            if (tooltipController != null && tileData != null)
             {
-                _tooltipController.ShowTooltip(tileData);
+                tooltipController.ShowTooltip(tileData);
             }
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            // Tooltip 숨기기 (DOTween 애니메이션은 btnBuy의 EventTrigger로 이동)
-
-            if (_tooltipController != null)
-            {
-                _tooltipController.HideTooltip();
-            }
+            tooltipController?.HideTooltip();
         }
 
         private void OnDisable()
         {
-            if (_tooltipController != null)
+            tooltipController?.HideTooltip();
+
+            transform.DOKill();
+            if (btnBuy != null)
             {
-                _tooltipController.HideTooltip();
+                btnBuy.transform.DOKill();
+                btnBuy.transform.localScale = Vector3.one;
             }
         }
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            // 전체 슬롯 클릭 시 가벼운 선택 애니메이션
+            if (!isInitialized || !isInteractable)
+            {
+                return;
+            }
+
+            // 버튼 자신이나 버튼의 자식을 클릭한 경우에는 Button.onClick이 처리합니다.
+            // 슬롯의 빈 영역을 클릭했을 때만 여기서 구매 처리를 호출하여 중복 실행을 막습니다.
+            if (btnBuy != null &&
+                eventData.pointerPress != null &&
+                (eventData.pointerPress == btnBuy.gameObject ||
+                 eventData.pointerPress.transform.IsChildOf(btnBuy.transform)))
+            {
+                return;
+            }
+
             transform.DOKill();
-            transform.localScale = Vector3.one; 
-            transform.DOPunchScale(new Vector3(-0.05f, -0.05f, 0f), 0.15f, 2, 0.5f);
+            transform.localScale = Vector3.one;
+            transform.DOPunchScale(
+                new Vector3(-0.05f, -0.05f, 0f),
+                0.15f,
+                2,
+                0.5f
+            );
 
             OnBuyClicked();
         }
 
         private void OnBuyClicked()
         {
-            if (btnBuy != null)
+            if (!isInteractable || placementController == null || tileData == null)
             {
-                btnBuy.transform.DOPunchScale(new Vector3(-0.2f, -0.2f, 0f), 0.2f, 5, 1f);
+                return;
             }
 
-            if (_placementController != null && tileData != null)
+            if (btnBuy != null)
             {
-                _placementController.SetBuildType(tileData.Category);
-                Debug.Log($"[BuildSlot] {tileData.BuildingName} 건설 모드 활성화");
+                btnBuy.transform.DOKill();
+                btnBuy.transform.DOPunchScale(
+                    new Vector3(-0.2f, -0.2f, 0f),
+                    0.2f,
+                    5,
+                    1f
+                );
             }
+
+            placementController.SetBuildType(tileData.Category);
+            Debug.Log(
+                $"[BuildSlot] {tileData.BuildingName} 건설 모드 활성화",
+                this
+            );
         }
     }
 }

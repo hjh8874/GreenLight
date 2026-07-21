@@ -466,4 +466,36 @@ Ghost 표시
 
 
 
+\[개발 환경 준비 - 다운로드 폰트]
+
+
+
+NanumGothic 폰트는 저장소 용량 관리를 위해 Git에서 제외하고 팀 공유 Google Drive에서 관리합니다.
+
+
+
+1\. 팀 공유 Google Drive에서 Fonts 폴더를 내려받습니다.
+
+2\. 프로젝트의 `Assets/99_Download/Fonts` 경로에 폴더를 배치합니다.
+
+3\. 다음 파일 4개가 모두 있는지 확인합니다.
+
+\- `NanumGothic SDF.asset`
+
+\- `NanumGothic SDF.asset.meta`
+
+\- `NanumGothic-Regular.ttf`
+
+\- `NanumGothic-Regular.ttf.meta`
+
+4\. `.meta` 파일을 새로 만들거나 교체하지 않습니다. 기존 GUID가 유지되어야 Scene과 TMP fallback 참조가 연결됩니다.
+
+5\. Unity에서 프로젝트를 연 뒤 한글 UI와 Console의 Missing Font 오류를 확인합니다.
+
+
+
+폰트를 설치하기 전에는 Scene과 TMP fallback의 NanumGothic 참조가 Missing 상태로 표시될 수 있습니다.
+
+
+
 플레이해 주셔서 감사합니다.
