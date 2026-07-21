@@ -1,14 +1,12 @@
 using System.Collections;
-using TMPro;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace CityFlow.UI
 {
     /// <summary>
     /// 씬에 남아 있는 오프라인 정산 리포트의 표시와 닫기 동작을 담당합니다.
-    /// 현재 정산 시스템과는 결합하지 않고 기존 리포트 UI의 입력만 복구합니다.
+    /// 현재 정산 시스템과는 결합하지 않으며, 리포트가 제거되기 전까지 닫기 전 입력을 차단합니다.
     /// </summary>
     public sealed class OfflineSettlementPopup : MonoBehaviour
     {
@@ -18,9 +16,6 @@ namespace CityFlow.UI
         [SerializeField] private CanvasGroup canvasGroup;
         [SerializeField] private RectTransform reportCard;
         [SerializeField] private Button closeButton;
-        [SerializeField] private TextMeshProUGUI initialCoinsText;
-        [SerializeField] private TextMeshProUGUI earnedCoinsText;
-        [SerializeField] private TextMeshProUGUI currentCoinsText;
 
         [Header("Presentation")]
         [SerializeField, Min(0f)] private float transitionDuration = 0.18f;
@@ -41,25 +36,6 @@ namespace CityFlow.UI
             }
 
             ApplyVisibleState();
-        }
-
-        private void Update()
-        {
-            Mouse mouse = Mouse.current;
-            if (transitionRoutine != null || closeButton == null || mouse == null ||
-                !mouse.leftButton.wasReleasedThisFrame)
-            {
-                return;
-            }
-
-            var closeButtonRect = closeButton.transform as RectTransform;
-            if (closeButtonRect != null &&
-                RectTransformUtility.RectangleContainsScreenPoint(
-                    closeButtonRect,
-                    mouse.position.ReadValue()))
-            {
-                Hide();
-            }
         }
 
         private void OnDisable()

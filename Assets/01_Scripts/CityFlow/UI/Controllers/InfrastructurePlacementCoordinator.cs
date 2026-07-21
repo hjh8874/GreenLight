@@ -99,7 +99,7 @@ namespace CityFlow.UI.Controllers
             if (ghostRenderer != null)
             {
                 ghostRenderer.gameObject.SetActive(true);
-                ghostRenderer.sprite = null; // Maybe a hammer icon if we had one
+                ghostRenderer.sprite = null; // 해체 모드는 망치 커서 없이 기존 빨간 고스트만 사용합니다.
                 ghostRenderer.color = Color.red;
             }
             BuildModeCursorFeedback.SetBuilding(this, false);
