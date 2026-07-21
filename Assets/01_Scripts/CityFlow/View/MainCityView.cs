@@ -2064,6 +2064,15 @@ namespace CityFlow.View
 
         private void DeactivateCommuteVehicle(RouteVehicle vehicle)
         {
+            // 선택 추적 중인 차가 stale 처리되면 드라이브 뷰를 먼저 종료한다(#103 방어 이식).
+            // 비활성화 직후 같은 풀 오브젝트가 TakeFreeVehicle()로 신규 통근차에 재사용되면
+            // DriveViewCamera가 볼 때 대상이 다시 active라 자동 종료 조건도 통과하지 못해,
+            // 카메라가 엉뚱한 차를 계속 추적하게 된다.
+            if (selectedVehicle == vehicle)
+            {
+                ExitDriveView();
+            }
+
             vehicle.Object.SetActive(false);
             vehicle.RouteIndex = -1;
             vehicle.HasCurrentTile = false;
