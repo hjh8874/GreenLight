@@ -29,6 +29,23 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void Save_RestoresRampPairWithoutChargingEconomy()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.GridWidth = 10; cfg.GridHeight = 2; cfg.AutoDetectSignals = false;
+            var source = new SimEngine(cfg, new SimEventHub());
+            for (int x = 1; x <= 8; x++) source.Place(V(x, 0), TileType.Road);
+            Assert.IsTrue(source.TryPlaceHighway(V(1, 0), V(7, 0)));
+
+            var restored = new SimEngine(cfg, new SimEventHub());
+            restored.RestoreSnapshot(source.CreateSnapshot());
+
+            Assert.AreEqual(1, restored.HighwayLinks.Count);
+            Assert.AreEqual(V(1, 0), restored.HighwayLinks[0].A);
+            Assert.AreEqual(V(7, 0), restored.HighwayLinks[0].B);
+        }
+
+        [Test]
         public void Queue_TraversesNonAdjacentRampLink()
         {
             SimConfig cfg = SimConfig.Default();
@@ -51,6 +68,22 @@ namespace CityFlow.Sim.Tests
             queues.Step(route, null, 3);
             queues.Step(route, null, 4);
             Assert.AreEqual(7, queues.CarAtHead(V(7, 0), Dir.E));
+        }
+
+        [Test]
+        public void Planner_UsesNonAdjacentRampEdgeWhenFaster()
+        {
+            SimConfig cfg = SimConfig.Default();
+            var grid = new CityGrid(10, 1);
+            for (int x = 0; x < 10; x++) grid.Place(V(x, 0), TileType.Road);
+            var planner = new RoutePlanner(10, 1);
+            var links = new List<HighwayLink> { new HighwayLink(V(2, 0), V(7, 0)) };
+
+            List<Vector2Int> route = planner.Search(grid, V(0, 0), V(9, 0), cfg, links);
+
+            int ramp = route.IndexOf(V(2, 0));
+            Assert.GreaterOrEqual(ramp, 0);
+            Assert.AreEqual(V(7, 0), route[ramp + 1], "route must contain the non-adjacent ramp jump");
         }
 
         private sealed class JumpRoute : ICarRouteProvider

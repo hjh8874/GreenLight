@@ -108,7 +108,7 @@ namespace CityFlow.Sim
 
         // 현재 _load 기준 최소 비용 경로(내부 + 테스트 seam). 미연결/비도로 끝점 = null.
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg)
-            => Search(grid, from, to, cfg, null);
+            => Search(grid, from, to, cfg, (IReadOnlyDictionary<Vector2Int, Vector2Int>)null);
 
         // 일방통행 간선 필터(스펙 2026-07-12 §핵심결정, 상태 확장 없음 — 이웃 확장에서 3규칙 조기 continue):
         // ① 일방 타일에서 나가는 스텝은 그 방향(D)만. ② 일방 타일로 들어가는 스텝은 -D 금지
@@ -116,6 +116,21 @@ namespace CityFlow.Sim
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
             => SearchCore(grid, from, to, cfg, oneways);
+
+        internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                          IReadOnlyList<HighwayLink> highways)
+        {
+            Array.Fill(_rampPartner, -1);
+            if (highways != null)
+                for (int i = 0; i < highways.Count; i++)
+                {
+                    int a = highways[i].A.y * _w + highways[i].A.x;
+                    int b = highways[i].B.y * _w + highways[i].B.x;
+                    _rampPartner[a] = b;
+                    _rampPartner[b] = a;
+                }
+            return SearchCore(grid, from, to, cfg, null);
+        }
 
         private List<Vector2Int> SearchCore(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                              IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
