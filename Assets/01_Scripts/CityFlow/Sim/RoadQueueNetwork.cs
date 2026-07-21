@@ -43,7 +43,7 @@ namespace CityFlow.Sim
         private const int DirectionCount = 4;
         private const int NoNode = -1;
 
-        private enum IntentKind { Arrival, Move, RingEntry }
+        private enum IntentKind { Arrival, Move, RingEntry, IntersectionAdvance }
 
         private struct Intent
         {
@@ -56,6 +56,12 @@ namespace CityFlow.Sim
             public Dir Exit;
             public int RingIndex;
             public bool Force;
+            public int ReservationTile;
+            public Dir MovementEntry;
+            public Dir MovementExit;
+            public IntersectionCell CurrentReservationMask;
+            public IntersectionCell ReservationMask;
+            public bool CompleteIntersectionOnEntry;
         }
 
         private readonly int _width;
@@ -78,6 +84,12 @@ namespace CityFlow.Sim
         private readonly bool[] _turnAllowed;
         private readonly int[] _ringNodes;
         private readonly Intent[] _intents;
+        private readonly bool[] _intentHandled;
+        private readonly IntersectionCell[] _intersectionOccupancy;
+        private readonly IntersectionCell[] _intersectionRoundReservations;
+        private readonly bool[] _approachingStraightThreats;
+        private readonly IntersectionStage[] _intersectionStages;
+        private readonly Dir[] _intersectionMovementExits;
         private readonly ArrivalRecord[] _arrivals;
         private int _freeHead;
 
@@ -113,6 +125,12 @@ namespace CityFlow.Sim
             _turnAllowed = new bool[tileCount * DirectionCount * DirectionCount];
             _ringNodes = new int[tileCount * DirectionCount];
             _intents = new Intent[queueCount];
+            _intentHandled = new bool[queueCount];
+            _intersectionOccupancy = new IntersectionCell[tileCount];
+            _intersectionRoundReservations = new IntersectionCell[tileCount];
+            _approachingStraightThreats = new bool[queueCount];
+            _intersectionStages = new IntersectionStage[maxCars];
+            _intersectionMovementExits = new Dir[maxCars];
             _arrivals = new ArrivalRecord[maxCars];
 
             Array.Fill(_heads, NoNode);
@@ -160,6 +178,8 @@ namespace CityFlow.Sim
                     }
                 }
             }
+
+            ClearStagesOutsideIntersections();
         }
 
         public bool TryEnqueue(Vector2Int tile, Dir entryDir, int carId)
@@ -191,6 +211,14 @@ namespace CityFlow.Sim
         }
 
         internal bool TryLocateCar(int carId, out Vector2Int tile, out Dir direction, out int slot)
+            => TryLocateCar(carId, out tile, out direction, out slot, out _);
+
+        internal bool TryLocateCar(
+            int carId,
+            out Vector2Int tile,
+            out Dir direction,
+            out int slot,
+            out float intersectionProgress)
         {
             for (int queue = 0; queue < _heads.Length; queue++)
             {
@@ -200,9 +228,13 @@ namespace CityFlow.Sim
                 {
                     if (_cars[node] == carId)
                     {
-                        tile = TileAt(queue / DirectionCount);
+                        int tileIndex = queue / DirectionCount;
+                        tile = TileAt(tileIndex);
                         direction = (Dir)(queue % DirectionCount);
                         slot = queueSlot;
+                        intersectionProgress = UsesSharedBudget(tileIndex)
+                            ? IntersectionMicroGrid.Progress01(_intersectionStages[node])
+                            : -1f;
                         return true;
                     }
                     node = _nextNodes[node];
@@ -216,12 +248,31 @@ namespace CityFlow.Sim
                 tile = TileAt(ring / DirectionCount);
                 direction = (Dir)(ring % DirectionCount);
                 slot = 0;
+                intersectionProgress = -1f;
                 return true;
             }
             tile = default;
             direction = default;
             slot = -1;
+            intersectionProgress = -1f;
             return false;
+        }
+
+        private void ClearStagesOutsideIntersections()
+        {
+            for (int queue = 0; queue < _heads.Length; queue++)
+            {
+                int tileIndex = queue / DirectionCount;
+                if (UsesSharedBudget(tileIndex)) continue;
+
+                int node = _heads[queue];
+                while (node != NoNode)
+                {
+                    _intersectionStages[node] = IntersectionStage.None;
+                    _intersectionMovementExits[node] = default;
+                    node = _nextNodes[node];
+                }
+            }
         }
 
         public ArrivalRecord GetArrival(int index)
@@ -242,6 +293,7 @@ namespace CityFlow.Sim
                 _cars[node] = NoNode;
                 _movedThisTick[node] = false;
                 _blockedTicks[node] = 0;
+                _intersectionStages[node] = IntersectionStage.None;
                 _nextNodes[node] = node + 1 < _cars.Length ? node + 1 : NoNode;
             }
             _freeHead = _cars.Length > 0 ? 0 : NoNode;
@@ -275,6 +327,7 @@ namespace CityFlow.Sim
             for (int serviceRound = 0; serviceRound < _servicePerTick; serviceRound++)
             {
                 ServiceRoundaboutRings(routes, ref result);
+                RebuildIntersectionOccupancy(routes);
                 int intentCount = CollectIntents(routes, signalGate, tick);
                 ResolveIntents(intentCount, ref result);
             }
@@ -283,6 +336,7 @@ namespace CityFlow.Sim
 
         private int CollectIntents(ICarRouteProvider routes, ISignalGate signalGate, int tick)
         {
+            Array.Clear(_approachingStraightThreats, 0, _approachingStraightThreats.Length);
             int count = 0;
             for (int queue = 0; queue < _heads.Length; queue++)
             {
@@ -293,6 +347,35 @@ namespace CityFlow.Sim
                 Vector2Int tile = TileAt(tileIndex);
 
                 int carId = _cars[node];
+                IntersectionStage intersectionStage = _intersectionStages[node];
+                if (UsesSharedBudget(tileIndex)
+                    && (intersectionStage == IntersectionStage.Entry
+                        || intersectionStage == IntersectionStage.Conflict))
+                {
+                    IntersectionStage nextStage = IntersectionMicroGrid.NextStage(intersectionStage);
+                    Dir stageMovementExit = _intersectionMovementExits[node];
+                    Intent advance = NewIntent(
+                        IntentKind.IntersectionAdvance,
+                        queue,
+                        node,
+                        tileIndex,
+                        entry,
+                        stageMovementExit);
+                    advance.ReservationTile = tileIndex;
+                    advance.MovementEntry = entry;
+                    advance.MovementExit = stageMovementExit;
+                    advance.CurrentReservationMask = IntersectionMicroGrid.StageMask(
+                        entry,
+                        stageMovementExit,
+                        intersectionStage);
+                    advance.ReservationMask = IntersectionMicroGrid.StageMask(
+                        entry,
+                        stageMovementExit,
+                        nextStage);
+                    _intents[count++] = advance;
+                    continue;
+                }
+
                 if (routes.IsDestination(carId, tile))
                 {
                     _intents[count++] = NewIntent(IntentKind.Arrival, queue, node, tileIndex, entry, entry);
@@ -330,14 +413,66 @@ namespace CityFlow.Sim
                     continue;
                 }
 
-                bool blocked = !CanAcceptNormally(nextQueue)
-                    || IsIntersectionExitBlocked(routes, carId, next, TileIndex(next));
+                int nextTileIndex = TileIndex(next);
+                bool nextIsSharedIntersection = UsesSharedBudget(nextTileIndex);
+                Dir movementExit = exit;
+                bool hasMovementBeyondIntersection = false;
+                if (nextIsSharedIntersection
+                    && !routes.IsDestination(carId, next)
+                    && routes.TryGetNextTile(carId, next, out _, out Dir plannedExit))
+                {
+                    movementExit = plannedExit;
+                    hasMovementBeyondIntersection = true;
+                }
+                if (hasMovementBeyondIntersection && exit == movementExit)
+                {
+                    // Track only the queue head moving into this intersection.
+                    _approachingStraightThreats[
+                        nextTileIndex * DirectionCount + (int)exit] = true;
+                }
+
+                bool leavingIntersection = UsesSharedBudget(tileIndex)
+                    && intersectionStage == IntersectionStage.Exit;
+                bool blocked = (leavingIntersection
+                        ? !HasClearIntersectionExit(nextQueue)
+                        : !CanAcceptNormally(nextQueue))
+                    || IsIntersectionExitBlocked(routes, carId, next, nextTileIndex);
                 Intent move = NewIntent(IntentKind.Move, queue, node, tileIndex, entry, exit);
                 move.ToQueue = nextQueue;
+
+                if (UsesSharedBudget(tileIndex)
+                    && intersectionStage == IntersectionStage.Exit)
+                {
+                    move.MovementEntry = entry;
+                    move.MovementExit = _intersectionMovementExits[node];
+                    move.CurrentReservationMask = IntersectionMicroGrid.OccupancyMask(
+                        entry,
+                        move.MovementExit,
+                        IntersectionStage.Exit);
+                }
+
+                if (nextIsSharedIntersection)
+                {
+                    bool straightMovement = exit == movementExit;
+                    IntersectionCell reservationMask = straightMovement
+                        ? IntersectionMicroGrid.MovementMask(exit, movementExit)
+                        : IntersectionMicroGrid.StageMask(
+                            exit,
+                            movementExit,
+                            IntersectionStage.Entry);
+
+                    move.ReservationTile = nextTileIndex;
+                    move.MovementEntry = exit;
+                    move.MovementExit = movementExit;
+                    move.ReservationMask = reservationMask;
+                }
+
                 if (blocked)
                 {
                     _blockedTicks[node]++;
-                    if (_blockedTicks[node] < _gridlockValveTicks) continue;
+                    // Never force a car into an intersection with a blocked exit.
+                    if (move.ReservationTile != NoNode
+                        || _blockedTicks[node] < _gridlockValveTicks) continue;
                     move.Force = true;
                 }
                 _intents[count++] = move;
@@ -345,38 +480,229 @@ namespace CityFlow.Sim
             return count;
         }
 
-        private void ResolveIntents(int intentCount, ref StepResult result)
+        private void RebuildIntersectionOccupancy(ICarRouteProvider routes)
         {
+            Array.Clear(_intersectionOccupancy, 0, _intersectionOccupancy.Length);
             for (int tile = 0; tile < _intersections.Length; tile++)
             {
                 if (!UsesSharedBudget(tile)) continue;
-                int winner = NoNode;
-                for (int i = 0; i < intentCount; i++)
+                Vector2Int position = TileAt(tile);
+                int firstQueue = tile * DirectionCount;
+                for (int direction = 0; direction < DirectionCount; direction++)
                 {
-                    if (_intents[i].TileIndex != tile) continue;
-                    if (winner == NoNode || IsBetter(_intents[i], _intents[winner])) winner = i;
-                }
-                if (winner == NoNode) continue;
-                ExecuteIntent(_intents[winner], ref result);
-                // 승자와 충돌하지 않는 이동은 같은 틱에 함께 통과시킨다. 예전엔 교차로당
-                // 1대만 통과해, 마주보는 직진처럼 서로 방해하지 않는 차까지 순번을 기다렸다
-                // (환 라이브 2026-07-20: "앞에 차가 없는데 교차로에서 멈췄다 간다").
-                for (int i = 0; i < intentCount; i++)
-                {
-                    if (i == winner || _intents[i].TileIndex != tile) continue;
-                    if (Compatible(_intents[winner], _intents[i]))
+                    int node = _heads[firstQueue + direction];
+                    while (node != NoNode)
                     {
-                        // 정원 미달로 못 가면 ExecuteIntent가 스스로 _blockedTicks를 올린다.
-                        ExecuteIntent(_intents[i], ref result);
-                        continue;
+                        IntersectionCell mask = IntersectionCell.All;
+                        IntersectionStage stage = _intersectionStages[node];
+                        if (stage != IntersectionStage.None)
+                        {
+                            mask = IntersectionMicroGrid.OccupancyMask(
+                                (Dir)direction,
+                                _intersectionMovementExits[node],
+                                stage);
+                        }
+                        else
+                        {
+                            int carId = _cars[node];
+                            if (!routes.IsDestination(carId, position)
+                                && routes.TryGetNextTile(carId, position, out _, out Dir exit))
+                            {
+                                mask = IntersectionMicroGrid.MovementMask((Dir)direction, exit);
+                            }
+                        }
+
+                        _intersectionOccupancy[tile] |= mask;
+                        node = _nextNodes[node];
                     }
-                    int node = _intents[i].Node;
-                    if (node != NoNode) _blockedTicks[node]++;
                 }
+            }
+        }
+
+        private void ResolveIntents(int intentCount, ref StepResult result)
+        {
+            Array.Clear(_intentHandled, 0, intentCount);
+            Array.Clear(
+                _intersectionRoundReservations,
+                0,
+                _intersectionRoundReservations.Length);
+
+            // Resolve vehicles already inside first. Entry is a valid waiting state for turns,
+            // but new arrivals must not repeatedly take the cells needed to finish that turn.
+            for (int tile = 0; tile < _intersections.Length; tile++)
+            {
+                if (UsesSharedBudget(tile))
+                    ResolveIntersectionGroup(intentCount, tile, false, ref result);
+            }
+
+            // Admit new vehicles after internal transitions have reserved this round's cells.
+            for (int tile = 0; tile < _intersections.Length; tile++)
+            {
+                if (UsesSharedBudget(tile))
+                    ResolveIntersectionGroup(intentCount, tile, true, ref result);
             }
 
             for (int i = 0; i < intentCount; i++)
-                if (!UsesSharedBudget(_intents[i].TileIndex)) ExecuteIntent(_intents[i], ref result);
+            {
+                if (_intentHandled[i]) continue;
+                _intentHandled[i] = true;
+                ExecuteIntent(_intents[i], ref result);
+            }
+        }
+
+        private void ResolveIntersectionGroup(
+            int intentCount,
+            int intersectionTile,
+            bool useReservation,
+            ref StepResult result)
+        {
+            IntersectionCell granted = useReservation
+                ? _intersectionOccupancy[intersectionTile]
+                    | _intersectionRoundReservations[intersectionTile]
+                : _intersectionOccupancy[intersectionTile];
+
+            while (true)
+            {
+                int winner = NoNode;
+                for (int i = 0; i < intentCount; i++)
+                {
+                    if (_intentHandled[i] || !BelongsToIntersectionGroup(
+                            _intents[i], intersectionTile, useReservation)) continue;
+
+                    IntersectionCell blocking = granted & ~_intents[i].CurrentReservationMask;
+                    IntersectionCell requested = GetRequestedMovementMask(
+                        _intents[i],
+                        intersectionTile,
+                        useReservation,
+                        blocking,
+                        out _);
+                    if (!useReservation
+                        && _intents[i].Kind == IntentKind.IntersectionAdvance
+                        && !IsStraightMovement(_intents[i])
+                        && HasOpposingStraightThreat(
+                            intersectionTile,
+                            _intents[i].MovementEntry,
+                            _intents[i].MovementExit))
+                    {
+                        continue;
+                    }
+                    if (IntersectionMicroGrid.Conflicts(blocking, requested)) continue;
+                    if (winner == NoNode || IsBetterForIntersection(
+                            _intents[i], _intents[winner], intersectionTile, useReservation))
+                    {
+                        winner = i;
+                    }
+                }
+
+                if (winner == NoNode) break;
+                _intentHandled[winner] = true;
+                Intent winnerIntent = _intents[winner];
+                IntersectionCell winnerBlocking =
+                    granted & ~winnerIntent.CurrentReservationMask;
+                IntersectionCell winnerMask = GetRequestedMovementMask(
+                    winnerIntent,
+                    intersectionTile,
+                    useReservation,
+                    winnerBlocking,
+                    out bool completeIntersectionOnEntry);
+                winnerIntent.CompleteIntersectionOnEntry = completeIntersectionOnEntry;
+                _intents[winner] = winnerIntent;
+                granted |= winnerMask;
+                if (useReservation || _intents[winner].Kind == IntentKind.IntersectionAdvance)
+                {
+                    _intersectionRoundReservations[intersectionTile] |= winnerMask;
+                }
+                ExecuteIntent(_intents[winner], ref result);
+            }
+
+            for (int i = 0; i < intentCount; i++)
+            {
+                if (_intentHandled[i] || !BelongsToIntersectionGroup(
+                        _intents[i], intersectionTile, useReservation)) continue;
+                _intentHandled[i] = true;
+                int node = _intents[i].Node;
+                if (node != NoNode) _blockedTicks[node]++;
+            }
+        }
+
+        private static bool BelongsToIntersectionGroup(
+            Intent intent,
+            int intersectionTile,
+            bool useReservation)
+        {
+            if (useReservation)
+            {
+                return intent.Kind != IntentKind.IntersectionAdvance
+                    && intent.ReservationTile == intersectionTile;
+            }
+
+            return intent.TileIndex == intersectionTile
+                && (intent.Kind == IntentKind.IntersectionAdvance
+                    || intent.ReservationTile == NoNode);
+        }
+
+        private static IntersectionCell GetIntentMovementMask(Intent intent, bool useReservation)
+        {
+            if (useReservation) return intent.ReservationMask;
+            if (intent.Kind == IntentKind.IntersectionAdvance) return intent.ReservationMask;
+            if (intent.Kind == IntentKind.Move)
+                return IntersectionMicroGrid.MovementMask(intent.MovementEntry, intent.MovementExit);
+            return IntersectionCell.All;
+        }
+
+        private IntersectionCell GetRequestedMovementMask(
+            Intent intent,
+            int intersectionTile,
+            bool useReservation,
+            IntersectionCell blocking,
+            out bool completeIntersectionOnEntry)
+        {
+            completeIntersectionOnEntry = false;
+            IntersectionCell requested = GetIntentMovementMask(intent, useReservation);
+            if (!useReservation
+                || intent.Kind != IntentKind.Move
+                || IsStraightMovement(intent))
+            {
+                return requested;
+            }
+
+            IntersectionCell fullPath = IntersectionMicroGrid.MovementMask(
+                intent.MovementEntry,
+                intent.MovementExit);
+            bool yieldsToStraight = HasOpposingStraightThreat(
+                intersectionTile,
+                intent.MovementEntry,
+                intent.MovementExit);
+            if (yieldsToStraight || IntersectionMicroGrid.Conflicts(blocking, fullPath))
+            {
+                return requested;
+            }
+
+            completeIntersectionOnEntry = true;
+            return fullPath;
+        }
+
+        private static bool IsStraightMovement(Intent intent) =>
+            intent.MovementEntry == intent.MovementExit;
+
+        private bool HasOpposingStraightThreat(
+            int intersectionTile,
+            Dir turningEntry,
+            Dir turningExit)
+        {
+            // The opposite tile may also contain traffic moving away. Its direction queue
+            // is distinct, so only the queue entering this intersection can block the turn.
+            Dir opposingEntry = Opposite(turningEntry);
+            int threatIndex = intersectionTile * DirectionCount + (int)opposingEntry;
+            if (!_approachingStraightThreats[threatIndex]) return false;
+
+            IntersectionCell turningPath = IntersectionMicroGrid.MovementMask(
+                turningEntry,
+                turningExit);
+            IntersectionCell opposingStraightPath = IntersectionMicroGrid.MovementMask(
+                opposingEntry,
+                opposingEntry);
+            return IntersectionMicroGrid.Conflicts(turningPath, opposingStraightPath);
         }
 
         private void ExecuteIntent(Intent intent, ref StepResult result)
@@ -399,6 +725,13 @@ namespace CityFlow.Sim
                     _movedThisTick[intent.Node] = true;
                     _blockedTicks[intent.Node] = 0;
                     return;
+                case IntentKind.IntersectionAdvance:
+                    // Conflict is the reservation mask used while crossing from the
+                    // entry cell to the exit cell. It is not a persisted dwell stage.
+                    _intersectionStages[intent.Node] = IntersectionStage.Exit;
+                    _movedThisTick[intent.Node] = true;
+                    _blockedTicks[intent.Node] = 0;
+                    return;
                 case IntentKind.Move:
                     if (!intent.Force && !CanAcceptNormally(intent.ToQueue))
                     {
@@ -406,6 +739,19 @@ namespace CityFlow.Sim
                         return;
                     }
                     MoveHead(intent.FromQueue, intent.ToQueue);
+                    if (intent.ReservationTile != NoNode)
+                    {
+                        bool straightMovement = intent.MovementEntry == intent.MovementExit;
+                        _intersectionStages[intent.Node] = straightMovement
+                            || intent.CompleteIntersectionOnEntry
+                            ? IntersectionStage.Exit
+                            : IntersectionStage.Entry;
+                        _intersectionMovementExits[intent.Node] = intent.MovementExit;
+                    }
+                    else
+                    {
+                        _intersectionStages[intent.Node] = IntersectionStage.None;
+                    }
                     if (intent.Force) result.ValveActivations++;
                     return;
             }
@@ -469,7 +815,11 @@ namespace CityFlow.Sim
 
         private Intent NewIntent(IntentKind kind, int queue, int node, int tile, Dir entry, Dir exit) =>
             new Intent { Kind = kind, FromQueue = queue, ToQueue = NoNode, Node = node,
-                TileIndex = tile, Entry = entry, Exit = exit, RingIndex = NoNode };
+                TileIndex = tile, Entry = entry, Exit = exit, RingIndex = NoNode,
+                ReservationTile = NoNode, MovementEntry = entry, MovementExit = exit,
+                CurrentReservationMask = IntersectionCell.None,
+                ReservationMask = IntersectionCell.None,
+                CompleteIntersectionOnEntry = false };
 
         private void RecordArrival(int carId, Vector2Int tile)
         {
@@ -479,17 +829,32 @@ namespace CityFlow.Sim
         private bool UsesSharedBudget(int tile) =>
             _intersections[tile] && !_overpasses[tile] && !_roundabouts[tile];
 
-        private bool IsBetter(Intent candidate, Intent current)
+        private bool IsBetterForIntersection(
+            Intent candidate,
+            Intent current,
+            int intersectionTile,
+            bool useReservation)
         {
-            RoadAxis priority = _priorityAxes[candidate.TileIndex];
-            bool candidatePriority = priority != RoadAxis.None && Axis(candidate.Entry) == priority;
-            bool currentPriority = priority != RoadAxis.None && Axis(current.Entry) == priority;
+            bool candidateInside = candidate.Kind == IntentKind.IntersectionAdvance;
+            bool currentInside = current.Kind == IntentKind.IntersectionAdvance;
+            if (candidateInside != currentInside) return candidateInside;
+
+            Dir candidateEntry = useReservation ? candidate.MovementEntry : candidate.Entry;
+            Dir candidateExit = useReservation ? candidate.MovementExit : candidate.Exit;
+            Dir currentEntry = useReservation ? current.MovementEntry : current.Entry;
+            Dir currentExit = useReservation ? current.MovementExit : current.Exit;
+            bool candidateStraight = candidateEntry == candidateExit;
+            bool currentStraight = currentEntry == currentExit;
+            if (candidateStraight != currentStraight) return candidateStraight;
+            RoadAxis priority = _priorityAxes[intersectionTile];
+            bool candidatePriority = priority != RoadAxis.None && Axis(candidateEntry) == priority;
+            bool currentPriority = priority != RoadAxis.None && Axis(currentEntry) == priority;
             if (candidatePriority != currentPriority) return candidatePriority;
-            int candidateTurn = TurnRank(candidate.Entry, candidate.Exit);
-            int currentTurn = TurnRank(current.Entry, current.Exit);
+            int candidateTurn = TurnRank(candidateEntry, candidateExit);
+            int currentTurn = TurnRank(currentEntry, currentExit);
             return candidateTurn != currentTurn
                 ? candidateTurn < currentTurn
-                : candidate.Entry < current.Entry;
+                : candidateEntry < currentEntry;
         }
 
         private bool IsIntersectionExitBlocked(ICarRouteProvider routes, int carId, Vector2Int intersection, int tileIndex)
@@ -497,8 +862,12 @@ namespace CityFlow.Sim
             if (!_intersections[tileIndex] || _overpasses[tileIndex] || _roundabouts[tileIndex]
                 || routes.IsDestination(carId, intersection)) return false;
             return !routes.TryGetNextTile(carId, intersection, out Vector2Int exit, out Dir exitDir)
-                || !TryQueueIndex(exit, exitDir, out int exitQueue) || !CanAcceptNormally(exitQueue);
+                || !TryQueueIndex(exit, exitDir, out int exitQueue)
+                || !HasClearIntersectionExit(exitQueue);
         }
+
+        private bool HasClearIntersectionExit(int queue) =>
+            _queueActive[queue] && _counts[queue] == 0;
 
         private static int TurnRank(Dir entry, Dir exit)
         {
@@ -507,22 +876,6 @@ namespace CityFlow.Sim
             if ((int)exit == ((int)entry + 3) % DirectionCount) return 2;
             return 3;
         }
-
-        // 교차로 동시 통과 판정.
-        // 한 타일의 인텐트는 진입 방향이 서로 다르므로(큐가 방향별로 하나), 진입축이 같다는 건
-        // 두 차가 마주보고 들어온다는 뜻이다. 거기서 이탈축까지 같고 합류(같은 ToQueue)만
-        // 아니면 실제로 통과 가능한 조합은 셋뿐이다:
-        //   마주보는 직진(E→E, W→W) · 동시 좌회전(E→N, W→S) · 동시 우회전(E→S, W→N)
-        // 셋 다 경로가 교차하지 않는다. 단 **동시 U턴**(E→W, W→E)은 이탈축도 같고 ToQueue도
-        // 달라 위 조건을 통과하지만 서로를 정면으로 가로지르므로 명시적으로 배제한다.
-        private static bool Compatible(Intent winner, Intent other) =>
-            winner.Kind == IntentKind.Move
-            && other.Kind == IntentKind.Move
-            && winner.ToQueue != other.ToQueue
-            && Axis(winner.Entry) == Axis(other.Entry)
-            && Axis(winner.Exit) == Axis(other.Exit)
-            && winner.Exit != Opposite(winner.Entry)
-            && other.Exit != Opposite(other.Entry);
 
         private static RoadAxis Axis(Dir direction) =>
             direction == Dir.E || direction == Dir.W ? RoadAxis.Horizontal : RoadAxis.Vertical;
@@ -555,6 +908,7 @@ namespace CityFlow.Sim
             _cars[node] = NoNode;
             _movedThisTick[node] = false;
             _blockedTicks[node] = 0;
+            _intersectionStages[node] = IntersectionStage.None;
             _nextNodes[node] = _freeHead;
             _freeHead = node;
         }

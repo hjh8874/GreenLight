@@ -15,6 +15,7 @@ namespace CityFlow.Sim
         public int QueueSlot;
         public int HomeSlot;
         public int WorkSlot;
+        public float IntersectionProgress01 { get; internal set; }
     }
 
     internal sealed class CarSim : ICarRouteProvider
@@ -31,6 +32,7 @@ namespace CityFlow.Sim
         private readonly bool[] _enqueued;
         private readonly int[] _tileIndices;
         private readonly int[] _queueSlots;
+        private readonly float[] _intersectionProgress;
         private RoadQueueNetwork _net;
         private float _lastHour;
         private bool _hasLastHour;
@@ -55,7 +57,9 @@ namespace CityFlow.Sim
             _enqueued = new bool[maxCars];
             _tileIndices = new int[maxCars];
             _queueSlots = new int[maxCars];
+            _intersectionProgress = new float[maxCars];
             Array.Fill(_queueSlots, -1);
+            Array.Fill(_intersectionProgress, -1f);
         }
 
         public void Rebuild(DemandMap demands, RoutePlanner planner, RoadQueueNetwork net)
@@ -111,6 +115,7 @@ namespace CityFlow.Sim
             Array.Clear(_enqueued, 0, _enqueued.Length);
             Array.Clear(_tileIndices, 0, _tileIndices.Length);
             Array.Fill(_queueSlots, -1);
+            Array.Fill(_intersectionProgress, -1f);
             _needsSnap = true;
         }
 
@@ -148,6 +153,7 @@ namespace CityFlow.Sim
                 }
                 Array.Clear(_enqueued, 0, _enqueued.Length);
                 Array.Fill(_queueSlots, -1);
+                Array.Fill(_intersectionProgress, -1f);
                 _needsSnap = false;
             }
             _lastHour = gameHour;
@@ -165,6 +171,7 @@ namespace CityFlow.Sim
                 _scheduler.NotifyArrived(car);
                 _enqueued[arrival.CarId] = false;
                 _queueSlots[arrival.CarId] = -1;
+                _intersectionProgress[arrival.CarId] = -1f;
                 if (paidArrival)
                     events.QueueArrival(new ArrivalEvent(car.Work, _cfg.CoinPerTrip));
             }
@@ -185,7 +192,8 @@ namespace CityFlow.Sim
                 TileIndex = _tileIndices[index],
                 QueueSlot = _queueSlots[index],
                 HomeSlot = car.HomeSlot,
-                WorkSlot = car.WorkSlot
+                WorkSlot = car.WorkSlot,
+                IntersectionProgress01 = _intersectionProgress[index]
             };
         }
 
@@ -231,6 +239,7 @@ namespace CityFlow.Sim
                 _enqueued[i] = true;
                 _tileIndices[i] = start;
                 _queueSlots[i] = 0;
+                _intersectionProgress[i] = -1f;
             }
         }
 
@@ -239,15 +248,22 @@ namespace CityFlow.Sim
             for (int i = 0; i < CarCount; i++)
             {
                 CommuteCar car = _scheduler.Cars[i];
-                if (!_enqueued[i] || !net.TryLocateCar(i, out Vector2Int tile, out _, out int slot))
+                if (!_enqueued[i] || !net.TryLocateCar(
+                        i,
+                        out Vector2Int tile,
+                        out _,
+                        out int slot,
+                        out float intersectionProgress))
                 {
                     _queueSlots[i] = -1;
+                    _intersectionProgress[i] = -1f;
                     _tileIndices[i] = car.State == CarState.ParkedWork
                         ? _outboundRoutes[car.RouteIndex].Count - 1
                         : 0;
                     continue;
                 }
                 _queueSlots[i] = slot;
+                _intersectionProgress[i] = intersectionProgress;
                 List<Vector2Int> route = car.State == CarState.Inbound
                     ? _returnRoutes[car.RouteIndex]
                     : _outboundRoutes[car.RouteIndex];
