@@ -83,5 +83,18 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0.75f, IntersectionMicroGrid.Progress01(IntersectionStage.Exit));
             Assert.AreEqual(-1f, IntersectionMicroGrid.Progress01(IntersectionStage.None));
         }
+
+        [Test]
+        public void ExitOccupancy_CoversMovementPathUntilVehicleLeaves()
+        {
+            IntersectionCell occupancy = IntersectionMicroGrid.OccupancyMask(
+                Dir.E,
+                Dir.N,
+                IntersectionStage.Exit);
+
+            Assert.AreEqual(
+                IntersectionCell.SouthWest | IntersectionCell.NorthEast,
+                occupancy);
+        }
     }
 }

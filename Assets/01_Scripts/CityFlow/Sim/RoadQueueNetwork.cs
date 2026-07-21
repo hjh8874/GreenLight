@@ -61,6 +61,7 @@ namespace CityFlow.Sim
             public Dir MovementExit;
             public IntersectionCell CurrentReservationMask;
             public IntersectionCell ReservationMask;
+            public bool CompleteIntersectionOnEntry;
         }
 
         private readonly int _width;
@@ -85,6 +86,8 @@ namespace CityFlow.Sim
         private readonly Intent[] _intents;
         private readonly bool[] _intentHandled;
         private readonly IntersectionCell[] _intersectionOccupancy;
+        private readonly IntersectionCell[] _intersectionRoundReservations;
+        private readonly bool[] _approachingStraightThreats;
         private readonly IntersectionStage[] _intersectionStages;
         private readonly Dir[] _intersectionMovementExits;
         private readonly ArrivalRecord[] _arrivals;
@@ -124,6 +127,8 @@ namespace CityFlow.Sim
             _intents = new Intent[queueCount];
             _intentHandled = new bool[queueCount];
             _intersectionOccupancy = new IntersectionCell[tileCount];
+            _intersectionRoundReservations = new IntersectionCell[tileCount];
+            _approachingStraightThreats = new bool[queueCount];
             _intersectionStages = new IntersectionStage[maxCars];
             _intersectionMovementExits = new Dir[maxCars];
             _arrivals = new ArrivalRecord[maxCars];
@@ -331,6 +336,7 @@ namespace CityFlow.Sim
 
         private int CollectIntents(ICarRouteProvider routes, ISignalGate signalGate, int tick)
         {
+            Array.Clear(_approachingStraightThreats, 0, _approachingStraightThreats.Length);
             int count = 0;
             for (int queue = 0; queue < _heads.Length; queue++)
             {
@@ -347,24 +353,24 @@ namespace CityFlow.Sim
                         || intersectionStage == IntersectionStage.Conflict))
                 {
                     IntersectionStage nextStage = IntersectionMicroGrid.NextStage(intersectionStage);
-                    Dir movementExit = _intersectionMovementExits[node];
+                    Dir stageMovementExit = _intersectionMovementExits[node];
                     Intent advance = NewIntent(
                         IntentKind.IntersectionAdvance,
                         queue,
                         node,
                         tileIndex,
                         entry,
-                        movementExit);
+                        stageMovementExit);
                     advance.ReservationTile = tileIndex;
                     advance.MovementEntry = entry;
-                    advance.MovementExit = movementExit;
+                    advance.MovementExit = stageMovementExit;
                     advance.CurrentReservationMask = IntersectionMicroGrid.StageMask(
                         entry,
-                        movementExit,
+                        stageMovementExit,
                         intersectionStage);
                     advance.ReservationMask = IntersectionMicroGrid.StageMask(
                         entry,
-                        movementExit,
+                        stageMovementExit,
                         nextStage);
                     _intents[count++] = advance;
                     continue;
@@ -408,32 +414,52 @@ namespace CityFlow.Sim
                 }
 
                 int nextTileIndex = TileIndex(next);
-                bool blocked = !CanAcceptNormally(nextQueue)
+                bool nextIsSharedIntersection = UsesSharedBudget(nextTileIndex);
+                Dir movementExit = exit;
+                bool hasMovementBeyondIntersection = false;
+                if (nextIsSharedIntersection
+                    && !routes.IsDestination(carId, next)
+                    && routes.TryGetNextTile(carId, next, out _, out Dir plannedExit))
+                {
+                    movementExit = plannedExit;
+                    hasMovementBeyondIntersection = true;
+                }
+                if (hasMovementBeyondIntersection && exit == movementExit)
+                {
+                    // Track only the queue head moving into this intersection.
+                    _approachingStraightThreats[
+                        nextTileIndex * DirectionCount + (int)exit] = true;
+                }
+
+                bool leavingIntersection = UsesSharedBudget(tileIndex)
+                    && intersectionStage == IntersectionStage.Exit;
+                bool blocked = (leavingIntersection
+                        ? !HasClearIntersectionExit(nextQueue)
+                        : !CanAcceptNormally(nextQueue))
                     || IsIntersectionExitBlocked(routes, carId, next, nextTileIndex);
                 Intent move = NewIntent(IntentKind.Move, queue, node, tileIndex, entry, exit);
                 move.ToQueue = nextQueue;
 
-                if (UsesSharedBudget(nextTileIndex))
+                if (UsesSharedBudget(tileIndex)
+                    && intersectionStage == IntersectionStage.Exit)
                 {
-                    Dir movementExit = exit;
-                    if (!routes.IsDestination(carId, next)
-                        && routes.TryGetNextTile(carId, next, out _, out Dir plannedExit))
-                    {
-                        movementExit = plannedExit;
-                    }
+                    move.MovementEntry = entry;
+                    move.MovementExit = _intersectionMovementExits[node];
+                    move.CurrentReservationMask = IntersectionMicroGrid.OccupancyMask(
+                        entry,
+                        move.MovementExit,
+                        IntersectionStage.Exit);
+                }
 
-                    IntersectionCell reservationMask = IntersectionMicroGrid.StageMask(
-                        exit,
-                        movementExit,
-                        IntersectionStage.Entry);
-
-                    if (IntersectionMicroGrid.Conflicts(
-                            _intersectionOccupancy[nextTileIndex],
-                            reservationMask))
-                    {
-                        _blockedTicks[node]++;
-                        continue;
-                    }
+                if (nextIsSharedIntersection)
+                {
+                    bool straightMovement = exit == movementExit;
+                    IntersectionCell reservationMask = straightMovement
+                        ? IntersectionMicroGrid.MovementMask(exit, movementExit)
+                        : IntersectionMicroGrid.StageMask(
+                            exit,
+                            movementExit,
+                            IntersectionStage.Entry);
 
                     move.ReservationTile = nextTileIndex;
                     move.MovementEntry = exit;
@@ -471,7 +497,7 @@ namespace CityFlow.Sim
                         IntersectionStage stage = _intersectionStages[node];
                         if (stage != IntersectionStage.None)
                         {
-                            mask = IntersectionMicroGrid.StageMask(
+                            mask = IntersectionMicroGrid.OccupancyMask(
                                 (Dir)direction,
                                 _intersectionMovementExits[node],
                                 stage);
@@ -496,20 +522,24 @@ namespace CityFlow.Sim
         private void ResolveIntents(int intentCount, ref StepResult result)
         {
             Array.Clear(_intentHandled, 0, intentCount);
+            Array.Clear(
+                _intersectionRoundReservations,
+                0,
+                _intersectionRoundReservations.Length);
 
-            // Reserve destination intersections before ordinary movement. Existing occupants
-            // are included in the starting mask, so conflicts remain at the approach.
-            for (int tile = 0; tile < _intersections.Length; tile++)
-            {
-                if (UsesSharedBudget(tile))
-                    ResolveIntersectionGroup(intentCount, tile, true, ref result);
-            }
-
-            // Cars already inside an intersection clear through the same micro-cell rules.
+            // Resolve vehicles already inside first. Entry is a valid waiting state for turns,
+            // but new arrivals must not repeatedly take the cells needed to finish that turn.
             for (int tile = 0; tile < _intersections.Length; tile++)
             {
                 if (UsesSharedBudget(tile))
                     ResolveIntersectionGroup(intentCount, tile, false, ref result);
+            }
+
+            // Admit new vehicles after internal transitions have reserved this round's cells.
+            for (int tile = 0; tile < _intersections.Length; tile++)
+            {
+                if (UsesSharedBudget(tile))
+                    ResolveIntersectionGroup(intentCount, tile, true, ref result);
             }
 
             for (int i = 0; i < intentCount; i++)
@@ -528,7 +558,8 @@ namespace CityFlow.Sim
         {
             IntersectionCell granted = useReservation
                 ? _intersectionOccupancy[intersectionTile]
-                : IntersectionCell.None;
+                    | _intersectionRoundReservations[intersectionTile]
+                : _intersectionOccupancy[intersectionTile];
 
             while (true)
             {
@@ -538,8 +569,23 @@ namespace CityFlow.Sim
                     if (_intentHandled[i] || !BelongsToIntersectionGroup(
                             _intents[i], intersectionTile, useReservation)) continue;
 
-                    IntersectionCell requested = GetIntentMovementMask(_intents[i], useReservation);
                     IntersectionCell blocking = granted & ~_intents[i].CurrentReservationMask;
+                    IntersectionCell requested = GetRequestedMovementMask(
+                        _intents[i],
+                        intersectionTile,
+                        useReservation,
+                        blocking,
+                        out _);
+                    if (!useReservation
+                        && _intents[i].Kind == IntentKind.IntersectionAdvance
+                        && !IsStraightMovement(_intents[i])
+                        && HasOpposingStraightThreat(
+                            intersectionTile,
+                            _intents[i].MovementEntry,
+                            _intents[i].MovementExit))
+                    {
+                        continue;
+                    }
                     if (IntersectionMicroGrid.Conflicts(blocking, requested)) continue;
                     if (winner == NoNode || IsBetterForIntersection(
                             _intents[i], _intents[winner], intersectionTile, useReservation))
@@ -550,7 +596,22 @@ namespace CityFlow.Sim
 
                 if (winner == NoNode) break;
                 _intentHandled[winner] = true;
-                granted |= GetIntentMovementMask(_intents[winner], useReservation);
+                Intent winnerIntent = _intents[winner];
+                IntersectionCell winnerBlocking =
+                    granted & ~winnerIntent.CurrentReservationMask;
+                IntersectionCell winnerMask = GetRequestedMovementMask(
+                    winnerIntent,
+                    intersectionTile,
+                    useReservation,
+                    winnerBlocking,
+                    out bool completeIntersectionOnEntry);
+                winnerIntent.CompleteIntersectionOnEntry = completeIntersectionOnEntry;
+                _intents[winner] = winnerIntent;
+                granted |= winnerMask;
+                if (useReservation || _intents[winner].Kind == IntentKind.IntersectionAdvance)
+                {
+                    _intersectionRoundReservations[intersectionTile] |= winnerMask;
+                }
                 ExecuteIntent(_intents[winner], ref result);
             }
 
@@ -567,16 +628,81 @@ namespace CityFlow.Sim
         private static bool BelongsToIntersectionGroup(
             Intent intent,
             int intersectionTile,
-            bool useReservation) =>
-            useReservation
-                ? intent.ReservationTile == intersectionTile
-                : intent.ReservationTile == NoNode && intent.TileIndex == intersectionTile;
+            bool useReservation)
+        {
+            if (useReservation)
+            {
+                return intent.Kind != IntentKind.IntersectionAdvance
+                    && intent.ReservationTile == intersectionTile;
+            }
+
+            return intent.TileIndex == intersectionTile
+                && (intent.Kind == IntentKind.IntersectionAdvance
+                    || intent.ReservationTile == NoNode);
+        }
 
         private static IntersectionCell GetIntentMovementMask(Intent intent, bool useReservation)
         {
             if (useReservation) return intent.ReservationMask;
-            if (intent.Kind != IntentKind.Move) return IntersectionCell.All;
-            return IntersectionMicroGrid.MovementMask(intent.MovementEntry, intent.MovementExit);
+            if (intent.Kind == IntentKind.IntersectionAdvance) return intent.ReservationMask;
+            if (intent.Kind == IntentKind.Move)
+                return IntersectionMicroGrid.MovementMask(intent.MovementEntry, intent.MovementExit);
+            return IntersectionCell.All;
+        }
+
+        private IntersectionCell GetRequestedMovementMask(
+            Intent intent,
+            int intersectionTile,
+            bool useReservation,
+            IntersectionCell blocking,
+            out bool completeIntersectionOnEntry)
+        {
+            completeIntersectionOnEntry = false;
+            IntersectionCell requested = GetIntentMovementMask(intent, useReservation);
+            if (!useReservation
+                || intent.Kind != IntentKind.Move
+                || IsStraightMovement(intent))
+            {
+                return requested;
+            }
+
+            IntersectionCell fullPath = IntersectionMicroGrid.MovementMask(
+                intent.MovementEntry,
+                intent.MovementExit);
+            bool yieldsToStraight = HasOpposingStraightThreat(
+                intersectionTile,
+                intent.MovementEntry,
+                intent.MovementExit);
+            if (yieldsToStraight || IntersectionMicroGrid.Conflicts(blocking, fullPath))
+            {
+                return requested;
+            }
+
+            completeIntersectionOnEntry = true;
+            return fullPath;
+        }
+
+        private static bool IsStraightMovement(Intent intent) =>
+            intent.MovementEntry == intent.MovementExit;
+
+        private bool HasOpposingStraightThreat(
+            int intersectionTile,
+            Dir turningEntry,
+            Dir turningExit)
+        {
+            // The opposite tile may also contain traffic moving away. Its direction queue
+            // is distinct, so only the queue entering this intersection can block the turn.
+            Dir opposingEntry = Opposite(turningEntry);
+            int threatIndex = intersectionTile * DirectionCount + (int)opposingEntry;
+            if (!_approachingStraightThreats[threatIndex]) return false;
+
+            IntersectionCell turningPath = IntersectionMicroGrid.MovementMask(
+                turningEntry,
+                turningExit);
+            IntersectionCell opposingStraightPath = IntersectionMicroGrid.MovementMask(
+                opposingEntry,
+                opposingEntry);
+            return IntersectionMicroGrid.Conflicts(turningPath, opposingStraightPath);
         }
 
         private void ExecuteIntent(Intent intent, ref StepResult result)
@@ -615,7 +741,11 @@ namespace CityFlow.Sim
                     MoveHead(intent.FromQueue, intent.ToQueue);
                     if (intent.ReservationTile != NoNode)
                     {
-                        _intersectionStages[intent.Node] = IntersectionStage.Entry;
+                        bool straightMovement = intent.MovementEntry == intent.MovementExit;
+                        _intersectionStages[intent.Node] = straightMovement
+                            || intent.CompleteIntersectionOnEntry
+                            ? IntersectionStage.Exit
+                            : IntersectionStage.Entry;
                         _intersectionMovementExits[intent.Node] = intent.MovementExit;
                     }
                     else
@@ -688,7 +818,8 @@ namespace CityFlow.Sim
                 TileIndex = tile, Entry = entry, Exit = exit, RingIndex = NoNode,
                 ReservationTile = NoNode, MovementEntry = entry, MovementExit = exit,
                 CurrentReservationMask = IntersectionCell.None,
-                ReservationMask = IntersectionCell.None };
+                ReservationMask = IntersectionCell.None,
+                CompleteIntersectionOnEntry = false };
 
         private void RecordArrival(int carId, Vector2Int tile)
         {
@@ -712,6 +843,9 @@ namespace CityFlow.Sim
             Dir candidateExit = useReservation ? candidate.MovementExit : candidate.Exit;
             Dir currentEntry = useReservation ? current.MovementEntry : current.Entry;
             Dir currentExit = useReservation ? current.MovementExit : current.Exit;
+            bool candidateStraight = candidateEntry == candidateExit;
+            bool currentStraight = currentEntry == currentExit;
+            if (candidateStraight != currentStraight) return candidateStraight;
             RoadAxis priority = _priorityAxes[intersectionTile];
             bool candidatePriority = priority != RoadAxis.None && Axis(candidateEntry) == priority;
             bool currentPriority = priority != RoadAxis.None && Axis(currentEntry) == priority;
@@ -728,8 +862,12 @@ namespace CityFlow.Sim
             if (!_intersections[tileIndex] || _overpasses[tileIndex] || _roundabouts[tileIndex]
                 || routes.IsDestination(carId, intersection)) return false;
             return !routes.TryGetNextTile(carId, intersection, out Vector2Int exit, out Dir exitDir)
-                || !TryQueueIndex(exit, exitDir, out int exitQueue) || !CanAcceptNormally(exitQueue);
+                || !TryQueueIndex(exit, exitDir, out int exitQueue)
+                || !HasClearIntersectionExit(exitQueue);
         }
+
+        private bool HasClearIntersectionExit(int queue) =>
+            _queueActive[queue] && _counts[queue] == 0;
 
         private static int TurnRank(Dir entry, Dir exit)
         {

@@ -318,7 +318,32 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void IntersectionEntry_ConflictingStraightPaths_YieldInsideByStage()
+        public void Signal_TurnAlreadyInside_ClearsAfterSignalCloses()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            Vector2Int west = V(0, 1);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, new FakeDeviceState());
+            var routes = new FakeRouteProvider();
+            routes.Add(90, west, center, V(1, 2));
+            var signal = new FakeSignalGate();
+            signal.AddWindow(center, start: 0, end: 0);
+            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 90));
+
+            q.Step(routes, signal, tick: 0);
+            Assert.IsTrue(q.TryLocateCar(90, out _, out _, out _, out float progress));
+            Assert.AreEqual(0.75f, progress, 1e-4f,
+                "A clear turn should cross without an artificial entry dwell.");
+
+            q.Step(routes, signal, tick: 1);
+            Assert.IsTrue(q.TryLocateCar(90, out _, out _, out _, out progress));
+            Assert.AreEqual(-1f, progress, 1e-4f, "교차로 내부 차량은 적색이어도 빠져나가야 한다");
+            Assert.AreEqual(0, signal.ClosedAttempts, "내부 진행은 신호 게이트를 다시 검사하지 않아야 한다");
+        }
+
+        [Test]
+        public void IntersectionEntry_ConflictingStraightPaths_YieldBeforeEntering()
         {
             CityGrid grid = CrossGrid();
             Vector2Int center = V(1, 1);
@@ -335,18 +360,18 @@ namespace CityFlow.Sim.Tests
             q.Step(routes);
 
             Assert.AreEqual(43, q.CarAtHead(center, Dir.E));
-            Assert.AreEqual(44, q.CarAtHead(center, Dir.S));
+            Assert.AreEqual(44, q.CarAtHead(north, Dir.S));
             Assert.IsTrue(q.TryLocateCar(43, out _, out _, out _, out float eastProgress));
             Assert.IsTrue(q.TryLocateCar(44, out _, out _, out _, out float southProgress));
-            Assert.AreEqual(0.25f, eastProgress, 1e-4f);
-            Assert.AreEqual(0.25f, southProgress, 1e-4f);
+            Assert.AreEqual(0.75f, eastProgress, 1e-4f);
+            Assert.AreEqual(-1f, southProgress, 1e-4f);
 
             q.Step(routes);
 
             Assert.IsTrue(q.TryLocateCar(43, out _, out _, out _, out eastProgress));
             Assert.IsTrue(q.TryLocateCar(44, out _, out _, out _, out southProgress));
-            Assert.AreEqual(0.75f, eastProgress, 1e-4f);
-            Assert.AreEqual(0.25f, southProgress, 1e-4f);
+            Assert.AreEqual(-1f, eastProgress, 1e-4f);
+            Assert.AreEqual(0.75f, southProgress, 1e-4f);
         }
 
         [Test]
@@ -368,9 +393,6 @@ namespace CityFlow.Sim.Tests
 
             Assert.AreEqual(45, q.CarAtHead(center, Dir.E));
             Assert.AreEqual(46, q.CarAtHead(center, Dir.W));
-
-            q.Step(routes);
-
             Assert.IsTrue(q.TryLocateCar(45, out _, out _, out _, out float eastProgress));
             Assert.IsTrue(q.TryLocateCar(46, out _, out _, out _, out float westProgress));
             Assert.AreEqual(0.75f, eastProgress, 1e-4f);
@@ -392,10 +414,6 @@ namespace CityFlow.Sim.Tests
 
             q.Step(routes);
             Assert.AreEqual(50, q.CarAtHead(center, Dir.E));
-            Assert.IsTrue(q.TryLocateCar(50, out _, out _, out _, out float entryProgress));
-            Assert.AreEqual(0.25f, entryProgress, 1e-4f);
-
-            q.Step(routes);
             Assert.IsTrue(q.TryLocateCar(50, out _, out _, out _, out float exitProgress));
             Assert.AreEqual(0.75f, exitProgress, 1e-4f);
 
@@ -418,7 +436,7 @@ namespace CityFlow.Sim.Tests
 
             q.Step(routes);
             Assert.IsTrue(q.TryLocateCar(49, out _, out _, out _, out float progress));
-            Assert.AreEqual(0.25f, progress, 1e-4f);
+            Assert.AreEqual(0.75f, progress, 1e-4f);
 
             Assert.IsTrue(grid.Remove(V(1, 2)));
             Assert.IsTrue(grid.Remove(V(1, 0)));

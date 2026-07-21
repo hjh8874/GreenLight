@@ -37,6 +37,14 @@ namespace CityFlow.Sim
             };
         }
 
+        public static IntersectionCell OccupancyMask(
+            Dir entry,
+            Dir exit,
+            IntersectionStage stage) =>
+            stage == IntersectionStage.Exit
+                ? MovementMask(entry, exit)
+                : StageMask(entry, exit, stage);
+
         public static IntersectionStage NextStage(IntersectionStage stage) =>
             stage switch
             {

@@ -66,6 +66,7 @@ namespace CityFlow.View
         // 0.12로 낮춰 계단을 1.27배로 완화 — 레인 오프셋(0.18)이 있어 교차 차량 분리는 유지된다.
         // 완전 해소는 틱 위상 보간 대신 등속 리쉬로 가야 함(설계 과제, 감사 2026-07-18 Rank 1).
         [SerializeField, Range(0f, 0.45f)] private float intersectionQueueInset = 0.12f;
+        [SerializeField, Range(0f, 0.35f)] private float intersectionVisualLagRatio = 0.15f;
         [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 

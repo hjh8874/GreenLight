@@ -280,6 +280,28 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void Step_IntersectionExitOccupied_DoesNotEnterWithSpareQueueCapacity()
+        {
+            SimConfig cfg = Cfg();
+            cfg.QueueCapacityPerTile = 4;
+            var q = new RoadQueueNetwork(5, 3, cfg);
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid, new FakeDeviceState());
+
+            var routes = new FakeRouteProvider();
+            routes.AddRoute(20, true, V(1, 1), V(2, 1), V(3, 1));
+            routes.AddRoute(21, false, V(3, 1));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 20));
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.E, 21));
+
+            q.Step(routes);
+
+            Assert.AreEqual(20, q.CarAtHead(V(1, 1), Dir.E));
+            Assert.AreEqual(0, q.QueueCount(V(2, 1), Dir.E),
+                "A vehicle must not enter unless the far-side lane can fully receive it.");
+        }
+
+        [Test]
         public void Step_FullCycle_ValveActivatesOnConfiguredTick()
         {
             SimConfig cfg = Cfg();
@@ -377,7 +399,170 @@ namespace CityFlow.Sim.Tests
                 "마주보는 직진은 충돌하지 않으므로 같은 틱에 함께 빠져나가야 한다");
         }
 
+        [Test]
+        public void Step_TurnWaitsInsideUntilOpposingStraightQueueClears()
+        {
+            SimConfig cfg = Cfg();
+            var q = new RoadQueueNetwork(5, 3, cfg);
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid, new FakeDeviceState());
+
+            var routes = new FakeRouteProvider();
+            routes.AddRoute(0, true, V(1, 1), V(2, 1), V(2, 2));
+            routes.AddRoute(1, true, V(3, 1), V(2, 1), V(1, 1));
+            routes.AddRoute(2, true, V(3, 1), V(2, 1), V(1, 1));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.W, 1));
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.W, 2));
+
+            q.Step(routes);
+
+            Assert.AreEqual(0, q.CarAtHead(V(2, 1), Dir.E), "회전 차량은 진입 셀까지 들어와야 한다");
+            Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out float turnProgress));
+            Assert.AreEqual(0.25f, turnProgress, 1e-4f);
+            Assert.AreEqual(1, q.CarAtHead(V(2, 1), Dir.W), "첫 직진 차량이 먼저 통과해야 한다");
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out turnProgress));
+            Assert.AreEqual(0.25f, turnProgress, 1e-4f, "대기 직진 차량이 남으면 회전을 보류해야 한다");
+            Assert.AreEqual(2, q.CarAtHead(V(3, 1), Dir.W),
+                "The next straight must wait until the previous car visibly clears the intersection.");
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out turnProgress));
+            Assert.AreEqual(0.25f, turnProgress, 1e-4f,
+                "A queued opposing straight remains a threat while its exit is occupied.");
+
+            q.Step(routes);
+            Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out turnProgress));
+            Assert.AreEqual(0.25f, turnProgress, 1e-4f);
+            Assert.AreEqual(2, q.CarAtHead(V(2, 1), Dir.W));
+
+            q.Step(routes);
+            Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out turnProgress));
+            Assert.AreEqual(0.25f, turnProgress, 1e-4f,
+                "The turn waits through the straight vehicle's exit tick.");
+
+            q.Step(routes);
+            Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out turnProgress));
+            Assert.AreEqual(0.75f, turnProgress, 1e-4f,
+                "The turn proceeds after the opposing approach queue fully clears.");
+        }
+
         // 교차 축은 여전히 순번을 지켜야 한다 — 위 변경이 모든 이동을 통과시키면 안 된다.
+        [Test]
+        public void Step_OpposingStraightWaitingForExit_BlocksTurn()
+        {
+            SimConfig cfg = Cfg();
+            var q = new RoadQueueNetwork(5, 3, cfg);
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid, new FakeDeviceState());
+
+            var routes = new FakeRouteProvider();
+            routes.AddRoute(40, true, V(1, 1), V(2, 1), V(2, 2));
+            routes.AddRoute(41, true, V(3, 1), V(2, 1), V(1, 1));
+            routes.AddRoute(42, false, V(1, 1));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 40));
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.W, 41));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.W, 42));
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(40, out _, out _, out _, out float turnProgress));
+            Assert.AreEqual(0.25f, turnProgress, 1e-4f);
+            Assert.AreEqual(41, q.CarAtHead(V(3, 1), Dir.W),
+                "A waiting oncoming straight must retain priority pressure.");
+        }
+
+        [Test]
+        public void Step_VehicleMovingAwayOnOppositeTile_DoesNotBlockTurn()
+        {
+            SimConfig cfg = Cfg();
+            var q = new RoadQueueNetwork(5, 3, cfg);
+            CityGrid grid = BuildCrossIntersection();
+            Assert.IsTrue(grid.Place(V(4, 1), TileType.Road));
+            q.RebuildTopology(grid, new FakeDeviceState());
+
+            var routes = new FakeRouteProvider();
+            routes.AddRoute(50, true, V(1, 1), V(2, 1), V(2, 2));
+            routes.AddRoute(51, true, V(3, 1), V(4, 1));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 50));
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.E, 51));
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(50, out _, out _, out _, out float turnProgress));
+            Assert.AreEqual(0.75f, turnProgress, 1e-4f,
+                "A vehicle moving away from the intersection must not create a threat.");
+        }
+
+        [Test]
+        public void Step_TurnInside_IsNotStarvedByNewTurningArrival()
+        {
+            SimConfig cfg = Cfg();
+            var q = new RoadQueueNetwork(5, 3, cfg);
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid, new FakeDeviceState());
+
+            var routes = new FakeRouteProvider();
+            routes.AddRoute(10, true, V(1, 1), V(2, 1), V(2, 2));
+            routes.AddRoute(11, true, V(3, 1), V(2, 1), V(2, 0));
+            routes.AddRoute(12, true, V(3, 1), V(2, 1), V(1, 1));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 10));
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.W, 12));
+
+            q.Step(routes);
+            Assert.IsTrue(q.TryLocateCar(10, out _, out _, out _, out float firstProgress));
+            Assert.AreEqual(0.25f, firstProgress, 1e-4f);
+
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.W, 11));
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(10, out _, out _, out _, out firstProgress));
+            Assert.AreEqual(0.25f, firstProgress, 1e-4f,
+                "The turn must keep waiting during the straight vehicle's exit tick.");
+            Assert.IsTrue(q.TryLocateCar(
+                11,
+                out Vector2Int waitingTile,
+                out _,
+                out _,
+                out float waitingProgress));
+            Assert.AreEqual(V(3, 1), waitingTile);
+            Assert.AreEqual(-1f, waitingProgress, 1e-4f);
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(10, out _, out _, out _, out firstProgress));
+            Assert.AreEqual(0.75f, firstProgress, 1e-4f,
+                "The inside turn proceeds after the conflicting vehicle fully clears.");
+        }
+
+        [Test]
+        public void Step_IntersectionPath_IsNotReusedDuringVehicleExitTick()
+        {
+            SimConfig cfg = Cfg();
+            var q = new RoadQueueNetwork(5, 3, cfg);
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid, new FakeDeviceState());
+
+            var routes = new FakeRouteProvider();
+            routes.AddRoute(30, true, V(1, 1), V(2, 1), V(3, 1), V(4, 1));
+            routes.AddRoute(31, true, V(1, 1), V(2, 1), V(3, 1), V(4, 1));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 30));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 31));
+
+            q.Step(routes);
+            Assert.AreEqual(30, q.CarAtHead(V(2, 1), Dir.E));
+
+            q.Step(routes);
+
+            Assert.AreEqual(30, q.CarAtHead(V(3, 1), Dir.E));
+            Assert.AreEqual(31, q.CarAtHead(V(1, 1), Dir.E));
+            Assert.AreEqual(0, q.QueueCount(V(2, 1), Dir.E));
+        }
+
         [Test]
         public void Step_CrossingAxes_OnlyOnePasses()
         {
