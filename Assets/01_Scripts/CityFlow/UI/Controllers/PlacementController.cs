@@ -126,6 +126,12 @@ namespace CityFlow.UI
         {
             _isBuildingMode = isOn;
             if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(isOn);
+            BuildModeCursorFeedback.SetBuilding(this, isOn);
+        }
+
+        private void OnDisable()
+        {
+            BuildModeCursorFeedback.SetBuilding(this, false);
         }
 
         private long GetTileCost(TileType type)

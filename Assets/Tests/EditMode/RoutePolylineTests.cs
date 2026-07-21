@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using CityFlow.ViewKit;
@@ -10,10 +11,10 @@ namespace CityFlow.Sim.Tests
         static BakeInput Straight3(Vector3? end = null) => new BakeInput
         {
             Tiles = new List<Vector2Int> { new(0, 0), new(1, 0), new(2, 0) },
-            TileSize = 1f, LaneOffset = 0.18f, CornerRadiusFraction = 0.75f,
-            OrbitRadius = 0.9f,                              // 풋프린트 차도 중앙(QA F — 뷰 기본값과 일치)
+            TileSize = 1f, LaneOffset = 0.26f, CornerRadiusFraction = 0.75f,
+            OrbitRadius = 0.775f,                            // 풋프린트 차도 중앙(QA F — 뷰 기본값과 일치)
             EntryExitOffsetRad = 45f * Mathf.Deg2Rad,       // α — 뷰 기본값(QA G)
-            TransitionLength = 0.5f,                         // 전이 창(뷰 기본값; 내부 하한 0.66으로 클램프)
+            TransitionLength = 0.66f,                        // 전이 창(뷰 기본값·내부 하한)
             Z = 0f, IsRoundabout = _ => false,
             EndAnchor = end, SamplesPerSegment = 8,
         };
@@ -30,8 +31,8 @@ namespace CityFlow.Sim.Tests
         {
             var p = RoutePolyline.Bake(Straight3());
             Sample s = p.SampleAt(1f);
-            // 진행 +x → 오른쪽은 -y. 중심선 y=0.5(타일 중심) 기준 -0.18.
-            Assert.AreEqual(0.5f - 0.18f, s.Pos.y, 0.02f);
+            // 진행 +x → 오른쪽은 -y. 중심선 y=0.5(타일 중심) 기준 -0.26.
+            Assert.AreEqual(0.5f - 0.26f, s.Pos.y, 0.02f);
             Assert.AreEqual(1f, Vector3.Dot(s.Dir, Vector3.right), 0.01f);
         }
 
@@ -182,6 +183,70 @@ namespace CityFlow.Sim.Tests
                 minDist = Mathf.Min(minDist, Vector3.Distance(s.Pos, center));
             }
             Assert.Greater(minDist, 0.62f, "로터리 구간(전이 포함)이 섬을 침범하면 회귀");
+        }
+
+        // 우회전은 sweep≈0이라 링을 생략하고 코너 베지어를 섬 하한으로 클램프한다.
+        // 클램프 뒤 위치만 바꾸고 Dir을 원래 베지어 접선으로 두면 차량이 옆으로 미끄러져 보인다.
+        [Test]
+        public void RoundaboutRightTurn_ClampedPathKeepsClearanceAndChordHeading()
+        {
+            var input = Straight3();
+            input.Tiles = new List<Vector2Int>
+            {
+                new(0, 1), new(1, 1), new(2, 1), new(2, 0), new(2, -1)
+            };
+            input.IsRoundabout = t => t == new Vector2Int(2, 1);
+            var p = RoutePolyline.Bake(input);
+            Vector3 center = new Vector3(2.5f, 1.5f, 0f);
+
+            const float step = 0.01f;
+            const float clearanceTolerance = 0.005f; // 원호 정점 사이 현 보간의 sagitta 허용
+            float minDist = float.MaxValue;
+
+            for (float d = 0f; d + step <= p.Length; d += step)
+            {
+                Sample current = p.SampleAt(d);
+                float centerDistance = Vector3.Distance(current.Pos, center);
+                minDist = Mathf.Min(minDist, centerDistance);
+                Assert.GreaterOrEqual(centerDistance, 0.62f - clearanceTolerance,
+                    $"d={d:F2}에서 우회전 경로가 섬 하한을 침범");
+            }
+
+            FieldInfo verticesField = typeof(RoutePolyline).GetField("_vertices", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(verticesField);
+            var vertices = (System.Array)verticesField.GetValue(p);
+            Assert.Greater(vertices.Length, 1);
+            System.Type vertexType = vertices.GetValue(0).GetType();
+            FieldInfo posField = vertexType.GetField("Pos", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            FieldInfo dirField = vertexType.GetField("Dir", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            Assert.NotNull(posField);
+            Assert.NotNull(dirField);
+
+            int clampedVertices = 0;
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                Vector3 pos = (Vector3)posField.GetValue(vertices.GetValue(i));
+                float centerDistance = Vector3.Distance(pos, center);
+                Assert.GreaterOrEqual(centerDistance, 0.62f - 1e-4f,
+                    $"정점 {i}가 섬 하한을 침범");
+
+                if (centerDistance > 0.62f + 1e-4f || i + 1 >= vertices.Length)
+                {
+                    continue;
+                }
+
+                Vector3 nextPos = (Vector3)posField.GetValue(vertices.GetValue(i + 1));
+                Vector3 chord = nextPos - pos;
+                if (chord.sqrMagnitude < 1e-8f) continue;
+
+                clampedVertices++;
+                Vector3 dir = (Vector3)dirField.GetValue(vertices.GetValue(i));
+                Assert.GreaterOrEqual(Vector3.Dot(dir, chord.normalized), 0.9999f,
+                    $"클램프 정점 {i}의 Dir과 다음 정점 현이 불일치");
+            }
+
+            Assert.Greater(clampedVertices, 0, "우회전 클램프 정점 존재");
+            Assert.LessOrEqual(minDist, 0.62f + clearanceTolerance, "회귀 케이스가 클램프 경로를 통과해야 함");
         }
     }
 }
