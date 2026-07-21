@@ -157,6 +157,7 @@ namespace CityFlow.Sim
             if (grid.Width != _width || grid.Height != _height)
                 throw new ArgumentException("RoadQueueNetwork와 CityGrid 크기가 일치해야 합니다.", nameof(grid));
 
+            ReturnHighwayCarsToNearestRamp();
             TurnRestrictionBlockCount = 0;
             _highways.Clear();
             Array.Fill(_highwayPartners, NoNode);
@@ -204,6 +205,25 @@ namespace CityFlow.Sim
             _highwayCars = new System.Collections.Generic.List<LinkCar>[_highways.Count * 2];
             for (int i = 0; i < _highwayCars.Length; i++)
                 _highwayCars[i] = new System.Collections.Generic.List<LinkCar>();
+        }
+
+        private void ReturnHighwayCarsToNearestRamp()
+        {
+            for (int lane = 0; lane < _highwayCars.Length; lane++)
+            {
+                HighwayState link = _highways[lane / 2];
+                bool reverse = (lane & 1) != 0;
+                int start = reverse ? link.B : link.A;
+                int end = reverse ? link.A : link.B;
+                Dir direction = DirectionBetween(TileAt(start), TileAt(end));
+                var cars = _highwayCars[lane];
+                for (int i = 0; i < cars.Count; i++)
+                {
+                    float progress = 1f - (cars[i].ExitTick - _currentTick) / (float)link.TransitTicks;
+                    int ramp = progress < 0.5f ? start : end;
+                    AppendNode(ramp * DirectionCount + (int)direction, cars[i].Node);
+                }
+            }
         }
 
         public bool TryEnqueue(Vector2Int tile, Dir entryDir, int carId)
