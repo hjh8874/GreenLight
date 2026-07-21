@@ -30,6 +30,7 @@ namespace CityFlow.Sim
         readonly float[] _turnCost;
         readonly bool[] _turnDone;
         readonly int[] _turnCameFrom;
+        readonly int[] _rampPartner;
 
         readonly List<List<Vector2Int>> _carRoutes = new(128);
         readonly List<List<Vector2Int>> _returnRoutes = new(128);
@@ -50,6 +51,8 @@ namespace CityFlow.Sim
             _turnCost = new float[n * 4];
             _turnDone = new bool[n * 4];
             _turnCameFrom = new int[n * 4];
+            _rampPartner = new int[n];
+            Array.Fill(_rampPartner, -1);
         }
 
         // 수요별 경로 테이블 계산. 각 경로는 차 토큰 1대의 부하를 적립한다.
@@ -70,10 +73,25 @@ namespace CityFlow.Sim
         public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg,
                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
                           IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
+            => Plan(demand, net, grid, cfg, oneways, turnSigns, null);
+
+        public void Plan(DemandMap demand, RoadNetwork net, CityGrid grid, in SimConfig cfg,
+                          IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
+                          IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
+                          IReadOnlyList<HighwayLink> highways)
         {
             _carRoutes.Clear();
             _returnRoutes.Clear();
             Array.Clear(_load, 0, _load.Length);
+            Array.Fill(_rampPartner, -1);
+            if (highways != null)
+                for (int i = 0; i < highways.Count; i++)
+                {
+                    int a = highways[i].A.y * _w + highways[i].A.x;
+                    int b = highways[i].B.y * _w + highways[i].B.x;
+                    if (a >= 0 && a < _rampPartner.Length && b >= 0 && b < _rampPartner.Length)
+                    { _rampPartner[a] = b; _rampPartner[b] = a; }
+                }
 
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
@@ -90,7 +108,7 @@ namespace CityFlow.Sim
 
         // 현재 _load 기준 최소 비용 경로(내부 + 테스트 seam). 미연결/비도로 끝점 = null.
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg)
-            => Search(grid, from, to, cfg, null);
+            => Search(grid, from, to, cfg, (IReadOnlyDictionary<Vector2Int, Vector2Int>)null);
 
         // 일방통행 간선 필터(스펙 2026-07-12 §핵심결정, 상태 확장 없음 — 이웃 확장에서 3규칙 조기 continue):
         // ① 일방 타일에서 나가는 스텝은 그 방향(D)만. ② 일방 타일로 들어가는 스텝은 -D 금지
@@ -98,6 +116,21 @@ namespace CityFlow.Sim
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
             => SearchCore(grid, from, to, cfg, oneways);
+
+        internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
+                                          IReadOnlyList<HighwayLink> highways)
+        {
+            Array.Fill(_rampPartner, -1);
+            if (highways != null)
+                for (int i = 0; i < highways.Count; i++)
+                {
+                    int a = highways[i].A.y * _w + highways[i].A.x;
+                    int b = highways[i].B.y * _w + highways[i].B.x;
+                    _rampPartner[a] = b;
+                    _rampPartner[b] = a;
+                }
+            return SearchCore(grid, from, to, cfg, null);
+        }
 
         private List<Vector2Int> SearchCore(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                              IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
@@ -150,6 +183,15 @@ namespace CityFlow.Sim
                     float step = 1f + w * _load[ni] * capInv;
                     float cand = _cost[cur] + step;
                     if (cand < _cost[ni]) { _cost[ni] = cand; _cameFrom[ni] = cur; }
+                }
+
+                int partner = _rampPartner[cur];
+                if (partner >= 0 && !_done[partner])
+                {
+                    int px = partner % _w, py = partner / _w;
+                    float linkCost = (Mathf.Abs(px - cx) + Mathf.Abs(py - cy)) / 2f;
+                    float cand = _cost[cur] + linkCost;
+                    if (cand < _cost[partner]) { _cost[partner] = cand; _cameFrom[partner] = cur; }
                 }
             }
 
@@ -230,6 +272,23 @@ namespace CityFlow.Sim
                 if (step < _turnCost[state]) { _turnCost[state] = step; _turnCameFrom[state] = -1; }
             }
 
+            // 출발 접점 자체가 램프면 첫 스텝부터 비인접 고속도로 간선을 탈 수 있어야 한다.
+            // 일반 인접 씨앗과 똑같이 cameFrom=-1로 두고, 재구성 시 from을 한 번만 앞에 붙인다.
+            int startNode = sy * _w + sx;
+            int startPartner = _rampPartner[startNode];
+            if (startPartner >= 0)
+            {
+                int px = startPartner % _w, py = startPartner / _w;
+                int linkDirIn = StateDirection(px - sx, py - sy);
+                int state = startPartner * 4 + linkDirIn;
+                float linkCost = (Mathf.Abs(px - sx) + Mathf.Abs(py - sy)) / 2f;
+                if (linkCost < _turnCost[state])
+                {
+                    _turnCost[state] = linkCost;
+                    _turnCameFrom[state] = -1;
+                }
+            }
+
             // ── 본 루프: flat 오름차순 스캔(결정론) — 노드가 아니라 상태 단위 ──
             int goalState = -1;
             while (true)
@@ -283,6 +342,29 @@ namespace CityFlow.Sim
                     int nState = ni * 4 + newDirIn;
                     if (cand < _turnCost[nState]) { _turnCost[nState] = cand; _turnCameFrom[nState] = cur; }
                 }
+
+                // 턴 제한 상태 탐색에서도 램프 쌍은 비인접 간선이다. 기존 구현은 일반
+                // Dijkstra에만 이 간선을 넣어, 도시에 턴 제한이 하나라도 있으면 모든 차가
+                // 고속도로를 무시했다.
+                int partner = _rampPartner[curNode];
+                if (partner >= 0)
+                {
+                    int px = partner % _w, py = partner / _w;
+                    int linkDirIn = StateDirection(px - cx, py - cy);
+                    if (!curIsSign || linkDirIn == (curMode == TurnMode.LeftOnly
+                        ? (curDirIn + 3) % 4
+                        : (curDirIn + 1) % 4))
+                    {
+                        float linkCost = (Mathf.Abs(px - cx) + Mathf.Abs(py - cy)) / 2f;
+                        float cand = _turnCost[cur] + linkCost;
+                        int partnerState = partner * 4 + linkDirIn;
+                        if (cand < _turnCost[partnerState])
+                        {
+                            _turnCost[partnerState] = cand;
+                            _turnCameFrom[partnerState] = cur;
+                        }
+                    }
+                }
             }
 
             // 재구성 = (타일,방향) 체인 → 타일 리스트. 타일 중복 허용(P턴 — 같은 노드를 다른
@@ -296,6 +378,14 @@ namespace CityFlow.Sim
             path.Add(from);
             path.Reverse();
             return path;
+        }
+
+        // 턴 상태 방향 인덱스는 E=0,S=1,W=2,N=3이다. 고속도로는 비인접이므로
+        // 델타의 우세 축으로 진입 방향을 결정한다(큐/뷰의 링크 방향 판정과 동일).
+        private static int StateDirection(int dx, int dy)
+        {
+            if (Mathf.Abs(dx) >= Mathf.Abs(dy)) return dx >= 0 ? 0 : 2;
+            return dy >= 0 ? 3 : 1;
         }
 
         internal bool TryGetAverageRouteDistance(DemandMap demand, Vector2Int destination, out float distanceTiles)

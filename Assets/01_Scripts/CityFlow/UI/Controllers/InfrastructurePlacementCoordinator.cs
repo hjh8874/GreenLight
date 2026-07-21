@@ -19,6 +19,7 @@ namespace CityFlow.UI.Controllers
         private IEconomyService _economy;
         private IIntersectionFacilityService _facilityService;
         private ITrafficRuleService _trafficRuleService;
+        private IHighwayService _highwayService;
         private IPlacementService _placement;
 
         private bool _isBuildingMode = false;
@@ -29,6 +30,7 @@ namespace CityFlow.UI.Controllers
         private bool _wasOriginalBuildingMode = false;
         private Vector2Int? _lastRemovedCoord;
         private Vector2Int? _rightClickStartCoord;
+        private Vector2Int? _pendingHighwayStart;
         private readonly UIRaycastBlocker _uiRaycastBlocker = new UIRaycastBlocker();
         
         // Configuration Constants (Balancing Defaults)
@@ -44,6 +46,7 @@ namespace CityFlow.UI.Controllers
             _placement = services.Placement;
             _facilityService = services.Placement as IIntersectionFacilityService;
             _trafficRuleService = services.Placement as ITrafficRuleService;
+            _highwayService = services.Placement as IHighwayService;
             
             if (_economy == null)
             {
@@ -87,6 +90,7 @@ namespace CityFlow.UI.Controllers
             _isBuildingMode = true;
             _isDemolishMode = true;
             _currentData = null;
+            _pendingHighwayStart = null;
             _frameStarted = Time.frameCount;
 
             if (_originalPlacementController != null)
@@ -268,7 +272,7 @@ namespace CityFlow.UI.Controllers
 
         private bool CheckCanPlace(Vector2Int coord, InfrastructureDataSO data)
         {
-            if (_facilityService == null || _trafficRuleService == null)
+            if (_facilityService == null || _trafficRuleService == null || _highwayService == null)
             {
                 Debug.LogWarning($"[InfrastructurePlacementCoordinator] Service null check failed: facility={_facilityService != null}, traffic={_trafficRuleService != null}. Initialize() was{(_placement == null ? " NOT" : "")} called.");
                 return false;
@@ -282,6 +286,9 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.Oneway => _trafficRuleService.CanPlaceOneway(coord),
                 InfrastructureKind.TurnRestriction => _trafficRuleService.CanPlaceTurnSign(coord),
                 InfrastructureKind.PriorityRoad => _facilityService.CanPlacePriorityRoad(coord),
+                InfrastructureKind.Highway => _pendingHighwayStart.HasValue
+                    ? _highwayService.CanPlaceHighway(_pendingHighwayStart.Value, coord)
+                    : _highwayService.CanSelectHighwayRamp(coord),
                 _ => false
             };
         }
@@ -294,7 +301,16 @@ namespace CityFlow.UI.Controllers
                 return;
             }
 
-            long cost = _currentData.Cost;
+            if (_currentData.Kind == InfrastructureKind.Highway && !_pendingHighwayStart.HasValue)
+            {
+                _pendingHighwayStart = coord;
+                Debug.Log($"[InfrastructurePlacementCoordinator] 고속도로 시작 램프 선택: {coord}. 끝 램프를 선택하세요.");
+                return;
+            }
+
+            long cost = _currentData.Kind == InfrastructureKind.Highway
+                ? _highwayService.HighwayCost(_pendingHighwayStart.Value, coord)
+                : _currentData.Cost;
             
             // Transaction: TrySpend first
             if (cost > 0)
@@ -321,6 +337,7 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.Oneway => _trafficRuleService.TryPlaceOneway(coord, _currentData.OnewayDir),
                 InfrastructureKind.TurnRestriction => _trafficRuleService.TryPlaceTurnSign(coord, _currentData.TurnMode),
                 InfrastructureKind.PriorityRoad => _facilityService.TryPlacePriorityRoad(coord, _currentData.PriorityAxis),
+                InfrastructureKind.Highway => _highwayService.TryPlaceHighway(_pendingHighwayStart.Value, coord),
                 _ => false
             };
 
@@ -335,9 +352,12 @@ namespace CityFlow.UI.Controllers
                 return;
             }
 
+            Vector2Int eventCoord = _pendingHighwayStart ?? coord;
+            if (_currentData.Kind == InfrastructureKind.Highway) _pendingHighwayStart = null;
+
             if (_services != null && _services.Events != null)
             {
-                _services.Events.Publish(new InfrastructureChangedEvent(coord, false));
+                _services.Events.Publish(new InfrastructureChangedEvent(eventCoord, false));
             }
 
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
@@ -347,7 +367,13 @@ namespace CityFlow.UI.Controllers
         // --- Demolish Logic (LIFO priority handling) ---
         public bool TryDemolishInfrastructureAt(Vector2Int coord)
         {
-            if (_facilityService == null || _trafficRuleService == null) return false;
+            if (_facilityService == null || _trafficRuleService == null || _highwayService == null) return false;
+
+            if (_highwayService.IsHighwayRamp(coord) && _highwayService.TryRemoveHighway(coord))
+            {
+                ProcessRefundAndEvent(InfrastructureKind.Highway, coord);
+                return true;
+            }
 
             // 1. Try Turn Restriction first (Rule: TurnSign -> Signal)
             if (_trafficRuleService.GetTurnMode(coord).HasValue)

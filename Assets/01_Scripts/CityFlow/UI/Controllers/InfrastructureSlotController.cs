@@ -152,6 +152,15 @@ namespace CityFlow.UI.Controllers
             {
                 costText.text = infraData.Cost.ToString();
             }
+
+            if (btnBuy != null)
+            {
+                TextMeshProUGUI buttonLabel = btnBuy.GetComponentInChildren<TextMeshProUGUI>(true);
+                if (buttonLabel != null)
+                {
+                    buttonLabel.text = infraData.InfrastructureName;
+                }
+            }
         }
 
         public void OnPointerEnter(PointerEventData eventData)

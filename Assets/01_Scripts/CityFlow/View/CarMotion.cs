@@ -881,6 +881,15 @@ namespace CityFlow.View
             {
                 intersectionMotionStates.Remove(vehicle);
             }
+            if (snapshot.LinkProgress01 > 0f && tileIndex + 1 < poly.TileCount)
+            {
+                hasIntersectionAuthorization = false;
+                intersectionMotionStates.Remove(vehicle);
+                targetDistance = Mathf.Lerp(
+                    poly.DistanceAtTile(tileIndex),
+                    poly.DistanceAtTile(tileIndex + 1),
+                    snapshot.LinkProgress01);
+            }
             float previousDistance = car.Distance;
             // ⚠️ QueueSlot은 조건에 넣지 않는다. 슬롯이 위치에서 빠졌으므로(위) 슬롯 변화는
             // 목표 불변인데, 조건에 남겨두면 슬롯이 바뀔 때마다 "목표 전진"으로 오판해
@@ -1029,6 +1038,8 @@ namespace CityFlow.View
                 car.Distance = Mathf.Min(corridor, car.Distance + allowedAdvance);
             }
             Sample sample = poly.SampleAt(car.Distance);
+            if (snapshot.LinkProgress01 > 0f)
+                sample.Pos.z -= 0.35f * Mathf.Sin(snapshot.LinkProgress01 * Mathf.PI);
             vehicle.Object.transform.localPosition = sample.Pos;
             vehicle.Pos = sample.Pos;
             vehicle.Dir = sample.Dir;

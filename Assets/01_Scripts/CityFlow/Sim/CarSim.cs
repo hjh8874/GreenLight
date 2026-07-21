@@ -16,6 +16,7 @@ namespace CityFlow.Sim
         public int HomeSlot;
         public int WorkSlot;
         public float IntersectionProgress01 { get; internal set; }
+        public float LinkProgress01;
     }
 
     internal sealed class CarSim : ICarRouteProvider
@@ -33,6 +34,7 @@ namespace CityFlow.Sim
         private readonly int[] _tileIndices;
         private readonly int[] _queueSlots;
         private readonly float[] _intersectionProgress;
+        private readonly float[] _linkProgress;
         private RoadQueueNetwork _net;
         private float _lastHour;
         private bool _hasLastHour;
@@ -58,8 +60,10 @@ namespace CityFlow.Sim
             _tileIndices = new int[maxCars];
             _queueSlots = new int[maxCars];
             _intersectionProgress = new float[maxCars];
+            _linkProgress = new float[maxCars];
             Array.Fill(_queueSlots, -1);
             Array.Fill(_intersectionProgress, -1f);
+            Array.Clear(_linkProgress, 0, _linkProgress.Length);
         }
 
         public void Rebuild(DemandMap demands, RoutePlanner planner, RoadQueueNetwork net)
@@ -116,6 +120,7 @@ namespace CityFlow.Sim
             Array.Clear(_tileIndices, 0, _tileIndices.Length);
             Array.Fill(_queueSlots, -1);
             Array.Fill(_intersectionProgress, -1f);
+            Array.Clear(_linkProgress, 0, _linkProgress.Length);
             _needsSnap = true;
         }
 
@@ -154,6 +159,7 @@ namespace CityFlow.Sim
                 Array.Clear(_enqueued, 0, _enqueued.Length);
                 Array.Fill(_queueSlots, -1);
                 Array.Fill(_intersectionProgress, -1f);
+                Array.Clear(_linkProgress, 0, _linkProgress.Length);
                 _needsSnap = false;
             }
             _lastHour = gameHour;
@@ -172,6 +178,7 @@ namespace CityFlow.Sim
                 _enqueued[arrival.CarId] = false;
                 _queueSlots[arrival.CarId] = -1;
                 _intersectionProgress[arrival.CarId] = -1f;
+                _linkProgress[arrival.CarId] = 0f;
                 if (paidArrival)
                     events.QueueArrival(new ArrivalEvent(car.Work, _cfg.CoinPerTrip));
             }
@@ -193,7 +200,8 @@ namespace CityFlow.Sim
                 QueueSlot = _queueSlots[index],
                 HomeSlot = car.HomeSlot,
                 WorkSlot = car.WorkSlot,
-                IntersectionProgress01 = _intersectionProgress[index]
+                IntersectionProgress01 = _intersectionProgress[index],
+                LinkProgress01 = _linkProgress[index]
             };
         }
 
@@ -206,7 +214,8 @@ namespace CityFlow.Sim
             {
                 if (route[i] != current) continue;
                 next = route[i + 1];
-                return TryDirection(next - current, out entryDirAtNext);
+                Vector2Int delta = next - current;
+                return TryRouteDirection(delta, out entryDirAtNext);
             }
             return false;
         }
@@ -233,13 +242,14 @@ namespace CityFlow.Sim
                         if (route[p] == car.ResumeTile) { start = p; break; }
                 }
                 Dir entry = Dir.N;
-                if (start > 0 && !TryDirection(route[start] - route[start - 1], out entry)) start = 0;
-                if (start == 0 && route.Count > 1 && !TryDirection(route[1] - route[0], out entry)) continue;
+                if (start > 0 && !TryRouteDirection(route[start] - route[start - 1], out entry)) start = 0;
+                if (start == 0 && route.Count > 1 && !TryRouteDirection(route[1] - route[0], out entry)) continue;
                 if (!net.TryEnqueue(route[start], entry, i)) continue;
                 _enqueued[i] = true;
                 _tileIndices[i] = start;
                 _queueSlots[i] = 0;
                 _intersectionProgress[i] = -1f;
+                _linkProgress[i] = 0f;
             }
         }
 
@@ -253,8 +263,10 @@ namespace CityFlow.Sim
                         out Vector2Int tile,
                         out _,
                         out int slot,
-                        out float intersectionProgress))
+                        out float intersectionProgress,
+                        out float linkProgress))
                 {
+                    _linkProgress[i] = 0f;
                     _queueSlots[i] = -1;
                     _intersectionProgress[i] = -1f;
                     _tileIndices[i] = car.State == CarState.ParkedWork
@@ -262,6 +274,7 @@ namespace CityFlow.Sim
                         : 0;
                     continue;
                 }
+                _linkProgress[i] = linkProgress;
                 _queueSlots[i] = slot;
                 _intersectionProgress[i] = intersectionProgress;
                 List<Vector2Int> route = car.State == CarState.Inbound
@@ -291,6 +304,17 @@ namespace CityFlow.Sim
             else if (delta == Vector2Int.down) direction = Dir.S;
             else if (delta == Vector2Int.left) direction = Dir.W;
             else { direction = default; return false; }
+            return true;
+        }
+
+        private static bool TryRouteDirection(Vector2Int delta, out Dir direction)
+        {
+            if (TryDirection(delta, out direction)) return true;
+            if (delta == Vector2Int.zero) return false;
+            if (Mathf.Abs(delta.x) >= Mathf.Abs(delta.y))
+                direction = delta.x >= 0 ? Dir.E : Dir.W;
+            else
+                direction = delta.y >= 0 ? Dir.N : Dir.S;
             return true;
         }
     }

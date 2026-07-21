@@ -29,6 +29,7 @@ namespace CityFlow.UI.Editor
             CreateAsset(InfrastructureKind.TurnRestriction, "TurnRestrictionData", 50, 0, Vector2Int.zero, TurnMode.LeftOnly, Axis.Horizontal);
             // 우선도로: 시트에 항목 없음 → 규칙표지판 가족(일방·턴제한=50)에 맞춘 임시값. 진우 확정 필요.
             CreateAsset(InfrastructureKind.PriorityRoad, "PriorityRoadData", 50, 0, Vector2Int.zero, TurnMode.LeftOnly, Axis.Horizontal);
+            CreateAsset(InfrastructureKind.Highway, "HighwayData", 25, 0, Vector2Int.zero, TurnMode.LeftOnly, Axis.Horizontal);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();

@@ -1,0 +1,202 @@
+using System.Collections.Generic;
+using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
+using NUnit.Framework;
+using UnityEngine;
+
+namespace CityFlow.Sim.Tests
+{
+    public class HighwayLinkTests
+    {
+        static Vector2Int V(int x, int y) => new Vector2Int(x, y);
+
+        [Test]
+        public void Engine_PlacesPairedRampsAndRemovesFromEitherEnd()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.GridWidth = 10; cfg.GridHeight = 2; cfg.AutoDetectSignals = false;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            for (int x = 1; x <= 8; x++) engine.Place(V(x, 0), TileType.Road);
+
+            Assert.IsFalse(engine.CanPlaceHighway(V(1, 0), V(4, 0)), "minimum distance is five");
+            Assert.IsTrue(engine.TryPlaceHighway(V(1, 0), V(7, 0)));
+            Assert.AreEqual(1, engine.HighwayLinks.Count);
+            Assert.IsTrue(engine.IsHighwayRamp(V(1, 0)));
+            Assert.IsTrue(engine.IsHighwayRamp(V(7, 0)));
+            Assert.AreEqual(150, engine.HighwayCost(V(1, 0), V(7, 0)));
+
+            Assert.IsTrue(engine.TryRemoveHighway(V(7, 0)));
+            Assert.AreEqual(0, engine.HighwayLinks.Count);
+        }
+
+        [Test]
+        public void Engine_HighwayLengthConsumesRoadBudgetAndRemovalReturnsIt()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.GridWidth = 10; cfg.GridHeight = 2; cfg.MaxRoadTiles = 14;
+            cfg.AutoDetectSignals = false;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            for (int x = 1; x <= 8; x++) Assert.IsTrue(engine.Place(V(x, 0), TileType.Road));
+
+            Assert.IsTrue(engine.TryPlaceHighway(V(1, 0), V(7, 0)));
+            Assert.AreEqual(14, engine.RoadTileCount,
+                "eight road tiles plus six highway tiles must consume the full budget");
+            Assert.IsFalse(engine.CanPlace(V(0, 1), TileType.Road),
+                "ordinary roads share the same stock budget with highways");
+
+            Assert.IsTrue(engine.TryRemoveHighway(V(7, 0)));
+            Assert.AreEqual(8, engine.RoadTileCount);
+            Assert.IsTrue(engine.CanPlace(V(0, 1), TileType.Road),
+                "removing the link must return its distance to the shared budget");
+        }
+
+        [Test]
+        public void Engine_RejectsHighwayBeyondRemainingRoadBudget()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.GridWidth = 10; cfg.GridHeight = 2; cfg.MaxRoadTiles = 13;
+            cfg.AutoDetectSignals = false;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            for (int x = 1; x <= 8; x++) Assert.IsTrue(engine.Place(V(x, 0), TileType.Road));
+
+            Assert.IsFalse(engine.CanPlaceHighway(V(1, 0), V(7, 0)));
+            Assert.IsFalse(engine.TryPlaceHighway(V(1, 0), V(7, 0)));
+            Assert.AreEqual(8, engine.RoadTileCount, "failed placement must not consume budget");
+        }
+
+        [Test]
+        public void Restore_OverBudgetHighwaySurvivesButBlocksNewConstruction()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.GridWidth = 10; cfg.GridHeight = 2; cfg.MaxRoadTiles = 8;
+            cfg.AutoDetectSignals = false;
+            var tiles = new TileSaveData[8];
+            for (int i = 0; i < tiles.Length; i++)
+                tiles[i] = new TileSaveData { X = i + 1, Y = 0, Type = TileType.Road };
+            var snapshot = new SimSaveData
+            {
+                PlacedTiles = tiles,
+                Highways = new[]
+                {
+                    new HighwaySaveData { AX = 1, AY = 0, BX = 7, BY = 0 }
+                }
+            };
+            var engine = new SimEngine(cfg, new SimEventHub());
+
+            engine.RestoreSnapshot(snapshot);
+
+            Assert.AreEqual(1, engine.HighwayLinks.Count,
+                "migration must preserve an existing over-budget highway");
+            Assert.AreEqual(14, engine.RoadTileCount,
+                "restored budget is recomputed from road tiles and link coordinates");
+            Assert.IsFalse(engine.CanPlace(V(0, 1), TileType.Road));
+        }
+
+        [Test]
+        public void Save_RestoresRampPairWithoutChargingEconomy()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.GridWidth = 10; cfg.GridHeight = 2; cfg.AutoDetectSignals = false;
+            var source = new SimEngine(cfg, new SimEventHub());
+            for (int x = 1; x <= 8; x++) source.Place(V(x, 0), TileType.Road);
+            Assert.IsTrue(source.TryPlaceHighway(V(1, 0), V(7, 0)));
+
+            var restored = new SimEngine(cfg, new SimEventHub());
+            restored.RestoreSnapshot(source.CreateSnapshot());
+
+            Assert.AreEqual(1, restored.HighwayLinks.Count);
+            Assert.AreEqual(V(1, 0), restored.HighwayLinks[0].A);
+            Assert.AreEqual(V(7, 0), restored.HighwayLinks[0].B);
+        }
+
+        [Test]
+        public void Queue_TraversesNonAdjacentRampLink()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.GridWidth = 10; cfg.GridHeight = 1; cfg.QueueServicePerTick = 1;
+            var grid = new CityGrid(10, 1);
+            for (int x = 0; x < 10; x++) grid.Place(V(x, 0), TileType.Road);
+            var devices = new FakeDeviceState();
+            devices.AddHighway(V(2, 0), V(7, 0));
+            var queues = new RoadQueueNetwork(10, 1, cfg);
+            queues.RebuildTopology(grid, devices);
+            var route = new JumpRoute(V(2, 0), V(7, 0), V(8, 0));
+
+            Assert.IsTrue(queues.TryEnqueue(V(2, 0), Dir.E, 7));
+            queues.Step(route, null, 1);
+            Assert.IsTrue(queues.TryLocateCar(7, out Vector2Int tile, out _, out _, out float progress));
+            Assert.AreEqual(V(2, 0), tile);
+            Assert.GreaterOrEqual(progress, 0f);
+
+            queues.Step(route, null, 2);
+            queues.Step(route, null, 3);
+            queues.Step(route, null, 4);
+            Assert.AreEqual(7, queues.CarAtHead(V(7, 0), Dir.E));
+        }
+
+        [Test]
+        public void Planner_UsesNonAdjacentRampEdgeWhenFaster()
+        {
+            SimConfig cfg = SimConfig.Default();
+            var grid = new CityGrid(10, 1);
+            for (int x = 0; x < 10; x++) grid.Place(V(x, 0), TileType.Road);
+            var planner = new RoutePlanner(10, 1);
+            var links = new List<HighwayLink> { new HighwayLink(V(2, 0), V(7, 0)) };
+
+            List<Vector2Int> route = planner.Search(grid, V(0, 0), V(9, 0), cfg, links);
+
+            int ramp = route.IndexOf(V(2, 0));
+            Assert.GreaterOrEqual(ramp, 0);
+            Assert.AreEqual(V(7, 0), route[ramp + 1], "route must contain the non-adjacent ramp jump");
+        }
+
+        [Test]
+        public void Planner_WithTurnRestrictionElsewhere_StillUsesHighway()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.DemandChoicePool = 1;
+            var grid = new CityGrid(10, 3);
+            for (int x = 1; x <= 8; x++) grid.Place(V(x, 1), TileType.Road);
+            grid.Place(V(1, 0), TileType.House);
+            grid.Place(V(9, 1), TileType.Office);
+            var road = new RoadNetwork(grid);
+            var demand = new DemandMap(cfg);
+            demand.Reassign(grid, road);
+            var planner = new RoutePlanner(10, 3);
+            var links = new List<HighwayLink> { new HighwayLink(V(2, 1), V(7, 1)) };
+            var turns = new Dictionary<Vector2Int, TurnMode>
+            {
+                [V(0, 2)] = TurnMode.LeftOnly
+            };
+
+            planner.Plan(demand, road, grid, cfg, null, turns, links);
+            List<Vector2Int> route = planner.CarRoutes[0];
+
+            int ramp = route.IndexOf(V(2, 1));
+            Assert.GreaterOrEqual(ramp, 0);
+            Assert.AreEqual(V(7, 1), route[ramp + 1],
+                "turn-state routing must retain the non-adjacent highway edge");
+        }
+
+        private sealed class JumpRoute : ICarRouteProvider
+        {
+            readonly Vector2Int[] _tiles;
+            public JumpRoute(params Vector2Int[] tiles) => _tiles = tiles;
+            public bool IsDestination(int carId, Vector2Int tile) => tile == _tiles[_tiles.Length - 1];
+            public bool TryGetNextTile(int carId, Vector2Int current, out Vector2Int next, out Dir entryDirAtNext)
+            {
+                for (int i = 0; i < _tiles.Length - 1; i++)
+                    if (_tiles[i] == current)
+                    {
+                        next = _tiles[i + 1];
+                        Vector2Int d = next - current;
+                        entryDirAtNext = Mathf.Abs(d.x) >= Mathf.Abs(d.y)
+                            ? (d.x >= 0 ? Dir.E : Dir.W)
+                            : (d.y >= 0 ? Dir.N : Dir.S);
+                        return true;
+                    }
+                next = default; entryDirAtNext = default; return false;
+            }
+        }
+    }
+}

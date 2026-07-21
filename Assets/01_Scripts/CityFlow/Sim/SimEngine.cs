@@ -8,7 +8,7 @@ namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IRouteDistanceProvider, IRoadExpansionService
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IRouteDistanceProvider, IRoadExpansionService, IHighwayService
     {
         SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
@@ -44,6 +44,9 @@ namespace CityFlow.Sim
         // 일방통행과 동형(Dictionary<좌표,값> + flat 정렬 List) — 값이 방향 벡터 대신 TurnMode.
         readonly Dictionary<Vector2Int, TurnMode> _turnSigns = new();
         readonly List<Vector2Int> _placedTurnSigns = new();
+        readonly List<HighwayLink> _highwayLinks = new();
+        readonly Dictionary<Vector2Int, Vector2Int> _highwayPartners = new();
+        int _highwayBudgetTiles;   // 링크 맨해튼 길이 합 — 일반도로와 MaxRoadTiles 스톡을 공유한다.
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
         readonly SimStats _stats = new SimStats();
         readonly SimEventBuffer _events;
@@ -100,6 +103,8 @@ namespace CityFlow.Sim
                     : (Dir)(((int)entry + 1) % 4);
                 return exit == allowed;
             }
+            public bool TryGetHighwayPartner(Vector2Int ramp, out Vector2Int partner) =>
+                _engine._highwayPartners.TryGetValue(ramp, out partner);
         }
 
         private sealed class SignalGateAdapter : ISignalGate
@@ -184,7 +189,7 @@ namespace CityFlow.Sim
             {
                 _demand.Reassign(_grid, _network);            // 도달성(같은 섬) 우선 배정
                 RebuildSignals();                              // 교차로 재감지(살아남은 신호 오프셋 보존)
-                _planner.Plan(_demand, _network, _grid, _config, _onewayDirs, _turnSigns);   // 혼잡 인지 증분 배정(경로 테이블) + 일방통행 간선 필터 + 턴 제한 상태 확장(조회만)
+                _planner.Plan(_demand, _network, _grid, _config, _onewayDirs, _turnSigns, _highwayLinks);   // 방향 규칙 + 고가 링크
                 _roadQueues.RebuildTopology(_grid, _deviceState);
                 _carSim.Rebuild(_demand, _planner, _roadQueues);
                 _grid.ClearTopologyDirty();
@@ -293,16 +298,16 @@ namespace CityFlow.Sim
             if (!_grid.TopologyDirty) return;
             _demand.Reassign(_grid, _network);
             RebuildSignals();
-            _planner.Plan(_demand, _network, _grid, _config, _onewayDirs, _turnSigns);
+            _planner.Plan(_demand, _network, _grid, _config, _onewayDirs, _turnSigns, _highwayLinks);
             _roadQueues.RebuildTopology(_grid, _deviceState);
             _carSim.Rebuild(_demand, _planner, _roadQueues);
             _grid.ClearTopologyDirty();
         }
 
-        // 도로 예산제(스펙 2026-07-17, 기획 결정 환): 도로 타일 스톡이 유효 캡에 닿으면 신규 도로 배치 금지.
-        // 비도로 타입은 무영향. RoadTileCount는 TopologyVersion 캐시(CityGrid) 재사용 — 매 호출 O(1).
+        // 도로 예산제: 일반도로 + 고속도로 길이 스톡이 유효 캡에 닿으면 신규 도로 배치 금지.
+        // 비도로 타입은 무영향. 두 카운터 모두 필드/캐시 조회라 매 호출 O(1).
         bool WithinRoadBudget(TileType type) =>
-            type != TileType.Road || _grid.RoadTileCount < MaxRoadTiles;
+            type != TileType.Road || RoadTileCount < MaxRoadTiles;
 
         // ── IRoadExpansionService(스펙 §2단계): "+10칸" 확장권 — 코인 구매·가격 에스컬레이션·세이브 영속 ──
         // 칸 수 10은 기획 고정("도로 +10칸" 상품명 자체) — 튜닝 축은 가격 2종(SimConfig 🔓)이다.
@@ -367,8 +372,9 @@ namespace CityFlow.Sim
             && !_roundaboutSet.Contains(tile)
             && !_overpassSet.Contains(tile);
 
-        // 도로 예산제(스펙 2026-07-17): UI 카운터·배치 가드 공용. RoadTileCount는 TopologyVersion 캐시(무비용).
-        public int RoadTileCount => _grid.RoadTileCount;
+        // 도로 예산제(스펙 2026-07-17/고속도로 정정 2026-07-21): UI 카운터·배치 가드 공용.
+        // 고속도로는 상판 길이만큼 같은 스톡을 먹는다. CityGrid는 그대로 두고 링크 합만 더한다.
+        public int RoadTileCount => _grid.RoadTileCount + _highwayBudgetTiles;
         // 유효 캡 = 기본 상한 + 확장권 구매횟수 × 10 (스펙 §2단계).
         public int MaxRoadTiles => _config.MaxRoadTiles + _roadCapacityPurchases * RoadExpandChunkTiles;
         
@@ -628,6 +634,56 @@ namespace CityFlow.Sim
         public TurnMode? GetTurnMode(Vector2Int tile) =>
             _turnSigns.TryGetValue(tile, out var m) ? m : (TurnMode?)null;
 
+        // 두 일반 도로 램프를 잇는 비인접 양방향 고가 링크.
+        public IReadOnlyList<HighwayLink> HighwayLinks => _highwayLinks;
+        public bool IsHighwayRamp(Vector2Int tile) => _highwayPartners.ContainsKey(tile);
+
+        public bool CanSelectHighwayRamp(Vector2Int tile) =>
+            _grid.InBounds(tile) && _grid.GetTile(tile) == TileType.Road
+            && !_grid.IsIntersection(tile) && !_highwayPartners.ContainsKey(tile)
+            && !IsInRoundaboutFootprint(tile) && !_overpassSet.Contains(tile)
+            && !_onewayDirs.ContainsKey(tile) && !_turnSigns.ContainsKey(tile)
+            && !_priorityDirs.ContainsKey(tile);
+
+        private bool CanPlaceHighwayGeometry(Vector2Int a, Vector2Int b) =>
+            a != b && CanSelectHighwayRamp(a) && CanSelectHighwayRamp(b)
+            && Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) >= 5;
+
+        public bool CanPlaceHighway(Vector2Int a, Vector2Int b) =>
+            CanPlaceHighwayGeometry(a, b)
+            && RoadTileCount + HighwayDistance(a, b) <= MaxRoadTiles;
+
+        private static int HighwayDistance(Vector2Int a, Vector2Int b) =>
+            Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y);
+
+        public int HighwayCost(Vector2Int a, Vector2Int b) =>
+            HighwayDistance(a, b) * 25;
+
+        public bool TryPlaceHighway(Vector2Int a, Vector2Int b)
+        {
+            if (!CanPlaceHighway(a, b)) return false;
+            _highwayLinks.Add(new HighwayLink(a, b));
+            _highwayPartners[a] = b;
+            _highwayPartners[b] = a;
+            _highwayBudgetTiles += HighwayDistance(a, b);
+            _grid.MarkTopologyDirty();
+            return true;
+        }
+
+        public bool TryRemoveHighway(Vector2Int ramp)
+        {
+            if (!_highwayPartners.TryGetValue(ramp, out Vector2Int partner)) return false;
+            int linkIndex = _highwayLinks.FindIndex(link => link.Contains(ramp));
+            if (linkIndex < 0) return false;
+            HighwayLink link = _highwayLinks[linkIndex];
+            _highwayPartners.Remove(ramp);
+            _highwayPartners.Remove(partner);
+            _highwayLinks.RemoveAt(linkIndex);
+            _highwayBudgetTiles = Math.Max(0, _highwayBudgetTiles - link.Distance);
+            _grid.MarkTopologyDirty();
+            return true;
+        }
+
         // 뷰용: 이 교차로가 지금 초록인가(시뮬 시간 기준). 신호 없으면 항상 초록 취급.
         public bool IsSignalGreen(Vector2Int tile) =>
             !_signals.TryGet(tile, out var s) || s.OverrideUntil > _simTime || SignalMath.IsGreen(s, _simTime);
@@ -782,6 +838,14 @@ namespace CityFlow.Sim
                 priorityRoads[i] = new PriorityRoadSaveData { X = t.x, Y = t.y, Axis = (int)_priorityDirs[t] };
             }
 
+            var highways = new HighwaySaveData[_highwayLinks.Count];
+            for (int i = 0; i < _highwayLinks.Count; i++)
+                highways[i] = new HighwaySaveData
+                {
+                    AX = _highwayLinks[i].A.x, AY = _highwayLinks[i].A.y,
+                    BX = _highwayLinks[i].B.x, BY = _highwayLinks[i].B.y
+                };
+
             return new SimSaveData
             {
                 PlacedTiles = tiles.ToArray(),
@@ -791,6 +855,7 @@ namespace CityFlow.Sim
                 Oneways = oneways,
                 TurnSigns = turnSigns,
                 PriorityRoads = priorityRoads,
+                Highways = highways,
                 RoadCapacityPurchases = _roadCapacityPurchases,
                 HasCarSimStats = true,
                 CarTripSuccessRate = _stats.TripSuccessRate,
@@ -807,6 +872,9 @@ namespace CityFlow.Sim
 
             // 복원 = 전체 교체: 비우고 → 재배치 → 교차로 재감지 → 조율 복원 (PR#8 합의 흐름)
             _grid.Clear();
+            _highwayLinks.Clear();
+            _highwayPartners.Clear();
+            _highwayBudgetTiles = 0;
             _roadQueues.RemoveAllCars();
             _stats.RestoreCarSim(
                 snapshot.CarTripSuccessRate,
@@ -917,6 +985,20 @@ namespace CityFlow.Sim
                 _placedPriorityRoads.Sort((a, b) =>
                     (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
             }
+            if (snapshot.Highways != null)
+                foreach (var h in snapshot.Highways)
+                {
+                    var a = new Vector2Int(h.AX, h.AY);
+                    var b = new Vector2Int(h.BX, h.BY);
+                    // 복원은 신규 건설이 아니다. 구세이브가 새 예산을 넘더라도 시설은 보존하고,
+                    // 좌표에서 사용량을 재계산해 이후 신규 도로/고속도로만 차단한다.
+                    if (!CanPlaceHighwayGeometry(a, b)) continue;
+                    var link = new HighwayLink(a, b);
+                    _highwayLinks.Add(link);
+                    _highwayPartners[a] = b;
+                    _highwayPartners[b] = a;
+                    _highwayBudgetTiles += link.Distance;
+                }
             RebuildSignals();
             if (snapshot.SignalOffsets != null)
                 foreach (var s in snapshot.SignalOffsets)

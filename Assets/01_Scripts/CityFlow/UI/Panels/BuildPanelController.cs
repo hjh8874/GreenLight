@@ -27,6 +27,7 @@ namespace CityFlow.UI
         [Header("Infrastructure")]
         [Tooltip("Infra 탭에 별도 슬롯으로 추가할 우선도로 데이터")]
         [SerializeField] private InfrastructureDataSO priorityRoadData;
+        [SerializeField] private InfrastructureDataSO highwayData;
 
         private bool _isBound;
         // [통합 테스트 호환용] 
@@ -78,6 +79,7 @@ namespace CityFlow.UI
             }
 
             ConfigureInfrastructureSlots();
+            EnsureHighwaySlot();
 
             // 인스펙터에서 할당 안 했으면 자식 오브젝트에서 자동으로 찾기 (우리의 새로운 슬롯 로직)
             if (buildSlots == null || buildSlots.Length == 0)
@@ -207,6 +209,26 @@ namespace CityFlow.UI
             {
                 roundaboutSlot.transform.SetSiblingIndex(siblingIndex);
             }
+        }
+
+        private void EnsureHighwaySlot()
+        {
+            if (categoryPages == null || categoryPages.Length == 0 || categoryPages[0] == null) return;
+            Transform page = categoryPages[0].transform;
+            InfrastructureSlotController template = null;
+            foreach (InfrastructureSlotController slot in page.GetComponentsInChildren<InfrastructureSlotController>(true))
+            {
+                if (slot.InfraData != null && slot.InfraData.Kind == InfrastructureKind.Highway)
+                { slot.gameObject.SetActive(true); return; }
+                if (template == null && slot.InfraData != null && slot.InfraData.Kind == InfrastructureKind.Signal)
+                    template = slot;
+            }
+            if (template == null || highwayData == null) return;
+            InfrastructureSlotController clone = Instantiate(template, page);
+            clone.name = "Highway_Slot";
+            clone.Configure(highwayData);
+            clone.gameObject.SetActive(true);
+            clone.transform.SetSiblingIndex(Mathf.Min(3, page.childCount - 1));
         }
 
         public void ShowCategory(int index)
