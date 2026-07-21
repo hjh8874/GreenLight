@@ -487,7 +487,6 @@ namespace CityFlow.UI
                             return;
                         }
 
-                        // 먼저 기존 건물 철거
                         if (_services.Placement.Remove(coord))
                         {
                             if (_services.Placement.Place(coord, _currentType))
@@ -515,7 +514,6 @@ namespace CityFlow.UI
                             return;
                         }
 
-                        // 순수 빈땅 건설 시도
                         if (_services.Placement.Place(coord, _currentType))
                         {
                             if (_services.Economy != null && buildCost > 0)

@@ -15,6 +15,7 @@ namespace CityFlow.UI.Controllers
         [SerializeField] private Color colorValid = new Color(0f, 1f, 0f, 0.5f);
         [SerializeField] private Color colorInvalid = new Color(1f, 0f, 0f, 0.5f);
 
+        private CityFlowServices _services;
         private IEconomyService _economy;
         private IIntersectionFacilityService _facilityService;
         private ITrafficRuleService _trafficRuleService;
@@ -26,6 +27,8 @@ namespace CityFlow.UI.Controllers
         private PlacementController _originalPlacementController;
         private int _frameStarted = 0;
         private bool _wasOriginalBuildingMode = false;
+        private Vector2Int? _lastRemovedCoord;
+        private Vector2Int? _rightClickStartCoord;
         private readonly UIRaycastBlocker _uiRaycastBlocker = new UIRaycastBlocker();
         
         // Configuration Constants (Balancing Defaults)
@@ -36,6 +39,7 @@ namespace CityFlow.UI.Controllers
 
         public void Initialize(CityFlowServices services)
         {
+            _services = services;
             _economy = services.Economy;
             _placement = services.Placement;
             _facilityService = services.Placement as IIntersectionFacilityService;
@@ -123,23 +127,22 @@ namespace CityFlow.UI.Controllers
             if (!_isBuildingMode) return;
             if (!_isDemolishMode && _currentData == null) return;
 
-            if (_uiRaycastBlocker.IsPointerOverBlockingUI())
+            Mouse mouse = Mouse.current;
+            if (mouse != null && mouse.rightButton.wasReleasedThisFrame)
+            {
+                _lastRemovedCoord = null;
+                _rightClickStartCoord = null;
+            }
+
+            bool isPointerOverBlockingUI = _uiRaycastBlocker.IsPointerOverBlockingUI();
+            if (isPointerOverBlockingUI)
             {
                 if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(false);
                 return;
             }
 
-            if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame)
+            if (HandleRightClickDemolition(mouse))
             {
-                Vector2Int clickedCoord = GetMouseGridCoordinate();
-                if (_originalPlacementController != null)
-                {
-                    _originalPlacementController.TryDemolishAt(clickedCoord);
-                }
-                else
-                {
-                    TryDemolishInfrastructureAt(clickedCoord);
-                }
                 return;
             }
 
@@ -149,14 +152,7 @@ namespace CityFlow.UI.Controllers
 
             if (ghostRenderer != null)
             {
-                if (_originalPlacementController != null)
-                {
-                    ghostRenderer.transform.position = _originalPlacementController.GetGhostPosition(gridCoord);
-                }
-                else
-                {
-                    ghostRenderer.transform.position = new Vector3(gridCoord.x, 0, gridCoord.y);
-                }
+                UpdateGhostPosition(gridCoord);
                 
                 if (_isDemolishMode)
                 {
@@ -189,6 +185,54 @@ namespace CityFlow.UI.Controllers
                     }
                 }
             }
+        }
+
+        private bool HandleRightClickDemolition(Mouse mouse)
+        {
+            if (mouse == null)
+            {
+                return false;
+            }
+
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                _rightClickStartCoord = GetMouseGridCoordinate();
+            }
+
+            if (!mouse.rightButton.isPressed || !_rightClickStartCoord.HasValue)
+            {
+                return false;
+            }
+
+            Vector2Int currentCoord = GetMouseGridCoordinate();
+            UpdateGhostPosition(currentCoord);
+
+            if (!_lastRemovedCoord.HasValue || _lastRemovedCoord.Value != currentCoord)
+            {
+                bool removed = _originalPlacementController != null
+                    ? _originalPlacementController.TryDemolishAt(currentCoord)
+                    : TryDemolishInfrastructureAt(currentCoord);
+
+                if (removed)
+                {
+                    _lastRemovedCoord = currentCoord;
+                }
+            }
+
+            return true;
+        }
+
+        private void UpdateGhostPosition(Vector2Int gridCoord)
+        {
+            if (ghostRenderer == null)
+            {
+                return;
+            }
+
+            ghostRenderer.gameObject.SetActive(true);
+            ghostRenderer.transform.position = _originalPlacementController != null
+                ? _originalPlacementController.GetGhostPosition(gridCoord)
+                : new Vector3(gridCoord.x, 0, gridCoord.y);
         }
 
         private Vector2Int GetMouseGridCoordinate()
@@ -283,6 +327,11 @@ namespace CityFlow.UI.Controllers
                 return;
             }
 
+            if (_services != null && _services.Events != null)
+            {
+                _services.Events.Publish(new InfrastructureChangedEvent(coord, false));
+            }
+
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
             
         }
@@ -297,7 +346,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_trafficRuleService.TryRemoveTurnSign(coord))
                 {
-                    ProcessRefund(InfrastructureKind.TurnRestriction);
+                    ProcessRefundAndEvent(InfrastructureKind.TurnRestriction, coord);
                     return true;
                 }
             }
@@ -308,7 +357,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_facilityService.TryRemoveSignal(coord))
                 {
-                    ProcessRefund(InfrastructureKind.Signal);
+                    ProcessRefundAndEvent(InfrastructureKind.Signal, coord);
                     return true;
                 }
             }
@@ -319,7 +368,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_facilityService.TryRemoveRoundabout(coord))
                 {
-                    ProcessRefund(InfrastructureKind.Roundabout);
+                    ProcessRefundAndEvent(InfrastructureKind.Roundabout, coord);
                     return true;
                 }
             }
@@ -330,7 +379,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_facilityService.TryRemoveOverpass(coord))
                 {
-                    ProcessRefund(InfrastructureKind.Overpass);
+                    ProcessRefundAndEvent(InfrastructureKind.Overpass, coord);
                     return true;
                 }
             }
@@ -341,7 +390,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_facilityService.TryRemovePriorityRoad(coord))
                 {
-                    ProcessRefund(InfrastructureKind.PriorityRoad);
+                    ProcessRefundAndEvent(InfrastructureKind.PriorityRoad, coord);
                     return true;
                 }
             }
@@ -351,7 +400,7 @@ namespace CityFlow.UI.Controllers
             {
                 if (_trafficRuleService.TryRemoveOneway(coord))
                 {
-                    ProcessRefund(InfrastructureKind.Oneway);
+                    ProcessRefundAndEvent(InfrastructureKind.Oneway, coord);
                     return true;
                 }
             }
@@ -359,7 +408,7 @@ namespace CityFlow.UI.Controllers
             return false;
         }
 
-        private void ProcessRefund(InfrastructureKind kind)
+        private void ProcessRefundAndEvent(InfrastructureKind kind, Vector2Int coord)
         {
             long originalCost = 0;
             
@@ -376,6 +425,11 @@ namespace CityFlow.UI.Controllers
             if (_economy != null && refundAmount > 0)
             {
                 _economy.AddCoins(refundAmount, "Demolish Refund");
+            }
+            
+            if (_services != null && _services.Events != null)
+            {
+                _services.Events.Publish(new InfrastructureChangedEvent(coord, true));
             }
             
             Debug.Log($"[InfrastructurePlacementCoordinator] Demolished {kind}. Refunded {refundAmount} coins (Original Cost: {originalCost}, Rate: {DEMOLISH_REFUND_RATE}).");

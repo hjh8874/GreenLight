@@ -23,7 +23,6 @@ namespace CityFlow.Gameplay.Save
         private bool applicationPaused;
         private bool applicationFocused = true;
         private bool applicationQuitting;
-        private bool floatingModeActive;
         private BasicEconomySaveAdapter weeklySettlementSaveAdapter;
         private FloatingWindowService floatingWindowService;
 
@@ -161,14 +160,11 @@ namespace CityFlow.Gameplay.Save
                 return;
             }
 
-            floatingModeActive = floatingWindowService.IsFloating;
             floatingWindowService.OnFloatingStateChanged += OnFloatingStateChanged;
         }
 
         private void OnFloatingStateChanged(bool isFloating)
         {
-            floatingModeActive = isFloating;
-
             if (isFloating && saveOnFloatingModeEntered)
             {
                 TrySaveInactiveState("floating mode entered");
@@ -214,8 +210,7 @@ namespace CityFlow.Gameplay.Save
         {
             if (!applicationPaused
                 && applicationFocused
-                && !applicationQuitting
-                && !floatingModeActive)
+                && !applicationQuitting)
             {
                 inactiveSaveCompleted = false;
             }

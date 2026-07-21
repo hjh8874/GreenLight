@@ -4,9 +4,12 @@ using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using CityFlow.Sim;
 using CityFlow.ViewKit;
+using CityFlow.UI;
+using CityFlow.UI.Controllers;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
 using UnityEngine.Serialization;
 
 namespace CityFlow.View
@@ -87,6 +90,7 @@ namespace CityFlow.View
         [SerializeField, Min(0.001f)] private float zoomScrollSensitivity = 1f;
 
         private const float OrthographicSizePerDistance = 0.9375f;
+        private const int VehicleRenderQueue = (int)RenderQueue.Geometry + 10;
 
         [Header("Colors")]
         [SerializeField] private Color boardColor = new Color(0.78f, 0.82f, 0.78f);
@@ -141,6 +145,11 @@ namespace CityFlow.View
         private Transform effectRoot;
         private int selectedSignalIndex;
         private Camera mainCamera;
+        private DriveViewCamera driveViewCamera;
+        private UIDockController dockController;
+        private PlacementController placementController;
+        private InfrastructurePlacementCoordinator infrastructurePlacementCoordinator;
+        private RouteVehicle selectedVehicle;
         private Vector3 cameraTarget;
         private Vector3 cameraUpDirection;
         private float zoomDistance;
@@ -173,6 +182,7 @@ namespace CityFlow.View
         public float TileSize => tileSize;
         public float FlowBurstSeconds => burstSeconds;
         public Color FlowBurstColor => flowBurstColor;
+        public bool IsDriveViewActive => driveViewCamera != null && driveViewCamera.IsFollowing;
 
         public string SelectedSignalSummary
         {
@@ -231,6 +241,8 @@ namespace CityFlow.View
             public Vector3 Dir;
             public Vector2Int CurrentTile;
             public bool HasCurrentTile;
+            public Vector2Int RoundaboutTile;
+            public bool IsInRoundabout;
             public GameObject AngryMark;   // Jam 팝업(!) — vehicleRoot 소속(차량 자식 금지: 비균등 스케일)
             public GameObject SmokePuff;   // Jam 매연 퍼프 — 동일 소속
             public int RouteIndex = -1;
@@ -300,13 +312,22 @@ namespace CityFlow.View
             RefreshTurnSigns();
             RefreshPriorityRoads();
             RefreshVehicles();
-            gameObject.AddComponent<DriveViewCamera>().Init(simEngine, transform, tileSize);
-            gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize, false);
             InitializeCameraView();
+            driveViewCamera = gameObject.AddComponent<DriveViewCamera>();
+            driveViewCamera.Init(transform, mainCamera);
+            dockController = FindAnyObjectByType<UIDockController>(FindObjectsInactive.Include);
+            placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
+            infrastructurePlacementCoordinator = FindAnyObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+            gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize, false);
         }
 
         private void OnDestroy()
         {
+            if (driveViewCamera != null)
+            {
+                ExitDriveView();
+            }
+
             if (services == null)
             {
                 return;
@@ -435,14 +456,26 @@ namespace CityFlow.View
 
         private void Update()
         {
-            HandleCameraViewInput();
+            if (selectedVehicle != null && !IsDriveViewActive)
+            {
+                ExitDriveView();
+            }
+
+            HandleVehicleSelectionInput();
+            if (!IsDriveViewActive)
+            {
+                HandleCameraViewInput();
+            }
 
             if (tileData == null)
             {
                 return;
             }
 
-            HandleSignalInput();
+            if (!IsDriveViewActive)
+            {
+                HandleSignalInput();
+            }
             RefreshSignals();
             RefreshRoundabouts();
             RefreshOverpasses();
@@ -451,6 +484,120 @@ namespace CityFlow.View
             RefreshPriorityRoads();
             RefreshVehicles();
             RefreshCoinPops();
+        }
+
+        private void HandleVehicleSelectionInput()
+        {
+            if (IsDriveViewActive || IsVehicleSelectionBlocked() || mainCamera == null || driveViewCamera == null)
+            {
+                return;
+            }
+
+            Mouse mouse = Mouse.current;
+            if (mouse == null || !mouse.leftButton.wasPressedThisFrame)
+            {
+                return;
+            }
+
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            {
+                return;
+            }
+
+            if (TryGetVehicleAtScreenPosition(mouse.position.ReadValue(), out RouteVehicle vehicle))
+            {
+                selectedVehicle = vehicle;
+                driveViewCamera.Follow(vehicle.Object.transform);
+                if (IsDriveViewActive)
+                {
+                    dockController?.SetDriveViewActive(true);
+                }
+                else
+                {
+                    selectedVehicle = null;
+                }
+            }
+        }
+
+        private bool IsVehicleSelectionBlocked()
+        {
+            if (dockController == null)
+            {
+                dockController = FindAnyObjectByType<UIDockController>(FindObjectsInactive.Include);
+            }
+
+            if (placementController == null)
+            {
+                placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
+            }
+
+            if (infrastructurePlacementCoordinator == null)
+            {
+                infrastructurePlacementCoordinator = FindAnyObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+            }
+
+            return (dockController != null && dockController.IsAnyMenuOpen)
+                || (placementController != null && placementController.IsBuildingMode)
+                || (infrastructurePlacementCoordinator != null && infrastructurePlacementCoordinator.IsBuildingMode);
+        }
+
+        private void ExitDriveView()
+        {
+            selectedVehicle = null;
+            if (driveViewCamera != null)
+            {
+                driveViewCamera.StopFollowing();
+            }
+            if (dockController != null)
+            {
+                dockController.SetDriveViewActive(false);
+            }
+        }
+
+        public bool IsPointerOverVehicle(Vector2 screenPosition)
+        {
+            return TryGetVehicleAtScreenPosition(screenPosition, out _);
+        }
+
+        private bool TryGetVehicleAtScreenPosition(Vector2 screenPosition, out RouteVehicle vehicle)
+        {
+            vehicle = null;
+            if (mainCamera == null || !mainCamera.enabled)
+            {
+                return false;
+            }
+
+            Ray ray = mainCamera.ScreenPointToRay(screenPosition);
+            if (!Physics.Raycast(
+                ray,
+                out RaycastHit hit,
+                mainCamera.farClipPlane,
+                Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Ignore))
+            {
+                return false;
+            }
+
+            Transform hitTransform = hit.collider.transform;
+            for (int vehicleIndex = 0; vehicleIndex < vehicles.Count; vehicleIndex++)
+            {
+                RouteVehicle candidate = vehicles[vehicleIndex];
+                if (!candidate.Object.activeSelf
+                    || candidate.Renderer == null
+                    || !candidate.Renderer.enabled)
+                {
+                    continue;
+                }
+
+                Transform vehicleTransform = candidate.Object.transform;
+                if (hitTransform == vehicleTransform || hitTransform.IsChildOf(vehicleTransform))
+                {
+                    vehicle = candidate;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void BuildRoots()
@@ -510,7 +657,7 @@ namespace CityFlow.View
             board.transform.localPosition = new Vector3(width * tileSize * 0.5f, height * tileSize * 0.5f, 0.15f);
             board.transform.localScale = new Vector3(width * tileSize, height * tileSize, 0.04f);
             Renderer boardRenderer = board.GetComponent<Renderer>();
-            boardRenderer.sharedMaterial = CreateGridMaterial();
+            boardRenderer.sharedMaterial = CreateGridMaterial(boardRenderer.sharedMaterial);
             boardRenderer.allowOcclusionWhenDynamic = false;
             boardRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             boardRenderer.receiveShadows = false;
@@ -1202,8 +1349,13 @@ namespace CityFlow.View
                 vehicle.transform.SetParent(vehicleRoot, false);
                 vehicle.transform.localScale = new Vector3(tileSize * 0.38f, tileSize * 0.2f, tileSize * 0.28f);
 
+                if (vehicle.GetComponentInChildren<Collider>() == null)
+                {
+                    vehicle.AddComponent<BoxCollider>();
+                }
+
                 Renderer renderer = vehicle.GetComponentInChildren<Renderer>();
-                PrepareRenderer(renderer);
+                PrepareRenderer(renderer, VehicleRenderQueue);
                 ApplyRendererColor(renderer, vehicleColor);
 
                 Renderer detailRenderer = null;
@@ -1212,6 +1364,7 @@ namespace CityFlow.View
                 {
                     detailRenderer = CreateDetailCube(vehicle.transform, "Cabin",
                         new Vector3(0.55f, 0.72f, 0.42f), new Vector3(-0.05f, 0f, -0.65f));
+                    SetRendererRenderQueue(detailRenderer, VehicleRenderQueue);
                     ApplyRendererColor(detailRenderer, Color.Lerp(vehicleColor, Color.white, 0.3f));
 
                     // 제동등: 후방(-x = 진행 반대) 얇은 빨간 큐브, 기본 off. 감속 상태 진입 시에만 SetActive.
@@ -1292,12 +1445,8 @@ namespace CityFlow.View
 
             Vector2Int horizontalBridge = new Vector2Int(to.x, from.y);
             Vector2Int verticalBridge = new Vector2Int(from.x, to.y);
-            bool canTurnHorizontalFirst = IsRoadTile(horizontalBridge)
-                && IsRoadTile(new Vector2Int(from.x - dx, from.y))
-                && IsRoadTile(new Vector2Int(to.x, to.y + dy));
-            bool canTurnVerticalFirst = IsRoadTile(verticalBridge)
-                && IsRoadTile(new Vector2Int(from.x, from.y - dy))
-                && IsRoadTile(new Vector2Int(to.x + dx, to.y));
+            bool canTurnHorizontalFirst = IsRoadTile(horizontalBridge);
+            bool canTurnVerticalFirst = IsRoadTile(verticalBridge);
 
             if (!canTurnHorizontalFirst && !canTurnVerticalFirst)
             {
@@ -2018,6 +2167,15 @@ namespace CityFlow.View
 
         private void DeactivateCommuteVehicle(RouteVehicle vehicle)
         {
+            // 선택 추적 중인 차가 stale 처리되면 드라이브 뷰를 먼저 종료한다(#103 방어 이식).
+            // 비활성화 직후 같은 풀 오브젝트가 TakeFreeVehicle()로 신규 통근차에 재사용되면
+            // DriveViewCamera가 볼 때 대상이 다시 active라 자동 종료 조건도 통과하지 못해,
+            // 카메라가 엉뚱한 차를 계속 추적하게 된다.
+            if (selectedVehicle == vehicle)
+            {
+                ExitDriveView();
+            }
+
             vehicle.Object.SetActive(false);
             vehicle.RouteIndex = -1;
             vehicle.HasCurrentTile = false;
@@ -2763,11 +2921,13 @@ namespace CityFlow.View
             return prefab != null ? Instantiate(prefab) : GameObject.CreatePrimitive(primitive);
         }
 
-        private static Renderer PrepareRenderer(Renderer renderer)
+        private static Renderer PrepareRenderer(
+            Renderer renderer,
+            int renderQueue = (int)RenderQueue.Geometry)
         {
             if (renderer != null)
             {
-                renderer.sharedMaterial = CreateUnlitMaterial();
+                renderer.sharedMaterial = CreateUnlitMaterial(renderer.sharedMaterial, renderQueue);
                 renderer.enabled = true;
                 renderer.forceRenderingOff = false;
                 renderer.allowOcclusionWhenDynamic = false;
@@ -2776,21 +2936,72 @@ namespace CityFlow.View
             return renderer;
         }
 
-        private static Material CreateUnlitMaterial()
+        private static Material CreateUnlitMaterial(
+            Material fallbackMaterial = null,
+            int renderQueue = (int)RenderQueue.Geometry)
         {
-            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            Shader shader = Resources.Load<Shader>("CityFlowOpaqueUnlit");
+            shader ??= Shader.Find("GreenLight/CityFlow Opaque Unlit");
+            shader ??= Shader.Find("Universal Render Pipeline/Unlit");
+            shader ??= Shader.Find("Universal Render Pipeline/Simple Lit");
+            shader ??= Shader.Find("Universal Render Pipeline/Lit");
             shader ??= Shader.Find("Unlit/Color");
-            shader ??= Shader.Find("Sprites/Default");
             shader ??= Shader.Find("Standard");
-            return new Material(shader);
+
+            Material material = shader != null
+                ? new Material(shader)
+                : new Material(fallbackMaterial);
+            ConfigureOpaqueMaterial(material, renderQueue);
+            return material;
         }
 
-        private Material CreateGridMaterial()
+        private static void ConfigureOpaqueMaterial(Material material, int renderQueue)
         {
-            Material material = CreateUnlitMaterial();
+            material.SetOverrideTag("RenderType", "Opaque");
+            material.renderQueue = renderQueue;
+            material.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.DisableKeyword("_ALPHATEST_ON");
+
+            if (material.HasProperty("_Surface"))
+            {
+                material.SetFloat("_Surface", 0f);
+            }
+
+            if (material.HasProperty("_AlphaClip"))
+            {
+                material.SetFloat("_AlphaClip", 0f);
+            }
+
+            if (material.HasProperty("_ZWrite"))
+            {
+                material.SetFloat("_ZWrite", 1f);
+            }
+
+            if (material.HasProperty("_SrcBlend"))
+            {
+                material.SetFloat("_SrcBlend", (float)BlendMode.One);
+            }
+
+            if (material.HasProperty("_DstBlend"))
+            {
+                material.SetFloat("_DstBlend", (float)BlendMode.Zero);
+            }
+        }
+
+        private static void SetRendererRenderQueue(Renderer renderer, int renderQueue)
+        {
+            if (renderer != null && renderer.sharedMaterial != null)
+            {
+                renderer.sharedMaterial.renderQueue = renderQueue;
+            }
+        }
+
+        private Material CreateGridMaterial(Material fallbackMaterial)
+        {
+            Material material = CreateUnlitMaterial(fallbackMaterial, 1900);
             Texture2D texture = CreateGridTexture();
 
-            material.renderQueue = 1900;
             material.mainTexture = texture;
 
             if (material.HasProperty("_ZWrite"))

@@ -64,6 +64,18 @@ namespace CityFlow.Contracts
         }
     }
 
+    public readonly struct InfrastructureChangedEvent
+    {
+        public readonly Vector2Int Tile;
+        public readonly bool IsRemove;
+
+        public InfrastructureChangedEvent(Vector2Int tile, bool isRemove)
+        {
+            Tile = tile;
+            IsRemove = isRemove;
+        }
+    }
+
     public sealed class SimEventHub
     {
         public event Action<ArrivalEvent> Arrival;
@@ -71,6 +83,7 @@ namespace CityFlow.Contracts
         public event Action<CongestionEvent> CongestionChanged;
         public event Action<StabilityEvent> StabilityChanged;
         public event Action<PlacedEvent> Placed;
+        public event Action<InfrastructureChangedEvent> InfrastructureChanged;
 
         public void Publish(ArrivalEvent e) => Arrival?.Invoke(e);
 
@@ -81,5 +94,7 @@ namespace CityFlow.Contracts
         public void Publish(StabilityEvent e) => StabilityChanged?.Invoke(e);
 
         public void Publish(PlacedEvent e) => Placed?.Invoke(e);
+
+        public void Publish(InfrastructureChangedEvent e) => InfrastructureChanged?.Invoke(e);
     }
 }
