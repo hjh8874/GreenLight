@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: HighwayData
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Data.InfrastructureDataSO
   Kind: 6
-  InfrastructureName: Highway
+  InfrastructureName: "\uACE0\uC18D\uB3C4\uB85C"
   Icon: {fileID: 0}
   Description: "첫 번째 램프와 두 번째 램프를 선택해 고가 직결 도로를 만듭니다. 가격은 거리당 25입니다."
   Cost: 25
