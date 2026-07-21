@@ -8,7 +8,8 @@ namespace CityFlow.Contracts
         Road,
         House,
         Office,
-        School
+        School,
+        Hospital
     }
 
     public enum CongestionLevel
@@ -25,7 +26,12 @@ namespace CityFlow.Contracts
         public readonly CongestionLevel Congestion;
         public readonly float Density01;
 
-        public TileSnapshot(Vector2Int tile, TileType type, CongestionLevel congestion, float density01)
+        public TileSnapshot(
+            Vector2Int tile,
+            TileType type,
+            CongestionLevel congestion,
+            float density01
+        )
         {
             Tile = tile;
             Type = type;
