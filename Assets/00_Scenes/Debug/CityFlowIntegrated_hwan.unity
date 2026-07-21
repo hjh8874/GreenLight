@@ -1341,9 +1341,9 @@ MonoBehaviour:
   vehicleCatchUpRamp: 2
   parkingApproachSpeedRatio: 0.9
   intersectionQueueInset: 0.12
-  cornerTurnRadius: 0.6
+  cornerTurnRadius: 0.75
   turnSignZ: -0.5
-  roundaboutOrbitRadius: 0.5
+  roundaboutOrbitRadius: 0.775
   roundaboutEntryExitDeg: 45
   roundaboutTransitionTiles: 0.66
   parkingSlotInset: 0.32

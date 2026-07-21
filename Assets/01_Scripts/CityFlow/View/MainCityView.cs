@@ -70,7 +70,11 @@ namespace CityFlow.View
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
         [Header("Roundabout Tuning")]   // 재생 중 슬라이더 조정 → 통근 폴리라인 즉시 리베이크(QA G)
-        [SerializeField, Range(0.5f, 1.1f)] private float roundaboutOrbitRadius = 0.9f;    // 궤도 반경(타일 비율) — 풋프린트 차도 중앙(섬 0.45~판 1.1). 씬 직렬화 값 우선
+        // 궤도 반경(타일 비율) = 차도 정중앙. 차도는 섬 0.45(Island scale 0.9)와 링 1.1(Ring scale 2.2)
+        // 사이의 고리이므로 중앙은 (0.45+1.1)/2 = 0.775 — 섬 스침·바깥 이탈 양쪽에 여유 0.325로 균등.
+        // 2026-07-21 전 씬 통일. 씬에 0.3(섬 내부 = 관통)이 5개 있었다. Range는 인스펙터만 막고
+        // 직렬화 값은 그대로 쓰이므로, 값을 바꿀 때는 반드시 7개 씬을 함께 맞출 것.
+        [SerializeField, Range(0.5f, 1.1f)] private float roundaboutOrbitRadius = 0.775f;
         [SerializeField, Range(10f, 80f)] private float roundaboutEntryExitDeg = 45f;      // α — 진입/이탈을 링 둘레로 미는 각. 클수록 링 체류 짧아짐
         [SerializeField, Range(0.66f, 0.95f)] private float roundaboutTransitionTiles = 0.66f; // 전이 곡선 길이(타일) — 클수록 진입/이탈 완만. 하한 0.66 = 섬 스침 방지 실측(√(span²+λ²)>0.62, RoutePolyline.cs:316,392)
 
