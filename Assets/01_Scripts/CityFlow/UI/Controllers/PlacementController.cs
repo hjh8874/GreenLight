@@ -53,6 +53,25 @@ namespace CityFlow.UI
         private Vector2Int? _lastRemovedCoord = null;
         private Vector2Int? _rightClickStartCoord = null;
 
+        private BenefitHighlightRenderer _benefitRenderer;
+        private Vector2Int? _lastPreviewCoord = null;
+        private readonly System.Collections.Generic.List<Vector2Int> _benefitTileBuffer = new System.Collections.Generic.List<Vector2Int>(32);
+        private readonly System.Collections.Generic.List<Vector2Int> _areaTileBuffer = new System.Collections.Generic.List<Vector2Int>(128);
+        private const int PREVIEW_BENEFIT_RADIUS = 5;
+
+        private BenefitHighlightRenderer GetBenefitRenderer()
+        {
+            if (_benefitRenderer == null)
+            {
+                _benefitRenderer = GetComponent<BenefitHighlightRenderer>();
+                if (_benefitRenderer == null)
+                {
+                    _benefitRenderer = gameObject.AddComponent<BenefitHighlightRenderer>();
+                }
+            }
+            return _benefitRenderer;
+        }
+
         /// <summary>
         /// 건설 패널(BuildPanelController) 등에서 타일 타입을 변경할 때 호출합니다.
         /// </summary>
@@ -127,11 +146,18 @@ namespace CityFlow.UI
             _isBuildingMode = isOn;
             if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(isOn);
             BuildModeCursorFeedback.SetBuilding(this, isOn);
+            if (!isOn)
+            {
+                _lastPreviewCoord = null;
+                GetBenefitRenderer()?.HideAll();
+            }
         }
 
         private void OnDisable()
         {
             BuildModeCursorFeedback.SetBuilding(this, false);
+            _lastPreviewCoord = null;
+            if (_benefitRenderer != null) _benefitRenderer.HideAll();
         }
 
         private long GetTileCost(TileType type)
@@ -196,13 +222,20 @@ namespace CityFlow.UI
                     _rightClickStartCoord = null;
                 }
             }
-            if (!_isBuildingMode || ghostRenderer == null) return;
+            if (!_isBuildingMode || ghostRenderer == null)
+            {
+                _lastPreviewCoord = null;
+                _benefitRenderer?.HideAll();
+                return;
+            }
 
             // 1. 방어 로직: 마우스가 UI(버튼, 패널) 위에 있으면 바닥 클릭(건설)을 방지합니다.
             if (IsPointerOverBlockingUI())
             {
                 ghostRenderer.gameObject.SetActive(false);
                 _lastPlacedCoord = null;
+                _lastPreviewCoord = null;
+                _benefitRenderer?.HideAll();
                 return;
             }
             ghostRenderer.gameObject.SetActive(true);
@@ -217,6 +250,9 @@ namespace CityFlow.UI
             // 4. 건설 유효성 검증 (엔진 디커플링 통신)
             bool canPlace = CheckCanPlace(gridCoord);
             ghostRenderer.color = GetVisibleGhostColor(canPlace ? colorValid : colorInvalid);
+
+            // 4.1. 공공 인프라(학교, 병원) 혜택 범위 미리보기 하이라이트
+            UpdateBenefitPreview(gridCoord);
 
             // 5. 마우스 좌클릭 시 최종 건설 명령 하달 (드래그 연속 건설 지원)
             if (Mouse.current != null)
@@ -530,6 +566,53 @@ namespace CityFlow.UI
                     }
                 }
             }
+        }
+
+        private void UpdateBenefitPreview(Vector2Int gridCoord)
+        {
+            bool isFacility = _currentType == TileType.School || _currentType == TileType.Hospital;
+
+            if (!isFacility)
+            {
+                if (_lastPreviewCoord != null)
+                {
+                    _lastPreviewCoord = null;
+                    GetBenefitRenderer().HideAll();
+                }
+                return;
+            }
+
+            if (_lastPreviewCoord.HasValue && _lastPreviewCoord.Value == gridCoord)
+            {
+                return;
+            }
+
+            _lastPreviewCoord = gridCoord;
+            _benefitTileBuffer.Clear();
+            _areaTileBuffer.Clear();
+
+            if (_services != null && _services.TileData != null)
+            {
+                for (int dx = -PREVIEW_BENEFIT_RADIUS; dx <= PREVIEW_BENEFIT_RADIUS; dx++)
+                {
+                    for (int dy = -PREVIEW_BENEFIT_RADIUS; dy <= PREVIEW_BENEFIT_RADIUS; dy++)
+                    {
+                        if (System.Math.Abs(dx) + System.Math.Abs(dy) > PREVIEW_BENEFIT_RADIUS) continue;
+
+                        Vector2Int targetTile = new Vector2Int(gridCoord.x + dx, gridCoord.y + dy);
+                        if (!GridUtil.IsInside(targetTile)) continue;
+
+                        _areaTileBuffer.Add(targetTile);
+
+                        if (_services.TileData.GetTileType(targetTile) == TileType.House)
+                        {
+                            _benefitTileBuffer.Add(targetTile);
+                        }
+                    }
+                }
+            }
+
+            GetBenefitRenderer().ShowHighlights(_areaTileBuffer, _benefitTileBuffer, _currentType, useXYPlane);
         }
     }
 }
