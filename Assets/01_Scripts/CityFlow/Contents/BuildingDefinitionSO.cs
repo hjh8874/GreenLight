@@ -57,48 +57,40 @@ namespace CityFlow.Content
         public bool unlockedByDefault = false;
 
         [Header("학교 기능")]
+        [SerializeField]
         [Min(0)]
         [Tooltip("학교 또는 스쿨버스 한 대가 커버할 수 있는 최대 주거 건물 수")]
-        public int schoolCoverageCapacity;
+        private int schoolCoverageCapacity;
 
+        [SerializeField]
         [Min(0)]
         [Tooltip("학교 커버를 받은 주거 건물에 추가되는 인구 상한")]
-        public int coveredPopulationCapBonus;
+        private int coveredPopulationCapBonus;
 
         [Header("병원 기능")]
+        [SerializeField]
         [Min(0)]
         [Tooltip("환자 이송 완료 시 지급하는 기본 보상")]
-        public int emergencyReward;
+        private int emergencyReward;
 
+        [SerializeField]
         [Min(0f)]
         [Tooltip("환자 이벤트 발생 간격. 0이면 병원 이벤트를 사용하지 않음")]
-        public float patientEventIntervalSeconds;
+        private float patientEventIntervalSeconds;
+
+        // 외부 코드에서는 값을 읽을 수만 있고 직접 변경할 수 없습니다.
+        public int SchoolCoverageCapacity => schoolCoverageCapacity;
+        public int CoveredPopulationCapBonus => coveredPopulationCapBonus;
+        public int EmergencyReward => emergencyReward;
+        public float PatientEventIntervalSeconds =>
+            patientEventIntervalSeconds;
 
 #if UNITY_EDITOR
         private void OnValidate()
         {
+            // Inspector에서 입력한 문자열의 앞뒤 공백을 제거합니다.
             buildingId = buildingId?.Trim();
             buildingName = buildingName?.Trim();
-
-            trafficGenerationAmount = Mathf.Max(0, trafficGenerationAmount);
-            destinationRewardMultiplier =
-                Mathf.Max(0f, destinationRewardMultiplier);
-
-            buildCost = Mathf.Max(0, buildCost);
-            dailyCoinValue = Mathf.Max(0, dailyCoinValue);
-            prosperityValue = Mathf.Max(0, prosperityValue);
-
-            schoolCoverageCapacity =
-                Mathf.Max(0, schoolCoverageCapacity);
-
-            coveredPopulationCapBonus =
-                Mathf.Max(0, coveredPopulationCapBonus);
-
-            emergencyReward =
-                Mathf.Max(0, emergencyReward);
-
-            patientEventIntervalSeconds =
-                Mathf.Max(0f, patientEventIntervalSeconds);
         }
 #endif
     }
