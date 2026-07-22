@@ -1,4 +1,5 @@
 using System;
+using CityFlow.Contracts;
 
 namespace CityFlow.Sim
 {

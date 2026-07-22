@@ -63,6 +63,7 @@ namespace CityFlow.Sim
         // 관찰 seam: 일방 배치/철거가 재계획(dirty)을 강제하는지 테스트가 직접 핀(리뷰 위임분).
         internal bool TopologyDirtyForTest => _grid.TopologyDirty;
         internal float TripSuccessRateForTest => _stats.TripSuccessRate;
+        internal RoadQueueNetwork RoadQueuesForTest => _roadQueues;
 
         public SimEngine(SimConfig config, SimEventHub hub)
         {
@@ -1020,6 +1021,8 @@ namespace CityFlow.Sim
                 : CongestionLevel.Free;
         public float GetDensity01(Vector2Int tile) =>
             _grid.InBounds(tile) ? _roadQueues.MaxOccupancy01(tile) : 0f;
+        public int GetQueueCount(Vector2Int tile, Dir entryDir) =>
+            _grid.InBounds(tile) ? _roadQueues.QueueCount(tile, entryDir) : 0;
         public TileType GetTileType(Vector2Int tile) =>
             _grid.InBounds(tile) ? _grid.GetTile(tile) : TileType.Empty;
     }
