@@ -1,0 +1,99 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_CongestionStarted
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 0
+  templates:
+  - templateId: Congestion_Office_01
+    text: "{TimePeriod}\uBD80\uD130 {Location}\uC5D0\uC11C \uAF3C\uC9DD\uB3C4 \uBABB
+      \uD558\uACE0 \uC788\uC2B5\uB2C8\uB2E4. \uC624\uB298\uB3C4 \uC9C0\uAC01 \uD655\uC815\uC774\uB124\uC694."
+    tone: 0
+    category: 1
+    weight: 1.2
+    allowedRoles: 00000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Congestion_Parent_01
+    text: "{Location}\uAE4C\uC9C0 \uCC28\uAC00 \uAF49 \uCC3C\uC5B4\uC694. \uC544\uC774
+      \uC774\uB3D9 \uC2DC\uAC04\uC5D0\uB294 \uC870\uAE08 \uB098\uC544\uC84C\uC73C\uBA74
+      \uC88B\uACA0\uB124\uC694."
+    tone: 0
+    category: 1
+    weight: 1
+    allowedRoles: 01000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Congestion_Taxi_01
+    text: "{Location} \uC9C4\uC785\uC740 \uD53C\uD558\uC138\uC694. \uD604\uC7AC \uBC00\uB3C4
+      {DensityPercent}, \uC6B0\uD68C\uD558\uB294 \uD3B8\uC774 \uBE60\uB985\uB2C8\uB2E4."
+    tone: 3
+    category: 1
+    weight: 1.3
+    allowedRoles: 02000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Congestion_Merchant_01
+    text: "\uAC00\uAC8C \uC55E {Location}\uAC00 \uB9C9\uD600\uC11C \uB0A9\uD488 \uCC28\uB7C9\uB3C4
+      \uB2A6\uACE0 \uC788\uC2B5\uB2C8\uB2E4. \uC624\uB298 \uC7A5\uC0AC\uAC00 \uAC71\uC815\uC774\uB124\uC694."
+    tone: 0
+    category: 1
+    weight: 1
+    allowedRoles: 03000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Congestion_Analyst_01
+    text: "{Location}\uAC00 {CurrentCongestion} \uB2E8\uACC4\uC785\uB2C8\uB2E4. \uCC28\uB7C9
+      \uBC00\uB3C4 {DensityPercent}, \uC720\uC785 \uC2E0\uD638\uB97C \uD655\uC778\uD574\uC57C\uACA0\uB124\uC694."
+    tone: 3
+    category: 1
+    weight: 1.2
+    allowedRoles: 04000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Congestion_Question_01
+    text: "{Location}\uB294 \uC65C {Hour}\uB9CC \uB418\uBA74 \uD56D\uC0C1 \uB9C9\uD788\uB294
+      \uAC78\uAE4C\uC694?"
+    tone: 4
+    category: 1
+    weight: 0.5
+    allowedRoles: 0000000001000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Congestion_Delivery_01
+    text: "\uBC30\uB2EC\uC9C0\uB294 \uBC14\uB85C \uC55E\uC778\uB370 {Location}\uC5D0\uC11C
+      \uAE38\uC774 \uBA48\uCDC4\uC2B5\uB2C8\uB2E4. \uC74C\uC2DD\uBCF4\uB2E4 \uC81C\uAC00
+      \uBA3C\uC800 \uC2DD\uACA0\uB124\uC694."
+    tone: 5
+    category: 5
+    weight: 0.8
+    allowedRoles: 05000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Congestion_Driver_01
+    text: "{Location}\uC758 \uCD08\uB85D\uBD88\uC740 \uC624\uB298\uB3C4 \uC7A5\uC2DD\uD488
+      \uC5ED\uD560\uC744 \uD6CC\uB96D\uD788 \uC218\uD589 \uC911\uC785\uB2C8\uB2E4."
+    tone: 6
+    category: 5
+    weight: 0.45
+    allowedRoles: 0b000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Congestion_Student_01
+    text: "{TimePeriod}\uBD80\uD130 \uCC28\uAC00 \uC548 \uC6C0\uC9C1\uC5EC\uC694.
+      \uAC78\uC5B4\uAC04 \uCE5C\uAD6C\uAC00 \uBA3C\uC800 \uB3C4\uCC29\uD558\uACA0\uB294\uB370\uC694."
+    tone: 0
+    category: 3
+    weight: 0.8
+    allowedRoles: 06000000
+    allowedPersonalities: 
+    allowedTimePeriods: 

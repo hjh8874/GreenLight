@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_VehicleSurge
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 10
+  templates:
+  - templateId: VehicleSurge_Taxi_01
+    text: "\uD604\uC7AC \uB3C4\uB85C\uC5D0 \uCC28\uB7C9\uC774 {VehicleCount}\uB098
+      \uB098\uC640 \uC788\uC2B5\uB2C8\uB2E4. \uC8FC\uC694 \uAD50\uCC28\uB85C\uB294
+      \uBBF8\uB9AC \uC6B0\uD68C\uD558\uB294 \uD3B8\uC774 \uC88B\uACA0\uC2B5\uB2C8\uB2E4."
+    tone: 3
+    category: 1
+    weight: 1.3
+    allowedRoles: 0200000005000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: VehicleSurge_Analyst_01
+    text: "\uD65C\uC131 \uCC28\uB7C9 \uC218\uAC00 {VehicleCount}\uAE4C\uC9C0 \uC99D\uAC00\uD588\uC2B5\uB2C8\uB2E4.
+      \uC2E0\uD638 \uC6A9\uB7C9\uC774 \uC218\uC694\uB97C \uAC10\uB2F9\uD558\uB294\uC9C0
+      \uD655\uC778\uD560 \uC2DC\uC810\uC785\uB2C8\uB2E4."
+    tone: 3
+    category: 1
+    weight: 1.4
+    allowedRoles: 04000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: VehicleSurge_Resident_01
+    text: "\uD3C9\uC18C\uBCF4\uB2E4 \uB3C4\uB85C\uAC00 \uB9CE\uC774 \uBD90\uBE44\uB124\uC694.
+      \uC624\uB298\uC740 \uB3C4\uC2DC \uC804\uCCB4\uAC00 \uB3D9\uC2DC\uC5D0 \uB098\uC628
+      \uAC83 \uAC19\uC2B5\uB2C8\uB2E4."
+    tone: 2
+    category: 0
+    weight: 0.9
+    allowedRoles: 0a00000001000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: VehicleSurge_Driver_01
+    text: "\uB3C4\uB85C \uC704 \uCC28\uB7C9 {VehicleCount}. \uC624\uB298\uB3C4 \uC790\uB3D9\uCC28
+      \uC8FC\uCC28 \uC2DC\uBBAC\uB808\uC774\uD130\uAC00 \uC2DC\uC791\uB410\uC2B5\uB2C8\uB2E4."
+    tone: 5
+    category: 5
+    weight: 0.5
+    allowedRoles: 0b000000
+    allowedPersonalities: 
+    allowedTimePeriods: 

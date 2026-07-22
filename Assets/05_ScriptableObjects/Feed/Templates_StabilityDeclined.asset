@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_StabilityDeclined
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 5
+  templates:
+  - templateId: StabilityDown_Parent_01
+    text: "\uC694\uC998 \uB3D9\uB124\uAC00 \uACC4\uC18D \uC5B4\uC218\uC120\uD574\uC694.
+      \uC804\uCC98\uB7FC \uD3B8\uD558\uAC8C \uB2E4\uB2C8\uAE30 \uC5B4\uB824\uC6CC\uC9C4
+      \uB290\uB08C\uC785\uB2C8\uB2E4."
+    tone: 0
+    category: 0
+    weight: 1
+    allowedRoles: 010000000a000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: StabilityDown_Merchant_01
+    text: "\uB3C4\uC2DC \uD750\uB984\uC774 \uBD88\uC548\uC815\uD574\uC9C0\uB2C8 \uC190\uB2D8\uACFC
+      \uB0A9\uD488 \uC77C\uC815\uB3C4 \uD568\uAED8 \uD754\uB4E4\uB9AC\uACE0 \uC788\uC2B5\uB2C8\uB2E4."
+    tone: 0
+    category: 4
+    weight: 1.1
+    allowedRoles: 0300000007000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: StabilityDown_RealEstate_01
+    text: "\uB3C4\uC2DC \uCCB4\uAC10 \uC548\uC815\uB3C4\uAC00 {PreviousStabilityPercent}\uC5D0\uC11C
+      {StabilityPercent} \uC218\uC900\uC73C\uB85C \uB0B4\uB824\uAC14\uC2B5\uB2C8\uB2E4.
+      \uC811\uADFC\uC131 \uAC1C\uC120\uC774 \uD544\uC694\uD574 \uBCF4\uC785\uB2C8\uB2E4."
+    tone: 3
+    category: 4
+    weight: 1.2
+    allowedRoles: 08000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: StabilityDown_Activist_01
+    text: "\uB3C4\uC2DC \uACF3\uACF3\uC5D0\uC11C \uBD88\uD3B8 \uC81C\uBCF4\uAC00
+      \uB298\uACE0 \uC788\uC2B5\uB2C8\uB2E4. \uB2E8\uAE30 \uC870\uCE58\uBCF4\uB2E4
+      \uC804\uCCB4 \uD750\uB984\uC744 \uC810\uAC80\uD574\uC57C \uD569\uB2C8\uB2E4."
+    tone: 0
+    category: 0
+    weight: 1.2
+    allowedRoles: 09000000
+    allowedPersonalities: 
+    allowedTimePeriods: 

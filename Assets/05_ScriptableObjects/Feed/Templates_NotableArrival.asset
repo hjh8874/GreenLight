@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_NotableArrival
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 9
+  templates:
+  - templateId: Arrival_Office_01
+    text: "\uB3C4\uC2DC\uB97C {RouteDistance}\uB098 \uAC00\uB85C\uC9C8\uB7EC \uBB34\uC0AC\uD788
+      \uB3C4\uCC29\uD588\uC2B5\uB2C8\uB2E4. \uC624\uB298 \uCD9C\uADFC\uB3C4 \uC791\uC740
+      \uC5EC\uD589\uC774\uC5C8\uB124\uC694."
+    tone: 2
+    category: 3
+    weight: 1
+    allowedRoles: 00000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Arrival_Delivery_01
+    text: "{RouteDistance} \uAC70\uB9AC\uC758 \uBC30\uB2EC\uC744 \uB9C8\uCCE4\uC2B5\uB2C8\uB2E4.
+      \uB2A6\uC9C0 \uC54A\uAC8C \uB3C4\uCC29\uD574\uC11C \uB2E4\uD589\uC785\uB2C8\uB2E4."
+    tone: 1
+    category: 3
+    weight: 1.3
+    allowedRoles: 05000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Arrival_Taxi_01
+    text: "{Location}\uAE4C\uC9C0 \uC7A5\uAC70\uB9AC \uC6B4\uD589 \uC644\uB8CC\uD588\uC2B5\uB2C8\uB2E4.
+      \uBA40\uB9AC \uB3CC\uC544\uC654\uC9C0\uB9CC \uBAA9\uC801\uC9C0\uC5D0\uB294
+      \uC81C\uB300\uB85C \uB3C4\uCC29\uD588\uC2B5\uB2C8\uB2E4."
+    tone: 3
+    category: 1
+    weight: 1.2
+    allowedRoles: 02000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Arrival_Student_01
+    text: "\uC624\uB298 \uC774\uB3D9 \uAC70\uB9AC\uAC00 {RouteDistance}\uB798\uC694.
+      \uD559\uAD50\uBCF4\uB2E4 \uB3C4\uB85C\uC5D0\uC11C \uB354 \uC624\uB798 \uC9C0\uB0B8
+      \uAE30\uBD84\uC785\uB2C8\uB2E4."
+    tone: 5
+    category: 5
+    weight: 0.7
+    allowedRoles: 06000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Arrival_Merchant_01
+    text: "\uBA3C \uAE38\uC744 \uC628 \uCC28\uB7C9\uC774 \uC81C\uC2DC\uAC04\uC5D0
+      \uB3C4\uCC29\uD588\uC2B5\uB2C8\uB2E4. \uC624\uB298 \uB0A9\uD488 \uC77C\uC815\uC740
+      \uBB38\uC81C\uC5C6\uACA0\uB124\uC694."
+    tone: 1
+    category: 4
+    weight: 0.9
+    allowedRoles: 0300000007000000
+    allowedPersonalities: 
+    allowedTimePeriods: 

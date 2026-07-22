@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_CongestionSlowed
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 3
+  templates:
+  - templateId: Slow_Office_01
+    text: "{Location}\uC758 \uD750\uB984\uC774 \uB290\uB824\uC9C0\uAE30 \uC2DC\uC791\uD588\uC2B5\uB2C8\uB2E4.
+      {TimePeriod} \uC77C\uC815\uC740 \uC870\uAE08 \uC5EC\uC720 \uC788\uAC8C \uC7A1\uC544\uC57C\uACA0\uB124\uC694."
+    tone: 0
+    category: 3
+    weight: 1
+    allowedRoles: 00000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Slow_Taxi_01
+    text: "{Location} \uCC28\uB7C9 \uBC00\uB3C4 {DensityPercent}. \uC544\uC9C1 \uB9C9\uD788\uC9C4
+      \uC54A\uC558\uC9C0\uB9CC \uC6B0\uD68C \uC900\uBE44\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4."
+    tone: 3
+    category: 1
+    weight: 1.2
+    allowedRoles: 0200000005000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Slow_Resident_01
+    text: "\uB3D9\uB124 \uB3C4\uB85C\uC5D0 \uCC28\uAC00 \uD558\uB098\uB458 \uB298\uC5B4\uB098\uB124\uC694.
+      \uACE7 \uBD90\uBE4C \uC2DC\uAC04\uC778\uAC00 \uBD05\uB2C8\uB2E4."
+    tone: 2
+    category: 0
+    weight: 0.8
+    allowedRoles: 0a00000001000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Slow_Analyst_01
+    text: "{Location}\uAC00 \uC6D0\uD65C \uB2E8\uACC4\uC5D0\uC11C \uC11C\uD589 \uB2E8\uACC4\uB85C
+      \uBC14\uB00C\uC5C8\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uC720\uC785\uB7C9\uC744
+      \uC9C0\uCF1C\uBCFC \uD544\uC694\uAC00 \uC788\uC2B5\uB2C8\uB2E4."
+    tone: 3
+    category: 1
+    weight: 1.1
+    allowedRoles: 04000000
+    allowedPersonalities: 
+    allowedTimePeriods: 

@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73308b218e124b21aa3091dfcd0730da, type: 3}
+  m_Name: Author_Parent
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedAuthorProfileSO
+  displayName: "\uD55C\uC11C\uC724"
+  avatarInitial: "\uD55C"
+  roleLabel: "\uD559\uBD80\uBAA8"
+  accentColor: {r: 0.93, g: 0.68, b: 0.35, a: 1}
+  role: 1
+  personality: 3
+  postingWeight: 1
+  preferredEvents: 000000000100000002000000

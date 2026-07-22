@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73308b218e124b21aa3091dfcd0730da, type: 3}
+  m_Name: Author_TrafficEnthusiast
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedAuthorProfileSO
+  displayName: "\uB3C4\uB85C\uB294\uB0B4\uCE5C\uAD6C"
+  avatarInitial: "\uB3C4"
+  roleLabel: "\uAD50\uD1B5 \uB355\uD6C4"
+  accentColor: {r: 0.63, g: 0.56, b: 0.91, a: 1}
+  role: 4
+  personality: 2
+  postingWeight: 1.1
+  preferredEvents: 000000000100000002000000

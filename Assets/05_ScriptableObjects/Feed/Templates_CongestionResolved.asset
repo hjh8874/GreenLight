@@ -1,0 +1,81 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_CongestionResolved
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 1
+  templates:
+  - templateId: Resolved_Office_01
+    text: "{Location}\uAC00 \uB4DC\uB514\uC5B4 \uC6C0\uC9C1\uC774\uB124\uC694. \uC624\uB298\uC740
+      \uC81C\uC2DC\uAC04\uC5D0 \uB3C4\uCC29\uD560 \uC218 \uC788\uACA0\uC2B5\uB2C8\uB2E4."
+    tone: 1
+    category: 1
+    weight: 1.2
+    allowedRoles: 00000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Resolved_Parent_01
+    text: "\uC9D1 \uADFC\uCC98 \uB3C4\uB85C\uAC00 \uD55C\uACB0 \uC870\uC6A9\uD574\uC84C\uC5B4\uC694.
+      \uC544\uC774\uC640 \uB2E4\uB2C8\uAE30 \uD6E8\uC52C \uD3B8\uD574\uC84C\uB124\uC694."
+    tone: 1
+    category: 1
+    weight: 1
+    allowedRoles: 01000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Resolved_Taxi_01
+    text: "{Location} \uC815\uCCB4\uAC00 \uD480\uB838\uC2B5\uB2C8\uB2E4. \uD604\uC7AC
+      {CurrentCongestion} \uC0C1\uD0DC\uB85C \uC815\uC0C1 \uC6B4\uD589 \uAC00\uB2A5\uD569\uB2C8\uB2E4."
+    tone: 3
+    category: 1
+    weight: 1.3
+    allowedRoles: 02000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Resolved_Merchant_01
+    text: "\uB3C4\uB85C \uD750\uB984\uC774 \uC0B4\uC544\uB098\uB2C8 \uC190\uB2D8\uB3C4
+      \uB2E4\uC2DC \uB4E4\uC5B4\uC624\uAE30 \uC2DC\uC791\uD558\uB124\uC694."
+    tone: 1
+    category: 1
+    weight: 1
+    allowedRoles: 03000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Resolved_Analyst_01
+    text: "{Location}\uAC00 {PreviousCongestion}\uC5D0\uC11C {CurrentCongestion}
+      \uC0C1\uD0DC\uB85C \uD68C\uBCF5\uB410\uC2B5\uB2C8\uB2E4. \uCD5C\uADFC \uC870\uC815
+      \uD6A8\uACFC\uC77C\uAE4C\uC694?"
+    tone: 3
+    category: 1
+    weight: 1.2
+    allowedRoles: 04000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Resolved_Delivery_01
+    text: "{Location}\uAC00 \uB6AB\uB838\uC2B5\uB2C8\uB2E4. \uC774\uBC88 \uBC30\uB2EC\uC740
+      \uC81C\uC2DC\uAC04\uC5D0 \uB3C4\uCC29\uD560 \uC218 \uC788\uACA0\uB124\uC694."
+    tone: 1
+    category: 3
+    weight: 1
+    allowedRoles: 05000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Resolved_SelfEmployed_01
+    text: "\uAC00\uAC8C\uB85C \uB4E4\uC5B4\uC624\uB294 \uAE38\uC774 \uB2E4\uC2DC
+      \uC6C0\uC9C1\uC785\uB2C8\uB2E4. \uC190\uB2D8\uACFC \uB0A9\uD488 \uCC28\uB7C9
+      \uBAA8\uB450 \uD55C\uACB0 \uD3B8\uD574\uC9C0\uACA0\uC5B4\uC694."
+    tone: 1
+    category: 4
+    weight: 0.9
+    allowedRoles: 07000000
+    allowedPersonalities: 
+    allowedTimePeriods: 

@@ -1,0 +1,54 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_InfrastructureRemoved
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 8
+  templates:
+  - templateId: FacilityRemoved_Parent_01
+    text: "{Location}\uC758 {Facility}\uC774 \uC5C6\uC5B4\uC84C\uC5B4\uC694. \uC775\uC219\uD588\uB358
+      \uAE38\uC774 \uB2EC\uB77C\uC838\uC11C \uC870\uAE08 \uAC71\uC815\uB418\uB124\uC694."
+    tone: 0
+    category: 2
+    weight: 1
+    allowedRoles: 010000000a000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: FacilityRemoved_Taxi_01
+    text: "{Location}\uC758 {Facility}\uC774 \uCCA0\uAC70\uB410\uC2B5\uB2C8\uB2E4.
+      \uB2F9\uBD84\uAC04 \uC9C4\uC785 \uD750\uB984\uC744 \uC8FC\uC758\uD574\uC11C
+      \uBCF4\uACA0\uC2B5\uB2C8\uB2E4."
+    tone: 3
+    category: 2
+    weight: 1.3
+    allowedRoles: 0200000005000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: FacilityRemoved_Analyst_01
+    text: "{Location}\uC5D0\uC11C {Facility}\uC774 \uC81C\uAC70\uB410\uC2B5\uB2C8\uB2E4.
+      \uC774\uC804 \uBC29\uC2DD\uC73C\uB85C \uB3CC\uC544\uAC04 \uB4A4\uC758 \uAD50\uD1B5\uB7C9\uC744
+      \uBE44\uAD50\uD574 \uBD10\uC57C\uACA0\uB124\uC694."
+    tone: 3
+    category: 2
+    weight: 1.4
+    allowedRoles: 04000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: FacilityRemoved_Cynical_01
+    text: "\uC5B4\uC81C\uAE4C\uC9C0 \uC788\uB358 {Facility}\uC774 \uC0AC\uB77C\uC84C\uC2B5\uB2C8\uB2E4.
+      \uC774\uC720\uB294 \uB3C4\uB85C\uB9CC \uC54C\uACE0 \uC788\uACA0\uC8E0."
+    tone: 6
+    category: 5
+    weight: 0.45
+    allowedRoles: 0b000000
+    allowedPersonalities: 
+    allowedTimePeriods: 

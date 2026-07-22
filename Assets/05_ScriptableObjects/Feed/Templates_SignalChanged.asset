@@ -1,0 +1,81 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_SignalChanged
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 2
+  templates:
+  - templateId: Signal_Office_01
+    text: "{Location} \uC2E0\uD638\uAC00 \uC870\uC815\uB410\uB124\uC694. \uCD9C\uADFC\uAE38\uC774
+      \uC5B4\uB5BB\uAC8C \uB2EC\uB77C\uC9C8\uC9C0 \uC9C0\uCF1C\uBCF4\uACA0\uC2B5\uB2C8\uB2E4."
+    tone: 2
+    category: 1
+    weight: 1
+    allowedRoles: 00000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Signal_Parent_01
+    text: "{Location} \uC2E0\uD638 \uC2DC\uAC04\uC774 \uBC14\uB00C\uC5C8\uC5B4\uC694.
+      \uC544\uC774\uB4E4\uC774 \uB2E4\uB2C8\uB294 \uC2DC\uAC04\uC5D0\uB3C4 \uD750\uB984\uC774
+      \uC88B\uC544\uC9C0\uBA74 \uC88B\uACA0\uB124\uC694."
+    tone: 4
+    category: 1
+    weight: 0.9
+    allowedRoles: 01000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Signal_Taxi_01
+    text: "{Location} \uC124\uC815 \uBCC0\uACBD \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4.
+      {SignalChange}, \uC2E4\uC81C \uB300\uAE30\uC5F4\uC744 \uC9C0\uCF1C\uBD10\uC57C\uACA0\uC2B5\uB2C8\uB2E4."
+    tone: 3
+    category: 1
+    weight: 1.3
+    allowedRoles: 02000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Signal_Merchant_01
+    text: "\uAC00\uAC8C \uC55E \uC2E0\uD638\uAC00 \uBC14\uB00C\uC5C8\uB124\uC694.
+      \uC190\uB2D8\uB4E4\uC774 \uB4E4\uC5B4\uC624\uAE30 \uD3B8\uD574\uC9C8\uC9C0
+      \uAD81\uAE08\uD569\uB2C8\uB2E4."
+    tone: 2
+    category: 1
+    weight: 0.9
+    allowedRoles: 03000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Signal_Analyst_01
+    text: "{Location}\uC5D0 {SignalChange}\uAC00 \uC801\uC6A9\uB410\uC2B5\uB2C8\uB2E4.
+      \uC591\uBC29\uD5A5 \uBC00\uB3C4 \uBCC0\uD654\uAC00 \uD575\uC2EC\uC774\uACA0\uB124\uC694."
+    tone: 3
+    category: 1
+    weight: 1.5
+    allowedRoles: 04000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Signal_Delivery_01
+    text: "{Location} \uC2E0\uD638 \uC124\uC815\uC774 \uBC14\uB00C\uC5C8\uC2B5\uB2C8\uB2E4.
+      \uBC30\uB2EC \uB3D9\uC120\uC774 \uC9E7\uC544\uC9C8\uC9C0 \uC9C1\uC811 \uB2EC\uB824\uBCF4\uACA0\uC2B5\uB2C8\uB2E4."
+    tone: 2
+    category: 3
+    weight: 0.9
+    allowedRoles: 05000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: Signal_Driver_01
+    text: "{SignalChange}. \uC774\uBC88\uC5D0\uB294 \uCD08\uB85D\uBD88\uC774 \uC815\uB9D0\uB85C
+      \uCC28\uB97C \uBCF4\uB0B4 \uC8FC\uB294\uC9C0 \uBCF4\uC8E0."
+    tone: 6
+    category: 5
+    weight: 0.5
+    allowedRoles: 0b000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
