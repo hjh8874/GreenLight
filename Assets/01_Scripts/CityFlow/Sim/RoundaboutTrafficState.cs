@@ -12,7 +12,9 @@ namespace CityFlow.Sim
         private readonly bool[] _reservations = new bool[CellCount];
         private readonly bool[] _entryDemand = new bool[CellCount];
         private Dir _preferredEntry = Dir.E;
+        private Dir _servingEntrySide;
         private Dir _selectedEntry;
+        private bool _hasServingEntrySide;
         private bool _hasSelectedEntry;
         private bool _admittedThisTick;
         private int _activeEntryNode = NoNode;
@@ -50,13 +52,26 @@ namespace CityFlow.Sim
                 return;
             }
 
+            if (_hasServingEntrySide)
+            {
+                if (_entryDemand[(int)_servingEntrySide])
+                {
+                    SelectEntry(_servingEntrySide);
+                    return;
+                }
+
+                _preferredEntry = NextCounterClockwise(_servingEntrySide);
+                _hasServingEntrySide = false;
+            }
+
             Dir candidate = _preferredEntry;
             for (int offset = 0; offset < CellCount; offset++)
             {
                 if (_entryDemand[(int)candidate])
                 {
-                    _selectedEntry = candidate;
-                    _hasSelectedEntry = true;
+                    _servingEntrySide = candidate;
+                    _hasServingEntrySide = true;
+                    SelectEntry(candidate);
                     return;
                 }
 
@@ -88,7 +103,6 @@ namespace CityFlow.Sim
 
             _activeEntryNode = node;
             _activeEntrySide = approachSide;
-            _preferredEntry = NextCounterClockwise(approachSide);
             return true;
         }
 
@@ -125,7 +139,6 @@ namespace CityFlow.Sim
             }
 
             _nodes[(int)target] = node;
-            _preferredEntry = NextCounterClockwise(approachSide);
             _activeEntryNode = NoNode;
             OccupiedCount++;
             return true;
@@ -151,10 +164,10 @@ namespace CityFlow.Sim
             int south = _nodes[(int)Dir.S];
             int west = _nodes[(int)Dir.W];
 
-            ReserveTransition(Dir.N, Dir.W, north);
-            ReserveTransition(Dir.E, Dir.N, east);
-            ReserveTransition(Dir.S, Dir.E, south);
-            ReserveTransition(Dir.W, Dir.S, west);
+            ReserveTransition(Dir.W, north);
+            ReserveTransition(Dir.N, east);
+            ReserveTransition(Dir.E, south);
+            ReserveTransition(Dir.S, west);
 
             _nodes[(int)Dir.N] = east;
             _nodes[(int)Dir.W] = north;
@@ -184,10 +197,18 @@ namespace CityFlow.Sim
             OccupiedCount = 0;
             EntriesBlocked = false;
             _preferredEntry = Dir.E;
+            _servingEntrySide = default;
+            _hasServingEntrySide = false;
             _hasSelectedEntry = false;
             _admittedThisTick = false;
             _activeEntryNode = NoNode;
             _activeEntrySide = default;
+        }
+
+        private void SelectEntry(Dir side)
+        {
+            _selectedEntry = side;
+            _hasSelectedEntry = true;
         }
 
         private bool CanReserveSelectedSide(Dir approachSide) =>
@@ -200,19 +221,15 @@ namespace CityFlow.Sim
         {
             if (!IsValid(approachSide) || EntriesBlocked || _admittedThisTick) return false;
             Dir immediateUpstream = UpstreamOf(approachSide);
-            Dir approachingUpstream = UpstreamOf(immediateUpstream);
             return IsAvailable(approachSide)
-                && IsAvailable(immediateUpstream)
-                && IsAvailable(approachingUpstream);
+                && IsAvailable(immediateUpstream);
         }
 
         private void ReserveMergeCells(Dir approachSide)
         {
             Dir immediateUpstream = UpstreamOf(approachSide);
-            Dir approachingUpstream = UpstreamOf(immediateUpstream);
             Reserve(approachSide);
             Reserve(immediateUpstream);
-            Reserve(approachingUpstream);
         }
 
         private bool IsAvailable(Dir cell)
@@ -221,10 +238,9 @@ namespace CityFlow.Sim
             return _nodes[index] == NoNode && !_reservations[index];
         }
 
-        private void ReserveTransition(Dir from, Dir to, int node)
+        private void ReserveTransition(Dir to, int node)
         {
             if (node == NoNode) return;
-            Reserve(from);
             Reserve(to);
         }
 
