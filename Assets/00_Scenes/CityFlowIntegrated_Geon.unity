@@ -465,28 +465,36 @@ MonoBehaviour:
   vehiclePrefab: {fileID: 0}
   signalPrefab: {fileID: 0}
   burstPrefab: {fileID: 0}
-  maxMovingVehicles: 96
   vehicleSpeed: 2
-  vehicleAcceleration: 2.2
-  vehicleDeceleration: 9
   vehicleZ: -0.35
   signalZ: -0.45
   burstSeconds: 0.8
-  flowBurstSpeedMultiplier: 1.6
-  flowBurstAccelerationMultiplier: 3
-  flowBurstSpeedDuration: 2.5
-  flowBurstSpeedRadius: 3
+  flowBurstAnchorRadius: 3
   gridLineThickness: 0.045
-  overrideSpeedMul: 2.2
   overridePulseAmp: 0.25
   laneOffset: 0.18
-  followGap: 0.4
+  vehicleDriveAccel: 6
+  vehicleBrakeAccel: 5
+  vehicleCatchUpRange: 0.3
+  vehicleCatchUpStart: 1
+  vehicleCatchUpRamp: 2
+  vehicleCorridorTiles: 1
+  vehicleMinHeadway: 0.55
+  parkingApproachSpeedRatio: 0.9
+  intersectionQueueInset: 0.12
+  intersectionVisualLagRatio: 0.15
   cornerTurnRadius: 0.75
-  roundaboutOrbitRadius: 0.775
   turnSignZ: -0.5
+  roundaboutOrbitRadius: 0.775
+  roundaboutEntryExitDeg: 45
+  roundaboutTransitionTiles: 0.66
+  parkingSlotInset: 0.32
+  parkingSettleSeconds: 0.3
+  coinPopFlushSeconds: 5
   angledViewDegrees: 35.264
   minimumZoomDistance: 5
-  zoomStepDistance: 10
+  zoomDistanceRange: 10
+  zoomScrollSensitivity: 1
   boardColor: {r: 0.78, g: 0.82, b: 0.78, a: 1}
   gridLineColor: {r: 0.28, g: 0.36, b: 0.38, a: 1}
   roadFreeColor: {r: 0.32, g: 0.36, b: 0.43, a: 1}
@@ -2238,6 +2246,7 @@ GameObject:
   - component: {fileID: 492217483}
   - component: {fileID: 492217484}
   - component: {fileID: 492217485}
+  - component: {fileID: 492217486}
   m_Layer: 0
   m_Name: PlacementManager
   m_TagString: Untagged
@@ -2267,6 +2276,12 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 90598d14bc57fc548b1a1d7ec2a7b93f, type: 2}
   - {fileID: 11400000, guid: 893ad82746881f349a13799ce7aafd4a, type: 2}
   confirmPopup: {fileID: 0}
+  roadBudgetText: {fileID: 0}
+  roadExpandButton: {fileID: 0}
+  roadExpandCostText: {fileID: 0}
+  expandAffordableColor: {r: 1, g: 1, b: 1, a: 1}
+  expandUnaffordableColor: {r: 1, g: 0.35, b: 0.35, a: 1}
+  populationConfig: {fileID: 11400000, guid: dadd848057f846c49cd3469c9366b748, type: 2}
 --- !u!4 &492217482
 Transform:
   m_ObjectHideFlags: 0
@@ -2328,6 +2343,21 @@ MonoBehaviour:
   confirmPopup: {fileID: 1322450512}
   analysisCard: {fileID: 1632095791}
   dockController: {fileID: 1454290745}
+--- !u!114 &492217486
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 492217480}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16456f211878d5a43b544509c3d7af66, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Controllers.BenefitHighlightRenderer
+  schoolAreaColor: {r: 0, g: 0.7, b: 1, a: 0.15}
+  schoolHouseColor: {r: 0, g: 0.7, b: 1, a: 0.6}
+  yOffset: 0.05
 --- !u!1001 &509600171
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2536,6 +2566,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Gameplay.Save.AutoSaveService
   saveOnMonthChanged: 1
+  saveOnPlacementChanged: 1
+  placementSaveDelaySeconds: 0.5
 --- !u!114 &559808186
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8322,7 +8354,7 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1351008065}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -10754,6 +10786,7 @@ MonoBehaviour:
   - {fileID: 1576363675}
   - {fileID: 1606631341}
   priorityRoadData: {fileID: 0}
+  highwayData: {fileID: 0}
 --- !u!224 &1668919724 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 1933230856837756137, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
