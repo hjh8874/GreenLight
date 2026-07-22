@@ -19,7 +19,6 @@ MonoBehaviour:
     GridHeight: 20
     RoadCapacity: 10
     CarsPerHouse: 2
-    OfficeParkingSlots: 6
     DemandPerHouse: 1
     SlowRatio: 0.7
     JamRatio: 1
