@@ -10,14 +10,12 @@ namespace CityFlow.Content
         Commercial,     // 상업: 식당, 쇼핑몰
         Utility,        // 보조: 주유소, 공영주차장
         Finance,        // 금융: 은행
-        Transit,        // 대중교통: 버스정류장, 지하철역
-        Medical         // 의료: 병원
+        Transit         // 대중교통: 버스정류장, 지하철역
     }
 
     [CreateAssetMenu(
         fileName = "BuildingDefinition",
-        menuName = "CityFlow/Content/Building Definition"
-    )]
+        menuName = "CityFlow/Content/Building Definition")]
     public class BuildingDefinitionSO : ScriptableObject
     {
         [Header("기본 정보")]
@@ -37,7 +35,7 @@ namespace CityFlow.Content
         public int trafficGenerationAmount = 1;
 
         [Min(0f)]
-        [Tooltip("이 건물에 도착했을 때 보상 배율")]
+        [Tooltip("이 건물에 도착했을 때 적용하는 보상 배율")]
         public float destinationRewardMultiplier = 1f;
 
         [Header("경제")]
@@ -54,41 +52,27 @@ namespace CityFlow.Content
         public int prosperityValue = 1;
 
         [Header("해금")]
-        public bool unlockedByDefault = false;
+        public bool unlockedByDefault;
 
         [Header("학교 기능")]
         [SerializeField]
         [Min(0)]
-        [Tooltip("학교 또는 스쿨버스 한 대가 커버할 수 있는 최대 주거 건물 수")]
+        [Tooltip("학교 또는 스쿨버스 한 대가 혜택을 제공할 수 있는 최대 주거 건물 수")]
         private int schoolCoverageCapacity;
 
         [SerializeField]
         [Min(0)]
-        [Tooltip("학교 커버를 받은 주거 건물에 추가되는 인구 상한")]
+        [Tooltip("학교 혜택을 받는 주거 건물 한 채당 추가되는 인구 상한")]
         private int coveredPopulationCapBonus;
 
-        [Header("병원 기능")]
-        [SerializeField]
-        [Min(0)]
-        [Tooltip("환자 이송 완료 시 지급하는 기본 보상")]
-        private int emergencyReward;
-
-        [SerializeField]
-        [Min(0f)]
-        [Tooltip("환자 이벤트 발생 간격. 0이면 병원 이벤트를 사용하지 않음")]
-        private float patientEventIntervalSeconds;
-
-        // 외부 코드에서는 값을 읽을 수만 있고 직접 변경할 수 없습니다.
         public int SchoolCoverageCapacity => schoolCoverageCapacity;
-        public int CoveredPopulationCapBonus => coveredPopulationCapBonus;
-        public int EmergencyReward => emergencyReward;
-        public float PatientEventIntervalSeconds =>
-            patientEventIntervalSeconds;
+
+        public int CoveredPopulationCapBonus =>
+            coveredPopulationCapBonus;
 
 #if UNITY_EDITOR
         private void OnValidate()
         {
-            // Inspector에서 입력한 문자열의 앞뒤 공백을 제거합니다.
             buildingId = buildingId?.Trim();
             buildingName = buildingName?.Trim();
         }
