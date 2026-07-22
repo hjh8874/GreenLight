@@ -24,7 +24,8 @@ MonoBehaviour:
     EfficiencyMin: 0.2
     EfficiencyMinRatio: 2
     GreenWaveFloor: 0.5
-    OfficeCapacity: 20
+    OfficeCapacity: 6
+    CompanyHiringSlotsPerGameHour: 2
     SchoolCapacity: 10
     DemandChoicePool: 3
     RushAmplitude: 0.6

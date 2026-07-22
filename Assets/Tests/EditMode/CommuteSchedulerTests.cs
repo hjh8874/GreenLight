@@ -16,7 +16,7 @@ namespace CityFlow.Sim.Tests
             var sinks = new List<Vector2Int>();
             for (int i = 0; i < homes; i++) { sources.Add(V(i, 0)); sinks.Add(V(50, 50)); }
             var s = new CommuteScheduler();
-            s.Rebuild(sources, sinks, officeSlots, homeSlots: 1, maxCars,
+            s.Rebuild(sources, sinks, _ => officeSlots, homeSlots: 1, maxCars,
                 morningStart: 6f, morningEnd: 10f, eveningStart: 17f, eveningEnd: 21f);
             return s;
         }
@@ -94,13 +94,13 @@ namespace CityFlow.Sim.Tests
             var sources = new List<Vector2Int> { V(0, 0), V(0, 0) };      // 같은 집
             var sinks = new List<Vector2Int> { V(50, 50), V(60, 60) };    // Office, School
             var one = new CommuteScheduler();
-            one.Rebuild(sources, sinks, officeSlots: 4, homeSlots: 1, maxCars: 96,
+            one.Rebuild(sources, sinks, workCapacityFor: _ => 4, homeSlots: 1, maxCars: 96,
                 morningStart: 6f, morningEnd: 10f, eveningStart: 17f, eveningEnd: 21f);
             Assert.AreEqual(1, one.Cars.Count, "homeSlots=1 → 선순위(route order) 수요만");
             Assert.AreEqual(V(50, 50), one.Cars[0].Work);
 
             var two = new CommuteScheduler();
-            two.Rebuild(sources, sinks, officeSlots: 4, homeSlots: 2, maxCars: 96,
+            two.Rebuild(sources, sinks, workCapacityFor: _ => 4, homeSlots: 2, maxCars: 96,
                 morningStart: 6f, morningEnd: 10f, eveningStart: 17f, eveningEnd: 21f);
             Assert.AreEqual(2, two.Cars.Count, "homeSlots=2 → 집당 2대");
             Assert.AreEqual(0, two.Cars[0].HomeSlot);
@@ -116,7 +116,7 @@ namespace CityFlow.Sim.Tests
             car.State = CarState.Outbound; car.Distance = 3.5f;
             var sources = new List<Vector2Int> { V(0, 0), V(1, 0), V(2, 0) };
             var sinks = new List<Vector2Int> { V(50, 50), V(50, 50), V(50, 50) };
-            s.Rebuild(sources, sinks, 4, 1, 96, 6f, 10f, 17f, 21f);
+            s.Rebuild(sources, sinks, _ => 4, 1, 96, 6f, 10f, 17f, 21f);
             var same = s.Cars.First(c => c.Home == V(1, 0));
             Assert.AreEqual(CarState.Outbound, same.State, "생존 짝은 상태 보존");
             Assert.AreEqual(3.5f, same.Distance, 1e-4f);
@@ -130,11 +130,56 @@ namespace CityFlow.Sim.Tests
             s.Cars[0].State = CarState.ParkedWork;
             var sources = new List<Vector2Int> { V(0, 0), V(1, 0), V(2, 0), V(3, 0) };
             var sinks = new List<Vector2Int> { V(50, 50), V(50, 50), V(50, 50), V(50, 50) };
-            s.Rebuild(sources, sinks, 8, 1, 96, 6f, 10f, 17f, 21f);
+            s.Rebuild(sources, sinks, _ => 8, 1, 96, 6f, 10f, 17f, 21f);
             Assert.AreEqual(4, s.Cars.Count);
             Assert.AreEqual(CarState.ParkedWork, s.Cars.First(c => c.Home == V(0, 0)).State);
             var seen = new HashSet<(Vector2Int, int)>();
             foreach (var c in s.Cars) Assert.IsTrue(seen.Add((c.Work, c.WorkSlot)), "슬롯 유일성");
+        }
+
+        [Test]
+        public void PerCompanyCapacity_LimitsWorkSlotsIndependently()
+        {
+            Vector2Int smallOffice = V(50, 50);
+            Vector2Int largeOffice = V(60, 60);
+            var sources = new List<Vector2Int>();
+            var sinks = new List<Vector2Int>();
+
+            for (int i = 0; i < 3; i++)
+            {
+                sources.Add(V(i, 0));
+                sinks.Add(smallOffice);
+            }
+
+            for (int i = 0; i < 4; i++)
+            {
+                sources.Add(V(i + 10, 0));
+                sinks.Add(largeOffice);
+            }
+
+            var scheduler = new CommuteScheduler();
+            scheduler.Rebuild(
+                sources,
+                sinks,
+                tile => tile == smallOffice ? 1 : 3,
+                homeSlots: 1,
+                maxCars: 96,
+                morningStart: 6f,
+                morningEnd: 10f,
+                eveningStart: 17f,
+                eveningEnd: 21f
+            );
+
+            Assert.AreEqual(
+                1,
+                scheduler.Cars.Count(c =>
+                    c.Work == smallOffice)
+            );
+            Assert.AreEqual(
+                3,
+                scheduler.Cars.Count(c =>
+                    c.Work == largeOffice)
+            );
         }
     }
 }

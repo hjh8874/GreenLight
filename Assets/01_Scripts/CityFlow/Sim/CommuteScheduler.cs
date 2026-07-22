@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -35,9 +36,12 @@ namespace CityFlow.Sim
         // 무관한 건물 건설/해체가 이동·주차 중인 차를 리셋하지 않게 하는 핵심.
         // 슬롯 유일성 불변식: (Work, WorkSlot)/(Home, HomeSlot)은 점유 셋이 절대 보장.
         public void Rebuild(IReadOnlyList<Vector2Int> sources, IReadOnlyList<Vector2Int> sinks,
-            int officeSlots, int homeSlots, int maxCars,
+            Func<Vector2Int, int> workCapacityFor, int homeSlots, int maxCars,
             float morningStart, float morningEnd, float eveningStart, float eveningEnd)
         {
+            if (workCapacityFor == null)
+                throw new ArgumentNullException(nameof(workCapacityFor));
+
             _morningEnd = morningEnd; _eveningStart = eveningStart; _eveningEnd = eveningEnd;
 
             var survivors = new Dictionary<(Vector2Int, Vector2Int), Queue<CommuteCar>>(_cars.Count);
@@ -63,7 +67,11 @@ namespace CityFlow.Sim
                 if (!survivors.TryGetValue((sources[i], sinks[i]), out Queue<CommuteCar> q) || q.Count == 0) continue;
                 CommuteCar car = q.Dequeue();
                 matched[i] = car;
-                if (car.WorkSlot < officeSlots) Occupy(workUsed, car.Work, car.WorkSlot);
+                int workCapacity = SafeCapacity(
+                    workCapacityFor,
+                    car.Work
+                );
+                if (car.WorkSlot < workCapacity) Occupy(workUsed, car.Work, car.WorkSlot);
                 if (car.HomeSlot < homeSlots) Occupy(homeUsed, car.Home, car.HomeSlot);
             }
 
@@ -72,11 +80,15 @@ namespace CityFlow.Sim
             for (int i = 0; i < count && _cars.Count < maxCars; i++)
             {
                 CommuteCar car = matched[i];
+                int workCapacity = SafeCapacity(
+                    workCapacityFor,
+                    sinks[i]
+                );
                 if (car != null)
                 {
-                    if (car.WorkSlot >= officeSlots)
+                    if (car.WorkSlot >= workCapacity)
                     {
-                        if (!TryTakeSlot(workUsed, car.Work, officeSlots, out int ws)) continue;
+                        if (!TryTakeSlot(workUsed, car.Work, workCapacity, out int ws)) continue;
                         car.WorkSlot = ws;
                     }
                     if (car.HomeSlot >= homeSlots)
@@ -89,7 +101,7 @@ namespace CityFlow.Sim
                     continue;
                 }
 
-                if (!TryTakeSlot(workUsed, sinks[i], officeSlots, out int workSlot)) continue;   // 정원 초과 = 그날 통근 안 함
+                if (!TryTakeSlot(workUsed, sinks[i], workCapacity, out int workSlot)) continue;   // 정원 초과 = 그날 통근 안 함
                 if (!TryTakeSlot(homeUsed, sources[i], homeSlots, out int homeSlot))
                 {
                     workUsed[sinks[i]].Remove(workSlot);   // 짝 성립 실패 — 선점한 회사 칸 반납
@@ -108,6 +120,11 @@ namespace CityFlow.Sim
                 _newCars.Add(fresh);
             }
         }
+
+        static int SafeCapacity(
+            Func<Vector2Int, int> capacityFor,
+            Vector2Int tile
+        ) => Mathf.Max(0, capacityFor(tile));
 
         static void Occupy(Dictionary<Vector2Int, HashSet<int>> used, Vector2Int key, int slot)
         {

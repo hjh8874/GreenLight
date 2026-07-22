@@ -27,7 +27,6 @@ MonoBehaviour:
     MorningEndHour: 10
     EveningStartHour: 17
     EveningEndHour: 21
-    OfficeParkingSlots: 6
     MaxSimCars: 96
     QueueSlowRatio: 0.5
     QueueJamRatio: 0.99
@@ -37,7 +36,8 @@ MonoBehaviour:
     EfficiencyMinRatio: 2
     StabilityJamWeight: 0.5
     GreenWaveFloor: 0.5
-    OfficeCapacity: 20
+    OfficeCapacity: 6
+    CompanyHiringSlotsPerGameHour: 2
     SchoolCapacity: 10
     DemandChoicePool: 3
     RushAmplitude: 0.6

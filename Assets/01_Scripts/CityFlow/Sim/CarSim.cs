@@ -113,7 +113,7 @@ namespace CityFlow.Sim
             _scheduler.Rebuild(
                 _sources,
                 _sinks,
-                Math.Max(1, _cfg.OfficeParkingSlots),
+                demands.WorkCapacityAt,
                 Math.Max(1, _cfg.CarsPerHouse),
                 Math.Min(_enqueued.Length, Math.Max(1, _cfg.MaxSimCars)),
                 _cfg.MorningStartHour,

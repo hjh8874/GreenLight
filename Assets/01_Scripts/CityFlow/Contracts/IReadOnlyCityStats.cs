@@ -1,5 +1,20 @@
 namespace CityFlow.Contracts
 {
+    public readonly struct CompanyStaffing
+    {
+        public readonly int Filled;
+        public readonly int Capacity;
+
+        public CompanyStaffing(
+            int filled,
+            int capacity
+        )
+        {
+            Filled = filled;
+            Capacity = capacity;
+        }
+    }
+
     public interface IReadOnlyCityStats
     {
         int ActiveVehicleCount { get; }
@@ -8,5 +23,10 @@ namespace CityFlow.Contracts
         // N = 일반도로 타일 수 + 고속도로 링크 길이 합, M = 상한.
         int RoadTileCount { get; }
         int MaxRoadTiles { get; }
+
+        bool TryGetCompanyStaffing(
+            UnityEngine.Vector2Int tile,
+            out CompanyStaffing staffing
+        );
     }
 }

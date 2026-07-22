@@ -15,6 +15,7 @@ namespace CityFlow.Sim.Tests
             config.GridWidth = 5;
             config.GridHeight = 2;
             config.RoadCapacity = 10f;
+            config.CompanyHiringSlotsPerGameHour = 100f;
 
             var engine = new SimEngine(config, new SimEventHub());
             for (int x = 0; x <= 4; x++)
