@@ -226,6 +226,17 @@ namespace CityFlow.Sim.Tests
             return g;
         }
 
+        static CityGrid RingDemandCity()
+        {
+            var g = new CityGrid(7, 5);
+            g.Place(V(2, 1), TileType.Road); g.Place(V(3, 1), TileType.Road); g.Place(V(4, 1), TileType.Road);
+            g.Place(V(2, 2), TileType.Road); g.Place(V(4, 2), TileType.Road);
+            g.Place(V(2, 3), TileType.Road); g.Place(V(3, 3), TileType.Road); g.Place(V(4, 3), TileType.Road);
+            g.Place(V(5, 1), TileType.House);
+            g.Place(V(0, 1), TileType.Office);
+            return g;
+        }
+
         // 스펙 §4.2 — 우회 라우팅: 위 가로줄 중앙(2,1)이 동쪽만 허용되면 서쪽행 수요는
         // 링을 반대쪽(아래 가로줄)으로 돌아야 도달(직접 관통 금지).
         [Test]
@@ -314,13 +325,13 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void Plan_WithOneways_Deterministic_SameCitySamePlan()
         {
-            var g = RingCity();
+            var g = RingDemandCity();
             var net = new RoadNetwork(g);
             var cfg = Cfg();
             var dm = new DemandMap(cfg); dm.Reassign(g, net);
             Assert.AreEqual(1, dm.Demands.Count);
 
-            var oneways = new Dictionary<Vector2Int, Vector2Int> { [V(2, 1)] = E };
+            var oneways = new Dictionary<Vector2Int, Vector2Int> { [V(3, 1)] = E };
 
             var a = new RoutePlanner(g.Width, g.Height); a.Plan(dm, net, g, cfg, oneways);
             var b = new RoutePlanner(g.Width, g.Height); b.Plan(dm, net, g, cfg, oneways);
@@ -329,7 +340,7 @@ namespace CityFlow.Sim.Tests
             for (int i = 0; i < a.Routes.Count; i++)
                 CollectionAssert.AreEqual(a.Routes[i], b.Routes[i]);
             Assert.IsNotNull(a.Routes[0]);
-            Assert.IsFalse(a.Routes[0].Contains(V(2, 1)));   // 우회가 채택됨(직접 관통 없음)
+            Assert.IsFalse(a.Routes[0].Contains(V(3, 1)));   // 우회가 채택됨(직접 관통 없음)
         }
     }
 }

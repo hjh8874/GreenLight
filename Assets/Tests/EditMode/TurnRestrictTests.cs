@@ -326,11 +326,30 @@ namespace CityFlow.Sim.Tests
             return g;
         }
 
+        static CityGrid PTurnDemandCity()
+        {
+            var g = new CityGrid(5, 4);
+            g.Place(V(1, 2), TileType.Road);
+            g.Place(V(2, 2), TileType.Road);
+            g.Place(V(3, 2), TileType.Road);
+            g.Place(V(2, 3), TileType.Road);
+            g.Place(V(0, 0), TileType.House);
+            g.Place(V(3, 0), TileType.Office);
+            return g;
+        }
+
         static Dictionary<Vector2Int, TurnMode> PTurnSigns(TurnMode mainMode) => new()
         {
             [V(1, 1)] = TurnMode.LeftOnly,   // 모드 무관(시작 타일 — 진출 무제약), 대각 차단용
             [V(2, 1)] = mainMode,
             [V(3, 1)] = TurnMode.LeftOnly,   // 모드 무관(도착만 확인 — 진출 안 함), 대각 차단용
+        };
+
+        static Dictionary<Vector2Int, TurnMode> PTurnDemandSigns(TurnMode mainMode) => new()
+        {
+            [V(1, 2)] = TurnMode.LeftOnly,
+            [V(2, 2)] = mainMode,
+            [V(3, 2)] = TurnMode.LeftOnly,
         };
 
         // 스펙 §5.2 — P턴 창발: LeftOnly 교차로에서 직진 수요가 좌회전 우회(같은 타일 재방문)를 찾음.
@@ -340,14 +359,14 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void Search_LeftOnly_PTurn_RevisitsSameTile_AndPlannerPreservesPath()
         {
-            var g = PTurnCity();
+            var g = PTurnDemandCity();
             var planner = new RoutePlanner(g.Width, g.Height);
             var cfg = Cfg();
-            var turnSigns = PTurnSigns(TurnMode.LeftOnly);
+            var turnSigns = PTurnDemandSigns(TurnMode.LeftOnly);
 
-            var path = planner.Search(g, V(1, 1), V(3, 1), cfg, null, turnSigns);
+            var path = planner.Search(g, V(1, 2), V(3, 2), cfg, null, turnSigns);
             CollectionAssert.AreEqual(
-                new[] { V(1, 1), V(2, 1), V(2, 2), V(2, 1), V(3, 1) }, path,
+                new[] { V(1, 2), V(2, 2), V(2, 3), V(2, 2), V(3, 2) }, path,
                 "좌회전 강제 → 곁가지로 우회 후 (2,1) 재방문 → 원래 방향으로 계속(P턴)");
 
             var net = new RoadNetwork(g);
@@ -425,11 +444,11 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void Plan_WithTurnSigns_Deterministic_SameCitySamePlan()
         {
-            var g = PTurnCity();
+            var g = PTurnDemandCity();
             var net = new RoadNetwork(g);
             var cfg = Cfg();
             var dm = new DemandMap(cfg); dm.Reassign(g, net);
-            var turnSigns = PTurnSigns(TurnMode.LeftOnly);
+            var turnSigns = PTurnDemandSigns(TurnMode.LeftOnly);
 
             var a = new RoutePlanner(g.Width, g.Height); a.Plan(dm, net, g, cfg, null, turnSigns);
             var b = new RoutePlanner(g.Width, g.Height); b.Plan(dm, net, g, cfg, null, turnSigns);
@@ -438,7 +457,7 @@ namespace CityFlow.Sim.Tests
             for (int i = 0; i < a.Routes.Count; i++)
                 CollectionAssert.AreEqual(a.Routes[i], b.Routes[i]);
             Assert.IsNotNull(a.Routes[0]);
-            CollectionAssert.AreEqual(new[] { V(1, 1), V(2, 1), V(2, 2), V(2, 1), V(3, 1) }, a.Routes[0]);
+            CollectionAssert.AreEqual(new[] { V(1, 2), V(2, 2), V(2, 3), V(2, 2), V(3, 2) }, a.Routes[0]);
         }
 
         // 스펙 §5.7 — 일방통행+표지판 공존 기하 1개: 두 필터가 같은 Search 호출에서 함께 적용됨.

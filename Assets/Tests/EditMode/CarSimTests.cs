@@ -115,27 +115,27 @@ namespace CityFlow.Sim.Tests
         public void ReturnRoutes_AvoidReverseTravelOnOneway()
         {
             SimConfig cfg = Cfg();
-            var grid = new CityGrid(5, 3);
-            for (int x = 1; x <= 3; x++)
+            var grid = new CityGrid(7, 4);
+            for (int x = 1; x <= 5; x++)
             {
-                Assert.IsTrue(grid.Place(V(x, 1), TileType.Road));
                 Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+                Assert.IsTrue(grid.Place(V(x, 3), TileType.Road));
             }
-            Assert.IsTrue(grid.Place(V(0, 1), TileType.House));
-            Assert.IsTrue(grid.Place(V(4, 1), TileType.Office));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(5, 0), TileType.Office));
             var road = new RoadNetwork(grid);
             var demands = new DemandMap(cfg);
             demands.Reassign(grid, road);
-            var oneways = new Dictionary<Vector2Int, Vector2Int> { [V(2, 1)] = Vector2Int.right };
+            var oneways = new Dictionary<Vector2Int, Vector2Int> { [V(3, 2)] = Vector2Int.right };
             var planner = new RoutePlanner(grid.Width, grid.Height);
 
             planner.Plan(demands, road, grid, cfg, oneways);
 
-            CollectionAssert.AreEqual(new[] { V(1, 1), V(2, 1), V(3, 1) }, planner.CarRoutes[0]);
+            CollectionAssert.AreEqual(new[] { V(1, 2), V(2, 2), V(3, 2), V(4, 2), V(5, 2) }, planner.CarRoutes[0]);
             CollectionAssert.AreEqual(
-                new[] { V(3, 1), V(3, 2), V(2, 2), V(1, 2), V(1, 1) },
+                new[] { V(5, 2), V(4, 2), V(4, 3), V(3, 3), V(2, 3), V(2, 2), V(1, 2) },
                 planner.ReturnRoutes[0]);
-            Assert.IsFalse(planner.ReturnRoutes[0].Contains(V(2, 1)), "일방 역주행 타일 제외");
+            Assert.IsFalse(planner.ReturnRoutes[0].Contains(V(3, 2)), "일방 역주행 타일 제외");
         }
 
         [Test]
@@ -153,8 +153,15 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
             sim.Step(17f, net, events); // d=10 > 1: 출근 큐 제거→회사 스냅→도래한 차는 퇴근 재개
 
-            Assert.AreEqual(CarState.Inbound, sim.GetCar(0).State, "17시 정각 차는 스냅 후 같은 Step에 퇴근");
-            Assert.AreEqual(CarState.ParkedWork, sim.GetCar(1).State, "아직 출발시각 전 차는 회사 주차");
+            int inbound = 0;
+            int parkedWork = 0;
+            for (int i = 0; i < sim.CarCount; i++)
+            {
+                if (sim.GetCar(i).State == CarState.Inbound) inbound++;
+                if (sim.GetCar(i).State == CarState.ParkedWork) parkedWork++;
+            }
+            Assert.AreEqual(1, inbound, "17시 정각에는 첫 퇴근 차량만 출발");
+            Assert.AreEqual(1, parkedWork, "아직 출발 시각 전인 차량은 회사에 주차");
             Assert.LessOrEqual(TotalQueued(net, grid.Width, grid.Height), 1, "점프 전 출근 큐는 전부 제거");
         }
 
@@ -162,11 +169,11 @@ namespace CityFlow.Sim.Tests
         public void CarRoutes_DiagonalOnlyConnection_IsUnreachable()
         {
             SimConfig cfg = Cfg();
-            var grid = new CityGrid(5, 3);
-            Assert.IsTrue(grid.Place(V(1, 1), TileType.Road));
-            Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
-            Assert.IsTrue(grid.Place(V(0, 1), TileType.House));
-            Assert.IsTrue(grid.Place(V(3, 2), TileType.Office));
+            var grid = new CityGrid(6, 4);
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(4, 2), TileType.Office));
             var road = new RoadNetwork(grid);
             var demands = new DemandMap(cfg);
             demands.Reassign(grid, road);
@@ -216,23 +223,23 @@ namespace CityFlow.Sim.Tests
         public void Departure_WhenAccessRoadIsRamp_EntersHighway()
         {
             SimConfig cfg = Cfg();
-            var grid = new CityGrid(10, 3);
-            for (int x = 1; x <= 8; x++) Assert.IsTrue(grid.Place(V(x, 1), TileType.Road));
-            Assert.IsTrue(grid.Place(V(1, 0), TileType.House));
+            var grid = new CityGrid(11, 4);
+            for (int x = 2; x <= 8; x++) Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
             Assert.IsTrue(grid.Place(V(9, 1), TileType.Office));
             var road = new RoadNetwork(grid);
             var demands = new DemandMap(cfg);
             demands.Reassign(grid, road);
-            var links = new List<HighwayLink> { new HighwayLink(V(1, 1), V(7, 1)) };
+            var links = new List<HighwayLink> { new HighwayLink(V(2, 2), V(7, 2)) };
             var planner = new RoutePlanner(grid.Width, grid.Height);
             planner.Plan(demands, road, grid, cfg, null, null, links);
             CollectionAssert.AreEqual(
-                new[] { V(1, 1), V(7, 1), V(8, 1) },
+                new[] { V(2, 2), V(7, 2), V(8, 2) },
                 planner.CarRoutes[0],
                 "test setup must begin with a highway jump");
 
             var devices = new FakeDeviceState();
-            devices.AddHighway(V(1, 1), V(7, 1));
+            devices.AddHighway(V(2, 2), V(7, 2));
             var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
             net.RebuildTopology(grid, devices);
             var sim = new CarSim(cfg);
@@ -252,10 +259,10 @@ namespace CityFlow.Sim.Tests
         {
             SimConfig cfg = Cfg();
             grid = new CityGrid(6, 3);
-            for (int x = 0; x <= 4; x++) Assert.IsTrue(grid.Place(V(x, 1), TileType.Road));
+            for (int x = 0; x <= 5; x++) Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
             Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
-            Assert.IsTrue(grid.Place(V(1, 0), TileType.House));
-            Assert.IsTrue(grid.Place(V(5, 1), TileType.Office));
+            Assert.IsTrue(grid.Place(V(2, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
             var road = new RoadNetwork(grid);
             demands = new DemandMap(cfg);
             demands.Reassign(grid, road);

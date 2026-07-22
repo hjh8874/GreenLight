@@ -12,25 +12,25 @@ namespace CityFlow.Sim.Tests
         public void SimEngine_ReportsDeliveredWeightedRouteDistance()
         {
             SimConfig config = SimConfig.Default();
-            config.GridWidth = 5;
-            config.GridHeight = 2;
+            config.GridWidth = 7;
+            config.GridHeight = 3;
             config.RoadCapacity = 10f;
             config.CompanyHiringSlotsPerGameHour = 100f;
 
             var engine = new SimEngine(config, new SimEventHub());
-            for (int x = 0; x <= 4; x++)
+            for (int x = 1; x <= 5; x++)
             {
-                engine.Place(V(x, 0), TileType.Road);
+                engine.Place(V(x, 2), TileType.Road);
             }
 
-            engine.Place(V(0, 1), TileType.House);
-            engine.Place(V(4, 1), TileType.Office);
+            engine.Place(V(0, 0), TileType.House);
+            engine.Place(V(5, 0), TileType.Office);
             engine.Tick(config.TickInterval);
 
             var provider = (IRouteDistanceProvider)engine;
 
             Assert.IsTrue(provider.TryGetAverageRouteDistance(
-                V(4, 1),
+                V(5, 0),
                 out float destinationDistance));
             Assert.AreEqual(4f, destinationDistance, 1e-5f);
 

@@ -64,7 +64,7 @@ namespace CityFlow.Sim.Tests
         {
             var e = BuildEmptyArm();
             Assert.IsTrue(e.CanPlaceRoundabout(V(2, 2)));       // 팔이 도로/빈칸 → OK
-            Assert.IsTrue(e.Place(V(2, 1), TileType.House));    // 빈 팔에 집
+            Assert.IsTrue(e.Place(V(2, 0), TileType.House));    // 2x2 건물의 발자국이 빈 팔을 차지
             Assert.IsFalse(e.CanPlaceRoundabout(V(2, 2)));      // 건물 팔 → 배치 거부
         }
 

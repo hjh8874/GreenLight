@@ -25,17 +25,17 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void AddingCloserOffice_KeepsAssignmentUntilExplicitHomeRebalance()
         {
-            var g = MakeGrid(9, 3,
+            var g = MakeGrid(11, 4,
                 (V(0, 0), TileType.House),
-                (V(1, 0), TileType.Road), (V(2, 0), TileType.Road), (V(3, 0), TileType.Road),
-                (V(4, 0), TileType.Road), (V(5, 0), TileType.Road), (V(6, 0), TileType.Road),
-                (V(7, 0), TileType.Road), (V(8, 0), TileType.Office));
+                (V(2, 2), TileType.Road), (V(3, 2), TileType.Road), (V(4, 2), TileType.Road),
+                (V(5, 2), TileType.Road), (V(6, 2), TileType.Road), (V(7, 2), TileType.Road),
+                (V(8, 2), TileType.Road), (V(9, 0), TileType.Office));
             var net = new RoadNetwork(g);
             var dm = new DemandMap(NearestCfg());
             dm.Reassign(g, net);
             Vector2Int firstSink = FindSink(dm, V(0, 0), TileType.Office);
 
-            g.Place(V(2, 1), TileType.Office);
+            g.Place(V(4, 0), TileType.Office);
             var net2 = new RoadNetwork(g);
             dm.Reassign(g, net2);
             Vector2Int afterSink = FindSink(dm, V(0, 0), TileType.Office);
@@ -45,19 +45,19 @@ namespace CityFlow.Sim.Tests
             dm.ClearStickyAssignments();
             dm.Reassign(g, net2);
 
-            Assert.AreEqual(V(2, 1), FindSink(dm, V(0, 0), TileType.Office),
+            Assert.AreEqual(V(4, 0), FindSink(dm, V(0, 0), TileType.Office),
                 "귀가 안전시점에 sticky를 풀면 새 가까운 회사가 후보가 되어야 한다");
         }
 
         [Test]
         public void RemovingAssignedSink_ReassignsToRemaining()
         {
-            var g = MakeGrid(9, 3,
+            var g = MakeGrid(11, 4,
                 (V(0, 0), TileType.House),
-                (V(1, 0), TileType.Road), (V(2, 0), TileType.Road), (V(3, 0), TileType.Road),
-                (V(4, 0), TileType.Road), (V(5, 0), TileType.Road), (V(6, 0), TileType.Road),
-                (V(7, 0), TileType.Road), (V(8, 0), TileType.Office));
-            g.Place(V(2, 1), TileType.Office);
+                (V(2, 2), TileType.Road), (V(3, 2), TileType.Road), (V(4, 2), TileType.Road),
+                (V(5, 2), TileType.Road), (V(6, 2), TileType.Road), (V(7, 2), TileType.Road),
+                (V(8, 2), TileType.Road), (V(9, 0), TileType.Office));
+            g.Place(V(4, 0), TileType.Office);
             var dm = new DemandMap(NearestCfg());
             dm.Reassign(g, new RoadNetwork(g));
             Vector2Int assigned = FindSink(dm, V(0, 0), TileType.Office);
