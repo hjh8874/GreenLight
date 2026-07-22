@@ -14,7 +14,8 @@ namespace CityFlow.Content
         Commercial,     // 상업: 식당, 쇼핑몰
         Utility,        // 보조: 주유소, 공영주차장
         Finance,        // 금융: 은행
-        Transit         // 대중교통: 버스정류장, 지하철역
+        Transit,        // 대중교통: 버스정류장, 지하철역
+        Medical         // 의료: 병원, 보건소
     }
 
     /// <summary>
@@ -96,19 +97,55 @@ namespace CityFlow.Content
         )]
         private int coveredPopulationCapBonus;
 
+        [Header("병원 기능")]
+
+        [SerializeField]
+        [Min(0)]
+        [Tooltip("병원이 의료 서비스를 제공하는 타일 반경")]
+        private int hospitalCoverageRadius;
+
+        [SerializeField]
+        [Min(0)]
+        [Tooltip("병원 한 채가 담당할 수 있는 최대 주거 건물 수")]
+        private int hospitalPatientCapacity;
+
+        [SerializeField]
+        [Min(0)]
+        [Tooltip(
+            "병원 혜택을 받는 주거 건물 한 채당 " +
+            "추가되는 안정도 수치"
+        )]
+        private int hospitalStabilityBonus;
+
         /// <summary>
         /// 학교가 한 번에 혜택을 제공할 수 있는 최대 주거 건물 수입니다.
-        /// 음수 데이터가 직렬화되어 있어도 외부에는 0 이상만 반환합니다.
         /// </summary>
         public int SchoolCoverageCapacity =>
             Mathf.Max(0, schoolCoverageCapacity);
 
         /// <summary>
         /// 학교 혜택을 받는 주거 건물 한 채당 추가되는 인구 상한입니다.
-        /// 음수 데이터가 직렬화되어 있어도 외부에는 0 이상만 반환합니다.
         /// </summary>
         public int CoveredPopulationCapBonus =>
             Mathf.Max(0, coveredPopulationCapBonus);
+
+        /// <summary>
+        /// 병원이 의료 서비스를 제공하는 타일 반경입니다.
+        /// </summary>
+        public int HospitalCoverageRadius =>
+            Mathf.Max(0, hospitalCoverageRadius);
+
+        /// <summary>
+        /// 병원 한 채가 담당할 수 있는 최대 주거 건물 수입니다.
+        /// </summary>
+        public int HospitalPatientCapacity =>
+            Mathf.Max(0, hospitalPatientCapacity);
+
+        /// <summary>
+        /// 병원 혜택을 받는 주거 건물 한 채당 추가되는 안정도입니다.
+        /// </summary>
+        public int HospitalStabilityBonus =>
+            Mathf.Max(0, hospitalStabilityBonus);
 
         /// <summary>
         /// 이 건물 데이터가 학교인지 확인합니다.
@@ -116,10 +153,15 @@ namespace CityFlow.Content
         public bool IsSchool =>
             category == BuildingCategory.Education;
 
+        /// <summary>
+        /// 이 건물 데이터가 병원인지 확인합니다.
+        /// </summary>
+        public bool IsHospital =>
+            category == BuildingCategory.Medical;
+
 #if UNITY_EDITOR
         /// <summary>
         /// Inspector 수정 또는 에셋 로드 시 잘못된 값을 안전한 범위로 보정합니다.
-        /// Min 속성만으로 보호되지 않는 기존 YAML 값도 여기서 정리합니다.
         /// </summary>
         private void OnValidate()
         {
@@ -146,6 +188,15 @@ namespace CityFlow.Content
 
             coveredPopulationCapBonus =
                 Mathf.Max(0, coveredPopulationCapBonus);
+
+            hospitalCoverageRadius =
+                Mathf.Max(0, hospitalCoverageRadius);
+
+            hospitalPatientCapacity =
+                Mathf.Max(0, hospitalPatientCapacity);
+
+            hospitalStabilityBonus =
+                Mathf.Max(0, hospitalStabilityBonus);
         }
 #endif
     }
