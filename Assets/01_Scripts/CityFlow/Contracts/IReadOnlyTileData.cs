@@ -13,5 +13,11 @@ namespace CityFlow.Contracts
         int GetQueueCount(Vector2Int tile, Dir entryDir);
 
         TileType GetTileType(Vector2Int tile);
+
+        Vector2Int GetFootprintSize(TileType type);
+
+        bool TryGetFootprintAnchor(Vector2Int tile, out Vector2Int anchor);
+
+        bool IsFootprintAnchor(Vector2Int tile);
     }
 }

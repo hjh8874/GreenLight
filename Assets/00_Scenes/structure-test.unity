@@ -2081,7 +2081,7 @@ MonoBehaviour:
   vehiclePrefab: {fileID: 9165940050921636158, guid: 1633db744f7da99488e49bb1d88d4aa2, type: 3}
   spawnInterval: 0.35
   vehicleSpeed: 3
-  laneOffset: 0.18
+  laneOffset: 0.25
   maxActiveVehicles: 80
   vehicleHeight: 0.18
 --- !u!1 &60399472

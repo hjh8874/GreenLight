@@ -462,13 +462,13 @@ MonoBehaviour:
   burstPrefab: {fileID: 0}
   maxMovingVehicles: 96
   vehicleSpeed: 2
-  vehicleZ: -0.35
+  vehicleZ: -0.18
   signalZ: -0.45
   burstSeconds: 0.8
   gridLineThickness: 0.045
   overrideSpeedMul: 2.2
   overridePulseAmp: 0.25
-  laneOffset: 0.18
+  laneOffset: 0.25
   followGap: 0.4
   roundaboutOrbitRadius: 0.775
   boardColor: {r: 0.78, g: 0.82, b: 0.78, a: 1}

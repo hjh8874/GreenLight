@@ -8,8 +8,10 @@ namespace CityFlow.Sim
     internal sealed class CityGrid : IPlacementService
     {
         readonly TileType[] _tiles;   // new 시 전부 0 = TileType.Empty → "빈 도시" 공짜
+        readonly Vector2Int[] _footprintAnchors;
         readonly int _width;
         readonly int _height;
+        static readonly Vector2Int InvalidAnchor = new Vector2Int(-1, -1);
 
         public int Width => _width;
         public int Height => _height;
@@ -24,6 +26,11 @@ namespace CityFlow.Sim
             _width = width;
             _height = height;
             _tiles = new TileType[width * height];
+            _footprintAnchors = new Vector2Int[width * height];
+            for (int i = 0; i < _footprintAnchors.Length; i++)
+            {
+                _footprintAnchors[i] = InvalidAnchor;
+            }
         }
 
         // flat 인덱스. 주석님 GridUtil엔 Index가 없어 여기서 직접(index = y*W+x).
@@ -60,15 +67,40 @@ namespace CityFlow.Sim
         // 범위 안 + 진짜 타일 + 빈 칸일 때만 배치 가능.
         public bool CanPlace(Vector2Int t, TileType type)
         {
-            if (!InBounds(t)) return false;
             if (type == TileType.Empty) return false;   // 비우기는 Remove가 담당
-            return GetTile(t) == TileType.Empty;
+
+            Vector2Int size = TileFootprint.GetSize(type);
+            for (int y = 0; y < size.y; y++)
+            {
+                for (int x = 0; x < size.x; x++)
+                {
+                    Vector2Int occupied = t + new Vector2Int(x, y);
+                    if (!InBounds(occupied) || GetTile(occupied) != TileType.Empty)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
 
         public bool Place(Vector2Int t, TileType type)
         {
             if (!CanPlace(t, type)) return false;
-            _tiles[Index(t)] = type;
+
+            Vector2Int size = TileFootprint.GetSize(type);
+            for (int y = 0; y < size.y; y++)
+            {
+                for (int x = 0; x < size.x; x++)
+                {
+                    Vector2Int occupied = t + new Vector2Int(x, y);
+                    int index = Index(occupied);
+                    _tiles[index] = type;
+                    _footprintAnchors[index] = t;
+                }
+            }
+
             MarkDirty();
             return true;
         }
@@ -78,19 +110,68 @@ namespace CityFlow.Sim
         // 범위 검사 + "뭘 지웠나"를 한 곳에서 — 호출자가 GetTile을 따로 부르다 범위 밖에서 터지는 일 방지.
         public bool TryRemove(Vector2Int t, out TileType removed)
         {
+            return TryRemove(t, out removed, out _);
+        }
+
+        public bool TryRemove(Vector2Int t, out TileType removed, out Vector2Int anchor)
+        {
             removed = TileType.Empty;
+            anchor = default;
             if (!InBounds(t)) return false;
             removed = GetTile(t);
             if (removed == TileType.Empty) return false;   // 지울 게 없음
-            _tiles[Index(t)] = TileType.Empty;
+
+            anchor = _footprintAnchors[Index(t)];
+            if (anchor == InvalidAnchor)
+            {
+                anchor = t;
+            }
+
+            Vector2Int size = TileFootprint.GetSize(removed);
+            for (int y = 0; y < size.y; y++)
+            {
+                for (int x = 0; x < size.x; x++)
+                {
+                    Vector2Int occupied = anchor + new Vector2Int(x, y);
+                    if (!InBounds(occupied)) continue;
+
+                    int index = Index(occupied);
+                    if (_footprintAnchors[index] != anchor) continue;
+
+                    _tiles[index] = TileType.Empty;
+                    _footprintAnchors[index] = InvalidAnchor;
+                }
+            }
+
             MarkDirty();
             return true;
         }
+
+        public bool TryGetFootprintAnchor(Vector2Int t, out Vector2Int anchor)
+        {
+            anchor = default;
+            if (!InBounds(t) || GetTile(t) == TileType.Empty) return false;
+
+            anchor = _footprintAnchors[Index(t)];
+            if (anchor == InvalidAnchor)
+            {
+                anchor = t;
+            }
+
+            return true;
+        }
+
+        public bool IsFootprintAnchor(Vector2Int t) =>
+            TryGetFootprintAnchor(t, out Vector2Int anchor) && anchor == t;
 
         // 세이브 복원용 seam: 도시를 통째로 비운다(복원 = Clear → 저장 타일 재배치).
         public void Clear()
         {
             System.Array.Clear(_tiles, 0, _tiles.Length);
+            for (int i = 0; i < _footprintAnchors.Length; i++)
+            {
+                _footprintAnchors[i] = InvalidAnchor;
+            }
             MarkDirty();
         }
 

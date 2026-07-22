@@ -131,7 +131,7 @@ namespace CityFlow.Sim
             QueueServicePerTick = 1,
             GridlockValveTicks = 8,
             CoinPerTrip = 10,
-            CarsPerHouse = 1,
+            CarsPerHouse = 2,
             MorningStartHour = 6f,
             MorningEndHour = 10f,
             EveningStartHour = 17f,

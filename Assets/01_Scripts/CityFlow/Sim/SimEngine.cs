@@ -345,12 +345,12 @@ namespace CityFlow.Sim
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
         public bool CanPlace(Vector2Int tile, TileType type) =>
             WithinRoadBudget(type)
-            && !(IsBuildingTile(type) && IsInRoundaboutFootprint(tile)) && _grid.CanPlace(tile, type);
+            && !OverlapsRoundaboutFootprint(tile, type) && _grid.CanPlace(tile, type);
 
         public bool Place(Vector2Int tile, TileType type)
         {
             if (!WithinRoadBudget(type)) return false;   // 예산 초과 도로는 Place도 거부(CanPlace 우회 방지)
-            if (IsBuildingTile(type) && IsInRoundaboutFootprint(tile)) return false;   // 로터리 풋프린트에 건물 금지
+            if (OverlapsRoundaboutFootprint(tile, type)) return false;   // 로터리 풋프린트에 건물 금지
             if (!_grid.Place(tile, type)) return false;
             if (type == TileType.Office)
                 _demand.RegisterCompany(tile, type, _simTime);
@@ -362,12 +362,31 @@ namespace CityFlow.Sim
 
         public bool Remove(Vector2Int tile)
         {
-            if (!_grid.TryRemove(tile, out var removed)) return false;
+            if (!_grid.TryRemove(tile, out var removed, out Vector2Int anchor)) return false;
             if (removed == TileType.Office)
-                _demand.RemoveCompany(tile);
+                _demand.RemoveCompany(anchor);
             // 철거 = 조용: 그 타일의 연출 원료(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
-            _events.QueuePlaced(new PlacedEvent(tile, removed, isRemove: true));
+            _events.QueuePlaced(new PlacedEvent(anchor, removed, isRemove: true));
             return true;
+        }
+
+        private bool OverlapsRoundaboutFootprint(Vector2Int tile, TileType type)
+        {
+            if (!IsBuildingTile(type)) return false;
+
+            Vector2Int size = TileFootprint.GetSize(type);
+            for (int y = 0; y < size.y; y++)
+            {
+                for (int x = 0; x < size.x; x++)
+                {
+                    if (IsInRoundaboutFootprint(tile + new Vector2Int(x, y)))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         // 뷰 연동: 엔진이 이번 틱 계산한 실제 통근 경로들. 차를 이 위에 그리면 라우팅을 눈으로 검증.
@@ -505,8 +524,7 @@ namespace CityFlow.Sim
         static readonly Vector2Int[] RoundaboutArmDirs =
             { new Vector2Int(1, 0), new Vector2Int(-1, 0), new Vector2Int(0, 1), new Vector2Int(0, -1) };
 
-        static bool IsBuildingTile(TileType t) =>
-            t == TileType.House || t == TileType.Office || t == TileType.School;
+        static bool IsBuildingTile(TileType t) => TileFootprint.IsBuilding(t);
 
         // tile이 배치된 어떤 로터리의 풋프린트(center 또는 그 4팔)에 속하나. 타 장치·건물 배치가 이걸로 예약 검사.
         public bool IsInRoundaboutFootprint(Vector2Int tile)
@@ -845,6 +863,7 @@ namespace CityFlow.Sim
                 {
                     var type = _grid.GetTile(new Vector2Int(x, y));
                     if (type == TileType.Empty) continue;       // 계약: Empty 미저장
+                    if (!_grid.IsFootprintAnchor(new Vector2Int(x, y))) continue;
                     tiles.Add(new TileSaveData { X = x, Y = y, Type = type });
                 }
 
@@ -1081,6 +1100,15 @@ namespace CityFlow.Sim
         public int GetQueueCount(Vector2Int tile, Dir entryDir) =>
             _grid.InBounds(tile) ? _roadQueues.QueueCount(tile, entryDir) : 0;
         public TileType GetTileType(Vector2Int tile) =>
-            _grid.InBounds(tile) ? _grid.GetTile(tile) : TileType.Empty;
+            _grid.InBounds(tile) && _grid.IsFootprintAnchor(tile)
+                ? _grid.GetTile(tile)
+                : TileType.Empty;
+
+        public Vector2Int GetFootprintSize(TileType type) => TileFootprint.GetSize(type);
+
+        public bool TryGetFootprintAnchor(Vector2Int tile, out Vector2Int anchor) =>
+            _grid.TryGetFootprintAnchor(tile, out anchor);
+
+        public bool IsFootprintAnchor(Vector2Int tile) => _grid.IsFootprintAnchor(tile);
     }
 }

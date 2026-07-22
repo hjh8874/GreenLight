@@ -27,6 +27,31 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void HomeParking_TwoSlotsLimitEachHouseToTwoCars()
+        {
+            Vector2Int home = V(1, 1);
+            Vector2Int work = V(4, 1);
+            var homes = new List<Vector2Int> { home, home, home };
+            var works = new List<Vector2Int> { work, work, work };
+            var scheduler = new CommuteScheduler();
+
+            scheduler.Rebuild(
+                homes,
+                works,
+                officeSlots: 6,
+                homeSlots: 2,
+                maxCars: 96,
+                morningStart: 6f,
+                morningEnd: 7f,
+                eveningStart: 17f,
+                eveningEnd: 18f);
+
+            Assert.AreEqual(2, scheduler.Cars.Count);
+            Assert.AreEqual(0, scheduler.Cars[0].HomeSlot);
+            Assert.AreEqual(1, scheduler.Cars[1].HomeSlot);
+        }
+
+        [Test]
         public void Morning_TwoCarsArriveAtWork_EmitsOnePaidEventPerCar()
         {
             BuildStraightCity(out CityGrid grid, out DemandMap demands, out RoutePlanner planner);

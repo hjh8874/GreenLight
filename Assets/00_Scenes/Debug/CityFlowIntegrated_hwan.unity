@@ -1463,13 +1463,13 @@ MonoBehaviour:
   signalPrefab: {fileID: 0}
   burstPrefab: {fileID: 0}
   vehicleSpeed: 2
-  vehicleZ: -0.35
+  vehicleZ: -0.18
   signalZ: -0.45
   burstSeconds: 0.8
   flowBurstAnchorRadius: 3
   gridLineThickness: 0.045
   overridePulseAmp: 0.25
-  laneOffset: 0.18
+  laneOffset: 0.25
   vehicleDriveAccel: 6
   vehicleBrakeAccel: 5
   vehicleCatchUpRange: 0.3
