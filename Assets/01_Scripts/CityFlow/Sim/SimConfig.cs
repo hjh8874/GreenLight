@@ -31,7 +31,6 @@ namespace CityFlow.Sim
         public float MorningEndHour;
         public float EveningStartHour;
         public float EveningEndHour;
-        public int OfficeParkingSlots;
         public int MaxSimCars;
         public float QueueSlowRatio;
         public float QueueJamRatio;
@@ -51,8 +50,9 @@ namespace CityFlow.Sim
         public float GreenWaveFloor;     // 오프셋 최악(반주기 어긋남) 시 효율 바닥 🔓
 
         // ── 수요처 용량 캡 (가구 수) ──
-        // 확장: 수요처 종류 추가 시 여기 SchoolCapacity 등 한 줄 + DemandMap.CapacityFor.
-        public int   OfficeCapacity;    // 회사(Office) 20
+        // 회사 정원은 배정과 주차가 함께 쓰는 단일 값이며 프리팹 주차 자리 수를 넘기지 않는다.
+        public int   OfficeCapacity;    // 회사(Office) 6
+        public float CompanyHiringSlotsPerGameHour; // 건설 후 게임 시간당 열리는 회사 자리 수 🔓
         public int   SchoolCapacity;    // 학교(School) 10
 
         // ── 수요 배정 다양성 ──
@@ -136,7 +136,6 @@ namespace CityFlow.Sim
             MorningEndHour = 10f,
             EveningStartHour = 17f,
             EveningEndHour = 21f,
-            OfficeParkingSlots = 6,
             MaxSimCars = 96,
             QueueSlowRatio = 0.5f,
             QueueJamRatio = 0.99f,
@@ -146,7 +145,8 @@ namespace CityFlow.Sim
             EfficiencyMinRatio = 2.0f,
             StabilityJamWeight = 0.5f,
             GreenWaveFloor = 0.5f,
-            OfficeCapacity = 20,
+            OfficeCapacity = 6,
+            CompanyHiringSlotsPerGameHour = 2f,
             SchoolCapacity = 10,
             DemandChoicePool = 3,
             RushAmplitude = 0f,        // 기본 오프 — SimDebug 씬은 SO 에셋으로 켠다

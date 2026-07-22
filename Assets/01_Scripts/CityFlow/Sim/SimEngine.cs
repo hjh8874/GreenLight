@@ -176,6 +176,15 @@ namespace CityFlow.Sim
 
             _simTime += _config.TickInterval;
 
+            if (_demand.AdvanceCompanyCapacities(
+                _simTime
+            ))
+            {
+                // 열린 자리만 늘어날 때는 기존 sticky 목적지를 해제할 필요가 없다.
+                // 기존 차량을 보존한 채 새로 열린 자리만 다음 정상 리빌드에서 채운다.
+                _grid.MarkTopologyDirty();
+            }
+
             // 신규 회사/학교 배정은 운행 중 목적지를 바꾸지 않는다. 전 차가 집에 돌아온
             // 안전시점에 sticky를 한 번만 풀고, 같은 틱의 정상 topology 파이프라인으로 재구축한다.
             if (_demandRebalancePending && _carSim.AllParkedHome)
@@ -343,6 +352,8 @@ namespace CityFlow.Sim
             if (!WithinRoadBudget(type)) return false;   // 예산 초과 도로는 Place도 거부(CanPlace 우회 방지)
             if (IsBuildingTile(type) && IsInRoundaboutFootprint(tile)) return false;   // 로터리 풋프린트에 건물 금지
             if (!_grid.Place(tile, type)) return false;
+            if (type == TileType.Office)
+                _demand.RegisterCompany(tile, type, _simTime);
             if (type == TileType.Office || type == TileType.School)
                 _demandRebalancePending = true;
             _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false));
@@ -352,6 +363,8 @@ namespace CityFlow.Sim
         public bool Remove(Vector2Int tile)
         {
             if (!_grid.TryRemove(tile, out var removed)) return false;
+            if (removed == TileType.Office)
+                _demand.RemoveCompany(tile);
             // 철거 = 조용: 그 타일의 연출 원료(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
             _events.QueuePlaced(new PlacedEvent(tile, removed, isRemove: true));
             return true;
@@ -359,7 +372,7 @@ namespace CityFlow.Sim
 
         // 뷰 연동: 엔진이 이번 틱 계산한 실제 통근 경로들. 차를 이 위에 그리면 라우팅을 눈으로 검증.
         // ponytail: 지금은 디버그 뷰용 public. 진짜 View 붙을 때 Contracts로 승격.
-        public int CarSimOfficeParkingSlots => Math.Max(1, _config.OfficeParkingSlots);
+        public int CarSimOfficeParkingSlots => Math.Max(1, _config.OfficeCapacity);
         public int CarSimHomeParkingSlots => Math.Max(1, _config.CarsPerHouse);
         public int CarSimMaxCars => Math.Max(1, _config.MaxSimCars);
         // 뷰가 큐 표시 간격을 타일 안에 담기 위해 필요(한 타일에 몇 대까지 서는가).
@@ -368,6 +381,44 @@ namespace CityFlow.Sim
         public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _planner.ReturnRoutes;
         public int ActiveVehicleCount => _carSim.CarCount;
         public CarSnapshot GetCarSnapshot(int index) => _carSim.GetCar(index);
+
+        public bool TrySetCompanyCapacity(
+            Vector2Int tile,
+            int capacity
+        )
+        {
+            if (!_grid.InBounds(tile) ||
+                _grid.GetTile(tile) != TileType.Office)
+            {
+                return false;
+            }
+
+            _demand.SetCompanyCapacity(tile, capacity);
+            _demandRebalancePending = true;
+            return true;
+        }
+
+        public bool TryGetCompanyStaffing(
+            Vector2Int tile,
+            out CompanyStaffing staffing
+        )
+        {
+            bool found =
+                _demand.TryGetCompanyStaffing(
+                    tile,
+                    out int filled,
+                    out int capacity
+                );
+
+            staffing = found
+                ? new CompanyStaffing(
+                    filled,
+                    capacity
+                )
+                : default;
+            return found;
+        }
+
         public bool IsSharedCarIntersection(Vector2Int tile) =>
             _grid.IsIntersection(tile)
             && !_roundaboutSet.Contains(tile)
@@ -873,6 +924,7 @@ namespace CityFlow.Sim
 
             // 복원 = 전체 교체: 비우고 → 재배치 → 교차로 재감지 → 조율 복원 (PR#8 합의 흐름)
             _grid.Clear();
+            _demand.ClearCompanies();
             _highwayLinks.Clear();
             _highwayPartners.Clear();
             _highwayBudgetTiles = 0;
@@ -886,7 +938,12 @@ namespace CityFlow.Sim
             _roadCapacityPurchases = Math.Max(0, snapshot.RoadCapacityPurchases);
             if (snapshot.PlacedTiles != null)
                 foreach (var t in snapshot.PlacedTiles)
-                    _grid.Place(new Vector2Int(t.X, t.Y), t.Type);   // OOB·중복은 Place가 거름(무사고)
+                {
+                    var tile = new Vector2Int(t.X, t.Y);
+                    if (!_grid.Place(tile, t.Type)) continue;   // OOB·중복은 Place가 거름(무사고)
+                    if (t.Type == TileType.Office)
+                        _demand.RegisterRestoredCompany(tile, t.Type);
+                }
             // 참고: PlacedEvent는 안 쏨 — 복원은 '건설'이 아니고, 뷰는 폴링이라 다음 프레임 자동 갱신.
 
             // 조율 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).

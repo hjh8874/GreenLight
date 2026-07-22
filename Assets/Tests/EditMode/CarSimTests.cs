@@ -21,7 +21,6 @@ namespace CityFlow.Sim.Tests
             cfg.MorningEndHour = 7f;
             cfg.EveningStartHour = 17f;
             cfg.EveningEndHour = 18f;
-            cfg.OfficeParkingSlots = 6;
             cfg.MaxSimCars = 96;
             cfg.DemandChoicePool = 1;
             return cfg;
