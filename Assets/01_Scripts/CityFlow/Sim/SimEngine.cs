@@ -63,6 +63,7 @@ namespace CityFlow.Sim
         // 관찰 seam: 일방 배치/철거가 재계획(dirty)을 강제하는지 테스트가 직접 핀(리뷰 위임분).
         internal bool TopologyDirtyForTest => _grid.TopologyDirty;
         internal float TripSuccessRateForTest => _stats.TripSuccessRate;
+        internal RoadQueueNetwork RoadQueuesForTest => _roadQueues;
 
         public SimEngine(SimConfig config, SimEventHub hub)
         {

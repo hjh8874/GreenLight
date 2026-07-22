@@ -48,17 +48,7 @@ namespace CityFlow.Fakes
 
         public int GetQueueCount(Vector2Int tile, Dir entryDir)
         {
-            if (!GridUtil.IsInside(tile, width, height))
-            {
-                return 0;
-            }
-
-            float wave = Mathf.Sin(
-                (tile.x * 0.73f)
-                + (tile.y * 1.17f)
-                + ((int)entryDir * Mathf.PI * 0.5f)
-                + Time.time);
-            return Mathf.RoundToInt(Mathf.Clamp01((wave + 1f) * 0.5f) * 10f);
+            return Mathf.RoundToInt(GetDensity01(tile) * 10f);
         }
 
         public TileType GetTileType(Vector2Int tile)

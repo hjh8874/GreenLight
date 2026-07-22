@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Reflection;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using NUnit.Framework;
@@ -49,11 +48,7 @@ namespace CityFlow.Sim.Tests
         {
             SimConfig cfg = Cfg();
             var engine = new SimEngine(cfg, new SimEventHub());
-            FieldInfo queuesField = typeof(SimEngine).GetField(
-                "_roadQueues",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.NotNull(queuesField);
-            var queues = (RoadQueueNetwork)queuesField.GetValue(engine);
+            RoadQueueNetwork queues = engine.RoadQueuesForTest;
             Vector2Int tile = V(2, 1);
 
             Assert.IsTrue(queues.TryEnqueue(tile, Dir.N, 10));
