@@ -1020,6 +1020,8 @@ namespace CityFlow.Sim
                 : CongestionLevel.Free;
         public float GetDensity01(Vector2Int tile) =>
             _grid.InBounds(tile) ? _roadQueues.MaxOccupancy01(tile) : 0f;
+        public int GetQueueCount(Vector2Int tile, Dir entryDir) =>
+            _grid.InBounds(tile) ? _roadQueues.QueueCount(tile, entryDir) : 0;
         public TileType GetTileType(Vector2Int tile) =>
             _grid.InBounds(tile) ? _grid.GetTile(tile) : TileType.Empty;
     }

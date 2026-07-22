@@ -10,6 +10,8 @@ namespace CityFlow.Contracts
 
         float GetDensity01(Vector2Int tile);
 
+        int GetQueueCount(Vector2Int tile, Dir entryDir);
+
         TileType GetTileType(Vector2Int tile);
     }
 }

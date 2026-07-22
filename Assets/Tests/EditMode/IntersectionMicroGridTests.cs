@@ -1,3 +1,4 @@
+using CityFlow.Contracts;
 using CityFlow.Sim;
 using NUnit.Framework;
 
