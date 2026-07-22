@@ -503,7 +503,111 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void Roundabout_FullRingCirculates_BlocksEntry_ThenExitsAndResumes()
+        public void RoundaboutState_EntryChecksTargetAndUpstreamCell()
+        {
+            var state = new RoundaboutTrafficState();
+            Assert.AreEqual(Dir.E, EnterRing(state, Dir.E, 10));
+
+            state.BeginTick();
+            state.RegisterEntryDemand(Dir.N);
+            state.SelectEntrySide();
+            Assert.IsFalse(
+                state.TryReserveApproach(Dir.N),
+                "A north-side entry must yield to a vehicle in its upstream east ring cell.");
+        }
+
+        [Test]
+        public void RoundaboutState_TransitionReservesSourceAndDestination()
+        {
+            var state = new RoundaboutTrafficState();
+            EnterRing(state, Dir.E, 11);
+
+            state.BeginTick();
+            state.AdvanceCounterClockwise();
+
+            Assert.AreEqual(-1, state.NodeAt(Dir.E));
+            Assert.AreEqual(11, state.NodeAt(Dir.N));
+            Assert.IsTrue(state.IsReserved(Dir.E));
+            Assert.IsTrue(state.IsReserved(Dir.N));
+        }
+
+        [Test]
+        public void RoundaboutState_CompetingSidesFollowCounterClockwiseOrder()
+        {
+            var state = new RoundaboutTrafficState();
+            state.BeginTick();
+            RegisterAllEntryDirections(state);
+            state.SelectEntrySide();
+
+            Assert.IsTrue(state.TryReserveApproach(Dir.E));
+            Assert.IsFalse(state.TryReserveApproach(Dir.S));
+            Assert.IsFalse(state.TryReserveApproach(Dir.N));
+            Assert.IsFalse(state.TryReserveApproach(Dir.W));
+            Assert.IsTrue(state.CommitApproach(Dir.E, 20));
+
+            state.BeginTick();
+            Assert.IsTrue(state.TryReserveRingEntry(Dir.E, 20, out Dir eastTarget));
+            Assert.IsTrue(state.CommitEntry(Dir.E, eastTarget, 20));
+            Assert.AreEqual(20, state.Remove(Dir.E));
+
+            state.BeginTick();
+            RegisterAllEntryDirections(state);
+            state.SelectEntrySide();
+
+            Assert.IsTrue(state.TryReserveApproach(Dir.N));
+            Assert.IsFalse(state.TryReserveApproach(Dir.S));
+            Assert.IsFalse(state.TryReserveApproach(Dir.E));
+            Assert.IsFalse(state.TryReserveApproach(Dir.W));
+        }
+
+        [Test]
+        public void RoundaboutState_EntryWaitsForSecondUpstreamCell()
+        {
+            var state = new RoundaboutTrafficState();
+            EnterRing(state, Dir.E, 12);
+
+            state.BeginTick();
+            state.AdvanceCounterClockwise();
+            state.BeginTick();
+            state.AdvanceCounterClockwise();
+            state.BeginTick();
+            state.RegisterEntryDemand(Dir.E);
+            state.SelectEntrySide();
+
+            Assert.AreEqual(12, state.NodeAt(Dir.W));
+            Assert.IsFalse(
+                state.TryReserveApproach(Dir.E),
+                "Entry must wait while a circulating vehicle is two cells upstream of the merge.");
+        }
+
+        [Test]
+        public void RoundaboutState_AdmitsOnlyOneSidePerTick()
+        {
+            var state = new RoundaboutTrafficState();
+            state.BeginTick();
+            state.RegisterEntryDemand(Dir.E);
+            state.RegisterEntryDemand(Dir.N);
+            state.SelectEntrySide();
+
+            Assert.IsTrue(state.TryReserveApproach(Dir.E));
+            Assert.IsFalse(state.TryReserveApproach(Dir.N));
+        }
+
+        [Test]
+        public void RoundaboutState_ProgressFollowsAuthorizedCounterClockwiseCells()
+        {
+            Assert.AreEqual(0.25f, RoundaboutTrafficState.Progress01(Dir.E, Dir.N, Dir.W), 1e-4f);
+            Assert.AreEqual(0.50f, RoundaboutTrafficState.Progress01(Dir.E, Dir.N, Dir.S), 1e-4f);
+            Assert.AreEqual(0.75f, RoundaboutTrafficState.Progress01(Dir.E, Dir.N, Dir.E), 1e-4f);
+            Assert.AreEqual(1.00f, RoundaboutTrafficState.Progress01(Dir.E, Dir.N, Dir.N), 1e-4f);
+
+            Assert.AreEqual(0.50f, RoundaboutTrafficState.Progress01(Dir.E, Dir.S, Dir.W), 1e-4f);
+            Assert.AreEqual(1.00f, RoundaboutTrafficState.Progress01(Dir.E, Dir.S, Dir.S), 1e-4f);
+            Assert.AreEqual(-1f, RoundaboutTrafficState.Progress01(Dir.E, Dir.S, Dir.E), 1e-4f);
+        }
+
+        [Test]
+        public void Roundabout_LegacyCenterQueuesUsePhysicalSideOrder()
         {
             CityGrid grid = CrossGrid();
             Vector2Int center = V(1, 1);
@@ -523,22 +627,138 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(q.TryEnqueue(center, Dir.S, 63));
 
             q.Step(routes);
-            Assert.AreEqual(60, q.RingCellCar(center, Dir.W));
-            Assert.AreEqual(61, q.RingCellCar(center, Dir.S));
             Assert.AreEqual(62, q.RingCellCar(center, Dir.E));
-            Assert.AreEqual(63, q.RingCellCar(center, Dir.N));
-            Assert.AreEqual(1f, q.MaxOccupancy01(center), 1e-4f);
-
-            routes.Add(64, center, V(1, 0));
-            Assert.IsTrue(q.TryEnqueue(center, Dir.E, 64));
-            q.Step(routes);
-
-            Assert.AreEqual(63, q.RingCellCar(center, Dir.W), "만석 링은 CCW 무감속 순환");
-            Assert.AreEqual(64, q.CarAtHead(center, Dir.E), "점유 셀 진입 차는 대기");
+            Assert.AreEqual(-1, q.RingCellCar(center, Dir.S));
+            Assert.AreEqual(60, q.CarAtHead(center, Dir.E), "Adjacent east entry waits.");
+            Assert.AreEqual(61, q.CarAtHead(center, Dir.N), "Adjacent north entry waits.");
+            Assert.AreEqual(63, q.CarAtHead(center, Dir.S), "Opposite entry waits for merge clearance.");
+            Assert.AreEqual(0.25f, q.MaxOccupancy01(center), 1e-4f);
 
             q.Step(routes);
-            Assert.AreEqual(64, q.RingCellCar(center, Dir.W), "링 이탈 후 접근 차 진입 재개");
-            Assert.AreEqual(-1, q.CarAtHead(center, Dir.E));
+            Assert.AreEqual(62, q.RingCellCar(center, Dir.N));
+            Assert.AreEqual(60, q.CarAtHead(center, Dir.E));
+            Assert.AreEqual(61, q.CarAtHead(center, Dir.N));
+
+            q.Step(routes);
+            Assert.AreEqual(63, q.RingCellCar(center, Dir.N), "The next counter-clockwise side enters after clearance.");
+            Assert.AreEqual(60, q.CarAtHead(center, Dir.E));
+        }
+
+        [Test]
+        public void Roundabout_SimultaneousArms_EnterEastThenNorthAfterClearance()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            Vector2Int north = V(1, 2);
+            Vector2Int south = V(1, 0);
+            Vector2Int east = V(2, 1);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, devices);
+            var routes = new FakeRouteProvider();
+
+            routes.Add(70, north, center, south);
+            routes.Add(73, east, center, V(0, 1));
+            Assert.IsTrue(q.TryEnqueue(north, Dir.S, 70));
+            Assert.IsTrue(q.TryEnqueue(east, Dir.W, 73));
+
+            q.Step(routes);
+
+            Assert.AreEqual(73, q.RingCellCar(center, Dir.E));
+            Assert.AreEqual(-1, q.RingCellCar(center, Dir.N));
+            Assert.AreEqual(70, q.CarAtHead(north, Dir.S));
+            Assert.AreEqual(-1, q.CarAtHead(east, Dir.W));
+            Assert.AreEqual(0, q.QueueCount(center, Dir.N));
+            Assert.AreEqual(0, q.QueueCount(center, Dir.E));
+            Assert.AreEqual(0, q.QueueCount(center, Dir.S));
+            Assert.AreEqual(0, q.QueueCount(center, Dir.W));
+
+            q.Step(routes);
+            Assert.AreEqual(73, q.RingCellCar(center, Dir.N));
+            Assert.AreEqual(70, q.CarAtHead(north, Dir.S));
+
+            q.Step(routes);
+            Assert.AreEqual(73, q.RingCellCar(center, Dir.W));
+            Assert.AreEqual(-1, q.RingCellCar(center, Dir.N));
+            Assert.AreEqual(70, q.CarAtHead(north, Dir.S),
+                "The next entry waits while the previous car reserves its source and destination cells.");
+
+            q.Step(routes);
+            Assert.AreEqual(70, q.RingCellCar(center, Dir.N));
+            Assert.AreEqual(-1, q.CarAtHead(north, Dir.S));
+        }
+
+        [Test]
+        public void RoundaboutArm_HoldsOnlyOneVehicleAcrossDirectionQueues()
+        {
+            CityGrid grid = CrossGrid();
+            Vector2Int center = V(1, 1);
+            Vector2Int eastArm = V(2, 1);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var q = new RoadQueueNetwork(3, 3, Cfg());
+            q.RebuildTopology(grid, devices);
+
+            Assert.IsTrue(q.TryEnqueue(eastArm, Dir.W, 80));
+            Assert.IsFalse(q.TryEnqueue(eastArm, Dir.E, 81));
+            Assert.AreEqual(1f, q.MaxOccupancy01(eastArm), 1e-4f);
+        }
+
+        [Test]
+        public void Roundabout_CompetingVehicleWaitsOnApproachBeforeArm()
+        {
+            CityGrid grid = CrossGrid5();
+            Vector2Int center = V(2, 2);
+            Vector2Int eastArm = V(3, 2);
+            Vector2Int eastApproach = V(4, 2);
+            Vector2Int northArm = V(2, 3);
+            Vector2Int northApproach = V(2, 4);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var q = new RoadQueueNetwork(5, 5, Cfg());
+            q.RebuildTopology(grid, devices);
+            var routes = new FakeRouteProvider();
+
+            routes.Add(90, eastApproach, eastArm, center, V(1, 2), V(0, 2));
+            routes.Add(91, northApproach, northArm, center, V(2, 1), V(2, 0));
+            Assert.IsTrue(q.TryEnqueue(eastApproach, Dir.W, 90));
+            Assert.IsTrue(q.TryEnqueue(northApproach, Dir.S, 91));
+
+            q.Step(routes);
+
+            Assert.AreEqual(90, q.CarAtHead(eastArm, Dir.W));
+            Assert.AreEqual(91, q.CarAtHead(northApproach, Dir.S));
+            Assert.AreEqual(-1, q.CarAtHead(northArm, Dir.S));
+            Assert.AreEqual(-1, q.RingCellCar(center, Dir.E));
+
+            q.Step(routes);
+
+            Assert.AreEqual(90, q.RingCellCar(center, Dir.E));
+            Assert.AreEqual(91, q.CarAtHead(northApproach, Dir.S));
+            Assert.AreEqual(-1, q.CarAtHead(northArm, Dir.S));
+        }
+
+        private static void RegisterAllEntryDirections(RoundaboutTrafficState state)
+        {
+            state.RegisterEntryDemand(Dir.N);
+            state.RegisterEntryDemand(Dir.E);
+            state.RegisterEntryDemand(Dir.S);
+            state.RegisterEntryDemand(Dir.W);
+        }
+
+        private static Dir EnterRing(RoundaboutTrafficState state, Dir side, int node)
+        {
+            state.BeginTick();
+            state.RegisterEntryDemand(side);
+            state.SelectEntrySide();
+            Assert.IsTrue(state.TryReserveApproach(side));
+            Assert.IsTrue(state.CommitApproach(side, node));
+
+            state.BeginTick();
+            Assert.IsTrue(state.TryReserveRingEntry(side, node, out Dir target));
+            Assert.IsTrue(state.CommitEntry(side, target, node));
+            return target;
         }
 
         private static CityGrid StraightGrid(int width)
@@ -557,6 +777,18 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(grid.Place(V(2, 1), CityFlow.Contracts.TileType.Road));
             Assert.IsTrue(grid.Place(V(1, 0), CityFlow.Contracts.TileType.Road));
             Assert.IsTrue(grid.Place(V(0, 1), CityFlow.Contracts.TileType.Road));
+            return grid;
+        }
+
+        private static CityGrid CrossGrid5()
+        {
+            var grid = new CityGrid(5, 5);
+            for (int offset = 0; offset < 5; offset++)
+            {
+                Assert.IsTrue(grid.Place(V(offset, 2), CityFlow.Contracts.TileType.Road));
+                if (offset != 2)
+                    Assert.IsTrue(grid.Place(V(2, offset), CityFlow.Contracts.TileType.Road));
+            }
             return grid;
         }
     }

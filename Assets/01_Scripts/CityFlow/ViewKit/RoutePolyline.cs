@@ -43,6 +43,9 @@ namespace CityFlow.ViewKit
     // ponytail: 베이크는 위상 샘플링 8/seg — 시각 파리티 우선. 해상도 문제 시 코너만 적응 샘플로 승급.
     public sealed class RoutePolyline
     {
+        public const float MinTransitionSpan = 0.66f;
+        public const float MaxTransitionSpan = 0.95f;
+
         private struct Vertex
         {
             public Vector3 Pos;
@@ -205,6 +208,40 @@ namespace CityFlow.ViewKit
             return Length;
         }
 
+        public float DistanceAtPhase(float phase)
+        {
+            float target = Mathf.Clamp(phase, 0f, Mathf.Max(0, _tiles.Count - 1));
+            int previous = -1;
+
+            for (int i = 0; i < _vertices.Length; i++)
+            {
+                if (_vertices[i].Spur) continue;
+
+                float currentPhase = _vertices[i].Seg + _vertices[i].SegT;
+                if (currentPhase < target)
+                {
+                    previous = i;
+                    continue;
+                }
+
+                if (previous < 0) return _cumulative[i];
+
+                float previousPhase = _vertices[previous].Seg + _vertices[previous].SegT;
+                float phaseRange = currentPhase - previousPhase;
+                float t = phaseRange > 1e-5f
+                    ? Mathf.Clamp01((target - previousPhase) / phaseRange)
+                    : 0f;
+                return Mathf.Lerp(_cumulative[previous], _cumulative[i], t);
+            }
+
+            for (int i = _vertices.Length - 1; i >= 0; i--)
+            {
+                if (!_vertices[i].Spur) return _cumulative[i];
+            }
+
+            return Length;
+        }
+
         public float DistanceAtQueueSlot(
             int tileIndex,
             int queueSlot,
@@ -364,7 +401,7 @@ namespace CityFlow.ViewKit
             // 전이 창 반폭(타일=phase). 클수록 진입/이탈 완만·길다(노브). 상한 0.95(이웃 타일 중심 ±1 안).
             // 하한 MinTransitionSpan: 직진 접근 차선(중심 관통, 오프셋 λ)이 창 밖에서 섬을 스치지 않게
             //   base 차선 거리 √(span²+λ²) > 섬 하한이 되는 최소 span. 이보다 짧으면 NoCenterDip 회귀.
-            float transitionSpan = Mathf.Clamp(input.TransitionLength, MinTransitionSpan, 0.95f);
+            float transitionSpan = ClampTransitionSpan(input.TransitionLength);
 
             for (int ci = 1; ci < tiles.Count - 1; ci++)
             {
@@ -441,7 +478,8 @@ namespace CityFlow.ViewKit
 
         // 전이 창 최소 반폭(타일). 현재 차선 오프셋 λ=0.26에서 √(span²+λ²)가 섬 하한 0.62를
         // 넘도록 0.66을 유지한다. 위 조건의 2026-07-21 수치 재현에서 비우회전 최저 0.654.
-        private const float MinTransitionSpan = 0.66f;
+        public static float ClampTransitionSpan(float value) =>
+            Mathf.Clamp(value, MinTransitionSpan, MaxTransitionSpan);
 
         private static void ClampIslandIntrusion(List<Vertex> built, Vector3 center, float tileSize)
         {

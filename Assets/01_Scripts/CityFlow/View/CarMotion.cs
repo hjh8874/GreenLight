@@ -838,6 +838,8 @@ namespace CityFlow.View
                 0f,
                 headInset);
             bool hasIntersectionAuthorization = snapshot.IntersectionProgress01 >= 0f;
+            bool hasRoundaboutAuthorization = snapshot.RoundaboutProgress01 >= 0f
+                && IsRoundaboutTile(simTile);
             float intersectionAuthorizedSpeed = 0f;
             if (hasIntersectionAuthorization)
             {
@@ -880,6 +882,13 @@ namespace CityFlow.View
             else
             {
                 intersectionMotionStates.Remove(vehicle);
+            }
+            if (hasRoundaboutAuthorization)
+            {
+                targetDistance = GetRoundaboutAuthorizedDistance(
+                    poly,
+                    tileIndex,
+                    snapshot.RoundaboutProgress01);
             }
             if (snapshot.LinkProgress01 > 0f && tileIndex + 1 < poly.TileCount)
             {
@@ -928,11 +937,22 @@ namespace CityFlow.View
             // 뷰가 Sim 스냅샷보다 최대 2타일 앞서 헌법의 "Sim+1 상한"을 어겼다.
             // 남는 중간 브레이크의 뿌리는 뷰가 아니라 **Sim 틱 양자화**다(0.4s 홀드) — §4.10.
             // 도로 끝 클램프는 poly.Length — 목적지 도달 차를 회사 앞에서 얼리지 않는다(§4.6.2).
-            float corridor = hasIntersectionAuthorization
+            float corridor = hasIntersectionAuthorization || hasRoundaboutAuthorization
                 ? vehicle.TargetDistance
                 : Mathf.Min(
                     vehicle.TargetDistance + vehicleCorridorTiles * tileSize,
                     poly.Length);
+            float roundaboutStopDistance = 0f;
+            bool roundaboutEntryLimited = !hasRoundaboutAuthorization
+                && TryGetRoundaboutEntryStopDistance(
+                    poly,
+                    tileIndex,
+                    vehicle,
+                    out roundaboutStopDistance);
+            if (roundaboutEntryLimited)
+            {
+                corridor = Mathf.Min(corridor, roundaboutStopDistance);
+            }
             bool signalEntryLimited = TryGetSignalEntryStopDistance(
                 poly,
                 tileIndex,

@@ -26,6 +26,14 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2f, p.Length, 0.01f, "직선 3타일 = 2 tileSize");
         }
 
+        [TestCase(0.1f, RoutePolyline.MinTransitionSpan)]
+        [TestCase(0.8f, 0.8f)]
+        [TestCase(1.2f, RoutePolyline.MaxTransitionSpan)]
+        public void ClampTransitionSpan_UsesSharedGeometryBounds(float input, float expected)
+        {
+            Assert.AreEqual(expected, RoutePolyline.ClampTransitionSpan(input), 1e-4f);
+        }
+
         [Test]
         public void StraightRoute_LaneOffsetIsRightOfTravel()
         {
@@ -143,6 +151,23 @@ namespace CityFlow.Sim.Tests
         // 로터리 링: 경계 ±0.15 세그 창(구 완전 블렌드 창)의 샘플은 링 반경 위 —
         // 접선 기하 재구성(QA E-1) 이후 이 창은 항상 순수 원호라 더 강하게 성립.
         // 반경은 input.OrbitRadius 파생(QA F — 하드코딩 제거).
+        [Test]
+        public void DistanceAtPhase_ReturnsBakedRouteBoundaryAndIgnoresParkingSpur()
+        {
+            var input = Straight3();
+            input.StartAnchor = new Vector3(-0.5f, -0.5f, 0f);
+            var p = RoutePolyline.Bake(input);
+
+            float phaseDistance = p.DistanceAtPhase(0.5f);
+            Sample sample = p.SampleAt(phaseDistance);
+
+            Assert.IsFalse(sample.IsSpur);
+            Assert.AreEqual(0, sample.TileIndex);
+            Assert.AreEqual(0.5f, sample.SegT, 0.06f);
+            Assert.Less(p.DistanceAtPhase(0.25f), phaseDistance);
+            Assert.Less(phaseDistance, p.DistanceAtPhase(0.75f));
+        }
+
         [Test]
         public void RoundaboutTile_SamplesOnRing()
         {
