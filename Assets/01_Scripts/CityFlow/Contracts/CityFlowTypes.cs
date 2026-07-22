@@ -8,8 +8,7 @@ namespace CityFlow.Contracts
         Road,
         House,
         Office,
-        School,
-        Hospital
+        School
     }
 
     public enum CongestionLevel

@@ -8,6 +8,7 @@ using CityFlow.UI.Controllers;
 
 namespace CityFlow.UI
 {
+    [RequireComponent(typeof(BenefitHighlightRenderer))]
     public class PlacementController : MonoBehaviour, ICityFlowServiceConsumer
     {
         private const float RoadSurfaceMarkerZ = -0.05f;
@@ -57,7 +58,7 @@ namespace CityFlow.UI
         private Vector2Int? _lastPreviewCoord = null;
         private readonly System.Collections.Generic.List<Vector2Int> _benefitTileBuffer = new System.Collections.Generic.List<Vector2Int>(32);
         private readonly System.Collections.Generic.List<Vector2Int> _areaTileBuffer = new System.Collections.Generic.List<Vector2Int>(128);
-        private const int PREVIEW_BENEFIT_RADIUS = 5;
+        private const int PREVIEW_BENEFIT_RADIUS = 3; // TODO: #127 머지 후 PopulationConfigSO.SchoolCoverageRadius 로 교체
 
         private BenefitHighlightRenderer GetBenefitRenderer()
         {
@@ -66,7 +67,7 @@ namespace CityFlow.UI
                 _benefitRenderer = GetComponent<BenefitHighlightRenderer>();
                 if (_benefitRenderer == null)
                 {
-                    _benefitRenderer = gameObject.AddComponent<BenefitHighlightRenderer>();
+                    Debug.LogWarning("[PlacementController] BenefitHighlightRenderer 컴포넌트가 씬에 없습니다! 인스펙터에서 추가해주세요.");
                 }
             }
             return _benefitRenderer;
@@ -78,6 +79,7 @@ namespace CityFlow.UI
         public void SetBuildType(TileType type)
         {
             _currentType = type;
+            _lastPreviewCoord = null;
             Debug.Log($"[PlacementController] 건설 모드 변경됨: {_currentType}");
 
             // 인프라 상점과 같은 패널에 탭으로 합쳐졌을 경우를 대비해, 일반 타일 선택 시 인프라 모드를 강제 취소합니다.
@@ -570,7 +572,7 @@ namespace CityFlow.UI
 
         private void UpdateBenefitPreview(Vector2Int gridCoord)
         {
-            bool isFacility = _currentType == TileType.School || _currentType == TileType.Hospital;
+            bool isFacility = _currentType == TileType.School;
 
             if (!isFacility)
             {

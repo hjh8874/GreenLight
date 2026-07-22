@@ -14,9 +14,6 @@ namespace CityFlow.UI.Controllers
         [SerializeField] private Color schoolAreaColor = new Color(0f, 0.7f, 1f, 0.15f); // 옅은 파란색
         [SerializeField] private Color schoolHouseColor = new Color(0f, 0.7f, 1f, 0.6f); // 짙은 파란색
 
-        [Header("Hospital Settings")]
-        [SerializeField] private Color hospitalAreaColor = new Color(0.2f, 0.9f, 0.2f, 0.15f); // 옅은 초록색
-        [SerializeField] private Color hospitalHouseColor = new Color(0.2f, 0.9f, 0.2f, 0.6f); // 짙은 초록색
 
         [Header("General Settings")]
         [SerializeField] private float yOffset = 0.05f;
@@ -50,8 +47,8 @@ namespace CityFlow.UI.Controllers
             if (_sharedMaterial == null) InitializeMaterial();
             if (_propBlock == null) _propBlock = new MaterialPropertyBlock();
 
-            Color areaColor = facilityType == TileType.School ? schoolAreaColor : hospitalAreaColor;
-            Color houseColor = facilityType == TileType.School ? schoolHouseColor : hospitalHouseColor;
+            Color areaColor = schoolAreaColor;
+            Color houseColor = schoolHouseColor;
 
             int required = areaCoords.Count + houseCoords.Count;
             while (_pool.Count < required)
