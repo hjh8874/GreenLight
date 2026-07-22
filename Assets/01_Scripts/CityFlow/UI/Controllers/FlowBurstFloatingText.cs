@@ -35,27 +35,67 @@ namespace CityFlow.UI.Controllers
         private CityFlowServices _services;
         private readonly Queue<TextMeshPro> _pool = new Queue<TextMeshPro>();
         private Transform _poolRoot;
+        private bool _isSubscribed = false;
 
         public void Initialize(CityFlowServices services)
         {
-            if (!isActiveAndEnabled || _services == services) return;
+            if (_services == services) return;
 
-            if (_services != null)
-            {
-                _services.Events.FlowBurst -= OnFlowBurst;
-            }
+            Unsubscribe();
 
             _services = services;
-            _services.Events.FlowBurst += OnFlowBurst;
+            
+            if (isActiveAndEnabled)
+            {
+                Subscribe();
+            }
 
             EnsurePool();
         }
 
-        private void OnDestroy()
+        private void Subscribe()
         {
-            if (_services != null)
+            if (_services != null && !_isSubscribed)
+            {
+                _services.Events.FlowBurst += OnFlowBurst;
+                _isSubscribed = true;
+            }
+        }
+
+        private void Unsubscribe()
+        {
+            if (_services != null && _isSubscribed)
             {
                 _services.Events.FlowBurst -= OnFlowBurst;
+                _isSubscribed = false;
+            }
+        }
+
+        private void OnEnable()
+        {
+            Subscribe();
+        }
+
+        private void OnDestroy()
+        {
+            Unsubscribe();
+        }
+
+        private void OnDisable()
+        {
+            Unsubscribe();
+
+            if (_poolRoot == null) return;
+            
+            // 모든 코루틴이 정지되므로, 활성화된 텍스트들을 모두 회수하여 풀을 초기화합니다.
+            _pool.Clear();
+            foreach (Transform child in _poolRoot)
+            {
+                child.gameObject.SetActive(false);
+                if (child.TryGetComponent<TextMeshPro>(out var tmp))
+                {
+                    _pool.Enqueue(tmp);
+                }
             }
         }
 
@@ -84,7 +124,7 @@ namespace CityFlow.UI.Controllers
             tmp.fontSize = fontSize;
             tmp.color = coinTextColor;
             tmp.sortingOrder = 200;
-            tmp.enableWordWrapping = false;
+            tmp.textWrappingMode = TextWrappingModes.NoWrap;
             tmp.overflowMode = TextOverflowModes.Overflow;
 
             // MeshRenderer 설정: 그림자 비활성화
@@ -121,7 +161,7 @@ namespace CityFlow.UI.Controllers
         private void OnFlowBurst(FlowBurstEvent e)
         {
             var tmp = GetFromPool();
-            tmp.text = $"+{e.Reward} 🪙";
+            tmp.text = $"+{e.Reward}";
             tmp.color = coinTextColor;
 
             // 타일 좌표 → 월드 좌표 변환 (XY / XZ 분기)
@@ -181,16 +221,9 @@ namespace CityFlow.UI.Controllers
                 elapsed += Time.deltaTime;
                 float t = Mathf.Clamp01(elapsed / duration);
 
-                // 위치: 위로 떠오르기 (XY 또는 XZ 분기)
+                // 위치: 위로 떠오르기
                 float yOffset = floatHeight * EaseOutQuad(t);
-                if (useXYPlane)
-                {
-                    tmp.transform.position = startPos + new Vector3(0f, yOffset, 0f);
-                }
-                else
-                {
-                    tmp.transform.position = startPos + new Vector3(0f, yOffset, 0f);
-                }
+                tmp.transform.position = startPos + new Vector3(0f, yOffset, 0f);
 
                 // 스케일: 빠르게 커졌다가 원래 크기로 안정
                 float scaleT = t < 0.3f

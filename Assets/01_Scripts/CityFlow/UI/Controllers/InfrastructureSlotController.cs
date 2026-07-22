@@ -68,9 +68,15 @@ namespace CityFlow.UI.Controllers
 
         private void ResolveReferences()
         {
+            if (btnBuy == null)
+            {
+                Transform buyTransform = transform.Find("Btn_Buy");
+                if (buyTransform != null) btnBuy = buyTransform.GetComponent<Button>();
+                else btnBuy = GetComponent<Button>();
+            }
+
             Transform iconTransform = transform.Find("Icon");
             Transform costTransform = transform.Find("CostText");
-            Transform buyTransform = transform.Find("Btn_Buy");
 
             if (iconTransform != null)
             {
@@ -82,10 +88,6 @@ namespace CityFlow.UI.Controllers
                 costText = costTransform.GetComponent<TextMeshProUGUI>();
             }
 
-            if (buyTransform != null)
-            {
-                btnBuy = buyTransform.GetComponent<Button>();
-            }
         }
 
         private void NormalizeLayout()

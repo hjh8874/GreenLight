@@ -142,7 +142,7 @@ namespace CityFlow.UI
                 return;
             }
 
-            InfrastructureSlotController priorityRoadSlot = Instantiate(template, infraPage);
+            InfrastructureSlotController priorityRoadSlot = Instantiate(template, infraPage, false);
             priorityRoadSlot.name = "PriorityRoad_Slot";
             priorityRoadSlot.Configure(priorityRoadData);
             priorityRoadSlot.transform.SetSiblingIndex(Mathf.Min(5, infraPage.childCount - 1));
@@ -224,7 +224,7 @@ namespace CityFlow.UI
                     template = slot;
             }
             if (template == null || highwayData == null) return;
-            InfrastructureSlotController clone = Instantiate(template, page);
+            InfrastructureSlotController clone = Instantiate(template, page, false);
             clone.name = "Highway_Slot";
             clone.Configure(highwayData);
             clone.gameObject.SetActive(true);
