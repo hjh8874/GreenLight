@@ -6,6 +6,7 @@ using CityFlow.Sim;
 using CityFlow.ViewKit;
 using CityFlow.UI;
 using CityFlow.UI.Controllers;
+using CityFlow.UI.Feed;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -388,8 +389,9 @@ namespace CityFlow.View
             if (mouse != null)
             {
                 float scrollY = mouse.scroll.ReadValue().y;
-                bool isOverUI = UnityEngine.EventSystems.EventSystem.current != null &&
-                                UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+                bool isOverUI = GreenFeedInputGuard.IsPointerCaptured ||
+                                (UnityEngine.EventSystems.EventSystem.current != null &&
+                                 UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject());
                 if (!isOverUI)
                 {
                     float nextZoomDistance = Mathf.Clamp(

@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_InfrastructurePlaced
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 7
+  templates:
+  - templateId: FacilityPlaced_Parent_01
+    text: "{Location}\uC5D0 {Facility}\uC774 \uC0DD\uACBC\uC5B4\uC694. \uB3D9\uB124
+      \uC774\uB3D9\uC774 \uB354 \uD3B8\uD574\uC9C8\uC9C0 \uAE30\uB300\uB429\uB2C8\uB2E4."
+    tone: 1
+    category: 2
+    weight: 1
+    allowedRoles: 010000000a000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: FacilityPlaced_Taxi_01
+    text: "{Location}\uC5D0 \uC0C8 {Facility} \uC124\uCE58\uB97C \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4.
+      \uC2E4\uC81C \uAD50\uD1B5 \uD750\uB984\uC740 \uC870\uAE08 \uB354 \uC9C0\uCF1C\uBD10\uC57C\uACA0\uC2B5\uB2C8\uB2E4."
+    tone: 3
+    category: 2
+    weight: 1.3
+    allowedRoles: 0200000005000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: FacilityPlaced_Analyst_01
+    text: "{Location}\uC5D0 {Facility}\uC774 \uC801\uC6A9\uB410\uC2B5\uB2C8\uB2E4.
+      \uC124\uCE58 \uC804\uD6C4 \uBC00\uB3C4 \uBCC0\uD654\uAC00 \uC911\uC694\uD55C
+      \uD3C9\uAC00 \uAE30\uC900\uC774\uACA0\uB124\uC694."
+    tone: 3
+    category: 2
+    weight: 1.4
+    allowedRoles: 04000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+  - templateId: FacilityPlaced_Driver_01
+    text: "{Location}\uC5D0 {Facility}\uC774 \uC0DD\uACBC\uC2B5\uB2C8\uB2E4. \uC774\uBC88\uC5D0\uB294
+      \uAE38\uC774 \uC815\uB9D0 \uBE68\uB77C\uC9C8\uAE4C\uC694?"
+    tone: 4
+    category: 2
+    weight: 0.8
+    allowedRoles: 0b00000000000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
