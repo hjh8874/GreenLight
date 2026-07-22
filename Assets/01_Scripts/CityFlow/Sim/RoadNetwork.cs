@@ -107,6 +107,7 @@ namespace CityFlow.Sim
         // TryGetAccessRoad 하나만 보면 도달 가능한 프론티지를 놓칠 수 있음 → 전수 수집으로 대응.
         public void CollectAccessRoads(Vector2Int building, List<Vector2Int> buffer)
         {
+            var seen = new HashSet<Vector2Int>(buffer);
             Vector2Int size = GetBuildingFootprintSize(building);
             for (int y = 0; y < size.y; y++)
             {
@@ -116,7 +117,7 @@ namespace CityFlow.Sim
                     for (int d = 0; d < DX.Length; d++)
                     {
                         var v = new Vector2Int(occupied.x + DX[d], occupied.y + DY[d]);
-                        if (IsRoad(v) && !buffer.Contains(v)) buffer.Add(v);
+                        if (IsRoad(v) && seen.Add(v)) buffer.Add(v);
                     }
                 }
             }

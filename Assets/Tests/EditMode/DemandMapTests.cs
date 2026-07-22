@@ -77,6 +77,26 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void OneOffice_LinksAtMostSixHomes()
+        {
+            var g = new CityGrid(24, 2);
+            for (int i = 0; i < 7; i++)
+            {
+                Assert.IsTrue(g.Place(V(i * 3, 0), TileType.House));
+            }
+            Assert.IsTrue(g.Place(V(21, 0), TileType.Office));
+
+            var dm = new DemandMap(SimConfig.Default());
+            dm.Reassign(g, new RoadNetwork(g));
+
+            Assert.AreEqual(6, dm.Demands.Count);
+            foreach (Demand demand in dm.Demands)
+            {
+                Assert.AreEqual(V(21, 0), demand.Sink);
+            }
+        }
+
+        [Test]
         public void MultiSink_HouseCommutesToOfficeAndSchool()
         {
             // 계획 2c: 집 1채 → 수요처 종류마다 1건씩 = 회사·학교 수요 총 2건.

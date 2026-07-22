@@ -1100,9 +1100,7 @@ namespace CityFlow.Sim
         public int GetQueueCount(Vector2Int tile, Dir entryDir) =>
             _grid.InBounds(tile) ? _roadQueues.QueueCount(tile, entryDir) : 0;
         public TileType GetTileType(Vector2Int tile) =>
-            _grid.InBounds(tile) && _grid.IsFootprintAnchor(tile)
-                ? _grid.GetTile(tile)
-                : TileType.Empty;
+            _grid.InBounds(tile) ? _grid.GetTile(tile) : TileType.Empty;
 
         public Vector2Int GetFootprintSize(TileType type) => TileFootprint.GetSize(type);
 

@@ -1603,7 +1603,7 @@ MonoBehaviour:
   vehicleSpeed: 2
   vehicleAcceleration: 2.2
   vehicleDeceleration: 9
-  vehicleZ: -0.18
+  vehicleZ: -0.35
   signalZ: -0.45
   burstSeconds: 0.8
   flowBurstSpeedMultiplier: 1.6
@@ -1613,7 +1613,7 @@ MonoBehaviour:
   gridLineThickness: 0.045
   overrideSpeedMul: 2.2
   overridePulseAmp: 0.25
-  laneOffset: 0.25
+  laneOffset: 0.18
   followGap: 0.4
   cornerTurnRadius: 0.75
   roundaboutOrbitRadius: 0.775

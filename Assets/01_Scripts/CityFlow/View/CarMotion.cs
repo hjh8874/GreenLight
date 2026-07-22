@@ -442,11 +442,11 @@ namespace CityFlow.View
                 }
 
                 Vector3 homeAnchor = GetParkingAnchor(car.Home, outboundTiles[0], car.HomeSlot, simEngine.CarSimHomeParkingSlots);
-                Vector3 workEntrance = GetGarageAnchor(
+                Vector3 workParking = GetParkingAnchor(
                     car.Work,
-                    "GarageEntrance",
                     outboundTiles[outboundTiles.Count - 1],
-                    car.WorkSlot);
+                    car.WorkSlot,
+                    simEngine.CarSimOfficeParkingSlots);
 
                 List<Vector2Int> inboundTiles;
                 if (car.RouteIndex < simEngine.ActiveReturnRoutes.Count
@@ -462,15 +462,15 @@ namespace CityFlow.View
                 }
                 if (inboundTiles.Count <= 1) continue;
 
-                Vector3 workExit = GetGarageAnchor(
+                Vector3 workExit = GetParkingAnchor(
                     car.Work,
-                    "GarageExit",
                     inboundTiles[0],
-                    car.WorkSlot);
+                    car.WorkSlot,
+                    simEngine.CarSimOfficeParkingSlots);
 
                 bakedRoutes[car.RouteIndex] = new BakedRoutePair
                 {
-                    Outbound = BakeCommuteRoute(outboundTiles, homeAnchor, workEntrance),
+                    Outbound = BakeCommuteRoute(outboundTiles, homeAnchor, workParking),
                     Inbound = BakeCommuteRoute(inboundTiles, workExit, homeAnchor),
                 };
             }
@@ -543,24 +543,6 @@ namespace CityFlow.View
             Vector2 offset = PolylineMath.ParkingSlotOffset(slotIndex, slotCount, parkingSlotInset);
             return center + toRoad * (tileSize * offset.x)
                           + side * (tileSize * offset.y);
-        }
-
-        private Vector3 GetGarageAnchor(Vector2Int building, string anchorName, Vector2Int frontageRoad, int slotIndex)
-        {
-            if (tileVisuals.TryGetValue(building, out TileVisual visual))
-            {
-                Transform named = visual.Object.transform.Find(anchorName);
-                if (named != null)
-                {
-                    return transform.InverseTransformPoint(named.position);
-                }
-            }
-
-            return GetParkingAnchor(
-                building,
-                frontageRoad,
-                slotIndex,
-                simEngine.CarSimOfficeParkingSlots);
         }
 
         // sticky 바인딩(QA A): 생존 차는 vehicle·위치 무접촉 유지, 사라진 짝만 풀 반납, 신규만 할당.
@@ -822,14 +804,15 @@ namespace CityFlow.View
                     float angle = Mathf.Atan2(parked.Dir.y, parked.Dir.x) * Mathf.Rad2Deg;
                     vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
                 }
-                if (snapshot.State == CarState.ParkedHome && !vehicle.Settling)
+                if (!vehicle.Settling
+                    && (snapshot.State == CarState.ParkedHome || snapshot.State == CarState.ParkedWork))
                 {
-                    SetForwardHomeParkingRotation(vehicle, car.Home);
+                    Vector2Int building = snapshot.State == CarState.ParkedWork ? car.Work : car.Home;
+                    SetForwardBuildingParkingRotation(vehicle, building);
                 }
                 vehicle.CurrentTile = snapshot.State == CarState.ParkedWork ? car.Work : car.Home;
                 vehicle.HasCurrentTile = true;
-                bool undergroundAtWork = snapshot.State == CarState.ParkedWork && !vehicle.Settling;
-                SetVehicleRenderersEnabled(vehicle, !undergroundAtWork);
+                SetVehicleRenderersEnabled(vehicle, true);
                 SetBrakeLight(vehicle, false);
                 HideJamMarks(vehicle);
                 if (snapshot.State == CarState.ParkedWork && !vehicle.Settling)
@@ -1120,14 +1103,14 @@ namespace CityFlow.View
             vehicle.HasLastState = true;
         }
 
-        private void SetForwardHomeParkingRotation(RouteVehicle vehicle, Vector2Int home)
+        private void SetForwardBuildingParkingRotation(RouteVehicle vehicle, Vector2Int building)
         {
-            if (!tileVisuals.TryGetValue(home, out TileVisual homeVisual))
+            if (!tileVisuals.TryGetValue(building, out TileVisual buildingVisual))
             {
                 return;
             }
 
-            Vector3 worldForward = homeVisual.Object.transform.TransformDirection(Vector3.up);
+            Vector3 worldForward = buildingVisual.Object.transform.TransformDirection(Vector3.up);
             Vector3 localForward = transform.InverseTransformDirection(worldForward);
             if (localForward.sqrMagnitude < 0.001f)
             {
