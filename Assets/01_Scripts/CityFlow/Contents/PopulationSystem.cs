@@ -7,25 +7,25 @@ using UnityEngine;
 namespace CityFlow.Content
 {
     /// <summary>
-    /// SimÀÇ Å¸ÀÏ µ¥ÀÌÅÍ¸¦ ±âÁØÀ¸·Î
-    /// µµ½Ã ÀüÃ¼ ÀÎ±¸¸¦ °ü¸®ÇÏ´Â ½Ã½ºÅÛÀÔ´Ï´Ù.
+    /// Simì˜ íƒ€ì¼ ë°ì´í„°ë¥¼ ê¸°ì¤€ìœ¼ë¡œ
+    /// ë„ì‹œ ì „ì²´ ì¸êµ¬ë¥¼ ê´€ë¦¬í•˜ëŠ” ì‹œìŠ¤í…œì…ë‹ˆë‹¤.
     ///
-    /// ÇÁ¸®ÆÕÀÌ³ª View¿¡ ÀÇÁ¸ÇÏÁö ¾ÊÀ¸¸ç,
-    /// PlacedEvent¸¦ ±¸µ¶ÇÏ¿© ÀÎ±¸¸¦ Áõ°¨½ÃÅµ´Ï´Ù.
+    /// í”„ë¦¬íŒ¹ì´ë‚˜ Viewì— ì˜ì¡´í•˜ì§€ ì•Šìœ¼ë©°,
+    /// PlacedEventë¥¼ êµ¬ë…í•˜ì—¬ ì¸êµ¬ë¥¼ ì¦ê°ì‹œí‚µë‹ˆë‹¤.
     /// </summary>
     public sealed class PopulationSystem :
         MonoBehaviour,
         ICityFlowServiceConsumer,
         IReadOnlyPopulationData
     {
-        [Header("ÀÎ±¸ ¼³Á¤")]
+        [Header("ì¸êµ¬ ì„¤ì •")]
         [SerializeField]
         private PopulationConfigSO populationConfig;
 
-        [Header("ÃÊ±â ±×¸®µå Å©±â")]
+        [Header("ì´ˆê¸° ê·¸ë¦¬ë“œ í¬ê¸°")]
         [Tooltip(
-            "ÇöÀç Sim ±×¸®µåÀÇ °¡·Î Å©±âÀÔ´Ï´Ù. " +
-            "MainCityView ¶Ç´Â GridUtil ¼³Á¤°ú °°°Ô ¸ÂÃä´Ï´Ù."
+            "í˜„ì¬ Sim ê·¸ë¦¬ë“œì˜ ê°€ë¡œ í¬ê¸°ì…ë‹ˆë‹¤. " +
+            "MainCityView ë˜ëŠ” GridUtil ì„¤ì •ê³¼ ê°™ê²Œ ë§ì¶¥ë‹ˆë‹¤."
         )]
         [Min(1)]
         [SerializeField]
@@ -33,34 +33,38 @@ namespace CityFlow.Content
             GridUtil.DefaultWidth;
 
         [Tooltip(
-            "ÇöÀç Sim ±×¸®µåÀÇ ¼¼·Î Å©±âÀÔ´Ï´Ù. " +
-            "MainCityView ¶Ç´Â GridUtil ¼³Á¤°ú °°°Ô ¸ÂÃä´Ï´Ù."
+            "í˜„ì¬ Sim ê·¸ë¦¬ë“œì˜ ì„¸ë¡œ í¬ê¸°ì…ë‹ˆë‹¤. " +
+            "MainCityView ë˜ëŠ” GridUtil ì„¤ì •ê³¼ ê°™ê²Œ ë§ì¶¥ë‹ˆë‹¤."
         )]
         [Min(1)]
         [SerializeField]
         private int gridHeight =
             GridUtil.DefaultHeight;
 
-        [Header("ÇöÀç »óÅÂ")]
+        [Header("í˜„ì¬ ìƒíƒœ")]
         [Tooltip(
-            "ÇöÀç µµ½ÃÀÇ ÀüÃ¼ ÀÎ±¸ÀÔ´Ï´Ù. " +
-            "Sim Å¸ÀÏ µ¥ÀÌÅÍ¸¦ ±âÁØÀ¸·Î ÀÚµ¿ °è»êµË´Ï´Ù."
+            "í˜„ì¬ ë„ì‹œì˜ ì „ì²´ ì¸êµ¬ì…ë‹ˆë‹¤. " +
+            "Sim íƒ€ì¼ ë°ì´í„°ë¥¼ ê¸°ì¤€ìœ¼ë¡œ ìë™ ê³„ì‚°ë©ë‹ˆë‹¤."
         )]
         [SerializeField]
         private int currentPopulation;
 
         /*
-         * ÇöÀç ÀÎ±¸¿¡ ¹İ¿µµÈ Å¸ÀÏ°ú
-         * ÇØ´ç Å¸ÀÏÀÇ ÀÎ±¸ °ªÀ» ÀúÀåÇÕ´Ï´Ù.
+         * í˜„ì¬ ì¸êµ¬ì— ë°˜ì˜ëœ íƒ€ì¼ê³¼
+         * í•´ë‹¹ íƒ€ì¼ì˜ ì¸êµ¬ ê°’ì„ ì €ì¥í•©ë‹ˆë‹¤.
          *
-         * °°Àº PlacedEvent°¡ Áßº¹ ¹ß»ıÇÏ´õ¶óµµ
-         * ÀÎ±¸°¡ µÎ ¹ø Áõ°¡ÇÏÁö ¾Êµµ·Ï ¹æ¾îÇÕ´Ï´Ù.
+         * ê°™ì€ PlacedEventê°€ ì¤‘ë³µ ë°œìƒí•˜ë”ë¼ë„
+         * ì¸êµ¬ê°€ ë‘ ë²ˆ ì¦ê°€í•˜ì§€ ì•Šë„ë¡ ë°©ì–´í•©ë‹ˆë‹¤.
          */
         private readonly Dictionary<
             Vector2Int,
             int
         > registeredPopulationTiles =
             new Dictionary<Vector2Int, int>();
+
+        private readonly HashSet<Vector2Int>
+            schoolTiles =
+                new HashSet<Vector2Int>();
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
@@ -71,8 +75,8 @@ namespace CityFlow.Content
         public event Action<int> PopulationChanged;
 
         /// <summary>
-        /// CityFlowServices¿¡¼­ Å¸ÀÏ µ¥ÀÌÅÍ¿Í ÀÌº¥Æ®¸¦ ¹Ş¾Æ
-        /// ÀÎ±¸ ½Ã½ºÅÛÀ» ÃÊ±âÈ­ÇÕ´Ï´Ù.
+        /// CityFlowServicesì—ì„œ íƒ€ì¼ ë°ì´í„°ì™€ ì´ë²¤íŠ¸ë¥¼ ë°›ì•„
+        /// ì¸êµ¬ ì‹œìŠ¤í…œì„ ì´ˆê¸°í™”í•©ë‹ˆë‹¤.
         /// </summary>
         public void Initialize(
             CityFlowServices services
@@ -87,7 +91,7 @@ namespace CityFlow.Content
             {
                 Debug.LogError(
                     "[PopulationSystem] " +
-                    "CityFlowServices°¡ ¾ø½À´Ï´Ù.",
+                    "CityFlowServicesê°€ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
 
@@ -101,7 +105,7 @@ namespace CityFlow.Content
             {
                 Debug.LogError(
                     "[PopulationSystem] " +
-                    "PopulationConfigSO°¡ ¿¬°áµÇÁö ¾Ê¾Ò½À´Ï´Ù.",
+                    "PopulationConfigSOê°€ ì—°ê²°ë˜ì§€ ì•Šì•˜ìŠµë‹ˆë‹¤.",
                     this
                 );
 
@@ -112,7 +116,7 @@ namespace CityFlow.Content
             {
                 Debug.LogError(
                     "[PopulationSystem] " +
-                    "IReadOnlyTileData¸¦ Ã£À» ¼ö ¾ø½À´Ï´Ù.",
+                    "IReadOnlyTileDataë¥¼ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
 
@@ -120,11 +124,11 @@ namespace CityFlow.Content
             }
 
             /*
-             * ÀÌº¥Æ®¸¦ ¿¬°áÇÏ±â Àü¿¡ ÇöÀç Sim Å¸ÀÏ »óÅÂ¸¦
-             * ÇÑ ¹ø ½ºÄµÇÏ¿© ÀÎ±¸¸¦ °è»êÇÕ´Ï´Ù.
+             * ì´ë²¤íŠ¸ë¥¼ ì—°ê²°í•˜ê¸° ì „ì— í˜„ì¬ Sim íƒ€ì¼ ìƒíƒœë¥¼
+             * í•œ ë²ˆ ìŠ¤ìº”í•˜ì—¬ ì¸êµ¬ë¥¼ ê³„ì‚°í•©ë‹ˆë‹¤.
              *
-             * ÀúÀåµÈ ÀÎ±¸ °ªÀ» º°µµ·Î RestoreÇÏÁö ¾ÊÀ¸¹Ç·Î
-             * ¼¼ÀÌºê/·Îµå ´õºí Ä«¿îÆÃÀ» ¹æÁöÇÕ´Ï´Ù.
+             * ì €ì¥ëœ ì¸êµ¬ ê°’ì„ ë³„ë„ë¡œ Restoreí•˜ì§€ ì•Šìœ¼ë¯€ë¡œ
+             * ì„¸ì´ë¸Œ/ë¡œë“œ ë”ë¸” ì¹´ìš´íŒ…ì„ ë°©ì§€í•©ë‹ˆë‹¤.
              */
             RebuildPopulationFromTileData();
 
@@ -142,11 +146,11 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// ÇöÀç SimÀÇ ¸ğµç Å¸ÀÏÀ» ÀĞ¾î¼­
-        /// ÀÎ±¸¸¦ Ã³À½ºÎÅÍ ´Ù½Ã °è»êÇÕ´Ï´Ù.
+        /// í˜„ì¬ Simì˜ ëª¨ë“  íƒ€ì¼ì„ ì½ì–´ì„œ
+        /// í•™êµ ì»¤ë²„ì™€ ì¸êµ¬ë¥¼ ì²˜ìŒë¶€í„° ë‹¤ì‹œ ê³„ì‚°í•©ë‹ˆë‹¤.
         ///
-        /// ¼¼ÀÌºê ÆÄÀÏ ·Îµå ¿Ï·á ÈÄ¿¡µµ ÀÌ ÇÔ¼ö¸¦ È£ÃâÇÏ¸é
-        /// ÀúÀåµÈ ¸Ê »óÅÂ¸¦ ±âÁØÀ¸·Î Á¤È®ÇÑ ÀÎ±¸¸¦ Àç±¸¼ºÇÒ ¼ö ÀÖ½À´Ï´Ù.
+        /// ì„¸ì´ë¸Œ íŒŒì¼ ë¡œë“œ ì™„ë£Œ í›„ì—ë„ ì´ í•¨ìˆ˜ë¥¼ í˜¸ì¶œí•˜ë©´
+        /// ì €ì¥ëœ ë§µ ìƒíƒœë¥¼ ê¸°ì¤€ìœ¼ë¡œ ì •í™•í•œ ì¸êµ¬ë¥¼ ì¬êµ¬ì„±í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
         /// </summary>
         public void RebuildPopulationFromTileData()
         {
@@ -157,6 +161,26 @@ namespace CityFlow.Content
             }
 
             registeredPopulationTiles.Clear();
+            schoolTiles.Clear();
+
+            for (int y = 0;
+                 y < gridHeight;
+                 y++)
+            {
+                for (int x = 0;
+                     x < gridWidth;
+                     x++)
+                {
+                    Vector2Int tile =
+                        new Vector2Int(x, y);
+
+                    if (tileData.GetTileType(tile) ==
+                        TileType.School)
+                    {
+                        schoolTiles.Add(tile);
+                    }
+                }
+            }
 
             long totalPopulation = 0L;
 
@@ -175,10 +199,10 @@ namespace CityFlow.Content
                         tileData.GetTileType(tile);
 
                     int populationValue =
-                        populationConfig
-                            .GetPopulationValue(
-                                tileType
-                            );
+                        CalculatePopulation(
+                            tileType,
+                            tile
+                        );
 
                     if (populationValue <= 0)
                     {
@@ -216,8 +240,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// Å¸ÀÏ ¹èÄ¡ ¶Ç´Â Ã¶°Å ÀÌº¥Æ®¸¦ ¹Ş¾Æ
-        /// ÇØ´ç Å¸ÀÏÀÇ ÀÎ±¸ »óÅÂ¸¦ °»½ÅÇÕ´Ï´Ù.
+        /// íƒ€ì¼ ë°°ì¹˜ ë˜ëŠ” ì² ê±° ì´ë²¤íŠ¸ë¥¼ ë°›ì•„
+        /// í•´ë‹¹ íƒ€ì¼ê³¼ ì˜í–¥ì„ ë°›ëŠ” ì£¼ë³€ ì§‘ì˜ ì¸êµ¬ë¥¼ ê°±ì‹ í•©ë‹ˆë‹¤.
         /// </summary>
         private void OnPlaced(
             PlacedEvent e
@@ -225,6 +249,21 @@ namespace CityFlow.Content
         {
             if (populationConfig == null)
             {
+                return;
+            }
+
+            if (e.Type == TileType.School)
+            {
+                if (e.IsRemove)
+                {
+                    schoolTiles.Remove(e.Tile);
+                }
+                else
+                {
+                    schoolTiles.Add(e.Tile);
+                }
+
+                RecalculateHousesNearSchool(e.Tile);
                 return;
             }
 
@@ -237,23 +276,105 @@ namespace CityFlow.Content
                 return;
             }
 
-            int newPopulationValue =
-                populationConfig
-                    .GetPopulationValue(
-                        e.Type
-                    );
-
             SetPopulationTile(
                 e.Tile,
-                newPopulationValue
+                CalculatePopulation(
+                    e.Type,
+                    e.Tile
+                )
             );
         }
 
+        private int CalculatePopulation(
+            TileType tileType,
+            Vector2Int tile
+        )
+        {
+            int basePopulation =
+                populationConfig.GetPopulationValue(
+                    tileType
+                );
+
+            return PopulationCalculator.CalculatePopulation(
+                tileType,
+                tile,
+                basePopulation,
+                populationConfig
+                    .SchoolCoveragePopulationBonus,
+                populationConfig
+                    .SchoolCoverageRadius,
+                schoolTiles
+            );
+        }
+
+        private void RecalculateHousesNearSchool(
+            Vector2Int schoolTile
+        )
+        {
+            if (tileData == null)
+            {
+                return;
+            }
+
+            int radius =
+                populationConfig.SchoolCoverageRadius;
+
+            int minX = Mathf.Max(
+                0,
+                schoolTile.x - radius
+            );
+            int maxX = Mathf.Min(
+                gridWidth - 1,
+                schoolTile.x + radius
+            );
+            int minY = Mathf.Max(
+                0,
+                schoolTile.y - radius
+            );
+            int maxY = Mathf.Min(
+                gridHeight - 1,
+                schoolTile.y + radius
+            );
+
+            for (int y = minY;
+                 y <= maxY;
+                 y++)
+            {
+                for (int x = minX;
+                     x <= maxX;
+                     x++)
+                {
+                    Vector2Int tile =
+                        new Vector2Int(x, y);
+
+                    if (!PopulationCalculator
+                            .IsWithinSchoolCoverage(
+                                tile,
+                                schoolTile,
+                                radius
+                            ) ||
+                        tileData.GetTileType(tile) !=
+                        TileType.House)
+                    {
+                        continue;
+                    }
+
+                    SetPopulationTile(
+                        tile,
+                        CalculatePopulation(
+                            TileType.House,
+                            tile
+                        )
+                    );
+                }
+            }
+        }
+
         /// <summary>
-        /// Å¸ÀÏÀÇ ÀÎ±¸ °ªÀ» »õ °ªÀ¸·Î º¯°æÇÕ´Ï´Ù.
+        /// íƒ€ì¼ì˜ ì¸êµ¬ ê°’ì„ ìƒˆ ê°’ìœ¼ë¡œ ë³€ê²½í•©ë‹ˆë‹¤.
         ///
-        /// µ¿ÀÏÇÑ Å¸ÀÏ¿¡ °°Àº ÀÌº¥Æ®°¡ Áßº¹ ¹ß»ıÇØµµ
-        /// ±âÁ¸ °ª°úÀÇ Â÷ÀÌ¸¸ ¹İ¿µÇÕ´Ï´Ù.
+        /// ë™ì¼í•œ íƒ€ì¼ì— ê°™ì€ ì´ë²¤íŠ¸ê°€ ì¤‘ë³µ ë°œìƒí•´ë„
+        /// ê¸°ì¡´ ê°’ê³¼ì˜ ì°¨ì´ë§Œ ë°˜ì˜í•©ë‹ˆë‹¤.
         /// </summary>
         private void SetPopulationTile(
             Vector2Int tile,
@@ -298,8 +419,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// Å¸ÀÏÀÌ Ã¶°ÅµÆÀ» ¶§
-        /// ÇØ´ç Å¸ÀÏÀÌ Á¦°øÇÏ´ø ÀÎ±¸¸¦ Á¦°ÅÇÕ´Ï´Ù.
+        /// íƒ€ì¼ì´ ì² ê±°ëì„ ë•Œ
+        /// í•´ë‹¹ íƒ€ì¼ì´ ì œê³µí•˜ë˜ ì¸êµ¬ë¥¼ ì œê±°í•©ë‹ˆë‹¤.
         /// </summary>
         private void RemovePopulationTile(
             Vector2Int tile
@@ -312,11 +433,11 @@ namespace CityFlow.Content
                 ))
             {
                 /*
-                 * ÀÌ¹Ì Á¦°ÅµÈ Å¸ÀÏÀÌ°Å³ª
-                 * ¿ø·¡ ÀÎ±¸¸¦ Á¦°øÇÏÁö ¾Ê´Â Å¸ÀÏÀÔ´Ï´Ù.
+                 * ì´ë¯¸ ì œê±°ëœ íƒ€ì¼ì´ê±°ë‚˜
+                 * ì›ë˜ ì¸êµ¬ë¥¼ ì œê³µí•˜ì§€ ì•ŠëŠ” íƒ€ì¼ì…ë‹ˆë‹¤.
                  *
-                 * Áßº¹ Ã¶°Å ÀÌº¥Æ®°¡ µé¾î¿Íµµ
-                 * ÀÎ±¸°¡ ´Ù½Ã °¨¼ÒÇÏÁö ¾Ê½À´Ï´Ù.
+                 * ì¤‘ë³µ ì² ê±° ì´ë²¤íŠ¸ê°€ ë“¤ì–´ì™€ë„
+                 * ì¸êµ¬ê°€ ë‹¤ì‹œ ê°ì†Œí•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
                  */
                 return;
             }
@@ -332,7 +453,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// °è»êµÈ ÀÎ±¸ Â÷ÀÌ¸¦ ÇöÀç ÀÎ±¸¿¡ ¹İ¿µÇÕ´Ï´Ù.
+        /// ê³„ì‚°ëœ ì¸êµ¬ ì°¨ì´ë¥¼ í˜„ì¬ ì¸êµ¬ì— ë°˜ì˜í•©ë‹ˆë‹¤.
         /// </summary>
         private void ApplyPopulationDifference(
             int difference,
@@ -379,8 +500,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// Æ¯Á¤ Å¸ÀÏÀÌ ÇöÀç ÀÎ±¸ °è»ê¿¡
-        /// µî·ÏµÇ¾î ÀÖ´ÂÁö È®ÀÎÇÕ´Ï´Ù.
+        /// íŠ¹ì • íƒ€ì¼ì´ í˜„ì¬ ì¸êµ¬ ê³„ì‚°ì—
+        /// ë“±ë¡ë˜ì–´ ìˆëŠ”ì§€ í™•ì¸í•©ë‹ˆë‹¤.
         /// </summary>
         public bool IsPopulationTile(
             Vector2Int tile
@@ -391,7 +512,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// Æ¯Á¤ Å¸ÀÏÀÌ Á¦°øÇÏ´Â ÇöÀç ÀÎ±¸ °ªÀ» ¹İÈ¯ÇÕ´Ï´Ù.
+        /// íŠ¹ì • íƒ€ì¼ì´ ì œê³µí•˜ëŠ” í˜„ì¬ ì¸êµ¬ ê°’ì„ ë°˜í™˜í•©ë‹ˆë‹¤.
         /// </summary>
         public int GetPopulationAt(
             Vector2Int tile
