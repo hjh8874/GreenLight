@@ -26,6 +26,14 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2f, p.Length, 0.01f, "직선 3타일 = 2 tileSize");
         }
 
+        [TestCase(0.1f, RoutePolyline.MinTransitionSpan)]
+        [TestCase(0.8f, 0.8f)]
+        [TestCase(1.2f, RoutePolyline.MaxTransitionSpan)]
+        public void ClampTransitionSpan_UsesSharedGeometryBounds(float input, float expected)
+        {
+            Assert.AreEqual(expected, RoutePolyline.ClampTransitionSpan(input), 1e-4f);
+        }
+
         [Test]
         public void StraightRoute_LaneOffsetIsRightOfTravel()
         {

@@ -43,6 +43,7 @@ namespace CityFlow.Sim
     {
         private const int DirectionCount = 4;
         private const int NoNode = -1;
+        private const int RoundaboutArmCapacity = 1;
 
         private enum IntentKind
         {
@@ -726,6 +727,8 @@ namespace CityFlow.Sim
                 {
                     _blockedTicks[node]++;
                     // Never force a car into an intersection with a blocked exit.
+                    // Every movement on a roundabout arm shares one physical tile. Forced entry
+                    // would bypass its single-car safety invariant, including for tangent traffic.
                     if (move.ReservationTile != NoNode
                         || IsRoundaboutArm(nextTileIndex)
                         || _blockedTicks[node] < _gridlockValveTicks) continue;
@@ -1295,7 +1298,8 @@ namespace CityFlow.Sim
             int firstQueue = tileIndex * DirectionCount;
             for (int direction = 0; direction < DirectionCount; direction++)
                 occupied += _counts[firstQueue + direction];
-            return occupied < 1;
+            // All directional queues share the same physical arm cell.
+            return occupied < RoundaboutArmCapacity;
         }
 
         private void RebuildRoundaboutFootprints()
@@ -1310,6 +1314,8 @@ namespace CityFlow.Sim
                     Vector2Int arm = center + DirectionVector((Dir)side);
                     if (!InBounds(arm)) continue;
                     int armIndex = TileIndex(arm);
+                    // The whole adjacent tile is an arm footprint. Tangent traffic still shares
+                    // this physical space and therefore follows the same capacity rule.
                     _roundaboutCenters[armIndex] = centerIndex;
                     _roundaboutArmSides[armIndex] = side;
                 }

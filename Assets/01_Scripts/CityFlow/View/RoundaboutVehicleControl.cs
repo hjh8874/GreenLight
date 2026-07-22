@@ -5,7 +5,6 @@ namespace CityFlow.View
 {
     public sealed partial class MainCityView
     {
-        private const float MinimumRoundaboutTransitionTiles = 0.66f;
         private const float RoundaboutStopMarginTiles = 0.04f;
 
         private bool TryGetRoundaboutEntryStopDistance(
@@ -55,6 +54,6 @@ namespace CityFlow.View
         }
 
         private float RoundaboutTransitionSpan() =>
-            Mathf.Clamp(roundaboutTransitionTiles, MinimumRoundaboutTransitionTiles, 0.95f);
+            RoutePolyline.ClampTransitionSpan(roundaboutTransitionTiles);
     }
 }
