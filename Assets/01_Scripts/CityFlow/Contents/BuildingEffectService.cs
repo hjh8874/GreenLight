@@ -1,33 +1,39 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace CityFlow.Content
 {
     /// <summary>
-    /// ÇĞ±³ °Ç¹°ÀÇ Ä¿¹ö¸®Áö¿Í ÀÎ±¸ »óÇÑ º¸³Ê½º¸¦ °è»êÇÕ´Ï´Ù.
+    /// í•™êµ ê±´ë¬¼ì˜ ì»¤ë²„ë¦¬ì§€ì™€ ì¸êµ¬ ìƒí•œ ë³´ë„ˆìŠ¤ë¥¼ ê³„ì‚°í•˜ëŠ” ì„œë¹„ìŠ¤ì…ë‹ˆë‹¤.
     ///
-    /// ÇöÀç ´Ü°è¿¡¼­´Â °è»ê Ã¥ÀÓ¸¸ ´ã´çÇÕ´Ï´Ù.
-    /// ½ÇÁ¦ Àû¿ëÀº °Ç¹° ¹èÄ¡ ¶Ç´Â ½ºÄğ¹ö½º ¹æ¹® ¿Ï·á ·ÎÁ÷¿¡¼­
-    /// ÀÌ ¼­ºñ½º¸¦ È£ÃâÇØ Ã³¸®ÇÕ´Ï´Ù.
+    /// í˜„ì¬ ë‹¨ê³„ì—ì„œëŠ” ê³„ì‚°ë§Œ ë‹´ë‹¹í•˜ë©°,
+    /// ì‹¤ì œ ê²Œì„ ìƒíƒœ ë°˜ì˜ì€ í˜¸ì¶œí•˜ëŠ” ì‹œìŠ¤í…œì—ì„œ ì²˜ë¦¬í•©ë‹ˆë‹¤.
     /// </summary>
     public sealed class BuildingEffectService
     {
         /// <summary>
-        /// ÇĞ±³°¡ ÇıÅÃÀ» Á¦°øÇÒ ¼ö ÀÖ´Â ÁÖ°Å °Ç¹° ¼ö¸¦ °è»êÇÕ´Ï´Ù.
-        ///
-        /// ÁÖ°Å °Ç¹° ¼ö°¡ ÇĞ±³ ¼ö¿ë·®º¸´Ù ¸¹À¸¸é
-        /// SchoolCoverageCapacity±îÁö¸¸ ÀÎÁ¤ÇÕ´Ï´Ù.
+        /// í•™êµê°€ í˜œíƒì„ ì œê³µí•  ìˆ˜ ìˆëŠ” ì£¼ê±° ê±´ë¬¼ ìˆ˜ë¥¼ ê³„ì‚°í•©ë‹ˆë‹¤.
         /// </summary>
-        /// <param name="school">ÇĞ±³ °Ç¹° µ¥ÀÌÅÍ</param>
-        /// <param name="nearbyBuildings">
-        /// ÇĞ±³ ÁÖº¯ ¶Ç´Â ½ºÄğ¹ö½º°¡ ¹æ¹®ÇÑ °Ç¹° ¸ñ·Ï
+        /// <param name="school">
+        /// í•™êµ ê±´ë¬¼ ë°ì´í„°
         /// </param>
-        /// <returns>ÇĞ±³ ÇıÅÃÀ» ¹Ş´Â ÁÖ°Å °Ç¹° ¼ö</returns>
+        /// <param name="nearbyBuildings">
+        /// í•™êµ ì£¼ë³€ ë˜ëŠ” ìŠ¤ì¿¨ë²„ìŠ¤ê°€ ë°©ë¬¸í•œ ê±´ë¬¼ ëª©ë¡
+        /// </param>
+        /// <returns>
+        /// í•™êµ íš¨ê³¼ë¥¼ ë°›ëŠ” ì£¼ê±° ê±´ë¬¼ ìˆ˜
+        /// </returns>
         public int CalculateCoveredHouseCount(
             BuildingDefinitionSO school,
             IReadOnlyList<BuildingDefinitionSO> nearbyBuildings)
         {
-            if (!IsValidSchool(school) || nearbyBuildings == null)
+            if (!IsValidSchool(school))
+            {
+                return 0;
+            }
+
+            if (nearbyBuildings == null)
             {
                 return 0;
             }
@@ -50,28 +56,29 @@ namespace CityFlow.Content
 
                 residentialCount++;
 
-                // ÇÊ¿äÇÑ ¼ö·®À» ¸ğµÎ Ã£¾Ò´Ù¸é
-                // ³²Àº °Ç¹°À» ´õ È®ÀÎÇÏÁö ¾Ê½À´Ï´Ù.
+                // í•™êµê°€ ë‹´ë‹¹ ê°€ëŠ¥í•œ ìµœëŒ€ ìˆ˜ì— ë„ë‹¬í•˜ë©´ ì¢…ë£Œ
                 if (residentialCount >= school.SchoolCoverageCapacity)
                 {
-                    break;
+                    return residentialCount;
                 }
             }
 
-            return Mathf.Min(
-                residentialCount,
-                school.SchoolCoverageCapacity);
+            return residentialCount;
         }
 
         /// <summary>
-        /// ÇĞ±³ ÇıÅÃÀ» ¹ŞÀº ÁÖ°Å °Ç¹° ¼ö¸¦ ±âÁØÀ¸·Î
-        /// ÀüÃ¼ ÀÎ±¸ »óÇÑ º¸³Ê½º¸¦ °è»êÇÕ´Ï´Ù.
+        /// ì»¤ë²„ëœ ì£¼ê±° ê±´ë¬¼ ìˆ˜ë¥¼ ì´ìš©í•˜ì—¬
+        /// ì¸êµ¬ ìƒí•œ ë³´ë„ˆìŠ¤ë¥¼ ê³„ì‚°í•©ë‹ˆë‹¤.
         /// </summary>
-        /// <param name="school">ÇĞ±³ °Ç¹° µ¥ÀÌÅÍ</param>
-        /// <param name="coveredHouseCount">
-        /// ½ÇÁ¦·Î ÇĞ±³ ÇıÅÃÀ» ¹ŞÀº ÁÖ°Å °Ç¹° ¼ö
+        /// <param name="school">
+        /// í•™êµ ê±´ë¬¼ ë°ì´í„°
         /// </param>
-        /// <returns>Ãß°¡µÇ´Â ÀüÃ¼ ÀÎ±¸ »óÇÑ</returns>
+        /// <param name="coveredHouseCount">
+        /// í•™êµ í˜œíƒì„ ë°›ëŠ” ì£¼ê±° ê±´ë¬¼ ìˆ˜
+        /// </param>
+        /// <returns>
+        /// ì¶”ê°€ë˜ëŠ” ì¸êµ¬ ìƒí•œ
+        /// </returns>
         public int CalculatePopulationCapBonus(
             BuildingDefinitionSO school,
             int coveredHouseCount)
@@ -81,31 +88,48 @@ namespace CityFlow.Content
                 return 0;
             }
 
-            int safeCoveredHouseCount = Mathf.Clamp(
-                coveredHouseCount,
-                0,
-                school.SchoolCoverageCapacity);
+            int safeCoveredHouseCount =
+                Mathf.Clamp(
+                    coveredHouseCount,
+                    0,
+                    school.SchoolCoverageCapacity);
 
-            return safeCoveredHouseCount *
-                   school.CoveredPopulationCapBonus;
+            long calculatedBonus =
+                (long)safeCoveredHouseCount *
+                school.CoveredPopulationCapBonus;
+
+            calculatedBonus =
+                Math.Max(0L, calculatedBonus);
+
+            if (calculatedBonus >= int.MaxValue)
+            {
+                return int.MaxValue;
+            }
+
+            return (int)calculatedBonus;
         }
 
         /// <summary>
-        /// ¹æ¹®ÇÑ °Ç¹° ¸ñ·ÏÀ» ¹ÙÅÁÀ¸·Î
-        /// ÇĞ±³ÀÇ ÀüÃ¼ ÀÎ±¸ »óÇÑ º¸³Ê½º¸¦ ÇÑ ¹ø¿¡ °è»êÇÕ´Ï´Ù.
+        /// ê±´ë¬¼ ëª©ë¡ì„ ì´ìš©í•˜ì—¬
+        /// ì¸êµ¬ ìƒí•œ ë³´ë„ˆìŠ¤ë¥¼ ê³„ì‚°í•©ë‹ˆë‹¤.
         /// </summary>
-        /// <param name="school">ÇĞ±³ °Ç¹° µ¥ÀÌÅÍ</param>
-        /// <param name="visitedBuildings">
-        /// ½ºÄğ¹ö½º°¡ ½ÇÁ¦·Î ¹æ¹®Çß°Å³ª ÇĞ±³°¡ Ä¿¹öÇÑ °Ç¹° ¸ñ·Ï
+        /// <param name="school">
+        /// í•™êµ ê±´ë¬¼ ë°ì´í„°
         /// </param>
-        /// <returns>Ãß°¡µÇ´Â ÀüÃ¼ ÀÎ±¸ »óÇÑ</returns>
+        /// <param name="visitedBuildings">
+        /// í•™êµ íš¨ê³¼ë¥¼ ë°›ëŠ” ê±´ë¬¼ ëª©ë¡
+        /// </param>
+        /// <returns>
+        /// ì¶”ê°€ë˜ëŠ” ì¸êµ¬ ìƒí•œ
+        /// </returns>
         public int CalculatePopulationCapBonus(
             BuildingDefinitionSO school,
             IReadOnlyList<BuildingDefinitionSO> visitedBuildings)
         {
-            int coveredHouseCount = CalculateCoveredHouseCount(
-                school,
-                visitedBuildings);
+            int coveredHouseCount =
+                CalculateCoveredHouseCount(
+                    school,
+                    visitedBuildings);
 
             return CalculatePopulationCapBonus(
                 school,
@@ -113,7 +137,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// Àü´Ş¹ŞÀº °Ç¹°ÀÌ À¯È¿ÇÑ ÇĞ±³ÀÎÁö È®ÀÎÇÕ´Ï´Ù.
+        /// ì „ë‹¬ëœ ê±´ë¬¼ì´ í•™êµì¸ì§€ í™•ì¸í•©ë‹ˆë‹¤.
         /// </summary>
         private static bool IsValidSchool(
             BuildingDefinitionSO school)
@@ -123,7 +147,7 @@ namespace CityFlow.Content
                 return false;
             }
 
-            if (school.category != BuildingCategory.Education)
+            if (!school.IsSchool)
             {
                 return false;
             }
