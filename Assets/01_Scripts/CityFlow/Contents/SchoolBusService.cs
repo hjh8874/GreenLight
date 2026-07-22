@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -15,41 +15,41 @@ namespace CityFlow.Content.Transit
     }
 
     /// <summary>
-    /// ÇĞ±³¿¡¼­ Ãâ¹ßÇØ ÁÖ°ÅÁö¿ªÀ» ¼ø¼­´ë·Î ¹æ¹®ÇÑ ÈÄ
-    /// ´Ù½Ã ÇĞ±³·Î µ¹¾Æ¿À´Â ½ºÄğ¹ö½º ¿îÇàÀ» °ü¸®ÇÕ´Ï´Ù.
+    /// í•™êµì—ì„œ ì¶œë°œí•´ ì£¼ê±°ì§€ì—­ì„ ìˆœì„œëŒ€ë¡œ ë°©ë¬¸í•œ í›„
+    /// ë‹¤ì‹œ í•™êµë¡œ ëŒì•„ì˜¤ëŠ” ìŠ¤ì¿¨ë²„ìŠ¤ ìš´í–‰ì„ ê´€ë¦¬í•©ë‹ˆë‹¤.
     ///
-    /// ¿îÇà ¼ø¼­:
-    /// ÇĞ±³ ¡æ ÁÖ°ÅÁö¿ª 1 ¡æ ÁÖ°ÅÁö¿ª 2 ¡æ ... ¡æ ÇĞ±³
+    /// ìš´í–‰ ìˆœì„œ:
+    /// í•™êµ â†’ ì£¼ê±°ì§€ì—­ 1 â†’ ì£¼ê±°ì§€ì—­ 2 â†’ ... â†’ í•™êµ
     /// </summary>
     [RequireComponent(typeof(BusRoute))]
     public sealed class SchoolBusService : MonoBehaviour
     {
-        [Header("ÇÊ¼ö ÂüÁ¶")]
+        [Header("í•„ìˆ˜ ì°¸ì¡°")]
         [SerializeField]
         private BusStopRegistry stopRegistry;
 
         [SerializeField]
         private BusRoute busRoute;
 
-        [Header("¿îÇà ¼³Á¤")]
+        [Header("ìš´í–‰ ì„¤ì •")]
         [Min(1)]
-        [Tooltip("ÇÑ ¹ø ¿îÇà¿¡¼­ ¹æ¹®ÇÒ ÃÖ´ë ÁÖ°ÅÁö¿ª ¼öÀÔ´Ï´Ù.")]
+        [Tooltip("í•œ ë²ˆ ìš´í–‰ì—ì„œ ë°©ë¬¸í•  ìµœëŒ€ ì£¼ê±°ì§€ì—­ ìˆ˜ì…ë‹ˆë‹¤.")]
         [SerializeField]
         private int maxResidentialStopsPerTrip = 5;
 
         [Min(0f)]
-        [Tooltip("ÇĞ±³·Î º¹±ÍÇÑ ÈÄ ´ÙÀ½ ¿îÇà±îÁö ±â´Ù¸®´Â ½Ã°£ÀÔ´Ï´Ù.")]
+        [Tooltip("í•™êµë¡œ ë³µê·€í•œ í›„ ë‹¤ìŒ ìš´í–‰ê¹Œì§€ ê¸°ë‹¤ë¦¬ëŠ” ì‹œê°„ì…ë‹ˆë‹¤.")]
         [SerializeField]
         private float schoolWaitSeconds = 5f;
 
         [Tooltip(
-            "ÇĞ±³¿¡¼­ °¡±î¿î ÁÖ°ÅÁö¿ªºÎÅÍ ¹æ¹®ÇÕ´Ï´Ù. " +
-            "ÇöÀç´Â ¸ÇÇØÆ° °Å¸® ±âÁØÀÔ´Ï´Ù."
+            "í•™êµì—ì„œ ê°€ê¹Œìš´ ì£¼ê±°ì§€ì—­ë¶€í„° ë°©ë¬¸í•©ë‹ˆë‹¤. " +
+            "í˜„ì¬ëŠ” ë§¨í•´íŠ¼ ê±°ë¦¬ ê¸°ì¤€ì…ë‹ˆë‹¤."
         )]
         [SerializeField]
         private bool sortResidentialStopsByDistance = true;
 
-        [Tooltip("½ÃÀÛ ½Ã ÀÚµ¿À¸·Î ¿îÇàÀ» ½ÃµµÇÕ´Ï´Ù.")]
+        [Tooltip("ì‹œì‘ ì‹œ ìë™ìœ¼ë¡œ ìš´í–‰ì„ ì‹œë„í•©ë‹ˆë‹¤.")]
         [SerializeField]
         private bool autoStart = true;
 
@@ -206,7 +206,7 @@ namespace CityFlow.Content.Transit
             if (stopRegistry == null || busRoute == null)
             {
                 Debug.LogWarning(
-                    "[SchoolBusService] ÇÊ¼ö ÂüÁ¶°¡ ¾ø½À´Ï´Ù.",
+                    "[SchoolBusService] í•„ìˆ˜ ì°¸ì¡°ê°€ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
                 return false;
@@ -217,7 +217,7 @@ namespace CityFlow.Content.Transit
                 ))
             {
                 Debug.LogWarning(
-                    "[SchoolBusService] ¹èÄ¡µÈ ÇĞ±³°¡ ¾ø½À´Ï´Ù.",
+                    "[SchoolBusService] ë°°ì¹˜ëœ í•™êµê°€ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
                 return false;
@@ -226,7 +226,7 @@ namespace CityFlow.Content.Transit
             if (stopRegistry.ResidentialStopCount == 0)
             {
                 Debug.LogWarning(
-                    "[SchoolBusService] ¹æ¹®ÇÒ ÁÖ°ÅÁö¿ªÀÌ ¾ø½À´Ï´Ù.",
+                    "[SchoolBusService] ë°©ë¬¸í•  ì£¼ê±°ì§€ì—­ì´ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
                 return false;
@@ -239,15 +239,15 @@ namespace CityFlow.Content.Transit
             if (schoolRouteStops.Count < 3)
             {
                 Debug.LogWarning(
-                    "[SchoolBusService] À¯È¿ÇÑ ½ºÄğ¹ö½º ³ë¼±À» ¸¸µé ¼ö ¾ø½À´Ï´Ù.",
+                    "[SchoolBusService] ìœ íš¨í•œ ìŠ¤ì¿¨ë²„ìŠ¤ ë…¸ì„ ì„ ë§Œë“¤ ìˆ˜ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
                 return false;
             }
 
             /*
-             * ³ë¼± ¸¶Áö¸·¿¡ ÇĞ±³¸¦ Á÷Á¢ ³Ö¾úÀ¸¹Ç·Î
-             * BusRoute ÀÚÃ¼ ¹İº¹Àº »ç¿ëÇÏÁö ¾Ê½À´Ï´Ù.
+             * ë…¸ì„  ë§ˆì§€ë§‰ì— í•™êµë¥¼ ì§ì ‘ ë„£ì—ˆìœ¼ë¯€ë¡œ
+             * BusRoute ìì²´ ë°˜ë³µì€ ì‚¬ìš©í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
              */
             bool configured =
                 busRoute.ConfigureRoute(
@@ -276,9 +276,9 @@ namespace CityFlow.Content.Transit
             RouteStarted?.Invoke();
 
             Debug.Log(
-                $"[SchoolBusService] ½ºÄğ¹ö½º Ãâ¹ß. " +
-                $"ÇĞ±³: {SchoolTile}, " +
-                $"¹æ¹® ÁÖ°ÅÁö¿ª: {schoolRouteStops.Count - 2}",
+                $"[SchoolBusService] ìŠ¤ì¿¨ë²„ìŠ¤ ì¶œë°œ. " +
+                $"í•™êµ: {SchoolTile}, " +
+                $"ë°©ë¬¸ ì£¼ê±°ì§€ì—­: {schoolRouteStops.Count - 2}",
                 this
             );
 
@@ -331,8 +331,8 @@ namespace CityFlow.Content.Transit
             }
 
             /*
-             * ¸¶Áö¸· Á¤·ùÀåÀ» ÇĞ±³·Î ÁöÁ¤ÇÏ¿©
-             * ¹İµå½Ã ÇĞ±³·Î º¹±ÍÇÏµµ·Ï ÇÕ´Ï´Ù.
+             * ë§ˆì§€ë§‰ ì •ë¥˜ì¥ì„ í•™êµë¡œ ì§€ì •í•˜ì—¬
+             * ë°˜ë“œì‹œ í•™êµë¡œ ë³µê·€í•˜ë„ë¡ í•©ë‹ˆë‹¤.
              */
             schoolRouteStops.Add(SchoolTile);
         }
@@ -391,11 +391,11 @@ namespace CityFlow.Content.Transit
             VisitedResidentialCount++;
 
             /*
-             * ÇöÀç µ¥ÀÌÅÍ ±¸Á¶¿¡ ÁÖ°ÅÁö¿ªº° ÇĞ»ı ¼ö°¡ µû·Î ¾øÀ¸¹Ç·Î
-             * ¿ì¼± ÁÖ°ÅÁö¿ª ÇÑ °÷´ç ÇĞ»ı 1¸íÀ» Å¾½Â Ã³¸®ÇÕ´Ï´Ù.
+             * í˜„ì¬ ë°ì´í„° êµ¬ì¡°ì— ì£¼ê±°ì§€ì—­ë³„ í•™ìƒ ìˆ˜ê°€ ë”°ë¡œ ì—†ìœ¼ë¯€ë¡œ
+             * ìš°ì„  ì£¼ê±°ì§€ì—­ í•œ ê³³ë‹¹ í•™ìƒ 1ëª…ì„ íƒ‘ìŠ¹ ì²˜ë¦¬í•©ë‹ˆë‹¤.
              *
-             * ÀÌÈÄ PopulationSystem.GetPopulationAt(tile)À»
-             * °ø°³ °è¾àÀ¸·Î ¿¬°áÇÏ¸é ½ÇÁ¦ ÀÎ±¸ ±âÁØÀ¸·Î ±³Ã¼ÇÒ ¼ö ÀÖ½À´Ï´Ù.
+             * ì´í›„ PopulationSystem.GetPopulationAt(tile)ì„
+             * ê³µê°œ ê³„ì•½ìœ¼ë¡œ ì—°ê²°í•˜ë©´ ì‹¤ì œ ì¸êµ¬ ê¸°ì¤€ìœ¼ë¡œ êµì²´í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
              */
             CurrentPassengers++;
 
@@ -405,9 +405,9 @@ namespace CityFlow.Content.Transit
             );
 
             Debug.Log(
-                $"[SchoolBusService] ÁÖ°ÅÁö¿ª Á¤Â÷. " +
+                $"[SchoolBusService] ì£¼ê±°ì§€ì—­ ì •ì°¨. " +
                 $"Tile: {stopTile}, " +
-                $"´©Àû Å¾½Â ÇĞ»ı: {CurrentPassengers}",
+                $"ëˆ„ì  íƒ‘ìŠ¹ í•™ìƒ: {CurrentPassengers}",
                 this
             );
 
@@ -428,18 +428,18 @@ namespace CityFlow.Content.Transit
             );
 
             Debug.Log(
-                $"[SchoolBusService] ÇĞ±³ º¹±Í. " +
-                $"¹æ¹® ÁÖ°ÅÁö¿ª: {VisitedResidentialCount}, " +
-                $"µî±³ ÇĞ»ı: {deliveredStudents}",
+                $"[SchoolBusService] í•™êµ ë³µê·€. " +
+                $"ë°©ë¬¸ ì£¼ê±°ì§€ì—­: {VisitedResidentialCount}, " +
+                $"ë“±êµ í•™ìƒ: {deliveredStudents}",
                 this
             );
 
             /*
-             * BuildingEffectService¿Í ½ÇÁ¦ ÀÎ±¸ »óÇÑ º¯°æ API´Â
-             * ÇöÀç develop ¼Ò½º¿¡¼­ È®ÀÎµÇÁö ¾ÊÀ¸¹Ç·Î Á÷Á¢ È£ÃâÇÏÁö ¾Ê½À´Ï´Ù.
+             * BuildingEffectServiceì™€ ì‹¤ì œ ì¸êµ¬ ìƒí•œ ë³€ê²½ APIëŠ”
+             * í˜„ì¬ develop ì†ŒìŠ¤ì—ì„œ í™•ì¸ë˜ì§€ ì•Šìœ¼ë¯€ë¡œ ì§ì ‘ í˜¸ì¶œí•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
              *
-             * ÇØ´ç ¼­ºñ½º°¡ º¹±¸µÇ¸é ReturnedToSchool ÀÌº¥Æ®¸¦ ±¸µ¶ÇÏ°Å³ª
-             * ÀÌ À§Ä¡¿¡¼­ ÇĞ»ı ¼ö¸¦ Àü´ŞÇÏ¸é µË´Ï´Ù.
+             * í•´ë‹¹ ì„œë¹„ìŠ¤ê°€ ë³µêµ¬ë˜ë©´ ReturnedToSchool ì´ë²¤íŠ¸ë¥¼ êµ¬ë…í•˜ê±°ë‚˜
+             * ì´ ìœ„ì¹˜ì—ì„œ í•™ìƒ ìˆ˜ë¥¼ ì „ë‹¬í•˜ë©´ ë©ë‹ˆë‹¤.
              */
 
             CurrentPassengers = 0;
@@ -458,8 +458,8 @@ namespace CityFlow.Content.Transit
         private void OnRouteCompleted()
         {
             /*
-             * Á¤»óÀûÀÎ ½ºÄğ¹ö½º ³ë¼±Àº ¸¶Áö¸· ÇĞ±³ Á¤·ùÀå¿¡¼­
-             * HandleSchoolReturnÀÌ ¸ÕÀú È£ÃâµË´Ï´Ù.
+             * ì •ìƒì ì¸ ìŠ¤ì¿¨ë²„ìŠ¤ ë…¸ì„ ì€ ë§ˆì§€ë§‰ í•™êµ ì •ë¥˜ì¥ì—ì„œ
+             * HandleSchoolReturnì´ ë¨¼ì € í˜¸ì¶œë©ë‹ˆë‹¤.
              */
             if (State != SchoolBusState.WaitingAtSchool)
             {
@@ -474,7 +474,7 @@ namespace CityFlow.Content.Transit
             RouteUnavailable?.Invoke();
 
             Debug.LogWarning(
-                "[SchoolBusService] µµ·Î°¡ ¿¬°áµÇÁö ¾Ê¾Æ ¿îÇàÀ» Áß´ÜÇß½À´Ï´Ù.",
+                "[SchoolBusService] ë„ë¡œê°€ ì—°ê²°ë˜ì§€ ì•Šì•„ ìš´í–‰ì„ ì¤‘ë‹¨í–ˆìŠµë‹ˆë‹¤.",
                 this
             );
         }
@@ -482,8 +482,8 @@ namespace CityFlow.Content.Transit
         private void OnRegistryChanged()
         {
             /*
-             * ¿îÇà Áß¿¡´Â ±âÁ¸ ³ë¼±À» Áï½Ã ¹Ù²ÙÁö ¾Ê½À´Ï´Ù.
-             * ÇĞ±³·Î µ¹¾Æ¿Â µÚ ´ÙÀ½ ¿îÇà¿¡¼­ ÃÖ½Å °Ç¹° ¸ñ·ÏÀ» »ç¿ëÇÕ´Ï´Ù.
+             * ìš´í–‰ ì¤‘ì—ëŠ” ê¸°ì¡´ ë…¸ì„ ì„ ì¦‰ì‹œ ë°”ê¾¸ì§€ ì•ŠìŠµë‹ˆë‹¤.
+             * í•™êµë¡œ ëŒì•„ì˜¨ ë’¤ ë‹¤ìŒ ìš´í–‰ì—ì„œ ìµœì‹  ê±´ë¬¼ ëª©ë¡ì„ ì‚¬ìš©í•©ë‹ˆë‹¤.
              */
             if (!IsOperating &&
                 wantsToOperate &&

@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
@@ -16,13 +16,13 @@ namespace CityFlow.Content.Transit
     }
 
     /// <summary>
-    /// Á¤·ùÀå »çÀÌ µµ·Î °æ·Î¸¦ °è»êÇÏ°í ¹ö½ºÀÇ °¡»ó À§Ä¡¸¦ °»½ÅÇÕ´Ï´Ù.
+    /// ì •ë¥˜ì¥ ì‚¬ì´ ë„ë¡œ ê²½ë¡œë¥¼ ê³„ì‚°í•˜ê³  ë²„ìŠ¤ì˜ ê°€ìƒ ìœ„ì¹˜ë¥¼ ê°±ì‹ í•©ë‹ˆë‹¤.
     ///
-    /// ÀÏ¹İ ¹ö½º´Â LoopRoute¸¦ È°¼ºÈ­ÇÏ¿©
-    /// ¸¶Áö¸· Á¤·ùÀå ´ÙÀ½¿¡ Ã¹ Á¤·ùÀåÀ¸·Î µ¹¾Æ°©´Ï´Ù.
+    /// ì¼ë°˜ ë²„ìŠ¤ëŠ” LoopRouteë¥¼ í™œì„±í™”í•˜ì—¬
+    /// ë§ˆì§€ë§‰ ì •ë¥˜ì¥ ë‹¤ìŒì— ì²« ì •ë¥˜ì¥ìœ¼ë¡œ ëŒì•„ê°‘ë‹ˆë‹¤.
     ///
-    /// ½ÇÁ¦ ¹ö½º ÇÁ¸®ÆÕÀº CurrentTile°ú
-    /// CurrentRoadPathIndex¸¦ ÀĞ¾î View¿¡¼­ Ç¥½ÃÇÒ ¼ö ÀÖ½À´Ï´Ù.
+    /// ì‹¤ì œ ë²„ìŠ¤ í”„ë¦¬íŒ¹ì€ CurrentTileê³¼
+    /// CurrentRoadPathIndexë¥¼ ì½ì–´ Viewì—ì„œ í‘œì‹œí•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
     /// </summary>
     public sealed class BusRoute :
         MonoBehaviour,
@@ -36,7 +36,7 @@ namespace CityFlow.Content.Transit
             Vector2Int.left
         };
 
-        [Header("±×¸®µå Å©±â")]
+        [Header("ê·¸ë¦¬ë“œ í¬ê¸°")]
         [Min(1)]
         [SerializeField]
         private int gridWidth = GridUtil.DefaultWidth;
@@ -45,22 +45,22 @@ namespace CityFlow.Content.Transit
         [SerializeField]
         private int gridHeight = GridUtil.DefaultHeight;
 
-        [Header("¿îÇà ¼³Á¤")]
+        [Header("ìš´í–‰ ì„¤ì •")]
         [Min(0.01f)]
-        [Tooltip("µµ·Î Å¸ÀÏ ÇÑ Ä­À» ÀÌµ¿ÇÏ´Â µ¥ ÇÊ¿äÇÑ ½Ã°£ÀÔ´Ï´Ù.")]
+        [Tooltip("ë„ë¡œ íƒ€ì¼ í•œ ì¹¸ì„ ì´ë™í•˜ëŠ” ë° í•„ìš”í•œ ì‹œê°„ì…ë‹ˆë‹¤.")]
         [SerializeField]
         private float secondsPerTile = 0.2f;
 
         [Min(0f)]
-        [Tooltip("°¢ Á¤·ùÀå¿¡¼­ ±â´Ù¸®´Â ½Ã°£ÀÔ´Ï´Ù.")]
+        [Tooltip("ê° ì •ë¥˜ì¥ì—ì„œ ê¸°ë‹¤ë¦¬ëŠ” ì‹œê°„ì…ë‹ˆë‹¤.")]
         [SerializeField]
         private float stopWaitSeconds = 2f;
 
-        [Tooltip("¸¶Áö¸· Á¤·ùÀå µµÂø ÈÄ Ã¹ Á¤·ùÀåÀ¸·Î µ¹¾Æ°©´Ï´Ù.")]
+        [Tooltip("ë§ˆì§€ë§‰ ì •ë¥˜ì¥ ë„ì°© í›„ ì²« ì •ë¥˜ì¥ìœ¼ë¡œ ëŒì•„ê°‘ë‹ˆë‹¤.")]
         [SerializeField]
         private bool loopRoute = true;
 
-        [Tooltip("ÄÄÆ÷³ÍÆ® ÃÊ±âÈ­ ÈÄ ÀÚµ¿ ¿îÇàÇÕ´Ï´Ù.")]
+        [Tooltip("ì»´í¬ë„ŒíŠ¸ ì´ˆê¸°í™” í›„ ìë™ ìš´í–‰í•©ë‹ˆë‹¤.")]
         [SerializeField]
         private bool autoStart;
 
@@ -128,7 +128,7 @@ namespace CityFlow.Content.Transit
             if (services == null || services.TileData == null)
             {
                 Debug.LogError(
-                    "[BusRoute] CityFlowServices ¶Ç´Â TileData°¡ ¾ø½À´Ï´Ù.",
+                    "[BusRoute] CityFlowServices ë˜ëŠ” TileDataê°€ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
                 return;
@@ -157,7 +157,7 @@ namespace CityFlow.Content.Transit
             if (bootstrap?.Services == null)
             {
                 Debug.LogWarning(
-                    "[BusRoute] CityBootstrap ¶Ç´Â Services¸¦ Ã£Áö ¸øÇß½À´Ï´Ù.",
+                    "[BusRoute] CityBootstrap ë˜ëŠ” Servicesë¥¼ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.",
                     this
                 );
                 return;
@@ -234,7 +234,7 @@ namespace CityFlow.Content.Transit
             if (!isInitialized)
             {
                 Debug.LogWarning(
-                    "[BusRoute] ÃÊ±âÈ­µÇÁö ¾Ê¾Æ ¿îÇàÀ» ½ÃÀÛÇÒ ¼ö ¾ø½À´Ï´Ù.",
+                    "[BusRoute] ì´ˆê¸°í™”ë˜ì§€ ì•Šì•„ ìš´í–‰ì„ ì‹œì‘í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
                 return false;
@@ -243,7 +243,7 @@ namespace CityFlow.Content.Transit
             if (stops.Count < 2)
             {
                 Debug.LogWarning(
-                    "[BusRoute] Á¤·ùÀåÀÌ ÃÖ¼Ò 2°³ ÇÊ¿äÇÕ´Ï´Ù.",
+                    "[BusRoute] ì •ë¥˜ì¥ì´ ìµœì†Œ 2ê°œ í•„ìš”í•©ë‹ˆë‹¤.",
                     this
                 );
                 return false;
@@ -392,7 +392,7 @@ namespace CityFlow.Content.Transit
                 !TryFindAccessRoad(destinationStop, out Vector2Int endRoad))
             {
                 Debug.LogWarning(
-                    $"[BusRoute] Á¤·ùÀå ±ÙÃ³ µµ·Î¸¦ Ã£Áö ¸øÇß½À´Ï´Ù. " +
+                    $"[BusRoute] ì •ë¥˜ì¥ ê·¼ì²˜ ë„ë¡œë¥¼ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤. " +
                     $"Start: {startStop}, Destination: {destinationStop}",
                     this
                 );
@@ -408,7 +408,7 @@ namespace CityFlow.Content.Transit
                 ))
             {
                 Debug.LogWarning(
-                    $"[BusRoute] ¿¬°áµÈ µµ·Î °æ·Î¸¦ Ã£Áö ¸øÇß½À´Ï´Ù. " +
+                    $"[BusRoute] ì—°ê²°ëœ ë„ë¡œ ê²½ë¡œë¥¼ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤. " +
                     $"StartRoad: {startRoad}, EndRoad: {endRoad}",
                     this
                 );
@@ -418,8 +418,8 @@ namespace CityFlow.Content.Transit
             }
 
             /*
-             * Á¤·ùÀå Å¸ÀÏ ÀÚÃ¼´Â µµ·Î°¡ ¾Æ´Ò ¼ö ÀÖÀ¸¹Ç·Î
-             * Á¤·ùÀå ¡æ Á¢±Ù µµ·Î ¡æ µµ·Î °æ·Î ¡æ Á¤·ùÀå ¼ø¼­·Î ±¸¼ºÇÕ´Ï´Ù.
+             * ì •ë¥˜ì¥ íƒ€ì¼ ìì²´ëŠ” ë„ë¡œê°€ ì•„ë‹ ìˆ˜ ìˆìœ¼ë¯€ë¡œ
+             * ì •ë¥˜ì¥ â†’ ì ‘ê·¼ ë„ë¡œ â†’ ë„ë¡œ ê²½ë¡œ â†’ ì •ë¥˜ì¥ ìˆœì„œë¡œ êµ¬ì„±í•©ë‹ˆë‹¤.
              */
             if (currentRoadPath.Count == 0 ||
                 currentRoadPath[0] != startStop)

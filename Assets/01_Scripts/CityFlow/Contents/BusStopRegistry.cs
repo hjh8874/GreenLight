@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
@@ -7,16 +7,16 @@ using UnityEngine;
 namespace CityFlow.Content.Transit
 {
     /// <summary>
-    /// ¹ö½º Á¤·ùÀå, ÇĞ±³, ÁÖ°ÅÁö¿ªÀÇ Å¸ÀÏ ÁÂÇ¥¸¦ °ü¸®ÇÕ´Ï´Ù.
+    /// ë²„ìŠ¤ ì •ë¥˜ì¥, í•™êµ, ì£¼ê±°ì§€ì—­ì˜ íƒ€ì¼ ì¢Œí‘œë¥¼ ê´€ë¦¬í•©ë‹ˆë‹¤.
     ///
-    /// ¸Å ÇÁ·¹ÀÓ Å¸ÀÏ ÀüÃ¼¸¦ °Ë»öÇÏÁö ¾Ê°í,
-    /// ÃÊ±âÈ­ ½Ã ÇÑ ¹ø ½ºÄµÇÑ µÚ Placed ÀÌº¥Æ®·Î ¸ñ·ÏÀ» °»½ÅÇÕ´Ï´Ù.
+    /// ë§¤ í”„ë ˆì„ íƒ€ì¼ ì „ì²´ë¥¼ ê²€ìƒ‰í•˜ì§€ ì•Šê³ ,
+    /// ì´ˆê¸°í™” ì‹œ í•œ ë²ˆ ìŠ¤ìº”í•œ ë’¤ Placed ì´ë²¤íŠ¸ë¡œ ëª©ë¡ì„ ê°±ì‹ í•©ë‹ˆë‹¤.
     /// </summary>
     public sealed class BusStopRegistry :
         MonoBehaviour,
         ICityFlowServiceConsumer
     {
-        [Header("±×¸®µå Å©±â")]
+        [Header("ê·¸ë¦¬ë“œ í¬ê¸°")]
         [Min(1)]
         [SerializeField]
         private int gridWidth = GridUtil.DefaultWidth;
@@ -25,9 +25,9 @@ namespace CityFlow.Content.Transit
         [SerializeField]
         private int gridHeight = GridUtil.DefaultHeight;
 
-        [Header("¹ö½º Á¤·ùÀå ÆÇº°")]
+        [Header("ë²„ìŠ¤ ì •ë¥˜ì¥ íŒë³„")]
         [Tooltip(
-            "ÇöÀç TileType¿¡ BusStopÀÌ ¾ø´Ù¸é Á¤·ùÀå Å¸ÀÏÀ» ¼öµ¿ µî·ÏÇØ¼­ »ç¿ëÇÕ´Ï´Ù."
+            "í˜„ì¬ TileTypeì— BusStopì´ ì—†ë‹¤ë©´ ì •ë¥˜ì¥ íƒ€ì¼ì„ ìˆ˜ë™ ë“±ë¡í•´ì„œ ì‚¬ìš©í•©ë‹ˆë‹¤."
         )]
         [SerializeField]
         private bool rebuildOnInitialize = true;
@@ -71,7 +71,7 @@ namespace CityFlow.Content.Transit
             if (services == null)
             {
                 Debug.LogError(
-                    "[BusStopRegistry] CityFlowServices°¡ ¾ø½À´Ï´Ù.",
+                    "[BusStopRegistry] CityFlowServicesê°€ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
                 return;
@@ -80,7 +80,7 @@ namespace CityFlow.Content.Transit
             if (services.TileData == null)
             {
                 Debug.LogError(
-                    "[BusStopRegistry] IReadOnlyTileData°¡ µî·ÏµÇÁö ¾Ê¾Ò½À´Ï´Ù.",
+                    "[BusStopRegistry] IReadOnlyTileDataê°€ ë“±ë¡ë˜ì§€ ì•Šì•˜ìŠµë‹ˆë‹¤.",
                     this
                 );
                 return;
@@ -111,7 +111,7 @@ namespace CityFlow.Content.Transit
             if (bootstrap?.Services == null)
             {
                 Debug.LogWarning(
-                    "[BusStopRegistry] CityBootstrap ¶Ç´Â Services¸¦ Ã£Áö ¸øÇß½À´Ï´Ù.",
+                    "[BusStopRegistry] CityBootstrap ë˜ëŠ” Servicesë¥¼ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.",
                     this
                 );
                 return;
@@ -161,10 +161,10 @@ namespace CityFlow.Content.Transit
         }
 
         /// <summary>
-        /// ÇöÀç Å¸ÀÏ µ¥ÀÌÅÍ¸¦ ±âÁØÀ¸·Î ÇĞ±³¿Í ÁÖ°ÅÁö¿ª ¸ñ·ÏÀ» ´Ù½Ã ±¸¼ºÇÕ´Ï´Ù.
+        /// í˜„ì¬ íƒ€ì¼ ë°ì´í„°ë¥¼ ê¸°ì¤€ìœ¼ë¡œ í•™êµì™€ ì£¼ê±°ì§€ì—­ ëª©ë¡ì„ ë‹¤ì‹œ êµ¬ì„±í•©ë‹ˆë‹¤.
         ///
-        /// ¹ö½º Á¤·ùÀåÀº Àü¿ë TileTypeÀÌ ÇöÀç È®ÀÎµÇÁö ¾Ê¾ÒÀ¸¹Ç·Î
-        /// ¼öµ¿ µî·Ï ¸ñ·ÏÀ» À¯ÁöÇÕ´Ï´Ù.
+        /// ë²„ìŠ¤ ì •ë¥˜ì¥ì€ ì „ìš© TileTypeì´ í˜„ì¬ í™•ì¸ë˜ì§€ ì•Šì•˜ìœ¼ë¯€ë¡œ
+        /// ìˆ˜ë™ ë“±ë¡ ëª©ë¡ì„ ìœ ì§€í•©ë‹ˆë‹¤.
         /// </summary>
         public void RebuildFromTileData()
         {
@@ -195,10 +195,10 @@ namespace CityFlow.Content.Transit
             RegistryChanged?.Invoke();
 
             Debug.Log(
-                $"[BusStopRegistry] ¸ñ·Ï Àç±¸¼º ¿Ï·á. " +
-                $"Á¤·ùÀå: {busStops.Count}, " +
-                $"ÇĞ±³: {schools.Count}, " +
-                $"ÁÖ°ÅÁö¿ª: {residentialStops.Count}",
+                $"[BusStopRegistry] ëª©ë¡ ì¬êµ¬ì„± ì™„ë£Œ. " +
+                $"ì •ë¥˜ì¥: {busStops.Count}, " +
+                $"í•™êµ: {schools.Count}, " +
+                $"ì£¼ê±°ì§€ì—­: {residentialStops.Count}",
                 this
             );
         }
