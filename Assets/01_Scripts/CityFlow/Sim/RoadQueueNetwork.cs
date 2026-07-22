@@ -44,7 +44,15 @@ namespace CityFlow.Sim
         private const int DirectionCount = 4;
         private const int NoNode = -1;
 
-        private enum IntentKind { Arrival, Move, RingEntry, IntersectionAdvance, HighwayEntry }
+        private enum IntentKind
+        {
+            Arrival,
+            Move,
+            RoundaboutArmEntry,
+            RingEntry,
+            IntersectionAdvance,
+            HighwayEntry
+        }
 
         private struct Intent
         {
@@ -80,11 +88,13 @@ namespace CityFlow.Sim
         private readonly int[] _counts;
         private readonly bool[] _intersections;
         private readonly bool[] _roundabouts;
+        private readonly int[] _roundaboutCenters;
+        private readonly int[] _roundaboutArmSides;
         private readonly bool[] _overpasses;
         private readonly RoadAxis[] _priorityAxes;
         private readonly bool[] _queueActive;
         private readonly bool[] _turnAllowed;
-        private readonly int[] _ringNodes;
+        private readonly RoundaboutTrafficState[] _roundaboutStates;
         private readonly int[] _highwayPartners;
         private readonly System.Collections.Generic.List<HighwayState> _highways = new();
         private System.Collections.Generic.List<LinkCar>[] _highwayCars = Array.Empty<System.Collections.Generic.List<LinkCar>>();
@@ -138,11 +148,13 @@ namespace CityFlow.Sim
             _counts = new int[queueCount];
             _intersections = new bool[tileCount];
             _roundabouts = new bool[tileCount];
+            _roundaboutCenters = new int[tileCount];
+            _roundaboutArmSides = new int[tileCount];
             _overpasses = new bool[tileCount];
             _priorityAxes = new RoadAxis[tileCount];
             _queueActive = new bool[queueCount];
             _turnAllowed = new bool[tileCount * DirectionCount * DirectionCount];
-            _ringNodes = new int[tileCount * DirectionCount];
+            _roundaboutStates = new RoundaboutTrafficState[tileCount];
             _highwayPartners = new int[tileCount];
             _intents = new Intent[queueCount];
             _intentHandled = new bool[queueCount];
@@ -155,14 +167,19 @@ namespace CityFlow.Sim
 
             Array.Fill(_heads, NoNode);
             Array.Fill(_tails, NoNode);
-            Array.Fill(_ringNodes, NoNode);
             Array.Fill(_highwayPartners, NoNode);
+            Array.Fill(_roundaboutCenters, NoNode);
+            Array.Fill(_roundaboutArmSides, NoNode);
             Array.Fill(_queueActive, true);
             Array.Fill(_turnAllowed, true);
             for (int node = 0; node < maxCars; node++)
             {
                 _cars[node] = NoNode;
                 _nextNodes[node] = node + 1 < maxCars ? node + 1 : NoNode;
+            }
+            for (int tile = 0; tile < tileCount; tile++)
+            {
+                _roundaboutStates[tile] = new RoundaboutTrafficState();
             }
             _freeHead = maxCars > 0 ? 0 : NoNode;
         }
@@ -179,6 +196,8 @@ namespace CityFlow.Sim
             TurnRestrictionBlockCount = 0;
             _highways.Clear();
             Array.Fill(_highwayPartners, NoNode);
+            Array.Fill(_roundaboutCenters, NoNode);
+            Array.Fill(_roundaboutArmSides, NoNode);
             for (int y = 0; y < _height; y++)
             for (int x = 0; x < _width; x++)
             {
@@ -220,6 +239,7 @@ namespace CityFlow.Sim
                     }
                 }
             }
+            RebuildRoundaboutFootprints();
             ClearStagesOutsideIntersections();
             _highwayCars = new System.Collections.Generic.List<LinkCar>[_highways.Count * 2];
             for (int i = 0; i < _highwayCars.Length; i++)
@@ -269,7 +289,7 @@ namespace CityFlow.Sim
         public int RingCellCar(Vector2Int tile, Dir cell)
         {
             if (!InBounds(tile) || (int)cell < 0 || (int)cell >= DirectionCount) return NoNode;
-            int node = _ringNodes[TileIndex(tile) * DirectionCount + (int)cell];
+            int node = _roundaboutStates[TileIndex(tile)].NodeAt(cell);
             return node == NoNode ? NoNode : _cars[node];
         }
 
@@ -290,6 +310,7 @@ namespace CityFlow.Sim
                 out slot,
                 out float intersectionProgress,
                 out float linkProgress,
+                out _,
                 out bool onHighway);
             progress = onHighway ? linkProgress : intersectionProgress;
             return found;
@@ -309,6 +330,25 @@ namespace CityFlow.Sim
                 out slot,
                 out intersectionProgress,
                 out linkProgress01,
+                out _,
+                out _);
+
+        internal bool TryLocateCar(
+            int carId,
+            out Vector2Int tile,
+            out Dir direction,
+            out int slot,
+            out float intersectionProgress,
+            out float linkProgress01,
+            out int roundaboutCell)
+            => TryLocateCar(
+                carId,
+                out tile,
+                out direction,
+                out slot,
+                out intersectionProgress,
+                out linkProgress01,
+                out roundaboutCell,
                 out _);
 
         private bool TryLocateCar(
@@ -318,6 +358,7 @@ namespace CityFlow.Sim
             out int slot,
             out float intersectionProgress,
             out float linkProgress01,
+            out int roundaboutCell,
             out bool onHighway)
         {
             for (int queue = 0; queue < _heads.Length; queue++)
@@ -336,6 +377,7 @@ namespace CityFlow.Sim
                             ? IntersectionMicroGrid.Progress01(_intersectionStages[node])
                             : -1f;
                         linkProgress01 = 0f;
+                        roundaboutCell = NoNode;
                         onHighway = false;
                         return true;
                     }
@@ -343,17 +385,22 @@ namespace CityFlow.Sim
                     queueSlot++;
                 }
             }
-            for (int ring = 0; ring < _ringNodes.Length; ring++)
+            for (int tileIndex = 0; tileIndex < _roundaboutStates.Length; tileIndex++)
             {
-                int node = _ringNodes[ring];
-                if (node == NoNode || _cars[node] != carId) continue;
-                tile = TileAt(ring / DirectionCount);
-                direction = (Dir)(ring % DirectionCount);
-                slot = 0;
-                intersectionProgress = -1f;
-                linkProgress01 = 0f;
-                onHighway = false;
-                return true;
+                RoundaboutTrafficState state = _roundaboutStates[tileIndex];
+                for (int cell = 0; cell < DirectionCount; cell++)
+                {
+                    int node = state.NodeAt((Dir)cell);
+                    if (node == NoNode || _cars[node] != carId) continue;
+                    tile = TileAt(tileIndex);
+                    direction = (Dir)cell;
+                    slot = 0;
+                    intersectionProgress = -1f;
+                    linkProgress01 = 0f;
+                    roundaboutCell = cell;
+                    onHighway = false;
+                    return true;
+                }
             }
             for (int lane = 0; lane < _highwayCars.Length; lane++)
             {
@@ -368,6 +415,7 @@ namespace CityFlow.Sim
                     slot = 0;
                     intersectionProgress = -1f;
                     linkProgress01 = Mathf.Clamp01(1f - (cars[i].ExitTick - _currentTick) / (float)link.TransitTicks);
+                    roundaboutCell = NoNode;
                     onHighway = true;
                     return true;
                 }
@@ -377,6 +425,7 @@ namespace CityFlow.Sim
             slot = -1;
             intersectionProgress = -1f;
             linkProgress01 = 0f;
+            roundaboutCell = NoNode;
             onHighway = false;
             return false;
         }
@@ -411,7 +460,8 @@ namespace CityFlow.Sim
             Array.Fill(_heads, NoNode);
             Array.Fill(_tails, NoNode);
             Array.Clear(_counts, 0, _counts.Length);
-            Array.Fill(_ringNodes, NoNode);
+            for (int tile = 0; tile < _roundaboutStates.Length; tile++)
+                _roundaboutStates[tile].Clear();
             for (int i = 0; i < _highwayCars.Length; i++) _highwayCars[i].Clear();
             for (int node = 0; node < _cars.Length; node++)
             {
@@ -430,13 +480,17 @@ namespace CityFlow.Sim
             if (!InBounds(tile)) return 0f;
             int tileIndex = TileIndex(tile);
             int maxCount = 0;
+            int totalCount = 0;
             for (int d = 0; d < DirectionCount; d++)
-                maxCount = Math.Max(maxCount, _counts[tileIndex * DirectionCount + d]);
+            {
+                int count = _counts[tileIndex * DirectionCount + d];
+                maxCount = Math.Max(maxCount, count);
+                totalCount += count;
+            }
+            if (IsRoundaboutArm(tileIndex)) return totalCount > 0 ? 1f : 0f;
             float approach = (float)maxCount / _capacity;
             if (!_roundabouts[tileIndex]) return Mathf.Clamp01(approach);
-            int ringCount = 0;
-            for (int d = 0; d < DirectionCount; d++)
-                if (_ringNodes[tileIndex * DirectionCount + d] != NoNode) ringCount++;
+            int ringCount = _roundaboutStates[tileIndex].OccupiedCount;
             return Mathf.Clamp01(Math.Max(approach, ringCount / 4f));
         }
 
@@ -447,9 +501,12 @@ namespace CityFlow.Sim
             if (routes == null) throw new ArgumentNullException(nameof(routes));
             ArrivalCount = 0;
             Array.Clear(_movedThisTick, 0, _movedThisTick.Length);
+            for (int tile = 0; tile < _roundaboutStates.Length; tile++)
+                _roundaboutStates[tile].BeginTick();
             StepResult result = default;
             _currentTick = tick;
             ServiceHighwayLinks(ref result);
+            PrepareRoundaboutEntrySides(routes);
 
             for (int serviceRound = 0; serviceRound < _servicePerTick; serviceRound++)
             {
@@ -549,11 +606,37 @@ namespace CityFlow.Sim
 
                 if (_roundabouts[tileIndex])
                 {
-                    int ringIndex = tileIndex * DirectionCount + (int)Opposite(entry);
-                    if (_ringNodes[ringIndex] == NoNode)
+                    Dir legacyApproachSide = Opposite(entry);
+                    RoundaboutTrafficState state = _roundaboutStates[tileIndex];
+                    if (state.TryReserveRingEntry(legacyApproachSide, node, out Dir target))
                     {
-                        Intent intent = NewIntent(IntentKind.RingEntry, queue, node, tileIndex, entry, exit);
-                        intent.RingIndex = ringIndex;
+                        Intent intent = NewIntent(
+                            IntentKind.RingEntry,
+                            queue,
+                            node,
+                            tileIndex,
+                            legacyApproachSide,
+                            exit);
+                        intent.RingIndex = (int)target;
+                        _intents[count++] = intent;
+                    }
+                    else _blockedTicks[node]++;
+                    continue;
+                }
+
+                if (TryGetRoundaboutEntry(tileIndex, TileIndex(next), out int centerIndex, out Dir approachSide))
+                {
+                    RoundaboutTrafficState state = _roundaboutStates[centerIndex];
+                    if (state.TryReserveRingEntry(approachSide, node, out Dir target))
+                    {
+                        Intent intent = NewIntent(
+                            IntentKind.RingEntry,
+                            queue,
+                            node,
+                            centerIndex,
+                            approachSide,
+                            exit);
+                        intent.RingIndex = (int)target;
                         _intents[count++] = intent;
                     }
                     else _blockedTicks[node]++;
@@ -561,6 +644,31 @@ namespace CityFlow.Sim
                 }
 
                 int nextTileIndex = TileIndex(next);
+                if (TryGetRoundaboutApproach(
+                        routes,
+                        carId,
+                        tileIndex,
+                        nextTileIndex,
+                        out centerIndex,
+                        out approachSide))
+                {
+                    RoundaboutTrafficState state = _roundaboutStates[centerIndex];
+                    if (CanAcceptNormally(nextQueue) && state.TryReserveApproach(approachSide))
+                    {
+                        Intent intent = NewIntent(
+                            IntentKind.RoundaboutArmEntry,
+                            queue,
+                            node,
+                            centerIndex,
+                            approachSide,
+                            exit);
+                        intent.ToQueue = nextQueue;
+                        _intents[count++] = intent;
+                    }
+                    else _blockedTicks[node]++;
+                    continue;
+                }
+
                 bool nextIsSharedIntersection = UsesSharedBudget(nextTileIndex);
                 Dir movementExit = exit;
                 bool hasMovementBeyondIntersection = false;
@@ -619,12 +727,63 @@ namespace CityFlow.Sim
                     _blockedTicks[node]++;
                     // Never force a car into an intersection with a blocked exit.
                     if (move.ReservationTile != NoNode
+                        || IsRoundaboutArm(nextTileIndex)
                         || _blockedTicks[node] < _gridlockValveTicks) continue;
                     move.Force = true;
                 }
                 _intents[count++] = move;
             }
             return count;
+        }
+
+        private void PrepareRoundaboutEntrySides(ICarRouteProvider routes)
+        {
+            // Demand is observed on the outer approach, before a vehicle occupies an arm.
+            // The admitted node keeps ownership while moving approach -> arm -> central ring.
+            for (int queue = 0; queue < _heads.Length; queue++)
+            {
+                int node = _heads[queue];
+                if (node == NoNode || _movedThisTick[node]) continue;
+
+                int tileIndex = queue / DirectionCount;
+                Dir queueEntry = (Dir)(queue % DirectionCount);
+                Vector2Int tile = TileAt(tileIndex);
+                int carId = _cars[node];
+                if (routes.IsDestination(carId, tile)) continue;
+
+                if (_roundabouts[tileIndex])
+                {
+                    _roundaboutStates[tileIndex].RegisterEntryDemand(Opposite(queueEntry));
+                    continue;
+                }
+
+                if (!routes.TryGetNextTile(carId, tile, out Vector2Int next, out Dir entryAtNext)
+                    || !InBounds(next))
+                {
+                    continue;
+                }
+
+                int nextTileIndex = TileIndex(next);
+                if (TryGetRoundaboutEntry(tileIndex, nextTileIndex, out int centerIndex, out Dir approachSide))
+                {
+                    _roundaboutStates[centerIndex].RegisterEntryDemand(approachSide);
+                }
+                else if (TryGetRoundaboutApproach(
+                             routes,
+                             carId,
+                             tileIndex,
+                             nextTileIndex,
+                             out centerIndex,
+                             out approachSide))
+                {
+                    _roundaboutStates[centerIndex].RegisterEntryDemand(approachSide);
+                }
+            }
+
+            for (int tile = 0; tile < _roundabouts.Length; tile++)
+            {
+                if (_roundabouts[tile]) _roundaboutStates[tile].SelectEntrySide();
+            }
         }
 
         private void RebuildIntersectionOccupancy(ICarRouteProvider routes)
@@ -863,14 +1022,29 @@ namespace CityFlow.Sim
                     result.Arrivals++;
                     return;
                 case IntentKind.RingEntry:
-                    if (_ringNodes[intent.RingIndex] != NoNode)
+                    RoundaboutTrafficState state = _roundaboutStates[intent.TileIndex];
+                    if (!state.CommitEntry(intent.Entry, (Dir)intent.RingIndex, intent.Node))
                     {
                         _blockedTicks[intent.Node]++;
                         return;
                     }
-                    _ringNodes[intent.RingIndex] = DetachHead(intent.FromQueue);
+                    DetachHead(intent.FromQueue);
                     _movedThisTick[intent.Node] = true;
                     _blockedTicks[intent.Node] = 0;
+                    return;
+                case IntentKind.RoundaboutArmEntry:
+                    if (!CanAcceptNormally(intent.ToQueue))
+                    {
+                        _blockedTicks[intent.Node]++;
+                        return;
+                    }
+                    RoundaboutTrafficState armState = _roundaboutStates[intent.TileIndex];
+                    if (!armState.CommitApproach(intent.Entry, intent.Node))
+                    {
+                        _blockedTicks[intent.Node]++;
+                        return;
+                    }
+                    MoveHead(intent.FromQueue, intent.ToQueue);
                     return;
                 case IntentKind.IntersectionAdvance:
                     // Conflict is the reservation mask used while crossing from the
@@ -926,19 +1100,18 @@ namespace CityFlow.Sim
             {
                 if (!_roundabouts[tile]) continue;
                 Vector2Int position = TileAt(tile);
-                int first = tile * DirectionCount;
+                RoundaboutTrafficState state = _roundaboutStates[tile];
                 int heldMask = 0;
 
                 for (int cell = 0; cell < DirectionCount; cell++)
                 {
-                    int ring = first + cell;
-                    int node = _ringNodes[ring];
+                    int node = state.NodeAt((Dir)cell);
                     if (node == NoNode || _movedThisTick[node]) continue;
                     int carId = _cars[node];
                     if (routes.IsDestination(carId, position))
                     {
                         RecordArrival(carId, position);
-                        _ringNodes[ring] = NoNode;
+                        state.Remove((Dir)cell);
                         ReleaseNode(node);
                         result.Arrivals++;
                         continue;
@@ -951,26 +1124,40 @@ namespace CityFlow.Sim
                         heldMask |= 1 << cell;
                         continue;
                     }
-                    _ringNodes[ring] = NoNode;
+                    state.Remove((Dir)cell);
                     _movedThisTick[node] = true;
                     _blockedTicks[node] = 0;
                     AppendNode(toQueue, node);
                 }
 
                 // 이탈 대기차가 있으면 링 전체가 그 차의 점유를 존중해 정지한다.
-                // 그렇지 않으면 네 셀을 동시에 치환해 만석 링도 차 손실 없이 CCW 회전한다.
-                if (heldMask != 0) continue;
-                int north = _ringNodes[first + (int)Dir.N];
-                int east = _ringNodes[first + (int)Dir.E];
-                int south = _ringNodes[first + (int)Dir.S];
-                int west = _ringNodes[first + (int)Dir.W];
-                _ringNodes[first + (int)Dir.N] = east;
-                _ringNodes[first + (int)Dir.W] = north;
-                _ringNodes[first + (int)Dir.S] = west;
-                _ringNodes[first + (int)Dir.E] = south;
+                // 이동 중에는 출발·도착 셀을 모두 예약해 대각선 원호의 진입 공백을 막는다.
+                if (heldMask != 0)
+                {
+                    state.BlockEntries();
+                    continue;
+                }
+
+                bool alreadyMoved = false;
                 for (int cell = 0; cell < DirectionCount; cell++)
                 {
-                    int node = _ringNodes[first + cell];
+                    int node = state.NodeAt((Dir)cell);
+                    if (node != NoNode && _movedThisTick[node])
+                    {
+                        alreadyMoved = true;
+                        break;
+                    }
+                }
+                if (alreadyMoved)
+                {
+                    state.BlockEntries();
+                    continue;
+                }
+
+                state.AdvanceCounterClockwise();
+                for (int cell = 0; cell < DirectionCount; cell++)
+                {
+                    int node = state.NodeAt((Dir)cell);
                     if (node != NoNode) _movedThisTick[node] = true;
                 }
             }
@@ -1098,7 +1285,103 @@ namespace CityFlow.Sim
 
         private int TurnIndex(int tile, Dir entry, Dir exit) =>
             ((tile * DirectionCount + (int)entry) * DirectionCount) + (int)exit;
-        private bool CanAcceptNormally(int queue) => _queueActive[queue] && _counts[queue] < _capacity;
+        private bool CanAcceptNormally(int queue)
+        {
+            if (!_queueActive[queue]) return false;
+            int tileIndex = queue / DirectionCount;
+            if (!IsRoundaboutArm(tileIndex)) return _counts[queue] < _capacity;
+
+            int occupied = 0;
+            int firstQueue = tileIndex * DirectionCount;
+            for (int direction = 0; direction < DirectionCount; direction++)
+                occupied += _counts[firstQueue + direction];
+            return occupied < 1;
+        }
+
+        private void RebuildRoundaboutFootprints()
+        {
+            for (int centerIndex = 0; centerIndex < _roundabouts.Length; centerIndex++)
+            {
+                if (!_roundabouts[centerIndex]) continue;
+                _roundaboutCenters[centerIndex] = centerIndex;
+                Vector2Int center = TileAt(centerIndex);
+                for (int side = 0; side < DirectionCount; side++)
+                {
+                    Vector2Int arm = center + DirectionVector((Dir)side);
+                    if (!InBounds(arm)) continue;
+                    int armIndex = TileIndex(arm);
+                    _roundaboutCenters[armIndex] = centerIndex;
+                    _roundaboutArmSides[armIndex] = side;
+                }
+            }
+        }
+
+        private bool TryGetRoundaboutEntry(
+            int tileIndex,
+            int nextTileIndex,
+            out int centerIndex,
+            out Dir approachSide)
+        {
+            centerIndex = _roundaboutCenters[tileIndex];
+            int side = _roundaboutArmSides[tileIndex];
+            if (centerIndex == NoNode
+                || centerIndex != nextTileIndex
+                || side < 0
+                || side >= DirectionCount)
+            {
+                approachSide = default;
+                return false;
+            }
+
+            approachSide = (Dir)side;
+            return true;
+        }
+
+        private bool TryGetRoundaboutApproach(
+            ICarRouteProvider routes,
+            int carId,
+            int tileIndex,
+            int nextTileIndex,
+            out int centerIndex,
+            out Dir approachSide)
+        {
+            centerIndex = nextTileIndex >= 0 && nextTileIndex < _roundaboutCenters.Length
+                ? _roundaboutCenters[nextTileIndex]
+                : NoNode;
+            int side = nextTileIndex >= 0 && nextTileIndex < _roundaboutArmSides.Length
+                ? _roundaboutArmSides[nextTileIndex]
+                : NoNode;
+            if (centerIndex == NoNode || side < 0 || side >= DirectionCount)
+            {
+                approachSide = default;
+                return false;
+            }
+
+            approachSide = (Dir)side;
+            Vector2Int expectedApproach = TileAt(centerIndex)
+                + DirectionVector(approachSide) * 2;
+            Vector2Int arm = TileAt(nextTileIndex);
+            return TileAt(tileIndex) == expectedApproach
+                && routes.TryGetNextTile(carId, arm, out Vector2Int afterArm, out _)
+                && InBounds(afterArm)
+                && TileIndex(afterArm) == centerIndex;
+        }
+
+        private bool IsRoundaboutArm(int tileIndex) =>
+            tileIndex >= 0
+            && tileIndex < _roundaboutArmSides.Length
+            && _roundaboutArmSides[tileIndex] != NoNode;
+
+        private static Vector2Int DirectionVector(Dir direction)
+        {
+            switch (direction)
+            {
+                case Dir.N: return Vector2Int.up;
+                case Dir.E: return Vector2Int.right;
+                case Dir.S: return Vector2Int.down;
+                default: return Vector2Int.left;
+            }
+        }
 
         private bool TryAllocateNode(out int node)
         {

@@ -205,6 +205,40 @@ namespace CityFlow.ViewKit
             return Length;
         }
 
+        public float DistanceAtPhase(float phase)
+        {
+            float target = Mathf.Clamp(phase, 0f, Mathf.Max(0, _tiles.Count - 1));
+            int previous = -1;
+
+            for (int i = 0; i < _vertices.Length; i++)
+            {
+                if (_vertices[i].Spur) continue;
+
+                float currentPhase = _vertices[i].Seg + _vertices[i].SegT;
+                if (currentPhase < target)
+                {
+                    previous = i;
+                    continue;
+                }
+
+                if (previous < 0) return _cumulative[i];
+
+                float previousPhase = _vertices[previous].Seg + _vertices[previous].SegT;
+                float phaseRange = currentPhase - previousPhase;
+                float t = phaseRange > 1e-5f
+                    ? Mathf.Clamp01((target - previousPhase) / phaseRange)
+                    : 0f;
+                return Mathf.Lerp(_cumulative[previous], _cumulative[i], t);
+            }
+
+            for (int i = _vertices.Length - 1; i >= 0; i--)
+            {
+                if (!_vertices[i].Spur) return _cumulative[i];
+            }
+
+            return Length;
+        }
+
         public float DistanceAtQueueSlot(
             int tileIndex,
             int queueSlot,

@@ -17,6 +17,7 @@ namespace CityFlow.Sim
         public int WorkSlot;
         public float IntersectionProgress01 { get; internal set; }
         public float LinkProgress01;
+        public float RoundaboutProgress01 { get; internal set; }
     }
 
     internal sealed class CarSim : ICarRouteProvider
@@ -35,6 +36,7 @@ namespace CityFlow.Sim
         private readonly int[] _queueSlots;
         private readonly float[] _intersectionProgress;
         private readonly float[] _linkProgress;
+        private readonly float[] _roundaboutProgress;
         private RoadQueueNetwork _net;
         private float _lastHour;
         private bool _hasLastHour;
@@ -61,9 +63,11 @@ namespace CityFlow.Sim
             _queueSlots = new int[maxCars];
             _intersectionProgress = new float[maxCars];
             _linkProgress = new float[maxCars];
+            _roundaboutProgress = new float[maxCars];
             Array.Fill(_queueSlots, -1);
             Array.Fill(_intersectionProgress, -1f);
             Array.Clear(_linkProgress, 0, _linkProgress.Length);
+            Array.Fill(_roundaboutProgress, -1f);
         }
 
         public void Rebuild(DemandMap demands, RoutePlanner planner, RoadQueueNetwork net)
@@ -121,6 +125,7 @@ namespace CityFlow.Sim
             Array.Fill(_queueSlots, -1);
             Array.Fill(_intersectionProgress, -1f);
             Array.Clear(_linkProgress, 0, _linkProgress.Length);
+            Array.Fill(_roundaboutProgress, -1f);
             _needsSnap = true;
         }
 
@@ -160,6 +165,7 @@ namespace CityFlow.Sim
                 Array.Fill(_queueSlots, -1);
                 Array.Fill(_intersectionProgress, -1f);
                 Array.Clear(_linkProgress, 0, _linkProgress.Length);
+                Array.Fill(_roundaboutProgress, -1f);
                 _needsSnap = false;
             }
             _lastHour = gameHour;
@@ -179,6 +185,7 @@ namespace CityFlow.Sim
                 _queueSlots[arrival.CarId] = -1;
                 _intersectionProgress[arrival.CarId] = -1f;
                 _linkProgress[arrival.CarId] = 0f;
+                _roundaboutProgress[arrival.CarId] = -1f;
                 if (paidArrival)
                     events.QueueArrival(new ArrivalEvent(car.Work, _cfg.CoinPerTrip));
             }
@@ -201,7 +208,8 @@ namespace CityFlow.Sim
                 HomeSlot = car.HomeSlot,
                 WorkSlot = car.WorkSlot,
                 IntersectionProgress01 = _intersectionProgress[index],
-                LinkProgress01 = _linkProgress[index]
+                LinkProgress01 = _linkProgress[index],
+                RoundaboutProgress01 = _roundaboutProgress[index]
             };
         }
 
@@ -250,6 +258,7 @@ namespace CityFlow.Sim
                 _queueSlots[i] = 0;
                 _intersectionProgress[i] = -1f;
                 _linkProgress[i] = 0f;
+                _roundaboutProgress[i] = -1f;
             }
         }
 
@@ -264,11 +273,13 @@ namespace CityFlow.Sim
                         out _,
                         out int slot,
                         out float intersectionProgress,
-                        out float linkProgress))
+                        out float linkProgress,
+                        out int roundaboutCell))
                 {
                     _linkProgress[i] = 0f;
                     _queueSlots[i] = -1;
                     _intersectionProgress[i] = -1f;
+                    _roundaboutProgress[i] = -1f;
                     _tileIndices[i] = car.State == CarState.ParkedWork
                         ? _outboundRoutes[car.RouteIndex].Count - 1
                         : 0;
@@ -277,12 +288,37 @@ namespace CityFlow.Sim
                 _linkProgress[i] = linkProgress;
                 _queueSlots[i] = slot;
                 _intersectionProgress[i] = intersectionProgress;
+                _roundaboutProgress[i] = -1f;
                 List<Vector2Int> route = car.State == CarState.Inbound
                     ? _returnRoutes[car.RouteIndex]
                     : _outboundRoutes[car.RouteIndex];
                 for (int p = 0; p < route.Count; p++)
-                    if (route[p] == tile) { _tileIndices[i] = p; break; }
+                {
+                    if (route[p] != tile) continue;
+                    _tileIndices[i] = p;
+                    _roundaboutProgress[i] = CalculateRoundaboutProgress(route, p, roundaboutCell);
+                    break;
+                }
             }
+        }
+
+        private static float CalculateRoundaboutProgress(
+            IReadOnlyList<Vector2Int> route,
+            int tileIndex,
+            int roundaboutCell)
+        {
+            if (roundaboutCell < 0 || tileIndex <= 0 || tileIndex >= route.Count - 1)
+            {
+                return -1f;
+            }
+
+            if (!TryDirection(route[tileIndex] - route[tileIndex - 1], out Dir entry)
+                || !TryDirection(route[tileIndex + 1] - route[tileIndex], out Dir exitCell))
+            {
+                return -1f;
+            }
+
+            return RoundaboutTrafficState.Progress01(entry, exitCell, (Dir)roundaboutCell);
         }
 
         private bool TryRoute(int carId, out List<Vector2Int> route)
