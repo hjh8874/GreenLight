@@ -72,6 +72,7 @@ namespace CityFlow.UI.Controllers
             {
                 _wasOriginalBuildingMode = _originalPlacementController.IsBuildingMode;
                 _originalPlacementController.ToggleBuildMode(false);
+                _originalPlacementController.SetGhostFootprint(Vector2Int.one);
                 _originalPlacementController.enabled = false; // Update()를 완전히 멈춰서 클릭 간섭 방지
             }
 
@@ -97,6 +98,7 @@ namespace CityFlow.UI.Controllers
             {
                 _wasOriginalBuildingMode = _originalPlacementController.IsBuildingMode;
                 _originalPlacementController.ToggleBuildMode(false);
+                _originalPlacementController.SetGhostFootprint(Vector2Int.one);
                 _originalPlacementController.enabled = false;
             }
 
@@ -243,8 +245,8 @@ namespace CityFlow.UI.Controllers
 
             ghostRenderer.gameObject.SetActive(true);
             ghostRenderer.transform.position = _originalPlacementController != null
-                ? _originalPlacementController.GetGhostPosition(gridCoord)
-                : new Vector3(gridCoord.x, 0, gridCoord.y);
+                ? _originalPlacementController.GetGhostPosition(gridCoord, Vector2Int.one)
+                : new Vector3(gridCoord.x, 0f, gridCoord.y);
         }
 
         private Vector2Int GetMouseGridCoordinate()

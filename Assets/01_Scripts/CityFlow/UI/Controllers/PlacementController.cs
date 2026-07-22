@@ -152,6 +152,10 @@ namespace CityFlow.UI
         public void ToggleBuildMode(bool isOn)
         {
             _isBuildingMode = isOn;
+            if (isOn)
+            {
+                UpdateGhostFootprint();
+            }
             if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(isOn);
             BuildModeCursorFeedback.SetBuilding(this, isOn);
             if (!isOn)
@@ -414,7 +418,21 @@ namespace CityFlow.UI
 
         public Vector3 GetGhostPosition(Vector2Int gridCoord)
         {
-            Vector2Int size = TileFootprint.GetSize(_currentType);
+            return GetGhostPosition(
+                gridCoord,
+                TileFootprint.GetSize(_currentType)
+            );
+        }
+
+        public Vector3 GetGhostPosition(
+            Vector2Int gridCoord,
+            Vector2Int footprintSize
+        )
+        {
+            Vector2Int size = new Vector2Int(
+                Mathf.Max(1, footprintSize.x),
+                Mathf.Max(1, footprintSize.y)
+            );
             float offsetX = (size.x - 1) * 0.5f;
             float offsetY = (size.y - 1) * 0.5f;
 
@@ -459,12 +477,20 @@ namespace CityFlow.UI
 
         private void UpdateGhostFootprint()
         {
+            SetGhostFootprint(TileFootprint.GetSize(_currentType));
+        }
+
+        public void SetGhostFootprint(Vector2Int footprintSize)
+        {
             if (ghostRenderer == null || !_ghostScaleInitialized)
             {
                 return;
             }
 
-            Vector2Int size = TileFootprint.GetSize(_currentType);
+            Vector2Int size = new Vector2Int(
+                Mathf.Max(1, footprintSize.x),
+                Mathf.Max(1, footprintSize.y)
+            );
             ghostRenderer.transform.localScale = new Vector3(
                 _ghostBaseScale.x * size.x,
                 _ghostBaseScale.y * size.y,
