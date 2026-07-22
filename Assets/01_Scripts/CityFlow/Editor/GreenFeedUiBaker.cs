@@ -15,7 +15,6 @@ namespace CityFlow.EditorTools
         private const string ContentRootName = "FloatingWindowContentRoot";
         private const string FeedRootName = "GreenSNSFeedDock";
         private const string KoreanFontPath = "Assets/03_Art/Fonts/NanumGothic SDF.asset";
-        private const string LegacyKoreanFontPath = "Assets/99_Download/Fonts/NanumGothic SDF.asset";
 
         private static TMP_FontAsset uiFont;
 
@@ -43,7 +42,12 @@ namespace CityFlow.EditorTools
                 return;
             }
 
-            uiFont = LoadUiFont(scene);
+            uiFont = LoadRequiredUiFont();
+            if (uiFont == null)
+            {
+                return;
+            }
+
             Transform parent = FindTransform(scene, ContentRootName) ?? canvas.transform;
             RemoveExistingFeed(scene);
 
@@ -618,28 +622,18 @@ namespace CityFlow.EditorTools
             return null;
         }
 
-        private static TMP_FontAsset LoadUiFont(Scene scene)
+        private static TMP_FontAsset LoadRequiredUiFont()
         {
-            TMP_FontAsset font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(KoreanFontPath)
-                ?? AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(LegacyKoreanFontPath);
+            TMP_FontAsset font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(KoreanFontPath);
             if (font != null)
             {
                 return font;
             }
 
-            foreach (GameObject root in scene.GetRootGameObjects())
-            {
-                TMP_Text existingText = root.GetComponentInChildren<TMP_Text>(true);
-                if (existingText != null && existingText.font != null)
-                {
-                    return existingText.font;
-                }
-            }
-
-            Debug.LogWarning(
-                "[GreenFeedUiBaker] A Korean TMP font was not found. " +
-                "The current scene font will be used where available.");
-            return TMP_Settings.defaultFontAsset;
+            Debug.LogError(
+                $"[GreenFeedUiBaker] Required font is missing: '{KoreanFontPath}'. " +
+                "Bake was cancelled to prevent a fallback font reference.");
+            return null;
         }
 
         private static void RemoveExistingFeed(Scene scene)
