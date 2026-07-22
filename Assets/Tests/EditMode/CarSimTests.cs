@@ -38,7 +38,7 @@ namespace CityFlow.Sim.Tests
             scheduler.Rebuild(
                 homes,
                 works,
-                officeSlots: 6,
+                workCapacityFor: _ => 6,
                 homeSlots: 2,
                 maxCars: 96,
                 morningStart: 6f,

@@ -928,7 +928,7 @@ namespace CityFlow.View
         private int GetOfficeParkingSlotCount() =>
             simEngine != null
                 ? simEngine.CarSimOfficeParkingSlots
-                : Mathf.Max(1, SimConfig.Default().OfficeParkingSlots);
+                : Mathf.Max(1, SimConfig.Default().OfficeCapacity);
 
         private void AddHouseParkingDetails(Transform root, int parkingSlotCount)
         {
