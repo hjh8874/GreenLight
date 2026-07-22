@@ -54,11 +54,13 @@ namespace CityFlow.UI
         private Vector2Int? _lastRemovedCoord = null;
         private Vector2Int? _rightClickStartCoord = null;
 
+        [Header("Config")]
+        [SerializeField] private CityFlow.Content.PopulationConfigSO populationConfig;
+
         private BenefitHighlightRenderer _benefitRenderer;
         private Vector2Int? _lastPreviewCoord = null;
         private readonly System.Collections.Generic.List<Vector2Int> _benefitTileBuffer = new System.Collections.Generic.List<Vector2Int>(32);
         private readonly System.Collections.Generic.List<Vector2Int> _areaTileBuffer = new System.Collections.Generic.List<Vector2Int>(128);
-        private const int PREVIEW_BENEFIT_RADIUS = 3; // TODO: #127 머지 후 PopulationConfigSO.SchoolCoverageRadius 로 교체
 
         private BenefitHighlightRenderer GetBenefitRenderer()
         {
@@ -579,7 +581,7 @@ namespace CityFlow.UI
                 if (_lastPreviewCoord != null)
                 {
                     _lastPreviewCoord = null;
-                    GetBenefitRenderer().HideAll();
+                    GetBenefitRenderer()?.HideAll();
                 }
                 return;
             }
@@ -593,16 +595,17 @@ namespace CityFlow.UI
             _benefitTileBuffer.Clear();
             _areaTileBuffer.Clear();
 
-            if (_services != null && _services.TileData != null)
+            if (_services != null && _services.TileData != null && populationConfig != null)
             {
-                for (int dx = -PREVIEW_BENEFIT_RADIUS; dx <= PREVIEW_BENEFIT_RADIUS; dx++)
+                int radius = populationConfig.SchoolCoverageRadius;
+                for (int dx = -radius; dx <= radius; dx++)
                 {
-                    for (int dy = -PREVIEW_BENEFIT_RADIUS; dy <= PREVIEW_BENEFIT_RADIUS; dy++)
+                    for (int dy = -radius; dy <= radius; dy++)
                     {
-                        if (System.Math.Abs(dx) + System.Math.Abs(dy) > PREVIEW_BENEFIT_RADIUS) continue;
-
                         Vector2Int targetTile = new Vector2Int(gridCoord.x + dx, gridCoord.y + dy);
                         if (!GridUtil.IsInside(targetTile)) continue;
+
+                        if (!CityFlow.Content.PopulationCalculator.IsWithinSchoolCoverage(targetTile, gridCoord, radius)) continue;
 
                         _areaTileBuffer.Add(targetTile);
 
@@ -614,7 +617,7 @@ namespace CityFlow.UI
                 }
             }
 
-            GetBenefitRenderer().ShowHighlights(_areaTileBuffer, _benefitTileBuffer, _currentType, useXYPlane);
+            GetBenefitRenderer()?.ShowHighlights(_areaTileBuffer, _benefitTileBuffer, useXYPlane);
         }
     }
 }

@@ -42,7 +42,7 @@ namespace CityFlow.UI.Controllers
             }
         }
 
-        public void ShowHighlights(IReadOnlyList<Vector2Int> areaCoords, IReadOnlyList<Vector2Int> houseCoords, TileType facilityType, bool useXYPlane = false)
+        public void ShowHighlights(IReadOnlyList<Vector2Int> areaCoords, IReadOnlyList<Vector2Int> houseCoords, bool useXYPlane = false)
         {
             if (_sharedMaterial == null) InitializeMaterial();
             if (_propBlock == null) _propBlock = new MaterialPropertyBlock();
