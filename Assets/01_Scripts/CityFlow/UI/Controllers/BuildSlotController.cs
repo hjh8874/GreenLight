@@ -29,7 +29,6 @@ namespace CityFlow.UI
             _tooltipController = tooltip;
 
             ResolveReferences();
-            NormalizeLayout();
 
             // UI 초기화
             if (tileData != null)
@@ -95,53 +94,7 @@ namespace CityFlow.UI
             }
         }
 
-        private void NormalizeLayout()
-        {
-            if (costText != null)
-            {
-                RectTransform costRect = costText.rectTransform;
-                costRect.anchorMin = new Vector2(0.5f, 1f);
-                costRect.anchorMax = new Vector2(0.5f, 1f);
-                costRect.pivot = new Vector2(0.5f, 1f);
-                costRect.anchoredPosition = new Vector2(0f, -8f);
-                costRect.sizeDelta = new Vector2(100f, 30f);
-                costText.enableAutoSizing = true;
-                costText.fontSizeMin = 14f;
-                costText.fontSizeMax = 22f;
-                costText.alignment = TextAlignmentOptions.Center;
-                costText.textWrappingMode = TextWrappingModes.NoWrap;
-            }
 
-            if (iconImage != null)
-            {
-                RectTransform iconRect = iconImage.rectTransform;
-                iconRect.anchorMin = new Vector2(0.5f, 1f);
-                iconRect.anchorMax = new Vector2(0.5f, 1f);
-                iconRect.pivot = new Vector2(0.5f, 1f);
-                iconRect.anchoredPosition = new Vector2(0f, -42f);
-                iconRect.sizeDelta = new Vector2(84f, 72f);
-            }
-
-            if (btnBuy != null)
-            {
-                RectTransform buttonRect = btnBuy.GetComponent<RectTransform>();
-                buttonRect.anchorMin = new Vector2(0.5f, 0f);
-                buttonRect.anchorMax = new Vector2(0.5f, 0f);
-                buttonRect.pivot = new Vector2(0.5f, 0f);
-                buttonRect.anchoredPosition = new Vector2(0f, 8f);
-                buttonRect.sizeDelta = new Vector2(100f, 38f);
-
-                TextMeshProUGUI buttonLabel = btnBuy.GetComponentInChildren<TextMeshProUGUI>(true);
-                if (buttonLabel != null)
-                {
-                    buttonLabel.enableAutoSizing = true;
-                    buttonLabel.fontSizeMin = 14f;
-                    buttonLabel.fontSizeMax = 18f;
-                    buttonLabel.alignment = TextAlignmentOptions.Center;
-                    buttonLabel.textWrappingMode = TextWrappingModes.NoWrap;
-                }
-            }
-        }
 
         public void OnPointerEnter(PointerEventData eventData)
         {
