@@ -8,8 +8,10 @@ using UnityEngine;
 namespace CityFlow.UI.Controllers
 {
     /// <summary>
-    /// FlowBurst(그린웨이브 보너스) 발생 시 타일 위로 "+N" 코인 텍스트가
+    /// FlowBurst(그린웨이브) 발생 시 타일 위로 "GREEN WAVE!" 텍스트가
     /// 떠오르며 페이드아웃되는 플로팅 연출을 담당합니다.
+    /// FlowBurstEvent.Reward는 코인이 아닌 연출 강도(magnitude)이므로,
+    /// 스케일 배율에만 반영하고 텍스트에는 표시하지 않습니다.
     /// 오브젝트 풀링(Queue) + 코루틴 기반으로 GC 할당을 최소화합니다.
     /// XZ(3D 쿼터뷰)와 XY(2D) 평면을 모두 지원합니다.
     /// </summary>
@@ -22,8 +24,9 @@ namespace CityFlow.UI.Controllers
         [SerializeField] private float peakScale = 1.3f;
 
         [Header("Visuals")]
-        [SerializeField] private Color coinTextColor = new Color(1f, 0.85f, 0.15f); // 골드
+        [SerializeField] private Color waveTextColor = new Color(0.2f, 1f, 0.4f); // 그린
         [SerializeField] private float fontSize = 5f;
+        [SerializeField] private string waveDisplayText = "GREEN WAVE!";
 
         [Header("View Settings")]
         [Tooltip("true = XY 평면(2D), false = XZ 평면(3D 쿼터뷰)")]
@@ -122,7 +125,7 @@ namespace CityFlow.UI.Controllers
             var tmp = go.AddComponent<TextMeshPro>();
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.fontSize = fontSize;
-            tmp.color = coinTextColor;
+            tmp.color = waveTextColor;
             tmp.sortingOrder = 200;
             tmp.textWrappingMode = TextWrappingModes.NoWrap;
             tmp.overflowMode = TextOverflowModes.Overflow;
@@ -161,8 +164,12 @@ namespace CityFlow.UI.Controllers
         private void OnFlowBurst(FlowBurstEvent e)
         {
             var tmp = GetFromPool();
-            tmp.text = $"+{e.Reward}";
-            tmp.color = coinTextColor;
+            tmp.text = waveDisplayText;
+            tmp.color = waveTextColor;
+
+            // Reward는 코인이 아닌 연출 강도(magnitude)이므로 스케일 배율로 활용
+            float magnitude = Mathf.Clamp(e.Reward, 1, 10);
+            float dynamicPeak = peakScale * (1f + (magnitude - 1f) * 0.1f);
 
             // 타일 좌표 → 월드 좌표 변환 (XY / XZ 분기)
             Vector3 startPos = GetWorldPosition(e.Tile);
@@ -174,7 +181,7 @@ namespace CityFlow.UI.Controllers
             tmp.transform.localScale = Vector3.one * initialScale;
             tmp.gameObject.SetActive(true);
 
-            StartCoroutine(FloatAndFadeCoroutine(tmp, startPos));
+            StartCoroutine(FloatAndFadeCoroutine(tmp, startPos, dynamicPeak));
         }
 
         private Vector3 GetWorldPosition(Vector2Int tile)
@@ -210,11 +217,11 @@ namespace CityFlow.UI.Controllers
             }
         }
 
-        private IEnumerator FloatAndFadeCoroutine(TextMeshPro tmp, Vector3 startPos)
+        private IEnumerator FloatAndFadeCoroutine(TextMeshPro tmp, Vector3 startPos, float dynamicPeak)
         {
             float elapsed = 0f;
             float duration = Mathf.Max(0.01f, floatDuration);
-            Color baseColor = coinTextColor;
+            Color baseColor = waveTextColor;
 
             while (elapsed < duration)
             {
@@ -225,10 +232,10 @@ namespace CityFlow.UI.Controllers
                 float yOffset = floatHeight * EaseOutQuad(t);
                 tmp.transform.position = startPos + new Vector3(0f, yOffset, 0f);
 
-                // 스케일: 빠르게 커졌다가 원래 크기로 안정
+                // 스케일: 연출 강도(magnitude)에 비례하여 빠르게 커졌다가 안정
                 float scaleT = t < 0.3f
-                    ? Mathf.Lerp(initialScale, peakScale, t / 0.3f)
-                    : Mathf.Lerp(peakScale, 1f, (t - 0.3f) / 0.7f);
+                    ? Mathf.Lerp(initialScale, dynamicPeak, t / 0.3f)
+                    : Mathf.Lerp(dynamicPeak, 1f, (t - 0.3f) / 0.7f);
                 tmp.transform.localScale = Vector3.one * scaleT;
 
                 // 투명도: 후반 50%부터 서서히 사라짐
