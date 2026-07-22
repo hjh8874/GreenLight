@@ -53,6 +53,11 @@ namespace CityFlow.Content
         /// </summary>
         public int CalculatePopulationCapBonus(int residentialBuildingCount)
         {
+            if (!IsSchool)
+            {
+                return 0;
+            }
+
             int coveredResidentialCount =
                 CalculateCoveredResidentialCount(residentialBuildingCount);
 
