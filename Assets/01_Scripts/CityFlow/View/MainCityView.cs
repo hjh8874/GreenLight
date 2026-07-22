@@ -906,7 +906,7 @@ namespace CityFlow.View
                 }
                 else
                 {
-                    AddSurfaceParkingDetails(root, GetOfficeParkingSlotCount());
+                    AddOfficeParkingDetails(root, GetOfficeParkingSlotCount());
                 }
                 return;
             }
@@ -918,6 +918,7 @@ namespace CityFlow.View
                 new Vector3(0f, 0f, tileSize * 0.02f));
             ApplyRendererColor(lotBase, Color.Lerp(boardColor, Color.white, 0.08f));
 
+            AddSurfaceParkingDetails(root);
         }
 
         private int GetHomeParkingSlotCount() =>
@@ -965,7 +966,43 @@ namespace CityFlow.View
             }
         }
 
-        private void AddSurfaceParkingDetails(Transform root, int parkingSlotCount)
+        private void AddOfficeParkingDetails(Transform root, int parkingSlotCount)
+        {
+            Color lotColor = Color.Lerp(roadFreeColor, Color.black, 0.08f);
+            Color lineColor = Color.Lerp(Color.white, roadFreeColor, 0.15f);
+            float lotWidth = tileSize * 1.8f;
+            float slotWidth = lotWidth / parkingSlotCount;
+
+            Renderer parking = CreateDetailCube(
+                root,
+                "ParkingLot",
+                new Vector3(lotWidth, tileSize * 0.9f, tileSize * 0.05f),
+                new Vector3(0f, tileSize * -0.5f, tileSize * -0.015f));
+            ApplyRendererColor(parking, lotColor);
+
+            for (int line = 1; line < parkingSlotCount; line++)
+            {
+                float x = -lotWidth * 0.5f + slotWidth * line;
+                Renderer divider = CreateDetailCube(
+                    root,
+                    $"ParkingLine_{line}",
+                    new Vector3(tileSize * 0.025f, tileSize * 0.78f, tileSize * 0.018f),
+                    new Vector3(x, tileSize * -0.5f, tileSize * -0.05f));
+                ApplyRendererColor(divider, lineColor);
+            }
+
+            for (int slot = 0; slot < parkingSlotCount; slot++)
+            {
+                GameObject anchor = new GameObject($"ParkingSlot_{slot}");
+                anchor.transform.SetParent(root, false);
+                anchor.transform.localPosition = new Vector3(
+                    lotWidth * 0.5f - slotWidth * (slot + 0.5f),
+                    tileSize * -0.5f,
+                    vehicleZ);
+            }
+        }
+
+        private void AddSurfaceParkingDetails(Transform root)
         {
             Color lotColor = Color.Lerp(roadFreeColor, Color.black, 0.08f);
             Color lineColor = Color.Lerp(Color.white, roadFreeColor, 0.15f);
@@ -987,21 +1024,15 @@ namespace CityFlow.View
                 ApplyRendererColor(line, lineColor);
             }
 
-            const int rowCount = 2;
-            int columnCount = Mathf.CeilToInt(parkingSlotCount / (float)rowCount);
-            float columnSpacing = columnCount > 1
-                ? Mathf.Min(0.58f, 1.5f / (columnCount - 1))
-                : 0f;
-            float firstColumnX = -columnSpacing * (columnCount - 1) * 0.5f;
-
+            const int parkingSlotCount = 6;
             for (int slot = 0; slot < parkingSlotCount; slot++)
             {
-                int column = slot % columnCount;
-                int row = slot / columnCount;
+                int column = slot % 3;
+                int row = slot / 3;
                 GameObject anchor = new GameObject($"ParkingSlot_{slot}");
                 anchor.transform.SetParent(root, false);
                 anchor.transform.localPosition = new Vector3(
-                    tileSize * (firstColumnX + column * columnSpacing),
+                    tileSize * (column - 1) * 0.58f,
                     tileSize * (-0.76f + row * 0.3f),
                     vehicleZ);
             }
