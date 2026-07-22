@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using CityFlow.Contracts;
 using NUnit.Framework;
@@ -527,7 +528,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void RoundaboutState_TransitionReservesSourceAndDestination()
+        public void RoundaboutState_TransitionReservesDestinationAndReleasesSource()
         {
             var state = new RoundaboutTrafficState();
             EnterRing(state, Dir.E, 11);
@@ -537,12 +538,54 @@ namespace CityFlow.Sim.Tests
 
             Assert.AreEqual(-1, state.NodeAt(Dir.E));
             Assert.AreEqual(11, state.NodeAt(Dir.N));
-            Assert.IsTrue(state.IsReserved(Dir.E));
+            Assert.IsFalse(state.IsReserved(Dir.E));
             Assert.IsTrue(state.IsReserved(Dir.N));
         }
 
         [Test]
-        public void RoundaboutState_CompetingSidesFollowCounterClockwiseOrder()
+        public void RoundaboutState_FollowerEntersCellVacatedByLeadVehicle()
+        {
+            var state = new RoundaboutTrafficState();
+            EnterRing(state, Dir.E, 11);
+
+            state.BeginTick();
+            state.AdvanceCounterClockwise();
+            state.RegisterEntryDemand(Dir.E);
+            state.SelectEntrySide();
+
+            Assert.AreEqual(11, state.NodeAt(Dir.N));
+            Assert.AreEqual(-1, state.NodeAt(Dir.E));
+            Assert.IsTrue(state.TryReserveApproach(Dir.E),
+                "A follower may enter the merge cell vacated by its lead vehicle.");
+        }
+
+        [Test]
+        public void RoundaboutState_ThreeVehicleStreamOccupiesDistinctCells()
+        {
+            var state = new RoundaboutTrafficState();
+            EnterRing(state, Dir.E, 11);
+
+            state.BeginTick();
+            state.AdvanceCounterClockwise();
+            state.RegisterEntryDemand(Dir.E);
+            state.SelectEntrySide();
+            Assert.IsTrue(state.TryReserveRingEntry(Dir.E, 12, out Dir secondTarget));
+            Assert.IsTrue(state.CommitEntry(Dir.E, secondTarget, 12));
+
+            state.BeginTick();
+            state.AdvanceCounterClockwise();
+            state.RegisterEntryDemand(Dir.E);
+            state.SelectEntrySide();
+            Assert.IsTrue(state.TryReserveRingEntry(Dir.E, 13, out Dir thirdTarget));
+            Assert.IsTrue(state.CommitEntry(Dir.E, thirdTarget, 13));
+
+            Assert.AreEqual(11, state.NodeAt(Dir.W));
+            Assert.AreEqual(12, state.NodeAt(Dir.N));
+            Assert.AreEqual(13, state.NodeAt(Dir.E));
+        }
+
+        [Test]
+        public void RoundaboutState_ServingSideKeepsPriorityUntilDemandClears()
         {
             var state = new RoundaboutTrafficState();
             state.BeginTick();
@@ -564,14 +607,21 @@ namespace CityFlow.Sim.Tests
             RegisterAllEntryDirections(state);
             state.SelectEntrySide();
 
-            Assert.IsTrue(state.TryReserveApproach(Dir.N));
-            Assert.IsFalse(state.TryReserveApproach(Dir.S));
-            Assert.IsFalse(state.TryReserveApproach(Dir.E));
+            Assert.IsTrue(state.TryReserveApproach(Dir.E));
+            Assert.IsFalse(state.TryReserveApproach(Dir.N));
             Assert.IsFalse(state.TryReserveApproach(Dir.W));
+            Assert.IsFalse(state.TryReserveApproach(Dir.S));
+
+            state.BeginTick();
+            state.RegisterEntryDemand(Dir.N);
+            state.SelectEntrySide();
+
+            Assert.IsTrue(state.TryReserveApproach(Dir.N));
+            Assert.IsFalse(state.TryReserveApproach(Dir.E));
         }
 
         [Test]
-        public void RoundaboutState_EntryWaitsForSecondUpstreamCell()
+        public void RoundaboutState_EntryAllowsVehicleTwoCellsUpstream()
         {
             var state = new RoundaboutTrafficState();
             EnterRing(state, Dir.E, 12);
@@ -585,9 +635,9 @@ namespace CityFlow.Sim.Tests
             state.SelectEntrySide();
 
             Assert.AreEqual(12, state.NodeAt(Dir.W));
-            Assert.IsFalse(
+            Assert.IsTrue(
                 state.TryReserveApproach(Dir.E),
-                "Entry must wait while a circulating vehicle is two cells upstream of the merge.");
+                "A vehicle two cells upstream does not conflict with the merge.");
         }
 
         [Test]
@@ -655,7 +705,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void Roundabout_SimultaneousArms_EnterEastThenNorthAfterClearance()
+        public void Roundabout_SimultaneousArms_EnterEastThenNorthWhenMergeCellsClear()
         {
             CityGrid grid = CrossGrid();
             Vector2Int center = V(1, 1);
@@ -690,13 +740,61 @@ namespace CityFlow.Sim.Tests
 
             q.Step(routes);
             Assert.AreEqual(73, q.RingCellCar(center, Dir.W));
-            Assert.AreEqual(-1, q.RingCellCar(center, Dir.N));
-            Assert.AreEqual(70, q.CarAtHead(north, Dir.S),
-                "The next entry waits while the previous car reserves its source and destination cells.");
-
-            q.Step(routes);
             Assert.AreEqual(70, q.RingCellCar(center, Dir.N));
             Assert.AreEqual(-1, q.CarAtHead(north, Dir.S));
+        }
+
+        [Test]
+        public void Roundabout_ThreeEastVehiclesDrainBeforeNorthEntry()
+        {
+            CityGrid grid = CrossGrid5();
+            Vector2Int center = V(2, 2);
+            Vector2Int northArm = V(2, 3);
+            Vector2Int northApproach = V(2, 4);
+            Vector2Int eastArm = V(3, 2);
+            Vector2Int eastApproach = V(4, 2);
+            Vector2Int westArm = V(1, 2);
+            Vector2Int westApproach = V(0, 2);
+            Vector2Int southArm = V(2, 1);
+            Vector2Int southApproach = V(2, 0);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var q = new RoadQueueNetwork(5, 5, Cfg());
+            q.RebuildTopology(grid, devices);
+            var routes = new FakeRouteProvider();
+
+            routes.Add(100, eastApproach, eastArm, center, westArm, westApproach);
+            routes.Add(101, eastApproach, eastArm, center, westArm, westApproach);
+            routes.Add(102, eastApproach, eastArm, center, westArm, westApproach);
+            routes.Add(103, northApproach, northArm, center, southArm, southApproach);
+            Assert.IsTrue(q.TryEnqueue(eastApproach, Dir.W, 100));
+            Assert.IsTrue(q.TryEnqueue(eastApproach, Dir.W, 101));
+            Assert.IsTrue(q.TryEnqueue(eastApproach, Dir.W, 102));
+            Assert.IsTrue(q.TryEnqueue(northApproach, Dir.S, 103));
+
+            var enteredOrder = new List<int>();
+            var enteredCars = new HashSet<int>();
+            int maxRingOccupancy = 0;
+            for (int tick = 0; tick < 20; tick++)
+            {
+                q.Step(routes);
+                int ringOccupancy = 0;
+                foreach (Dir cell in new[] { Dir.N, Dir.E, Dir.S, Dir.W })
+                {
+                    int carId = q.RingCellCar(center, cell);
+                    if (carId < 0) continue;
+
+                    ringOccupancy++;
+                    if (enteredCars.Add(carId)) enteredOrder.Add(carId);
+                }
+
+                maxRingOccupancy = Math.Max(maxRingOccupancy, ringOccupancy);
+            }
+
+            CollectionAssert.AreEqual(new[] { 100, 101, 102, 103 }, enteredOrder,
+                "The serving east queue must drain before north receives entry priority.");
+            Assert.GreaterOrEqual(maxRingOccupancy, 2,
+                "A following vehicle must enter before its lead vehicle leaves the ring.");
         }
 
         [Test]
