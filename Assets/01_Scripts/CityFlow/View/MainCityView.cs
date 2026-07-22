@@ -702,7 +702,14 @@ namespace CityFlow.View
                 for (int x = 0; x < width; x++)
                 {
                     Vector2Int tile = new Vector2Int(x, y);
-                    RefreshTile(tile, tileData.GetTileType(tile));
+                    TileType type = tileData.GetTileType(tile);
+                    if (TileFootprint.IsBuilding(type) &&
+                        !tileData.IsFootprintAnchor(tile))
+                    {
+                        RemoveTileVisual(tile);
+                        continue;
+                    }
+                    RefreshTile(tile, type);
                 }
             }
         }
