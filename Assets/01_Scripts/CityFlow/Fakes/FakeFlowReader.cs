@@ -5,17 +5,26 @@ namespace CityFlow.Fakes
 {
     public sealed class FakeFlowReader : IReadOnlyTileData
     {
+        // 실 게임의 타일당 큐 상한과 같은 값을 받는다. 하드코딩하면 페이크 UI의 눈금이
+        // 실제 범위와 어긋나 게이지 최댓값을 잘못 맞추게 된다(리뷰 지적 2026-07-22).
+        private const int DefaultQueueCapacityPerTile = 4;   // SimConfig.Default()와 동일
+
         private readonly int width;
         private readonly int height;
+        private readonly int queueCapacityPerTile;
         private float lastBurstTime;
         private float lastStabilityTime;
 
         public float Stability01 { get; private set; } = 0.75f;
 
-        public FakeFlowReader(int width, int height)
+        public FakeFlowReader(
+            int width,
+            int height,
+            int queueCapacityPerTile = DefaultQueueCapacityPerTile)
         {
             this.width = Mathf.Max(1, width);
             this.height = Mathf.Max(1, height);
+            this.queueCapacityPerTile = Mathf.Max(1, queueCapacityPerTile);
         }
 
         public CongestionLevel GetCongestion(Vector2Int tile)
@@ -44,6 +53,25 @@ namespace CityFlow.Fakes
 
             float wave = Mathf.Sin((tile.x * 0.73f) + (tile.y * 1.17f) + Time.time);
             return Mathf.Clamp01((wave + 1f) * 0.5f);
+        }
+
+        // 방향마다 위상을 다르게 준다. 방향별 API의 페이크가 방향을 구분하지 못하면
+        // UI가 가로/세로를 바꿔 연결해도 화면상 정상으로 보여 오배선을 못 잡는다.
+        public int GetQueueCount(Vector2Int tile, Dir entryDir)
+        {
+            if (!GridUtil.IsInside(tile, width, height))
+            {
+                return 0;
+            }
+
+            float wave = Mathf.Sin(
+                (tile.x * 0.73f)
+                + (tile.y * 1.17f)
+                + ((int)entryDir * Mathf.PI * 0.5f)
+                + Time.time);
+
+            return Mathf.RoundToInt(
+                Mathf.Clamp01((wave + 1f) * 0.5f) * queueCapacityPerTile);
         }
 
         public TileType GetTileType(Vector2Int tile)

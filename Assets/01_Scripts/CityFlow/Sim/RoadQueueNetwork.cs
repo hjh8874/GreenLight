@@ -1,4 +1,5 @@
 using System;
+using CityFlow.Contracts;
 using UnityEngine;
 
 namespace CityFlow.Sim
@@ -36,7 +37,6 @@ namespace CityFlow.Sim
         public Vector2Int Tile;
     }
 
-    public enum Dir { N = 0, E = 1, S = 2, W = 3 }
     public enum RoadAxis { None = 0, Horizontal = 1, Vertical = 2 }
 
     internal sealed class RoadQueueNetwork

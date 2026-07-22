@@ -29,7 +29,12 @@ namespace CityFlow.Bootstrap
         {
             if (useFakeServices)
             {
-                fakeFlowReader = new FakeFlowReader(mapWidth, mapHeight);
+                // 페이크 큐 상한을 실 설정과 같은 값으로 — 페이크 UI와 실 게임의 눈금을 맞춘다.
+                var fakeCfg = simConfig != null ? simConfig.Value : SimConfig.Default();
+                fakeFlowReader = new FakeFlowReader(
+                    mapWidth,
+                    mapHeight,
+                    fakeCfg.QueueCapacityPerTile);
                 fakePlacementService = new FakePlacementService(mapWidth, mapHeight);
 
                 Services = new CityFlowServices(

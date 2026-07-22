@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CityFlow.Contracts;
 using NUnit.Framework;
 using UnityEngine;
 using CityFlow.Sim;
@@ -650,7 +651,6 @@ namespace CityFlow.Sim.Tests
             Vector2Int center = V(1, 1);
             Vector2Int north = V(1, 2);
             Vector2Int south = V(1, 0);
-            Vector2Int west = V(0, 1);
             Vector2Int east = V(2, 1);
             var devices = new FakeDeviceState();
             devices.AddRoundabout(center);
@@ -659,12 +659,8 @@ namespace CityFlow.Sim.Tests
             var routes = new FakeRouteProvider();
 
             routes.Add(70, north, center, south);
-            routes.Add(71, south, center, north);
-            routes.Add(72, west, center, east);
-            routes.Add(73, east, center, west);
+            routes.Add(73, east, center, V(0, 1));
             Assert.IsTrue(q.TryEnqueue(north, Dir.S, 70));
-            Assert.IsTrue(q.TryEnqueue(south, Dir.N, 71));
-            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 72));
             Assert.IsTrue(q.TryEnqueue(east, Dir.W, 73));
 
             q.Step(routes);
@@ -672,8 +668,6 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(73, q.RingCellCar(center, Dir.E));
             Assert.AreEqual(-1, q.RingCellCar(center, Dir.N));
             Assert.AreEqual(70, q.CarAtHead(north, Dir.S));
-            Assert.AreEqual(71, q.CarAtHead(south, Dir.N));
-            Assert.AreEqual(72, q.CarAtHead(west, Dir.E));
             Assert.AreEqual(-1, q.CarAtHead(east, Dir.W));
             Assert.AreEqual(0, q.QueueCount(center, Dir.N));
             Assert.AreEqual(0, q.QueueCount(center, Dir.E));
@@ -686,6 +680,11 @@ namespace CityFlow.Sim.Tests
 
             q.Step(routes);
             Assert.AreEqual(73, q.RingCellCar(center, Dir.W));
+            Assert.AreEqual(-1, q.RingCellCar(center, Dir.N));
+            Assert.AreEqual(70, q.CarAtHead(north, Dir.S),
+                "The next entry waits while the previous car reserves its source and destination cells.");
+
+            q.Step(routes);
             Assert.AreEqual(70, q.RingCellCar(center, Dir.N));
             Assert.AreEqual(-1, q.CarAtHead(north, Dir.S));
         }
