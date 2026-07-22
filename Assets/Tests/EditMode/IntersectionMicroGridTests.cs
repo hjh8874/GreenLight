@@ -34,6 +34,15 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void OpposingUTurnPaths_Conflict()
+        {
+            IntersectionCell eastToWest = IntersectionMicroGrid.MovementMask(Dir.E, Dir.W);
+            IntersectionCell westToEast = IntersectionMicroGrid.MovementMask(Dir.W, Dir.E);
+
+            Assert.IsTrue(IntersectionMicroGrid.Conflicts(eastToWest, westToEast));
+        }
+
+        [Test]
         public void FourRightTurns_UseDifferentQuadrants()
         {
             IntersectionCell northToEast = IntersectionMicroGrid.MovementMask(Dir.N, Dir.E);
