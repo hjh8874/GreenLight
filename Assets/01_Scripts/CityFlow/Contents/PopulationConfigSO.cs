@@ -14,21 +14,21 @@ namespace CityFlow.Content
         [Serializable]
         public class TilePopulationEntry
         {
-            [Tooltip("ÀÎ±¸¸¦ Á¦°øÇÏ´Â Å¸ÀÏ Á¾·ùÀÔ´Ï´Ù.")]
+            [Tooltip("ì¸êµ¬ë¥¼ ì œê³µí•˜ëŠ” íƒ€ì¼ ì¢…ë¥˜ì…ë‹ˆë‹¤.")]
             public TileType tileType;
 
             [Tooltip(
-                "ÇØ´ç Å¸ÀÏ ÇÏ³ª°¡ Á¦°øÇÏ´Â ÀÎ±¸ÀÔ´Ï´Ù. " +
-                "ÁÖ°Å °Ç¹°ÀÌ ¾Æ´Ï¶ó¸é 0À¸·Î ¼³Á¤ÇÕ´Ï´Ù."
+                "í•´ë‹¹ íƒ€ì¼ í•˜ë‚˜ê°€ ì œê³µí•˜ëŠ” ê¸°ë³¸ ì¸êµ¬ì…ë‹ˆë‹¤. " +
+                "ì£¼ê±° ê±´ë¬¼ì´ ì•„ë‹ˆë¼ë©´ 0ìœ¼ë¡œ ì„¤ì •í•©ë‹ˆë‹¤."
             )]
             [Min(0)]
             public int populationValue;
         }
 
-        [Header("Å¸ÀÏº° ÀÎ±¸ ¼³Á¤")]
+        [Header("íƒ€ì¼ë³„ ê¸°ë³¸ ì¸êµ¬")]
         [Tooltip(
-            "Å¸ÀÏ Á¾·ùº° ÀÎ±¸ Áõ°¡·®À» ¼³Á¤ÇÕ´Ï´Ù. " +
-            "¿¹: House = 5"
+            "íƒ€ì¼ ì¢…ë¥˜ë³„ ê¸°ë³¸ ì¸êµ¬ë¥¼ ì„¤ì •í•©ë‹ˆë‹¤. " +
+            "ì˜ˆ: House = 2"
         )]
         [SerializeField]
         private List<TilePopulationEntry> populationEntries =
@@ -37,14 +37,36 @@ namespace CityFlow.Content
                 new TilePopulationEntry
                 {
                     tileType = TileType.House,
-                    populationValue = 5
+                    populationValue = 2
                 }
             };
 
+        [Header("í•™êµ ì»¤ë²„")]
+        [Tooltip(
+            "í•™êµê°€ ì§‘ì— ì¸êµ¬ ê°€ì‚°ì„ ì œê³µí•˜ëŠ” ë§¨í•´íŠ¼ ê±°ë¦¬ ë°˜ê²½ì…ë‹ˆë‹¤."
+        )]
+        [Min(0)]
+        [SerializeField]
+        private int schoolCoverageRadius = 3;
+
+        [Tooltip(
+            "í•™êµ ì»¤ë²„ ì•ˆì˜ ì§‘ì— í•œ ë²ˆë§Œ ë”í•˜ëŠ” ì¸êµ¬ì…ë‹ˆë‹¤. " +
+            "ì—¬ëŸ¬ í•™êµì˜ ì»¤ë²„ê°€ ê²¹ì³ë„ ì¤‘ë³µ ê°€ì‚°í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤."
+        )]
+        [Min(0)]
+        [SerializeField]
+        private int schoolCoveragePopulationBonus = 2;
+
+        public int SchoolCoverageRadius =>
+            Mathf.Max(0, schoolCoverageRadius);
+
+        public int SchoolCoveragePopulationBonus =>
+            Mathf.Max(0, schoolCoveragePopulationBonus);
+
         /// <summary>
-        /// ÁöÁ¤ÇÑ Å¸ÀÏ Á¾·ù°¡ Á¦°øÇÏ´Â ÀÎ±¸¸¦ ¹İÈ¯ÇÕ´Ï´Ù.
+        /// ì§€ì •í•œ íƒ€ì¼ ì¢…ë¥˜ê°€ ì œê³µí•˜ëŠ” ê¸°ë³¸ ì¸êµ¬ë¥¼ ë°˜í™˜í•©ë‹ˆë‹¤.
         ///
-        /// ¼³Á¤ ¸ñ·Ï¿¡ ¾ø´Â Å¸ÀÏÀº ÀÎ±¸ 0À» ¹İÈ¯ÇÕ´Ï´Ù.
+        /// ì„¤ì • ëª©ë¡ì— ì—†ëŠ” íƒ€ì¼ì€ ì¸êµ¬ 0ì„ ë°˜í™˜í•©ë‹ˆë‹¤.
         /// </summary>
         public int GetPopulationValue(
             TileType tileType
@@ -75,8 +97,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// ÁöÁ¤ÇÑ Å¸ÀÏÀÌ ÀÎ±¸¸¦ Á¦°øÇÏ´Â
-        /// ÁÖ°Å Å¸ÀÏÀÎÁö È®ÀÎÇÕ´Ï´Ù.
+        /// ì§€ì •í•œ íƒ€ì¼ì´ ì¸êµ¬ë¥¼ ì œê³µí•˜ëŠ”
+        /// ì£¼ê±° íƒ€ì¼ì¸ì§€ í™•ì¸í•©ë‹ˆë‹¤.
         /// </summary>
         public bool IsResidential(
             TileType tileType
@@ -88,6 +110,18 @@ namespace CityFlow.Content
 #if UNITY_EDITOR
         private void OnValidate()
         {
+            schoolCoverageRadius =
+                Mathf.Max(
+                    0,
+                    schoolCoverageRadius
+                );
+
+            schoolCoveragePopulationBonus =
+                Mathf.Max(
+                    0,
+                    schoolCoveragePopulationBonus
+                );
+
             HashSet<TileType> registeredTypes =
                 new HashSet<TileType>();
 
@@ -115,7 +149,7 @@ namespace CityFlow.Content
                 {
                     Debug.LogWarning(
                         $"[PopulationConfigSO] " +
-                        $"Áßº¹µÈ TileType ¼³Á¤ÀÌ ÀÖ½À´Ï´Ù: " +
+                        $"ì¤‘ë³µëœ TileType ì„¤ì •ì´ ìˆìŠµë‹ˆë‹¤: " +
                         $"{entry.tileType}",
                         this
                     );
