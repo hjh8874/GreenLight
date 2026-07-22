@@ -375,28 +375,24 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(82, q.CarAtHead(V(0, 0), Dir.E));
         }
 
-        // 교차로가 틱당 1대만 통과시키면, 서로 충돌하지 않는 마주보는 직진 두 대도
-        // 순번을 기다린다 — 화면에서는 "앞에 차가 없는데 멈춤"으로 보인다(환 라이브 2026-07-20).
         [Test]
-        public void Step_OpposingStraights_BothCrossInSameTick()
+        public void Step_OpposingStraights_EnterIntersectionTogether()
         {
             SimConfig cfg = Cfg();
             var q = new RoadQueueNetwork(5, 3, cfg);
             CityGrid grid = BuildCrossIntersection();
             q.RebuildTopology(grid, new FakeDeviceState());
 
-            // 교차로 '안'에 마주보는 직진 두 대를 넣는다 — 나가는 쪽 순번이 제한 지점이다.
             var routes = new FakeRouteProvider();
-            routes.AddRoute(0, true, V(2, 1), V(3, 1));   // 동행: 교차로 → 동쪽
-            routes.AddRoute(1, true, V(2, 1), V(1, 1));   // 서행: 교차로 → 서쪽
-            Assert.IsTrue(q.TryEnqueue(V(2, 1), Dir.E, 0));
-            Assert.IsTrue(q.TryEnqueue(V(2, 1), Dir.W, 1));
+            routes.AddRoute(0, true, V(1, 1), V(2, 1), V(3, 1));
+            routes.AddRoute(1, true, V(3, 1), V(2, 1), V(1, 1));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.W, 1));
 
             q.Step(routes);
 
-            Assert.AreEqual(0, q.QueueCount(V(2, 1), Dir.E), "동행 차가 교차로를 빠져나가야 한다");
-            Assert.AreEqual(0, q.QueueCount(V(2, 1), Dir.W),
-                "마주보는 직진은 충돌하지 않으므로 같은 틱에 함께 빠져나가야 한다");
+            Assert.AreEqual(0, q.CarAtHead(V(2, 1), Dir.E));
+            Assert.AreEqual(1, q.CarAtHead(V(2, 1), Dir.W));
         }
 
         [Test]
@@ -564,7 +560,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void Step_CrossingAxes_OnlyOnePasses()
+        public void Step_CrossingApproaches_OnlyOneEnters()
         {
             SimConfig cfg = Cfg();
             var q = new RoadQueueNetwork(5, 3, cfg);
@@ -572,20 +568,21 @@ namespace CityFlow.Sim.Tests
             q.RebuildTopology(grid, new FakeDeviceState());
 
             var routes = new FakeRouteProvider();
-            routes.AddRoute(0, true, V(2, 1), V(3, 1));   // 동행(수평) 교차로 → 동쪽
-            routes.AddRoute(1, true, V(2, 1), V(2, 2));   // 북행(수직) 교차로 → 북쪽
-            Assert.IsTrue(q.TryEnqueue(V(2, 1), Dir.E, 0));
-            Assert.IsTrue(q.TryEnqueue(V(2, 1), Dir.N, 1));
+            routes.AddRoute(0, true, V(1, 1), V(2, 1), V(3, 1));
+            routes.AddRoute(1, true, V(2, 0), V(2, 1), V(2, 2));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(2, 0), Dir.N, 1));
 
             q.Step(routes);
 
-            int remaining = q.QueueCount(V(2, 1), Dir.E) + q.QueueCount(V(2, 1), Dir.N);
-            Assert.AreEqual(1, remaining, "교차하는 축은 한 틱에 한 대만 빠져나가야 한다");
+            int entered = q.QueueCount(V(2, 1), Dir.E) + q.QueueCount(V(2, 1), Dir.N);
+            int waiting = q.QueueCount(V(1, 1), Dir.E) + q.QueueCount(V(2, 0), Dir.N);
+            Assert.AreEqual(1, entered);
+            Assert.AreEqual(1, waiting, "Only one conflicting approach may enter per tick.");
         }
 
-        // 동시 U턴은 이탈축·ToQueue 조건을 통과하지만 서로를 정면으로 가로지른다 — 배제해야 한다.
         [Test]
-        public void Step_OpposingUTurns_DoNotPassTogether()
+        public void Step_OpposingUTurnApproaches_OnlyOneEnters()
         {
             SimConfig cfg = Cfg();
             var q = new RoadQueueNetwork(5, 3, cfg);
@@ -593,15 +590,17 @@ namespace CityFlow.Sim.Tests
             q.RebuildTopology(grid, new FakeDeviceState());
 
             var routes = new FakeRouteProvider();
-            routes.AddRoute(0, true, V(2, 1), V(1, 1));   // 동쪽으로 들어와 서쪽으로 U턴
-            routes.AddRoute(1, true, V(2, 1), V(3, 1));   // 서쪽으로 들어와 동쪽으로 U턴
-            Assert.IsTrue(q.TryEnqueue(V(2, 1), Dir.E, 0));
-            Assert.IsTrue(q.TryEnqueue(V(2, 1), Dir.W, 1));
+            routes.AddRoute(0, false, V(1, 1), V(2, 1), V(1, 1));
+            routes.AddRoute(1, false, V(3, 1), V(2, 1), V(3, 1));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.W, 1));
 
             q.Step(routes);
 
-            int remaining = q.QueueCount(V(2, 1), Dir.E) + q.QueueCount(V(2, 1), Dir.W);
-            Assert.AreEqual(1, remaining, "마주보는 U턴은 교차하므로 한 틱에 한 대만 통과해야 한다");
+            int entered = q.QueueCount(V(2, 1), Dir.E) + q.QueueCount(V(2, 1), Dir.W);
+            int waiting = q.QueueCount(V(1, 1), Dir.E) + q.QueueCount(V(3, 1), Dir.W);
+            Assert.AreEqual(1, entered);
+            Assert.AreEqual(1, waiting, "Only one conflicting U-turn may enter per tick.");
         }
 
         private static CityGrid BuildCrossIntersection()

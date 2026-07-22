@@ -287,43 +287,43 @@ namespace CityFlow.Sim.Tests
         {
             CityGrid grid = CrossGrid();
             Vector2Int center = V(1, 1);
+            Vector2Int west = V(0, 1);
+            Vector2Int south = V(1, 0);
             var devices = new FakeDeviceState();
             devices.SetPriority(center, RoadAxis.Horizontal);
             var q = new RoadQueueNetwork(3, 3, Cfg());
             q.RebuildTopology(grid, devices);
             var routes = new FakeRouteProvider();
-            routes.Add(30, center, V(2, 1));
-            routes.Add(31, center, V(1, 2));
-            Assert.IsTrue(q.TryEnqueue(center, Dir.E, 30));
-            Assert.IsTrue(q.TryEnqueue(center, Dir.N, 31));
+            routes.Add(30, west, center, V(2, 1));
+            routes.Add(31, south, center, V(1, 2));
+            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 30));
+            Assert.IsTrue(q.TryEnqueue(south, Dir.N, 31));
 
             q.Step(routes);
 
-            Assert.AreEqual(0, q.QueueCount(center, Dir.E), "우선 가로축 먼저 서비스");
-            Assert.AreEqual(1, q.QueueCount(center, Dir.N), "비우선 세로축 대기");
+            Assert.AreEqual(30, q.CarAtHead(center, Dir.E), "The horizontal approach enters first.");
+            Assert.AreEqual(31, q.CarAtHead(south, Dir.N), "The vertical approach keeps waiting.");
         }
 
         [Test]
-        public void IntersectionSharedBudget_PrioritizesStraightThenAllowsCompatibleTurns()
+        public void IntersectionSharedBudget_AllowsCompatibleStraightAndTurnTogether()
         {
             CityGrid grid = CrossGrid();
             Vector2Int center = V(1, 1);
+            Vector2Int west = V(0, 1);
+            Vector2Int north = V(1, 2);
             var q = new RoadQueueNetwork(3, 3, Cfg());
             q.RebuildTopology(grid, new FakeDeviceState());
             var routes = new FakeRouteProvider();
-            routes.Add(40, center, V(2, 1));       // E→E 직진
-            routes.Add(41, center, V(1, 0));       // W→S 좌회전
-            routes.Add(42, center, V(2, 1));       // N→E 우회전
-            Assert.IsTrue(q.TryEnqueue(center, Dir.E, 40));
-            Assert.IsTrue(q.TryEnqueue(center, Dir.W, 41));
-            Assert.IsTrue(q.TryEnqueue(center, Dir.N, 42));
+            routes.Add(40, west, center, V(2, 1));
+            routes.Add(41, north, center, west);
+            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 40));
+            Assert.IsTrue(q.TryEnqueue(north, Dir.S, 41));
 
             q.Step(routes);
-            Assert.AreEqual(0, q.QueueCount(center, Dir.E), "직진 1순위");
-
-            q.Step(routes);
-            Assert.AreEqual(0, q.QueueCount(center, Dir.N), "충돌하지 않는 우회전 통과");
-            Assert.AreEqual(0, q.QueueCount(center, Dir.W), "분리된 셀을 쓰는 좌회전도 함께 통과");
+            Assert.AreEqual(40, q.CarAtHead(center, Dir.E));
+            Assert.AreEqual(41, q.CarAtHead(center, Dir.S),
+                "Compatible straight and right-turn paths may enter in the same tick.");
         }
 
         [Test]
@@ -380,6 +380,12 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(q.TryLocateCar(43, out _, out _, out _, out eastProgress));
             Assert.IsTrue(q.TryLocateCar(44, out _, out _, out _, out southProgress));
             Assert.AreEqual(-1f, eastProgress, 1e-4f);
+            Assert.AreEqual(-1f, southProgress, 1e-4f,
+                "The conflicting path remains reserved during the first vehicle's exit tick.");
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(44, out _, out _, out _, out southProgress));
             Assert.AreEqual(0.75f, southProgress, 1e-4f);
         }
 
@@ -461,22 +467,26 @@ namespace CityFlow.Sim.Tests
             CityGrid grid = CrossGrid();
             Vector2Int center = V(1, 1);
             Vector2Int west = V(0, 1);
+            Vector2Int north = V(1, 2);
             var q = new RoadQueueNetwork(3, 3, Cfg());
             q.RebuildTopology(grid, new FakeDeviceState());
             var routes = new FakeRouteProvider();
-            routes.Add(47, center, V(1, 0));
-            routes.Add(48, west, center, V(2, 1));
-            Assert.IsTrue(q.TryEnqueue(center, Dir.S, 47));
-            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 48));
+            routes.Add(47, west, center, V(2, 1));
+            routes.Add(48, north, center, V(1, 0));
+            Assert.IsTrue(q.TryEnqueue(west, Dir.E, 47));
+
+            q.Step(routes);
+            Assert.AreEqual(47, q.CarAtHead(center, Dir.E));
+
+            Assert.IsTrue(q.TryEnqueue(north, Dir.S, 48));
+            q.Step(routes);
+
+            Assert.AreEqual(47, q.CarAtHead(V(2, 1), Dir.E));
+            Assert.AreEqual(48, q.CarAtHead(north, Dir.S));
 
             q.Step(routes);
 
-            Assert.AreEqual(47, q.CarAtHead(V(1, 0), Dir.S));
-            Assert.AreEqual(48, q.CarAtHead(west, Dir.E));
-
-            q.Step(routes);
-
-            Assert.AreEqual(48, q.CarAtHead(center, Dir.E));
+            Assert.AreEqual(48, q.CarAtHead(center, Dir.S));
         }
 
         [Test]
