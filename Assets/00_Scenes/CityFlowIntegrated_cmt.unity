@@ -1620,8 +1620,8 @@ MonoBehaviour:
   slowSpeedMul: 0.55
   jamSpeedMul: 0.25
   vehicleStreamScale: 0.15
-  cornerTurnRadius: 0.6
-  roundaboutOrbitRadius: 0.68
+  cornerTurnRadius: 0.75
+  roundaboutOrbitRadius: 0.775
   turnSignZ: -0.5
   angledViewDegrees: 35
   minimumZoomDistance: 5

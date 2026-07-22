@@ -14,6 +14,11 @@ namespace CityFlow.UI.Controllers
 
         public bool IsPointerOverBlockingUI()
         {
+            if (CityFlow.UI.OfflineSettlementPopup.IsInteractionBlocked)
+            {
+                return true;
+            }
+
             EventSystem currentEventSystem = EventSystem.current;
             if (currentEventSystem == null || Mouse.current == null)
             {

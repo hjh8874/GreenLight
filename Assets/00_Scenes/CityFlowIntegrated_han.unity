@@ -655,7 +655,7 @@ MonoBehaviour:
   laneOffset: 0.18
   followGap: 0.4
   cornerTurnRadius: 0.75
-  roundaboutOrbitRadius: 0.3
+  roundaboutOrbitRadius: 0.775
   turnSignZ: -0.5
   angledViewDegrees: 35.264
   minimumZoomDistance: 5

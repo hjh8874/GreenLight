@@ -6,13 +6,17 @@ namespace CityFlow.Editor
 {
     public static class FontReplacer
     {
+        private const string FontPath = "Assets/99_Download/Fonts/NanumGothic SDF.asset";
+
         [MenuItem("Tools/Fix Fonts (Replace with NanumGothic)")]
         public static void ReplaceFonts()
         {
-            TMP_FontAsset newFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/03_Art/Fonts/NanumGothic SDF.asset");
+            TMP_FontAsset newFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
             if (newFont == null)
             {
-                Debug.LogError("NanumGothic SDF.asset not found!");
+                Debug.LogError(
+                    $"NanumGothic SDF.asset not found at '{FontPath}'. " +
+                    "Install the external font assets before replacing fonts.");
                 return;
             }
 

@@ -5,6 +5,7 @@
         "CityFlow.Sim",
         "CityFlow.Contracts",
         "CityFlow.Authoring",
+        "CityFlow.Content",
         "CityFlow.Save",
         "CityFlow.ViewKit",
         "UnityEngine.TestRunner",

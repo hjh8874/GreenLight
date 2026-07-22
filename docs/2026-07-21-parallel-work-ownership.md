@@ -1,0 +1,203 @@
+# 4인 동시 작업 파일 소유권 계약 (2026-07-21)
+
+이 문서는 4명이 같은 코드베이스에서 **동시에** 작업하기 위한 팀 합의입니다.
+사람이 읽는 문서이면서, 각자 사용하는 AI에게 그대로 전달할 수 있는 작업 지침으로도 사용합니다.
+
+## 왜 이 문서가 필요한가
+
+원래 분업안(주차+충돌 / 로터리 / 신호 / 건물)을 코드로 검증한 결과, **4명 중 3명이 같은 메서드를 고쳐야 했습니다.**
+
+```text
+CarMotion.cs → MoveCarSimVehicle()  (243줄)
+  주차   → L677-752  정착 분기
+  충돌   → L851-872  헤드웨이/추종
+  로터리 → L756-782, L823-849  코리도 클램프
+  신호   → L784-807  TargetAdvancing (= 뷰의 신호 대기 감지기)
+```
+
+기능 이름으로 자른 분업선이 코드의 이음매와 어긋나기 때문입니다.
+그래서 **기능이 아니라 계층으로** 자릅니다.
+
+## 결론 — 소유권
+
+```text
+소유자가 아닌 파일은 편집하지 않는다. 필요하면 소유자에게 요청한다.
+```
+
+| 담당 | 영역 | 소유 파일 |
+|---|---|---|
+| **주석** | 뷰 모션 전체 | `View/CarMotion.cs` **전담**<br>`View/MainCityView.cs`의 주차 비주얼 (`RebuildParkingVisuals`, `AddParkingMark`, `DestroyParkingVisuals`, `ApplyCarStyle`)<br>`ViewKit/CarStyle.cs` |
+| **환** | 로터리 기하·시뮬 | `ViewKit/RoutePolyline.cs`<br>`ViewKit/PolylineMath.cs`<br>`ViewKit/RingLane.cs`<br>`Sim/RoadQueueNetwork.cs`의 링 서비스 (`ServiceRoundaboutRings`, `ExecuteIntent`의 `RingEntry`)<br>`Sim/SimEngine.cs`의 로터리 배치 (`CanPlaceRoundabout`, `TryPlaceRoundabout`, `TryRemoveRoundabout`, `IsInRoundaboutFootprint`) |
+| **준희** | 신호 시스템 | `Sim/SignalMath.cs`<br>`Sim/SignalMap.cs`<br>`Sim/SimEngine.cs`의 신호 구역 (L388-441, `IsSignalGreen`, `GetSignalPhase`, `TryOverrideSignal`)<br>`Contracts/ISignalControl.cs`<br>`View/MainCityView.cs`의 신호 비주얼·입력 (`RefreshSignals`, `CreateSignalVisual`, `ApplySignalState`, `HandleSignalInput`, 신호 public API) |
+| **진우** | 건물 시스템 | `Contents/` 전체 (`BuildingDefinitionSO`, `PlacedBuildingRegistry`, `PopulationSystem`, `DeliveredProgressSystem`)<br>`UI/Panels/BuildPanelController.cs`<br>`UI/Controllers/BuildSlotController.cs`<br>`View/MainCityView.cs`의 타일 비주얼 (`RefreshTile`, `CreateTileVisual`, `ApplyTileColor`, `GetTileScale`, `AddFallbackBuildingDetails`, `GetPrefab`, `OnPlaced`) |
+
+**로터리는 환이 담당하되 뷰 렌더링은 주석에게 맡깁니다.** 둘은 아래 계약으로만 대화합니다.
+
+## 경계 계약 — 환 ↔ 주석
+
+로터리 기하는 환이 정하고, 그것을 차가 어떻게 달리는지는 주석이 정합니다.
+두 사람이 만나는 유일한 지점은 **`RoutePolyline.BakeInput`** 입니다.
+
+```text
+환   → BakeInput의 로터리 필드(OrbitRadius, EntryExitOffsetRad, TransitionLength, IsRoundabout)와
+       그 결과로 나오는 폴리라인의 형상·길이를 소유한다.
+주석 → 그 폴리라인 위에서 차를 움직이는 것(CarMotion.cs 전체)을 소유한다.
+```
+
+환이 `BakeInput`에 필드를 추가하면 주석에게 알립니다. 반대로 주석이 로터리 구간에서 차가
+이상하게 달린다고 판단하면, `CarMotion.cs`를 고치기 전에 **환에게 기하 문제인지 먼저 확인합니다.**
+
+## 금지 사항 3가지
+
+이 셋은 어기면 다른 사람 작업이 조용히 깨집니다.
+
+### 1. 통합 씬은 아무도 커밋하지 않는다
+
+`MainCityView`가 붙은 씬이 7개이고, Unity의 `.unity` YAML은 **병합이 되지 않습니다.**
+4명이 각자 `[SerializeField]`를 추가하면 씬 7개 × 4명 = 라운드당 최대 28곳 충돌입니다.
+
+각자 자기 씬에서만 튜닝합니다.
+
+| 씬 | 담당 |
+|---|---|
+| `Assets/00_Scenes/CityFlowIntegrated_cmt.unity` | 한주석 |
+| `Assets/00_Scenes/CityFlowIntegrated_han.unity` | 한주석 |
+| `Assets/00_Scenes/Debug/CityFlowIntegrated_hwan.unity` | 환 |
+| `Assets/00_Scenes/EngineSandbox_hwan.unity` | 환 |
+| `Assets/00_Scenes/CityFlowIntegrated_Geon.unity` / `_Geon2.unity` | 김건 |
+
+`Assets/00_Scenes/*_Debug.unity`는 `.gitignore` 대상입니다(예: `CityFlowIntegrated_cmt_Debug.unity`).
+**각자 로컬 전용 실험 씬**이므로 담당자가 없고, 커밋되지 않습니다. 마음대로 쓰세요.
+
+> **2026-07-21 통일 완료**: `roundaboutOrbitRadius`가 씬마다 0.68 / 0.5 / 0.3으로 갈려 있었고,
+> 그중 **5개 씬의 0.3은 섬 반지름 0.45보다 작아 차가 잔디 섬을 관통**하고 있었습니다.
+> 전 씬을 차도 정중앙 `0.775`로, `cornerTurnRadius`를 `0.75`로 맞췄고 코드 기본값도 동일하게 했습니다.
+> 실측 확인: 로터리 주행 차량의 중심 거리 r=0.773, 섬 관통 0건.
+>
+> ⚠️ `Range(0.5f, 1.1f)`는 **인스펙터 슬라이더만 막고 직렬화된 값은 그대로 런타임에 쓰입니다.**
+> 0.3이 오래 살아남은 이유가 이것입니다. 값을 바꿀 때는 반드시 위 5개 씬을 함께 맞추세요.
+
+### 2. `MainCityView`의 `[SerializeField]`는 자기 구역 안에서만 추가한다
+
+> **2026-07-22 완화.** 기존 규칙은 "추가하지 않는다 / 담당자에게 요청"이었습니다.
+> 실제 위험은 "필드를 추가하는 것"이 아니라 **남의 필드 옆에 끼워 넣는 것**입니다.
+
+`CarMotion.cs`는 `partial`이라 **자기 직렬화 필드가 하나도 없습니다.** 전부 `MainCityView.cs`
+L19-110에 몰려 있고, 주석의 그룹(L50-63)과 환의 그룹(L68-75)은 **5줄 간격**입니다.
+파일이 아니라 헝크 단위로 부딪힙니다.
+
+**해법은 요청이 아니라 간격입니다:**
+
+1. 각자 구역을 주석 헤더로 명확히 나눕니다 — `// ── [환] 로터리·시뮬 ──` 형태
+2. **구역 사이에 빈 줄 3줄 이상**을 둡니다. git 헝크는 보통 3줄 컨텍스트를 잡으므로,
+   이 여백만으로 대부분의 동시 추가가 충돌 없이 병합됩니다
+3. 추가는 **자기 구역 끝에만** 합니다. 남의 구역 사이에 끼워 넣지 않습니다
+4. 구역이 아직 없으면 파일 맨 끝에 새로 만들고 헤더를 답니다
+
+씬 쪽 걱정("씬 7개 × 4명")은 **규칙 1이 이미 막고 있습니다.** 필드를 선언하는 것은 코드
+변경이고, 씬 YAML은 그 씬을 **열어서 저장할 때만** 바뀝니다. 자기 씬만 저장하면 됩니다.
+
+### 3. `SimConfig`에 필드를 추가하면 `.asset` 3개를 반드시 함께 채운다
+
+> **2026-07-22 완화.** 기존 규칙은 "담당자 1명만 편집"이었고 근거는 "필드 순서가 바뀌면
+> 한 사람의 필드가 다른 사람의 값을 읽는다"였습니다. **이 근거는 사실이 아닙니다.**
+> `.asset` YAML을 확인한 결과 Unity는 필드를 **이름으로** 직렬화합니다
+> (`TickInterval: 0.1`, `GridWidth: 20` …). 순서가 바뀌어도 값이 섞이지 않습니다.
+> 잘못된 근거로 병목을 만들고 있었으므로 규칙을 실제 위험에 맞게 좁힙니다.
+
+**진짜 위험은 순서가 아니라 누락입니다.** 새 필드를 추가하면 기존 `.asset` 3개에는 그 키가
+없어서 **0으로 조용히 들어갑니다.** 컴파일도 되고 에러도 없습니다.
+(`Sim/SimConfig.cs` L21-23의 기존 경고가 같은 이야기입니다.)
+
+**필드 추가는 누구나 합니다. 대신 한 번에 끝까지 합니다:**
+
+1. 필드 선언은 **자기 기능 구역 끝에** append (구역이 없으면 새로 만들고 주석 헤더를 답니다)
+2. `Default()`(L123-173)에도 같은 값을 append
+3. **`.asset` 3개를 전부 채웁니다** — `SimConfig.asset` · `SimConfig_Integrated.asset` ·
+   `SimConfig_Sandbox.asset`. 이걸 빼먹으면 남의 씬에서 그 값이 0이 됩니다
+4. 구조 필드(생성 시 고정)라면 `SimEngine.ApplyConfig`의 보존 목록도 갱신 (L15 주석 참조)
+
+`Default()`에서 git 충돌이 나면 **양쪽 줄을 다 살리면 됩니다.** append-only라 의미 충돌이
+없습니다. 이건 "담당자를 기다릴 이유"가 아닙니다.
+
+## git이 못 잡는 조용한 파괴
+
+아래는 **충돌도 안 나고 컴파일도 되는데 남의 작업이 깨지는** 경로입니다.
+자기 작업이 이유 없이 이상해지면 여기부터 의심하세요.
+
+### 신호 → 충돌 (준희 → 주석)
+
+```text
+준희: SignalGateAdapter.IsServiceOpen  (SimEngine)
+  → RoadQueueNetwork.CollectIntents    (틱에 목표가 전진하는가)
+  → CarMotion: TargetAdvancing         (L801/806)
+  → ceilingSpeed (L847) → desired (L848)
+  → 주석: Mathf.Min(desired, follow)   (L871)
+```
+
+파일 3개를 건너뛰는 인과 사슬인데 **공유 심볼이 없어 git이 전혀 못 봅니다.**
+`CarMotion.cs` L805의 주석 "틱이 지났는데 목표가 그대로 = Sim이 나를 잡고 있다(신호·정원)"가
+이 연결의 유일한 기록입니다.
+
+### 건물 → 주차 (진우 → 주석)
+
+`CarMotion.GetParkingAnchor()`가 `transform.Find("ParkingSlot_{n}")`으로 **진우의 프리팹 자식을
+직접 찾습니다.** 진우가 자식 이름을 바꾸거나 `CreateTileVisual`을 재구성하면, 주차 앵커가 조용히
+절차적 폴백으로 떨어져 차가 엉뚱한 곳에 섭니다. 에러 없음.
+
+### 기하 ↔ 차체 크기 (환 ↔ 주석)
+
+`RoutePolyline.cs:316,392`의 하한 `0.66`은 **"섬 스침 방지 실측값"** 입니다.
+주석이 `CarStyle.LengthScale`로 차를 늘리거나 환이 `roundaboutOrbitRadius`를 올리면
+이 상수가 조용히 무효가 되어 차가 섬을 파고듭니다.
+같은 식으로 `vehicleMinHeadway`의 기본값 0.55는 "최대 차 길이 0.437 + 여유"라는 **주석에만**
+근거가 있습니다.
+
+> **미해결 (환 확인 필요)**: 이 `0.66`이 **어느 궤도 반경에서 측정된 값인지 기록이 없습니다.**
+> 2026-07-21에 `roundaboutOrbitRadius`를 0.3~0.68에서 0.775로 올렸으므로 전제가 바뀌었습니다.
+> 로터리 작업 시작할 때 재측정하고, 이번엔 어떤 조건에서 쟀는지 함께 남겨주세요.
+
+### 베이크 해시 게이트 (주석 자신)
+
+`SyncCommutePopulation()`이 두 해시로 재베이크 경로를 가릅니다.
+
+```text
+commuteRoutesHash 변경 → RebuildCommute        (전체, RebuildParkingVisuals 포함)
+commuteTuningHash 변경 → RebakeCommuteGeometry (기하만, 주차 재생성 없음)
+```
+
+주차 노브를 **어느 해시에도 안 넣으면** 노브가 죽은 것처럼 보이고,
+**튜닝 해시에 넣으면** 주차 비주얼이 갱신되지 않습니다. 둘 다 에러가 안 납니다.
+
+### 실행 순서 (전원)
+
+`MainCityView.Update()`에서 `RefreshSignals()` → `RefreshRoundabouts()` → ... → `RefreshVehicles()`
+순으로 돕니다. 차는 **같은 프레임에 앞서 만들어진** 신호·로터리 상태를 읽습니다.
+이 순서 앞에 작업을 끼워 넣으면 주석이 보는 값이 달라집니다.
+
+또한 `CreateRoundaboutVisual()`이 `signalRoot`에 붙습니다(오버패스·일방통행·우선도로도 마찬가지).
+준희가 `ClearChildren(signalRoot)`를 부르면 **환의 로터리 비주얼이 함께 사라집니다.**
+
+### 타일 의미 변경 (진우 → 환·준희)
+
+`CityGrid.IsIntersection()`이 바뀌면 `SimEngine.RebuildSignals()`의 컬링이 **로터리와 신호를 함께
+지웁니다.** 진우가 새 `TileType`을 추가해 도로 인접 판정이 달라지면 여기에 걸립니다.
+
+## 충돌이 나면
+
+```text
+1. 남의 소유 파일에서 충돌 → 수정해도 되지만 반드시 소유자에게 미리 공유한다.
+2. 씬 파일 충돌 → 자기 씬이 아니면 무조건 상대 것을 취한다(--theirs).
+3. SimConfig.Default() 충돌 → append-only이므로 양쪽 줄을 다 살린다.
+   단, 살린 필드가 .asset 3개에 다 들어갔는지 확인한다.
+```
+
+## 이 분업의 천장
+
+`CarMotion.cs`는 `partial class`라 **결합도를 줄이지 않았습니다.** 파일 소유권만 갈랐을 뿐,
+`MoveCarSimVehicle`이 적분 중간에 Transform·렌더러·브레이크등·코인팝을 직접 건드리는 구조는
+그대로입니다.
+
+모션을 심 없이 테스트하려면 `RouteVehicle`(모션 상태와 `GameObject` 핸들이 한 클래스에 섞여 있음)
+분해부터 시작하는 별개 작업이 필요합니다. 이번 분업의 목적은 거기까지가 아니라
+**오후에 4명이 동시에 커밋할 수 있게 하는 것**입니다.

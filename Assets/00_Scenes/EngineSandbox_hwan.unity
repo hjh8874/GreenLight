@@ -470,7 +470,7 @@ MonoBehaviour:
   overridePulseAmp: 0.25
   laneOffset: 0.18
   followGap: 0.4
-  roundaboutOrbitRadius: 0.3
+  roundaboutOrbitRadius: 0.775
   boardColor: {r: 0.78, g: 0.82, b: 0.78, a: 1}
   gridLineColor: {r: 0.28, g: 0.36, b: 0.38, a: 1}
   roadFreeColor: {r: 0.32, g: 0.36, b: 0.43, a: 1}

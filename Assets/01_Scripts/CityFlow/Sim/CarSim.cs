@@ -15,6 +15,9 @@ namespace CityFlow.Sim
         public int QueueSlot;
         public int HomeSlot;
         public int WorkSlot;
+        public float IntersectionProgress01 { get; internal set; }
+        public float LinkProgress01;
+        public float RoundaboutProgress01 { get; internal set; }
     }
 
     internal sealed class CarSim : ICarRouteProvider
@@ -31,6 +34,9 @@ namespace CityFlow.Sim
         private readonly bool[] _enqueued;
         private readonly int[] _tileIndices;
         private readonly int[] _queueSlots;
+        private readonly float[] _intersectionProgress;
+        private readonly float[] _linkProgress;
+        private readonly float[] _roundaboutProgress;
         private RoadQueueNetwork _net;
         private float _lastHour;
         private bool _hasLastHour;
@@ -55,7 +61,13 @@ namespace CityFlow.Sim
             _enqueued = new bool[maxCars];
             _tileIndices = new int[maxCars];
             _queueSlots = new int[maxCars];
+            _intersectionProgress = new float[maxCars];
+            _linkProgress = new float[maxCars];
+            _roundaboutProgress = new float[maxCars];
             Array.Fill(_queueSlots, -1);
+            Array.Fill(_intersectionProgress, -1f);
+            Array.Clear(_linkProgress, 0, _linkProgress.Length);
+            Array.Fill(_roundaboutProgress, -1f);
         }
 
         public void Rebuild(DemandMap demands, RoutePlanner planner, RoadQueueNetwork net)
@@ -101,7 +113,7 @@ namespace CityFlow.Sim
             _scheduler.Rebuild(
                 _sources,
                 _sinks,
-                Math.Max(1, _cfg.OfficeParkingSlots),
+                demands.WorkCapacityAt,
                 Math.Max(1, _cfg.CarsPerHouse),
                 Math.Min(_enqueued.Length, Math.Max(1, _cfg.MaxSimCars)),
                 _cfg.MorningStartHour,
@@ -111,6 +123,9 @@ namespace CityFlow.Sim
             Array.Clear(_enqueued, 0, _enqueued.Length);
             Array.Clear(_tileIndices, 0, _tileIndices.Length);
             Array.Fill(_queueSlots, -1);
+            Array.Fill(_intersectionProgress, -1f);
+            Array.Clear(_linkProgress, 0, _linkProgress.Length);
+            Array.Fill(_roundaboutProgress, -1f);
             _needsSnap = true;
         }
 
@@ -148,6 +163,9 @@ namespace CityFlow.Sim
                 }
                 Array.Clear(_enqueued, 0, _enqueued.Length);
                 Array.Fill(_queueSlots, -1);
+                Array.Fill(_intersectionProgress, -1f);
+                Array.Clear(_linkProgress, 0, _linkProgress.Length);
+                Array.Fill(_roundaboutProgress, -1f);
                 _needsSnap = false;
             }
             _lastHour = gameHour;
@@ -165,6 +183,9 @@ namespace CityFlow.Sim
                 _scheduler.NotifyArrived(car);
                 _enqueued[arrival.CarId] = false;
                 _queueSlots[arrival.CarId] = -1;
+                _intersectionProgress[arrival.CarId] = -1f;
+                _linkProgress[arrival.CarId] = 0f;
+                _roundaboutProgress[arrival.CarId] = -1f;
                 if (paidArrival)
                     events.QueueArrival(new ArrivalEvent(car.Work, _cfg.CoinPerTrip));
             }
@@ -185,7 +206,10 @@ namespace CityFlow.Sim
                 TileIndex = _tileIndices[index],
                 QueueSlot = _queueSlots[index],
                 HomeSlot = car.HomeSlot,
-                WorkSlot = car.WorkSlot
+                WorkSlot = car.WorkSlot,
+                IntersectionProgress01 = _intersectionProgress[index],
+                LinkProgress01 = _linkProgress[index],
+                RoundaboutProgress01 = _roundaboutProgress[index]
             };
         }
 
@@ -198,7 +222,8 @@ namespace CityFlow.Sim
             {
                 if (route[i] != current) continue;
                 next = route[i + 1];
-                return TryDirection(next - current, out entryDirAtNext);
+                Vector2Int delta = next - current;
+                return TryRouteDirection(delta, out entryDirAtNext);
             }
             return false;
         }
@@ -225,12 +250,15 @@ namespace CityFlow.Sim
                         if (route[p] == car.ResumeTile) { start = p; break; }
                 }
                 Dir entry = Dir.N;
-                if (start > 0 && !TryDirection(route[start] - route[start - 1], out entry)) start = 0;
-                if (start == 0 && route.Count > 1 && !TryDirection(route[1] - route[0], out entry)) continue;
+                if (start > 0 && !TryRouteDirection(route[start] - route[start - 1], out entry)) start = 0;
+                if (start == 0 && route.Count > 1 && !TryRouteDirection(route[1] - route[0], out entry)) continue;
                 if (!net.TryEnqueue(route[start], entry, i)) continue;
                 _enqueued[i] = true;
                 _tileIndices[i] = start;
                 _queueSlots[i] = 0;
+                _intersectionProgress[i] = -1f;
+                _linkProgress[i] = 0f;
+                _roundaboutProgress[i] = -1f;
             }
         }
 
@@ -239,21 +267,58 @@ namespace CityFlow.Sim
             for (int i = 0; i < CarCount; i++)
             {
                 CommuteCar car = _scheduler.Cars[i];
-                if (!_enqueued[i] || !net.TryLocateCar(i, out Vector2Int tile, out _, out int slot))
+                if (!_enqueued[i] || !net.TryLocateCar(
+                        i,
+                        out Vector2Int tile,
+                        out _,
+                        out int slot,
+                        out float intersectionProgress,
+                        out float linkProgress,
+                        out int roundaboutCell))
                 {
+                    _linkProgress[i] = 0f;
                     _queueSlots[i] = -1;
+                    _intersectionProgress[i] = -1f;
+                    _roundaboutProgress[i] = -1f;
                     _tileIndices[i] = car.State == CarState.ParkedWork
                         ? _outboundRoutes[car.RouteIndex].Count - 1
                         : 0;
                     continue;
                 }
+                _linkProgress[i] = linkProgress;
                 _queueSlots[i] = slot;
+                _intersectionProgress[i] = intersectionProgress;
+                _roundaboutProgress[i] = -1f;
                 List<Vector2Int> route = car.State == CarState.Inbound
                     ? _returnRoutes[car.RouteIndex]
                     : _outboundRoutes[car.RouteIndex];
                 for (int p = 0; p < route.Count; p++)
-                    if (route[p] == tile) { _tileIndices[i] = p; break; }
+                {
+                    if (route[p] != tile) continue;
+                    _tileIndices[i] = p;
+                    _roundaboutProgress[i] = CalculateRoundaboutProgress(route, p, roundaboutCell);
+                    break;
+                }
             }
+        }
+
+        private static float CalculateRoundaboutProgress(
+            IReadOnlyList<Vector2Int> route,
+            int tileIndex,
+            int roundaboutCell)
+        {
+            if (roundaboutCell < 0 || tileIndex <= 0 || tileIndex >= route.Count - 1)
+            {
+                return -1f;
+            }
+
+            if (!TryDirection(route[tileIndex] - route[tileIndex - 1], out Dir entry)
+                || !TryDirection(route[tileIndex + 1] - route[tileIndex], out Dir exitCell))
+            {
+                return -1f;
+            }
+
+            return RoundaboutTrafficState.Progress01(entry, exitCell, (Dir)roundaboutCell);
         }
 
         private bool TryRoute(int carId, out List<Vector2Int> route)
@@ -275,6 +340,17 @@ namespace CityFlow.Sim
             else if (delta == Vector2Int.down) direction = Dir.S;
             else if (delta == Vector2Int.left) direction = Dir.W;
             else { direction = default; return false; }
+            return true;
+        }
+
+        private static bool TryRouteDirection(Vector2Int delta, out Dir direction)
+        {
+            if (TryDirection(delta, out direction)) return true;
+            if (delta == Vector2Int.zero) return false;
+            if (Mathf.Abs(delta.x) >= Mathf.Abs(delta.y))
+                direction = delta.x >= 0 ? Dir.E : Dir.W;
+            else
+                direction = delta.y >= 0 ? Dir.N : Dir.S;
             return true;
         }
     }

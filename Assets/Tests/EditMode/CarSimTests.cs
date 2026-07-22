@@ -21,7 +21,6 @@ namespace CityFlow.Sim.Tests
             cfg.MorningEndHour = 7f;
             cfg.EveningStartHour = 17f;
             cfg.EveningEndHour = 18f;
-            cfg.OfficeParkingSlots = 6;
             cfg.MaxSimCars = 96;
             cfg.DemandChoicePool = 1;
             return cfg;
@@ -186,6 +185,39 @@ namespace CityFlow.Sim.Tests
             Assert.GreaterOrEqual(after.TileIndex, before.TileIndex,
                 $"건설이 주행 차의 진행도를 되돌렸다 ({before.TileIndex} -> {after.TileIndex})"
                 + " — 뷰에서 집으로 순간이동하는 것으로 보인다");
+        }
+
+        [Test]
+        public void Departure_WhenAccessRoadIsRamp_EntersHighway()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(10, 3);
+            for (int x = 1; x <= 8; x++) Assert.IsTrue(grid.Place(V(x, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(9, 1), TileType.Office));
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            var links = new List<HighwayLink> { new HighwayLink(V(1, 1), V(7, 1)) };
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg, null, null, links);
+            CollectionAssert.AreEqual(
+                new[] { V(1, 1), V(7, 1), V(8, 1) },
+                planner.CarRoutes[0],
+                "test setup must begin with a highway jump");
+
+            var devices = new FakeDeviceState();
+            devices.AddHighway(V(1, 1), V(7, 1));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid, devices);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+
+            sim.Step(7f, net, new SimEventBuffer(new SimEventHub()));
+
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
+            Assert.AreEqual(0, sim.GetCar(0).QueueSlot,
+                "a car whose first route step is a highway jump must be enqueued on the link");
         }
 
         private static void BuildStraightCity(

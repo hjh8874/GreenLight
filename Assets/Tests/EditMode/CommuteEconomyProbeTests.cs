@@ -5,34 +5,30 @@ using CityFlow.Contracts;
 
 namespace CityFlow.Sim.Tests
 {
-    // 배정 ↔ 경제 연결 프로브 (2026-07-18). 코드 무변경 특성화 테스트.
-    // 목적: "회사 배정 용량"과 "실제 통근(=코인 지급 횟수)" 사이의 캡 결합을 수치로 고정한다.
-    //
-    // 발견: 배정 캡이 두 레이어에 나뉘어 있고 서로 대화하지 않는다.
-    //  - DemandMap.AssignType : 사무실당 OfficeCapacity(기본 20)까지 (집,회사) 짝을 만든다.
-    //  - CommuteScheduler.Rebuild : 그 짝들 중 OfficeParkingSlots(기본 6)만 WorkSlot을 얻어 실제 통근.
-    // 코인 = 회사 도착 1회당 flat CoinPerTrip 이므로, 한 사무실의 하루 최대 코인 = (통근 차 수) × CoinPerTrip.
-    // 결론: 코인의 실질 레버는 OfficeCapacity(배정 20)가 아니라 OfficeParkingSlots(통근 6) + 사무실 개수다.
+    // 배정 ↔ 경제 연결 프로브 (2026-07-22 정원 단일화).
+    // DemandMap 배정과 CommuteScheduler 주차가 같은 OfficeCapacity를 사용해
+    // 배정됐지만 통근하지 못하는 유령 집이 다시 생기지 않는지 고정한다.
     public class CommuteEconomyProbeTests
     {
         static Vector2Int V(int x, int y) => new Vector2Int(x, y);
 
         static void Rebuild(CommuteScheduler sched, List<Vector2Int> homes, List<Vector2Int> works, in SimConfig cfg)
-            => sched.Rebuild(homes, works,
-                officeSlots: cfg.OfficeParkingSlots,
+        {
+            int capacity = cfg.OfficeCapacity;
+            sched.Rebuild(homes, works,
+                workCapacityFor: _ => capacity,
                 homeSlots: cfg.CarsPerHouse,
                 maxCars: cfg.MaxSimCars,
                 morningStart: cfg.MorningStartHour, morningEnd: cfg.MorningEndHour,
                 eveningStart: cfg.EveningStartHour, eveningEnd: cfg.EveningEndHour);
+        }
 
-        // 한 사무실로 30집이 몰려도 실제 통근은 OfficeParkingSlots(6)로 캡.
-        // → 사무실 배정 용량(OfficeCapacity)을 아무리 키워도 이 코인 상한은 안 움직인다.
+        // 한 사무실로 30집이 몰려도 단일 회사 정원(6)으로 캡.
         [Test]
-        public void OneOffice_ManyHomes_CommutersCappedByParkingSlots()
+        public void OneOffice_ManyHomes_CommutersCappedByCompanyCapacity()
         {
             var cfg = SimConfig.Default();
-            Assert.AreEqual(6, cfg.OfficeParkingSlots, "가정: 주차 슬롯 6");
-            Assert.AreEqual(20, cfg.OfficeCapacity, "가정: 배정 용량 20 (통근 캡과 3배 넘게 어긋남)");
+            Assert.AreEqual(6, cfg.OfficeCapacity, "회사 배정·주차가 공유하는 단일 정원");
 
             var office = V(50, 50);
             var homes = new List<Vector2Int>(30);
@@ -42,18 +38,17 @@ namespace CityFlow.Sim.Tests
             var sched = new CommuteScheduler();
             Rebuild(sched, homes, works, cfg);
 
-            Assert.AreEqual(cfg.OfficeParkingSlots, sched.Cars.Count,
-                "30집이 한 사무실에 붙어도 통근은 6대 — 24집은 그날 통근·수입 0");
+            Assert.AreEqual(cfg.OfficeCapacity, sched.Cars.Count,
+                "30집이 한 사무실에 붙어도 통근은 회사 정원을 넘지 않음");
 
             long maxDailyCoinPerOffice = (long)sched.Cars.Count * cfg.CoinPerTrip;
             Assert.AreEqual(60L, maxDailyCoinPerOffice,
-                "사무실 1개 하루 최대 코인 = 6 × 10 = 60. 배정 용량 20은 코인에 무영향(inert).");
+                "사무실 1개 하루 최대 코인 = 정원 6 × 도착 보상 10 = 60");
         }
 
-        // 대조군: 통근(=코인)의 실질 레버는 '사무실 주차슬롯 총합'.
-        // 사무실 3개 × 6슬롯 = 18 통근으로 선형 증가(같은 36집 후보라도 사무실 수가 좌우).
+        // 통근(=코인)의 실질 레버는 회사 정원 총합.
         [Test]
-        public void CommuterCount_ScalesWithOfficeSlotSum_NotHomeCount()
+        public void CommuterCount_ScalesWithCompanyCapacitySum_NotHomeCount()
         {
             var cfg = SimConfig.Default();
             var homes = new List<Vector2Int>();
@@ -65,13 +60,13 @@ namespace CityFlow.Sim.Tests
             var sched = new CommuteScheduler();
             Rebuild(sched, homes, works, cfg);
 
-            Assert.AreEqual(3 * cfg.OfficeParkingSlots, sched.Cars.Count,
-                "36집 후보라도 통근은 3사무실 × 6슬롯 = 18 — 레버는 사무실 슬롯 총합");
+            Assert.AreEqual(3 * cfg.OfficeCapacity, sched.Cars.Count,
+                "36집 후보라도 통근은 3사무실 × 정원 6 = 18");
         }
 
         // ── 단핵도시(monocentric) 측정 하니스 ────────────────────────────────
         // 인천/김포 → 서울 패턴: 도심 오피스 클러스터 + 외곽 주거 링.
-        // 배정 수·실현 통근 수·통근거리·일일 코인을 수치화해 캡 통일 전후를 비교한다.
+        // 배정 수·실현 통근 수·통근거리·일일 코인을 수치화한다.
 
         const int CityN = 20;
         const int CoreLo = 9, CoreHi = 11;              // 도심 3x3 오피스
@@ -87,7 +82,7 @@ namespace CityFlow.Sim.Tests
         }
 
         // 도심 오피스 + 외곽 주거 링 + 나머지 전부 도로(완전 연결 — 배정이 순수 거리·용량으로 결정되게).
-        static CityMetrics MeasureMonocentric(in SimConfig cfg, int officeSlots)
+        static CityMetrics MeasureMonocentric(in SimConfig cfg, int companyCapacity)
         {
             var g = new CityGrid(CityN, CityN);
             for (int y = CoreLo; y <= CoreHi; y++)
@@ -114,7 +109,7 @@ namespace CityFlow.Sim.Tests
             foreach (var d in dm.Demands) { homes.Add(d.Source); works.Add(d.Sink); }
 
             var sched = new CommuteScheduler();
-            sched.Rebuild(homes, works, officeSlots, cfg.CarsPerHouse, cfg.MaxSimCars,
+            sched.Rebuild(homes, works, _ => companyCapacity, cfg.CarsPerHouse, cfg.MaxSimCars,
                 cfg.MorningStartHour, cfg.MorningEndHour, cfg.EveningStartHour, cfg.EveningEndHour);
 
             long sum = 0;
@@ -147,39 +142,38 @@ namespace CityFlow.Sim.Tests
                 $"[{label}] assigned={m.AssignedDemands} realized={m.RealizedCommuters} " +
                 $"avgDist={m.AvgDistance:F2} maxDist={m.MaxDistance} dailyCoin={m.DailyCoin}");
 
-        // 베이스라인: 현재 캡(슬롯 6)이 단핵도시에서 통근·코인을 얼마나 조르는가.
+        // 단일 정원 적용 후 배정 수와 실제 통근 수가 일치하는지 검증한다.
         [Test]
-        public void Monocentric_Baseline_SlotsThrottleRealizedCommuters()
+        public void Monocentric_UnifiedCapacity_HasNoGhostAssignments()
         {
             var cfg = SimConfig.Default();
-            CityMetrics m = MeasureMonocentric(cfg, cfg.OfficeParkingSlots);
-            Report("baseline slots=6", m);
+            CityMetrics m = MeasureMonocentric(cfg, cfg.OfficeCapacity);
+            Report("unified capacity=6", m);
 
-            Assert.Greater(m.AssignedDemands, m.RealizedCommuters,
-                "배정됐지만 슬롯 부족으로 통근 못 하는 집이 존재해야 한다(현 캡 불일치)");
-            Assert.LessOrEqual(m.RealizedCommuters, OfficeCount * cfg.OfficeParkingSlots,
-                "실현 통근 상한 = 오피스 9 × 슬롯 6 = 54");
+            Assert.AreEqual(m.AssignedDemands, m.RealizedCommuters,
+                "배정 정원과 주차 정원이 같으므로 유령 집이 없어야 한다");
+            Assert.LessOrEqual(m.RealizedCommuters, OfficeCount * cfg.OfficeCapacity,
+                "실현 통근 상한 = 오피스 9 × 정원 6 = 54");
         }
 
-        // 캡을 배정 용량(OfficeCapacity)으로 통일하면 통근·코인이 얼마나 열리는가.
+        // 명시적으로 더 작은 타일 정원을 전달해도 스케줄러가 그 정원을 그대로 지킨다.
         [Test]
-        public void Monocentric_UnifiedCap_UnlocksCommutersAndCoin()
+        public void Monocentric_SmallerCapacity_ConstrainsAssignmentAndCoinTogether()
         {
             var cfg = SimConfig.Default();
-            CityMetrics base6 = MeasureMonocentric(cfg, cfg.OfficeParkingSlots);
-            CityMetrics unified = MeasureMonocentric(cfg, cfg.OfficeCapacity);
-            Report("baseline slots=6", base6);
-            Report("unified slots=20", unified);
+            CityMetrics full = MeasureMonocentric(cfg, cfg.OfficeCapacity);
+            SimConfig smallerConfig = cfg;
+            smallerConfig.OfficeCapacity = 3;
+            CityMetrics smaller = MeasureMonocentric(
+                smallerConfig,
+                smallerConfig.OfficeCapacity
+            );
+            Report("capacity=6", full);
+            Report("capacity=3", smaller);
 
-            Assert.Greater(unified.RealizedCommuters, base6.RealizedCommuters,
-                "캡 통일 시 실현 통근이 늘어야 한다 — 이게 A안(단핵)의 레버");
-            Assert.Greater(unified.DailyCoin, base6.DailyCoin, "일일 코인도 함께 열려야 한다");
+            Assert.Less(smaller.RealizedCommuters, full.RealizedCommuters);
+            Assert.Less(smaller.DailyCoin, full.DailyCoin);
         }
-
-        // 주: 캡 통일(work 슬롯 상한을 일자리 용량으로) 시도는 2026-07-18 되돌렸다 —
-        // 슬롯 20이 되면 한 건물 타일에 20대가 주차해 뷰가 겹치고 도착 시 플래쉬가 생겼다(환 라이브).
-        // 위 측정 테스트들은 그대로 유효(명시적 officeSlots 인자로 측정) — 경제 병목 사실은 여전하나,
-        // 해법은 '뷰 주차 슬롯과 경제 일자리 수의 분리'가 선행돼야 한다.
 
         // 주: 리빌드 연속성 시도(건설 시 전 차량 스냅 → 신규만 스냅 + 재개 위치 복원)도
         // 2026-07-18 되돌렸다. 재인큐가 차 인덱스 순서(tail 삽입)라 같은 타일 두 차가 슬롯을

@@ -39,9 +39,22 @@ namespace CityFlow.Sim
         readonly List<Vector2Int> _houses = new(64);
         readonly List<Vector2Int> _sinks = new(16);
         readonly List<Demand> _demands = new(128);
+        readonly Dictionary<Vector2Int, CompanyCapacityState> _companies = new(16);
+        readonly Dictionary<Vector2Int, int> _effectiveCapacityBySink = new(16);
+        readonly Dictionary<Vector2Int, int> _assignedBySink = new(16);
         // 홈타일+sink종류 → 배정 sink. sink 철거/도로 단절 때만 해제해 차량 순간이동을 막는다.
         readonly Dictionary<(Vector2Int home, TileType sink), Vector2Int> _sticky = new(128);
         readonly List<Vector2Int> _houseFrontageBuffer = new(8);   // 집 프론티지 전수 스캔용 재사용 버퍼
+        double _companySimTime;
+
+        sealed class CompanyCapacityState
+        {
+            public TileType Type;
+            public int TotalCapacity;
+            public double BuiltAtSimSeconds;
+            public bool IsFullyOpen;
+            public bool UsesTypeDefault;
+        }
 
         public IReadOnlyList<Demand> Demands => _demands;
 
@@ -56,6 +69,179 @@ namespace CityFlow.Sim
         internal void ApplyConfig(in SimConfig next)
         {
             _config = next;
+
+            foreach (CompanyCapacityState company in _companies.Values)
+            {
+                int typeCapacity =
+                    CapacityForType(company.Type);
+                company.TotalCapacity =
+                    company.UsesTypeDefault
+                        ? typeCapacity
+                        : Mathf.Min(
+                            company.TotalCapacity,
+                            typeCapacity
+                        );
+            }
+        }
+
+        internal void RegisterCompany(
+            Vector2Int tile,
+            TileType type,
+            double builtAtSimSeconds,
+            int? capacityOverride = null
+        )
+        {
+            if (type != TileType.Office)
+            {
+                return;
+            }
+
+            int typeCapacity = CapacityForType(type);
+            bool usesTypeDefault = !capacityOverride.HasValue;
+            int totalCapacity = usesTypeDefault
+                ? typeCapacity
+                : Mathf.Clamp(
+                    capacityOverride.Value,
+                    0,
+                    typeCapacity
+                );
+
+            _companies[tile] =
+                new CompanyCapacityState
+                {
+                    Type = type,
+                    TotalCapacity = totalCapacity,
+                    BuiltAtSimSeconds = builtAtSimSeconds,
+                    IsFullyOpen = false,
+                    UsesTypeDefault = usesTypeDefault
+                };
+        }
+
+        internal void RegisterRestoredCompany(
+            Vector2Int tile,
+            TileType type
+        )
+        {
+            if (type != TileType.Office)
+            {
+                return;
+            }
+
+            _companies[tile] =
+                new CompanyCapacityState
+                {
+                    Type = type,
+                    TotalCapacity = CapacityForType(type),
+                    BuiltAtSimSeconds = _companySimTime,
+                    IsFullyOpen = true,
+                    UsesTypeDefault = true
+                };
+        }
+
+        internal void SetCompanyCapacity(
+            Vector2Int tile,
+            int capacity
+        )
+        {
+            if (!_companies.TryGetValue(
+                tile,
+                out CompanyCapacityState company
+            ))
+            {
+                return;
+            }
+
+            company.TotalCapacity =
+                Mathf.Clamp(
+                    capacity,
+                    0,
+                    CapacityForType(company.Type)
+                );
+            company.UsesTypeDefault = false;
+        }
+
+        internal void RemoveCompany(Vector2Int tile)
+        {
+            _companies.Remove(tile);
+            _effectiveCapacityBySink.Remove(tile);
+            _assignedBySink.Remove(tile);
+        }
+
+        internal void ClearCompanies()
+        {
+            _companies.Clear();
+            _effectiveCapacityBySink.Clear();
+            _assignedBySink.Clear();
+        }
+
+        internal bool AdvanceCompanyCapacities(
+            double simTime
+        )
+        {
+            bool changed = false;
+
+            foreach (CompanyCapacityState company in
+                     _companies.Values)
+            {
+                int before = EffectiveCapacityAtTime(
+                    company,
+                    _companySimTime
+                );
+                int after = EffectiveCapacityAtTime(
+                    company,
+                    simTime
+                );
+
+                if (before != after)
+                {
+                    changed = true;
+                }
+            }
+
+            _companySimTime = simTime;
+            return changed;
+        }
+
+        internal bool TryGetCompanyStaffing(
+            Vector2Int tile,
+            out int filled,
+            out int capacity
+        )
+        {
+            filled = 0;
+            capacity = 0;
+
+            if (!_companies.TryGetValue(
+                tile,
+                out CompanyCapacityState company
+            ))
+            {
+                return false;
+            }
+
+            capacity = company.TotalCapacity;
+            _assignedBySink.TryGetValue(tile, out filled);
+            return true;
+        }
+
+        internal int WorkCapacityAt(Vector2Int tile)
+        {
+            if (_companies.TryGetValue(
+                tile,
+                out CompanyCapacityState company
+            ))
+            {
+                return _effectiveCapacityBySink.TryGetValue(
+                    tile,
+                    out int companyCapacity
+                )
+                    ? companyCapacity
+                    : EffectiveCapacity(company);
+            }
+
+            // 학교는 이번 작업의 회사 정원 대상이 아니다. 기존 공용 주차 상한 6은
+            // 이제 같은 기본 회사 정원 값에서 읽어 학교 통근 동작을 유지한다.
+            return CapacityForType(TileType.Office);
         }
 
         // 신규 수요처가 생겼을 때 전 차량 귀가 안전시점에서만 호출한다.
@@ -65,6 +251,8 @@ namespace CityFlow.Sim
         public void Reassign(CityGrid grid, RoadNetwork net)
         {
             _demands.Clear();
+            _effectiveCapacityBySink.Clear();
+            _assignedBySink.Clear();
             _houses.Clear();
             Collect(grid, TileType.House, _houses);
 
@@ -73,7 +261,18 @@ namespace CityFlow.Sim
             {
                 _sinks.Clear();
                 Collect(grid, sinkType, _sinks);
-                AssignType(_houses, _sinks, sinkType, CapacityFor(sinkType), net);
+
+                if (sinkType == TileType.Office)
+                {
+                    SynchronizeCompanies(_sinks);
+                }
+
+                AssignType(
+                    _houses,
+                    _sinks,
+                    sinkType,
+                    net
+                );
             }
         }
 
@@ -90,19 +289,115 @@ namespace CityFlow.Sim
             }
         }
 
-        int CapacityFor(TileType sinkType) => sinkType switch
+        int CapacityForType(TileType sinkType)
         {
-            TileType.Office => _config.OfficeCapacity,
-            TileType.School => _config.SchoolCapacity,
-            _ => 0,
-        };
+            int configured = sinkType switch
+            {
+                TileType.Office => _config.OfficeCapacity,
+                TileType.School => _config.SchoolCapacity,
+                _ => 0,
+            };
+
+            return Mathf.Max(0, configured);
+        }
+
+        int CapacityFor(
+            TileType sinkType,
+            Vector2Int sink
+        )
+        {
+            if (sinkType == TileType.Office &&
+                _companies.TryGetValue(
+                    sink,
+                    out CompanyCapacityState company
+                ))
+            {
+                return EffectiveCapacity(company);
+            }
+
+            return Mathf.Max(
+                0,
+                CapacityForType(sinkType)
+            );
+        }
+
+        int EffectiveCapacity(
+            CompanyCapacityState company
+        ) => EffectiveCapacityAtTime(
+            company,
+            _companySimTime
+        );
+
+        int EffectiveCapacityAtTime(
+            CompanyCapacityState company,
+            double simTime
+        )
+        {
+            if (company.IsFullyOpen)
+            {
+                return Mathf.Max(
+                    0,
+                    company.TotalCapacity
+                );
+            }
+
+            return CompanyCapacityCalculator
+                .EffectiveCapacity(
+                    company.TotalCapacity,
+                    company.BuiltAtSimSeconds,
+                    simTime,
+                    _config
+                        .CompanyHiringSlotsPerGameHour,
+                    _config.DayLengthSeconds
+                );
+        }
+
+        void SynchronizeCompanies(
+            List<Vector2Int> officeTiles
+        )
+        {
+            var liveTiles =
+                new HashSet<Vector2Int>(officeTiles);
+            var removedTiles =
+                new List<Vector2Int>();
+
+            foreach (Vector2Int tile in _companies.Keys)
+            {
+                if (!liveTiles.Contains(tile))
+                {
+                    removedTiles.Add(tile);
+                }
+            }
+
+            for (int i = 0;
+                 i < removedTiles.Count;
+                 i++)
+            {
+                RemoveCompany(removedTiles[i]);
+            }
+
+            for (int i = 0;
+                 i < officeTiles.Count;
+                 i++)
+            {
+                Vector2Int tile = officeTiles[i];
+
+                if (!_companies.ContainsKey(tile))
+                {
+                    RegisterRestoredCompany(
+                        tile,
+                        TileType.Office
+                    );
+                }
+            }
+        }
 
         // 각 집을 '남은 용량이 있는, 도달 가능한(같은 섬)' sink 중 가까운 K곳(DemandChoicePool)
         // 하나에 배정 — 좌표 해시로 결정론적 선택(같은 도시 = 같은 배정, 세이브·테스트 안전).
         // K=1이면 항상 최근접. 도달 가능한 곳이 하나도 없으면 최근접 폴백(흐름 0).
         // 감사 픽스 2: 건물의 프론티지가 여러 개(다른 Region)일 수 있어 전수 검사 — 첫 접점만
         // 보면 실제로는 연결된 건물을 도달불가로 오판한다(막다른 스텁이 스캔 1순위일 때).
-        void AssignType(List<Vector2Int> sources, List<Vector2Int> sinks, TileType sinkType, int capPerSink, RoadNetwork net)
+        void AssignType(List<Vector2Int> sources, List<Vector2Int> sinks, TileType sinkType, RoadNetwork net)
         {
             if (sinks.Count == 0)
             {
@@ -115,7 +410,12 @@ namespace CityFlow.Sim
             var sinkIndices = new Dictionary<Vector2Int, int>(sinks.Count);
             for (int i = 0; i < sinks.Count; i++)
             {
-                remaining[i] = capPerSink;
+                remaining[i] = CapacityFor(
+                    sinkType,
+                    sinks[i]
+                );
+                _effectiveCapacityBySink[sinks[i]] =
+                    remaining[i];
                 sinkFrontages[i] = new List<Vector2Int>(4);
                 net.CollectAccessRoads(sinks[i], sinkFrontages[i]);
                 sinkIndices[sinks[i]] = i;
@@ -197,6 +497,14 @@ namespace CityFlow.Sim
                     Source = house, Sink = sinks[best],
                     SourceRoad = chosenHouseRoad, SinkRoad = chosenSinkRoad,
                 });
+
+                Vector2Int assignedSink = sinks[best];
+                _assignedBySink.TryGetValue(
+                    assignedSink,
+                    out int assignedCount
+                );
+                _assignedBySink[assignedSink] =
+                    assignedCount + 1;
             }
         }
 

@@ -27,7 +27,7 @@ namespace CityFlow.Sim.Tests
             cfg.MorningEndHour = 7f;
             cfg.EveningStartHour = 17f;
             cfg.EveningEndHour = 18f;
-            cfg.OfficeParkingSlots = 6;
+            cfg.CompanyHiringSlotsPerGameHour = 100f;
             cfg.MaxSimCars = 96;
             cfg.DayLengthSeconds = 24f;
             cfg.DemandChoicePool = 1;
@@ -41,6 +41,31 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(CongestionLevel.Free, SimEngine.CongestionForOccupancy(0.49f, cfg));
             Assert.AreEqual(CongestionLevel.Slow, SimEngine.CongestionForOccupancy(0.5f, cfg));
             Assert.AreEqual(CongestionLevel.Jam, SimEngine.CongestionForOccupancy(0.99f, cfg));
+        }
+
+        [Test]
+        public void QueueCount_MatchesRoadQueueNetwork_AndReturnsZeroOutOfBounds()
+        {
+            SimConfig cfg = Cfg();
+            var engine = new SimEngine(cfg, new SimEventHub());
+            RoadQueueNetwork queues = engine.RoadQueuesForTest;
+            Vector2Int tile = V(2, 1);
+
+            Assert.IsTrue(queues.TryEnqueue(tile, Dir.N, 10));
+            Assert.IsTrue(queues.TryEnqueue(tile, Dir.E, 11));
+            Assert.IsTrue(queues.TryEnqueue(tile, Dir.E, 12));
+
+            for (int direction = 0; direction < 4; direction++)
+            {
+                var entryDir = (Dir)direction;
+                Assert.AreEqual(
+                    queues.QueueCount(tile, entryDir),
+                    engine.GetQueueCount(tile, entryDir),
+                    $"{entryDir} 방향 큐");
+            }
+
+            Assert.AreEqual(0, engine.GetQueueCount(V(-1, 1), Dir.E));
+            Assert.AreEqual(0, engine.GetQueueCount(V(cfg.GridWidth, 1), Dir.E));
         }
 
         [Test]

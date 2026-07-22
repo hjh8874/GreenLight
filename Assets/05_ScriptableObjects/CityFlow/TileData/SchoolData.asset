@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2f59b7cd21b92448996b0bc26e27670, type: 3}
+  m_Name: SchoolData
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.TileDataSO
+  buildingId: 
+  buildingName: 공립 학교
+  category: 4
+  buildingIcon: {fileID: 0}
+  buildingPrefab: {fileID: 0}
+  buildingDescription: 주변 주거지의 발전도를 상승시켜 인구를 유치하는 학교입니다.
+  buildCost: 500
+  dailyCoinValue: 10
+  prosperityValue: 1

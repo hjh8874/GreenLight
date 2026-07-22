@@ -66,13 +66,19 @@ namespace CityFlow.View
         // 0.12로 낮춰 계단을 1.27배로 완화 — 레인 오프셋(0.18)이 있어 교차 차량 분리는 유지된다.
         // 완전 해소는 틱 위상 보간 대신 등속 리쉬로 가야 함(설계 과제, 감사 2026-07-18 Rank 1).
         [SerializeField, Range(0f, 0.45f)] private float intersectionQueueInset = 0.12f;
+        [SerializeField, Range(0f, 0.35f)] private float intersectionVisualLagRatio = 0.15f;
         [SerializeField, Range(0.6f, 0.85f)] private float cornerTurnRadius = 0.75f;   // 일반 교차로 회전 반경(타일 비율)
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
         [Header("Roundabout Tuning")]   // 재생 중 슬라이더 조정 → 통근 폴리라인 즉시 리베이크(QA G)
-        [SerializeField, Range(0.5f, 1.1f)] private float roundaboutOrbitRadius = 0.9f;    // 궤도 반경(타일 비율) — 풋프린트 차도 중앙(섬 0.45~판 1.1). 씬 직렬화 값 우선
+        // 궤도 반경(타일 비율) = 차도 정중앙. 차도는 섬 0.45(Island scale 0.9)와 링 1.1(Ring scale 2.2)
+        // 사이의 고리이므로 중앙은 (0.45+1.1)/2 = 0.775 — 섬 스침·바깥 이탈 양쪽에 여유 0.325로 균등.
+        // 2026-07-21 전 씬 통일. 씬에 0.3(섬 내부 = 관통)이 5개 있었다. Range는 인스펙터만 막고
+        // 직렬화 값은 그대로 쓰이므로, 값을 바꿀 때는 반드시 7개 씬을 함께 맞출 것.
+        [SerializeField, Range(0.5f, 1.1f)] private float roundaboutOrbitRadius = 0.775f;
         [SerializeField, Range(10f, 80f)] private float roundaboutEntryExitDeg = 45f;      // α — 진입/이탈을 링 둘레로 미는 각. 클수록 링 체류 짧아짐
-        [SerializeField, Range(0.66f, 0.95f)] private float roundaboutTransitionTiles = 0.66f; // 전이 곡선 길이(타일) — 클수록 진입/이탈 완만. 하한 0.66 = 섬 스침 방지 실측(√(span²+λ²)>0.62, RoutePolyline.cs:316,392)
+        [SerializeField, Range(RoutePolyline.MinTransitionSpan, RoutePolyline.MaxTransitionSpan)]
+        private float roundaboutTransitionTiles = RoutePolyline.MinTransitionSpan; // 전이 곡선 길이(타일). R=0.775·α=45°·λ=0.26 재측정에서 비우회전 최소 이격 0.654(섬 하한 0.62)
 
         [Header("Commute (2차 빌드)")]
         [SerializeField] private float parkingSlotInset = 0.32f;   // 건물 타일 내 칸 오프셋(타일 비율)
@@ -116,6 +122,7 @@ namespace CityFlow.View
         private readonly Dictionary<Vector2Int, GameObject> onewayVisuals = new();
         private readonly Dictionary<Vector2Int, TurnSignVisual> turnSignVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> priorityRoadVisuals = new();
+        private readonly Dictionary<Vector2Int, GameObject> highwayVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
 
         // 통근 상태(유일 경로). 위상 리빌드 시 재구성된다.
@@ -137,11 +144,13 @@ namespace CityFlow.View
         private ISignalControl signalControl;
         private IIntersectionFacilityService intersectionFacility;
         private ITrafficRuleService trafficRule;
+        private IHighwayService highwayService;
         private Transform gridRoot;
         private Transform boardRoot;
         private Transform tileRoot;
         private Transform vehicleRoot;
         private Transform signalRoot;
+        private Transform highwayRoot;
         private Transform effectRoot;
         private int selectedSignalIndex;
         private Camera mainCamera;
@@ -286,6 +295,7 @@ namespace CityFlow.View
             signalControl = services.Placement as ISignalControl;
             intersectionFacility = services.Placement as IIntersectionFacilityService;
             trafficRule = services.Placement as ITrafficRuleService;
+            highwayService = services.Placement as IHighwayService;
 
             services.Events.Placed += OnPlaced;
             services.Events.Arrival += OnArrival;
@@ -306,6 +316,7 @@ namespace CityFlow.View
             RefreshOneways();
             RefreshTurnSigns();
             RefreshPriorityRoads();
+            RefreshHighways();
             RefreshVehicles();
             InitializeCameraView();
             driveViewCamera = gameObject.AddComponent<DriveViewCamera>();
@@ -456,10 +467,13 @@ namespace CityFlow.View
                 ExitDriveView();
             }
 
-            HandleVehicleSelectionInput();
-            if (!IsDriveViewActive)
+            if (!OfflineSettlementPopup.IsInteractionBlocked)
             {
-                HandleCameraViewInput();
+                HandleVehicleSelectionInput();
+                if (!IsDriveViewActive)
+                {
+                    HandleCameraViewInput();
+                }
             }
 
             if (tileData == null)
@@ -467,7 +481,7 @@ namespace CityFlow.View
                 return;
             }
 
-            if (!IsDriveViewActive)
+            if (!IsDriveViewActive && !OfflineSettlementPopup.IsInteractionBlocked)
             {
                 HandleSignalInput();
             }
@@ -477,6 +491,7 @@ namespace CityFlow.View
             RefreshOneways();
             RefreshTurnSigns();
             RefreshPriorityRoads();
+            RefreshHighways();
             RefreshVehicles();
             RefreshCoinPops();
         }
@@ -602,6 +617,7 @@ namespace CityFlow.View
             tileRoot = CreateChildRoot("Tiles");
             vehicleRoot = CreateChildRoot("Vehicles");
             signalRoot = CreateChildRoot("Signals");
+            highwayRoot = CreateChildRoot("Highways");
             effectRoot = CreateChildRoot("Effects");
         }
 
@@ -700,6 +716,8 @@ namespace CityFlow.View
             onewayVisuals.Clear();
             turnSignVisuals.Clear();
             priorityRoadVisuals.Clear();
+            ClearChildren(highwayRoot);
+            highwayVisuals.Clear();
 
             ClearChildren(vehicleRoot);
             vehicles.Clear();
@@ -714,6 +732,7 @@ namespace CityFlow.View
             RefreshOneways();
             RefreshTurnSigns();
             RefreshPriorityRoads();
+            RefreshHighways();
             RefreshVehicles();
 
             Debug.Log("[MainCityView] Restored city visuals rebuilt.");
@@ -1034,6 +1053,54 @@ namespace CityFlow.View
             Renderer bar = CreateSignalBar(root.transform, "Bar",
                 new Vector3(tileSize * 0.5f, tileSize * 0.08f, 0.02f), Vector3.zero);
             ApplyRendererColor(bar, onewayColor);   // 기존 색 재사용(에셋 전)
+            return root;
+        }
+
+        private void RefreshHighways()
+        {
+            if (highwayService == null || highwayRoot == null) return;
+            IReadOnlyList<HighwayLink> links = highwayService.HighwayLinks;
+            for (int i = 0; i < links.Count; i++)
+                if (!highwayVisuals.ContainsKey(links[i].A))
+                    highwayVisuals.Add(links[i].A, CreateHighwayVisual(links[i]));
+
+            foreach (Vector2Int key in new List<Vector2Int>(highwayVisuals.Keys))
+            {
+                bool exists = false;
+                for (int i = 0; i < links.Count; i++) if (links[i].A == key) { exists = true; break; }
+                if (exists) continue;
+                Destroy(highwayVisuals[key]);
+                highwayVisuals.Remove(key);
+            }
+        }
+
+        private GameObject CreateHighwayVisual(HighwayLink link)
+        {
+            var root = new GameObject($"Highway_{link.A.x}_{link.A.y}_{link.B.x}_{link.B.y}");
+            root.transform.SetParent(highwayRoot, false);
+            Vector3 a = GridToLocal(link.A, signalZ - 0.35f);
+            Vector3 b = GridToLocal(link.B, signalZ - 0.35f);
+            Vector3 delta = b - a;
+            root.transform.localPosition = (a + b) * 0.5f;
+            root.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
+
+            GameObject deck = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            deck.name = "ElevatedDeck";
+            Destroy(deck.GetComponent<Collider>());
+            deck.transform.SetParent(root.transform, false);
+            deck.transform.localScale = new Vector3(delta.magnitude, tileSize * 0.32f, 0.08f);
+            ApplyRendererColor(PrepareRenderer(deck.GetComponent<Renderer>()), new Color(0.18f, 0.42f, 0.62f));
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                GameObject ramp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                ramp.name = side < 0 ? "RampA" : "RampB";
+                Destroy(ramp.GetComponent<Collider>());
+                ramp.transform.SetParent(root.transform, false);
+                ramp.transform.localPosition = new Vector3(side * delta.magnitude * 0.5f, 0f, 0.12f);
+                ramp.transform.localScale = new Vector3(tileSize * 0.7f, tileSize * 0.5f, 0.12f);
+                ApplyRendererColor(PrepareRenderer(ramp.GetComponent<Renderer>()), new Color(0.25f, 0.65f, 0.9f));
+            }
             return root;
         }
 
