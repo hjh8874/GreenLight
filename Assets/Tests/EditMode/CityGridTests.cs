@@ -63,6 +63,47 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void Building_Place_UsesTwoByTwoFootprint()
+        {
+            var g = NewGrid();
+            var anchor = new Vector2Int(1, 1);
+
+            Assert.IsTrue(g.Place(anchor, TileType.House));
+
+            Assert.AreEqual(TileType.House, g.GetTile(new Vector2Int(1, 1)));
+            Assert.AreEqual(TileType.House, g.GetTile(new Vector2Int(2, 1)));
+            Assert.AreEqual(TileType.House, g.GetTile(new Vector2Int(1, 2)));
+            Assert.AreEqual(TileType.House, g.GetTile(new Vector2Int(2, 2)));
+            Assert.IsTrue(g.IsFootprintAnchor(anchor));
+            Assert.IsFalse(g.IsFootprintAnchor(new Vector2Int(2, 2)));
+        }
+
+        [Test]
+        public void Building_RemoveFromSecondaryTile_RemovesWholeFootprint()
+        {
+            var g = NewGrid();
+            var anchor = new Vector2Int(1, 1);
+            g.Place(anchor, TileType.Office);
+
+            Assert.IsTrue(g.TryRemove(new Vector2Int(2, 2), out TileType removed, out Vector2Int removedAnchor));
+            Assert.AreEqual(TileType.Office, removed);
+            Assert.AreEqual(anchor, removedAnchor);
+
+            for (int y = 1; y <= 2; y++)
+                for (int x = 1; x <= 2; x++)
+                    Assert.AreEqual(TileType.Empty, g.GetTile(new Vector2Int(x, y)));
+        }
+
+        [Test]
+        public void Building_PlaceAcrossBoundary_Fails()
+        {
+            var g = NewGrid();
+
+            Assert.IsFalse(g.CanPlace(new Vector2Int(4, 3), TileType.School));
+            Assert.IsFalse(g.Place(new Vector2Int(4, 3), TileType.School));
+        }
+
+        [Test]
         public void Remove_Empty_Fails()
         {
             var g = NewGrid();
@@ -114,7 +155,7 @@ namespace CityFlow.Sim.Tests
             // 세이브 복원용 seam: 저장된 타일 재배치 전에 도시를 통째로 비운다.
             var g = NewGrid();
             g.Place(new Vector2Int(0, 0), TileType.Road);
-            g.Place(new Vector2Int(4, 3), TileType.House);   // 양 끝 모서리 — 전체 범위 확인
+            g.Place(new Vector2Int(3, 2), TileType.House);   // 우상단까지 차지하는 2x2 건물 — 전체 범위 확인
             g.ClearTopologyDirty();
             int versionBefore = g.TopologyVersion;
 

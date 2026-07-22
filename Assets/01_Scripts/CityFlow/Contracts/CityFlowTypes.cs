@@ -12,6 +12,18 @@ namespace CityFlow.Contracts
         Hospital
     }
 
+    public static class TileFootprint
+    {
+        private static readonly Vector2Int SingleTile = Vector2Int.one;
+        private static readonly Vector2Int StandardBuilding = new Vector2Int(2, 2);
+
+        public static bool IsBuilding(TileType type) =>
+            type != TileType.Empty && type != TileType.Road;
+
+        public static Vector2Int GetSize(TileType type) =>
+            IsBuilding(type) ? StandardBuilding : SingleTile;
+    }
+
     public enum CongestionLevel
     {
         Free,

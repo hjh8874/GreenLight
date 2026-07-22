@@ -11,7 +11,7 @@ namespace CityFlow.Sim.Tests
         static BakeInput Straight3(Vector3? end = null) => new BakeInput
         {
             Tiles = new List<Vector2Int> { new(0, 0), new(1, 0), new(2, 0) },
-            TileSize = 1f, LaneOffset = 0.26f, CornerRadiusFraction = 0.75f,
+            TileSize = 1f, LaneOffset = 0.25f, CornerRadiusFraction = 0.75f,
             OrbitRadius = 0.775f,                            // 풋프린트 차도 중앙(QA F — 뷰 기본값과 일치)
             EntryExitOffsetRad = 45f * Mathf.Deg2Rad,       // α — 뷰 기본값(QA G)
             TransitionLength = 0.66f,                        // 전이 창(뷰 기본값·내부 하한)
@@ -39,8 +39,8 @@ namespace CityFlow.Sim.Tests
         {
             var p = RoutePolyline.Bake(Straight3());
             Sample s = p.SampleAt(1f);
-            // 진행 +x → 오른쪽은 -y. 중심선 y=0.5(타일 중심) 기준 -0.26.
-            Assert.AreEqual(0.5f - 0.26f, s.Pos.y, 0.02f);
+            // 진행 +x → 오른쪽은 -y. 중심선 y=0.5(타일 중심) 기준 -0.25.
+            Assert.AreEqual(0.5f - 0.25f, s.Pos.y, 0.02f);
             Assert.AreEqual(1f, Vector3.Dot(s.Dir, Vector3.right), 0.01f);
         }
 

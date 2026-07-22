@@ -83,10 +83,18 @@ namespace CityFlow.Sim
         // ⚠ 스캔 순서(상 우선)는 테스트 기하(AxisFlowTests 등)가 접점 위치로 의존 — 바꾸면 테스트 기하 재검증.
         public bool TryGetAccessRoad(Vector2Int building, out Vector2Int road)
         {
-            for (int d = 0; d < DX.Length; d++)
+            Vector2Int size = GetBuildingFootprintSize(building);
+            for (int y = 0; y < size.y; y++)
             {
-                var v = new Vector2Int(building.x + DX[d], building.y + DY[d]);
-                if (IsRoad(v)) { road = v; return true; }
+                for (int x = 0; x < size.x; x++)
+                {
+                    Vector2Int occupied = building + new Vector2Int(x, y);
+                    for (int d = 0; d < DX.Length; d++)
+                    {
+                        var v = new Vector2Int(occupied.x + DX[d], occupied.y + DY[d]);
+                        if (IsRoad(v)) { road = v; return true; }
+                    }
+                }
             }
             road = default;
             return false;
@@ -99,11 +107,26 @@ namespace CityFlow.Sim
         // TryGetAccessRoad 하나만 보면 도달 가능한 프론티지를 놓칠 수 있음 → 전수 수집으로 대응.
         public void CollectAccessRoads(Vector2Int building, List<Vector2Int> buffer)
         {
-            for (int d = 0; d < DX.Length; d++)
+            var seen = new HashSet<Vector2Int>(buffer);
+            Vector2Int size = GetBuildingFootprintSize(building);
+            for (int y = 0; y < size.y; y++)
             {
-                var v = new Vector2Int(building.x + DX[d], building.y + DY[d]);
-                if (IsRoad(v)) buffer.Add(v);
+                for (int x = 0; x < size.x; x++)
+                {
+                    Vector2Int occupied = building + new Vector2Int(x, y);
+                    for (int d = 0; d < DX.Length; d++)
+                    {
+                        var v = new Vector2Int(occupied.x + DX[d], occupied.y + DY[d]);
+                        if (IsRoad(v) && seen.Add(v)) buffer.Add(v);
+                    }
+                }
             }
+        }
+
+        private Vector2Int GetBuildingFootprintSize(Vector2Int building)
+        {
+            TileType type = _grid.GetTile(building);
+            return TileFootprint.GetSize(type);
         }
 
         bool InBounds(Vector2Int v) => v.x >= 0 && v.x < _w && v.y >= 0 && v.y < _h;

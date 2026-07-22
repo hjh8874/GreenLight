@@ -155,15 +155,15 @@ namespace CityFlow.Sim.Tests
         {
             SimConfig cfg = SimConfig.Default();
             cfg.DemandChoicePool = 1;
-            var grid = new CityGrid(10, 3);
-            for (int x = 1; x <= 8; x++) grid.Place(V(x, 1), TileType.Road);
-            grid.Place(V(1, 0), TileType.House);
+            var grid = new CityGrid(11, 4);
+            for (int x = 2; x <= 8; x++) grid.Place(V(x, 2), TileType.Road);
+            grid.Place(V(0, 0), TileType.House);
             grid.Place(V(9, 1), TileType.Office);
             var road = new RoadNetwork(grid);
             var demand = new DemandMap(cfg);
             demand.Reassign(grid, road);
-            var planner = new RoutePlanner(10, 3);
-            var links = new List<HighwayLink> { new HighwayLink(V(2, 1), V(7, 1)) };
+            var planner = new RoutePlanner(11, 4);
+            var links = new List<HighwayLink> { new HighwayLink(V(2, 2), V(7, 2)) };
             var turns = new Dictionary<Vector2Int, TurnMode>
             {
                 [V(0, 2)] = TurnMode.LeftOnly
@@ -172,9 +172,9 @@ namespace CityFlow.Sim.Tests
             planner.Plan(demand, road, grid, cfg, null, turns, links);
             List<Vector2Int> route = planner.CarRoutes[0];
 
-            int ramp = route.IndexOf(V(2, 1));
+            int ramp = route.IndexOf(V(2, 2));
             Assert.GreaterOrEqual(ramp, 0);
-            Assert.AreEqual(V(7, 1), route[ramp + 1],
+            Assert.AreEqual(V(7, 2), route[ramp + 1],
                 "turn-state routing must retain the non-adjacent highway edge");
         }
 

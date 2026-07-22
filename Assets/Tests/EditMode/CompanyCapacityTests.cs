@@ -70,8 +70,8 @@ namespace CityFlow.Sim.Tests
         public void SimEngine_NewCompanyFillsFromZeroAsCapacityOpens()
         {
             SimConfig config = CapacityConfig();
-            config.GridWidth = 8;
-            config.GridHeight = 2;
+            config.GridWidth = 14;
+            config.GridHeight = 3;
             config.TickInterval = 0.25f;
             config.MaxStepsPerFrame = 20;
             config.DayLengthSeconds = 24f;
@@ -81,18 +81,18 @@ namespace CityFlow.Sim.Tests
                 new SimEventHub()
             );
 
-            for (int x = 0; x <= 6; x++)
+            for (int x = 0; x < config.GridWidth; x++)
             {
-                engine.Place(V(x, 1), TileType.Road);
+                Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
             }
 
             for (int x = 0; x < 6; x++)
             {
-                engine.Place(V(x, 0), TileType.House);
+                Assert.IsTrue(engine.Place(V(x * 2, 0), TileType.House));
             }
 
-            Vector2Int office = V(7, 1);
-            engine.Place(office, TileType.Office);
+            Vector2Int office = V(12, 0);
+            Assert.IsTrue(engine.Place(office, TileType.Office));
             engine.SetGameHour(13f);
 
             Assert.IsTrue(
@@ -123,18 +123,18 @@ namespace CityFlow.Sim.Tests
         public void PerCompanyCapacity_LimitsAssignmentsIndependently()
         {
             SimConfig config = CapacityConfig();
-            var grid = new CityGrid(12, 3);
-            Vector2Int smallOffice = V(2, 1);
-            Vector2Int largeOffice = V(9, 1);
+            var grid = new CityGrid(16, 6);
+            Vector2Int smallOffice = V(4, 0);
+            Vector2Int largeOffice = V(10, 0);
 
-            grid.Place(smallOffice, TileType.Office);
-            grid.Place(largeOffice, TileType.Office);
-            grid.Place(V(0, 0), TileType.House);
-            grid.Place(V(11, 0), TileType.House);
-            grid.Place(V(0, 1), TileType.House);
-            grid.Place(V(11, 1), TileType.House);
-            grid.Place(V(0, 2), TileType.House);
-            grid.Place(V(11, 2), TileType.House);
+            Assert.IsTrue(grid.Place(smallOffice, TileType.Office));
+            Assert.IsTrue(grid.Place(largeOffice, TileType.Office));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(14, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(0, 2), TileType.House));
+            Assert.IsTrue(grid.Place(V(14, 2), TileType.House));
+            Assert.IsTrue(grid.Place(V(0, 4), TileType.House));
+            Assert.IsTrue(grid.Place(V(14, 4), TileType.House));
 
             var demand = new DemandMap(config);
             demand.RegisterCompany(
@@ -178,13 +178,13 @@ namespace CityFlow.Sim.Tests
         public void Assignment_DoesNotExceedCompanyCapacity()
         {
             SimConfig config = CapacityConfig();
-            var grid = new CityGrid(8, 2);
-            Vector2Int office = V(7, 0);
-            grid.Place(office, TileType.Office);
+            var grid = new CityGrid(14, 2);
+            Vector2Int office = V(12, 0);
+            Assert.IsTrue(grid.Place(office, TileType.Office));
 
             for (int x = 0; x < 5; x++)
             {
-                grid.Place(V(x, 0), TileType.House);
+                Assert.IsTrue(grid.Place(V(x * 2, 0), TileType.House));
             }
 
             var demand = new DemandMap(config);

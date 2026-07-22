@@ -132,9 +132,9 @@ namespace CityFlow.Sim.Tests
         public void Plan_UnreachableDemand_NullRoute()
         {
             // 섬 분리: 집 섬과 회사 섬이 안 이어짐 → 해당 수요 경로 null(무사고).
-            var g = new CityGrid(7, 3);
-            g.Place(V(0, 1), TileType.Road); g.Place(V(1, 1), TileType.Road);
-            g.Place(V(5, 1), TileType.Road); g.Place(V(6, 1), TileType.Road);
+            var g = new CityGrid(8, 4);
+            g.Place(V(0, 2), TileType.Road); g.Place(V(1, 2), TileType.Road);
+            g.Place(V(5, 2), TileType.Road); g.Place(V(6, 2), TileType.Road);
             g.Place(V(0, 0), TileType.House);   // 접점 하(0,1)? 스캔 상(0,1)! → 상(0,1) road ✓
             g.Place(V(6, 0), TileType.Office);  // 상? (6,1) road ✓
             var cfg = Cfg();

@@ -198,6 +198,12 @@ namespace CityFlow.Content
                     TileType tileType =
                         tileData.GetTileType(tile);
 
+                    if (TileFootprint.IsBuilding(tileType) &&
+                        !tileData.IsFootprintAnchor(tile))
+                    {
+                        continue;
+                    }
+
                     int populationValue =
                         CalculatePopulation(
                             tileType,

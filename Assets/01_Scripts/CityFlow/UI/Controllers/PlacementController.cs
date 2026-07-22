@@ -53,6 +53,8 @@ namespace CityFlow.UI
         private Vector2Int? _lastPlacedCoord = null;
         private Vector2Int? _lastRemovedCoord = null;
         private Vector2Int? _rightClickStartCoord = null;
+        private Vector3 _ghostBaseScale = Vector3.one;
+        private bool _ghostScaleInitialized;
 
         [Header("Config")]
         [SerializeField] private CityFlow.Content.PopulationConfigSO populationConfig;
@@ -82,6 +84,7 @@ namespace CityFlow.UI
         {
             _currentType = type;
             _lastPreviewCoord = null;
+            UpdateGhostFootprint();
             Debug.Log($"[PlacementController] 건설 모드 변경됨: {_currentType}");
 
             // 인프라 상점과 같은 패널에 탭으로 합쳐졌을 경우를 대비해, 일반 타일 선택 시 인프라 모드를 강제 취소합니다.
@@ -125,6 +128,7 @@ namespace CityFlow.UI
         public void ConfigureGhost(SpriteRenderer renderer)
         {
             ghostRenderer = renderer;
+            _ghostScaleInitialized = false;
             if (ghostRenderer != null)
             {
                 PrepareGhostRenderer();
@@ -148,6 +152,10 @@ namespace CityFlow.UI
         public void ToggleBuildMode(bool isOn)
         {
             _isBuildingMode = isOn;
+            if (isOn)
+            {
+                UpdateGhostFootprint();
+            }
             if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(isOn);
             BuildModeCursorFeedback.SetBuilding(this, isOn);
             if (!isOn)
@@ -351,14 +359,15 @@ namespace CityFlow.UI
                 return false;
             }
 
-            TileType previousType = _services.TileData.GetTileType(coord);
+            Vector2Int targetCoord = ResolveFootprintAnchor(coord);
+            TileType previousType = _services.TileData.GetTileType(targetCoord);
             if (previousType == TileType.Empty)
             {
                 return false;
             }
 
             long refundCost = GetTileCost(previousType);
-            if (!_services.Placement.Remove(coord))
+            if (!_services.Placement.Remove(targetCoord))
             {
                 return false;
             }
@@ -368,7 +377,7 @@ namespace CityFlow.UI
                 _services.Economy.AddCoins(refundCost, "Demolish Refund");
             }
 
-            Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 철거 명령 전달 (환불 {refundCost}).");
+            Debug.Log($"[Real Mode] 코어 엔진에 {targetCoord} 위치 철거 명령 전달 (환불 {refundCost}).");
             return true;
         }
 
@@ -409,9 +418,27 @@ namespace CityFlow.UI
 
         public Vector3 GetGhostPosition(Vector2Int gridCoord)
         {
+            return GetGhostPosition(
+                gridCoord,
+                TileFootprint.GetSize(_currentType)
+            );
+        }
+
+        public Vector3 GetGhostPosition(
+            Vector2Int gridCoord,
+            Vector2Int footprintSize
+        )
+        {
+            Vector2Int size = new Vector2Int(
+                Mathf.Max(1, footprintSize.x),
+                Mathf.Max(1, footprintSize.y)
+            );
+            float offsetX = (size.x - 1) * 0.5f;
+            float offsetY = (size.y - 1) * 0.5f;
+
             return useXYPlane
-                ? new Vector3(gridCoord.x + 0.5f, gridCoord.y + 0.5f, GetSurfaceMarkerZ(gridCoord))
-                : new Vector3(gridCoord.x, 0, gridCoord.y);
+                ? new Vector3(gridCoord.x + 0.5f + offsetX, gridCoord.y + 0.5f + offsetY, GetSurfaceMarkerZ(gridCoord))
+                : new Vector3(gridCoord.x + offsetX, 0, gridCoord.y + offsetY);
         }
 
         public float GetSurfaceMarkerZ(Vector2Int gridCoord)
@@ -438,7 +465,36 @@ namespace CityFlow.UI
                 return;
             }
 
+            if (!_ghostScaleInitialized)
+            {
+                _ghostBaseScale = ghostRenderer.transform.localScale;
+                _ghostScaleInitialized = true;
+            }
+
             ghostRenderer.sortingOrder = Mathf.Max(ghostRenderer.sortingOrder, GhostSortingOrder);
+            UpdateGhostFootprint();
+        }
+
+        private void UpdateGhostFootprint()
+        {
+            SetGhostFootprint(TileFootprint.GetSize(_currentType));
+        }
+
+        public void SetGhostFootprint(Vector2Int footprintSize)
+        {
+            if (ghostRenderer == null || !_ghostScaleInitialized)
+            {
+                return;
+            }
+
+            Vector2Int size = new Vector2Int(
+                Mathf.Max(1, footprintSize.x),
+                Mathf.Max(1, footprintSize.y)
+            );
+            ghostRenderer.transform.localScale = new Vector3(
+                _ghostBaseScale.x * size.x,
+                _ghostBaseScale.y * size.y,
+                _ghostBaseScale.z);
         }
 
         public Vector2Int GetMouseGridCoordinate()
@@ -481,10 +537,11 @@ namespace CityFlow.UI
                 if (_currentType == TileType.Empty) return true;
 
                 // 덮어쓰기 허용 로직: 만약 현재 마우스 위치에 '다른 건물'이 있다면 건설(덮어쓰기)이 가능하다고 판단
-                TileType previousType = _services.TileData.GetTileType(coord);
+                Vector2Int previousAnchor = ResolveFootprintAnchor(coord);
+                TileType previousType = _services.TileData.GetTileType(previousAnchor);
                 if (previousType != TileType.Empty && previousType != _currentType)
                 {
-                    return true;
+                    return CanReplaceFootprint(previousAnchor, _currentType);
                 }
 
                 // 빈 땅이거나 그 외의 경우는 코어 엔진의 기본 룰(CanPlace)을 따름
@@ -503,13 +560,14 @@ namespace CityFlow.UI
 
             if (_services != null && _services.Placement != null && _services.TileData != null)
             {
-                TileType previousType = _services.TileData.GetTileType(coord);
+                Vector2Int previousAnchor = ResolveFootprintAnchor(coord);
+                TileType previousType = _services.TileData.GetTileType(previousAnchor);
 
                 if (_currentType == TileType.Empty)
                 {
                     long refundCost = GetTileCost(previousType);
                     // 철거 시도 및 성공 여부 확인
-                    if (_services.Placement.Remove(coord))
+                    if (_services.Placement.Remove(previousAnchor))
                     {
                         if (_services.Economy != null && refundCost > 0)
                             _services.Economy.AddCoins(refundCost, "Demolish Refund");
@@ -533,9 +591,9 @@ namespace CityFlow.UI
                             return;
                         }
 
-                        if (_services.Placement.Remove(coord))
+                        if (_services.Placement.Remove(previousAnchor))
                         {
-                            if (_services.Placement.Place(coord, _currentType))
+                            if (_services.Placement.Place(previousAnchor, _currentType))
                             {
                                 if (_services.Economy != null)
                                 {
@@ -548,7 +606,7 @@ namespace CityFlow.UI
                             else
                             {
                                 // 만약 짓는 데 실패했다면 원복
-                                _services.Placement.Place(coord, previousType);
+                                _services.Placement.Place(previousAnchor, previousType);
                             }
                         }
                     }
@@ -618,6 +676,53 @@ namespace CityFlow.UI
             }
 
             GetBenefitRenderer()?.ShowHighlights(_areaTileBuffer, _benefitTileBuffer, useXYPlane);
+        }
+
+        private Vector2Int ResolveFootprintAnchor(Vector2Int coord)
+        {
+            if (_services != null && _services.TileData != null &&
+                _services.TileData.TryGetFootprintAnchor(coord, out Vector2Int anchor))
+            {
+                return anchor;
+            }
+
+            return coord;
+        }
+
+        private bool CanReplaceFootprint(Vector2Int previousAnchor, TileType newType)
+        {
+            Vector2Int size = TileFootprint.GetSize(newType);
+            for (int y = 0; y < size.y; y++)
+            {
+                for (int x = 0; x < size.x; x++)
+                {
+                    Vector2Int tile = previousAnchor + new Vector2Int(x, y);
+                    if (!GridUtil.IsInside(tile))
+                    {
+                        return false;
+                    }
+
+                    TileType occupiedType = _services.TileData.GetTileType(tile);
+                    if (occupiedType == TileType.Empty)
+                    {
+                        if (_services.TileData.TryGetFootprintAnchor(tile, out Vector2Int occupiedAnchor) &&
+                            occupiedAnchor != previousAnchor)
+                        {
+                            return false;
+                        }
+
+                        continue;
+                    }
+
+                    if (!_services.TileData.TryGetFootprintAnchor(tile, out Vector2Int anchor) ||
+                        anchor != previousAnchor)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
         }
     }
 }

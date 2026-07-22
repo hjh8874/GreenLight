@@ -18,6 +18,7 @@ MonoBehaviour:
     GridWidth: 20
     GridHeight: 20
     RoadCapacity: 10
+    CarsPerHouse: 2
     DemandPerHouse: 1
     SlowRatio: 0.7
     JamRatio: 1

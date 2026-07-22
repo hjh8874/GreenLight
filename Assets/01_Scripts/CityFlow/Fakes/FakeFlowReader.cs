@@ -99,6 +99,16 @@ namespace CityFlow.Fakes
             return TileType.Empty;
         }
 
+        public Vector2Int GetFootprintSize(TileType type) => TileFootprint.GetSize(type);
+
+        public bool TryGetFootprintAnchor(Vector2Int tile, out Vector2Int anchor)
+        {
+            anchor = tile;
+            return GetTileType(tile) != TileType.Empty;
+        }
+
+        public bool IsFootprintAnchor(Vector2Int tile) => GetTileType(tile) != TileType.Empty;
+
         public void Tick(float time, SimEventHub events)
         {
             if (events == null)

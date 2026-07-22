@@ -442,7 +442,11 @@ namespace CityFlow.View
                 }
 
                 Vector3 homeAnchor = GetParkingAnchor(car.Home, outboundTiles[0], car.HomeSlot, simEngine.CarSimHomeParkingSlots);
-                Vector3 workAnchor = GetParkingAnchor(car.Work, outboundTiles[outboundTiles.Count - 1], car.WorkSlot, simEngine.CarSimOfficeParkingSlots);
+                Vector3 workParking = GetParkingAnchor(
+                    car.Work,
+                    outboundTiles[outboundTiles.Count - 1],
+                    car.WorkSlot,
+                    simEngine.CarSimOfficeParkingSlots);
 
                 List<Vector2Int> inboundTiles;
                 if (car.RouteIndex < simEngine.ActiveReturnRoutes.Count
@@ -458,10 +462,16 @@ namespace CityFlow.View
                 }
                 if (inboundTiles.Count <= 1) continue;
 
+                Vector3 workExit = GetParkingAnchor(
+                    car.Work,
+                    inboundTiles[0],
+                    car.WorkSlot,
+                    simEngine.CarSimOfficeParkingSlots);
+
                 bakedRoutes[car.RouteIndex] = new BakedRoutePair
                 {
-                    Outbound = BakeCommuteRoute(outboundTiles, homeAnchor, workAnchor),
-                    Inbound = BakeCommuteRoute(inboundTiles, workAnchor, homeAnchor),
+                    Outbound = BakeCommuteRoute(outboundTiles, homeAnchor, workParking),
+                    Inbound = BakeCommuteRoute(inboundTiles, workExit, homeAnchor),
                 };
             }
         }
@@ -514,7 +524,7 @@ namespace CityFlow.View
         }
 
         // 건물 프리팹에 "ParkingSlot_N" 자식이 있으면 그 위치(뷰 로컬), 없으면 절차 폴백.
-        // slotCount = 건물 타입별 칸 수(회사=officeSlots, 집=homeSlots) — 집 1칸은 중앙 정렬.
+        // slotCount = 건물 타입별 칸 수(회사=officeSlots, 집=homeSlots).
         private Vector3 GetParkingAnchor(Vector2Int building, Vector2Int frontageRoad, int slotIndex, int slotCount)
         {
             if (tileVisuals.TryGetValue(building, out TileVisual visual))
@@ -793,6 +803,12 @@ namespace CityFlow.View
                 {
                     float angle = Mathf.Atan2(parked.Dir.y, parked.Dir.x) * Mathf.Rad2Deg;
                     vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
+                }
+                if (!vehicle.Settling
+                    && (snapshot.State == CarState.ParkedHome || snapshot.State == CarState.ParkedWork))
+                {
+                    Vector2Int building = snapshot.State == CarState.ParkedWork ? car.Work : car.Home;
+                    SetForwardBuildingParkingRotation(vehicle, building);
                 }
                 vehicle.CurrentTile = snapshot.State == CarState.ParkedWork ? car.Work : car.Home;
                 vehicle.HasCurrentTile = true;
@@ -1085,6 +1101,24 @@ namespace CityFlow.View
             HideJamMarks(vehicle);
             vehicle.LastState = snapshot.State;
             vehicle.HasLastState = true;
+        }
+
+        private void SetForwardBuildingParkingRotation(RouteVehicle vehicle, Vector2Int building)
+        {
+            if (!tileVisuals.TryGetValue(building, out TileVisual buildingVisual))
+            {
+                return;
+            }
+
+            Vector3 worldForward = buildingVisual.Object.transform.TransformDirection(Vector3.up);
+            Vector3 localForward = transform.InverseTransformDirection(worldForward);
+            if (localForward.sqrMagnitude < 0.001f)
+            {
+                return;
+            }
+
+            float angle = Mathf.Atan2(localForward.y, localForward.x) * Mathf.Rad2Deg;
+            vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
         }
 
         private void ResetCommuteState()

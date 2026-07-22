@@ -284,7 +284,7 @@ namespace CityFlow.Sim
                 for (int x = 0; x < grid.Width; x++)
                 {
                     var v = new Vector2Int(x, y);
-                    if (grid.GetTile(v) == type) into.Add(v);
+                    if (grid.GetTile(v) == type && grid.IsFootprintAnchor(v)) into.Add(v);
                 }
             }
         }

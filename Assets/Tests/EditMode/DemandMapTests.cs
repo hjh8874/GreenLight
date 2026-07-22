@@ -40,7 +40,7 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void AssignsHouseToNearestOffice()
         {
-            var g = MakeGrid(8, 1,
+            var g = MakeGrid(8, 2,
                 (V(0, 0), TileType.House),
                 (V(2, 0), TileType.Office),
                 (V(5, 0), TileType.Office));
@@ -54,16 +54,16 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void CapacityFull_OverflowsToNextNearest()
         {
-            var g = MakeGrid(8, 2,
+            var g = MakeGrid(10, 5,
                 (V(0, 0), TileType.House),
-                (V(0, 1), TileType.House),
-                (V(1, 0), TileType.Office),   // 두 집 모두에 가장 가까움
-                (V(7, 1), TileType.Office));  // 먼 대안
+                (V(0, 3), TileType.House),
+                (V(3, 0), TileType.Office),   // 두 집 모두에 가장 가까움
+                (V(8, 3), TileType.Office));  // 먼 대안
             var dm = new DemandMap(OfficeCap(1));
             dm.Reassign(g, new RoadNetwork(g));
 
-            Assert.IsTrue(Has(dm, V(0, 0), V(1, 0))); // 첫 집: 가까운 곳
-            Assert.IsTrue(Has(dm, V(0, 1), V(7, 1))); // 둘째 집: 만석 → 먼 곳
+            Assert.IsTrue(Has(dm, V(0, 0), V(3, 0))); // 첫 집: 가까운 곳
+            Assert.IsTrue(Has(dm, V(0, 3), V(8, 3))); // 둘째 집: 만석 → 먼 곳
         }
 
         [Test]
@@ -77,10 +77,30 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void OneOffice_LinksAtMostSixHomes()
+        {
+            var g = new CityGrid(24, 2);
+            for (int i = 0; i < 7; i++)
+            {
+                Assert.IsTrue(g.Place(V(i * 3, 0), TileType.House));
+            }
+            Assert.IsTrue(g.Place(V(21, 0), TileType.Office));
+
+            var dm = new DemandMap(SimConfig.Default());
+            dm.Reassign(g, new RoadNetwork(g));
+
+            Assert.AreEqual(6, dm.Demands.Count);
+            foreach (Demand demand in dm.Demands)
+            {
+                Assert.AreEqual(V(21, 0), demand.Sink);
+            }
+        }
+
+        [Test]
         public void MultiSink_HouseCommutesToOfficeAndSchool()
         {
             // 계획 2c: 집 1채 → 수요처 종류마다 1건씩 = 회사·학교 수요 총 2건.
-            var g = MakeGrid(5, 1,
+            var g = MakeGrid(6, 2,
                 (V(0, 0), TileType.House),
                 (V(2, 0), TileType.Office),
                 (V(4, 0), TileType.School));
@@ -95,15 +115,15 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void EquidistantOffices_PicksLowerFlatIndex()
         {
-            var g = MakeGrid(5, 1,
-                (V(2, 0), TileType.House),
+            var g = MakeGrid(6, 4,
+                (V(2, 2), TileType.House),
                 (V(0, 0), TileType.Office),   // flat 0, 거리 2
                 (V(4, 0), TileType.Office));  // flat 4, 거리 2 (동점)
             var dm = new DemandMap(NearestCfg());
             dm.Reassign(g, new RoadNetwork(g));
 
-            Assert.IsTrue(Has(dm, V(2, 0), V(0, 0))); // 동점 → 낮은 인덱스
-            Assert.IsFalse(Has(dm, V(2, 0), V(4, 0)));
+            Assert.IsTrue(Has(dm, V(2, 2), V(0, 0))); // 동점 → 낮은 인덱스
+            Assert.IsFalse(Has(dm, V(2, 2), V(4, 0)));
         }
 
         static CityGrid MakeIslandGrid()
@@ -113,10 +133,10 @@ namespace CityFlow.Sim.Tests
             {
                 (V(0, 0), TileType.House),
                 (V(9, 0), TileType.Office),   // 도달 가능(멀다)
-                (V(0, 3), TileType.Office),   // 맹지(가깝다)
+                (V(0, 4), TileType.Office),   // 맹지(가깝다)
             };
-            for (int x = 1; x <= 8; x++) tiles.Add((V(x, 0), TileType.Road));
-            return MakeGrid(10, 5, tiles.ToArray());
+            for (int x = 2; x <= 8; x++) tiles.Add((V(x, 0), TileType.Road));
+            return MakeGrid(11, 6, tiles.ToArray());
         }
 
         [Test]
@@ -127,7 +147,7 @@ namespace CityFlow.Sim.Tests
             dm.Reassign(g, new RoadNetwork(g));
 
             Assert.IsTrue(Has(dm, V(0, 0), V(9, 0)));   // 도달 가능한 먼 회사로
-            Assert.IsFalse(Has(dm, V(0, 0), V(0, 3)));  // 맹지 회사는 배정 안 함
+            Assert.IsFalse(Has(dm, V(0, 0), V(0, 4)));  // 맹지 회사는 배정 안 함
         }
 
         [Test]
@@ -135,13 +155,14 @@ namespace CityFlow.Sim.Tests
         {
             // 맹지 회사(0,3)에 도로를 이어주면 최근접 배정이 즉시 그쪽으로 회복.
             var g = MakeIslandGrid();
-            g.Place(V(1, 1), TileType.Road);   // 본선(1,0)과 연결
-            g.Place(V(1, 2), TileType.Road);   // (0,3) 회사 접점(대각 포함 8방)까지 연장
+            g.Place(V(2, 1), TileType.Road);   // 본선(1,0)과 연결
+            g.Place(V(2, 2), TileType.Road);
+            g.Place(V(2, 3), TileType.Road);   // (0,3) 회사 접점(대각 포함 8방)까지 연장
 
             var dm = new DemandMap(NearestCfg());
             dm.Reassign(g, new RoadNetwork(g));
 
-            Assert.IsTrue(Has(dm, V(0, 0), V(0, 3)));   // 이제 도달 가능 + 더 가까움 → 회복
+            Assert.IsTrue(Has(dm, V(0, 0), V(0, 4)));   // 이제 도달 가능 + 더 가까움 → 회복
         }
 
         [Test]
@@ -178,14 +199,14 @@ namespace CityFlow.Sim.Tests
         // 북쪽 스텁만 보고 접점을 고르면(구현 전) Region이 달라 도달불가로 오판 → 흐름 0.
         static CityGrid MultiFrontageGrid()
         {
-            var g = new CityGrid(7, 4);
+            var g = new CityGrid(8, 4);
             g.Place(V(2, 3), TileType.Road);   // 고립 스텁(주변에 다른 도로 없음) — 스캔 1순위(북)
             g.Place(V(2, 1), TileType.Road);   // 간선 진입 — 스캔 3순위(남)
             g.Place(V(2, 0), TileType.Road);
             g.Place(V(3, 0), TileType.Road);
             g.Place(V(4, 0), TileType.Road);
             g.Place(V(5, 0), TileType.Road);
-            g.Place(V(2, 2), TileType.House);
+            g.Place(V(0, 2), TileType.House);
             g.Place(V(6, 0), TileType.Office);
             return g;
         }
@@ -209,7 +230,7 @@ namespace CityFlow.Sim.Tests
             var net = new RoadNetwork(g);
             var dm = new DemandMap(cfg);
             dm.Reassign(g, net);
-            Assert.IsTrue(Has(dm, V(2, 2), V(6, 0)));
+            Assert.IsTrue(Has(dm, V(0, 2), V(6, 0)));
 
             var planner = new RoutePlanner(g.Width, g.Height);
             planner.Plan(dm, net, g, cfg);
