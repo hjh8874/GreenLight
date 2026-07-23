@@ -40,6 +40,10 @@ namespace CityFlow.UI
         [SerializeField] private Button btnResolveJam;
         [SerializeField] private Button btnUpgrade;
 
+        [Header("Building Info Card")]
+        [Tooltip("건물 타일 클릭 시 표시되는 방치형 건물 정보 카드 (없으면 기존 도로 카드로 폴백)")]
+        [SerializeField] private BuildingInfoCardController buildingInfoCard;
+
         [Header("Debug / Testing")]
         [SerializeField] private bool useFakeMode = false; // 코어 연동을 위해 끕니다.
         [SerializeField] [Range(0f, 1f)] private float fakeDensity = 0.8f; // 테스트용 80% 혼잡도
@@ -179,7 +183,7 @@ namespace CityFlow.UI
             }
             else
             {
-                // 일반 정보 모드
+                // 일반 정보 모드 (도로 타일)
                 if (normalInfoContainer != null) normalInfoContainer.SetActive(true);
                 if (signalControlContainer != null) signalControlContainer.SetActive(false);
 
