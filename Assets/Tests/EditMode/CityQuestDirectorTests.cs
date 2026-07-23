@@ -47,6 +47,74 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void CommuteQuest_RequiresAnActualArrival()
+        {
+            var director = new CityQuestDirector();
+
+            director.Tick(
+                Snapshot(roads: 3, houses: 1, offices: 1),
+                0.5f);
+
+            Assert.AreEqual(CityQuestId.ConnectCommute, director.ActiveQuest.Id);
+        }
+
+        [Test]
+        public void RestoredCompletedTutorial_DoesNotShowFirstHarvestQuest()
+        {
+            var director = new CityQuestDirector();
+            director.RestoreTutorialStage(5);
+
+            director.Tick(
+                Snapshot(roads: 3, houses: 1, offices: 1),
+                0.5f);
+
+            Assert.IsTrue(director.IsTutorialComplete);
+            Assert.AreNotEqual(
+                CityQuestId.HarvestFirstIncome,
+                director.ActiveQuest?.Id);
+        }
+
+        [Test]
+        public void HarvestTutorial_WaitsUntilIncomeIsActuallyPending()
+        {
+            var director = new CityQuestDirector();
+            director.RestoreTutorialStage(4);
+
+            Assert.IsFalse(director.Tick(
+                Snapshot(roads: 3, houses: 1, offices: 1, arrivals: 1),
+                0.5f));
+            Assert.IsNull(director.ActiveQuest);
+
+            Assert.IsTrue(director.Tick(
+                Snapshot(
+                    roads: 3,
+                    houses: 1,
+                    offices: 1,
+                    arrivals: 1,
+                    pending: 10),
+                0.5f));
+            Assert.AreEqual(
+                CityQuestId.HarvestFirstIncome,
+                director.ActiveQuest.Id);
+        }
+
+        [Test]
+        public void ResumedTutorial_UsesResumeMessage()
+        {
+            var director = new CityQuestDirector();
+            director.SetResumeMode(true);
+            director.RestoreTutorialStage(3);
+
+            director.Tick(
+                Snapshot(roads: 3, houses: 1, offices: 1),
+                0.5f);
+
+            Assert.AreEqual(
+                "출근길을 다시 확인해 주세요",
+                director.ActiveQuest.Title);
+        }
+
+        [Test]
         public void CloseAction_MinimizesWithoutCompletingQuest()
         {
             var director = new CityQuestDirector();

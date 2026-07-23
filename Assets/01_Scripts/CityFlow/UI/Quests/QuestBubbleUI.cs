@@ -69,10 +69,10 @@ namespace CityFlow.UI.Quests
         {
             GameObject panel = CreateUiObject("QuestBubble", transform, typeof(Image), typeof(Shadow));
             RectTransform rect = panel.GetComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.zero;
-            rect.pivot = Vector2.zero;
-            rect.anchoredPosition = new Vector2(28f, 34f);
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(28f, -104f);
             rect.sizeDelta = new Vector2(430f, 172f);
 
             Image background = panel.GetComponent<Image>();
@@ -167,10 +167,10 @@ namespace CityFlow.UI.Quests
                 typeof(Button),
                 typeof(Shadow));
             RectTransform rect = buttonObject.GetComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.zero;
-            rect.pivot = Vector2.zero;
-            rect.anchoredPosition = new Vector2(28f, 34f);
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(28f, -104f);
             rect.sizeDelta = new Vector2(58f, 58f);
 
             Image image = buttonObject.GetComponent<Image>();
