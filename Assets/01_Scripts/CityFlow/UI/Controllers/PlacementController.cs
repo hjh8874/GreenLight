@@ -21,6 +21,9 @@ namespace CityFlow.UI
         [SerializeField] private SpriteRenderer ghostRenderer;
         [SerializeField] private Color colorValid = new Color(0f, 1f, 0f, 0.5f);   // 초록색 (반투명)
         [SerializeField] private Color colorInvalid = new Color(1f, 0f, 0f, 0.5f); // 빨간색 (반투명)
+        private Sprite _defaultGhostSprite;
+        private Texture2D _footprintGhostTexture;
+        private Sprite _footprintGhostSprite;
         
         [Header("Debug / Testing")]
         [Tooltip("월~화 코어엔진 미연동 시 UI 단독 테스트를 위한 강제 성공 모드")]
@@ -58,6 +61,7 @@ namespace CityFlow.UI
 
         [Header("Config")]
         [SerializeField] private CityFlow.Content.PopulationConfigSO populationConfig;
+        [SerializeField] private CityFlow.Content.BuildingDefinitionSO hospitalDefinition;
 
         private BenefitHighlightRenderer _benefitRenderer;
         private Vector2Int? _lastPreviewCoord = null;
@@ -84,6 +88,8 @@ namespace CityFlow.UI
         {
             _currentType = type;
             _lastPreviewCoord = null;
+            GetBenefitRenderer()?.HideAll();
+            RestoreBuildingGhostSprite();
             UpdateGhostFootprint();
             Debug.Log($"[PlacementController] 건설 모드 변경됨: {_currentType}");
 
@@ -154,6 +160,7 @@ namespace CityFlow.UI
             _isBuildingMode = isOn;
             if (isOn)
             {
+                RestoreBuildingGhostSprite();
                 UpdateGhostFootprint();
             }
             if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(isOn);
@@ -465,6 +472,11 @@ namespace CityFlow.UI
                 return;
             }
 
+            if (_defaultGhostSprite == null && ghostRenderer.sprite != null)
+            {
+                _defaultGhostSprite = ghostRenderer.sprite;
+            }
+
             if (!_ghostScaleInitialized)
             {
                 _ghostBaseScale = ghostRenderer.transform.localScale;
@@ -473,6 +485,58 @@ namespace CityFlow.UI
 
             ghostRenderer.sortingOrder = Mathf.Max(ghostRenderer.sortingOrder, GhostSortingOrder);
             UpdateGhostFootprint();
+        }
+
+        private void RestoreBuildingGhostSprite()
+        {
+            if (ghostRenderer == null)
+            {
+                return;
+            }
+
+            CityFlow.Configs.TileDataSO selectedTile = null;
+            if (availableTiles != null)
+            {
+                foreach (CityFlow.Configs.TileDataSO tile in availableTiles)
+                {
+                    if (tile != null && tile.Category == _currentType)
+                    {
+                        selectedTile = tile;
+                        break;
+                    }
+                }
+            }
+
+            ghostRenderer.sprite = selectedTile != null && selectedTile.BuildingIcon != null
+                ? selectedTile.BuildingIcon
+                : GetOrCreateFootprintGhostSprite();
+        }
+
+        private Sprite GetOrCreateFootprintGhostSprite()
+        {
+            if (_footprintGhostSprite != null)
+            {
+                return _footprintGhostSprite;
+            }
+
+            _footprintGhostTexture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+            {
+                name = "PlacementFootprintGhostTexture",
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            _footprintGhostTexture.SetPixel(0, 0, Color.white);
+            _footprintGhostTexture.Apply();
+
+            _footprintGhostSprite = Sprite.Create(
+                _footprintGhostTexture,
+                new Rect(0f, 0f, 1f, 1f),
+                new Vector2(0.5f, 0.5f),
+                1f);
+            _footprintGhostSprite.name = "PlacementFootprintGhostSprite";
+            _footprintGhostSprite.hideFlags = HideFlags.HideAndDontSave;
+            return _footprintGhostSprite;
         }
 
         private void UpdateGhostFootprint()
@@ -536,15 +600,13 @@ namespace CityFlow.UI
 
                 if (_currentType == TileType.Empty) return true;
 
-                // 덮어쓰기 허용 로직: 만약 현재 마우스 위치에 '다른 건물'이 있다면 건설(덮어쓰기)이 가능하다고 판단
                 Vector2Int previousAnchor = ResolveFootprintAnchor(coord);
                 TileType previousType = _services.TileData.GetTileType(previousAnchor);
-                if (previousType != TileType.Empty && previousType != _currentType)
+                if (previousType != TileType.Empty)
                 {
-                    return CanReplaceFootprint(previousAnchor, _currentType);
+                    return false;
                 }
 
-                // 빈 땅이거나 그 외의 경우는 코어 엔진의 기본 룰(CanPlace)을 따름
                 return _services.Placement.CanPlace(coord, _currentType); 
             }
             return false;
@@ -579,52 +641,24 @@ namespace CityFlow.UI
                 {
                     long buildCost = GetTileCost(_currentType);
                     
-                    // 덮어쓰기 로직: 기존에 다른 건물이 있다면 차액 계산 후 덮어쓰기 시도
-                    if (previousType != TileType.Empty && previousType != _currentType)
+                    if (previousType != TileType.Empty)
                     {
-                        long refundCost = GetTileCost(previousType);
-                        long netCost = buildCost - refundCost;
-                        
-                        if (netCost > 0 && _services.Economy != null && _services.Economy.Coins < netCost)
-                        {
-                            Debug.LogWarning("[UI] 코인이 부족하여 덮어쓰기를 할 수 없습니다!");
-                            return;
-                        }
-
-                        if (_services.Placement.Remove(previousAnchor))
-                        {
-                            if (_services.Placement.Place(previousAnchor, _currentType))
-                            {
-                                if (_services.Economy != null)
-                                {
-                                    if (netCost > 0) _services.Economy.TrySpend(netCost);
-                                    else if (netCost < 0) _services.Economy.AddCoins(-netCost, "Overwrite Refund");
-                                }
-                                
-                                Debug.Log($"[Real Mode] 덮어쓰기 성공! {previousType} -> {_currentType}. 차액: {netCost}");
-                            }
-                            else
-                            {
-                                // 만약 짓는 데 실패했다면 원복
-                                _services.Placement.Place(previousAnchor, previousType);
-                            }
-                        }
+                        Debug.LogWarning("[UI] 기존 건물이나 도로가 있는 위치에는 새 건물을 지을 수 없습니다.");
+                        return;
                     }
-                    else if (previousType == TileType.Empty)
-                    {
-                        if (_services.Economy != null && buildCost > 0 && _services.Economy.Coins < buildCost)
-                        {
-                            Debug.LogWarning("[UI] 코인이 부족하여 건설할 수 없습니다!");
-                            return;
-                        }
 
-                        if (_services.Placement.Place(coord, _currentType))
-                        {
-                            if (_services.Economy != null && buildCost > 0)
-                                _services.Economy.TrySpend(buildCost);
-                                
-                            Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 {_currentType} 건설 명령 전달 (비용 {buildCost}).");
-                        }
+                    if (_services.Economy != null && buildCost > 0 && _services.Economy.Coins < buildCost)
+                    {
+                        Debug.LogWarning("[UI] 코인이 부족하여 건설할 수 없습니다!");
+                        return;
+                    }
+
+                    if (_services.Placement.Place(coord, _currentType))
+                    {
+                        if (_services.Economy != null && buildCost > 0)
+                            _services.Economy.TrySpend(buildCost);
+
+                        Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 {_currentType} 건설 명령 전달 (비용 {buildCost}).");
                     }
                 }
             }
@@ -632,9 +666,10 @@ namespace CityFlow.UI
 
         private void UpdateBenefitPreview(Vector2Int gridCoord)
         {
-            bool isFacility = _currentType == TileType.School;
+            bool isSchool = _currentType == TileType.School;
+            bool isHospital = _currentType == TileType.Hospital;
 
-            if (!isFacility)
+            if (!isSchool && !isHospital)
             {
                 if (_lastPreviewCoord != null)
                 {
@@ -653,9 +688,12 @@ namespace CityFlow.UI
             _benefitTileBuffer.Clear();
             _areaTileBuffer.Clear();
 
-            if (_services != null && _services.TileData != null && populationConfig != null)
+            int radius = isSchool
+                ? populationConfig != null ? populationConfig.SchoolCoverageRadius : 0
+                : hospitalDefinition != null ? hospitalDefinition.HospitalCoverageRadius : 0;
+
+            if (_services != null && _services.TileData != null && radius > 0)
             {
-                int radius = populationConfig.SchoolCoverageRadius;
                 for (int dx = -radius; dx <= radius; dx++)
                 {
                     for (int dy = -radius; dy <= radius; dy++)
@@ -663,7 +701,10 @@ namespace CityFlow.UI
                         Vector2Int targetTile = new Vector2Int(gridCoord.x + dx, gridCoord.y + dy);
                         if (!GridUtil.IsInside(targetTile)) continue;
 
-                        if (!CityFlow.Content.PopulationCalculator.IsWithinSchoolCoverage(targetTile, gridCoord, radius)) continue;
+                        bool isCovered = isSchool
+                            ? CityFlow.Content.PopulationCalculator.IsWithinSchoolCoverage(targetTile, gridCoord, radius)
+                            : CityFlow.Content.HospitalEffectCalculator.IsWithinHospitalCoverage(targetTile, gridCoord, radius);
+                        if (!isCovered) continue;
 
                         _areaTileBuffer.Add(targetTile);
 
@@ -687,6 +728,19 @@ namespace CityFlow.UI
             }
 
             return coord;
+        }
+
+        private void OnDestroy()
+        {
+            if (_footprintGhostSprite != null)
+            {
+                Destroy(_footprintGhostSprite);
+            }
+
+            if (_footprintGhostTexture != null)
+            {
+                Destroy(_footprintGhostTexture);
+            }
         }
 
         private bool CanReplaceFootprint(Vector2Int previousAnchor, TileType newType)
