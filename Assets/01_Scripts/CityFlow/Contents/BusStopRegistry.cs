@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using UnityEngine;
 
 namespace CityFlow.Content.Transit
@@ -45,6 +46,7 @@ namespace CityFlow.Content.Transit
 
         private bool isInitialized;
         private bool isSubscribed;
+        private bool isRestoreSubscribed;
 
         public IReadOnlyList<Vector2Int> BusStops => busStops;
         public IReadOnlyList<Vector2Int> Schools => schools;
@@ -96,6 +98,7 @@ namespace CityFlow.Content.Transit
             }
 
             SubscribeEvents();
+            SubscribeRestore();
         }
 
         private void Start()
@@ -125,17 +128,20 @@ namespace CityFlow.Content.Transit
             if (isInitialized)
             {
                 SubscribeEvents();
+                SubscribeRestore();
             }
         }
 
         private void OnDisable()
         {
             UnsubscribeEvents();
+            UnsubscribeRestore();
         }
 
         private void OnDestroy()
         {
             UnsubscribeEvents();
+            UnsubscribeRestore();
         }
 
         private void SubscribeEvents()
@@ -158,6 +164,40 @@ namespace CityFlow.Content.Transit
 
             services.Events.Placed -= OnPlaced;
             isSubscribed = false;
+        }
+
+        private void SubscribeRestore()
+        {
+            if (isRestoreSubscribed ||
+                services?.Save == null)
+            {
+                return;
+            }
+
+            services.Save.RestoreCompleted +=
+                OnRestoreCompleted;
+
+            isRestoreSubscribed = true;
+        }
+
+        private void UnsubscribeRestore()
+        {
+            if (!isRestoreSubscribed ||
+                services?.Save == null)
+            {
+                return;
+            }
+
+            services.Save.RestoreCompleted -=
+                OnRestoreCompleted;
+
+            isRestoreSubscribed = false;
+        }
+
+        private void OnRestoreCompleted(
+            RestoreCompletedEvent _)
+        {
+            RebuildFromTileData();
         }
 
         /// <summary>

@@ -15,6 +15,8 @@ MonoBehaviour:
   coinBase: 1
   defaultDestinationRewardPercent: 100
   settlementDays: 7
+  offlineMaximumRealHours: 8
+  offlineIncomePercent: 100
   weeklyCoinPerBuilding: 20
   cityUnlockCosts:
   - 1000

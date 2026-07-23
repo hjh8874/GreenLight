@@ -33,6 +33,17 @@ namespace CityFlow.Content
         [SerializeField]
         private int settlementDays = 7;
 
+        [Header("Offline Settlement")]
+        [Tooltip("Maximum real-world hours included in one offline settlement.")]
+        [Range(0f, 24f)]
+        [SerializeField]
+        private float offlineMaximumRealHours = 8f;
+
+        [Tooltip("Percentage of the observed online average income paid while offline.")]
+        [Range(0, 100)]
+        [SerializeField]
+        private int offlineIncomePercent = 100;
+
         [Header("도시 성장 비용")]
         [Tooltip(
             "도시 단계별 승급 비용입니다. " +
@@ -141,6 +152,12 @@ namespace CityFlow.Content
             defaultDestinationRewardPercent;
 
         public int SettlementDays => settlementDays;
+
+        public float OfflineMaximumRealHours =>
+            offlineMaximumRealHours;
+
+        public int OfflineIncomePercent =>
+            offlineIncomePercent;
 
         public int InitialRefundPercent =>
             initialRefundPercent;
@@ -389,6 +406,12 @@ namespace CityFlow.Content
 
             settlementDays =
                 Mathf.Max(1, settlementDays);
+
+            offlineMaximumRealHours =
+                Mathf.Clamp(offlineMaximumRealHours, 0f, 24f);
+
+            offlineIncomePercent =
+                Mathf.Clamp(offlineIncomePercent, 0, 100);
 
             refundDecreaseIntervalDays =
                 Mathf.Max(

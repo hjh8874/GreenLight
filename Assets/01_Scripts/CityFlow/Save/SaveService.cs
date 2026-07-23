@@ -14,6 +14,8 @@ namespace CityFlow.Save
         public IProgressionSaveSource ProgressionSaveSource { get; private set; }
         public IGameCalendarSaveSource GameCalendarSaveSource { get; private set; }
         public IRadioSaveSource RadioSaveSource { get; private set; }
+        public IOfflineSettlementSource OfflineSettlementSource { get; private set; }
+        public IOfflineCalendarProgressionSource OfflineCalendarProgressionSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
         public ISaveClock Clock { get; private set; }
         public SaveSlotRepository SaveSlots { get; private set; }
@@ -32,6 +34,7 @@ namespace CityFlow.Save
         private bool hasLoadedSave;
 
         public event Action<RestoreCompletedEvent> RestoreCompleted;
+        public event Action<OfflineSettlementCompletedEvent> OfflineSettlementCompleted;
         public event Action<SaveSlotMetadata> AutomaticSaveSlotCreated;
 
         public SaveService(
@@ -60,6 +63,8 @@ namespace CityFlow.Save
             IWeeklySettlementSaveSource weeklySettlementSaveSource)
         {
             WeeklySettlementSaveSource = weeklySettlementSaveSource;
+            OfflineSettlementSource =
+                weeklySettlementSaveSource as IOfflineSettlementSource;
 
             if (hasLoadedSave)
             {
@@ -93,6 +98,8 @@ namespace CityFlow.Save
         public void RegisterGameCalendarSaveSource(IGameCalendarSaveSource gameCalendarSaveSource)
         {
             GameCalendarSaveSource = gameCalendarSaveSource;
+            OfflineCalendarProgressionSource =
+                gameCalendarSaveSource as IOfflineCalendarProgressionSource;
         }
 
         public void RegisterRadioSaveSource(IRadioSaveSource radioSaveSource)
@@ -136,10 +143,15 @@ namespace CityFlow.Save
                 return;
             }
 
-            if (saveData.SaveVersion != SaveConstants.CurrentSaveVersion)
+            if (!SaveConstants.IsSupportedSaveVersion(
+                    saveData.SaveVersion))
             {
                 Debug.LogWarning(
-                    $"Save restore skipped because version {saveData.SaveVersion} is not supported. Current version is {SaveConstants.CurrentSaveVersion}.");
+                    $"Save restore skipped because version " +
+                    $"{saveData.SaveVersion} is not supported. " +
+                    $"Supported versions: " +
+                    $"{SaveConstants.MinimumSupportedSaveVersion}-" +
+                    $"{SaveConstants.CurrentSaveVersion}.");
                 return;
             }
 
@@ -232,7 +244,9 @@ namespace CityFlow.Save
                 return false;
             }
 
-            return TryRestoreLoadedSnapshot(saveData);
+            return TryRestoreLoadedSnapshot(
+                saveData,
+                includeOfflineProgression: true);
         }
 
         public bool TryCreateManualSave(
@@ -258,7 +272,9 @@ namespace CityFlow.Save
         public bool TryLoadSaveSlot(string slotId)
         {
             return SaveSlots.TryLoad(slotId, out GameSaveData saveData)
-                && TryRestoreLoadedSnapshot(saveData);
+                && TryRestoreLoadedSnapshot(
+                    saveData,
+                    includeOfflineProgression: false);
         }
 
         public bool TryDeleteSaveSlot(string slotId)
@@ -266,7 +282,9 @@ namespace CityFlow.Save
             return SaveSlots.TryDelete(slotId);
         }
 
-        private bool TryRestoreLoadedSnapshot(GameSaveData saveData)
+        private bool TryRestoreLoadedSnapshot(
+            GameSaveData saveData,
+            bool includeOfflineProgression)
         {
             if (saveData == null)
             {
@@ -274,29 +292,226 @@ namespace CityFlow.Save
                 return false;
             }
 
-            if (saveData.SaveVersion != SaveConstants.CurrentSaveVersion)
+            if (!SaveConstants.IsSupportedSaveVersion(
+                    saveData.SaveVersion))
             {
                 Debug.LogWarning(
-                    $"Save restore skipped because version {saveData.SaveVersion} is not supported. Current version is {SaveConstants.CurrentSaveVersion}.");
+                    $"Save restore skipped because version " +
+                    $"{saveData.SaveVersion} is not supported. " +
+                    $"Supported versions: " +
+                    $"{SaveConstants.MinimumSupportedSaveVersion}-" +
+                    $"{SaveConstants.CurrentSaveVersion}.");
                 return false;
             }
 
             RetainOptionalSections(saveData);
             hasLoadedSave = true;
             IsRestoring = true;
+            double settledOfflineSeconds = 0.0;
             try
             {
                 RestoreSnapshot(saveData);
+
+                if (includeOfflineProgression)
+                {
+                    settledOfflineSeconds =
+                        SettleOfflineProgress(saveData);
+                }
             }
             finally
             {
                 IsRestoring = false;
             }
 
-            RestoreCompleted?.Invoke(new RestoreCompletedEvent(0.0, false));
+            bool includesOfflineProgression =
+                settledOfflineSeconds > 0.0;
+
+            try
+            {
+                PublishRestoreCompleted(
+                    settledOfflineSeconds,
+                    includesOfflineProgression);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning(
+                    $"Save restore completion failed.\n{exception.Message}");
+
+                if (!includesOfflineProgression)
+                {
+                    return false;
+                }
+
+                return TryRollbackOfflineSettlement(
+                    saveData,
+                    "a restore completion handler failed");
+            }
+
+            if (includesOfflineProgression)
+            {
+                GameSaveData settledSnapshot = CreateSnapshot();
+                OfflineSettlementCompletedEvent summary =
+                    CreateOfflineSettlementSummary(
+                        saveData,
+                        settledSnapshot,
+                        settledOfflineSeconds);
+                bool savedAfterSettlement = Save();
+
+                if (!savedAfterSettlement)
+                {
+                    return TryRollbackOfflineSettlement(
+                        saveData,
+                        "the settled save could not be written");
+                }
+
+                Debug.Log(
+                    $"Offline settlement completed and saved for {settledOfflineSeconds:0.##} seconds.");
+                OfflineSettlementCompleted?.Invoke(summary);
+            }
 
             Debug.Log("Game save loaded and restored.");
             return true;
+        }
+
+        private double SettleOfflineProgress(GameSaveData saveData)
+        {
+            if (saveData == null ||
+                saveData.SavedAtUtcTicks <= 0L ||
+                OfflineSettlementSource == null)
+            {
+                return 0.0;
+            }
+
+            DateTime savedAtUtc;
+
+            try
+            {
+                savedAtUtc = new DateTime(
+                    saveData.SavedAtUtcTicks,
+                    DateTimeKind.Utc);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                Debug.LogWarning(
+                    "Offline settlement skipped because saved UTC ticks are invalid.");
+                return 0.0;
+            }
+
+            double elapsedSeconds =
+                (Clock.UtcNow.ToUniversalTime() - savedAtUtc).TotalSeconds;
+
+            if (elapsedSeconds <= 0.0 ||
+                double.IsNaN(elapsedSeconds) ||
+                double.IsInfinity(elapsedSeconds))
+            {
+                return 0.0;
+            }
+
+            double maximumSeconds = Math.Max(
+                0.0,
+                OfflineSettlementSource.MaximumOfflineSeconds);
+            double settledSeconds = Math.Min(
+                elapsedSeconds,
+                maximumSeconds);
+
+            if (settledSeconds <= 0.0)
+            {
+                return 0.0;
+            }
+
+            OfflineSettlementSource.SettleOffline(settledSeconds);
+            OfflineCalendarProgressionSource?.AdvanceOffline(
+                settledSeconds);
+
+            return settledSeconds;
+        }
+
+        private bool TryRollbackOfflineSettlement(
+            GameSaveData saveData,
+            string reason)
+        {
+            try
+            {
+                IsRestoring = true;
+                RestoreSnapshot(saveData);
+                RetainOptionalSections(saveData);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError(
+                    $"Offline settlement rollback failed after {reason}.\n" +
+                    exception.Message);
+                return false;
+            }
+            finally
+            {
+                IsRestoring = false;
+            }
+
+            try
+            {
+                PublishRestoreCompleted(
+                    settledOfflineSeconds: 0.0,
+                    includesOfflineProgression: false);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError(
+                    $"Offline settlement state was restored after {reason}, " +
+                    $"but restore completion failed.\n{exception.Message}");
+                return false;
+            }
+
+            Debug.LogWarning(
+                $"Offline settlement was rolled back because {reason}. " +
+                "The previously saved game state remains active.");
+            return true;
+        }
+
+        private void PublishRestoreCompleted(
+            double settledOfflineSeconds,
+            bool includesOfflineProgression)
+        {
+            RestoreCompleted?.Invoke(
+                new RestoreCompletedEvent(
+                    settledOfflineSeconds,
+                    includesOfflineProgression));
+        }
+
+        private static OfflineSettlementCompletedEvent
+            CreateOfflineSettlementSummary(
+                GameSaveData beforeSettlement,
+                GameSaveData afterSettlement,
+                double settledOfflineSeconds)
+        {
+            long initialCoins = Math.Max(
+                0L,
+                beforeSettlement?.Economy?.Coins ?? 0L);
+            long currentCoins = Math.Max(
+                0L,
+                afterSettlement?.Economy?.Coins ?? initialCoins);
+            decimal totalBefore =
+                initialCoins +
+                Math.Max(
+                    0L,
+                    beforeSettlement?.WeeklySettlement?.PendingCoins ?? 0L);
+            decimal totalAfter =
+                currentCoins +
+                Math.Max(
+                    0L,
+                    afterSettlement?.WeeklySettlement?.PendingCoins ?? 0L);
+            decimal earnedDifference =
+                Math.Max(0m, totalAfter - totalBefore);
+            long earnedCoins =
+                earnedDifference >= long.MaxValue
+                    ? long.MaxValue
+                    : (long)earnedDifference;
+
+            return new OfflineSettlementCompletedEvent(
+                settledOfflineSeconds,
+                initialCoins,
+                earnedCoins,
+                currentCoins);
         }
 
         private void RetainOptionalSections(GameSaveData saveData)
