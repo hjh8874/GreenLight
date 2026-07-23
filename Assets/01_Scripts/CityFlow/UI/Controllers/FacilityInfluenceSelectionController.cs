@@ -57,9 +57,18 @@ namespace CityFlow.UI.Controllers
         {
             if (services?.TileData == null ||
                 placementController == null ||
-                highlightRenderer == null ||
-                placementController.IsBuildingMode ||
-                Mouse.current == null ||
+                highlightRenderer == null)
+            {
+                return;
+            }
+
+            if (placementController.IsBuildingMode)
+            {
+                ClearSelectionState();
+                return;
+            }
+
+            if (Mouse.current == null ||
                 !Mouse.current.leftButton.wasPressedThisFrame)
             {
                 return;
@@ -133,6 +142,13 @@ namespace CityFlow.UI.Controllers
                 return;
             }
 
+            if (placementController != null &&
+                placementController.IsBuildingMode)
+            {
+                ClearSelectionState();
+                return;
+            }
+
             Vector2Int facility = selectedFacility.Value;
             if (placedEvent.IsRemove &&
                 placedEvent.Tile == facility &&
@@ -173,9 +189,14 @@ namespace CityFlow.UI.Controllers
 
         private void ClearSelection()
         {
+            ClearSelectionState();
+            highlightRenderer?.HideAll();
+        }
+
+        private void ClearSelectionState()
+        {
             selectedFacility = null;
             selectedFacilityType = TileType.Empty;
-            highlightRenderer?.HideAll();
         }
 
         private void BuildInfluenceTiles(Vector2Int facility, TileType type, int radius)
