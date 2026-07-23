@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Linq;
 using CityFlow.Bootstrap;
+using CityFlow.Content;
 using CityFlow.Contracts;
 using TMPro;
 using UnityEngine;
@@ -49,6 +50,8 @@ namespace CityFlow.UI
         private float _currentWaitTime = 0f;
         private Vector2Int _currentTile;
         private bool _isClosing = false;
+        private PopulationSystem _populationSystem;
+        private PlacementController _placementController;
 
         public void Configure(
             TMP_Text title,
@@ -74,6 +77,10 @@ namespace CityFlow.UI
         public void Initialize(CityFlowServices services)
         {
             _services = services;
+            _populationSystem =
+                FindAnyObjectByType<PopulationSystem>();
+            _placementController =
+                FindAnyObjectByType<PlacementController>();
         }
 
         private void Start()
@@ -362,9 +369,10 @@ namespace CityFlow.UI
         {
             // 코어 엔진에서 타일 종류(Type) 가져오기
             string tileName = "Unknown";
+            TileType type = TileType.Empty;
             if (_services != null && _services.TileData != null)
             {
-                TileType type = _services.TileData.GetTileType(tile);
+                type = _services.TileData.GetTileType(tile);
                 tileName = type.ToString();
             }
             
@@ -375,6 +383,11 @@ namespace CityFlow.UI
             Random.InitState(tile.x * 1000 + tile.y);
             
             if (txtTileCoord != null) txtTileCoord.text = $"타일: {tile.x}, {tile.y}";
+
+            if (TryRefreshBuildingDetails(type))
+            {
+                return;
+            }
             
             string[] types = { "세단", "SUV", "트럭", "버스", "스포츠카" };
             if (txtVehicleType != null) txtVehicleType.text = types[Random.Range(0, types.Length)];
@@ -385,12 +398,164 @@ namespace CityFlow.UI
             if (txtVehicleId != null) txtVehicleId.text = $"{idPrefix}{idChar} {idSuffix}";
         }
 
+        private bool TryRefreshBuildingDetails(TileType type)
+        {
+            switch (type)
+            {
+                case TileType.House:
+                {
+                    int population = 0;
+                    _populationSystem?.TryGetTilePopulation(
+                        _currentTile,
+                        out population
+                    );
+
+                    int basePopulation =
+                        _populationSystem?.PopulationConfig
+                            ?.GetPopulationValue(TileType.House) ?? 0;
+
+                    if (txtTitle != null)
+                    {
+                        txtTitle.text = "주거지";
+                    }
+                    if (txtVehicleType != null)
+                    {
+                        txtVehicleType.text = "거주 인구";
+                    }
+                    if (txtVehicleId != null)
+                    {
+                        txtVehicleId.text = $"{population:N0}명";
+                    }
+                    if (txtWaitTime != null)
+                    {
+                        txtWaitTime.color = normalColor;
+                        txtWaitTime.text = population > basePopulation
+                            ? "학교 혜택 적용"
+                            : "기본 인구";
+                    }
+
+                    return true;
+                }
+
+                case TileType.Office:
+                {
+                    CompanyStaffing staffing = default;
+                    bool hasStaffing =
+                        _services?.Stats != null &&
+                        _services.Stats.TryGetCompanyStaffing(
+                            _currentTile,
+                            out staffing
+                        );
+
+                    if (txtTitle != null)
+                    {
+                        txtTitle.text = "회사";
+                    }
+                    if (txtVehicleType != null)
+                    {
+                        txtVehicleType.text = "구인 현황";
+                    }
+                    if (txtVehicleId != null)
+                    {
+                        txtVehicleId.text = hasStaffing
+                            ? $"{staffing.Filled:N0}/{staffing.Capacity:N0}명"
+                            : "정보 없음";
+                    }
+                    if (txtWaitTime != null)
+                    {
+                        txtWaitTime.color = normalColor;
+                        txtWaitTime.text =
+                            hasStaffing &&
+                            staffing.Filled >= staffing.Capacity
+                                ? "구인 완료"
+                                : "구인 중";
+                    }
+
+                    return true;
+                }
+
+                case TileType.School:
+                {
+                    PopulationConfigSO config =
+                        _placementController?.PopulationConfig;
+
+                    if (txtTitle != null)
+                    {
+                        txtTitle.text = "학교";
+                    }
+                    if (txtVehicleType != null)
+                    {
+                        txtVehicleType.text = "교육 영향";
+                    }
+                    if (txtVehicleId != null)
+                    {
+                        txtVehicleId.text = config != null
+                            ? $"반경 {config.SchoolCoverageRadius}칸"
+                            : "설정 없음";
+                    }
+                    if (txtWaitTime != null)
+                    {
+                        txtWaitTime.color = normalColor;
+                        txtWaitTime.text = config != null
+                            ? $"주거지 +{config.SchoolCoveragePopulationBonus}명"
+                            : string.Empty;
+                    }
+
+                    return true;
+                }
+
+                case TileType.Hospital:
+                {
+                    BuildingDefinitionSO definition =
+                        _placementController?.HospitalDefinition;
+
+                    if (txtTitle != null)
+                    {
+                        txtTitle.text = "병원";
+                    }
+                    if (txtVehicleType != null)
+                    {
+                        txtVehicleType.text = "의료 영향";
+                    }
+                    if (txtVehicleId != null)
+                    {
+                        txtVehicleId.text = definition != null
+                            ? $"반경 {definition.HospitalCoverageRadius}칸"
+                            : "설정 없음";
+                    }
+                    if (txtWaitTime != null)
+                    {
+                        txtWaitTime.color = normalColor;
+                        txtWaitTime.text = definition != null
+                            ? $"최대 {definition.HospitalPatientCapacity}채"
+                            : string.Empty;
+                    }
+
+                    return true;
+                }
+
+                default:
+                    return false;
+            }
+        }
+
         private IEnumerator UpdateCardRoutine()
         {
             WaitForSeconds wait = new WaitForSeconds(0.2f); // 200ms 주기로 강제 스로틀링
 
             while (true)
             {
+                TileType currentType =
+                    _services?.TileData?.GetTileType(
+                        _currentTile
+                    ) ?? TileType.Empty;
+
+                if (TryRefreshBuildingDetails(currentType))
+                {
+                    yield return wait;
+                    continue;
+                }
+
                 float density = GetTileDensity();
 
                 // 요구사항 수식: += 0.2f * congestion(density)

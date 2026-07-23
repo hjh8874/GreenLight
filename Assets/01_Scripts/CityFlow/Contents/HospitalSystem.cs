@@ -158,11 +158,17 @@ namespace CityFlow.Content
 
                     if (tileType == TileType.Hospital)
                     {
-                        hospitalTiles.Add(tile);
+                        if (tileData.IsFootprintAnchor(tile))
+                        {
+                            hospitalTiles.Add(tile);
+                        }
                     }
                     else if (tileType == TileType.House)
                     {
-                        houseTiles.Add(tile);
+                        if (tileData.IsFootprintAnchor(tile))
+                        {
+                            houseTiles.Add(tile);
+                        }
                     }
                 }
             }

@@ -454,15 +454,29 @@ namespace CityFlow.Content.Transit
                 return true;
             }
 
-            for (int i = 0; i < Directions.Length; i++)
-            {
-                Vector2Int candidate =
-                    stopTile + Directions[i];
+            TileType stopType = tileData.GetTileType(stopTile);
+            Vector2Int footprint = TileFootprint.IsBuilding(stopType)
+                ? tileData.GetFootprintSize(stopType)
+                : Vector2Int.one;
 
-                if (IsRoad(candidate))
+            for (int y = 0; y < footprint.y; y++)
+            {
+                for (int x = 0; x < footprint.x; x++)
                 {
-                    roadTile = candidate;
-                    return true;
+                    Vector2Int footprintTile =
+                        stopTile + new Vector2Int(x, y);
+
+                    for (int i = 0; i < Directions.Length; i++)
+                    {
+                        Vector2Int candidate =
+                            footprintTile + Directions[i];
+
+                        if (IsRoad(candidate))
+                        {
+                            roadTile = candidate;
+                            return true;
+                        }
+                    }
                 }
             }
 

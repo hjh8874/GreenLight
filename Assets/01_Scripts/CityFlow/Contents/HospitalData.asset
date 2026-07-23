@@ -23,9 +23,9 @@ MonoBehaviour:
   buildCost: 100
   dailyCoinValue: 20
   prosperityValue: 1
-  unlockedByDefault: 0
+  unlockedByDefault: 1
   schoolCoverageCapacity: 0
   coveredPopulationCapBonus: 0
-  hospitalCoverageRadius: 0
-  hospitalPatientCapacity: 0
-  hospitalStabilityBonus: 0
+  hospitalCoverageRadius: 3
+  hospitalPatientCapacity: 6
+  hospitalStabilityBonus: 1

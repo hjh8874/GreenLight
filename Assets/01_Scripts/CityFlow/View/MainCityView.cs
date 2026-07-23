@@ -27,6 +27,7 @@ namespace CityFlow.View
         [SerializeField] private GameObject housePrefab;
         [SerializeField] private GameObject officePrefab;
         [SerializeField] private GameObject schoolPrefab;
+        [SerializeField] private GameObject hospitalPrefab;
         [SerializeField] private GameObject vehiclePrefab;
         [SerializeField] private GameObject signalPrefab;
         [SerializeField] private GameObject burstPrefab;
@@ -109,6 +110,7 @@ namespace CityFlow.View
         [SerializeField] private Color houseColor = new Color(0.35f, 0.6f, 0.86f);
         [SerializeField] private Color officeColor = new Color(0.92f, 0.59f, 0.24f);
         [SerializeField] private Color schoolColor = new Color(0.66f, 0.42f, 0.82f);
+        [SerializeField] private Color hospitalColor = new Color(0.88f, 0.3f, 0.34f);
         [SerializeField] private Color vehicleColor = new Color(0.12f, 0.12f, 0.16f);
         [SerializeField] private Color selectedSignalColor = Color.white;
         [SerializeField] private Color flowBurstColor = new Color(1f, 0.78f, 0.12f);
@@ -875,6 +877,7 @@ namespace CityFlow.View
             {
                 TileType.Office => tileSize * 1.35f,
                 TileType.School => tileSize * 0.65f,
+                TileType.Hospital => tileSize * 0.85f,
                 _ => tileSize * 0.8f
             };
 
@@ -1070,6 +1073,7 @@ namespace CityFlow.View
                 TileType.House => houseColor,
                 TileType.Office => officeColor,
                 TileType.School => schoolColor,
+                TileType.Hospital => hospitalColor,
                 _ => Color.clear
             };
 
@@ -1094,6 +1098,7 @@ namespace CityFlow.View
                 TileType.House => new Vector3(tileSize * 0.62f, tileSize * 0.62f, tileSize * 0.7f),
                 TileType.Office => new Vector3(tileSize * 0.55f, tileSize * 0.55f, tileSize * 1.25f),
                 TileType.School => new Vector3(tileSize * 0.76f, tileSize * 0.6f, tileSize * 0.55f),
+                TileType.Hospital => new Vector3(tileSize * 0.78f, tileSize * 0.68f, tileSize * 0.8f),
                 _ => Vector3.one * tileSize
             };
         }
@@ -1110,6 +1115,15 @@ namespace CityFlow.View
         private Quaternion GetRoadFacingRotation(Vector2Int tile, TileType type)
         {
             Vector2Int size = TileFootprint.GetSize(type);
+            if (type == TileType.House)
+            {
+                Quaternion parkingRotation = GetHouseParkingRotation(tile, size, out bool foundConnectedCorner);
+                if (foundConnectedCorner)
+                {
+                    return parkingRotation;
+                }
+            }
+
             int south = CountRoadsAlongHorizontal(tile.x, tile.x + size.x, tile.y - 1);
             int east = CountRoadsAlongVertical(tile.y, tile.y + size.y, tile.x + size.x);
             int north = CountRoadsAlongHorizontal(tile.x, tile.x + size.x, tile.y + size.y);
@@ -1121,6 +1135,47 @@ namespace CityFlow.View
             if (best == north) return Quaternion.Euler(0f, 0f, 180f);
             if (best == west) return Quaternion.Euler(0f, 0f, -90f);
             return Quaternion.identity;
+        }
+
+        private Quaternion GetHouseParkingRotation(
+            Vector2Int anchor,
+            Vector2Int footprintSize,
+            out bool foundConnectedCorner)
+        {
+            int bestScore = 0;
+            int bestIndex = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                Vector2Int corner = i switch
+                {
+                    1 => anchor + new Vector2Int(footprintSize.x - 1, 0),
+                    2 => anchor + footprintSize - Vector2Int.one,
+                    3 => anchor + new Vector2Int(0, footprintSize.y - 1),
+                    _ => anchor
+                };
+                int score = 0;
+
+                if (corner.y == anchor.y && IsRoadTile(corner + Vector2Int.down)) score++;
+                if (corner.x == anchor.x + footprintSize.x - 1 && IsRoadTile(corner + Vector2Int.right)) score++;
+                if (corner.y == anchor.y + footprintSize.y - 1 && IsRoadTile(corner + Vector2Int.up)) score++;
+                if (corner.x == anchor.x && IsRoadTile(corner + Vector2Int.left)) score++;
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestIndex = i;
+                }
+            }
+
+            foundConnectedCorner = bestScore > 0;
+            float rotation = bestIndex switch
+            {
+                1 => 90f,
+                2 => 180f,
+                3 => -90f,
+                _ => 0f
+            };
+            return Quaternion.Euler(0f, 0f, rotation);
         }
 
         private int CountRoadsAlongHorizontal(int startX, int endX, int y)
@@ -1159,6 +1214,7 @@ namespace CityFlow.View
                 TileType.House => Color.Lerp(houseColor, Color.white, 0.35f),
                 TileType.Office => Color.Lerp(officeColor, Color.white, 0.2f),
                 TileType.School => Color.Lerp(schoolColor, Color.black, 0.2f),
+                TileType.Hospital => Color.white,
                 _ => Color.white
             };
 
@@ -1167,6 +1223,7 @@ namespace CityFlow.View
                 TileType.House => new Vector3(0.78f, 0.78f, 0.28f),
                 TileType.Office => new Vector3(0.72f, 0.72f, 0.18f),
                 TileType.School => new Vector3(0.42f, 0.22f, 0.4f),
+                TileType.Hospital => new Vector3(0.22f, 0.68f, 0.16f),
                 _ => Vector3.one * 0.2f
             };
             Vector3 detailPosition = type switch
@@ -1174,6 +1231,7 @@ namespace CityFlow.View
                 TileType.House => new Vector3(0f, 0f, -0.64f),
                 TileType.Office => new Vector3(0f, 0f, -0.58f),
                 TileType.School => new Vector3(0f, -0.48f, -0.42f),
+                TileType.Hospital => new Vector3(0f, -0.56f, -0.52f),
                 _ => Vector3.zero
             };
 
@@ -1255,6 +1313,7 @@ namespace CityFlow.View
                 TileType.House => housePrefab,
                 TileType.Office => officePrefab,
                 TileType.School => schoolPrefab,
+                TileType.Hospital => hospitalPrefab,
                 _ => null
             };
         }

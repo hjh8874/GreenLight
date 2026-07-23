@@ -72,7 +72,20 @@ namespace CityFlow.Content
         public int CurrentPopulation =>
             currentPopulation;
 
+        public PopulationConfigSO PopulationConfig =>
+            populationConfig;
+
         public event Action<int> PopulationChanged;
+
+        public bool TryGetTilePopulation(
+            Vector2Int tile,
+            out int population)
+        {
+            return registeredPopulationTiles.TryGetValue(
+                tile,
+                out population
+            );
+        }
 
         /// <summary>
         /// CityFlowServices에서 타일 데이터와 이벤트를 받아
@@ -175,7 +188,8 @@ namespace CityFlow.Content
                         new Vector2Int(x, y);
 
                     if (tileData.GetTileType(tile) ==
-                        TileType.School)
+                            TileType.School &&
+                        tileData.IsFootprintAnchor(tile))
                     {
                         schoolTiles.Add(tile);
                     }
@@ -360,7 +374,8 @@ namespace CityFlow.Content
                                 radius
                             ) ||
                         tileData.GetTileType(tile) !=
-                        TileType.House)
+                            TileType.House ||
+                        !tileData.IsFootprintAnchor(tile))
                     {
                         continue;
                     }

@@ -248,12 +248,33 @@ namespace CityFlow.Sim.Tests
             Assert.NotNull(dirField);
 
             int clampedVertices = 0;
+            int clampedEntrySegments = 0;
             for (int i = 0; i < vertices.Length; i++)
             {
                 Vector3 pos = (Vector3)posField.GetValue(vertices.GetValue(i));
                 float centerDistance = Vector3.Distance(pos, center);
                 Assert.GreaterOrEqual(centerDistance, 0.62f - 1e-4f,
                     $"정점 {i}가 섬 하한을 침범");
+
+                if (i + 1 < vertices.Length)
+                {
+                    Vector3 entryNextPos = (Vector3)posField.GetValue(vertices.GetValue(i + 1));
+                    float nextCenterDistance = Vector3.Distance(entryNextPos, center);
+                    if (centerDistance > 0.62f + 1e-4f &&
+                        nextCenterDistance <= 0.62f + 1e-4f)
+                    {
+                        Vector3 entryChord = entryNextPos - pos;
+                        if (entryChord.sqrMagnitude > 1e-8f)
+                        {
+                            clampedEntrySegments++;
+                            Vector3 entryDir = (Vector3)dirField.GetValue(vertices.GetValue(i));
+                            Assert.GreaterOrEqual(
+                                Vector3.Dot(entryDir, entryChord.normalized),
+                                0.9999f,
+                                $"클램프 진입 직전 정점 {i}의 Dir과 진입 현이 불일치");
+                        }
+                    }
+                }
 
                 if (centerDistance > 0.62f + 1e-4f || i + 1 >= vertices.Length)
                 {
@@ -271,6 +292,7 @@ namespace CityFlow.Sim.Tests
             }
 
             Assert.Greater(clampedVertices, 0, "우회전 클램프 정점 존재");
+            Assert.Greater(clampedEntrySegments, 0, "우회전 클램프 진입 구간 존재");
             Assert.LessOrEqual(minDist, 0.62f + clearanceTolerance, "회귀 케이스가 클램프 경로를 통과해야 함");
         }
     }

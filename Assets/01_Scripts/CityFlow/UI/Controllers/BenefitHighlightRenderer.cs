@@ -19,33 +19,43 @@ namespace CityFlow.UI.Controllers
         [SerializeField] private float yOffset = 0.05f;
 
         private readonly List<GameObject> _pool = new List<GameObject>();
-        private Material _sharedMaterial;
-        private MaterialPropertyBlock _propBlock;
+        private Texture2D _highlightTexture;
+        private Sprite _highlightSprite;
 
         private void Awake()
         {
-            _propBlock = new MaterialPropertyBlock();
-            InitializeMaterial();
+            InitializeSprite();
         }
 
-        private void InitializeMaterial()
+        private void InitializeSprite()
         {
-            if (_sharedMaterial == null)
+            if (_highlightSprite != null)
             {
-                Shader shader = Shader.Find("Sprites/Default");
-                if (shader == null) shader = Shader.Find("Unlit/Color");
-                
-                _sharedMaterial = new Material(shader)
-                {
-                    color = Color.white // PropertyBlock으로 색상을 덮어씌움
-                };
+                return;
             }
+
+            _highlightTexture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+            {
+                name = "BenefitHighlightTexture",
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            _highlightTexture.SetPixel(0, 0, Color.white);
+            _highlightTexture.Apply();
+
+            _highlightSprite = Sprite.Create(
+                _highlightTexture,
+                new Rect(0f, 0f, 1f, 1f),
+                new Vector2(0.5f, 0.5f),
+                1f);
+            _highlightSprite.name = "BenefitHighlightSprite";
+            _highlightSprite.hideFlags = HideFlags.HideAndDontSave;
         }
 
         public void ShowHighlights(IReadOnlyList<Vector2Int> areaCoords, IReadOnlyList<Vector2Int> houseCoords, bool useXYPlane = false)
         {
-            if (_sharedMaterial == null) InitializeMaterial();
-            if (_propBlock == null) _propBlock = new MaterialPropertyBlock();
+            if (_highlightSprite == null) InitializeSprite();
 
             Color areaColor = schoolAreaColor;
             Color houseColor = schoolHouseColor;
@@ -84,16 +94,18 @@ namespace CityFlow.UI.Controllers
         private void SetupTile(GameObject tileGo, Vector2Int coord, Color color, bool useXYPlane, float yOff)
         {
             Vector3 pos = useXYPlane
-                ? new Vector3(coord.x + 0.5f, coord.y + 0.5f, -0.06f)
+                ? new Vector3(coord.x + 0.5f, coord.y + 0.5f, -0.06f - yOff)
                 : new Vector3(coord.x, yOff, coord.y);
 
             tileGo.transform.position = pos;
+            tileGo.transform.rotation = useXYPlane
+                ? Quaternion.identity
+                : Quaternion.Euler(90f, 0f, 0f);
             tileGo.SetActive(true);
 
-            if (tileGo.TryGetComponent<MeshRenderer>(out var renderer))
+            if (tileGo.TryGetComponent<SpriteRenderer>(out var renderer))
             {
-                _propBlock.SetColor("_Color", color);
-                renderer.SetPropertyBlock(_propBlock);
+                renderer.color = color;
             }
         }
 
@@ -110,26 +122,13 @@ namespace CityFlow.UI.Controllers
 
         private GameObject CreateHighlightTile()
         {
-            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            go.name = "BenefitHighlightTile";
+            GameObject go = new GameObject("BenefitHighlightTile");
             go.transform.SetParent(transform);
-            
-            // XZ 평면(3D)에 눕히기 위해 90도 회전
-            go.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
             go.transform.localScale = Vector3.one;
 
-            // MeshCollider 제거 (클릭 및 레이캐스트 방해 방지)
-            if (go.TryGetComponent<Collider>(out var collider))
-            {
-                Destroy(collider);
-            }
-
-            if (go.TryGetComponent<MeshRenderer>(out var renderer))
-            {
-                renderer.sharedMaterial = _sharedMaterial;
-                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                renderer.receiveShadows = false;
-            }
+            SpriteRenderer renderer = go.AddComponent<SpriteRenderer>();
+            renderer.sprite = _highlightSprite;
+            renderer.sortingOrder = 90;
 
             go.SetActive(false);
             return go;
@@ -137,9 +136,14 @@ namespace CityFlow.UI.Controllers
 
         private void OnDestroy()
         {
-            if (_sharedMaterial != null)
+            if (_highlightSprite != null)
             {
-                Destroy(_sharedMaterial);
+                Destroy(_highlightSprite);
+            }
+
+            if (_highlightTexture != null)
+            {
+                Destroy(_highlightTexture);
             }
         }
     }
