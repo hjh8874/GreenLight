@@ -97,6 +97,37 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(3, loaded.WeeklySettlement.DaysIntoCurrentWeek);
         }
 
+        [Test]
+        public void Save_RoundTripsQuestAndDeliveredProgress()
+        {
+            var calls = new List<string>();
+            var repository = new JsonSaveRepository(savePath, backupPath);
+            var progression = new FakeProgression
+            {
+                Current = new ProgressionSaveData
+                {
+                    CurrentStage = 5,
+                    CompletedObjectiveIds = new[] { "BuildRoad", "BuildHouse" },
+                    TutorialCompleted = true,
+                    HasQuestProgress = true,
+                    HasHarvested = true,
+                    LifetimeDeliveredTotal = 123L
+                }
+            };
+            var service = new SaveService(
+                new FakeSim(calls),
+                repository,
+                new FakeClock(),
+                progressionSaveSource: progression);
+
+            Assert.IsTrue(service.Save());
+            Assert.IsTrue(repository.TryLoad(out GameSaveData loaded));
+            Assert.IsTrue(loaded.Progression.HasQuestProgress);
+            Assert.IsTrue(loaded.Progression.HasHarvested);
+            Assert.AreEqual(5, loaded.Progression.CurrentStage);
+            Assert.AreEqual(123L, loaded.Progression.LifetimeDeliveredTotal);
+        }
+
         sealed class FakeClock : ISaveClock
         {
             public DateTime UtcNow => new DateTime(2026, 7, 18, 0, 0, 0, DateTimeKind.Utc);
@@ -124,6 +155,13 @@ namespace CityFlow.Sim.Tests
                 Restored = snapshot;
                 calls.Add("weekly");
             }
+        }
+
+        sealed class FakeProgression : IProgressionSaveSource
+        {
+            public ProgressionSaveData Current = new ProgressionSaveData();
+            public ProgressionSaveData CreateSnapshot() => Current;
+            public void RestoreSnapshot(ProgressionSaveData snapshot) => Current = snapshot;
         }
     }
 }

@@ -8,5 +8,8 @@ namespace CityFlow.Contracts.Save
         public int CurrentStage;
         public string[] CompletedObjectiveIds;
         public bool TutorialCompleted;
+        public bool HasQuestProgress;
+        public bool HasHarvested;
+        public long LifetimeDeliveredTotal;
     }
 }
