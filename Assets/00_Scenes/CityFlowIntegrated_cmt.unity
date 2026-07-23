@@ -7875,6 +7875,7 @@ GameObject:
   - component: {fileID: 559808198}
   - component: {fileID: 559808197}
   - component: {fileID: 559808196}
+  - component: {fileID: 559808201}
   m_Layer: 0
   m_Name: Services
   m_TagString: Untagged
@@ -8146,6 +8147,23 @@ MonoBehaviour:
   gridWidth: 20
   gridHeight: 20
   currentHospitalStabilityBonus: 0
+--- !u!114 &559808201
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 559808183}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2e70c3bde2124cfdac60ae40f9b4f9a1, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Controllers.SchoolBusRouteView
+  busRoute: {fileID: 559808198}
+  useXYPlane: 1
+  busColor: {r: 1, g: 0.82, b: 0.12, a: 1}
+  visualSize: {x: 0.5, y: 0.28}
+  visualDepth: -0.24
 --- !u!1 &566356500
 GameObject:
   m_ObjectHideFlags: 0

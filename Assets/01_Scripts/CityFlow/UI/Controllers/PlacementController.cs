@@ -63,6 +63,12 @@ namespace CityFlow.UI
         [SerializeField] private CityFlow.Content.PopulationConfigSO populationConfig;
         [SerializeField] private CityFlow.Content.BuildingDefinitionSO hospitalDefinition;
 
+        public CityFlow.Content.PopulationConfigSO PopulationConfig =>
+            populationConfig;
+
+        public CityFlow.Content.BuildingDefinitionSO HospitalDefinition =>
+            hospitalDefinition;
+
         private BenefitHighlightRenderer _benefitRenderer;
         private Vector2Int? _lastPreviewCoord = null;
         private readonly System.Collections.Generic.List<Vector2Int> _benefitTileBuffer = new System.Collections.Generic.List<Vector2Int>(32);

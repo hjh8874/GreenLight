@@ -186,6 +186,12 @@ namespace CityFlow.Content.Transit
                     Vector2Int tile = new(x, y);
                     TileType type = tileData.GetTileType(tile);
 
+                    if (TileFootprint.IsBuilding(type) &&
+                        !tileData.IsFootprintAnchor(tile))
+                    {
+                        continue;
+                    }
+
                     RegisterTypedTile(tile, type);
                 }
             }

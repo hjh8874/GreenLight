@@ -509,10 +509,16 @@ namespace CityFlow.ViewKit
             }
 
             // 클램프는 베지어를 반경 0.62의 호로 성형한다. 원래 베지어 접선을 그대로 두면
-            // 차 헤딩과 실제 진행 현이 어긋나므로, 모든 위치 보정이 끝난 뒤 전방 현으로 갱신한다.
+            // 차 헤딩과 실제 진행 현이 어긋나므로, 보정 정점과 그 직전 정점의 방향을
+            // 모든 위치 보정이 끝난 뒤 실제 전방 현으로 갱신한다.
             for (int j = 0; j < built.Count; j++)
             {
-                if (!clamped[j])
+                bool entersClampedSegment =
+                    j + 1 < built.Count &&
+                    clamped[j + 1];
+
+                if (!clamped[j] &&
+                    !entersClampedSegment)
                 {
                     continue;
                 }
@@ -541,7 +547,8 @@ namespace CityFlow.ViewKit
         }
 
         // 접선 일치 전이(C1): from/to의 접선을 핸들로 쓰는 쿼터 베지어.
-        // mouth±α 모델에선 α가 진입 각차를 45°로 줄여 전이가 완만 — 섬 클램프는 보험(평시 무동작).
+        // mouth±α 모델에선 α가 진입 각차를 45°로 줄여 전이가 완만하다.
+        // 링을 생략하는 우회전은 섬 하한 클램프가 상시 적용된다.
         private static void AppendTransitionBezier(
             List<Vertex> built, Vector3 from, Vector3 fromDir, Vector3 to, Vector3 toDir, bool includeStart)
         {

@@ -15,3 +15,5 @@ MonoBehaviour:
   populationEntries:
   - tileType: 2
     populationValue: 2
+  schoolCoverageRadius: 3
+  schoolCoveragePopulationBonus: 2

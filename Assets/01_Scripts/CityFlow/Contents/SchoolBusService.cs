@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using CityFlow.Bootstrap;
 using UnityEngine;
 
 namespace CityFlow.Content.Transit
@@ -22,7 +23,9 @@ namespace CityFlow.Content.Transit
     /// 학교 → 주거지역 1 → 주거지역 2 → ... → 학교
     /// </summary>
     [RequireComponent(typeof(BusRoute))]
-    public sealed class SchoolBusService : MonoBehaviour
+    public sealed class SchoolBusService :
+        MonoBehaviour,
+        ICityFlowServiceConsumer
     {
         [Header("필수 참조")]
         [SerializeField]
@@ -59,6 +62,7 @@ namespace CityFlow.Content.Transit
         private float schoolWaitTimer;
         private bool isSubscribed;
         private bool wantsToOperate;
+        private bool isInitialized;
 
         public SchoolBusState State { get; private set; } =
             SchoolBusState.Idle;
@@ -99,10 +103,45 @@ namespace CityFlow.Content.Transit
 
         private void Start()
         {
+            if (isInitialized)
+            {
+                return;
+            }
+
+            CityBootstrap bootstrap =
+                FindAnyObjectByType<CityBootstrap>();
+
+            if (bootstrap?.Services != null)
+            {
+                Initialize(bootstrap.Services);
+            }
+        }
+
+        public void Initialize(CityFlowServices services)
+        {
+            if (isInitialized || services == null)
+            {
+                return;
+            }
+
+            if (stopRegistry == null)
+            {
+                stopRegistry =
+                    FindAnyObjectByType<BusStopRegistry>();
+            }
+
+            if (busRoute == null)
+            {
+                busRoute = GetComponent<BusRoute>();
+            }
+
+            stopRegistry?.Initialize(services);
+            busRoute?.Initialize(services);
+
+            isInitialized = true;
             Subscribe();
 
             wantsToOperate = autoStart;
-
             if (wantsToOperate)
             {
                 TryStartSchoolRoute();

@@ -1,5 +1,6 @@
 using System;
 using CityFlow.Bootstrap;
+using CityFlow.Content;
 using CityFlow.Contracts;
 using TMPro;
 using UnityEngine;
@@ -25,6 +26,7 @@ namespace CityFlow.UI
         private IEconomyService _economy;
         private IGameCalendarService _gameCalendar;
         private IWeeklyEconomyService _weeklyEconomy;
+        private PopulationSystem _populationSystem;
         private float _updateTimer;
         
         // Cached state from events
@@ -34,6 +36,7 @@ namespace CityFlow.UI
 
         // Cache for target values to avoid redundant string allocations
         private int _lastTargetVehicles = -1;
+        private int _lastTargetPopulation = -1;
         private long _lastTargetCoins = -1;
 
         public void Configure(
@@ -53,6 +56,14 @@ namespace CityFlow.UI
         {
             _services = services;
             _cityStats = services.Stats;
+            _populationSystem =
+                FindAnyObjectByType<PopulationSystem>();
+
+            if (_populationSystem != null)
+            {
+                _populationSystem.PopulationChanged +=
+                    OnPopulationChanged;
+            }
 
             if (normalizeLayoutOnStart)
             {
@@ -115,6 +126,12 @@ namespace CityFlow.UI
             if (_weeklyEconomy != null)
             {
                 _weeklyEconomy.PendingCoinsChanged -= OnPendingCoinsChanged;
+            }
+
+            if (_populationSystem != null)
+            {
+                _populationSystem.PopulationChanged -=
+                    OnPopulationChanged;
             }
         }
 
@@ -216,6 +233,12 @@ namespace CityFlow.UI
             RefreshCoinText();
         }
 
+        private void OnPopulationChanged(int population)
+        {
+            _lastTargetPopulation = -1;
+            UpdateUI();
+        }
+
         private void Start()
         {
             if (normalizeLayoutOnStart)
@@ -229,9 +252,9 @@ namespace CityFlow.UI
         private void NormalizeHeaderLayout()
         {
             ConfigureHeaderText(timeText, new Vector2(16f, -14f), new Vector2(210f, 30f));
-            ConfigureHeaderText(vehicleCountText, new Vector2(240f, -14f), new Vector2(150f, 30f));
-            ConfigureHeaderText(coinText, new Vector2(410f, -14f), new Vector2(280f, 30f));
-            ConfigureHeaderText(efficiencyText, new Vector2(710f, -14f), new Vector2(150f, 30f));
+            ConfigureHeaderText(vehicleCountText, new Vector2(240f, -14f), new Vector2(220f, 30f));
+            ConfigureHeaderText(coinText, new Vector2(480f, -14f), new Vector2(280f, 30f));
+            ConfigureHeaderText(efficiencyText, new Vector2(780f, -14f), new Vector2(150f, 30f));
         }
 
         private static void ConfigureHeaderText(TextMeshProUGUI text, Vector2 anchoredPosition, Vector2 sizeDelta)
@@ -279,11 +302,17 @@ namespace CityFlow.UI
             if (vehicleCountText != null)
             {
                 int targetVehicleCount = _cityStats?.ActiveVehicleCount ?? 0;
-                
-                if (targetVehicleCount != _lastTargetVehicles)
+                int targetPopulation =
+                    _populationSystem?.CurrentPopulation ?? 0;
+
+                if (targetVehicleCount != _lastTargetVehicles ||
+                    targetPopulation != _lastTargetPopulation)
                 {
                     _lastTargetVehicles = targetVehicleCount;
-                    vehicleCountText.text = $"차량: {targetVehicleCount:N0}대";
+                    _lastTargetPopulation = targetPopulation;
+                    vehicleCountText.text =
+                        $"차량: {targetVehicleCount:N0}대  " +
+                        $"인구: {targetPopulation:N0}명";
                 }
             }
 
