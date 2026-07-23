@@ -18,10 +18,15 @@ namespace CityFlow.UI.Controllers
         private readonly List<Vector2Int> areaTiles = new();
         private readonly List<Vector2Int> coveredHouses = new();
         private CityFlowServices services;
+        private Vector2Int? selectedFacility;
+        private TileType selectedFacilityType;
+        private bool isSubscribed;
 
         public void Initialize(CityFlowServices cityFlowServices)
         {
+            Unsubscribe();
             services = cityFlowServices;
+            Subscribe();
         }
 
         private void Awake()
@@ -35,6 +40,17 @@ namespace CityFlow.UI.Controllers
             {
                 highlightRenderer = GetComponent<BenefitHighlightRenderer>();
             }
+        }
+
+        private void OnEnable()
+        {
+            Subscribe();
+        }
+
+        private void OnDisable()
+        {
+            Unsubscribe();
+            ClearSelection();
         }
 
         private void Update()
@@ -57,7 +73,7 @@ namespace CityFlow.UI.Controllers
             Vector2Int clicked = placementController.GetMouseGridCoordinate();
             if (!GridUtil.IsInside(clicked))
             {
-                highlightRenderer.HideAll();
+                ClearSelection();
                 return;
             }
 
@@ -76,12 +92,90 @@ namespace CityFlow.UI.Controllers
 
             if (radius <= 0)
             {
-                highlightRenderer.HideAll();
+                ClearSelection();
                 return;
             }
 
+            selectedFacility = clicked;
+            selectedFacilityType = type;
             BuildInfluenceTiles(clicked, type, radius);
             highlightRenderer.ShowHighlights(areaTiles, coveredHouses, useXYPlane: true);
+        }
+
+        private void Subscribe()
+        {
+            if (isSubscribed || services?.Events == null)
+            {
+                return;
+            }
+
+            services.Events.Placed += OnPlaced;
+            isSubscribed = true;
+        }
+
+        private void Unsubscribe()
+        {
+            if (!isSubscribed || services?.Events == null)
+            {
+                return;
+            }
+
+            services.Events.Placed -= OnPlaced;
+            isSubscribed = false;
+        }
+
+        private void OnPlaced(PlacedEvent placedEvent)
+        {
+            if (!selectedFacility.HasValue ||
+                highlightRenderer == null ||
+                services?.TileData == null)
+            {
+                return;
+            }
+
+            Vector2Int facility = selectedFacility.Value;
+            if (placedEvent.IsRemove &&
+                placedEvent.Tile == facility &&
+                placedEvent.Type == selectedFacilityType)
+            {
+                ClearSelection();
+                return;
+            }
+
+            int radius = selectedFacilityType switch
+            {
+                TileType.School when populationConfig != null =>
+                    populationConfig.SchoolCoverageRadius,
+                TileType.Hospital when hospitalDefinition != null =>
+                    hospitalDefinition.HospitalCoverageRadius,
+                _ => 0
+            };
+
+            if (radius <= 0 ||
+                services.TileData.GetTileType(facility) !=
+                    selectedFacilityType)
+            {
+                ClearSelection();
+                return;
+            }
+
+            BuildInfluenceTiles(
+                facility,
+                selectedFacilityType,
+                radius
+            );
+            highlightRenderer.ShowHighlights(
+                areaTiles,
+                coveredHouses,
+                useXYPlane: true
+            );
+        }
+
+        private void ClearSelection()
+        {
+            selectedFacility = null;
+            selectedFacilityType = TileType.Empty;
+            highlightRenderer?.HideAll();
         }
 
         private void BuildInfluenceTiles(Vector2Int facility, TileType type, int radius)
