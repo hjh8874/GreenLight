@@ -34,22 +34,24 @@ namespace CityFlow.Save
                 return false;
             }
 
+            string temporaryFilePath = $"{FilePath}.tmp";
+
             try
             {
-                string directoryPath = Path.GetDirectoryName(FilePath);
-
-                if (!string.IsNullOrEmpty(directoryPath))
-                {
-                    Directory.CreateDirectory(directoryPath);
-                }
-
-                if (File.Exists(FilePath))
-                {
-                    File.Copy(FilePath, BackupFilePath, true);
-                }
+                EnsureParentDirectory(FilePath);
+                EnsureParentDirectory(BackupFilePath);
+                DeleteFile(temporaryFilePath);
 
                 string json = JsonUtility.ToJson(data, true);
-                File.WriteAllText(FilePath, json, Encoding.UTF8);
+                WriteDurably(temporaryFilePath, json);
+
+                if (!TryLoadFromPath(temporaryFilePath, out _))
+                {
+                    throw new InvalidDataException(
+                        "The temporary save file could not be validated.");
+                }
+
+                ReplacePrimaryAtomically(temporaryFilePath);
                 Debug.Log($"Game saved to {FilePath}");
                 return true;
             }
@@ -57,6 +59,10 @@ namespace CityFlow.Save
             {
                 Debug.LogWarning($"Save file could not be written: {FilePath}\n{exception.Message}");
                 return false;
+            }
+            finally
+            {
+                TryDeleteTemporaryFile(temporaryFilePath);
             }
         }
 
@@ -108,7 +114,76 @@ namespace CityFlow.Save
                 return false;
             }
 
+            if (data.SaveVersion != SaveConstants.CurrentSaveVersion)
+            {
+                Debug.LogWarning(
+                    $"Save file version {data.SaveVersion} is not supported: {filePath}");
+                data = null;
+                return false;
+            }
+
             return true;
+        }
+
+        private void ReplacePrimaryAtomically(string temporaryFilePath)
+        {
+            if (!File.Exists(FilePath))
+            {
+                File.Move(temporaryFilePath, FilePath);
+                return;
+            }
+
+            string backupPath =
+                TryLoadFromPath(FilePath, out _)
+                    ? BackupFilePath
+                    : null;
+
+            File.Replace(
+                temporaryFilePath,
+                FilePath,
+                backupPath);
+        }
+
+        private static void WriteDurably(
+            string filePath,
+            string contents)
+        {
+            byte[] bytes =
+                new UTF8Encoding(false).GetBytes(contents);
+
+            using (FileStream stream = new FileStream(
+                       filePath,
+                       FileMode.CreateNew,
+                       FileAccess.Write,
+                       FileShare.None))
+            {
+                stream.Write(bytes, 0, bytes.Length);
+                stream.Flush(true);
+            }
+        }
+
+        private static void EnsureParentDirectory(string filePath)
+        {
+            string directoryPath = Path.GetDirectoryName(filePath);
+
+            if (!string.IsNullOrEmpty(directoryPath))
+            {
+                Directory.CreateDirectory(directoryPath);
+            }
+        }
+
+        private static void TryDeleteTemporaryFile(string filePath)
+        {
+            try
+            {
+                DeleteFile(filePath);
+            }
+            catch (System.Exception exception)
+            {
+                Debug.LogWarning(
+                    $"Temporary save file could not be deleted: {filePath}\n" +
+                    exception.Message);
+            }
         }
 
         private static void DeleteFile(string filePath)

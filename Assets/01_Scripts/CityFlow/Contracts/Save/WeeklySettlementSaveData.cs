@@ -9,5 +9,7 @@ namespace CityFlow.Contracts.Save
         public int DaysIntoCurrentWeek;
         public long LastProcessedTotalDays;
         public bool HasCycleProgress;
+        public long ObservedOnlineIncomeCoins;
+        public double ObservedOnlineSeconds;
     }
 }

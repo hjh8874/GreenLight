@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using UnityEngine;
 
 namespace CityFlow.Content
@@ -45,6 +46,7 @@ namespace CityFlow.Content
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
+        private bool isRestoreSubscribed;
 
         public int CurrentHospitalStabilityBonus =>
             currentHospitalStabilityBonus;
@@ -106,6 +108,7 @@ namespace CityFlow.Content
             RebuildFromTileData();
 
             services.Events.Placed += OnPlaced;
+            SubscribeRestore();
         }
 
         private void OnDestroy()
@@ -116,6 +119,7 @@ namespace CityFlow.Content
             }
 
             services.Events.Placed -= OnPlaced;
+            UnsubscribeRestore();
         }
 
         private void OnPlaced(
@@ -132,6 +136,40 @@ namespace CityFlow.Content
              * 전체 의료 배정 결과를 바꿀 수 있으므로
              * 현재 타일 데이터를 기준으로 다시 계산합니다.
              */
+            RebuildFromTileData();
+        }
+
+        private void SubscribeRestore()
+        {
+            if (isRestoreSubscribed ||
+                services?.Save == null)
+            {
+                return;
+            }
+
+            services.Save.RestoreCompleted +=
+                OnRestoreCompleted;
+
+            isRestoreSubscribed = true;
+        }
+
+        private void UnsubscribeRestore()
+        {
+            if (!isRestoreSubscribed ||
+                services?.Save == null)
+            {
+                return;
+            }
+
+            services.Save.RestoreCompleted -=
+                OnRestoreCompleted;
+
+            isRestoreSubscribed = false;
+        }
+
+        private void OnRestoreCompleted(
+            RestoreCompletedEvent _)
+        {
             RebuildFromTileData();
         }
 
