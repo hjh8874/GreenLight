@@ -99,6 +99,7 @@ namespace CityFlow.View
         [SerializeField, Min(0.001f)] private float zoomScrollSensitivity = 1f;
 
         private const float OrthographicSizePerDistance = 0.9375f;
+        private const float CameraYawStepDegrees = 90f;
         private const int VehicleRenderQueue = (int)RenderQueue.Geometry + 10;
 
         [Header("Colors")]
@@ -165,6 +166,7 @@ namespace CityFlow.View
         private Vector3 cameraTarget;
         private Vector3 cameraUpDirection;
         private float zoomDistance;
+        private int cameraYawQuarterTurns;
         private bool isIsometricView;
 
         // 도착 코인 팝(항목 A): 풀 고정 크기 — 전부 사용 중이면 가장 오래된 슬롯을 라운드로빈으로 재사용.
@@ -366,6 +368,7 @@ namespace CityFlow.View
                 0f));
             cameraUpDirection = (transform.up - transform.right).normalized;
             zoomDistance = minimumZoomDistance;
+            cameraYawQuarterTurns = 0;
             isIsometricView = true;
             ApplyCameraView();
         }
@@ -390,6 +393,23 @@ namespace CityFlow.View
             Mouse mouse = Mouse.current;
             if (mouse != null)
             {
+                int yawStep = 0;
+                if (mouse.backButton.wasPressedThisFrame)
+                {
+                    yawStep--;
+                }
+
+                if (mouse.forwardButton.wasPressedThisFrame)
+                {
+                    yawStep++;
+                }
+
+                if (yawStep != 0)
+                {
+                    cameraYawQuarterTurns = (cameraYawQuarterTurns + yawStep + 4) % 4;
+                    cameraViewChanged = true;
+                }
+
                 float scrollY = mouse.scroll.ReadValue().y;
                 bool isOverUI = GreenFeedInputGuard.IsPointerCaptured ||
                                 (UnityEngine.EventSystems.EventSystem.current != null &&
@@ -440,10 +460,14 @@ namespace CityFlow.View
                 minimumZoomDistance + zoomDistanceRange);
             mainCamera.useOcclusionCulling = false;
             Vector3 cameraPosition = cameraTarget - transform.forward * viewDistance;
+            Quaternion yawRotation = Quaternion.AngleAxis(
+                cameraYawQuarterTurns * CameraYawStepDegrees,
+                transform.forward);
+            Vector3 rotatedCameraUpDirection = yawRotation * cameraUpDirection;
 
             if (isIsometricView)
             {
-                Vector3 southEastDirection = (transform.right - transform.up).normalized;
+                Vector3 southEastDirection = yawRotation * (transform.right - transform.up).normalized;
                 float angleRadians = angledViewDegrees * Mathf.Deg2Rad;
                 Vector3 angledOffsetDirection = southEastDirection * Mathf.Cos(angleRadians)
                     - transform.forward * Mathf.Sin(angleRadians);
@@ -459,7 +483,9 @@ namespace CityFlow.View
                 cameraPosition = cameraTarget + angledOffset;
             }
 
-            Quaternion cameraRotation = Quaternion.LookRotation(cameraTarget - cameraPosition, cameraUpDirection);
+            Quaternion cameraRotation = Quaternion.LookRotation(
+                cameraTarget - cameraPosition,
+                rotatedCameraUpDirection);
             mainCamera.transform.SetPositionAndRotation(cameraPosition, cameraRotation);
             mainCamera.orthographicSize = viewDistance * OrthographicSizePerDistance;
         }
