@@ -17,8 +17,11 @@ namespace CityFlow.UI
         }
         [Header("References")]
         [SerializeField] private AnalysisCardController analysisCard;
+        [SerializeField] private BuildingInfoCardController buildingInfoCard;
         [SerializeField] private PlacementController placementController;
         private InfrastructurePlacementCoordinator _infraCoordinator;
+
+        private Vector2Int? _lastHoveredBuildingCoord;
 
         [Header("Visuals")]
         [Tooltip("타일을 선택했을 때 바닥에 표시될 강조(하이라이트) 박스")]
@@ -54,6 +57,10 @@ namespace CityFlow.UI
             {
                 _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
             }
+            if (buildingInfoCard == null)
+            {
+                buildingInfoCard = FindFirstObjectByType<BuildingInfoCardController>(FindObjectsInactive.Include);
+            }
             // 시작 시 상세 카드와 하이라이트 박스는 숨겨둡니다.
             CacheHighlightScale();
             DeselectTile();
@@ -76,17 +83,24 @@ namespace CityFlow.UI
                 _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
             }
 
-            // 1. 방어 로직: 현재 건설 모드(고스트가 떠다니는 상태)라면 타일 선택을 무시합니다.
             bool isBuilding = (placementController != null && placementController.IsBuildingMode) || 
                               (_infraCoordinator != null && _infraCoordinator.IsBuildingMode);
 
             if (isBuilding)
             {
                 DeselectTile(); // 건설 모드 켜지면 분석 카드도 바로 닫음
+                if (buildingInfoCard != null && buildingInfoCard.IsOpen)
+                {
+                    buildingInfoCard.CloseCard();
+                    _lastHoveredBuildingCoord = null;
+                }
                 return;
             }
 
-            // 2. 마우스 좌클릭 감지 (New Input System)
+            // --- 2. Hover 감지 (방치형 건물 정보 팝업용) ---
+            HandleHover();
+
+            // 3. 마우스 좌클릭 감지 (New Input System)
             if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
             {
                 // UI(버튼 등) 위를 클릭했다면 무시
@@ -122,6 +136,51 @@ namespace CityFlow.UI
                     DeselectTile(); // 맵 바깥이나 허공 클릭 시 해제
                 }
             }
+        }
+
+        private void HandleHover()
+        {
+            if (buildingInfoCard == null) return;
+
+            // UI 위에 있으면 호버 해제
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            {
+                if (buildingInfoCard.IsOpen) buildingInfoCard.CloseCard();
+                _lastHoveredBuildingCoord = null;
+                return;
+            }
+
+            Vector2Int? gridCoord = TryGetGridCoordinate();
+            if (gridCoord.HasValue && GridUtil.IsInside(gridCoord.Value))
+            {
+                Vector2Int coord = gridCoord.Value;
+                if (_services != null && _services.TileData != null)
+                {
+                    if (_services.TileData.TryGetFootprintAnchor(coord, out Vector2Int anchor))
+                    {
+                        coord = anchor;
+                    }
+
+                    TileType type = _services.TileData.GetTileType(coord);
+                    if (TileFootprint.IsBuilding(type))
+                    {
+                        // 새로운 건물 위에 올라갔을 때만 연다 (중복 호출 방지)
+                        if (_lastHoveredBuildingCoord != coord || !buildingInfoCard.IsOpen)
+                        {
+                            buildingInfoCard.OpenCard(coord, type);
+                            _lastHoveredBuildingCoord = coord;
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // 건물이 아닌 곳이거나 허공이면 닫기
+            if (buildingInfoCard.IsOpen)
+            {
+                buildingInfoCard.CloseCard();
+            }
+            _lastHoveredBuildingCoord = null;
         }
 
         private Vector2Int? TryGetGridCoordinate()
