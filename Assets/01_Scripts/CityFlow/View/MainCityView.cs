@@ -393,29 +393,29 @@ namespace CityFlow.View
             Mouse mouse = Mouse.current;
             if (mouse != null)
             {
-                int yawStep = 0;
-                if (mouse.backButton.wasPressedThisFrame)
-                {
-                    yawStep--;
-                }
-
-                if (mouse.forwardButton.wasPressedThisFrame)
-                {
-                    yawStep++;
-                }
-
-                if (yawStep != 0)
-                {
-                    cameraYawQuarterTurns = (cameraYawQuarterTurns + yawStep + 4) % 4;
-                    cameraViewChanged = true;
-                }
-
                 float scrollY = mouse.scroll.ReadValue().y;
                 bool isOverUI = GreenFeedInputGuard.IsPointerCaptured ||
                                 (UnityEngine.EventSystems.EventSystem.current != null &&
                                  UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject());
                 if (!isOverUI)
                 {
+                    int yawStep = 0;
+                    if (mouse.backButton.wasPressedThisFrame)
+                    {
+                        yawStep--;
+                    }
+
+                    if (mouse.forwardButton.wasPressedThisFrame)
+                    {
+                        yawStep++;
+                    }
+
+                    if (yawStep != 0)
+                    {
+                        cameraYawQuarterTurns = (cameraYawQuarterTurns + yawStep + 4) % 4;
+                        cameraViewChanged = true;
+                    }
+
                     float nextZoomDistance = Mathf.Clamp(
                         zoomDistance - scrollY * zoomScrollSensitivity,
                         minimumZoomDistance,
