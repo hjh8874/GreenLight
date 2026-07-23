@@ -166,6 +166,8 @@ namespace CityFlow.UI
             _isBuildingMode = isOn;
             if (isOn)
             {
+                _lastPreviewCoord = null;
+                GetBenefitRenderer()?.HideAll();
                 RestoreBuildingGhostSprite();
                 UpdateGhostFootprint();
             }
