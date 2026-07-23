@@ -67,7 +67,7 @@ namespace CityFlow.UI
 
             // 캐싱 최적화
             rootCanvas = GetComponentInParent<Canvas>();
-            
+
             // UI 레이아웃 그룹(AnalysisCard 하위 등)에 묶여있어 위치가 겹치는 현상 방지
             // 말풍선처럼 화면 전체를 자유롭게 날아다닐 수 있도록 최상위 캔버스로 독립시킵니다.
             if (rootCanvas != null && transform.parent != rootCanvas.transform)
@@ -139,7 +139,7 @@ namespace CityFlow.UI
 
             // 1. 타일의 정중앙 바닥 좌표 (XY 평면 사용 시 x, y가 맵 바닥, z가 높이/깊이)
             Vector3 worldPos = new Vector3(currentTile.x + 0.5f, currentTile.y + 0.5f, 0f);
-            
+
             // 건물 Footprint 크기에 따른 중앙 정렬 오프셋
             Vector2Int size = TileFootprint.GetSize(currentType);
             worldPos.x += (size.x - 1) * 0.5f;
@@ -147,21 +147,20 @@ namespace CityFlow.UI
 
             // 2. 높이 오프셋 적용 (아이소매트릭 뷰에서 Z축은 카메라 쪽으로 튀어나오는 높이)
             // 건물의 지붕 근처에 띄우기 위해 Z축을 카메라 방향(-)으로 이동 (유니티 2D/XY 평면 기준 -Z가 카메라 쪽)
-            worldPos.z -= 1.5f; 
+            worldPos.z -= 1.5f;
 
             Vector3 screenPos = Camera.main.WorldToScreenPoint(worldPos);
 
-            // [디버깅] 값 출력
-            Debug.Log($"[BuildingInfoCard] Tile: {currentTile}, WorldPos: {worldPos}, ScreenPos: {screenPos}, Cam: {Camera.main.name}");
-
-            // 카메라 뒤에 있는 경우 렌더링 무시 (Orthographic에서 z가 다르게 나올 수 있으므로 임시 해제하거나 확인)
-            if (screenPos.z < 0) 
+            // 카메라 뒤에 있는 경우 렌더링 무시
+            if (screenPos.z < 0)
             {
-                Debug.LogWarning("[BuildingInfoCard] screenPos.z < 0 이므로 위치 갱신 무시됨!");
-                // return; // 임시로 무시 로직을 주석 처리해 봅니다.
+                // 화면 바깥이거나 카메라 뒤에 있으면 캔버스 바깥으로 위치를 옮겨 숨김 처리
+                RectTransform myRect = (RectTransform)transform;
+                myRect.localPosition = new Vector3(-9999f, -9999f, 0f);
+                return;
             }
 
-            if (rootCanvas == null || parentRectTransform == null) 
+            if (rootCanvas == null || parentRectTransform == null)
             {
                 Debug.LogWarning($"[BuildingInfoCard] rootCanvas or parentRectTransform is null! Canvas: {rootCanvas}, Parent: {parentRectTransform}");
                 return;
@@ -298,7 +297,7 @@ namespace CityFlow.UI
 
             if (txtDelaySeconds != null)
             {
-                string delayText = $"+{data.DelaySeconds:F1}초";
+                string delayText = $"(테스트) 지연: +{data.DelaySeconds:F1}초";
 
                 if (congestion == CongestionLevel.Jam)
                 {
@@ -325,21 +324,22 @@ namespace CityFlow.UI
             float selfDensity = services.TileData.GetDensity01(currentTile);
             if (selfDensity > 0f) return selfDensity;
 
-            // 인접 4방향 도로 타일 중 가장 높은 density를 사용
+            // 건물 크기에 따른 외곽 타일 순회
             float maxNeighborDensity = 0f;
-            Vector2Int[] offsets = { Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right };
-            foreach (Vector2Int offset in offsets)
+            Vector2Int size = TileFootprint.GetSize(currentType);
+
+            // 상, 하 외곽 도로 검사
+            for (int x = 0; x < size.x; x++)
             {
-                Vector2Int neighbor = currentTile + offset;
-                if (!GridUtil.IsInside(neighbor)) continue;
-                if (services.TileData.GetTileType(neighbor) == TileType.Road)
-                {
-                    float neighborDensity = services.TileData.GetDensity01(neighbor);
-                    if (neighborDensity > maxNeighborDensity)
-                    {
-                        maxNeighborDensity = neighborDensity;
-                    }
-                }
+                CheckDensity(currentTile + new Vector2Int(x, size.y), ref maxNeighborDensity);
+                CheckDensity(currentTile + new Vector2Int(x, -1), ref maxNeighborDensity);
+            }
+
+            // 좌, 우 외곽 도로 검사
+            for (int y = 0; y < size.y; y++)
+            {
+                CheckDensity(currentTile + new Vector2Int(size.x, y), ref maxNeighborDensity);
+                CheckDensity(currentTile + new Vector2Int(-1, y), ref maxNeighborDensity);
             }
 
             return maxNeighborDensity;
@@ -354,19 +354,17 @@ namespace CityFlow.UI
 
             // 인접 도로 중 가장 심각한 혼잡도 채택
             CongestionLevel worstLevel = CongestionLevel.Free;
-            Vector2Int[] offsets = { Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right };
-            foreach (Vector2Int offset in offsets)
+            Vector2Int size = TileFootprint.GetSize(currentType);
+
+            for (int x = 0; x < size.x; x++)
             {
-                Vector2Int neighbor = currentTile + offset;
-                if (!GridUtil.IsInside(neighbor)) continue;
-                if (services.TileData.GetTileType(neighbor) == TileType.Road)
-                {
-                    CongestionLevel level = services.TileData.GetCongestion(neighbor);
-                    if (level > worstLevel)
-                    {
-                        worstLevel = level;
-                    }
-                }
+                CheckCongestion(currentTile + new Vector2Int(x, size.y), ref worstLevel);
+                CheckCongestion(currentTile + new Vector2Int(x, -1), ref worstLevel);
+            }
+            for (int y = 0; y < size.y; y++)
+            {
+                CheckCongestion(currentTile + new Vector2Int(size.x, y), ref worstLevel);
+                CheckCongestion(currentTile + new Vector2Int(-1, y), ref worstLevel);
             }
 
             return worstLevel;
@@ -398,6 +396,33 @@ namespace CityFlow.UI
 
         // ═══════════════════════════════════════════════════════════════
         // 유틸리티
+        // ═══════════════════════════════════════════════════════════════
+
+        private void CheckDensity(Vector2Int neighbor, ref float maxNeighborDensity)
+        {
+            if (!GridUtil.IsInside(neighbor)) return;
+            if (services.TileData.GetTileType(neighbor) == TileType.Road)
+            {
+                float neighborDensity = services.TileData.GetDensity01(neighbor);
+                if (neighborDensity > maxNeighborDensity)
+                {
+                    maxNeighborDensity = neighborDensity;
+                }
+            }
+        }
+
+        private void CheckCongestion(Vector2Int neighbor, ref CongestionLevel worstLevel)
+        {
+            if (!GridUtil.IsInside(neighbor)) return;
+            if (services.TileData.GetTileType(neighbor) == TileType.Road)
+            {
+                CongestionLevel level = services.TileData.GetCongestion(neighbor);
+                if (level > worstLevel)
+                {
+                    worstLevel = level;
+                }
+            }
+        }
         // ═══════════════════════════════════════════════════════════════
 
         private void StopUpdateRoutine()

@@ -13,13 +13,10 @@ namespace CityFlow.UI
         [Tooltip("1순위: 확인 팝업 (UI_ConfirmPopup)")]
         [SerializeField] private ConfirmPopupController confirmPopup;
 
-        [Tooltip("2순위: 건물 정보 카드")]
-        [SerializeField] private BuildingInfoCardController buildingInfoCard;
-
-        [Tooltip("3순위: 좌측 하단 분석 카드")]
+        [Tooltip("2순위: 좌측 하단 분석 카드")]
         [SerializeField] private AnalysisCardController analysisCard;
 
-        [Tooltip("4순위: 우측 도크 컨트롤러")]
+        [Tooltip("3순위: 우측 도크 컨트롤러")]
         [SerializeField] private UIDockController dockController;
 
         public void Configure(
@@ -44,21 +41,14 @@ namespace CityFlow.UI
                 return;
             }
 
-            // 2순위: 건물 정보 카드가 열려있으면 카드 닫기
-            if (buildingInfoCard != null && buildingInfoCard.IsOpen)
-            {
-                buildingInfoCard.CloseCard();
-                return;
-            }
-
-            // 3순위: 분석 카드가 열려있으면 카드 닫기
+            // 2순위: 분석 카드가 열려있으면 카드 닫기
             if (analysisCard != null && analysisCard.gameObject.activeSelf)
             {
                 analysisCard.CloseCard();
                 return;
             }
 
-            // 4순위: 도크 서브패널이 열려있으면 전부 닫기
+            // 3순위: 도크 서브패널이 열려있으면 전부 닫기
             if (dockController != null)
             {
                 dockController.CloseAllPanels();
