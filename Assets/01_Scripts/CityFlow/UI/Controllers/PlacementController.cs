@@ -241,7 +241,13 @@ namespace CityFlow.UI
                     _rightClickStartCoord = null;
                 }
             }
-            if (!_isBuildingMode || ghostRenderer == null)
+            if (!_isBuildingMode)
+            {
+                _lastPreviewCoord = null;
+                return;
+            }
+
+            if (ghostRenderer == null)
             {
                 _lastPreviewCoord = null;
                 _benefitRenderer?.HideAll();
@@ -743,40 +749,5 @@ namespace CityFlow.UI
             }
         }
 
-        private bool CanReplaceFootprint(Vector2Int previousAnchor, TileType newType)
-        {
-            Vector2Int size = TileFootprint.GetSize(newType);
-            for (int y = 0; y < size.y; y++)
-            {
-                for (int x = 0; x < size.x; x++)
-                {
-                    Vector2Int tile = previousAnchor + new Vector2Int(x, y);
-                    if (!GridUtil.IsInside(tile))
-                    {
-                        return false;
-                    }
-
-                    TileType occupiedType = _services.TileData.GetTileType(tile);
-                    if (occupiedType == TileType.Empty)
-                    {
-                        if (_services.TileData.TryGetFootprintAnchor(tile, out Vector2Int occupiedAnchor) &&
-                            occupiedAnchor != previousAnchor)
-                        {
-                            return false;
-                        }
-
-                        continue;
-                    }
-
-                    if (!_services.TileData.TryGetFootprintAnchor(tile, out Vector2Int anchor) ||
-                        anchor != previousAnchor)
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            return true;
-        }
     }
 }
