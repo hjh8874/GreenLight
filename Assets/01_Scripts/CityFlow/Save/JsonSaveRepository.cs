@@ -114,10 +114,14 @@ namespace CityFlow.Save
                 return false;
             }
 
-            if (data.SaveVersion != SaveConstants.CurrentSaveVersion)
+            if (!SaveConstants.IsSupportedSaveVersion(
+                    data.SaveVersion))
             {
                 Debug.LogWarning(
-                    $"Save file version {data.SaveVersion} is not supported: {filePath}");
+                    $"Save file version {data.SaveVersion} is not supported. " +
+                    $"Supported versions: " +
+                    $"{SaveConstants.MinimumSupportedSaveVersion}-" +
+                    $"{SaveConstants.CurrentSaveVersion}. Path: {filePath}");
                 data = null;
                 return false;
             }

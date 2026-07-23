@@ -200,6 +200,58 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void SaveVersionPolicy_AcceptsSupportedRangeOnly()
+        {
+            Assert.IsTrue(
+                SaveConstants.IsSupportedSaveVersion(
+                    SaveConstants.MinimumSupportedSaveVersion));
+            Assert.IsTrue(
+                SaveConstants.IsSupportedSaveVersion(
+                    SaveConstants.CurrentSaveVersion));
+            Assert.IsFalse(
+                SaveConstants.IsSupportedSaveVersion(
+                    SaveConstants.MinimumSupportedSaveVersion - 1));
+            Assert.IsFalse(
+                SaveConstants.IsSupportedSaveVersion(
+                    SaveConstants.CurrentSaveVersion + 1));
+        }
+
+        [Test]
+        public void Repository_FutureVersionPrimary_LoadsSupportedBackup()
+        {
+            var repository =
+                new JsonSaveRepository(savePath, backupPath);
+
+            Assert.IsTrue(repository.TrySave(new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                SavedAtUtcTicks = 10L
+            }));
+            Assert.IsTrue(repository.TrySave(new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                SavedAtUtcTicks = 20L
+            }));
+
+            var futureSave = new GameSaveData
+            {
+                SaveVersion =
+                    SaveConstants.CurrentSaveVersion + 1,
+                SavedAtUtcTicks = 30L
+            };
+            File.WriteAllText(
+                savePath,
+                UnityEngine.JsonUtility.ToJson(futureSave));
+
+            Assert.IsTrue(
+                repository.TryLoad(out GameSaveData loaded));
+            Assert.AreEqual(
+                SaveConstants.CurrentSaveVersion,
+                loaded.SaveVersion);
+            Assert.AreEqual(10L, loaded.SavedAtUtcTicks);
+        }
+
+        [Test]
         public void TryLoadAndRestore_ClampsOfflineProgressAndSavesSettlement()
         {
             var calls = new List<string>();

@@ -143,10 +143,15 @@ namespace CityFlow.Save
                 return;
             }
 
-            if (saveData.SaveVersion != SaveConstants.CurrentSaveVersion)
+            if (!SaveConstants.IsSupportedSaveVersion(
+                    saveData.SaveVersion))
             {
                 Debug.LogWarning(
-                    $"Save restore skipped because version {saveData.SaveVersion} is not supported. Current version is {SaveConstants.CurrentSaveVersion}.");
+                    $"Save restore skipped because version " +
+                    $"{saveData.SaveVersion} is not supported. " +
+                    $"Supported versions: " +
+                    $"{SaveConstants.MinimumSupportedSaveVersion}-" +
+                    $"{SaveConstants.CurrentSaveVersion}.");
                 return;
             }
 
@@ -287,10 +292,15 @@ namespace CityFlow.Save
                 return false;
             }
 
-            if (saveData.SaveVersion != SaveConstants.CurrentSaveVersion)
+            if (!SaveConstants.IsSupportedSaveVersion(
+                    saveData.SaveVersion))
             {
                 Debug.LogWarning(
-                    $"Save restore skipped because version {saveData.SaveVersion} is not supported. Current version is {SaveConstants.CurrentSaveVersion}.");
+                    $"Save restore skipped because version " +
+                    $"{saveData.SaveVersion} is not supported. " +
+                    $"Supported versions: " +
+                    $"{SaveConstants.MinimumSupportedSaveVersion}-" +
+                    $"{SaveConstants.CurrentSaveVersion}.");
                 return false;
             }
 
