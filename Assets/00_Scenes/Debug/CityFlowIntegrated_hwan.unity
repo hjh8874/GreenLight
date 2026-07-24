@@ -1401,6 +1401,7 @@ GameObject:
   - component: {fileID: 111543637}
   - component: {fileID: 111543638}
   - component: {fileID: 111543639}
+  - component: {fileID: 111543640}
   m_Layer: 0
   m_Name: CityFlow_Integrated
   m_TagString: Untagged
@@ -1455,6 +1456,8 @@ MonoBehaviour:
   width: 20
   height: 20
   tileSize: 1
+  fieldTilePrefab: {fileID: 662071462717731044, guid: bc8a283e0eaf0f34993bcb0b9ece9c76, type: 3}
+  fieldTileZ: 0.14
   roadPrefab: {fileID: 0}
   housePrefab: {fileID: 0}
   officePrefab: {fileID: 0}
@@ -1507,6 +1510,20 @@ MonoBehaviour:
   onewayColor: {r: 0.95, g: 0.85, b: 0.15, a: 1}
   turnSignColor: {r: 0.95, g: 0.35, b: 0.75, a: 1}
   highwayColor: {r: 0.2, g: 0.72, b: 0.95, a: 1}
+--- !u!114 &111543640
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 111543627}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a77dfa3b90cf497f90c4647b8a867238, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.TerrainDecorationView
+  catalog: {fileID: 11400000, guid: 97d35e4a263f46cba73da0399fa10a77, type: 2}
+  groundZ: 0.1
 --- !u!114 &111543638
 MonoBehaviour:
   m_ObjectHideFlags: 0
