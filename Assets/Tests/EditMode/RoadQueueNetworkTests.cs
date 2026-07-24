@@ -834,12 +834,14 @@ namespace CityFlow.Sim.Tests
             q.RebuildTopology(grid, new FakeDeviceState());
             routes = new FakeRouteProvider();
             routes.AddRoute(90, true, V(1, 1), V(2, 1), V(2, 2));
-            routes.AddRoute(300, true, V(2, 0), V(2, 1), V(2, 2));
+            // Southbound crosses the turn's E-entry cell (SouthWest). The previous
+            // northbound route shared its N exit instead, so both could legally enter.
+            routes.AddRoute(300, true, V(2, 2), V(2, 1), V(2, 0));
             Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 90));
-            Assert.IsTrue(q.TryEnqueue(V(2, 0), Dir.N, 300));
+            Assert.IsTrue(q.TryEnqueue(V(2, 2), Dir.S, 300));
             q.Step(routes);
             Assert.AreEqual(90, q.CarAtHead(V(1, 1), Dir.E));
-            Assert.AreEqual(300, q.CarAtHead(V(2, 1), Dir.N));
+            Assert.AreEqual(300, q.CarAtHead(V(2, 1), Dir.S));
             return q;
         }
 
@@ -848,10 +850,10 @@ namespace CityFlow.Sim.Tests
             FakeRouteProvider routes,
             int carId)
         {
-            routes.AddRoute(carId, true, V(2, 0), V(2, 1), V(2, 2));
-            q.TryEnqueue(V(2, 0), Dir.N, carId);
+            routes.AddRoute(carId, true, V(2, 2), V(2, 1), V(2, 0));
+            q.TryEnqueue(V(2, 2), Dir.S, carId);
             Assert.Greater(
-                q.QueueCount(V(2, 0), Dir.N),
+                q.QueueCount(V(2, 2), Dir.S),
                 0,
                 "Every arbitration tick must have a crossing straight head.");
         }
