@@ -58,15 +58,21 @@ namespace CityFlow.ViewKit
         private readonly IReadOnlyList<Vector2Int> _tiles;
         private readonly Vertex[] _vertices;
         private readonly float[] _cumulative;
+        private readonly float _tileSize;
 
         public float Length => _cumulative[_cumulative.Length - 1];
         public int TileCount => _tiles.Count;
 
-        private RoutePolyline(IReadOnlyList<Vector2Int> tiles, Vertex[] vertices, float[] cumulative)
+        private RoutePolyline(
+            IReadOnlyList<Vector2Int> tiles,
+            Vertex[] vertices,
+            float[] cumulative,
+            float tileSize)
         {
             _tiles = tiles;
             _vertices = vertices;
             _cumulative = cumulative;
+            _tileSize = tileSize;
         }
 
         public static RoutePolyline Bake(in BakeInput input)
@@ -125,7 +131,7 @@ namespace CityFlow.ViewKit
                 cumulative[i] = cumulative[i - 1] + Vector3.Distance(vertices[i - 1].Pos, vertices[i].Pos);
             }
 
-            return new RoutePolyline(tiles, vertices.ToArray(), cumulative);
+            return new RoutePolyline(tiles, vertices.ToArray(), cumulative, input.TileSize);
         }
 
         public Sample SampleAt(float distance)
@@ -256,6 +262,46 @@ namespace CityFlow.ViewKit
             return Mathf.Clamp(distance, 0f, Length);
         }
 
+        // Rebuild-safe mapping from Sim's logical position to this bake's arc-length axis.
+        // The branch order mirrors the authority hierarchy consumed by CarMotion.
+        public float ReprojectDistance(
+            int tileIndex,
+            int queueSlot,
+            float slotGap,
+            float headInset,
+            float intersectionProgress01,
+            float linkProgress01,
+            float roundaboutProgress01,
+            float roundaboutTransitionSpan)
+        {
+            int current = Mathf.Clamp(tileIndex, 0, Mathf.Max(0, TileCount - 1));
+            if (roundaboutProgress01 >= 0f)
+            {
+                float span = ClampTransitionSpan(roundaboutTransitionSpan);
+                return DistanceAtPhase(Mathf.Lerp(
+                    current - span,
+                    current + span,
+                    Mathf.Clamp01(roundaboutProgress01)));
+            }
+
+            if (intersectionProgress01 >= 0f)
+            {
+                return Mathf.Clamp(
+                    DistanceAtTile(current) + (intersectionProgress01 - 0.5f) * _tileSize,
+                    0f,
+                    Length);
+            }
+
+            if (linkProgress01 > 0f && current + 1 < TileCount)
+            {
+                return Mathf.Lerp(
+                    DistanceAtTile(current),
+                    DistanceAtTile(current + 1),
+                    Mathf.Clamp01(linkProgress01));
+            }
+
+            return DistanceAtQueueSlot(current, queueSlot, slotGap, headInset);
+        }
         // MainCityView.EvaluateVehiclePose(L1646-1689) + 로터리 궤도 오버라이드(L1419-1439,
         // TryRoundaboutOrbit L1794-1817)의 순수 재현.
         private static void PoseAt(
