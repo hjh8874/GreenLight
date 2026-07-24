@@ -143,7 +143,7 @@ namespace CityFlow.Sim
 
             _config = merged;
             _demand.ApplyConfig(_config);
-            _grid.MarkTopologyDirty();   // 다음 틱에 Reassign+Plan 강제(즉시 재계산은 안 함 — 파이프라인 순서 보존)
+            MarkRoutingChangePending();   // 다음 틱에 Reassign+Plan 강제(즉시 재계산은 안 함 — 파이프라인 순서 보존)
             return true;
         }
 
@@ -336,6 +336,16 @@ namespace CityFlow.Sim
 
         private bool PreserveExistingAssignmentsForRebuild() =>
             _buildingAssignmentChangePending && !_roadTopologyChangePending;
+
+        // 경로 계획 입력(도로·일방통행·턴 표지판·고가 링크·config)이 바뀌면 preserve 리빌드
+        // 금지 — 구 경로가 새 규칙을 위반한 채 유지된다. 같은 틱 윈도우에 건물 배치가 겹쳐도
+        // 이 플래그가 이긴다. 로터리·입체·우선도로는 Plan 입력이 아니라(큐 토폴로지만 변경)
+        // 구 경로 = 재계획 결과이므로 제외.
+        private void MarkRoutingChangePending()
+        {
+            _roadTopologyChangePending = true;
+            _grid.MarkTopologyDirty();
+        }
 
         private void ClearRebuildChangeKinds()
         {
@@ -699,7 +709,7 @@ namespace CityFlow.Sim
             int idx = _placedOneways.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
             if (idx < 0) _placedOneways.Add(tile); else _placedOneways.Insert(idx, tile);
             _onewayDirs[tile] = dir;
-            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 신호 가족과 다른 점(다음 틱 재계획 강제)
+            MarkRoutingChangePending();   // 라우팅에 영향 — 신호 가족과 다른 점(다음 틱 재계획 강제)
             return true;
         }
 
@@ -707,7 +717,7 @@ namespace CityFlow.Sim
         {
             if (_config.AutoDetectSignals || !_onewayDirs.Remove(tile)) return false;
             _placedOneways.Remove(tile);
-            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 배치와 동일 이유
+            MarkRoutingChangePending();   // 라우팅에 영향 — 배치와 동일 이유
             return true;
         }
 
@@ -735,7 +745,7 @@ namespace CityFlow.Sim
             int idx = _placedTurnSigns.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
             if (idx < 0) _placedTurnSigns.Add(tile); else _placedTurnSigns.Insert(idx, tile);
             _turnSigns[tile] = mode;
-            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 일방통행과 동일 이유(다음 틱 재계획 강제)
+            MarkRoutingChangePending();   // 라우팅에 영향 — 일방통행과 동일 이유(다음 틱 재계획 강제)
             return true;
         }
 
@@ -743,7 +753,7 @@ namespace CityFlow.Sim
         {
             if (_config.AutoDetectSignals || !_turnSigns.Remove(tile)) return false;
             _placedTurnSigns.Remove(tile);
-            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 배치와 동일 이유
+            MarkRoutingChangePending();   // 라우팅에 영향 — 배치와 동일 이유
             return true;
         }
 
@@ -783,7 +793,7 @@ namespace CityFlow.Sim
             _highwayPartners[a] = b;
             _highwayPartners[b] = a;
             _highwayBudgetTiles += HighwayDistance(a, b);
-            _grid.MarkTopologyDirty();
+            MarkRoutingChangePending();
             return true;
         }
 
@@ -797,7 +807,7 @@ namespace CityFlow.Sim
             _highwayPartners.Remove(partner);
             _highwayLinks.RemoveAt(linkIndex);
             _highwayBudgetTiles = Math.Max(0, _highwayBudgetTiles - link.Distance);
-            _grid.MarkTopologyDirty();
+            MarkRoutingChangePending();
             return true;
         }
 

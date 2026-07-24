@@ -178,33 +178,14 @@ namespace CityFlow.Sim
                 TryRoute(i, out List<Vector2Int> currentRoute);
                 survivor.ResumeTile = currentRoute[Mathf.Clamp(_tileIndices[i], 0, currentRoute.Count - 1)];
                 survivor.HasResume = true;
-
-                if (survivor.RouteIndex >= 0
-                    && survivor.RouteIndex < _outboundRoutes.Count
-                    && survivor.RouteIndex < _returnRoutes.Count
-                    && survivor.RouteIndex < _plannerRouteIndices.Count)
-                {
-                    previousAssignments.Add(new PreviousAssignment(
-                        survivor,
-                        _outboundRoutes[survivor.RouteIndex],
-                        _returnRoutes[survivor.RouteIndex],
-                        _plannerRouteIndices[survivor.RouteIndex]));
-                }
             }
-            // 주차 차도 건물 소멸 판정에는 필요하다. 위 루프의 on-road 조기 continue와
-            // 독립적으로 구 짝/경로 참조를 모두 보관한다.
+            // 구 짝/경로 참조는 반드시 기존 _cars 인덱스 순서 그대로 담는다. 주행 차를
+            // 먼저 담으면 preserve 리빌드에서 주차·주행 혼재 시 인덱스가 재배열되어,
+            // 인덱스 기반 View 미러가 전체 새로고침된다(이 PR이 잡으려는 증상 그 자체).
             for (int i = 0; i < CarCount; i++)
             {
                 CommuteCar car = _scheduler.Cars[i];
-                bool alreadyCaptured = false;
-                for (int p = 0; p < previousAssignments.Count; p++)
-                {
-                    if (!ReferenceEquals(previousAssignments[p].Car, car)) continue;
-                    alreadyCaptured = true;
-                    break;
-                }
-                if (alreadyCaptured
-                    || car.RouteIndex < 0
+                if (car.RouteIndex < 0
                     || car.RouteIndex >= _outboundRoutes.Count
                     || car.RouteIndex >= _returnRoutes.Count
                     || car.RouteIndex >= _plannerRouteIndices.Count)
@@ -297,8 +278,10 @@ namespace CityFlow.Sim
                     PreviousAssignment previous = previousAssignments[i];
                     CommuteCar car = previous.Car;
                     RetireReason reason = RetireReasonFor(demands, car);
-                    if (reason == RetireReason.None) continue;
+                    // None도 대입해야 한다 — 철거 후 같은 자리 재건축 시 stale WorkLost가
+                    // 남으면 조기 퇴근·헛 리빌드가 생긴다(preserve 경로와 대칭).
                     car.RetireReason = reason;
+                    if (reason == RetireReason.None) continue;
                     if (RetirementCompleted(car, reason)
                         || !HasUsableRoutes(previous))
                     {

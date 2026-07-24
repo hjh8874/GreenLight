@@ -201,6 +201,103 @@ namespace CityFlow.Sim.Tests
             }
         }
 
+        // 주차·주행 혼재 회귀 가드: (3,0)은 stagger로 ~6.82에, (5,0)은 ~6.05에 출발한다.
+        // 6.5시에는 앞 인덱스 차가 주차, 뒤 인덱스 차가 주행 — 캡처를 on-road 우선으로
+        // 하면 preserve 리빌드에서 인덱스가 뒤집혀 View 미러 전체 새로고침이 재발한다.
+        [Test]
+        public void UnrelatedBuildingsAdded_ParkedBeforeDrivingCar_KeepsIndexOrder()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 8;
+            cfg.GridHeight = 5;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            for (int x = 0; x <= 7; x++)
+                Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(engine.Place(V(3, 0), TileType.House));
+            Assert.IsTrue(engine.Place(V(5, 0), TileType.House));
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.Office));
+            engine.SetGameHour(6.5f);
+            engine.Tick(0.25f);
+
+            Assert.AreEqual(2, engine.ActiveVehicleCount);
+            Assert.AreEqual(CarState.ParkedHome, engine.GetCarSnapshot(0).State, "전제: car[0] 주차");
+            Assert.AreEqual(CarState.Outbound, engine.GetCarSnapshot(1).State, "전제: car[1] 주행");
+            var before = new CarSnapshot[engine.ActiveVehicleCount];
+            var routeRefs = new List<Vector2Int>[engine.ActiveVehicleCount];
+            for (int i = 0; i < before.Length; i++)
+            {
+                before[i] = engine.GetCarSnapshot(i);
+                routeRefs[i] = engine.ActiveRoutes[before[i].RouteIndex];
+            }
+
+            Assert.IsTrue(engine.Place(V(4, 3), TileType.House));
+            Assert.IsTrue(engine.Place(V(6, 3), TileType.Office));
+            engine.EnsureCarTopologyCurrent();
+
+            Assert.AreEqual(3, engine.ActiveVehicleCount, "신규 짝만 기존 차량 뒤에 추가한다");
+            for (int i = 0; i < before.Length; i++)
+            {
+                CarSnapshot after = engine.GetCarSnapshot(i);
+                Assert.AreEqual(before[i].Home, after.Home, $"car[{i}] Home");
+                Assert.AreEqual(before[i].Work, after.Work, $"car[{i}] Work");
+                Assert.AreEqual(before[i].RouteIndex, after.RouteIndex, $"car[{i}] RouteIndex");
+                Assert.AreEqual(before[i].TileIndex, after.TileIndex, $"car[{i}] TileIndex");
+                Assert.AreEqual(before[i].State, after.State, $"car[{i}] State");
+                Assert.AreSame(
+                    routeRefs[i],
+                    engine.ActiveRoutes[after.RouteIndex],
+                    $"car[{i}] 구 경로 List 참조");
+            }
+        }
+
+        // 라우팅 장치 변경이 건물 변경과 같은 틱 윈도우에 겹치면 preserve 리빌드를 포기하고
+        // 전체 재계획해야 한다 — 구 경로가 새 일방통행 규칙을 위반한 채 유지되면 안 된다.
+        // 링 도로라 일방통행을 역행하는 구 경로에는 항상 합법 우회로가 존재한다.
+        [Test]
+        public void BuildingAndOnewayInSameWindow_ReplansInsteadOfPreserving()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 8;
+            cfg.GridHeight = 7;
+            cfg.AutoDetectSignals = false;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            for (int x = 0; x <= 7; x++)
+            {
+                Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
+                Assert.IsTrue(engine.Place(V(x, 4), TileType.Road));
+            }
+            Assert.IsTrue(engine.Place(V(0, 3), TileType.Road));
+            Assert.IsTrue(engine.Place(V(7, 3), TileType.Road));
+            Assert.IsTrue(engine.Place(V(2, 0), TileType.House));
+            Assert.IsTrue(engine.Place(V(5, 5), TileType.Office));
+            engine.SetGameHour(7f);
+            engine.Tick(0.25f);
+            Assert.AreEqual(1, engine.ActiveVehicleCount);
+            List<Vector2Int> oldRoute = engine.ActiveRoutes[engine.GetCarSnapshot(0).RouteIndex];
+            var oldCopy = new List<Vector2Int>(oldRoute);
+
+            // 구 경로 중간의 비교차로 타일 하나를 골라, 그 통과 방향을 거스르는 일방통행을
+            // 건물 배치(preserve 후보)와 같은 윈도우에 놓는다.
+            bool placedOneway = false;
+            for (int p = 1; p < oldCopy.Count - 1 && !placedOneway; p++)
+            {
+                Vector2Int tile = oldCopy[p];
+                if (tile.y != 2 || tile.x < 1 || tile.x > 6) continue;
+                Vector2Int travel = tile - oldCopy[p - 1];
+                placedOneway = engine.TryPlaceOneway(tile, -travel);
+            }
+            Assert.IsTrue(placedOneway, "전제: 구 경로 위 일방통행 배치 성공");
+            Assert.IsTrue(engine.Place(V(2, 5), TileType.House));
+            engine.EnsureCarTopologyCurrent();
+
+            Assert.IsTrue(engine.ActiveVehicleCount >= 1);
+            List<Vector2Int> newRoute = engine.ActiveRoutes[engine.GetCarSnapshot(0).RouteIndex];
+            CollectionAssert.AreNotEqual(
+                oldCopy,
+                newRoute,
+                "일방통행이 겹치면 구 경로 carry-over 대신 재계획해야 한다");
+        }
+
         [Test]
         public void CompletedDay_BlendsSuccessByHalf_AndPersistsAcrossSave()
         {
