@@ -139,7 +139,6 @@ namespace CityFlow.View
         }
 
         private readonly Dictionary<RouteVehicle, IntersectionMotionState> intersectionMotionStates = new();
-        private readonly HashSet<RouteVehicle> reprojectionFadeFrames = new();
 
         // 앞차 = "같은 차선에서 나보다 하나 앞" 또는 "내 다음 차선의 꼬리". 둘 다 Sim의
         // 전진 순서를 그대로 따르는 선형 관계라, 앞차 체인은 사이클을 만들지 않는다.
@@ -387,7 +386,9 @@ namespace CityFlow.View
             var previousBakes = new Dictionary<CommuteCar, BakedRoutePair>(carVehicles.Count);
             foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
             {
-                if (bakedRoutes.TryGetValue(kv.Key.RouteIndex, out BakedRoutePair old))
+                // SyncCarSimMirrors가 이미 car.RouteIndex를 새 경로 키로 바꿨다. 기존 베이크는
+                // vehicle에 남아 있는 직전 키로 찾아야 재라우팅 생존 차를 재투영할 수 있다.
+                if (bakedRoutes.TryGetValue(kv.Value.RouteIndex, out BakedRoutePair old))
                 {
                     previousBakes[kv.Key] = old;
                 }
@@ -405,7 +406,7 @@ namespace CityFlow.View
             var previousBakes = new Dictionary<CommuteCar, BakedRoutePair>(carVehicles.Count);
             foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
             {
-                if (bakedRoutes.TryGetValue(kv.Key.RouteIndex, out BakedRoutePair old))
+                if (bakedRoutes.TryGetValue(kv.Value.RouteIndex, out BakedRoutePair old))
                 {
                     previousBakes[kv.Key] = old;
                 }
@@ -547,8 +548,8 @@ namespace CityFlow.View
         }
 
         // sticky 바인딩(QA A): 생존 차는 vehicle 바인딩을 유지하고, 사라진 짝만 풀 반납, 신규만 할당.
-        // 경로 타일이 바뀐 이동 차는 Sim 논리 위치를 새 아크렝스에 재투영한다. 재출발급 대점프만
-        // 한 프레임 페이드해 보이지 않는 상태에서 옮기고, 같은 타일의 노브 재베이크는 무접촉이다.
+        // 경로 타일이 바뀐 이동 차는 Sim 논리 위치를 새 아크렝스에 재투영한다. 새 왕복 경로
+        // 자체가 베이크되지 않는 진짜 소실만 숨기고, 같은 타일의 노브 재베이크는 무접촉이다.
         // 총 인구 상한 = SimConfig.MaxSimCars = 풀 크기.
         private void SyncCommuteVehicleBindings(Dictionary<CommuteCar, BakedRoutePair> previousBakes)
         {
@@ -606,18 +607,11 @@ namespace CityFlow.View
                             snapshot,
                             newPolyline,
                             snapshot.QueueSlot);
-                        bool largeJump = Mathf.Abs(reprojectedDistance - car.Distance)
-                            > tileSize * 2f;
                         car.Distance = reprojectedDistance;
                         vehicle.HasTickTarget = false;
                         vehicle.TargetTileIndex = -1;
                         vehicle.TargetRouteIndex = -1;
                         intersectionMotionStates.Remove(vehicle);
-                        if (largeJump)
-                        {
-                            // Sim이 route[0]에서 다시 출발한 경우처럼 2타일을 넘는 대점프만 숨긴다.
-                            reprojectionFadeFrames.Add(vehicle);
-                        }
                     }
 
                     // 주차 차/경로 불변 이동 차: 무접촉 — 위치·상태 그대로(주차 앵커는 다음 프레임 재계산).
@@ -708,7 +702,6 @@ namespace CityFlow.View
         private void ResetVehicleForCommute(RouteVehicle vehicle, int routeIndex)
         {
             intersectionMotionStates.Remove(vehicle);
-            reprojectionFadeFrames.Remove(vehicle);
             vehicle.RouteIndex = routeIndex;
             vehicle.CurrentSpeed = 0f;
             vehicle.TargetDistance = 0f;
@@ -743,7 +736,6 @@ namespace CityFlow.View
         private void DeactivateCommuteVehicle(RouteVehicle vehicle)
         {
             intersectionMotionStates.Remove(vehicle);
-            reprojectionFadeFrames.Remove(vehicle);
             // 선택 추적 중인 차가 stale 처리되면 드라이브 뷰를 먼저 종료한다(#103 방어 이식).
             // 비활성화 직후 같은 풀 오브젝트가 TakeFreeVehicle()로 신규 통근차에 재사용되면
             // DriveViewCamera가 볼 때 대상이 다시 active라 자동 종료 조건도 통과하지 못해,
@@ -899,7 +891,13 @@ namespace CityFlow.View
             int targetQueueSlot = isRoundaboutTile || roundaboutEntryLimited
                 ? 0
                 : snapshot.QueueSlot;
-            float targetDistance = ReprojectDistance(snapshot, poly, targetQueueSlot);
+            // 매 프레임 주행 권한은 기존 상태 기계가 소유한다. ReprojectDistance는 리빌드
+            // 바인딩 시점 전용이며, 여기서 공용화하면 권한 우선순위·단조 상태가 달라진다.
+            float targetDistance = poly.DistanceAtQueueSlot(
+                tileIndex,
+                targetQueueSlot,
+                slotGap,
+                headInset);
             float queueHeadTargetDistance = poly.DistanceAtQueueSlot(
                 tileIndex,
                 0,
@@ -909,6 +907,13 @@ namespace CityFlow.View
             float intersectionAuthorizedSpeed = 0f;
             if (hasIntersectionAuthorization)
             {
+                float intersectionCenter = poly.DistanceAtTile(tileIndex);
+                float stageOffset = (snapshot.IntersectionProgress01 - 0.5f) * tileSize;
+                targetDistance = Mathf.Clamp(
+                    intersectionCenter + stageOffset,
+                    0f,
+                    poly.Length);
+
                 if (!intersectionMotionStates.TryGetValue(vehicle, out IntersectionMotionState motion)
                     || motion.RouteIndex != car.RouteIndex)
                 {
@@ -942,10 +947,21 @@ namespace CityFlow.View
             {
                 intersectionMotionStates.Remove(vehicle);
             }
+            if (hasRoundaboutAuthorization)
+            {
+                targetDistance = GetRoundaboutAuthorizedDistance(
+                    poly,
+                    tileIndex,
+                    snapshot.RoundaboutProgress01);
+            }
             if (snapshot.LinkProgress01 > 0f && tileIndex + 1 < poly.TileCount)
             {
                 hasIntersectionAuthorization = false;
                 intersectionMotionStates.Remove(vehicle);
+                targetDistance = Mathf.Lerp(
+                    poly.DistanceAtTile(tileIndex),
+                    poly.DistanceAtTile(tileIndex + 1),
+                    snapshot.LinkProgress01);
             }
             float previousDistance = car.Distance;
             // QueueSlot 자체가 아니라 그 결과인 목표 거리의 방향을 본다. 슬롯 감소로 목표가
@@ -1149,7 +1165,7 @@ namespace CityFlow.View
                 float angle = Mathf.Atan2(sample.Dir.y, sample.Dir.x) * Mathf.Rad2Deg;
                 vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
             }
-            SetVehicleRenderersEnabled(vehicle, !reprojectionFadeFrames.Remove(vehicle));
+            SetVehicleRenderersEnabled(vehicle, true);
             // 브레이크등은 '순항보다 확연히 느린가'로 판정한다. desired 순간값으로 켜면
             // 따라잡기 여유가 매 프레임 흔들려 고속 주행 중에도 깜빡인다(계측: 토글 256회).
             // 점등/소등 문턱을 벌려(히스테리시스) 경계에서 떨지 않게 한다.
