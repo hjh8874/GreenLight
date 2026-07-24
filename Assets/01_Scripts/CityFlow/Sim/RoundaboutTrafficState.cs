@@ -19,6 +19,8 @@ namespace CityFlow.Sim
         private bool _admittedThisTick;
         private int _activeEntryNode = NoNode;
         private Dir _activeEntrySide;
+        private bool _hasBlockedEntryException;
+        private Dir _blockedEntryException;
 
         public int OccupiedCount { get; private set; }
         public bool EntriesBlocked { get; private set; }
@@ -35,6 +37,7 @@ namespace CityFlow.Sim
             EntriesBlocked = false;
             _hasSelectedEntry = false;
             _admittedThisTick = false;
+            _hasBlockedEntryException = false;
         }
 
         public int NodeAt(Dir cell) => IsValid(cell) ? _nodes[(int)cell] : NoNode;
@@ -157,6 +160,36 @@ namespace CityFlow.Sim
             return node;
         }
 
+        public bool RemoveNodeForRescue(int node)
+        {
+            bool removed = false;
+            for (int cell = 0; cell < CellCount; cell++)
+            {
+                if (_nodes[cell] != node) continue;
+                _nodes[cell] = NoNode;
+                OccupiedCount--;
+                removed = true;
+                break;
+            }
+
+            if (_activeEntryNode == node)
+            {
+                _activeEntryNode = NoNode;
+                _activeEntrySide = default;
+                removed = true;
+            }
+
+            if (!removed) return false;
+
+            // Rescue runs after a completed service step. Clear every ephemeral
+            // grant owned by the removed node so the next tick cannot inherit a
+            // phantom mouth reservation or admission.
+            Array.Clear(_reservations, 0, _reservations.Length);
+            _admittedThisTick = false;
+            _hasBlockedEntryException = false;
+            return true;
+        }
+
         public void AdvanceCounterClockwise()
         {
             int north = _nodes[(int)Dir.N];
@@ -175,7 +208,41 @@ namespace CityFlow.Sim
             _nodes[(int)Dir.E] = south;
         }
 
-        public void BlockEntries() => EntriesBlocked = true;
+        public void BlockEntries()
+        {
+            EntriesBlocked = true;
+            _hasBlockedEntryException = false;
+        }
+
+        public void BlockEntriesExcept(Dir approachSide)
+        {
+            EntriesBlocked = true;
+            _hasBlockedEntryException = IsValid(approachSide);
+            _blockedEntryException = approachSide;
+        }
+
+        public bool CanHandoffBlockedExit(
+            Dir exitSide,
+            int exitingNode,
+            out int activeEntryNode)
+        {
+            activeEntryNode = _activeEntryNode;
+            if (!IsValid(exitSide)
+                || exitingNode < 0
+                || _nodes[(int)exitSide] != exitingNode
+                || _activeEntryNode == NoNode
+                || _activeEntrySide != exitSide
+                || EntriesBlocked
+                || _admittedThisTick)
+            {
+                return false;
+            }
+
+            // The exiting car owns exitSide until RoadQueueNetwork moves it to
+            // the arm. The adjacent upstream cell must still satisfy the normal
+            // mouth-clearance rule for the waiting arm car to enter immediately.
+            return IsAvailable(UpstreamOf(exitSide));
+        }
 
         public bool IsReserved(Dir cell) => IsValid(cell) && _reservations[(int)cell];
 
@@ -203,6 +270,8 @@ namespace CityFlow.Sim
             _admittedThisTick = false;
             _activeEntryNode = NoNode;
             _activeEntrySide = default;
+            _hasBlockedEntryException = false;
+            _blockedEntryException = default;
         }
 
         private void SelectEntry(Dir side)
@@ -219,7 +288,9 @@ namespace CityFlow.Sim
 
         private bool CanReserveMergeCells(Dir approachSide)
         {
-            if (!IsValid(approachSide) || EntriesBlocked || _admittedThisTick) return false;
+            bool blocked = EntriesBlocked
+                && (!_hasBlockedEntryException || approachSide != _blockedEntryException);
+            if (!IsValid(approachSide) || blocked || _admittedThisTick) return false;
             Dir immediateUpstream = UpstreamOf(approachSide);
             return IsAvailable(approachSide)
                 && IsAvailable(immediateUpstream);

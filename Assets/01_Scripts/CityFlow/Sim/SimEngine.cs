@@ -343,38 +343,39 @@ namespace CityFlow.Sim
         public void AddRoadCapacity() => _roadCapacityPurchases++;
 
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
-        public bool CanPlace(Vector2Int tile, TileType type) =>
+        public bool CanPlace(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North) =>
             WithinRoadBudget(type)
-            && !OverlapsRoundaboutFootprint(tile, type) && _grid.CanPlace(tile, type);
+            && !OverlapsRoundaboutFootprint(tile, type, direction) && _grid.CanPlace(tile, type, direction);
 
-        public bool Place(Vector2Int tile, TileType type)
+        public bool Place(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
             if (!WithinRoadBudget(type)) return false;   // 예산 초과 도로는 Place도 거부(CanPlace 우회 방지)
-            if (OverlapsRoundaboutFootprint(tile, type)) return false;   // 로터리 풋프린트에 건물 금지
-            if (!_grid.Place(tile, type)) return false;
+            if (OverlapsRoundaboutFootprint(tile, type, direction)) return false;   // 로터리 풋프린트에 건물 금지
+            if (!_grid.Place(tile, type, direction)) return false;
             if (type == TileType.Office)
                 _demand.RegisterCompany(tile, type, _simTime);
             if (type == TileType.Office || type == TileType.School)
                 _demandRebalancePending = true;
-            _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false));
+            _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false, direction));
             return true;
         }
 
         public bool Remove(Vector2Int tile)
         {
+            PlacementDirection removedDir = _grid.GetDirection(tile);
             if (!_grid.TryRemove(tile, out var removed, out Vector2Int anchor)) return false;
             if (removed == TileType.Office)
                 _demand.RemoveCompany(anchor);
             // 철거 = 조용: 그 타일의 연출 원료(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
-            _events.QueuePlaced(new PlacedEvent(anchor, removed, isRemove: true));
+            _events.QueuePlaced(new PlacedEvent(anchor, removed, isRemove: true, removedDir));
             return true;
         }
 
-        private bool OverlapsRoundaboutFootprint(Vector2Int tile, TileType type)
+        private bool OverlapsRoundaboutFootprint(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
             if (!IsBuildingTile(type)) return false;
 
-            Vector2Int size = TileFootprint.GetSize(type);
+            Vector2Int size = TileFootprint.GetRotatedSize(type, direction);
             for (int y = 0; y < size.y; y++)
             {
                 for (int x = 0; x < size.x; x++)
@@ -396,8 +397,12 @@ namespace CityFlow.Sim
         public int CarSimMaxCars => Math.Max(1, _config.MaxSimCars);
         // 뷰가 큐 표시 간격을 타일 안에 담기 위해 필요(한 타일에 몇 대까지 서는가).
         public int CarSimQueueCapacity => Math.Max(1, _config.QueueCapacityPerTile);
-        public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _planner.CarRoutes;
-        public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _planner.ReturnRoutes;
+        public int RescueRerouteCount => _carSim.RescueRerouteCount;
+        public int RescueRestartCount => _carSim.RescueRestartCount;
+        public int LastRescueCarId => _carSim.LastRescueCarId;
+        public Vector2Int LastRescueTile => _carSim.LastRescueTile;
+        public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _carSim.ActiveRoutes;
+        public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _carSim.ActiveReturnRoutes;
         public int ActiveVehicleCount => _carSim.CarCount;
         public CarSnapshot GetCarSnapshot(int index) => _carSim.GetCar(index);
 
@@ -864,7 +869,7 @@ namespace CityFlow.Sim
                     var type = _grid.GetTile(new Vector2Int(x, y));
                     if (type == TileType.Empty) continue;       // 계약: Empty 미저장
                     if (!_grid.IsFootprintAnchor(new Vector2Int(x, y))) continue;
-                    tiles.Add(new TileSaveData { X = x, Y = y, Type = type });
+                    tiles.Add(new TileSaveData { X = x, Y = y, Type = type, Direction = _grid.GetDirection(new Vector2Int(x, y)) });
                 }
 
             // 모든 신호를 두 레버(오프셋·초록) 다 저장 — 복원 시 덮어쓰기만으로 이전 조율 잔존을 지운다.
@@ -959,7 +964,7 @@ namespace CityFlow.Sim
                 foreach (var t in snapshot.PlacedTiles)
                 {
                     var tile = new Vector2Int(t.X, t.Y);
-                    if (!_grid.Place(tile, t.Type)) continue;   // OOB·중복은 Place가 거름(무사고)
+                    if (!_grid.Place(tile, t.Type, t.Direction)) continue;   // OOB·중복은 Place가 거름(무사고)
                     if (t.Type == TileType.Office)
                         _demand.RegisterRestoredCompany(tile, t.Type);
                 }
@@ -1101,6 +1106,9 @@ namespace CityFlow.Sim
             _grid.InBounds(tile) ? _roadQueues.QueueCount(tile, entryDir) : 0;
         public TileType GetTileType(Vector2Int tile) =>
             _grid.InBounds(tile) ? _grid.GetTile(tile) : TileType.Empty;
+
+        public PlacementDirection GetDirection(Vector2Int tile) => 
+            _grid.InBounds(tile) ? _grid.GetDirection(tile) : PlacementDirection.North;
 
         public Vector2Int GetFootprintSize(TileType type) => TileFootprint.GetSize(type);
 

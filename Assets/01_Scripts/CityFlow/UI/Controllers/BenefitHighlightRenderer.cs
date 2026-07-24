@@ -14,6 +14,10 @@ namespace CityFlow.UI.Controllers
         [SerializeField] private Color schoolAreaColor = new Color(0f, 0.7f, 1f, 0.15f); // 옅은 파란색
         [SerializeField] private Color schoolHouseColor = new Color(0f, 0.7f, 1f, 0.6f); // 짙은 파란색
 
+        [Header("Hospital Settings")]
+        [SerializeField] private Color hospitalAreaColor = new Color(0f, 1f, 0.3f, 0.15f); // 옅은 초록색
+        [SerializeField] private Color hospitalHouseColor = new Color(0f, 1f, 0.3f, 0.6f); // 짙은 초록색
+
 
         [Header("General Settings")]
         [SerializeField] private float yOffset = 0.05f;
@@ -53,12 +57,12 @@ namespace CityFlow.UI.Controllers
             _highlightSprite.hideFlags = HideFlags.HideAndDontSave;
         }
 
-        public void ShowHighlights(IReadOnlyList<Vector2Int> areaCoords, IReadOnlyList<Vector2Int> houseCoords, bool useXYPlane = false)
+        public void ShowHighlights(IReadOnlyList<Vector2Int> areaCoords, IReadOnlyList<Vector2Int> houseCoords, bool useXYPlane = false, bool isHospital = false)
         {
             if (_highlightSprite == null) InitializeSprite();
 
-            Color areaColor = schoolAreaColor;
-            Color houseColor = schoolHouseColor;
+            Color areaColor = isHospital ? hospitalAreaColor : schoolAreaColor;
+            Color houseColor = isHospital ? hospitalHouseColor : schoolHouseColor;
 
             int required = areaCoords.Count + houseCoords.Count;
             while (_pool.Count < required)

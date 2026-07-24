@@ -9,6 +9,7 @@ namespace CityFlow.Sim
     {
         readonly TileType[] _tiles;   // new 시 전부 0 = TileType.Empty → "빈 도시" 공짜
         readonly Vector2Int[] _footprintAnchors;
+        readonly PlacementDirection[] _directions;
         readonly int _width;
         readonly int _height;
         static readonly Vector2Int InvalidAnchor = new Vector2Int(-1, -1);
@@ -27,9 +28,11 @@ namespace CityFlow.Sim
             _height = height;
             _tiles = new TileType[width * height];
             _footprintAnchors = new Vector2Int[width * height];
+            _directions = new PlacementDirection[width * height];
             for (int i = 0; i < _footprintAnchors.Length; i++)
             {
                 _footprintAnchors[i] = InvalidAnchor;
+                _directions[i] = PlacementDirection.North;
             }
         }
 
@@ -62,14 +65,16 @@ namespace CityFlow.Sim
         internal bool InBounds(Vector2Int t) =>
             t.x >= 0 && t.x < _width && t.y >= 0 && t.y < _height;
 
-        public TileType GetTile(Vector2Int t) => _tiles[Index(t)];
+        public TileType GetTile(Vector2Int t) => InBounds(t) ? _tiles[Index(t)] : TileType.Empty;
+
+        public PlacementDirection GetDirection(Vector2Int t) => InBounds(t) ? _directions[Index(t)] : PlacementDirection.North;
 
         // 범위 안 + 진짜 타일 + 빈 칸일 때만 배치 가능.
-        public bool CanPlace(Vector2Int t, TileType type)
+        public bool CanPlace(Vector2Int t, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
             if (type == TileType.Empty) return false;   // 비우기는 Remove가 담당
 
-            Vector2Int size = TileFootprint.GetSize(type);
+            Vector2Int size = TileFootprint.GetRotatedSize(type, direction);
             for (int y = 0; y < size.y; y++)
             {
                 for (int x = 0; x < size.x; x++)
@@ -85,11 +90,11 @@ namespace CityFlow.Sim
             return true;
         }
 
-        public bool Place(Vector2Int t, TileType type)
+        public bool Place(Vector2Int t, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
-            if (!CanPlace(t, type)) return false;
+            if (!CanPlace(t, type, direction)) return false;
 
-            Vector2Int size = TileFootprint.GetSize(type);
+            Vector2Int size = TileFootprint.GetRotatedSize(type, direction);
             for (int y = 0; y < size.y; y++)
             {
                 for (int x = 0; x < size.x; x++)
@@ -98,6 +103,7 @@ namespace CityFlow.Sim
                     int index = Index(occupied);
                     _tiles[index] = type;
                     _footprintAnchors[index] = t;
+                    _directions[index] = direction;
                 }
             }
 
@@ -127,7 +133,7 @@ namespace CityFlow.Sim
                 anchor = t;
             }
 
-            Vector2Int size = TileFootprint.GetSize(removed);
+            Vector2Int size = TileFootprint.GetRotatedSize(removed, _directions[Index(anchor)]);
             for (int y = 0; y < size.y; y++)
             {
                 for (int x = 0; x < size.x; x++)
@@ -140,6 +146,7 @@ namespace CityFlow.Sim
 
                     _tiles[index] = TileType.Empty;
                     _footprintAnchors[index] = InvalidAnchor;
+                    _directions[index] = PlacementDirection.North;
                 }
             }
 
@@ -171,6 +178,7 @@ namespace CityFlow.Sim
             for (int i = 0; i < _footprintAnchors.Length; i++)
             {
                 _footprintAnchors[i] = InvalidAnchor;
+                _directions[i] = PlacementDirection.North;
             }
             MarkDirty();
         }

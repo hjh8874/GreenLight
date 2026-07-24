@@ -14,6 +14,8 @@ namespace CityFlow.Contracts
 
         TileType GetTileType(Vector2Int tile);
 
+        PlacementDirection GetDirection(Vector2Int tile);
+
         Vector2Int GetFootprintSize(TileType type);
 
         bool TryGetFootprintAnchor(Vector2Int tile, out Vector2Int anchor);

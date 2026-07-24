@@ -34,6 +34,10 @@ namespace CityFlow.Sim
 
         readonly List<List<Vector2Int>> _carRoutes = new(128);
         readonly List<List<Vector2Int>> _returnRoutes = new(128);
+        CityGrid _latestGrid;
+        SimConfig _latestConfig;
+        IReadOnlyDictionary<Vector2Int, Vector2Int> _latestOneways;
+        IReadOnlyDictionary<Vector2Int, TurnMode> _latestTurnSigns;
 
         // 소유권: 내부 List를 그대로 노출 — 소비자는 읽기 전용 계약. 변형 금지.
         public IReadOnlyList<List<Vector2Int>> Routes => _carRoutes;
@@ -80,6 +84,10 @@ namespace CityFlow.Sim
                           IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
                           IReadOnlyList<HighwayLink> highways)
         {
+            _latestGrid = grid;
+            _latestConfig = cfg;
+            _latestOneways = oneways;
+            _latestTurnSigns = turnSigns;
             _carRoutes.Clear();
             _returnRoutes.Clear();
             Array.Clear(_load, 0, _load.Length);
@@ -104,6 +112,21 @@ namespace CityFlow.Sim
                 for (int p = 0; p < carPath.Count; p++)
                     _load[carPath[p].y * _w + carPath[p].x] += 1f;
             }
+        }
+
+        // Liveness watchdog seam: reuse the exact topology/rule snapshot from the
+        // latest full Plan without mutating the shared demand route tables.
+        internal List<Vector2Int> ReplanFrom(Vector2Int from, Vector2Int to)
+        {
+            return _latestGrid == null
+                ? null
+                : Search(
+                    _latestGrid,
+                    from,
+                    to,
+                    _latestConfig,
+                    _latestOneways,
+                    _latestTurnSigns);
         }
 
         // 현재 _load 기준 최소 비용 경로(내부 + 테스트 seam). 미연결/비도로 끝점 = null.

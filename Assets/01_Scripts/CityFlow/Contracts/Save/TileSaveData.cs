@@ -9,5 +9,6 @@ namespace CityFlow.Contracts.Save
         public int X;
         public int Y;
         public TileType Type;
+        public PlacementDirection Direction;
     }
 }
