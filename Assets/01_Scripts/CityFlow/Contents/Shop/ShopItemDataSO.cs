@@ -1,13 +1,13 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 
 namespace CityFlow.Content
 {
     /// <summary>
-    /// »óÁ¡¿¡¼­ ÆÇ¸ÅÇÏ´Â °Ç¹°, µµ·Î,
-    /// ±³Åë½Ã¼³ ÇÑ Á¾·ùÀÇ µ¥ÀÌÅÍ¸¦ ÀúÀåÇÕ´Ï´Ù.
+    /// ìƒì ì—ì„œ íŒë§¤í•˜ëŠ” ê±´ë¬¼, ë„ë¡œ,
+    /// êµí†µì‹œì„¤ í•œ ì¢…ë¥˜ì˜ ë°ì´í„°ë¥¼ ì €ì¥í•©ë‹ˆë‹¤.
     ///
-    /// ½ÇÁ¦ ÄÚÀÎÀ» Â÷°¨ÇÏ°Å³ª °Ç¹°À» ¹èÄ¡ÇÏÁö ¾Ê°í,
-    /// »óÁ¡°ú ¹èÄ¡ ½Ã½ºÅÛÀÌ »ç¿ëÇÒ ¼³Á¤°ª¸¸ Á¦°øÇÕ´Ï´Ù.
+    /// ì‹¤ì œ ì½”ì¸ì„ ì°¨ê°í•˜ê±°ë‚˜ ê±´ë¬¼ì„ ë°°ì¹˜í•˜ì§€ ì•Šê³ ,
+    /// ìƒì ê³¼ ë°°ì¹˜ ì‹œìŠ¤í…œì´ ì‚¬ìš©í•  ì„¤ì •ê°’ë§Œ ì œê³µí•©ë‹ˆë‹¤.
     /// </summary>
     [CreateAssetMenu(
         fileName = "ShopItemData",
@@ -15,91 +15,91 @@ namespace CityFlow.Content
     )]
     public class ShopItemDataSO : ScriptableObject
     {
-        [Header("±âº» Á¤º¸")]
+        [Header("ê¸°ë³¸ ì •ë³´")]
 
         [Tooltip(
-            "»óÇ°À» ±¸ºĞÇÏ±â À§ÇÑ °íÀ¯ IDÀÔ´Ï´Ù. " +
-            "¿¹: building_house_001"
+            "ìƒí’ˆì„ êµ¬ë¶„í•˜ê¸° ìœ„í•œ ê³ ìœ  IDì…ë‹ˆë‹¤. " +
+            "ì˜ˆ: building_house_001"
         )]
         [SerializeField]
         private string itemId;
 
-        [Tooltip("»óÁ¡ UI¿¡ Ç¥½ÃÇÒ »óÇ° ÀÌ¸§ÀÔ´Ï´Ù.")]
+        [Tooltip("ìƒì  UIì— í‘œì‹œí•  ìƒí’ˆ ì´ë¦„ì…ë‹ˆë‹¤.")]
         [SerializeField]
         private string displayName;
 
-        [Tooltip("»óÁ¡ UI¿¡ Ç¥½ÃÇÒ »óÇ° ¼³¸íÀÔ´Ï´Ù.")]
+        [Tooltip("ìƒì  UIì— í‘œì‹œí•  ìƒí’ˆ ì„¤ëª…ì…ë‹ˆë‹¤.")]
         [TextArea(2, 5)]
         [SerializeField]
         private string description;
 
-        [Tooltip("»óÁ¡ UI¿¡ Ç¥½ÃÇÒ »óÇ° ¾ÆÀÌÄÜÀÔ´Ï´Ù.")]
+        [Tooltip("ìƒì  UIì— í‘œì‹œí•  ìƒí’ˆ ì•„ì´ì½˜ì…ë‹ˆë‹¤.")]
         [SerializeField]
         private Sprite icon;
 
-        [Header("»óÇ° ºĞ·ù")]
+        [Header("ìƒí’ˆ ë¶„ë¥˜")]
 
         [Tooltip(
-            "°Ç¹°, µµ·Î, ±³Åë½Ã¼³ Áß ÇÏ³ª¸¦ ¼±ÅÃÇÕ´Ï´Ù."
+            "ê±´ë¬¼, ë„ë¡œ, êµí†µì‹œì„¤ ì¤‘ í•˜ë‚˜ë¥¼ ì„ íƒí•©ë‹ˆë‹¤."
         )]
         [SerializeField]
         private ShopItemCategory category =
             ShopItemCategory.Building;
 
-        [Header("°¡°İ")]
+        [Header("ê°€ê²©")]
 
         [Tooltip(
-            "»óÇ°ÀÇ ±âº» °¡°İÀÔ´Ï´Ù. " +
-            "ÄÚÀÎÀº ¼Ò¼ö ¾øÀÌ Á¤¼ö¸¸ »ç¿ëÇÕ´Ï´Ù."
+            "ìƒí’ˆì˜ ê¸°ë³¸ ê°€ê²©ì…ë‹ˆë‹¤. " +
+            "ì½”ì¸ì€ ì†Œìˆ˜ ì—†ì´ ì •ìˆ˜ë§Œ ì‚¬ìš©í•©ë‹ˆë‹¤."
         )]
         [Min(0)]
         [SerializeField]
         private int basePrice = 100;
 
         [Tooltip(
-            "Fixed´Â ÇÑ °³´ç °¡°İ, " +
-            "PerTileÀº Å¸ÀÏ 1Ä­´ç °¡°İÀÔ´Ï´Ù."
+            "FixedëŠ” í•œ ê°œë‹¹ ê°€ê²©, " +
+            "PerTileì€ íƒ€ì¼ 1ì¹¸ë‹¹ ê°€ê²©ì…ë‹ˆë‹¤."
         )]
         [SerializeField]
         private ShopPriceMode priceMode =
             ShopPriceMode.Fixed;
 
-        [Header("¹èÄ¡ µ¥ÀÌÅÍ")]
+        [Header("ë°°ì¹˜ ë°ì´í„°")]
 
         [Tooltip(
-            "½ÇÁ¦ ¹èÄ¡ÇÒ °Ç¹° ¶Ç´Â ½Ã¼³ ÇÁ¸®ÆÕÀÔ´Ï´Ù."
+            "ì‹¤ì œ ë°°ì¹˜í•  ê±´ë¬¼ ë˜ëŠ” ì‹œì„¤ í”„ë¦¬íŒ¹ì…ë‹ˆë‹¤."
         )]
         [SerializeField]
         private GameObject placementPrefab;
 
         [Tooltip(
-            "»óÇ°ÀÌ Â÷ÁöÇÏ´Â ±×¸®µå °¡·Î¡¤¼¼·Î Å©±âÀÔ´Ï´Ù. " +
-            "¿¹: ´Üµ¶ÁÖÅÃ 2¡¿2, ÇĞ±³ 5¡¿5"
+            "ìƒí’ˆì´ ì°¨ì§€í•˜ëŠ” ê·¸ë¦¬ë“œ ê°€ë¡œÂ·ì„¸ë¡œ í¬ê¸°ì…ë‹ˆë‹¤. " +
+            "ì˜ˆ: ë‹¨ë…ì£¼íƒ 2Ã—2, í•™êµ 5Ã—5"
         )]
         [SerializeField]
         private Vector2Int footprintSize =
             new Vector2Int(1, 1);
 
-        [Header("ÇØ±İ Á¶°Ç")]
+        [Header("í•´ê¸ˆ ì¡°ê±´")]
 
         [Tooltip(
-            "»óÇ°À» ÇØ±İÇÏ±â À§ÇØ ÇÊ¿äÇÑ ÃÖ¼Ò µµ½Ã ´Ü°èÀÔ´Ï´Ù."
+            "ìƒí’ˆì„ í•´ê¸ˆí•˜ê¸° ìœ„í•´ í•„ìš”í•œ ìµœì†Œ ë„ì‹œ ë‹¨ê³„ì…ë‹ˆë‹¤."
         )]
         [SerializeField]
         private CityTier requiredCityTier =
             CityTier.Village;
 
         [Tooltip(
-            "»óÇ°À» ÇØ±İÇÏ±â À§ÇØ ÇÊ¿äÇÑ ÃÖ¼Ò ÀÎ±¸ÀÔ´Ï´Ù. " +
-            "Á¶°ÇÀ» »ç¿ëÇÏÁö ¾ÊÀ¸¸é 0À¸·Î ¼³Á¤ÇÕ´Ï´Ù."
+            "ìƒí’ˆì„ í•´ê¸ˆí•˜ê¸° ìœ„í•´ í•„ìš”í•œ ìµœì†Œ ì¸êµ¬ì…ë‹ˆë‹¤. " +
+            "ì¡°ê±´ì„ ì‚¬ìš©í•˜ì§€ ì•Šìœ¼ë©´ 0ìœ¼ë¡œ ì„¤ì •í•©ë‹ˆë‹¤."
         )]
         [Min(0)]
         [SerializeField]
         private int requiredPopulation;
 
         [Tooltip(
-            "»óÇ°À» ÇØ±İÇÏ±â À§ÇØ ÇÊ¿äÇÑ ´©Àû µµÂø È½¼öÀÔ´Ï´Ù. " +
-            "Á¶°ÇÀ» »ç¿ëÇÏÁö ¾ÊÀ¸¸é 0À¸·Î ¼³Á¤ÇÕ´Ï´Ù."
+            "ìƒí’ˆì„ í•´ê¸ˆí•˜ê¸° ìœ„í•´ í•„ìš”í•œ ëˆ„ì  ë„ì°© íšŸìˆ˜ì…ë‹ˆë‹¤. " +
+            "ì¡°ê±´ì„ ì‚¬ìš©í•˜ì§€ ì•Šìœ¼ë©´ 0ìœ¼ë¡œ ì„¤ì •í•©ë‹ˆë‹¤."
         )]
         [Min(0)]
         [SerializeField]
@@ -142,11 +142,11 @@ namespace CityFlow.Content
             requiredTotalArrivals;
 
         /// <summary>
-        /// ¹èÄ¡ÇÒ °³¼ö ¶Ç´Â µµ·Î Å¸ÀÏ ¼ö¸¦ ±âÁØÀ¸·Î
-        /// ½ÇÁ¦ ÇÊ¿äÇÑ ÃÑ°¡°İÀ» °è»êÇÕ´Ï´Ù.
+        /// ë°°ì¹˜í•  ê°œìˆ˜ ë˜ëŠ” ë„ë¡œ íƒ€ì¼ ìˆ˜ë¥¼ ê¸°ì¤€ìœ¼ë¡œ
+        /// ì‹¤ì œ í•„ìš”í•œ ì´ê°€ê²©ì„ ê³„ì‚°í•©ë‹ˆë‹¤.
         ///
-        /// Fixed »óÇ°Àº °³¼ö¿Í °ü°è¾øÀÌ ±âº» °¡°İÀ» ¹İÈ¯ÇÕ´Ï´Ù.
-        /// PerTile »óÇ°Àº ±âº» °¡°İ ¡¿ Å¸ÀÏ ¼ö·Î °è»êÇÕ´Ï´Ù.
+        /// Fixed ìƒí’ˆì€ ê°œìˆ˜ì™€ ê´€ê³„ì—†ì´ ê¸°ë³¸ ê°€ê²©ì„ ë°˜í™˜í•©ë‹ˆë‹¤.
+        /// PerTile ìƒí’ˆì€ ê¸°ë³¸ ê°€ê²© Ã— íƒ€ì¼ ìˆ˜ë¡œ ê³„ì‚°í•©ë‹ˆë‹¤.
         /// </summary>
         public int GetTotalPrice(
             int placementCount = 1
@@ -167,8 +167,8 @@ namespace CityFlow.Content
                 {
                     Debug.LogWarning(
                         $"[ShopItemDataSO] " +
-                        $"{displayName}ÀÇ ÃÑ°¡°İÀÌ " +
-                        $"int ¹üÀ§¸¦ ÃÊ°úÇß½À´Ï´Ù.",
+                        $"{displayName}ì˜ ì´ê°€ê²©ì´ " +
+                        $"int ë²”ìœ„ë¥¼ ì´ˆê³¼í–ˆìŠµë‹ˆë‹¤.",
                         this
                     );
 
@@ -182,10 +182,10 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// ÇöÀç µµ½Ã ´Ü°è, ÀÎ±¸, ´©Àû µµÂø È½¼ö¸¦ ±âÁØÀ¸·Î
-        /// »óÇ°ÀÇ ÇØ±İ ¿©ºÎ¸¦ È®ÀÎÇÕ´Ï´Ù.
+        /// í˜„ì¬ ë„ì‹œ ë‹¨ê³„, ì¸êµ¬, ëˆ„ì  ë„ì°© íšŸìˆ˜ë¥¼ ê¸°ì¤€ìœ¼ë¡œ
+        /// ìƒí’ˆì˜ í•´ê¸ˆ ì—¬ë¶€ë¥¼ í™•ì¸í•©ë‹ˆë‹¤.
         ///
-        /// ¼¼ Á¶°ÇÀ» ¸ğµÎ ¸¸Á·ÇØ¾ß true¸¦ ¹İÈ¯ÇÕ´Ï´Ù.
+        /// ì„¸ ì¡°ê±´ì„ ëª¨ë‘ ë§Œì¡±í•´ì•¼ trueë¥¼ ë°˜í™˜í•©ë‹ˆë‹¤.
         /// </summary>
         public bool IsUnlocked(
             CityTier currentCityTier,
@@ -212,10 +212,10 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// »óÇ°ÀÌ Àá°Ü ÀÖÀ» ¶§
-        /// ¾î¶² Á¶°ÇÀÌ ºÎÁ·ÇÑÁö ¼³¸í ¹®ÀÚ¿­À» ¹İÈ¯ÇÕ´Ï´Ù.
+        /// ìƒí’ˆì´ ì ê²¨ ìˆì„ ë•Œ
+        /// ì–´ë–¤ ì¡°ê±´ì´ ë¶€ì¡±í•œì§€ ì„¤ëª… ë¬¸ìì—´ì„ ë°˜í™˜í•©ë‹ˆë‹¤.
         ///
-        /// ÀÌÈÄ »óÁ¡ Àá±İ UI¿¡ Ç¥½ÃÇÒ ¼ö ÀÖ½À´Ï´Ù.
+        /// ì´í›„ ìƒì  ì ê¸ˆ UIì— í‘œì‹œí•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
         /// </summary>
         public string GetUnlockDescription(
             CityTier currentCityTier,
@@ -229,17 +229,17 @@ namespace CityFlow.Content
                 totalArrivals
             ))
             {
-                return "ÇØ±İ ¿Ï·á";
+                return "í•´ê¸ˆ ì™„ë£Œ";
             }
 
             string result =
-                "ÇØ±İ Á¶°Ç";
+                "í•´ê¸ˆ ì¡°ê±´";
 
             if (currentCityTier <
                 requiredCityTier)
             {
                 result +=
-                    $"\n- µµ½Ã ´Ü°è: " +
+                    $"\n- ë„ì‹œ ë‹¨ê³„: " +
                     $"{GetCityTierDisplayName(requiredCityTier)}";
             }
 
@@ -247,7 +247,7 @@ namespace CityFlow.Content
                 requiredPopulation)
             {
                 result +=
-                    $"\n- ÀÎ±¸: " +
+                    $"\n- ì¸êµ¬: " +
                     $"{currentPopulation} / " +
                     $"{requiredPopulation}";
             }
@@ -256,7 +256,7 @@ namespace CityFlow.Content
                 requiredTotalArrivals)
             {
                 result +=
-                    $"\n- ´©Àû µµÂø: " +
+                    $"\n- ëˆ„ì  ë„ì°©: " +
                     $"{totalArrivals} / " +
                     $"{requiredTotalArrivals}";
             }
@@ -265,8 +265,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// µµ½Ã ´Ü°è enumÀ»
-        /// ÇÑ±Û ÀÌ¸§À¸·Î º¯È¯ÇÕ´Ï´Ù.
+        /// ë„ì‹œ ë‹¨ê³„ enumì„
+        /// í•œê¸€ ì´ë¦„ìœ¼ë¡œ ë³€í™˜í•©ë‹ˆë‹¤.
         /// </summary>
         public static string GetCityTierDisplayName(
             CityTier cityTier
@@ -275,19 +275,19 @@ namespace CityFlow.Content
             switch (cityTier)
             {
                 case CityTier.Village:
-                    return "¸¶À»";
+                    return "ë§ˆì„";
 
                 case CityTier.SmallCity:
-                    return "¼Òµµ½Ã";
+                    return "ì†Œë„ì‹œ";
 
                 case CityTier.MiddleCity:
-                    return "Áßµµ½Ã";
+                    return "ì¤‘ë„ì‹œ";
 
                 case CityTier.BigCity:
-                    return "´ëµµ½Ã";
+                    return "ëŒ€ë„ì‹œ";
 
                 default:
-                    return "¸¶À»";
+                    return "ë§ˆì„";
             }
         }
 

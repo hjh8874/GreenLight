@@ -1,13 +1,13 @@
-using System.Collections.Generic;
+ï»¿using System.Collections.Generic;
 using UnityEngine;
 
 namespace CityFlow.Content
 {
     /// <summary>
-    /// »óÁ¡¿¡¼­ »ç¿ëÇÏ´Â ÀüÃ¼ »óÇ° ¸ñ·ÏÀÔ´Ï´Ù.
+    /// ìƒì ì—ì„œ ì‚¬ìš©í•˜ëŠ” ì „ì²´ ìƒí’ˆ ëª©ë¡ì…ë‹ˆë‹¤.
     ///
-    /// °¢ »óÇ°ÀÇ ShopItemDataSO¸¦ µî·ÏÇÏ¸é,
-    /// »óÁ¡ UI°¡ ÀÌ ¸ñ·ÏÀ» ÀĞ¾î¼­ ¹öÆ°À» »ı¼ºÇÒ ¼ö ÀÖ½À´Ï´Ù.
+    /// ê° ìƒí’ˆì˜ ShopItemDataSOë¥¼ ë“±ë¡í•˜ë©´,
+    /// ìƒì  UIê°€ ì´ ëª©ë¡ì„ ì½ì–´ì„œ ë²„íŠ¼ì„ ìƒì„±í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
     /// </summary>
     [CreateAssetMenu(
         fileName = "ShopCatalog",
@@ -15,10 +15,10 @@ namespace CityFlow.Content
     )]
     public class ShopCatalogSO : ScriptableObject
     {
-        [Header("»óÁ¡ »óÇ° ¸ñ·Ï")]
+        [Header("ìƒì  ìƒí’ˆ ëª©ë¡")]
 
         [Tooltip(
-            "»óÁ¡¿¡¼­ Ç¥½ÃÇÒ ¸ğµç »óÇ° µ¥ÀÌÅÍ¸¦ µî·ÏÇÕ´Ï´Ù."
+            "ìƒì ì—ì„œ í‘œì‹œí•  ëª¨ë“  ìƒí’ˆ ë°ì´í„°ë¥¼ ë“±ë¡í•©ë‹ˆë‹¤."
         )]
         [SerializeField]
         private List<ShopItemDataSO> items =
@@ -28,8 +28,8 @@ namespace CityFlow.Content
             items;
 
         /// <summary>
-        /// »óÇ° ID¸¦ »ç¿ëÇØ
-        /// »óÁ¡ »óÇ° µ¥ÀÌÅÍ¸¦ Ã£½À´Ï´Ù.
+        /// ìƒí’ˆ IDë¥¼ ì‚¬ìš©í•´
+        /// ìƒì  ìƒí’ˆ ë°ì´í„°ë¥¼ ì°¾ìŠµë‹ˆë‹¤.
         /// </summary>
         public ShopItemDataSO GetItemById(
             string itemId
@@ -65,8 +65,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// Æ¯Á¤ Ä«Å×°í¸®¿¡ ÇØ´çÇÏ´Â
-        /// »óÇ°µé¸¸ ¹İÈ¯ÇÕ´Ï´Ù.
+        /// íŠ¹ì • ì¹´í…Œê³ ë¦¬ì— í•´ë‹¹í•˜ëŠ”
+        /// ìƒí’ˆë“¤ë§Œ ë°˜í™˜í•©ë‹ˆë‹¤.
         /// </summary>
         public List<ShopItemDataSO>
             GetItemsByCategory(
@@ -99,7 +99,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// ÇöÀç Á¶°Ç¿¡¼­ ÇØ±İµÈ »óÇ°µé¸¸ ¹İÈ¯ÇÕ´Ï´Ù.
+        /// í˜„ì¬ ì¡°ê±´ì—ì„œ í•´ê¸ˆëœ ìƒí’ˆë“¤ë§Œ ë°˜í™˜í•©ë‹ˆë‹¤.
         /// </summary>
         public List<ShopItemDataSO>
             GetUnlockedItems(
@@ -160,7 +160,7 @@ namespace CityFlow.Content
                 {
                     Debug.LogWarning(
                         $"[ShopCatalogSO] " +
-                        $"{item.name}ÀÇ Item ID°¡ ºñ¾î ÀÖ½À´Ï´Ù.",
+                        $"{item.name}ì˜ Item IDê°€ ë¹„ì–´ ìˆìŠµë‹ˆë‹¤.",
                         item
                     );
 
@@ -173,7 +173,7 @@ namespace CityFlow.Content
                 {
                     Debug.LogWarning(
                         $"[ShopCatalogSO] " +
-                        $"Áßº¹µÈ Item ID°¡ ÀÖ½À´Ï´Ù: " +
+                        $"ì¤‘ë³µëœ Item IDê°€ ìˆìŠµë‹ˆë‹¤: " +
                         $"{item.ItemId}",
                         item
                     );

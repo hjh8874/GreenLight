@@ -1,7 +1,7 @@
-namespace CityFlow.Content
+ï»¿namespace CityFlow.Content
 {
     /// <summary>
-    /// »óÁ¡¿¡¼­ ÆÇ¸ÅÇÏ´Â »óÇ°ÀÇ Á¾·ùÀÔ´Ï´Ù.
+    /// ìƒì ì—ì„œ íŒë§¤í•˜ëŠ” ìƒí’ˆì˜ ì¢…ë¥˜ì…ë‹ˆë‹¤.
     /// </summary>
     public enum ShopItemCategory
     {

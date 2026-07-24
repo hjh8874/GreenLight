@@ -1,4 +1,4 @@
-using System;
+ï»¿using System;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
@@ -6,25 +6,25 @@ using UnityEngine;
 namespace CityFlow.Content
 {
     /// <summary>
-    /// Â÷·® µµÂø ÀÌº¥Æ®¸¦ ±âÁØÀ¸·Î
-    /// °ÔÀÓ ÀüÃ¼ ´©Àû µµÂø È½¼ö¸¦ °ü¸®ÇÕ´Ï´Ù.
+    /// ì°¨ëŸ‰ ë„ì°© ì´ë²¤íŠ¸ë¥¼ ê¸°ì¤€ìœ¼ë¡œ
+    /// ê²Œì„ ì „ì²´ ëˆ„ì  ë„ì°© íšŸìˆ˜ë¥¼ ê´€ë¦¬í•©ë‹ˆë‹¤.
     ///
-    /// Sim delivered totalÃ³·³ ÇöÀç Æ½ Ã³¸®·®À» ³ªÅ¸³»´Â °ª°ú ´Ş¸®,
-    /// LifetimeDeliveredTotalÀº »õ °ÔÀÓ ½ÃÀÛ ÀÌÈÄ °è¼Ó ´©ÀûµÇ´Â ÁøÇàµµ °ªÀÔ´Ï´Ù.
+    /// Sim delivered totalì²˜ëŸ¼ í˜„ì¬ í‹± ì²˜ë¦¬ëŸ‰ì„ ë‚˜íƒ€ë‚´ëŠ” ê°’ê³¼ ë‹¬ë¦¬,
+    /// LifetimeDeliveredTotalì€ ìƒˆ ê²Œì„ ì‹œì‘ ì´í›„ ê³„ì† ëˆ„ì ë˜ëŠ” ì§„í–‰ë„ ê°’ì…ë‹ˆë‹¤.
     ///
-    /// ½ÇÁ¦ ÇØ±İ ÀÓ°è°ªÀº ÀÌ Å¬·¡½º¿¡ ÇÏµåÄÚµùÇÏÁö ¾Ê½À´Ï´Ù.
-    /// ShopItemDataSO.RequiredTotalArrivals¸¦ Á¤º»À¸·Î »ç¿ëÇÕ´Ï´Ù.
+    /// ì‹¤ì œ í•´ê¸ˆ ì„ê³„ê°’ì€ ì´ í´ë˜ìŠ¤ì— í•˜ë“œì½”ë”©í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
+    /// ShopItemDataSO.RequiredTotalArrivalsë¥¼ ì •ë³¸ìœ¼ë¡œ ì‚¬ìš©í•©ë‹ˆë‹¤.
     /// </summary>
     public sealed class DeliveredProgressSystem :
         MonoBehaviour,
         ICityFlowServiceConsumer,
         IReadOnlyDeliveredProgress
     {
-        [Header("´©Àû µµÂø ÁøÇàµµ")]
+        [Header("ëˆ„ì  ë„ì°© ì§„í–‰ë„")]
 
         [Tooltip(
-            "»õ °ÔÀÓ ½ÃÀÛ ÀÌÈÄ ´©ÀûµÈ ÀüÃ¼ µµÂø È½¼öÀÔ´Ï´Ù. " +
-            "ÇöÀç´Â ·±Å¸ÀÓ ´©Àû°ªÀÌ¸ç, ¼¼ÀÌºê ¿¬µ¿Àº ±âÁ¸ Progression ÀúÀå ±¸Á¶¿¡ ¿¬°áÇØ¾ß ÇÕ´Ï´Ù."
+            "ìƒˆ ê²Œì„ ì‹œì‘ ì´í›„ ëˆ„ì ëœ ì „ì²´ ë„ì°© íšŸìˆ˜ì…ë‹ˆë‹¤. " +
+            "í˜„ì¬ëŠ” ëŸ°íƒ€ì„ ëˆ„ì ê°’ì´ë©°, ì„¸ì´ë¸Œ ì—°ë™ì€ ê¸°ì¡´ Progression ì €ì¥ êµ¬ì¡°ì— ì—°ê²°í•´ì•¼ í•©ë‹ˆë‹¤."
         )]
         [Min(0)]
         [SerializeField]
@@ -35,20 +35,20 @@ namespace CityFlow.Content
         private bool isSubscribed;
 
         /// <summary>
-        /// »õ °ÔÀÓ ½ÃÀÛ ÀÌÈÄ ´©ÀûµÈ ÀüÃ¼ µµÂø È½¼öÀÔ´Ï´Ù.
+        /// ìƒˆ ê²Œì„ ì‹œì‘ ì´í›„ ëˆ„ì ëœ ì „ì²´ ë„ì°© íšŸìˆ˜ì…ë‹ˆë‹¤.
         /// </summary>
         public long LifetimeDeliveredTotal =>
             lifetimeDeliveredTotal;
 
         /// <summary>
-        /// ´©Àû µµÂø°ªÀÌ º¯°æµÉ ¶§ ÃÖ½Å °ªÀ» Àü´ŞÇÕ´Ï´Ù.
+        /// ëˆ„ì  ë„ì°©ê°’ì´ ë³€ê²½ë  ë•Œ ìµœì‹  ê°’ì„ ì „ë‹¬í•©ë‹ˆë‹¤.
         /// </summary>
         public event Action<long>
             LifetimeDeliveredChanged;
 
         /// <summary>
-        /// CityBootstrap¿¡¼­ CityFlowServices¸¦ Àü´Ş¹Ş¾Æ
-        /// µµÂø ÀÌº¥Æ®¸¦ ±¸µ¶ÇÕ´Ï´Ù.
+        /// CityBootstrapì—ì„œ CityFlowServicesë¥¼ ì „ë‹¬ë°›ì•„
+        /// ë„ì°© ì´ë²¤íŠ¸ë¥¼ êµ¬ë…í•©ë‹ˆë‹¤.
         /// </summary>
         public void Initialize(
             CityFlowServices services
@@ -62,8 +62,8 @@ namespace CityFlow.Content
             if (isInitialized)
             {
                 /*
-                 * CityBootstrap°ú StartÀÇ º¸Á¶ ÃÊ±âÈ­°¡
-                 * ¸ğµÎ È£ÃâµÇ¾îµµ ÀÌº¥Æ®¸¦ Áßº¹ ±¸µ¶ÇÏÁö ¾Ê½À´Ï´Ù.
+                 * CityBootstrapê³¼ Startì˜ ë³´ì¡° ì´ˆê¸°í™”ê°€
+                 * ëª¨ë‘ í˜¸ì¶œë˜ì–´ë„ ì´ë²¤íŠ¸ë¥¼ ì¤‘ë³µ êµ¬ë…í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
                  */
                 return;
             }
@@ -72,7 +72,7 @@ namespace CityFlow.Content
             {
                 Debug.LogError(
                     "[DeliveredProgressSystem] " +
-                    "CityFlowServices°¡ ¾ø½À´Ï´Ù.",
+                    "CityFlowServicesê°€ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
 
@@ -83,7 +83,7 @@ namespace CityFlow.Content
             {
                 Debug.LogError(
                     "[DeliveredProgressSystem] " +
-                    "SimEventHub°¡ ¿¬°áµÇÁö ¾Ê¾Ò½À´Ï´Ù.",
+                    "SimEventHubê°€ ì—°ê²°ë˜ì§€ ì•Šì•˜ìŠµë‹ˆë‹¤.",
                     this
                 );
 
@@ -97,18 +97,18 @@ namespace CityFlow.Content
             PublishChanged();
 
             Debug.Log(
-                $"[DeliveredProgressSystem] ÃÊ±âÈ­ ¿Ï·á. " +
-                $"´©Àû µµÂø: {lifetimeDeliveredTotal}",
+                $"[DeliveredProgressSystem] ì´ˆê¸°í™” ì™„ë£Œ. " +
+                $"ëˆ„ì  ë„ì°©: {lifetimeDeliveredTotal}",
                 this
             );
         }
 
         /// <summary>
-        /// CityBootstrapÀÇ ÀÚµ¿ ÃÊ±âÈ­ ´ë»ó¿¡¼­ ´©¶ôµÆÀ» °æ¿ì¸¦ ´ëºñÇÑ
-        /// º¸Á¶ ÃÊ±âÈ­ÀÔ´Ï´Ù.
+        /// CityBootstrapì˜ ìë™ ì´ˆê¸°í™” ëŒ€ìƒì—ì„œ ëˆ„ë½ëì„ ê²½ìš°ë¥¼ ëŒ€ë¹„í•œ
+        /// ë³´ì¡° ì´ˆê¸°í™”ì…ë‹ˆë‹¤.
         ///
-        /// ÀÌ ÄÚµå°¡ ÀÖ¾îµµ DeliveredProgressSystem ÄÄÆ÷³ÍÆ®´Â
-        /// ¹İµå½Ã È°¼º ¾ÀÀÇ GameObject¿¡ Ãß°¡µÇ¾î ÀÖ¾î¾ß ÇÕ´Ï´Ù.
+        /// ì´ ì½”ë“œê°€ ìˆì–´ë„ DeliveredProgressSystem ì»´í¬ë„ŒíŠ¸ëŠ”
+        /// ë°˜ë“œì‹œ í™œì„± ì”¬ì˜ GameObjectì— ì¶”ê°€ë˜ì–´ ìˆì–´ì•¼ í•©ë‹ˆë‹¤.
         /// </summary>
         private void Start()
         {
@@ -124,8 +124,8 @@ namespace CityFlow.Content
             {
                 Debug.LogWarning(
                     "[DeliveredProgressSystem] " +
-                    "CityBootstrap ¶Ç´Â Services¸¦ Ã£Áö ¸øÇß½À´Ï´Ù. " +
-                    "Services ¿ÀºêÁ§Æ®¿¡ ÄÄÆ÷³ÍÆ®°¡ Ãß°¡µÇ¾î ÀÖ´ÂÁö È®ÀÎÇÏ¼¼¿ä.",
+                    "CityBootstrap ë˜ëŠ” Servicesë¥¼ ì°¾ì§€ ëª»í–ˆìŠµë‹ˆë‹¤. " +
+                    "Services ì˜¤ë¸Œì íŠ¸ì— ì»´í¬ë„ŒíŠ¸ê°€ ì¶”ê°€ë˜ì–´ ìˆëŠ”ì§€ í™•ì¸í•˜ì„¸ìš”.",
                     this
                 );
 
@@ -156,7 +156,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// Arrival ÀÌº¥Æ®¸¦ ÇÑ ¹ø¸¸ ±¸µ¶ÇÕ´Ï´Ù.
+        /// Arrival ì´ë²¤íŠ¸ë¥¼ í•œ ë²ˆë§Œ êµ¬ë…í•©ë‹ˆë‹¤.
         /// </summary>
         private void SubscribeEvents()
         {
@@ -173,7 +173,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// Arrival ÀÌº¥Æ® ±¸µ¶À» ÇØÁ¦ÇÕ´Ï´Ù.
+        /// Arrival ì´ë²¤íŠ¸ êµ¬ë…ì„ í•´ì œí•©ë‹ˆë‹¤.
         /// </summary>
         private void UnsubscribeEvents()
         {
@@ -190,14 +190,14 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// Â÷·® µµÂø ÀÌº¥Æ®¸¦ ¹ŞÀ¸¸é
-        /// ´©Àû µµÂø È½¼ö¸¦ Áõ°¡½ÃÅµ´Ï´Ù.
+        /// ì°¨ëŸ‰ ë„ì°© ì´ë²¤íŠ¸ë¥¼ ë°›ìœ¼ë©´
+        /// ëˆ„ì  ë„ì°© íšŸìˆ˜ë¥¼ ì¦ê°€ì‹œí‚µë‹ˆë‹¤.
         ///
-        /// ÇöÀç´Â Arrival ÀÌº¥Æ® 1È¸¸¦
-        /// Â÷·® 1´ë µµÂøÀ¸·Î Ã³¸®ÇÕ´Ï´Ù.
+        /// í˜„ì¬ëŠ” Arrival ì´ë²¤íŠ¸ 1íšŒë¥¼
+        /// ì°¨ëŸ‰ 1ëŒ€ ë„ì°©ìœ¼ë¡œ ì²˜ë¦¬í•©ë‹ˆë‹¤.
         ///
-        /// ArrivalEvent°¡ ¿©·¯ ´ëÀÇ µµÂø·®À» Æ÷ÇÔÇÏ´Â ±¸Á¶¶ó¸é
-        /// ÀÌÈÄ ÀÌº¥Æ®ÀÇ ½ÇÁ¦ µµÂø ¼ö ÇÊµå¸¦ »ç¿ëÇØ¾ß ÇÕ´Ï´Ù.
+        /// ArrivalEventê°€ ì—¬ëŸ¬ ëŒ€ì˜ ë„ì°©ëŸ‰ì„ í¬í•¨í•˜ëŠ” êµ¬ì¡°ë¼ë©´
+        /// ì´í›„ ì´ë²¤íŠ¸ì˜ ì‹¤ì œ ë„ì°© ìˆ˜ í•„ë“œë¥¼ ì‚¬ìš©í•´ì•¼ í•©ë‹ˆë‹¤.
         /// </summary>
         private void OnArrival(
             ArrivalEvent arrivalEvent
@@ -210,7 +210,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// ´©Àû µµÂø È½¼ö¸¦ Áõ°¡½ÃÅµ´Ï´Ù.
+        /// ëˆ„ì  ë„ì°© íšŸìˆ˜ë¥¼ ì¦ê°€ì‹œí‚µë‹ˆë‹¤.
         /// </summary>
         public void AddDeliveredCount(
             long amount,
@@ -221,7 +221,7 @@ namespace CityFlow.Content
             {
                 Debug.LogWarning(
                     $"[DeliveredProgressSystem] " +
-                    $"µµÂø Áõ°¡·®Àº 1 ÀÌ»óÀÌ¾î¾ß ÇÕ´Ï´Ù. " +
+                    $"ë„ì°© ì¦ê°€ëŸ‰ì€ 1 ì´ìƒì´ì–´ì•¼ í•©ë‹ˆë‹¤. " +
                     $"Amount: {amount}",
                     this
                 );
@@ -237,7 +237,7 @@ namespace CityFlow.Content
 
                 Debug.LogWarning(
                     "[DeliveredProgressSystem] " +
-                    "´©Àû µµÂø°ªÀÌ long ÃÖ´ë°ª¿¡ µµ´ŞÇß½À´Ï´Ù.",
+                    "ëˆ„ì  ë„ì°©ê°’ì´ long ìµœëŒ€ê°’ì— ë„ë‹¬í–ˆìŠµë‹ˆë‹¤.",
                     this
                 );
             }
@@ -251,7 +251,7 @@ namespace CityFlow.Content
 
             Debug.Log(
                 $"[DeliveredProgressSystem] " +
-                $"´©Àû µµÂø Áõ°¡. " +
+                $"ëˆ„ì  ë„ì°© ì¦ê°€. " +
                 $"Reason: {reason}, " +
                 $"Added: {amount}, " +
                 $"Total: {lifetimeDeliveredTotal}",
@@ -260,10 +260,10 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// ÀúÀåµÈ ´©Àû µµÂø°ªÀ» º¹¿øÇÕ´Ï´Ù.
+        /// ì €ì¥ëœ ëˆ„ì  ë„ì°©ê°’ì„ ë³µì›í•©ë‹ˆë‹¤.
         ///
-        /// ±âÁ¸ IProgressionSaveSource ±¸ÇöÃ¼ÀÇ
-        /// RestoreSnapshot¿¡¼­ È£ÃâÇÒ ¿¹Á¤ÀÔ´Ï´Ù.
+        /// ê¸°ì¡´ IProgressionSaveSource êµ¬í˜„ì²´ì˜
+        /// RestoreSnapshotì—ì„œ í˜¸ì¶œí•  ì˜ˆì •ì…ë‹ˆë‹¤.
         /// </summary>
         public void RestoreLifetimeDeliveredTotal(
             long restoredValue
@@ -279,15 +279,15 @@ namespace CityFlow.Content
 
             Debug.Log(
                 $"[DeliveredProgressSystem] " +
-                $"´©Àû µµÂø º¹¿ø ¿Ï·á. " +
+                $"ëˆ„ì  ë„ì°© ë³µì› ì™„ë£Œ. " +
                 $"Total: {lifetimeDeliveredTotal}",
                 this
             );
         }
 
         /// <summary>
-        /// »õ °ÔÀÓ ¶Ç´Â Å×½ºÆ® ÃÊ±âÈ­ ½Ã
-        /// ´©Àû µµÂø°ªÀ» 0À¸·Î º¯°æÇÕ´Ï´Ù.
+        /// ìƒˆ ê²Œì„ ë˜ëŠ” í…ŒìŠ¤íŠ¸ ì´ˆê¸°í™” ì‹œ
+        /// ëˆ„ì  ë„ì°©ê°’ì„ 0ìœ¼ë¡œ ë³€ê²½í•©ë‹ˆë‹¤.
         /// </summary>
         public void ResetProgress()
         {
@@ -297,19 +297,19 @@ namespace CityFlow.Content
 
             Debug.Log(
                 "[DeliveredProgressSystem] " +
-                "´©Àû µµÂø°ªÀ» ÃÊ±âÈ­Çß½À´Ï´Ù.",
+                "ëˆ„ì  ë„ì°©ê°’ì„ ì´ˆê¸°í™”í–ˆìŠµë‹ˆë‹¤.",
                 this
             );
         }
 
         /// <summary>
-        /// Àü´Ş¹ŞÀº ´©Àû µµÂø ÀÓ°è°ªÀ» ¸¸Á·Çß´ÂÁö È®ÀÎÇÕ´Ï´Ù.
+        /// ì „ë‹¬ë°›ì€ ëˆ„ì  ë„ì°© ì„ê³„ê°’ì„ ë§Œì¡±í–ˆëŠ”ì§€ í™•ì¸í•©ë‹ˆë‹¤.
         ///
-        /// ÀÌ ¸Ş¼­µå¿¡´Â ·ÎÅÍ¸® 100, ÀÔÃ¼ ±³Â÷·Î 500 °°Àº
-        /// Æ¯Á¤ »óÇ°ÀÇ °ªÀ» Á÷Á¢ ³ÖÁö ¾Ê½À´Ï´Ù.
+        /// ì´ ë©”ì„œë“œì—ëŠ” ë¡œí„°ë¦¬ 100, ì…ì²´ êµì°¨ë¡œ 500 ê°™ì€
+        /// íŠ¹ì • ìƒí’ˆì˜ ê°’ì„ ì§ì ‘ ë„£ì§€ ì•ŠìŠµë‹ˆë‹¤.
         ///
-        /// È£ÃâÀÚ´Â ShopItemDataSO.RequiredTotalArrivals¸¦
-        /// Àü´ŞÇØ¾ß ÇÕ´Ï´Ù.
+        /// í˜¸ì¶œìëŠ” ShopItemDataSO.RequiredTotalArrivalsë¥¼
+        /// ì „ë‹¬í•´ì•¼ í•©ë‹ˆë‹¤.
         /// </summary>
         public bool HasReached(
             long requiredTotalArrivals
@@ -326,7 +326,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// ´©Àû µµÂø º¯°æ ÀÌº¥Æ®¸¦ ¹ß»ı½ÃÅµ´Ï´Ù.
+        /// ëˆ„ì  ë„ì°© ë³€ê²½ ì´ë²¤íŠ¸ë¥¼ ë°œìƒì‹œí‚µë‹ˆë‹¤.
         /// </summary>
         private void PublishChanged()
         {

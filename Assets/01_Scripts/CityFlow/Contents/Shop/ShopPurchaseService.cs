@@ -1,14 +1,14 @@
-using CityFlow.Bootstrap;
+ï»¿using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
 
 namespace CityFlow.Content
 {
     /// <summary>
-    /// »óÁ¡ »óÇ°ÀÇ ±¸¸Å °¡´É ¿©ºÎ¿Í
-    /// ½ÇÁ¦ ÄÚÀÎ Â÷°¨À» ´ã´çÇÕ´Ï´Ù.
+    /// ìƒì  ìƒí’ˆì˜ êµ¬ë§¤ ê°€ëŠ¥ ì—¬ë¶€ì™€
+    /// ì‹¤ì œ ì½”ì¸ ì°¨ê°ì„ ë‹´ë‹¹í•©ë‹ˆë‹¤.
     ///
-    /// »óÇ° UI »ı¼ºÀÌ³ª ½ÇÁ¦ °Ç¹° ¹èÄ¡´Â ´ã´çÇÏÁö ¾Ê½À´Ï´Ù.
+    /// ìƒí’ˆ UI ìƒì„±ì´ë‚˜ ì‹¤ì œ ê±´ë¬¼ ë°°ì¹˜ëŠ” ë‹´ë‹¹í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
     /// </summary>
     public sealed class ShopPurchaseService :
         MonoBehaviour,
@@ -17,14 +17,14 @@ namespace CityFlow.Content
         private CityFlowServices services;
 
         /// <summary>
-        /// °æÁ¦ ¼­ºñ½º°¡ Á¤»óÀûÀ¸·Î ¿¬°áµÇ¾ú´ÂÁö È®ÀÎÇÕ´Ï´Ù.
+        /// ê²½ì œ ì„œë¹„ìŠ¤ê°€ ì •ìƒì ìœ¼ë¡œ ì—°ê²°ë˜ì—ˆëŠ”ì§€ í™•ì¸í•©ë‹ˆë‹¤.
         /// </summary>
         public bool IsReady =>
             services != null &&
             services.Economy != null;
 
         /// <summary>
-        /// ÇöÀç º¸À¯ ÁßÀÎ ÄÚÀÎÀ» ¹İÈ¯ÇÕ´Ï´Ù.
+        /// í˜„ì¬ ë³´ìœ  ì¤‘ì¸ ì½”ì¸ì„ ë°˜í™˜í•©ë‹ˆë‹¤.
         /// </summary>
         public long CurrentCoins =>
             IsReady
@@ -44,7 +44,7 @@ namespace CityFlow.Content
             {
                 Debug.LogError(
                     "[ShopPurchaseService] " +
-                    "CityFlowServices°¡ ¾ø½À´Ï´Ù.",
+                    "CityFlowServicesê°€ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
 
@@ -57,7 +57,7 @@ namespace CityFlow.Content
             {
                 Debug.LogWarning(
                     "[ShopPurchaseService] " +
-                    "EconomyService°¡ ¾ÆÁ÷ µî·ÏµÇÁö ¾Ê¾Ò½À´Ï´Ù.",
+                    "EconomyServiceê°€ ì•„ì§ ë“±ë¡ë˜ì§€ ì•Šì•˜ìŠµë‹ˆë‹¤.",
                     this
                 );
 
@@ -66,16 +66,16 @@ namespace CityFlow.Content
 
             Debug.Log(
                 "[ShopPurchaseService] " +
-                "»óÁ¡ ±¸¸Å ¼­ºñ½º ÃÊ±âÈ­ ¿Ï·á.",
+                "ìƒì  êµ¬ë§¤ ì„œë¹„ìŠ¤ ì´ˆê¸°í™” ì™„ë£Œ.",
                 this
             );
         }
 
         /// <summary>
-        /// »óÇ°ÀÇ ÃÑ°¡°İÀ» ¹İÈ¯ÇÕ´Ï´Ù.
+        /// ìƒí’ˆì˜ ì´ê°€ê²©ì„ ë°˜í™˜í•©ë‹ˆë‹¤.
         ///
-        /// µµ·Î³ª ¿¬¼Ó ¹èÄ¡ »óÇ°Àº placementCount¸¦ »ç¿ëÇÏ¿©
-        /// Å¸ÀÏ ¼ö¿¡ µû¸¥ °¡°İÀ» °è»êÇÕ´Ï´Ù.
+        /// ë„ë¡œë‚˜ ì—°ì† ë°°ì¹˜ ìƒí’ˆì€ placementCountë¥¼ ì‚¬ìš©í•˜ì—¬
+        /// íƒ€ì¼ ìˆ˜ì— ë”°ë¥¸ ê°€ê²©ì„ ê³„ì‚°í•©ë‹ˆë‹¤.
         /// </summary>
         public int GetPurchasePrice(
             ShopItemDataSO item,
@@ -93,7 +93,7 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// ÇöÀç µµ½Ã Á¶°Ç¿¡¼­ »óÇ°ÀÌ ÇØ±İµÇ¾ú´ÂÁö È®ÀÎÇÕ´Ï´Ù.
+        /// í˜„ì¬ ë„ì‹œ ì¡°ê±´ì—ì„œ ìƒí’ˆì´ í•´ê¸ˆë˜ì—ˆëŠ”ì§€ í™•ì¸í•©ë‹ˆë‹¤.
         /// </summary>
         public bool IsUnlocked(
             ShopItemDataSO item,
@@ -115,9 +115,9 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// ÇöÀç ÄÚÀÎÀ¸·Î »óÇ°À» ±¸¸ÅÇÒ ¼ö ÀÖ´ÂÁö È®ÀÎÇÕ´Ï´Ù.
+        /// í˜„ì¬ ì½”ì¸ìœ¼ë¡œ ìƒí’ˆì„ êµ¬ë§¤í•  ìˆ˜ ìˆëŠ”ì§€ í™•ì¸í•©ë‹ˆë‹¤.
         ///
-        /// ÀÌ ÇÔ¼ö¿¡¼­´Â ½ÇÁ¦ ÄÚÀÎÀ» Â÷°¨ÇÏÁö ¾Ê½À´Ï´Ù.
+        /// ì´ í•¨ìˆ˜ì—ì„œëŠ” ì‹¤ì œ ì½”ì¸ì„ ì°¨ê°í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.
         /// </summary>
         public bool CanAfford(
             ShopItemDataSO item,
@@ -144,10 +144,10 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// »óÇ° ±¸¸Å¸¦ ½ÃµµÇÕ´Ï´Ù.
+        /// ìƒí’ˆ êµ¬ë§¤ë¥¼ ì‹œë„í•©ë‹ˆë‹¤.
         ///
-        /// ÇØ±İ Á¶°Ç°ú º¸À¯ ÄÚÀÎÀ» È®ÀÎÇÑ ÈÄ
-        /// EconomyService¿¡¼­ ½ÇÁ¦ ÄÚÀÎÀ» Â÷°¨ÇÕ´Ï´Ù.
+        /// í•´ê¸ˆ ì¡°ê±´ê³¼ ë³´ìœ  ì½”ì¸ì„ í™•ì¸í•œ í›„
+        /// EconomyServiceì—ì„œ ì‹¤ì œ ì½”ì¸ì„ ì°¨ê°í•©ë‹ˆë‹¤.
         /// </summary>
         public ShopPurchaseResult TryPurchase(
             ShopItemDataSO item,
@@ -161,7 +161,7 @@ namespace CityFlow.Content
             {
                 Debug.LogWarning(
                     "[ShopPurchaseService] " +
-                    "EconomyService¸¦ »ç¿ëÇÒ ¼ö ¾ø½À´Ï´Ù.",
+                    "EconomyServiceë¥¼ ì‚¬ìš©í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
 
@@ -174,7 +174,7 @@ namespace CityFlow.Content
             {
                 Debug.LogWarning(
                     "[ShopPurchaseService] " +
-                    "±¸¸ÅÇÒ »óÇ° µ¥ÀÌÅÍ°¡ ¾ø½À´Ï´Ù.",
+                    "êµ¬ë§¤í•  ìƒí’ˆ ë°ì´í„°ê°€ ì—†ìŠµë‹ˆë‹¤.",
                     this
                 );
 
@@ -191,7 +191,7 @@ namespace CityFlow.Content
             {
                 Debug.Log(
                     $"[ShopPurchaseService] " +
-                    $"Àá±ä »óÇ°ÀÔ´Ï´Ù: " +
+                    $"ì ê¸´ ìƒí’ˆì…ë‹ˆë‹¤: " +
                     $"{item.DisplayName}",
                     this
                 );
@@ -210,9 +210,9 @@ namespace CityFlow.Content
             {
                 Debug.LogWarning(
                     $"[ShopPurchaseService] " +
-                    $"Àß¸øµÈ »óÇ° °¡°İÀÔ´Ï´Ù. " +
-                    $"»óÇ°: {item.DisplayName}, " +
-                    $"°¡°İ: {price}",
+                    $"ì˜ëª»ëœ ìƒí’ˆ ê°€ê²©ì…ë‹ˆë‹¤. " +
+                    $"ìƒí’ˆ: {item.DisplayName}, " +
+                    $"ê°€ê²©: {price}",
                     this
                 );
 
@@ -221,13 +221,13 @@ namespace CityFlow.Content
                         .InvalidPrice;
             }
 
-            // °¡°İÀÌ 0ÀÎ ¹«·á »óÇ°Àº
-            // º°µµÀÇ Â÷°¨ ¾øÀÌ ¼º°ø Ã³¸®ÇÕ´Ï´Ù.
+            // ê°€ê²©ì´ 0ì¸ ë¬´ë£Œ ìƒí’ˆì€
+            // ë³„ë„ì˜ ì°¨ê° ì—†ì´ ì„±ê³µ ì²˜ë¦¬í•©ë‹ˆë‹¤.
             if (price == 0)
             {
                 Debug.Log(
                     $"[ShopPurchaseService] " +
-                    $"¹«·á »óÇ° ±¸¸Å ¼º°ø: " +
+                    $"ë¬´ë£Œ ìƒí’ˆ êµ¬ë§¤ ì„±ê³µ: " +
                     $"{item.DisplayName}",
                     this
                 );
@@ -243,10 +243,10 @@ namespace CityFlow.Content
             {
                 Debug.Log(
                     $"[ShopPurchaseService] " +
-                    $"ÄÚÀÎÀÌ ºÎÁ·ÇÕ´Ï´Ù. " +
-                    $"»óÇ°: {item.DisplayName}, " +
-                    $"ÇÊ¿ä ÄÚÀÎ: {price}, " +
-                    $"ÇöÀç ÄÚÀÎ: " +
+                    $"ì½”ì¸ì´ ë¶€ì¡±í•©ë‹ˆë‹¤. " +
+                    $"ìƒí’ˆ: {item.DisplayName}, " +
+                    $"í•„ìš” ì½”ì¸: {price}, " +
+                    $"í˜„ì¬ ì½”ì¸: " +
                     $"{services.Economy.Coins}",
                     this
                 );
@@ -258,10 +258,10 @@ namespace CityFlow.Content
 
             Debug.Log(
                 $"[ShopPurchaseService] " +
-                $"»óÇ° ±¸¸Å ¼º°ø. " +
-                $"»óÇ°: {item.DisplayName}, " +
-                $"»ç¿ë ÄÚÀÎ: {price}, " +
-                $"³²Àº ÄÚÀÎ: " +
+                $"ìƒí’ˆ êµ¬ë§¤ ì„±ê³µ. " +
+                $"ìƒí’ˆ: {item.DisplayName}, " +
+                $"ì‚¬ìš© ì½”ì¸: {price}, " +
+                $"ë‚¨ì€ ì½”ì¸: " +
                 $"{services.Economy.Coins}",
                 this
             );
@@ -272,8 +272,8 @@ namespace CityFlow.Content
         }
 
         /// <summary>
-        /// ¹èÄ¡ ½ÇÆĞ ¶Ç´Â ±¸¸Å Ãë¼Ò ½Ã
-        /// ÁöºÒÇÑ ÄÚÀÎÀ» È¯ºÒÇÕ´Ï´Ù.
+        /// ë°°ì¹˜ ì‹¤íŒ¨ ë˜ëŠ” êµ¬ë§¤ ì·¨ì†Œ ì‹œ
+        /// ì§€ë¶ˆí•œ ì½”ì¸ì„ í™˜ë¶ˆí•©ë‹ˆë‹¤.
         /// </summary>
         public bool RefundPurchase(
             ShopItemDataSO item,
@@ -303,9 +303,9 @@ namespace CityFlow.Content
 
             Debug.Log(
                 $"[ShopPurchaseService] " +
-                $"»óÇ° ±¸¸Å È¯ºÒ ¿Ï·á. " +
-                $"»óÇ°: {item.DisplayName}, " +
-                $"È¯ºÒ ÄÚÀÎ: {refundAmount}",
+                $"ìƒí’ˆ êµ¬ë§¤ í™˜ë¶ˆ ì™„ë£Œ. " +
+                $"ìƒí’ˆ: {item.DisplayName}, " +
+                $"í™˜ë¶ˆ ì½”ì¸: {refundAmount}",
                 this
             );
 
