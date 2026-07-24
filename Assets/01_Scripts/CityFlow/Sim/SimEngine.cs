@@ -321,13 +321,12 @@ namespace CityFlow.Sim
                         if (eff >= _config.GreenWaveThreshold)
                         {
                             var seg = new GreenWaveSegment(fromTile, toTile);
-                            if (!_activeGreenWaves.Contains(seg))
+                            if (currentWaves.Add(seg) && !_activeGreenWaves.Contains(seg))
                             {
                                 int magnitude = (int)((eff - _config.GreenWaveMagnitudeOffset) * _config.GreenWaveMagnitudeScale); 
                                 if (magnitude < 1) magnitude = 1;
                                 _events.QueueBurst(new FlowBurstEvent(toTile, magnitude));
                             }
-                            currentWaves.Add(seg);
                         }
                     }
                 }

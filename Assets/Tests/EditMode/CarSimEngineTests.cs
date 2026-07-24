@@ -34,6 +34,15 @@ namespace CityFlow.Sim.Tests
             return cfg;
         }
 
+        private void BuildTestIntersection(SimEngine engine, Vector2Int pos)
+        {
+            engine.Place(pos, TileType.Road);
+            engine.Place(pos + Vector2Int.up, TileType.Road);
+            engine.Place(pos + Vector2Int.down, TileType.Road);
+            engine.Place(pos + Vector2Int.left, TileType.Road);
+            engine.Place(pos + Vector2Int.right, TileType.Road);
+        }
+
         [Test]
         public void QueueOccupancy_TranslatesToThreeCongestionLevels()
         {
@@ -558,9 +567,9 @@ namespace CityFlow.Sim.Tests
             cfg.AutoDetectSignals = false;
             
             var engine = new SimEngine(cfg, hub);
-            Assert.IsTrue(engine.Place(V(0, 0), TileType.Road));
+            BuildTestIntersection(engine, V(0, 0));
+            BuildTestIntersection(engine, V(2, 0));
             Assert.IsTrue(engine.Place(V(1, 0), TileType.Road));
-            Assert.IsTrue(engine.Place(V(2, 0), TileType.Road));
             
             Assert.IsTrue(engine.TryPlaceSignal(V(0, 0), 10));
             Assert.IsTrue(engine.TryPlaceSignal(V(2, 0), 10));
@@ -595,13 +604,14 @@ namespace CityFlow.Sim.Tests
             cfg.AutoDetectSignals = false;
             
             var engine = new SimEngine(cfg, hub);
-            Assert.IsTrue(engine.Place(V(0, 0), TileType.Road));
+            BuildTestIntersection(engine, V(0, 0));
+            BuildTestIntersection(engine, V(2, 0));
             Assert.IsTrue(engine.Place(V(1, 0), TileType.Road));
             Assert.IsTrue(engine.TryPlaceSignal(V(0, 0), 10));
-            Assert.IsTrue(engine.TryPlaceSignal(V(1, 0), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 0), 10));
             
             engine.TrySetSignalOffsetSlots(V(0, 0), 0);
-            engine.TrySetSignalOffsetSlots(V(1, 0), 0);
+            engine.TrySetSignalOffsetSlots(V(2, 0), 0);
             
             engine.Tick(cfg.TickInterval);
             Assert.AreEqual(1, burstCount, "양방향 동시 스캔되어도 1회만 발행 검증");
@@ -621,15 +631,17 @@ namespace CityFlow.Sim.Tests
             
             var engine = new SimEngine(cfg, hub);
             
-            Assert.IsTrue(engine.Place(V(0, 0), TileType.Road));
+            BuildTestIntersection(engine, V(0, 0));
+            BuildTestIntersection(engine, V(2, 0));
             Assert.IsTrue(engine.Place(V(1, 0), TileType.Road));
             Assert.IsTrue(engine.TryPlaceSignal(V(0, 0), 10));
-            Assert.IsTrue(engine.TryPlaceSignal(V(1, 0), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 0), 10));
             
-            Assert.IsTrue(engine.Place(V(0, 2), TileType.Road));
-            Assert.IsTrue(engine.Place(V(1, 2), TileType.Road));
-            Assert.IsTrue(engine.TryPlaceSignal(V(0, 2), 10));
-            Assert.IsTrue(engine.TryPlaceSignal(V(1, 2), 10));
+            BuildTestIntersection(engine, V(0, 4));
+            BuildTestIntersection(engine, V(2, 4));
+            Assert.IsTrue(engine.Place(V(1, 4), TileType.Road));
+            Assert.IsTrue(engine.TryPlaceSignal(V(0, 4), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 4), 10));
             
             engine.Tick(cfg.TickInterval);
             Assert.AreEqual(2, burstCount, "독립적인 신호 구간 2개 동시 처리 검증");
