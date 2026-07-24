@@ -248,6 +248,16 @@ namespace CityFlow.Sim
         // 이동 중 sticky를 풀면 목적지가 순간 교체되므로 SimEngine이 시점을 중재한다.
         internal void ClearStickyAssignments() => _sticky.Clear();
 
+        internal bool ContainsSource(Vector2Int home) => _houses.Contains(home);
+
+        internal bool ContainsSink(Vector2Int work)
+        {
+            if (_companies.ContainsKey(work)) return true;
+            for (int i = 0; i < _demands.Count; i++)
+                if (_demands[i].Sink == work) return true;
+            return false;
+        }
+
         public void Reassign(CityGrid grid, RoadNetwork net)
         {
             _demands.Clear();

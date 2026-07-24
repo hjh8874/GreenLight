@@ -507,6 +507,81 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0, sim.RescueRestartCount);
         }
 
+        [Test]
+        public void Rebuild_RemovedHome_CarFinishesCurrentTripBeforeRetiring()
+        {
+            BuildRetirementCity(
+                out CityGrid grid,
+                out RoadNetwork road,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
+
+            Assert.IsTrue(grid.Remove(V(0, 0)));
+            RebuildCarTopology(grid, road, demands, planner, net, sim);
+
+            Assert.AreEqual(1, sim.CarCount, "집 철거 리빌드가 주행 차를 즉시 소멸시키면 안 된다");
+            for (int tick = 0;
+                 tick < 8 && sim.GetCar(0).State == CarState.Outbound;
+                 tick++)
+            {
+                sim.Step(7f, net, events);
+            }
+            Assert.AreEqual(
+                CarState.ParkedWork,
+                sim.GetCar(0).State,
+                "HomeLost 차는 철거 전 출근 경로와 보상 의미를 유지해 현재 트립을 완주한다");
+
+            RebuildCarTopology(grid, road, demands, planner, net, sim);
+            Assert.AreEqual(0, sim.CarCount, "안전한 주차 경계 다음 리빌드에서만 은퇴한다");
+        }
+
+        private static void BuildRetirementCity(
+            out CityGrid grid,
+            out RoadNetwork road,
+            out DemandMap demands,
+            out RoutePlanner planner,
+            out RoadQueueNetwork net,
+            out CarSim sim,
+            out SimEventBuffer events)
+        {
+            SimConfig cfg = Cfg();
+            grid = new CityGrid(6, 3);
+            for (int x = 0; x <= 5; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            road = new RoadNetwork(grid);
+            demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+            net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            events = new SimEventBuffer(new SimEventHub());
+        }
+
+        private static void RebuildCarTopology(
+            CityGrid grid,
+            RoadNetwork road,
+            DemandMap demands,
+            RoutePlanner planner,
+            RoadQueueNetwork net,
+            CarSim sim)
+        {
+            demands.Reassign(grid, road);
+            planner.Plan(demands, road, grid, Cfg());
+            net.RebuildTopology(grid);
+            sim.Rebuild(demands, planner, net);
+        }
+
         private static void BuildWatchdogCity(
             out CityGrid grid,
             out RoadNetwork road,

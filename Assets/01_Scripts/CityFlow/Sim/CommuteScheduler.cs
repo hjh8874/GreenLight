@@ -5,6 +5,7 @@ using UnityEngine;
 namespace CityFlow.Sim
 {
     public enum CarState { ParkedHome, Outbound, ParkedWork, Inbound }
+    public enum RetireReason { None, HomeLost, WorkLost }
 
     public sealed class CommuteCar
     {
@@ -17,6 +18,9 @@ namespace CityFlow.Sim
         // sticky 매칭으로 유지되므로, 진행도를 차에 실어 리빌드를 건너보낸다.
         public Vector2Int ResumeTile;
         public bool HasResume;
+        // 건물 소멸은 주행 중인 차를 즉시 삭제하지 않는다. CarSim이 구 짝/경로를
+        // carry-over하는 동안 이 사유를 보존하고, 안전한 주차 경계에서만 제거한다.
+        public RetireReason RetireReason;
     }
 
     // 하루 주기 통근 안무. 세이브 불필요 — 로드/큰 시각 점프 시 SnapToHour로 주차 상태에

@@ -54,6 +54,23 @@ namespace CityFlow.Sim
         private bool _hasLastHour;
         private bool _needsSnap;
 
+        private readonly struct PreviousAssignment
+        {
+            public readonly CommuteCar Car;
+            public readonly List<Vector2Int> Outbound;
+            public readonly List<Vector2Int> Inbound;
+
+            public PreviousAssignment(
+                CommuteCar car,
+                List<Vector2Int> outbound,
+                List<Vector2Int> inbound)
+            {
+                Car = car;
+                Outbound = outbound;
+                Inbound = inbound;
+            }
+        }
+
         public int CarCount => _scheduler.Cars.Count;
         internal IReadOnlyList<List<Vector2Int>> ActiveRoutes => _viewOutboundRoutes;
         internal IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _viewReturnRoutes;
@@ -71,6 +88,27 @@ namespace CityFlow.Sim
         internal int RescueRestartCount { get; private set; }
         internal int LastRescueCarId { get; private set; } = -1;
         internal Vector2Int LastRescueTile { get; private set; }
+        internal bool HasCompletedRetirements
+        {
+            get
+            {
+                for (int i = 0; i < _scheduler.Cars.Count; i++)
+                {
+                    CommuteCar car = _scheduler.Cars[i];
+                    if (car.RetireReason == RetireReason.HomeLost
+                        && (car.State == CarState.ParkedHome || car.State == CarState.ParkedWork))
+                    {
+                        return true;
+                    }
+                    if (car.RetireReason == RetireReason.WorkLost
+                        && car.State == CarState.ParkedHome)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        }
 
         public CarSim(in SimConfig cfg)
         {
@@ -93,12 +131,30 @@ namespace CityFlow.Sim
             Array.Fill(_rescueViewRouteIndices, -1);
         }
 
+        internal void ClearPopulation()
+        {
+            _scheduler.Clear();
+            Array.Clear(_enqueued, 0, _enqueued.Length);
+            Array.Clear(_tileIndices, 0, _tileIndices.Length);
+            Array.Fill(_queueSlots, -1);
+            Array.Fill(_intersectionProgress, -1f);
+            Array.Clear(_linkProgress, 0, _linkProgress.Length);
+            Array.Fill(_roundaboutProgress, -1f);
+            Array.Clear(_rescueRoutes, 0, _rescueRoutes.Length);
+            Array.Fill(_rescueViewRouteIndices, -1);
+            Array.Clear(_rescueStages, 0, _rescueStages.Length);
+            Array.Clear(_offNetworkBlockedTicks, 0, _offNetworkBlockedTicks.Length);
+            _hasLastHour = false;
+            _needsSnap = false;
+        }
+
         public void Rebuild(DemandMap demands, RoutePlanner planner, RoadQueueNetwork net)
         {
             if (demands == null) throw new ArgumentNullException(nameof(demands));
             if (planner == null) throw new ArgumentNullException(nameof(planner));
             _net = net ?? throw new ArgumentNullException(nameof(net));
             _planner = planner;
+            var previousAssignments = new List<PreviousAssignment>(CarCount);
             // 클리어 전에 생존 차의 현재 월드 타일을 차 객체에 실어둔다. 이게 없으면
             // 재큐잉이 route[0](집)에서 일어나 건설할 때마다 주행 차가 순간이동한다
             // (라이브 계측 2026-07-20: 도로 1개 배치에 4대·최대 5.90타일).
@@ -113,6 +169,40 @@ namespace CityFlow.Sim
                 TryRoute(i, out List<Vector2Int> currentRoute);
                 survivor.ResumeTile = currentRoute[Mathf.Clamp(_tileIndices[i], 0, currentRoute.Count - 1)];
                 survivor.HasResume = true;
+
+                if (survivor.RouteIndex >= 0
+                    && survivor.RouteIndex < _outboundRoutes.Count
+                    && survivor.RouteIndex < _returnRoutes.Count)
+                {
+                    previousAssignments.Add(new PreviousAssignment(
+                        survivor,
+                        _outboundRoutes[survivor.RouteIndex],
+                        _returnRoutes[survivor.RouteIndex]));
+                }
+            }
+            // 주차 차도 건물 소멸 판정에는 필요하다. 위 루프의 on-road 조기 continue와
+            // 독립적으로 구 짝/경로 참조를 모두 보관한다.
+            for (int i = 0; i < CarCount; i++)
+            {
+                CommuteCar car = _scheduler.Cars[i];
+                bool alreadyCaptured = false;
+                for (int p = 0; p < previousAssignments.Count; p++)
+                {
+                    if (!ReferenceEquals(previousAssignments[p].Car, car)) continue;
+                    alreadyCaptured = true;
+                    break;
+                }
+                if (alreadyCaptured
+                    || car.RouteIndex < 0
+                    || car.RouteIndex >= _outboundRoutes.Count
+                    || car.RouteIndex >= _returnRoutes.Count)
+                {
+                    continue;
+                }
+                previousAssignments.Add(new PreviousAssignment(
+                    car,
+                    _outboundRoutes[car.RouteIndex],
+                    _returnRoutes[car.RouteIndex]));
             }
             _sources.Clear();
             _sinks.Clear();
@@ -139,6 +229,36 @@ namespace CityFlow.Sim
                 _outboundRoutes.Add(outbound);
                 _returnRoutes.Add(inbound);
                 _plannerRouteIndices.Add(i);
+            }
+
+            for (int i = 0; i < previousAssignments.Count; i++)
+            {
+                PreviousAssignment previous = previousAssignments[i];
+                CommuteCar car = previous.Car;
+                RetireReason reason = !demands.ContainsSource(car.Home)
+                    ? RetireReason.HomeLost
+                    : !demands.ContainsSink(car.Work)
+                        ? RetireReason.WorkLost
+                        : RetireReason.None;
+                car.RetireReason = reason;
+                bool completed = reason == RetireReason.HomeLost
+                    ? car.State == CarState.ParkedHome || car.State == CarState.ParkedWork
+                    : reason == RetireReason.WorkLost && car.State == CarState.ParkedHome;
+                if (reason == RetireReason.None || completed
+                    || previous.Outbound == null || previous.Inbound == null
+                    || previous.Outbound.Count == 0 || previous.Inbound.Count == 0)
+                {
+                    continue;
+                }
+
+                int viewRouteIndex = _viewOutboundRoutes.Count;
+                _sources.Add(car.Home);
+                _sinks.Add(car.Work);
+                _outboundRoutes.Add(previous.Outbound);
+                _returnRoutes.Add(previous.Inbound);
+                _viewOutboundRoutes.Add(previous.Outbound);
+                _viewReturnRoutes.Add(previous.Inbound);
+                _plannerRouteIndices.Add(viewRouteIndex);
             }
 
             _scheduler.Rebuild(

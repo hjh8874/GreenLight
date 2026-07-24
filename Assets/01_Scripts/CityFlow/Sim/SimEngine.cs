@@ -206,6 +206,8 @@ namespace CityFlow.Sim
             }
 
             StepResult carResult = _carSim.Step(_gameHour, _roadQueues, _events, _signalGate, StepCount);
+            if (_carSim.HasCompletedRetirements)
+                _grid.MarkTopologyDirty();
             _lastStepArrivals = carResult.Arrivals;
             float jamRatio = ScanCarCongestion();
             _stats.UpdateCarSim(
@@ -366,6 +368,8 @@ namespace CityFlow.Sim
             if (!_grid.TryRemove(tile, out var removed, out Vector2Int anchor)) return false;
             if (removed == TileType.Office)
                 _demand.RemoveCompany(anchor);
+            if (TileFootprint.IsBuilding(removed))
+                _demandRebalancePending = true;
             // 철거 = 조용: 그 타일의 연출 원료(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
             _events.QueuePlaced(new PlacedEvent(anchor, removed, isRemove: true, removedDir));
             return true;
@@ -953,6 +957,7 @@ namespace CityFlow.Sim
             _highwayPartners.Clear();
             _highwayBudgetTiles = 0;
             _roadQueues.RemoveAllCars();
+            _carSim.ClearPopulation();
             _stats.RestoreCarSim(
                 snapshot.CarTripSuccessRate,
                 snapshot.CarDayArrivalCount,
