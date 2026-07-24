@@ -343,15 +343,15 @@ namespace CityFlow.Sim
         public void AddRoadCapacity() => _roadCapacityPurchases++;
 
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
-        public bool CanPlace(Vector2Int tile, TileType type) =>
+        public bool CanPlace(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North) =>
             WithinRoadBudget(type)
-            && !OverlapsRoundaboutFootprint(tile, type) && _grid.CanPlace(tile, type);
+            && !OverlapsRoundaboutFootprint(tile, type, direction) && _grid.CanPlace(tile, type, direction);
 
-        public bool Place(Vector2Int tile, TileType type)
+        public bool Place(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
             if (!WithinRoadBudget(type)) return false;   // 예산 초과 도로는 Place도 거부(CanPlace 우회 방지)
-            if (OverlapsRoundaboutFootprint(tile, type)) return false;   // 로터리 풋프린트에 건물 금지
-            if (!_grid.Place(tile, type)) return false;
+            if (OverlapsRoundaboutFootprint(tile, type, direction)) return false;   // 로터리 풋프린트에 건물 금지
+            if (!_grid.Place(tile, type, direction)) return false;
             if (type == TileType.Office)
                 _demand.RegisterCompany(tile, type, _simTime);
             if (type == TileType.Office || type == TileType.School)
@@ -370,11 +370,11 @@ namespace CityFlow.Sim
             return true;
         }
 
-        private bool OverlapsRoundaboutFootprint(Vector2Int tile, TileType type)
+        private bool OverlapsRoundaboutFootprint(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
             if (!IsBuildingTile(type)) return false;
 
-            Vector2Int size = TileFootprint.GetSize(type);
+            Vector2Int size = TileFootprint.GetRotatedSize(type, direction);
             for (int y = 0; y < size.y; y++)
             {
                 for (int x = 0; x < size.x; x++)

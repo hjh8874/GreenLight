@@ -4,6 +4,7 @@ using CityFlow.Contracts;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
 using CityFlow.UI.Controllers;
 
 namespace CityFlow.UI
@@ -24,7 +25,29 @@ namespace CityFlow.UI
         private Sprite _defaultGhostSprite;
         private Texture2D _footprintGhostTexture;
         private Sprite _footprintGhostSprite;
-        
+
+        [Header("3D Ghost Volume")]
+        [Tooltip("에셋 없이 건물 공간을 입체적으로 보여주는 3D 반투명 박스")]
+        [SerializeField] private bool use3DGhostVolume = true;
+        [SerializeField] private float ghostVolumeHeight = 1.0f;
+        [SerializeField] private Color volumeValidColor = new Color(0f, 1f, 0f, 0.18f);
+        [SerializeField] private Color volumeInvalidColor = new Color(1f, 0f, 0f, 0.18f);
+        private GameObject _ghostVolumeObj;
+        private MeshRenderer _ghostVolumeMeshRenderer;
+        private Material _ghostVolumeMaterial;
+
+        [Header("Cost Display")]
+        [Tooltip("건설 비용을 고스트 위에 표시합니다")]
+        [SerializeField] private bool showCostLabel = true;
+        [SerializeField] private Color costAffordableColor = Color.white;
+        [SerializeField] private Color costUnaffordableColor = new Color(1f, 0.35f, 0.35f);
+        private GameObject _costLabelObj;
+        private TextMeshPro _costLabelTMP;
+        private long _lastDisplayedCost = -1;
+        private bool _lastDisplayedAffordable = true;
+        private float _costUpdateTimer;
+        private const float CostUpdateInterval = 0.2f;
+
         [Header("Debug / Testing")]
         [Tooltip("월~화 코어엔진 미연동 시 UI 단독 테스트를 위한 강제 성공 모드")]
         [SerializeField] private bool useFakeMode = false; // 코어 연동을 위해 끕니다.
@@ -53,6 +76,7 @@ namespace CityFlow.UI
         public bool IsBuildingMode => _isBuildingMode;
         
         private TileType _currentType = TileType.Road; 
+        private PlacementDirection _currentDirection = PlacementDirection.North;
         private Vector2Int? _lastPlacedCoord = null;
         private Vector2Int? _lastRemovedCoord = null;
         private Vector2Int? _rightClickStartCoord = null;
@@ -93,10 +117,13 @@ namespace CityFlow.UI
         public void SetBuildType(TileType type)
         {
             _currentType = type;
+            _currentDirection = PlacementDirection.North;
             _lastPreviewCoord = null;
+            _lastDisplayedCost = -1;
             GetBenefitRenderer()?.HideAll();
             RestoreBuildingGhostSprite();
             UpdateGhostFootprint();
+            UpdateGhostVolumeScale();
             Debug.Log($"[PlacementController] 건설 모드 변경됨: {_currentType}");
 
             // 인프라 상점과 같은 패널에 탭으로 합쳐졌을 경우를 대비해, 일반 타일 선택 시 인프라 모드를 강제 취소합니다.
@@ -201,6 +228,20 @@ namespace CityFlow.UI
         {
             UpdateRoadBudgetLabel();   // 도로 예산제(스펙 2026-07-17): 도로 모드에서만 "도로 N/M" 표시
 
+            // R키 회전 입력 감지 (건설 모드 + 건물 타입일 때만)
+            if (_isBuildingMode && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
+            {
+                if (TileFootprint.IsBuilding(_currentType))
+                {
+                    _currentDirection = TileFootprint.RotateClockwise(_currentDirection);
+                    UpdateGhostFootprint();
+                    UpdateGhostVolumeScale();
+                    _lastPreviewCoord = null;
+                    _lastDisplayedCost = -1;
+                    Debug.Log($"[PlacementController] 건물 회전: {_currentDirection} ({TileFootprint.ToAngle(_currentDirection)}°)");
+                }
+            }
+
             // 6. 마우스 우클릭 시 철거 확인창 호출 (도로는 드래그 즉시 철거 지원)
             if (Mouse.current != null)
             {
@@ -266,23 +307,41 @@ namespace CityFlow.UI
             if (IsPointerOverBlockingUI())
             {
                 ghostRenderer.gameObject.SetActive(false);
+                SetGhostVolumeActive(false);
+                SetCostLabelActive(false);
                 _lastPlacedCoord = null;
                 _lastPreviewCoord = null;
                 _benefitRenderer?.HideAll();
                 return;
             }
             ghostRenderer.gameObject.SetActive(true);
+            SetGhostVolumeActive(true);
+            SetCostLabelActive(true);
 
             // 2. 마우스 좌표 -> 20x20 월드 그리드(Vector2Int) 맵핑
             Vector2Int gridCoord = GetMouseGridCoordinate();
             
             // 3. 고스트 위치 스냅 (일단 바닥이 없으므로 허공(XZ평면 혹은 XY평면)에 딱딱 맞춰 이동시킵니다)
             // 3D 쿼터뷰(Y=0 바닥) 기준 맵핑. 만약 2D 게임이라면 y대신 z를 0으로 주고 세팅합니다.
-            ghostRenderer.transform.position = GetGhostPosition(gridCoord);
+            Vector2Int rotatedSize = TileFootprint.GetRotatedSize(_currentType, _currentDirection);
+            ghostRenderer.transform.position = GetGhostPosition(gridCoord, rotatedSize);
+
+            // 3.1. 3D 고스트 볼륨 위치 동기화
+            SyncGhostVolumePosition();
+
+            // 3.2. 비용 표시 라벨 위치 동기화
+            SyncCostLabelPosition();
 
             // 4. 건설 유효성 검증 (엔진 디커플링 통신)
             bool canPlace = CheckCanPlace(gridCoord);
-            ghostRenderer.color = GetVisibleGhostColor(canPlace ? colorValid : colorInvalid);
+            Color ghostColor = canPlace ? colorValid : colorInvalid;
+            ghostRenderer.color = GetVisibleGhostColor(ghostColor);
+
+            // 4.0. 3D 볼륨 색상 동기화
+            UpdateGhostVolumeColor(canPlace);
+
+            // 4.0.1. 비용 라벨 텍스트 업데이트 (200ms 스로틀링)
+            UpdateCostLabel(canPlace);
 
             // 4.1. 공공 인프라(학교, 병원) 혜택 범위 미리보기 하이라이트
             UpdateBenefitPreview(gridCoord);
@@ -441,7 +500,7 @@ namespace CityFlow.UI
         {
             return GetGhostPosition(
                 gridCoord,
-                TileFootprint.GetSize(_currentType)
+                TileFootprint.GetRotatedSize(_currentType, _currentDirection)
             );
         }
 
@@ -499,6 +558,8 @@ namespace CityFlow.UI
 
             ghostRenderer.sortingOrder = Mathf.Max(ghostRenderer.sortingOrder, GhostSortingOrder);
             UpdateGhostFootprint();
+            CreateGhostVolume();
+            CreateCostLabel();
         }
 
         private void RestoreBuildingGhostSprite()
@@ -555,7 +616,7 @@ namespace CityFlow.UI
 
         private void UpdateGhostFootprint()
         {
-            SetGhostFootprint(TileFootprint.GetSize(_currentType));
+            SetGhostFootprint(TileFootprint.GetRotatedSize(_currentType, _currentDirection));
         }
 
         public void SetGhostFootprint(Vector2Int footprintSize)
@@ -730,7 +791,7 @@ namespace CityFlow.UI
                 }
             }
 
-            GetBenefitRenderer()?.ShowHighlights(_areaTileBuffer, _benefitTileBuffer, useXYPlane);
+            GetBenefitRenderer()?.ShowHighlights(_areaTileBuffer, _benefitTileBuffer, useXYPlane, isHospital);
         }
 
         private Vector2Int ResolveFootprintAnchor(Vector2Int coord)
@@ -755,6 +816,215 @@ namespace CityFlow.UI
             {
                 Destroy(_footprintGhostTexture);
             }
+
+            if (_ghostVolumeMaterial != null)
+            {
+                Destroy(_ghostVolumeMaterial);
+            }
+
+            if (_ghostVolumeObj != null)
+            {
+                Destroy(_ghostVolumeObj);
+            }
+
+            if (_costLabelObj != null)
+            {
+                Destroy(_costLabelObj);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ██  3D 고스트 볼륨 (반투명 큐브) 시스템
+        // ═══════════════════════════════════════════════════════════════════
+
+        private void CreateGhostVolume()
+        {
+            if (!use3DGhostVolume || _ghostVolumeObj != null) return;
+
+            _ghostVolumeObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _ghostVolumeObj.name = "GhostVolume";
+            _ghostVolumeObj.hideFlags = HideFlags.HideAndDontSave;
+
+            // 물리 충돌 제거
+            var collider = _ghostVolumeObj.GetComponent<Collider>();
+            if (collider != null) Destroy(collider);
+
+            // URP 반투명 머티리얼 생성
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+            _ghostVolumeMaterial = new Material(shader)
+            {
+                name = "GhostVolumeMaterial",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            // Transparent 모드 설정
+            _ghostVolumeMaterial.SetFloat("_Surface", 1f);  // Transparent
+            _ghostVolumeMaterial.SetFloat("_Blend", 0f);    // Alpha
+            _ghostVolumeMaterial.SetFloat("_AlphaClip", 0f);
+            _ghostVolumeMaterial.SetOverrideTag("RenderType", "Transparent");
+            _ghostVolumeMaterial.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            _ghostVolumeMaterial.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+            _ghostVolumeMaterial.SetInt("_ZWrite", 0);
+            _ghostVolumeMaterial.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            _ghostVolumeMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            _ghostVolumeMaterial.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            _ghostVolumeMaterial.color = volumeValidColor;
+
+            _ghostVolumeMeshRenderer = _ghostVolumeObj.GetComponent<MeshRenderer>();
+            _ghostVolumeMeshRenderer.material = _ghostVolumeMaterial;
+            _ghostVolumeMeshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            _ghostVolumeMeshRenderer.receiveShadows = false;
+
+            _ghostVolumeObj.SetActive(false);
+            UpdateGhostVolumeScale();
+        }
+
+        private void UpdateGhostVolumeScale()
+        {
+            if (_ghostVolumeObj == null) return;
+
+            Vector2Int size = TileFootprint.GetRotatedSize(_currentType, _currentDirection);
+            _ghostVolumeObj.transform.localScale = new Vector3(
+                Mathf.Max(1, size.x),
+                ghostVolumeHeight,
+                Mathf.Max(1, size.y)
+            );
+        }
+
+        private void SyncGhostVolumePosition()
+        {
+            if (_ghostVolumeObj == null || ghostRenderer == null) return;
+
+            Vector3 ghostPos = ghostRenderer.transform.position;
+            if (useXYPlane)
+            {
+                _ghostVolumeObj.transform.position = new Vector3(
+                    ghostPos.x,
+                    ghostPos.y,
+                    ghostPos.z - ghostVolumeHeight * 0.5f
+                );
+            }
+            else
+            {
+                _ghostVolumeObj.transform.position = new Vector3(
+                    ghostPos.x,
+                    ghostVolumeHeight * 0.5f,
+                    ghostPos.z
+                );
+            }
+
+            // 회전 동기화
+            float angle = TileFootprint.ToAngle(_currentDirection);
+            _ghostVolumeObj.transform.rotation = useXYPlane
+                ? Quaternion.Euler(0f, 0f, -angle)
+                : Quaternion.Euler(0f, angle, 0f);
+        }
+
+        private void UpdateGhostVolumeColor(bool canPlace)
+        {
+            if (_ghostVolumeMaterial == null) return;
+            _ghostVolumeMaterial.color = canPlace ? volumeValidColor : volumeInvalidColor;
+        }
+
+        private void SetGhostVolumeActive(bool active)
+        {
+            if (_ghostVolumeObj != null && _ghostVolumeObj.activeSelf != active)
+                _ghostVolumeObj.SetActive(active);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ██  건설 비용 표시 라벨 (World-space TextMeshPro)
+        // ═══════════════════════════════════════════════════════════════════
+
+        private void CreateCostLabel()
+        {
+            if (!showCostLabel || _costLabelObj != null) return;
+
+            _costLabelObj = new GameObject("GhostCostLabel");
+            _costLabelObj.hideFlags = HideFlags.HideAndDontSave;
+
+            _costLabelTMP = _costLabelObj.AddComponent<TextMeshPro>();
+            _costLabelTMP.alignment = TextAlignmentOptions.Center;
+            _costLabelTMP.fontSize = 3f;
+            _costLabelTMP.fontStyle = FontStyles.Bold;
+            _costLabelTMP.enableWordWrapping = false;
+            _costLabelTMP.overflowMode = TextOverflowModes.Overflow;
+            _costLabelTMP.sortingOrder = GhostSortingOrder + 10;
+
+            // 카메라를 향하도록 빌보드 세팅은 위치 동기화 시 적용
+            _costLabelObj.SetActive(false);
+        }
+
+        private void SyncCostLabelPosition()
+        {
+            if (_costLabelObj == null || ghostRenderer == null) return;
+
+            Vector3 ghostPos = ghostRenderer.transform.position;
+            Vector2Int size = TileFootprint.GetRotatedSize(_currentType, _currentDirection);
+
+            // 사용자가 요청한 "건물 바닥(Floor)에 데칼처럼 표시"
+            if (useXYPlane)
+            {
+                _costLabelObj.transform.position = new Vector3(
+                    ghostPos.x,
+                    ghostPos.y,
+                    ghostPos.z - 0.1f // Z값이 낮을수록 카메라에 가깝게 그려짐
+                );
+                _costLabelObj.transform.rotation = Quaternion.identity;
+            }
+            else
+            {
+                float surfaceZ = GetSurfaceMarkerZ(new Vector2Int((int)ghostPos.x, (int)ghostPos.z));
+                _costLabelObj.transform.position = new Vector3(
+                    ghostPos.x,
+                    surfaceZ + 0.05f, // 바닥보다 살짝 위 (Z-fighting 방지)
+                    ghostPos.z
+                );
+
+                // 바닥에 납작하게 눕힘 (위에서 내려다볼 때 읽을 수 있도록)
+                _costLabelObj.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            }
+        }
+
+        private void UpdateCostLabel(bool canPlace)
+        {
+            if (_costLabelTMP == null) return;
+
+            // 200ms 스로틀링으로 GC 방지
+            _costUpdateTimer += Time.deltaTime;
+            long currentCost = GetTileCost(_currentType);
+            bool affordable = _services?.Economy == null || _services.Economy.Coins >= currentCost;
+
+            // 비용과 구매 가능 여부가 둘 다 동일하면 텍스트 재생성 스킵 (GC Alloc 차단)
+            if (currentCost == _lastDisplayedCost && affordable == _lastDisplayedAffordable
+                && _costUpdateTimer < CostUpdateInterval)
+            {
+                return;
+            }
+
+            _costUpdateTimer = 0f;
+            _lastDisplayedCost = currentCost;
+            _lastDisplayedAffordable = affordable;
+
+            // 도로 등 비용이 0인 경우 라벨 숨김
+            if (currentCost <= 0)
+            {
+                if (_costLabelObj.activeSelf) _costLabelObj.SetActive(false);
+                return;
+            }
+
+            if (!_costLabelObj.activeSelf) _costLabelObj.SetActive(true);
+
+            bool insufficientFunds = !canPlace && !affordable;
+            _costLabelTMP.text = $"$ {currentCost:N0}";
+            _costLabelTMP.color = (affordable && canPlace) ? costAffordableColor : costUnaffordableColor;
+        }
+
+        private void SetCostLabelActive(bool active)
+        {
+            if (_costLabelObj != null && _costLabelObj.activeSelf != active)
+                _costLabelObj.SetActive(active);
         }
 
     }
