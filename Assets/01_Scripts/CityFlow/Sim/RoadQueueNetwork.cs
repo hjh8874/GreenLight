@@ -44,6 +44,9 @@ namespace CityFlow.Sim
         private const int DirectionCount = 4;
         private const int NoNode = -1;
         private const int RoundaboutArmCapacity = 1;
+        // MainCityView.vehicleMinHeadway(0.55)와 값 일치 계약: Sim 타일 용량과 View 차간격은
+        // 같은 물리 공간을 표현한다. 승인 후 SimConfig 필드로 승격하면 이 임시 상수는 제거한다.
+        private const float QueueHeadwayTiles = 0.55f;
 
         private enum IntentKind
         {
@@ -78,6 +81,7 @@ namespace CityFlow.Sim
         private readonly int _width;
         private readonly int _height;
         private readonly int _capacity;
+        private readonly int _effectiveCapacity;
         private readonly int _servicePerTick;
         private readonly int _gridlockValveTicks;
         private readonly int[] _cars;
@@ -134,11 +138,15 @@ namespace CityFlow.Sim
             _width = width;
             _height = height;
             _capacity = Math.Max(1, cfg.QueueCapacityPerTile);
+            _effectiveCapacity = Math.Min(
+                _capacity,
+                Math.Max(1, Mathf.CeilToInt(1f / QueueHeadwayTiles)));
             _servicePerTick = Math.Max(1, cfg.QueueServicePerTick);
             _gridlockValveTicks = Math.Max(1, cfg.GridlockValveTicks);
 
             int tileCount = checked(width * height);
             int queueCount = checked(tileCount * DirectionCount);
+            // 노드 풀은 설정 용량을 메모리 상한으로 유지한다. 물리 수용 판정만 effectiveCapacity를 쓴다.
             int maxCars = checked(queueCount * _capacity);
             _cars = new int[maxCars];
             _nextNodes = new int[maxCars];
@@ -489,7 +497,7 @@ namespace CityFlow.Sim
                 totalCount += count;
             }
             if (IsRoundaboutArm(tileIndex)) return totalCount > 0 ? 1f : 0f;
-            float approach = (float)maxCount / _capacity;
+            float approach = (float)maxCount / _effectiveCapacity;
             if (!_roundabouts[tileIndex]) return Mathf.Clamp01(approach);
             int ringCount = _roundaboutStates[tileIndex].OccupiedCount;
             return Mathf.Clamp01(Math.Max(approach, ringCount / 4f));
@@ -1292,7 +1300,7 @@ namespace CityFlow.Sim
         {
             if (!_queueActive[queue]) return false;
             int tileIndex = queue / DirectionCount;
-            if (!IsRoundaboutArm(tileIndex)) return _counts[queue] < _capacity;
+            if (!IsRoundaboutArm(tileIndex)) return _counts[queue] < _effectiveCapacity;
 
             int occupied = 0;
             int firstQueue = tileIndex * DirectionCount;
