@@ -251,6 +251,8 @@ namespace CityFlow.ViewKit
             float distance = DistanceAtTile(tileIndex)
                 - Mathf.Max(0f, headInset)
                 - Mathf.Max(0, queueSlot) * Mathf.Max(0f, slotGap);
+            // 큰 슬롯은 타일 시작을 넘어갈 수 있다(capacity 4 × gap 0.55 등). Phase A에서는
+            // 폴리라인 시작에 조용히 모으고, 타일 경계를 잇는 연속 대기열은 Phase B에 맡긴다.
             return Mathf.Clamp(distance, 0f, Length);
         }
 

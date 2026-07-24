@@ -830,28 +830,17 @@ namespace CityFlow.View
             float headInset = simEngine.IsSharedCarIntersection(simTile)
                 ? intersectionQueueInset * tileSize
                 : 0f;
-            // 큐 간격은 **뷰가 정한다**(MM 전환 레버 A, 2026-07-20). 예전엔 "대기줄이 타일 안에
-            // 들어가야 한다"는 제약 때문에 간격을 (타일−inset)/정원 = 0.250타일로 조였는데,
-            // 차 길이가 0.38~0.44라 **차 길이의 43%가 항상 앞차와 겹쳤다.** 이건 줌 불변이라
-            // (0.44 > 0.25는 타일 단위 비율) 카메라를 아무리 밀어도 안 사라진다 —
-            // 실측 2026-07-20: 최대확대 1080p에서 차 41.5px에 겹침 17.9px.
-            //
-            // **슬롯은 위치를 정하지 않는다.** 목표는 언제나 '내 타일의 머리'이고, 차 사이
-            // 간격은 앞차 추종이 낳는다. 이게 레버 A의 핵심이다 —
-            //   · 슬롯 간격을 0.25로 조이면: 차 길이 0.44의 43%가 항상 겹친다(줌 불변).
-            //   · 슬롯 간격만 0.55로 넓히면: 큐가 2.2타일로 늘어나 **상류 타일 slot0 차와 충돌**
-            //     한다(계측 2026-07-20: SAME-DIR 겹침 385→769). 타일별 슬롯 산술은 다른 타일의
-            //     차를 모르기 때문에, 간격을 넓히는 순간 타일 경계에서 깨진다.
-            //   · 추종이 간격을 낳으면: 앞차 관계가 이미 타일 경계를 넘어 정의돼 있어
-            //     (선두면 다음 타일 큐의 꼬리) 줄이 상류로 자연스럽게 이어진다.
-            // Sim 정원(=처리량·경제)은 하나도 건드리지 않는다.
-            // QueueSlot<0(큐 진입 실패 등)이어도 안전하다 — 어차피 타일 머리를 쓴다.
+            // Sim QueueSlot을 코리도 상한에 반영해 같은 타일 차량의 목표를 분리한다.
+            // 간격은 기존 앞차 추종 노브와 동일하게 두되, 슬롯 증가로 상한이 현재 위치보다
+            // 뒤로 가더라도 아래에서 차를 후진시키지 않는다. 타일 경계를 넘는 연속 대기열은
+            // Phase B 범위이며, 이번 단계에서도 앞차 추종의 headway 방어는 그대로 유지한다.
+            float slotGap = vehicleMinHeadway * tileSize;
             bool stateChanged = hadPrevious && previous != snapshot.State;
             if (stateChanged) car.Distance = 0f;
             float targetDistance = poly.DistanceAtQueueSlot(
                 tileIndex,
-                0,
-                0f,
+                snapshot.QueueSlot,
+                slotGap,
                 headInset);
             bool hasIntersectionAuthorization = snapshot.IntersectionProgress01 >= 0f;
             bool hasRoundaboutAuthorization = snapshot.RoundaboutProgress01 >= 0f
@@ -916,10 +905,9 @@ namespace CityFlow.View
                     snapshot.LinkProgress01);
             }
             float previousDistance = car.Distance;
-            // ⚠️ QueueSlot은 조건에 넣지 않는다. 슬롯이 위치에서 빠졌으므로(위) 슬롯 변화는
-            // 목표 불변인데, 조건에 남겨두면 슬롯이 바뀔 때마다 "목표 전진"으로 오판해
-            // 홀드 중에도 TargetAdvancing이 스퓨리어스로 켜졌다(계측 2026-07-21) —
-            // Sim이 잡고 있는 차에 v² 부스트가 들어가 남몰래 앞으로 기어나가는 버그.
+            // QueueSlot 자체가 아니라 그 결과인 목표 거리의 방향을 본다. 슬롯 감소로 목표가
+            // 앞으로 갈 때만 TargetAdvancing=true이며, 슬롯 증가로 목표가 후퇴하면 false라
+            // ceilingSpeed 사슬에 "전진 중"이라는 오신호를 주지 않는다.
             bool targetChanged = !vehicle.HasTickTarget
                 || stateChanged
                 || vehicle.TargetTileIndex != tileIndex
@@ -927,11 +915,15 @@ namespace CityFlow.View
                 || Mathf.Abs(vehicle.TargetDistance - targetDistance) > 0.0001f;
             if (targetChanged)
             {
+                bool targetAdvancing = !vehicle.HasTickTarget
+                    || stateChanged
+                    || vehicle.TargetRouteIndex != car.RouteIndex
+                    || targetDistance > vehicle.TargetDistance + 0.0001f;
                 vehicle.TargetDistance = targetDistance;
                 vehicle.TargetTileIndex = tileIndex;
                 vehicle.TargetRouteIndex = car.RouteIndex;
                 vehicle.HasTickTarget = true;
-                vehicle.TargetAdvancing = true;    // 흐르는 중 — 천장이 나와 같이 전진한다
+                vehicle.TargetAdvancing = targetAdvancing;
             }
             else if (tickEdge)
             {
@@ -1001,8 +993,8 @@ namespace CityFlow.View
 
             if (corridor < car.Distance)
             {
-                // 상한이 뒤로 갔다(밸브 초과 슬롯·재베이크). 스냅하면 순간이동이므로 굴러서 물러난다.
-                car.Distance = Mathf.MoveTowards(car.Distance, corridor, nominal * dt);
+                // 슬롯 증가·재베이크로 상한이 뒤로 가도 현재 위치를 유지한다. 앞차가 빠져
+                // 슬롯이 감소하면 목표가 다시 전진하므로 일시 정지 후 자연스럽게 재개한다.
                 vehicle.TravelSpeed = 0f;
             }
             else
