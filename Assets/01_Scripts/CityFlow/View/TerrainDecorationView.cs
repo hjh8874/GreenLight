@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Configs;
 using CityFlow.Contracts;
@@ -7,25 +6,72 @@ using UnityEngine;
 
 namespace CityFlow.View
 {
+    [DefaultExecutionOrder(-1000)]
     [DisallowMultipleComponent]
-    [RequireComponent(typeof(MainCityView))]
     public sealed class TerrainDecorationView :
         MonoBehaviour,
         ICityFlowServiceConsumer,
         ITerrainDecorationSaveSource
     {
         [Header("Generation")]
+        [SerializeField] private MainCityView cityView;
         [SerializeField] private TerrainDecorationCatalogSO catalog;
+        [SerializeField] private GameObject fieldTilePrefab;
+        [SerializeField] private float fieldTileZ = 0.14f;
         [SerializeField] private float groundZ = 0.1f;
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
-        private MainCityView cityView;
-        private bool[] clearedTiles;
+        private TerrainDecorationState decorationState;
         private int spawnedCount;
         private bool initialized;
 
         public int SpawnedCount => spawnedCount;
+        public MainCityView CityView => cityView;
+        public TerrainDecorationCatalogSO Catalog => catalog;
+
+        private void Awake()
+        {
+            TryInstall();
+        }
+
+        public bool TryInstall(MainCityView target = null)
+        {
+            if (target != null)
+            {
+                cityView = target;
+            }
+            else if (cityView == null)
+            {
+                cityView = FindAnyObjectByType<MainCityView>(
+                    FindObjectsInactive.Include);
+            }
+
+            if (cityView == null)
+            {
+                Debug.LogWarning(
+                    "[TerrainDecorationView] MainCityView was not found. " +
+                    "Add the terrain system prefab to a city scene.",
+                    this);
+                return false;
+            }
+
+            if (fieldTilePrefab != null &&
+                !cityView.TryConfigureFieldTiles(fieldTilePrefab, fieldTileZ))
+            {
+                return false;
+            }
+
+            if (cityView.FieldTilePrefab == null)
+            {
+                Debug.LogWarning(
+                    "[TerrainDecorationView] Field tile prefab is missing.",
+                    this);
+                return false;
+            }
+
+            return true;
+        }
 
         public void Initialize(CityFlowServices cityServices)
         {
@@ -36,9 +82,8 @@ namespace CityFlow.View
 
             services = cityServices;
             tileData = services?.TileData;
-            cityView = GetComponent<MainCityView>();
 
-            if (catalog == null || tileData == null || cityView == null)
+            if (!TryInstall() || catalog == null || tileData == null)
             {
                 Debug.LogWarning(
                     "[TerrainDecorationView] Catalog, tile data, or MainCityView is missing. " +
@@ -55,59 +100,21 @@ namespace CityFlow.View
             }
 
             initialized = true;
-            EnsureClearedTileMask();
+            EnsureDecorationState();
             services.RegisterTerrainDecorationSaveSource(this);
             RebuildAll();
         }
 
         public TerrainDecorationSaveData CreateSnapshot()
         {
-            EnsureClearedTileMask();
-
-            int clearedCount = 0;
-            for (int i = 0; i < clearedTiles.Length; i++)
-            {
-                if (clearedTiles[i])
-                {
-                    clearedCount++;
-                }
-            }
-
-            int[] clearedTileIndices = new int[clearedCount];
-            int destinationIndex = 0;
-            for (int i = 0; i < clearedTiles.Length; i++)
-            {
-                if (clearedTiles[i])
-                {
-                    clearedTileIndices[destinationIndex++] = i;
-                }
-            }
-
-            return new TerrainDecorationSaveData
-            {
-                ClearedTileIndices = clearedTileIndices
-            };
+            EnsureDecorationState();
+            return decorationState.CreateSnapshot();
         }
 
         public void RestoreSnapshot(TerrainDecorationSaveData snapshot)
         {
-            EnsureClearedTileMask();
-            System.Array.Clear(clearedTiles, 0, clearedTiles.Length);
-
-            int[] clearedTileIndices = snapshot?.ClearedTileIndices;
-            if (clearedTileIndices == null)
-            {
-                return;
-            }
-
-            for (int i = 0; i < clearedTileIndices.Length; i++)
-            {
-                int tileIndex = clearedTileIndices[i];
-                if (tileIndex >= 0 && tileIndex < clearedTiles.Length)
-                {
-                    clearedTiles[tileIndex] = true;
-                }
-            }
+            EnsureDecorationState();
+            decorationState.RestoreSnapshot(snapshot);
         }
 
         private void OnDestroy()
@@ -150,16 +157,22 @@ namespace CityFlow.View
                 return;
             }
 
-            Vector2Int footprint = tileData.GetFootprintSize(placedEvent.Type);
+            Vector2Int footprint = TileFootprint.GetRotatedSize(
+                placedEvent.Type,
+                placedEvent.Direction);
             footprint.x = Mathf.Max(1, footprint.x);
             footprint.y = Mathf.Max(1, footprint.y);
+            EnsureDecorationState();
+            decorationState.ApplyPlacement(
+                placedEvent.Tile,
+                footprint,
+                isRemove: false);
 
             for (int y = 0; y < footprint.y; y++)
             {
                 for (int x = 0; x < footprint.x; x++)
                 {
                     Vector2Int tile = placedEvent.Tile + new Vector2Int(x, y);
-                    MarkTileCleared(tile);
                     RemoveDecoration(tile);
                 }
             }
@@ -178,11 +191,14 @@ namespace CityFlow.View
         private void TrySpawnDecoration(Vector2Int tile)
         {
             if (!IsInsideGrid(tile) ||
-                IsTileCleared(tile) ||
+                decorationState.IsCleared(tile) ||
                 !cityView.TryGetGridCell(tile, out GridCellView gridCell) ||
                 gridCell.HasDecoration ||
                 tileData.GetTileType(tile) != TileType.Empty ||
-                !TryCreateSample(tile, out DecorationSample sample))
+                !catalog.TryCreateSample(
+                    tile,
+                    cityView.TileSize,
+                    out TerrainDecorationSample sample))
             {
                 return;
             }
@@ -197,65 +213,6 @@ namespace CityFlow.View
             instance.transform.localRotation = Quaternion.Euler(0f, 0f, sample.RotationDegrees);
             instance.transform.localScale = Vector3.one * sample.Scale;
             spawnedCount++;
-        }
-
-        private bool TryCreateSample(Vector2Int tile, out DecorationSample sample)
-        {
-            sample = default;
-
-            uint randomState = CreateTileSeed(catalog.WorldSeed, tile);
-            if (Next01(ref randomState) >= catalog.SpawnChance)
-            {
-                return false;
-            }
-
-            int totalWeight = catalog.GetTotalWeight();
-            if (totalWeight <= 0)
-            {
-                return false;
-            }
-
-            float selectedWeight = Next01(ref randomState) * totalWeight;
-            TerrainDecorationCatalogSO.Entry selectedEntry = null;
-            IReadOnlyList<TerrainDecorationCatalogSO.Entry> entries = catalog.Entries;
-
-            for (int i = 0; i < entries.Count; i++)
-            {
-                TerrainDecorationCatalogSO.Entry entry = entries[i];
-                if (entry?.Prefab == null)
-                {
-                    continue;
-                }
-
-                selectedWeight -= entry.Weight;
-                if (selectedWeight <= 0f)
-                {
-                    selectedEntry = entry;
-                    break;
-                }
-            }
-
-            if (selectedEntry == null)
-            {
-                return false;
-            }
-
-            float jitterDistance = catalog.PositionJitter * cityView.TileSize;
-            Vector2 offset = new Vector2(
-                Mathf.Lerp(-jitterDistance, jitterDistance, Next01(ref randomState)),
-                Mathf.Lerp(-jitterDistance, jitterDistance, Next01(ref randomState)));
-            float rotationDegrees = Next01(ref randomState) * 360f;
-            float scale = Mathf.Lerp(
-                catalog.MinimumScale,
-                catalog.MaximumScale,
-                Next01(ref randomState));
-
-            sample = new DecorationSample(
-                selectedEntry.Prefab,
-                offset,
-                rotationDegrees,
-                scale);
-            return true;
         }
 
         private void RemoveDecoration(Vector2Int tile)
@@ -287,35 +244,14 @@ namespace CityFlow.View
             }
         }
 
-        private void EnsureClearedTileMask()
+        private void EnsureDecorationState()
         {
-            int requiredLength = cityView.GridWidth * cityView.GridHeight;
-            if (clearedTiles == null || clearedTiles.Length != requiredLength)
+            if (decorationState == null)
             {
-                clearedTiles = new bool[requiredLength];
+                decorationState = new TerrainDecorationState(
+                    cityView.GridWidth,
+                    cityView.GridHeight);
             }
-        }
-
-        private void MarkTileCleared(Vector2Int tile)
-        {
-            if (!IsInsideGrid(tile))
-            {
-                return;
-            }
-
-            clearedTiles[ToIndex(tile)] = true;
-        }
-
-        private bool IsTileCleared(Vector2Int tile)
-        {
-            return clearedTiles != null &&
-                   IsInsideGrid(tile) &&
-                   clearedTiles[ToIndex(tile)];
-        }
-
-        private int ToIndex(Vector2Int tile)
-        {
-            return tile.y * cityView.GridWidth + tile.x;
         }
 
         private bool IsInsideGrid(Vector2Int tile)
@@ -324,46 +260,6 @@ namespace CityFlow.View
                    tile.x < cityView.GridWidth &&
                    tile.y >= 0 &&
                    tile.y < cityView.GridHeight;
-        }
-
-        private static uint CreateTileSeed(int worldSeed, Vector2Int tile)
-        {
-            unchecked
-            {
-                uint hash = 2166136261u;
-                hash = (hash ^ (uint)worldSeed) * 16777619u;
-                hash = (hash ^ (uint)tile.x) * 16777619u;
-                hash = (hash ^ (uint)tile.y) * 16777619u;
-                return hash == 0u ? 0xA341316Cu : hash;
-            }
-        }
-
-        private static float Next01(ref uint state)
-        {
-            state ^= state << 13;
-            state ^= state >> 17;
-            state ^= state << 5;
-            return (state & 0x00FFFFFFu) / 16777216f;
-        }
-
-        private readonly struct DecorationSample
-        {
-            public DecorationSample(
-                GameObject prefab,
-                Vector2 offset,
-                float rotationDegrees,
-                float scale)
-            {
-                Prefab = prefab;
-                Offset = offset;
-                RotationDegrees = rotationDegrees;
-                Scale = scale;
-            }
-
-            public GameObject Prefab { get; }
-            public Vector2 Offset { get; }
-            public float RotationDegrees { get; }
-            public float Scale { get; }
         }
     }
 }

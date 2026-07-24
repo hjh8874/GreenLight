@@ -23,8 +23,6 @@ namespace CityFlow.View
         [SerializeField] private float tileSize = GridUtil.TileSize;
 
         [Header("Optional Prefabs")]
-        [SerializeField] private GameObject fieldTilePrefab;
-        [SerializeField] private float fieldTileZ = 0.14f;
         [SerializeField] private GameObject roadPrefab;
         [SerializeField] private GameObject housePrefab;
         [SerializeField] private GameObject officePrefab;
@@ -33,6 +31,8 @@ namespace CityFlow.View
         [SerializeField] private GameObject vehiclePrefab;
         [SerializeField] private GameObject signalPrefab;
         [SerializeField] private GameObject burstPrefab;
+        [SerializeField] private GameObject fieldTilePrefab;
+        [SerializeField] private float fieldTileZ = 0.14f;
 
         [Header("Runtime Visuals")]
         [SerializeField] private float vehicleSpeed = 1.6f;   // 개성 패스 라이브 튜닝(환 2026-07-17): 2.0에서 20% 감속
@@ -209,6 +209,7 @@ namespace CityFlow.View
         public int GridHeight => height;
         public float TileSize => tileSize;
         public float FieldTileZ => fieldTileZ;
+        public GameObject FieldTilePrefab => fieldTilePrefab;
         public float FlowBurstSeconds => burstSeconds;
         public Color FlowBurstColor => flowBurstColor;
         public bool IsDriveViewActive => driveViewCamera != null && driveViewCamera.IsFollowing;
@@ -217,6 +218,32 @@ namespace CityFlow.View
         public bool TryGetGridCell(Vector2Int coordinate, out GridCellView cell)
         {
             return gridCells.TryGetValue(coordinate, out cell);
+        }
+
+        public bool TryConfigureFieldTiles(GameObject prefab, float surfaceZ)
+        {
+            if (prefab == null || prefab.GetComponent<GridCellView>() == null)
+            {
+                Debug.LogWarning(
+                    "[MainCityView] Field tile configuration requires a prefab " +
+                    "with GridCellView.",
+                    this);
+                return false;
+            }
+
+            bool changed = fieldTilePrefab != prefab ||
+                           !Mathf.Approximately(fieldTileZ, surfaceZ);
+            fieldTilePrefab = prefab;
+            fieldTileZ = surfaceZ;
+
+            if (changed && services != null)
+            {
+                BuildBoard();
+                BuildGridLines();
+                RefreshAllTiles();
+            }
+
+            return true;
         }
 
         public string SelectedSignalSummary

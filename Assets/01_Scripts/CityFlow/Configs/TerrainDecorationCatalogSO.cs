@@ -53,10 +53,111 @@ namespace CityFlow.Configs
             return totalWeight;
         }
 
+        public bool TryCreateSample(
+            Vector2Int tile,
+            float tileSize,
+            out TerrainDecorationSample sample)
+        {
+            sample = default;
+
+            uint randomState = CreateTileSeed(WorldSeed, tile);
+            if (Next01(ref randomState) >= SpawnChance)
+            {
+                return false;
+            }
+
+            int totalWeight = GetTotalWeight();
+            if (totalWeight <= 0)
+            {
+                return false;
+            }
+
+            float selectedWeight = Next01(ref randomState) * totalWeight;
+            Entry selectedEntry = null;
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                Entry entry = entries[i];
+                if (entry?.Prefab == null)
+                {
+                    continue;
+                }
+
+                selectedWeight -= entry.Weight;
+                if (selectedWeight <= 0f)
+                {
+                    selectedEntry = entry;
+                    break;
+                }
+            }
+
+            if (selectedEntry == null)
+            {
+                return false;
+            }
+
+            float jitterDistance = PositionJitter * tileSize;
+            Vector2 offset = new Vector2(
+                Mathf.Lerp(-jitterDistance, jitterDistance, Next01(ref randomState)),
+                Mathf.Lerp(-jitterDistance, jitterDistance, Next01(ref randomState)));
+            float rotationDegrees = Next01(ref randomState) * 360f;
+            float scale = Mathf.Lerp(
+                MinimumScale,
+                MaximumScale,
+                Next01(ref randomState));
+
+            sample = new TerrainDecorationSample(
+                selectedEntry.Prefab,
+                offset,
+                rotationDegrees,
+                scale);
+            return true;
+        }
+
         private void OnValidate()
         {
             scaleRange.x = Mathf.Max(0.01f, scaleRange.x);
             scaleRange.y = Mathf.Max(0.01f, scaleRange.y);
         }
+
+        private static uint CreateTileSeed(int seed, Vector2Int tile)
+        {
+            unchecked
+            {
+                uint hash = 2166136261u;
+                hash = (hash ^ (uint)seed) * 16777619u;
+                hash = (hash ^ (uint)tile.x) * 16777619u;
+                hash = (hash ^ (uint)tile.y) * 16777619u;
+                return hash == 0u ? 0xA341316Cu : hash;
+            }
+        }
+
+        private static float Next01(ref uint state)
+        {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            return (state & 0x00FFFFFFu) / 16777216f;
+        }
+    }
+
+    public readonly struct TerrainDecorationSample
+    {
+        public TerrainDecorationSample(
+            GameObject prefab,
+            Vector2 offset,
+            float rotationDegrees,
+            float scale)
+        {
+            Prefab = prefab;
+            Offset = offset;
+            RotationDegrees = rotationDegrees;
+            Scale = scale;
+        }
+
+        public GameObject Prefab { get; }
+        public Vector2 Offset { get; }
+        public float RotationDegrees { get; }
+        public float Scale { get; }
     }
 }
