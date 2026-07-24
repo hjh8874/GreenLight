@@ -776,30 +776,35 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void Roundabout_ThreeEastVehiclesDrainBeforeNorthEntry()
         {
-            CityGrid grid = CrossGrid5();
+            CityGrid grid = CrossGrid5WithEastUpstream();
             Vector2Int center = V(2, 2);
             Vector2Int northArm = V(2, 3);
             Vector2Int northApproach = V(2, 4);
             Vector2Int eastArm = V(3, 2);
             Vector2Int eastApproach = V(4, 2);
+            Vector2Int eastUpstream = V(5, 2);
             Vector2Int westArm = V(1, 2);
             Vector2Int westApproach = V(0, 2);
             Vector2Int southArm = V(2, 1);
             Vector2Int southApproach = V(2, 0);
             var devices = new FakeDeviceState();
             devices.AddRoundabout(center);
-            var q = new RoadQueueNetwork(5, 5, Cfg());
+            var q = new RoadQueueNetwork(6, 5, Cfg());
             q.RebuildTopology(grid, devices);
             var routes = new FakeRouteProvider();
 
             routes.Add(100, eastApproach, eastArm, center, westArm, westApproach);
             routes.Add(101, eastApproach, eastArm, center, westArm, westApproach);
-            routes.Add(102, eastApproach, eastArm, center, westArm, westApproach);
+            routes.Add(102, eastUpstream, eastApproach, eastArm, center, westArm, westApproach);
             routes.Add(103, northApproach, northArm, center, southArm, southApproach);
             Assert.IsTrue(q.TryEnqueue(eastApproach, Dir.W, 100));
             Assert.IsTrue(q.TryEnqueue(eastApproach, Dir.W, 101));
-            Assert.IsTrue(q.TryEnqueue(eastApproach, Dir.W, 102));
+            Assert.IsTrue(q.TryEnqueue(eastUpstream, Dir.W, 102));
             Assert.IsTrue(q.TryEnqueue(northApproach, Dir.S, 103));
+            Assert.AreEqual(2, q.QueueCount(eastApproach, Dir.W),
+                "The physical approach capacity is two vehicles.");
+            Assert.AreEqual(1, q.QueueCount(eastUpstream, Dir.W),
+                "The third east vehicle must spill back to the upstream tile.");
 
             var enteredOrder = new List<int>();
             var enteredCars = new HashSet<int>();
@@ -821,7 +826,7 @@ namespace CityFlow.Sim.Tests
             }
 
             CollectionAssert.AreEqual(new[] { 100, 101, 102, 103 }, enteredOrder,
-                "The serving east queue must drain before north receives entry priority.");
+                "The serving east stream, including its upstream spillback, must drain before north receives entry priority.");
             Assert.GreaterOrEqual(maxRingOccupancy, 2,
                 "A following vehicle must enter before its lead vehicle leaves the ring.");
         }
@@ -925,6 +930,19 @@ namespace CityFlow.Sim.Tests
                 Assert.IsTrue(grid.Place(V(offset, 2), CityFlow.Contracts.TileType.Road));
                 if (offset != 2)
                     Assert.IsTrue(grid.Place(V(2, offset), CityFlow.Contracts.TileType.Road));
+            }
+            return grid;
+        }
+
+        private static CityGrid CrossGrid5WithEastUpstream()
+        {
+            var grid = new CityGrid(6, 5);
+            for (int x = 0; x < 6; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), CityFlow.Contracts.TileType.Road));
+            for (int y = 0; y < 5; y++)
+            {
+                if (y != 2)
+                    Assert.IsTrue(grid.Place(V(2, y), CityFlow.Contracts.TileType.Road));
             }
             return grid;
         }
