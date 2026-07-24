@@ -842,6 +842,11 @@ namespace CityFlow.View
                 snapshot.QueueSlot,
                 slotGap,
                 headInset);
+            float queueHeadTargetDistance = poly.DistanceAtQueueSlot(
+                tileIndex,
+                0,
+                slotGap,
+                headInset);
             bool hasIntersectionAuthorization = snapshot.IntersectionProgress01 >= 0f;
             bool hasRoundaboutAuthorization = snapshot.RoundaboutProgress01 >= 0f
                 && IsRoundaboutTile(simTile);
@@ -991,10 +996,30 @@ namespace CityFlow.View
                     distanceToBoundary / remainingTickSeconds);
             }
 
+            bool usesQueueSlotTarget = !hasIntersectionAuthorization
+                && !hasRoundaboutAuthorization
+                && snapshot.LinkProgress01 <= 0f;
+            float corridorWithoutQueueSlot = Mathf.Min(
+                queueHeadTargetDistance + vehicleCorridorTiles * tileSize,
+                poly.Length);
+            if (roundaboutEntryLimited)
+                corridorWithoutQueueSlot = Mathf.Min(corridorWithoutQueueSlot, roundaboutStopDistance);
+            if (signalEntryLimited)
+                corridorWithoutQueueSlot = Mathf.Min(corridorWithoutQueueSlot, signalStopDistance);
+            if (intersectionEntryLimited)
+                corridorWithoutQueueSlot = Mathf.Min(corridorWithoutQueueSlot, intersectionStopDistance);
+            bool queueSlotOnlyRegression = usesQueueSlotTarget
+                && snapshot.QueueSlot > 0
+                && targetDistance < queueHeadTargetDistance - 0.0001f
+                && corridorWithoutQueueSlot >= car.Distance;
+
             if (corridor < car.Distance)
             {
-                // 슬롯 증가·재베이크로 상한이 뒤로 가도 현재 위치를 유지한다. 앞차가 빠져
-                // 슬롯이 감소하면 목표가 다시 전진하므로 일시 정지 후 자연스럽게 재개한다.
+                // 슬롯 간격만 제거하면 현재 위치를 허용하는 경우에만 제자리에서 기다린다.
+                // 재베이크로 poly.Length 자체가 Distance 뒤로 줄었거나 시작점 클램프 때문에
+                // slot0도 같은 상한이면 기다려도 풀릴 수 없으므로 옛 동작처럼 완만히 수렴한다.
+                if (!queueSlotOnlyRegression)
+                    car.Distance = Mathf.MoveTowards(car.Distance, corridor, nominal * dt);
                 vehicle.TravelSpeed = 0f;
             }
             else
