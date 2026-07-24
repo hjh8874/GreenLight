@@ -19527,9 +19527,6 @@ MonoBehaviour:
   canvasGroup: {fileID: 1281748611}
   reportCard: {fileID: 1256068581}
   closeButton: {fileID: 2115171978}
-  initialCoinsText: {fileID: 0}
-  earnedCoinsText: {fileID: 0}
-  currentCoinsText: {fileID: 0}
   transitionDuration: 0.18
   hiddenScale: 0.96
 --- !u!225 &1281748611
