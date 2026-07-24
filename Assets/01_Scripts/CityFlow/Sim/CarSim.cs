@@ -60,15 +60,18 @@ namespace CityFlow.Sim
             public readonly CommuteCar Car;
             public readonly List<Vector2Int> Outbound;
             public readonly List<Vector2Int> Inbound;
+            public readonly int ViewRouteIndex;
 
             public PreviousAssignment(
                 CommuteCar car,
                 List<Vector2Int> outbound,
-                List<Vector2Int> inbound)
+                List<Vector2Int> inbound,
+                int viewRouteIndex)
             {
                 Car = car;
                 Outbound = outbound;
                 Inbound = inbound;
+                ViewRouteIndex = viewRouteIndex;
             }
         }
 
@@ -150,7 +153,11 @@ namespace CityFlow.Sim
             _populationInitialized = false;
         }
 
-        public void Rebuild(DemandMap demands, RoutePlanner planner, RoadQueueNetwork net)
+        public void Rebuild(
+            DemandMap demands,
+            RoutePlanner planner,
+            RoadQueueNetwork net,
+            bool preserveExistingAssignments = false)
         {
             if (demands == null) throw new ArgumentNullException(nameof(demands));
             if (planner == null) throw new ArgumentNullException(nameof(planner));
@@ -174,12 +181,14 @@ namespace CityFlow.Sim
 
                 if (survivor.RouteIndex >= 0
                     && survivor.RouteIndex < _outboundRoutes.Count
-                    && survivor.RouteIndex < _returnRoutes.Count)
+                    && survivor.RouteIndex < _returnRoutes.Count
+                    && survivor.RouteIndex < _plannerRouteIndices.Count)
                 {
                     previousAssignments.Add(new PreviousAssignment(
                         survivor,
                         _outboundRoutes[survivor.RouteIndex],
-                        _returnRoutes[survivor.RouteIndex]));
+                        _returnRoutes[survivor.RouteIndex],
+                        _plannerRouteIndices[survivor.RouteIndex]));
                 }
             }
             // 주차 차도 건물 소멸 판정에는 필요하다. 위 루프의 on-road 조기 continue와
@@ -197,15 +206,23 @@ namespace CityFlow.Sim
                 if (alreadyCaptured
                     || car.RouteIndex < 0
                     || car.RouteIndex >= _outboundRoutes.Count
-                    || car.RouteIndex >= _returnRoutes.Count)
+                    || car.RouteIndex >= _returnRoutes.Count
+                    || car.RouteIndex >= _plannerRouteIndices.Count)
                 {
                     continue;
                 }
                 previousAssignments.Add(new PreviousAssignment(
                     car,
                     _outboundRoutes[car.RouteIndex],
-                    _returnRoutes[car.RouteIndex]));
+                    _returnRoutes[car.RouteIndex],
+                    _plannerRouteIndices[car.RouteIndex]));
             }
+            List<List<Vector2Int>> previousViewOutbound = preserveExistingAssignments
+                ? new List<List<Vector2Int>>(_viewOutboundRoutes)
+                : null;
+            List<List<Vector2Int>> previousViewReturn = preserveExistingAssignments
+                ? new List<List<Vector2Int>>(_viewReturnRoutes)
+                : null;
             _sources.Clear();
             _sinks.Clear();
             _outboundRoutes.Clear();
@@ -213,62 +230,94 @@ namespace CityFlow.Sim
             _viewOutboundRoutes.Clear();
             _viewReturnRoutes.Clear();
             _plannerRouteIndices.Clear();
-            for (int i = 0; i < planner.CarRoutes.Count; i++)
+            if (preserveExistingAssignments)
             {
-                _viewOutboundRoutes.Add(planner.CarRoutes[i]);
-                _viewReturnRoutes.Add(planner.ReturnRoutes[i]);
+                _viewOutboundRoutes.AddRange(previousViewOutbound);
+                _viewReturnRoutes.AddRange(previousViewReturn);
+            }
+            else
+            {
+                for (int i = 0; i < planner.CarRoutes.Count; i++)
+                {
+                    _viewOutboundRoutes.Add(planner.CarRoutes[i]);
+                    _viewReturnRoutes.Add(planner.ReturnRoutes[i]);
+                }
             }
 
             IReadOnlyList<Demand> pairs = demands.Demands;
             int count = Math.Min(pairs.Count, planner.CarRoutes.Count);
-            for (int i = 0; i < count; i++)
+            var consumedPairs = new bool[count];
+            if (preserveExistingAssignments)
             {
-                List<Vector2Int> outbound = planner.CarRoutes[i];
-                List<Vector2Int> inbound = planner.ReturnRoutes[i];
-                if (outbound == null || inbound == null || outbound.Count == 0 || inbound.Count == 0) continue;
-                _sources.Add(pairs[i].Source);
-                _sinks.Add(pairs[i].Sink);
-                _outboundRoutes.Add(outbound);
-                _returnRoutes.Add(inbound);
-                _plannerRouteIndices.Add(i);
+                // 건물 변경은 기존 차 순서와 구 경로 참조를 먼저 싣는다. 새 짝만 뒤에
+                // 붙여 인덱스 기반 View 미러가 다른 논리 차로 재바인딩되지 않게 한다.
+                for (int p = 0; p < previousAssignments.Count; p++)
+                {
+                    PreviousAssignment previous = previousAssignments[p];
+                    CommuteCar car = previous.Car;
+                    RetireReason reason = RetireReasonFor(demands, car);
+                    car.RetireReason = reason;
+                    if (reason != RetireReason.None)
+                    {
+                        if (RetirementCompleted(car, reason)
+                            || !HasUsableRoutes(previous))
+                        {
+                            continue;
+                        }
+                        PrepareWorkLostReturn(car, reason);
+                        AppendPreviousAssignment(previous, preserveViewIndex: true);
+                        continue;
+                    }
+
+                    int pairIndex = FindPair(
+                        pairs,
+                        planner,
+                        consumedPairs,
+                        car.Home,
+                        car.Work);
+                    if (pairIndex < 0) continue;
+                    consumedPairs[pairIndex] = true;
+                    AppendPreviousAssignment(previous, preserveViewIndex: true);
+                }
+            }
+            else
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    if (!HasUsableRoutes(planner, i)) continue;
+                    AppendPlannerAssignment(pairs[i], planner, i);
+                    consumedPairs[i] = true;
+                }
             }
 
-            for (int i = 0; i < previousAssignments.Count; i++)
+            if (!preserveExistingAssignments)
             {
-                PreviousAssignment previous = previousAssignments[i];
-                CommuteCar car = previous.Car;
-                RetireReason reason = !demands.ContainsSource(car.Home)
-                    ? RetireReason.HomeLost
-                    : !demands.ContainsSink(car.Work)
-                        ? RetireReason.WorkLost
-                        : RetireReason.None;
-                car.RetireReason = reason;
-                bool completed = reason == RetireReason.HomeLost
-                    ? car.State == CarState.ParkedHome || car.State == CarState.ParkedWork
-                    : reason == RetireReason.WorkLost && car.State == CarState.ParkedHome;
-                if (reason == RetireReason.None || completed
-                    || previous.Outbound == null || previous.Inbound == null
-                    || previous.Outbound.Count == 0 || previous.Inbound.Count == 0)
+                for (int i = 0; i < previousAssignments.Count; i++)
                 {
-                    continue;
-                }
+                    PreviousAssignment previous = previousAssignments[i];
+                    CommuteCar car = previous.Car;
+                    RetireReason reason = RetireReasonFor(demands, car);
+                    if (reason == RetireReason.None) continue;
+                    car.RetireReason = reason;
+                    if (RetirementCompleted(car, reason)
+                        || !HasUsableRoutes(previous))
+                    {
+                        continue;
+                    }
 
-                if (reason == RetireReason.WorkLost && car.State == CarState.Outbound)
+                    PrepareWorkLostReturn(car, reason);
+                    AppendPreviousAssignment(previous, preserveViewIndex: false);
+                }
+            }
+
+            if (preserveExistingAssignments)
+            {
+                // 기존 짝이 모두 같은 인덱스에 자리 잡은 뒤에만 신규 배정을 추가한다.
+                for (int i = 0; i < count; i++)
                 {
-                    // 회사 철거 시 출근 보상을 만들지 않고, 같은 ResumeTile을 구 귀가
-                    // 경로에 재큐잉해 즉시 "포기 귀가"로 전환한다.
-                    car.State = CarState.Inbound;
-                    car.Distance = 0f;
+                    if (consumedPairs[i] || !HasUsableRoutes(planner, i)) continue;
+                    AppendPlannerAssignment(pairs[i], planner, i, appendViewRoute: true);
                 }
-
-                int viewRouteIndex = _viewOutboundRoutes.Count;
-                _sources.Add(car.Home);
-                _sinks.Add(car.Work);
-                _outboundRoutes.Add(previous.Outbound);
-                _returnRoutes.Add(previous.Inbound);
-                _viewOutboundRoutes.Add(previous.Outbound);
-                _viewReturnRoutes.Add(previous.Inbound);
-                _plannerRouteIndices.Add(viewRouteIndex);
             }
 
             _scheduler.Rebuild(
@@ -284,7 +333,8 @@ namespace CityFlow.Sim
                 deferNewAssignments: _populationInitialized);
             _populationInitialized = true;
             Array.Clear(_enqueued, 0, _enqueued.Length);
-            Array.Clear(_tileIndices, 0, _tileIndices.Length);
+            if (!preserveExistingAssignments)
+                Array.Clear(_tileIndices, 0, _tileIndices.Length);
             Array.Fill(_queueSlots, -1);
             Array.Fill(_intersectionProgress, -1f);
             Array.Clear(_linkProgress, 0, _linkProgress.Length);
@@ -294,6 +344,113 @@ namespace CityFlow.Sim
             Array.Clear(_rescueStages, 0, _rescueStages.Length);
             Array.Clear(_offNetworkBlockedTicks, 0, _offNetworkBlockedTicks.Length);
             _needsSnap = true;
+        }
+
+        private static int FindPair(
+            IReadOnlyList<Demand> pairs,
+            RoutePlanner planner,
+            bool[] consumed,
+            Vector2Int home,
+            Vector2Int work)
+        {
+            int count = Math.Min(pairs.Count, planner.CarRoutes.Count);
+            for (int i = 0; i < count; i++)
+            {
+                if (consumed[i]
+                    || pairs[i].Source != home
+                    || pairs[i].Sink != work
+                    || !HasUsableRoutes(planner, i))
+                {
+                    continue;
+                }
+                return i;
+            }
+            return -1;
+        }
+
+        private static bool HasUsableRoutes(RoutePlanner planner, int index)
+        {
+            List<Vector2Int> outbound = planner.CarRoutes[index];
+            List<Vector2Int> inbound = planner.ReturnRoutes[index];
+            return outbound != null && inbound != null
+                && outbound.Count > 0 && inbound.Count > 0;
+        }
+
+        private static bool HasUsableRoutes(PreviousAssignment previous) =>
+            previous.Outbound != null && previous.Inbound != null
+            && previous.Outbound.Count > 0 && previous.Inbound.Count > 0;
+
+        private static RetireReason RetireReasonFor(
+            DemandMap demands,
+            CommuteCar car) =>
+            !demands.ContainsSource(car.Home)
+                ? RetireReason.HomeLost
+                : !demands.ContainsSink(car.Work)
+                    ? RetireReason.WorkLost
+                    : RetireReason.None;
+
+        private static bool RetirementCompleted(
+            CommuteCar car,
+            RetireReason reason) =>
+            reason == RetireReason.HomeLost
+                ? car.State == CarState.ParkedHome || car.State == CarState.ParkedWork
+                : reason == RetireReason.WorkLost && car.State == CarState.ParkedHome;
+
+        private static void PrepareWorkLostReturn(
+            CommuteCar car,
+            RetireReason reason)
+        {
+            if (reason != RetireReason.WorkLost || car.State != CarState.Outbound)
+                return;
+            // 회사 철거 시 출근 보상을 만들지 않고, 같은 ResumeTile을 구 귀가
+            // 경로에 재큐잉해 즉시 "포기 귀가"로 전환한다.
+            car.State = CarState.Inbound;
+            car.Distance = 0f;
+        }
+
+        private void AppendPreviousAssignment(
+            PreviousAssignment previous,
+            bool preserveViewIndex)
+        {
+            int viewRouteIndex = previous.ViewRouteIndex;
+            if (!preserveViewIndex
+                || viewRouteIndex < 0
+                || viewRouteIndex >= _viewOutboundRoutes.Count
+                || viewRouteIndex >= _viewReturnRoutes.Count)
+            {
+                viewRouteIndex = _viewOutboundRoutes.Count;
+                _viewOutboundRoutes.Add(previous.Outbound);
+                _viewReturnRoutes.Add(previous.Inbound);
+            }
+            _sources.Add(previous.Car.Home);
+            _sinks.Add(previous.Car.Work);
+            _outboundRoutes.Add(previous.Outbound);
+            _returnRoutes.Add(previous.Inbound);
+            _plannerRouteIndices.Add(viewRouteIndex);
+        }
+
+        private void AppendPlannerAssignment(
+            Demand pair,
+            RoutePlanner planner,
+            int plannerIndex,
+            bool appendViewRoute = false)
+        {
+            int viewRouteIndex;
+            if (!appendViewRoute)
+            {
+                viewRouteIndex = plannerIndex;
+            }
+            else
+            {
+                viewRouteIndex = _viewOutboundRoutes.Count;
+                _viewOutboundRoutes.Add(planner.CarRoutes[plannerIndex]);
+                _viewReturnRoutes.Add(planner.ReturnRoutes[plannerIndex]);
+            }
+            _sources.Add(pair.Source);
+            _sinks.Add(pair.Sink);
+            _outboundRoutes.Add(planner.CarRoutes[plannerIndex]);
+            _returnRoutes.Add(planner.ReturnRoutes[plannerIndex]);
+            _plannerRouteIndices.Add(viewRouteIndex);
         }
 
         public StepResult Step(float gameHour, RoadQueueNetwork net, SimEventBuffer events)

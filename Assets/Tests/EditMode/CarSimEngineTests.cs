@@ -158,6 +158,50 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void UnrelatedBuildingsAdded_PreserveExistingVehicleIdentityAndRoute()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 8;
+            cfg.GridHeight = 5;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            for (int x = 0; x <= 7; x++)
+                Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(engine.Place(V(2, 0), TileType.House));
+            Assert.IsTrue(engine.Place(V(6, 0), TileType.Office));
+            engine.SetGameHour(7f);
+            engine.Tick(0.25f);
+
+            Assert.AreEqual(2, engine.ActiveVehicleCount);
+            var before = new CarSnapshot[engine.ActiveVehicleCount];
+            var routeRefs = new List<Vector2Int>[engine.ActiveVehicleCount];
+            for (int i = 0; i < before.Length; i++)
+            {
+                before[i] = engine.GetCarSnapshot(i);
+                routeRefs[i] = engine.ActiveRoutes[before[i].RouteIndex];
+            }
+
+            Assert.IsTrue(engine.Place(V(4, 3), TileType.House));
+            Assert.IsTrue(engine.Place(V(6, 3), TileType.Office));
+            engine.EnsureCarTopologyCurrent();
+
+            Assert.AreEqual(3, engine.ActiveVehicleCount, "신규 짝만 기존 차량 뒤에 추가한다");
+            for (int i = 0; i < before.Length; i++)
+            {
+                CarSnapshot after = engine.GetCarSnapshot(i);
+                Assert.AreEqual(before[i].Home, after.Home, $"car[{i}] Home");
+                Assert.AreEqual(before[i].Work, after.Work, $"car[{i}] Work");
+                Assert.AreEqual(before[i].RouteIndex, after.RouteIndex, $"car[{i}] RouteIndex");
+                Assert.AreEqual(before[i].TileIndex, after.TileIndex, $"car[{i}] TileIndex");
+                Assert.AreEqual(before[i].State, after.State, $"car[{i}] State");
+                Assert.AreSame(
+                    routeRefs[i],
+                    engine.ActiveRoutes[after.RouteIndex],
+                    $"car[{i}] 구 경로 List 참조");
+            }
+        }
+
+        [Test]
         public void CompletedDay_BlendsSuccessByHalf_AndPersistsAcrossSave()
         {
             SimEngine engine = BuildStraightCity(Cfg(), new SimEventHub());
