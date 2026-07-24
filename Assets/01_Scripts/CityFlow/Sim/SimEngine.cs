@@ -356,17 +356,18 @@ namespace CityFlow.Sim
                 _demand.RegisterCompany(tile, type, _simTime);
             if (type == TileType.Office || type == TileType.School)
                 _demandRebalancePending = true;
-            _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false));
+            _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false, direction));
             return true;
         }
 
         public bool Remove(Vector2Int tile)
         {
+            PlacementDirection removedDir = _grid.GetDirection(tile);
             if (!_grid.TryRemove(tile, out var removed, out Vector2Int anchor)) return false;
             if (removed == TileType.Office)
                 _demand.RemoveCompany(anchor);
             // 철거 = 조용: 그 타일의 연출 원료(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
-            _events.QueuePlaced(new PlacedEvent(anchor, removed, isRemove: true));
+            _events.QueuePlaced(new PlacedEvent(anchor, removed, isRemove: true, removedDir));
             return true;
         }
 
@@ -868,7 +869,7 @@ namespace CityFlow.Sim
                     var type = _grid.GetTile(new Vector2Int(x, y));
                     if (type == TileType.Empty) continue;       // 계약: Empty 미저장
                     if (!_grid.IsFootprintAnchor(new Vector2Int(x, y))) continue;
-                    tiles.Add(new TileSaveData { X = x, Y = y, Type = type });
+                    tiles.Add(new TileSaveData { X = x, Y = y, Type = type, Direction = _grid.GetDirection(new Vector2Int(x, y)) });
                 }
 
             // 모든 신호를 두 레버(오프셋·초록) 다 저장 — 복원 시 덮어쓰기만으로 이전 조율 잔존을 지운다.
@@ -963,7 +964,7 @@ namespace CityFlow.Sim
                 foreach (var t in snapshot.PlacedTiles)
                 {
                     var tile = new Vector2Int(t.X, t.Y);
-                    if (!_grid.Place(tile, t.Type)) continue;   // OOB·중복은 Place가 거름(무사고)
+                    if (!_grid.Place(tile, t.Type, t.Direction)) continue;   // OOB·중복은 Place가 거름(무사고)
                     if (t.Type == TileType.Office)
                         _demand.RegisterRestoredCompany(tile, t.Type);
                 }
@@ -1105,6 +1106,9 @@ namespace CityFlow.Sim
             _grid.InBounds(tile) ? _roadQueues.QueueCount(tile, entryDir) : 0;
         public TileType GetTileType(Vector2Int tile) =>
             _grid.InBounds(tile) ? _grid.GetTile(tile) : TileType.Empty;
+
+        public PlacementDirection GetDirection(Vector2Int tile) => 
+            _grid.InBounds(tile) ? _grid.GetDirection(tile) : PlacementDirection.North;
 
         public Vector2Int GetFootprintSize(TileType type) => TileFootprint.GetSize(type);
 

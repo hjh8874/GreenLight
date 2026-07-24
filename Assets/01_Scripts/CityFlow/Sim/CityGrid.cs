@@ -65,7 +65,9 @@ namespace CityFlow.Sim
         internal bool InBounds(Vector2Int t) =>
             t.x >= 0 && t.x < _width && t.y >= 0 && t.y < _height;
 
-        public TileType GetTile(Vector2Int t) => _tiles[Index(t)];
+        public TileType GetTile(Vector2Int t) => InBounds(t) ? _tiles[Index(t)] : TileType.Empty;
+
+        public PlacementDirection GetDirection(Vector2Int t) => InBounds(t) ? _directions[Index(t)] : PlacementDirection.North;
 
         // 범위 안 + 진짜 타일 + 빈 칸일 때만 배치 가능.
         public bool CanPlace(Vector2Int t, TileType type, PlacementDirection direction = PlacementDirection.North)

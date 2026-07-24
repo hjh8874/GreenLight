@@ -682,7 +682,7 @@ namespace CityFlow.UI
                     return false;
                 }
 
-                return _services.Placement.CanPlace(coord, _currentType); 
+                return _services.Placement.CanPlace(coord, _currentType, _currentDirection); 
             }
             return false;
         }
@@ -728,7 +728,7 @@ namespace CityFlow.UI
                         return;
                     }
 
-                    if (_services.Placement.Place(coord, _currentType))
+                    if (_services.Placement.Place(coord, _currentType, _currentDirection))
                     {
                         if (_services.Economy != null && buildCost > 0)
                             _services.Economy.TrySpend(buildCost);

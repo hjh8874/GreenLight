@@ -55,12 +55,14 @@ namespace CityFlow.Contracts
         public readonly Vector2Int Tile;
         public readonly TileType Type;
         public readonly bool IsRemove;
+        public readonly PlacementDirection Direction;
 
-        public PlacedEvent(Vector2Int tile, TileType type, bool isRemove)
+        public PlacedEvent(Vector2Int tile, TileType type, bool isRemove, PlacementDirection direction = PlacementDirection.North)
         {
             Tile = tile;
             Type = type;
             IsRemove = isRemove;
+            Direction = direction;
         }
     }
 
