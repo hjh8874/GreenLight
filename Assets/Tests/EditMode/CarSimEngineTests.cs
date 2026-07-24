@@ -368,6 +368,71 @@ namespace CityFlow.Sim.Tests
                 jump, 1, $"재큐잉 타일 {resumed}은 직전 위치 {carTile} 제자리여야 한다");
         }
 
+        // 리뷰 지적(2026-07-24 abicodue): 건물 철거 + 라우팅 변경이 같은 리빌드에 겹치면
+        // (non-preserve) 은퇴 carry-over 차량도 구 경로 대신 최신 규칙으로 재계획해야 한다.
+        // HomeLost+Outbound가 대표 케이스 — 구 출근 경로를 거스르는 일방통행을 집 철거와
+        // 같은 윈도우에 넣는다. WorkLost+Inbound/ParkedWork도 같은 ReplanLeg 경로를 탄다.
+        [Test]
+        public void RemovedHomeAndOnewayInSameWindow_RetireeReplansOutbound()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 8;
+            cfg.GridHeight = 7;
+            cfg.AutoDetectSignals = false;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            for (int x = 0; x <= 7; x++)
+            {
+                Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
+                Assert.IsTrue(engine.Place(V(x, 4), TileType.Road));
+            }
+            Assert.IsTrue(engine.Place(V(0, 3), TileType.Road));
+            Assert.IsTrue(engine.Place(V(7, 3), TileType.Road));
+            Assert.IsTrue(engine.Place(V(2, 0), TileType.House));
+            Assert.IsTrue(engine.Place(V(5, 5), TileType.Office));
+            engine.SetGameHour(7f);
+            engine.Tick(0.25f);
+            Assert.AreEqual(1, engine.ActiveVehicleCount);
+            CarSnapshot before = engine.GetCarSnapshot(0);
+            Assert.AreEqual(CarState.Outbound, before.State);
+            var oldCopy = new List<Vector2Int>(engine.ActiveRoutes[before.RouteIndex]);
+            Vector2Int beforeTile = oldCopy[Mathf.Clamp(before.TileIndex, 0, oldCopy.Count - 1)];
+
+            // 차 진행 방향 앞쪽(y=4 구간) 비교차로 타일에 역방향 일방통행 배치.
+            Vector2Int onewayTile = default;
+            Vector2Int onewayDir = default;
+            bool placedOneway = false;
+            for (int p = 1; p < oldCopy.Count - 1 && !placedOneway; p++)
+            {
+                Vector2Int tile = oldCopy[p];
+                if (tile.y != 4 || tile.x < 1 || tile.x > 6) continue;
+                onewayDir = -(tile - oldCopy[p - 1]);
+                placedOneway = engine.TryPlaceOneway(tile, onewayDir);
+                onewayTile = tile;
+            }
+            Assert.IsTrue(placedOneway, "전제: 구 출근 경로 위 일방통행 배치 성공");
+            Assert.IsTrue(engine.Remove(V(2, 0)), "전제: 집 철거");
+            engine.EnsureCarTopologyCurrent();
+            engine.Tick(0.25f);
+
+            Assert.AreEqual(1, engine.ActiveVehicleCount, "HomeLost 주행 차는 트립 완주까지 생존");
+            CarSnapshot after = engine.GetCarSnapshot(0);
+            Assert.AreEqual(CarState.Outbound, after.State);
+            List<Vector2Int> newRoute = engine.ActiveRoutes[after.RouteIndex];
+            CollectionAssert.AreNotEqual(
+                oldCopy, newRoute, "은퇴 차도 라우팅 변경 시 구 경로 대신 재계획해야 한다");
+            int onewayIdx = newRoute.IndexOf(onewayTile);
+            if (onewayIdx > 0)
+            {
+                Assert.AreEqual(
+                    onewayDir,
+                    newRoute[onewayIdx] - newRoute[onewayIdx - 1],
+                    "새 경로는 새 일방통행 규칙을 준수해야 한다");
+            }
+            Vector2Int afterTile = newRoute[Mathf.Clamp(after.TileIndex, 0, newRoute.Count - 1)];
+            int jump = Mathf.Abs(afterTile.x - beforeTile.x) + Mathf.Abs(afterTile.y - beforeTile.y);
+            Assert.LessOrEqual(jump, 2, $"재계획 후 위치 {afterTile}는 직전 위치 {beforeTile} 근방이어야 한다");
+        }
+
         [Test]
         public void CompletedDay_BlendsSuccessByHalf_AndPersistsAcrossSave()
         {

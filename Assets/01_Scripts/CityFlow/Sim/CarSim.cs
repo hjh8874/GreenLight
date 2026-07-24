@@ -292,10 +292,25 @@ namespace CityFlow.Sim
                         continue;
                     }
 
+                    List<Vector2Int> outbound = previous.Outbound;
+                    List<Vector2Int> inbound =
+                        PrepareWorkLostReturn(car, reason, previous.Inbound);
+                    // preserve가 아닌 리빌드 = 라우팅 입력(도로·일방통행·턴 표지판·config)이
+                    // 바뀐 리빌드다. 은퇴 carry-over의 잔여 구간도 최신 규칙으로 재계획해야
+                    // 구 경로가 새 규칙을 위반하거나 사라진 도로를 밟지 않는다.
+                    // (WorkLost+Outbound는 위 Prepare가 이미 최신 스냅샷으로 재계획함.
+                    //  preserve 리빌드는 라우팅 불변이라 구 경로 = 재계획 결과 — 재계획 불요.)
+                    if (car.State == CarState.Outbound)
+                        outbound = ReplanLeg(outbound, car, fromResume: true) ?? outbound;
+                    else if (car.State == CarState.Inbound
+                        && ReferenceEquals(inbound, previous.Inbound))
+                        inbound = ReplanLeg(inbound, car, fromResume: true) ?? inbound;
+                    else if (car.State == CarState.ParkedWork)
+                        inbound = ReplanLeg(inbound, car, fromResume: false) ?? inbound;
                     previous = new PreviousAssignment(
                         car,
-                        previous.Outbound,
-                        PrepareWorkLostReturn(car, reason, previous.Inbound),
+                        outbound,
+                        inbound,
                         previous.ViewRouteIndex);
                     AppendPreviousAssignment(previous, preserveViewIndex: false);
                 }
@@ -386,6 +401,23 @@ namespace CityFlow.Sim
             reason == RetireReason.HomeLost
                 ? car.State == CarState.ParkedHome || car.State == CarState.ParkedWork
                 : reason == RetireReason.WorkLost && car.State == CarState.ParkedHome;
+
+        // 은퇴 carry-over 구간을 최신 Plan 규칙으로 다시 계산한다. 주행 중(fromResume)이면
+        // 현재 타일에서, 주차 대기면 구간 원점에서 같은 종점으로. 실패(고립·도로 소실)는
+        // null — 호출부가 구 경로 유지로 폴백하고 워치독이 수렴을 책임진다.
+        private List<Vector2Int> ReplanLeg(
+            List<Vector2Int> route,
+            CommuteCar car,
+            bool fromResume)
+        {
+            Vector2Int from = fromResume && car.HasResume
+                ? car.ResumeTile
+                : route[0];
+            List<Vector2Int> replanned = _planner.ReplanFrom(
+                from,
+                route[route.Count - 1]);
+            return replanned != null && replanned.Count > 0 ? replanned : null;
+        }
 
         // 반환값 = 이 차가 실제로 탈 인바운드 경로. 주행 중 전환이면 현재 타일에서
         // 구 귀가 종점까지 재계획한 경로(제자리 포기 귀가 — 순간이동 0), 아니면 구 경로.
