@@ -1056,6 +1056,26 @@ namespace CityFlow.View
                 float authorizedCruise = hasIntersectionAuthorization
                     ? intersectionAuthorizedSpeed
                     : (intersectionEntryLimited ? intersectionApproachSpeed : nominal);
+                bool paceQueueArrival = vehicle.TargetAdvancing
+                    && !hasIntersectionAuthorization
+                    && !hasRoundaboutAuthorization
+                    && snapshot.LinkProgress01 <= 0f
+                    && !roundaboutEntryLimited
+                    && !signalEntryLimited
+                    && !intersectionEntryLimited;
+                if (paceQueueArrival)
+                {
+                    float remainingTickSeconds = Mathf.Max(
+                        0.02f,
+                        (1f - simEngine.TickProgress01) * simEngine.TickInterval);
+                    float pacedArrivalSpeed = Mathf.Min(
+                        nominal,
+                        Mathf.Max(0f, corridor - car.Distance) / remainingTickSeconds);
+                    // 2026-07-21에 기각한 "연속 천장 보간"과 다르다: corridor를 앞으로
+                    // 발명하지 않고 고정된 Sim 상한 안에서 속도만 낮춰 틱 끝 도착을 맞춘다.
+                    // 기존 가감속과 뒤처짐 catch-up은 이 속도 목표의 바깥에서 그대로 작동한다.
+                    authorizedCruise = Mathf.Min(authorizedCruise, pacedArrivalSpeed);
+                }
                 float cruise = authorizedCruise * (1f + behind * vehicleCatchUpRange);
 
                 // 제동식은 **상대가 움직이는지**를 반영해야 한다. √(2a·여유)는 '정지한 벽'
