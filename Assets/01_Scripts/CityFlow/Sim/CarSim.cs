@@ -245,7 +245,11 @@ namespace CityFlow.Sim
                         {
                             continue;
                         }
-                        PrepareWorkLostReturn(car, reason, previous.Inbound);
+                        previous = new PreviousAssignment(
+                            car,
+                            previous.Outbound,
+                            PrepareWorkLostReturn(car, reason, previous.Inbound),
+                            previous.ViewRouteIndex);
                         AppendPreviousAssignment(previous, preserveViewIndex: true);
                         continue;
                     }
@@ -288,7 +292,11 @@ namespace CityFlow.Sim
                         continue;
                     }
 
-                    PrepareWorkLostReturn(car, reason, previous.Inbound);
+                    previous = new PreviousAssignment(
+                        car,
+                        previous.Outbound,
+                        PrepareWorkLostReturn(car, reason, previous.Inbound),
+                        previous.ViewRouteIndex);
                     AppendPreviousAssignment(previous, preserveViewIndex: false);
                 }
             }
@@ -379,22 +387,31 @@ namespace CityFlow.Sim
                 ? car.State == CarState.ParkedHome || car.State == CarState.ParkedWork
                 : reason == RetireReason.WorkLost && car.State == CarState.ParkedHome;
 
-        private static void PrepareWorkLostReturn(
+        // 반환값 = 이 차가 실제로 탈 인바운드 경로. 주행 중 전환이면 현재 타일에서
+        // 구 귀가 종점까지 재계획한 경로(제자리 포기 귀가 — 순간이동 0), 아니면 구 경로.
+        private List<Vector2Int> PrepareWorkLostReturn(
             CommuteCar car,
             RetireReason reason,
             List<Vector2Int> inboundRoute)
         {
             if (reason != RetireReason.WorkLost || car.State != CarState.Outbound)
-                return;
-            // 회사 철거 시 출근 보상을 만들지 않고, 같은 ResumeTile을 구 귀가
-            // 경로에 재큐잉해 즉시 "포기 귀가"로 전환한다.
+                return inboundRoute;
+            // 회사 철거 시 출근 보상을 만들지 않고, 즉시 "포기 귀가"로 전환한다.
             car.State = CarState.Inbound;
             car.Distance = 0f;
-            if (!car.HasResume) return;
+            if (!car.HasResume) return inboundRoute;
             // ResumeTile은 아웃바운드 경로에서 캡처됐다. 일방통행 등으로 왕복 경로가
             // 갈라져 있으면 인바운드 경로에서 못 찾아 start=0(철거된 회사 쪽 타일)으로
-            // 폴백한다 — 이 파일 상단 주석이 막으려는 순간이동 그 자체. 인바운드 경로
-            // 기준 최근접 타일로 다시 잡는다(동률은 먼저 나온 인덱스, 결정론적).
+            // 폴백한다 — 이 파일 상단 주석이 막으려는 순간이동 그 자체. 현재 타일에서
+            // 구 귀가 종점으로 재계획해 제자리에서 이어 달리게 한다(워치독 L2와 같은 기계).
+            List<Vector2Int> replanned = _planner.ReplanFrom(
+                car.ResumeTile,
+                inboundRoute[inboundRoute.Count - 1]);
+            if (replanned != null && replanned.Count > 0)
+                return replanned;   // replanned[0] == ResumeTile — 재큐잉이 제자리에서 찾는다
+            // 재계획 실패(경로 고립 등) 예외 경로에서만 최근접 타일 스냅으로 폴백한다.
+            // 이 스냅은 거리 상한이 없지만, 여기 도달하는 순간 이미 현재 위치에서 집으로
+            // 가는 길 자체가 없는 상태라 어차피 워치독 수렴 대상이다.
             int best = 0;
             int bestDist = int.MaxValue;
             for (int p = 0; p < inboundRoute.Count; p++)
@@ -407,6 +424,7 @@ namespace CityFlow.Sim
                 if (dist == 0) break;
             }
             car.ResumeTile = inboundRoute[best];
+            return inboundRoute;
         }
 
         private void AppendPreviousAssignment(
@@ -422,6 +440,13 @@ namespace CityFlow.Sim
                 viewRouteIndex = _viewOutboundRoutes.Count;
                 _viewOutboundRoutes.Add(previous.Outbound);
                 _viewReturnRoutes.Add(previous.Inbound);
+            }
+            else
+            {
+                // 인덱스 보존 시에도 내용은 이 차의 실제 주행 경로로 덮는다 — 포기 귀가
+                // 재계획처럼 carry-over 경로가 교체된 경우 뷰 폴리라인이 따라오게.
+                _viewOutboundRoutes[viewRouteIndex] = previous.Outbound;
+                _viewReturnRoutes[viewRouteIndex] = previous.Inbound;
             }
             _sources.Add(previous.Car.Home);
             _sinks.Add(previous.Car.Work);

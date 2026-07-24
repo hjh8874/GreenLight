@@ -301,7 +301,9 @@ namespace CityFlow.Sim.Tests
         // 리뷰 지적(2026-07-24 hjh8874): 회사 철거 시 ResumeTile은 아웃바운드 경로에서
         // 캡처되는데 재큐잉은 인바운드 경로에서 찾는다. 일방통행 두 개로 출근=서쪽 링,
         // 귀가=동쪽 링을 강제해 왕복 타일 집합을 갈라 놓으면, 미수정 코드는 start=0
-        // 폴백으로 철거된 회사 쪽 타일에 순간이동한다.
+        // 폴백으로 철거된 회사 쪽 타일에 순간이동한다. 정차 지점 (0,4)는 인바운드
+        // 경로의 어느 타일과도 맨해튼 거리 4 이상이라, 최근접 스냅 폴백으로도 통과할
+        // 수 없다 — 제자리 재계획(포기 귀가)만 jump<=1을 만족한다.
         [Test]
         public void RemovedWork_DivergedReturnLoop_ResumesNearCurrentTile()
         {
@@ -327,7 +329,7 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(engine.Place(V(2, 7), TileType.Office));
             engine.SetGameHour(7f);
 
-            // 출근 차가 서쪽 링 초입(y=2, x<=1)에 도달할 때까지 진행.
+            // 출근 차가 서쪽 기둥 중간 (0,4)에 도달할 때까지 진행.
             Vector2Int carTile = default;
             bool reached = false;
             for (int tick = 0; tick < 20 && !reached; tick++)
@@ -337,9 +339,9 @@ namespace CityFlow.Sim.Tests
                 CarSnapshot s = engine.GetCarSnapshot(0);
                 if (s.State != CarState.Outbound) continue;
                 carTile = engine.ActiveRoutes[s.RouteIndex][s.TileIndex];
-                reached = carTile.y == 2 && carTile.x <= 1;
+                reached = carTile == V(0, 4);
             }
-            Assert.IsTrue(reached, "전제: 출근 차가 서쪽 링 초입 도달");
+            Assert.IsTrue(reached, "전제: 출근 차가 서쪽 기둥 중간 (0,4) 도달");
 
             List<Vector2Int> returnRoute =
                 engine.ActiveReturnRoutes[engine.GetCarSnapshot(0).RouteIndex];
@@ -350,30 +352,20 @@ namespace CityFlow.Sim.Tests
             engine.EnsureCarTopologyCurrent();
             engine.Tick(0.25f);
 
-            // 미수정 코드: officeSideStart(철거된 회사 쪽)에서 귀가 시작 → 한 틱 뒤에도
-            // 회사 근방 Inbound(직전 위치와 멀리 떨어짐). 수정 코드: 직전 위치 최근접
-            // 타일 재큐잉 → 근방 Inbound이거나, 그 지점이 귀가 종점이면 즉시 귀가 완료.
+            // (0,4)에서 인바운드 어느 타일도 거리 4 이상 → 한 틱 만의 귀가 완료는 불가.
+            // 제자리 재계획이면 재큐잉 후 한 틱 이동까지 포함해도 jump <= 1이어야 한다.
             CarSnapshot after = engine.GetCarSnapshot(0);
-            if (after.State == CarState.Inbound)
-            {
-                Vector2Int resumed =
-                    engine.ActiveReturnRoutes[after.RouteIndex][after.TileIndex];
-                Assert.AreNotEqual(
-                    officeSideStart,
-                    resumed,
-                    "철거된 회사 쪽 귀가 시작 타일로 순간이동하면 안 된다");
-                int jump = Mathf.Abs(resumed.x - carTile.x)
-                    + Mathf.Abs(resumed.y - carTile.y);
-                Assert.LessOrEqual(
-                    jump, 3, $"재큐잉 타일 {resumed}은 직전 위치 {carTile} 근방이어야 한다");
-            }
-            else
-            {
-                Assert.AreEqual(
-                    CarState.ParkedHome,
-                    after.State,
-                    "집 근방 재큐잉이라면 한 틱 내 귀가 완료만 허용된다");
-            }
+            Assert.AreEqual(CarState.Inbound, after.State, "포기 귀가 전환");
+            Vector2Int resumed =
+                engine.ActiveReturnRoutes[after.RouteIndex][after.TileIndex];
+            Assert.AreNotEqual(
+                officeSideStart,
+                resumed,
+                "철거된 회사 쪽 귀가 시작 타일로 순간이동하면 안 된다");
+            int jump = Mathf.Abs(resumed.x - carTile.x)
+                + Mathf.Abs(resumed.y - carTile.y);
+            Assert.LessOrEqual(
+                jump, 1, $"재큐잉 타일 {resumed}은 직전 위치 {carTile} 제자리여야 한다");
         }
 
         [Test]
