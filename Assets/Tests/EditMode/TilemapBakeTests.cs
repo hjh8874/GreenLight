@@ -15,11 +15,11 @@ namespace CityFlow.Authoring.Tests
             public readonly Dictionary<Vector2Int, TileType> Placed = new Dictionary<Vector2Int, TileType>();
             readonly int w, h;
             public RecordingPlacement(int w, int h) { this.w = w; this.h = h; }
-            public bool CanPlace(Vector2Int t, TileType type) =>
+            public bool CanPlace(Vector2Int t, TileType type, PlacementDirection direction = PlacementDirection.North) =>
                 t.x >= 0 && t.x < w && t.y >= 0 && t.y < h && type != TileType.Empty;
-            public bool Place(Vector2Int t, TileType type)
+            public bool Place(Vector2Int t, TileType type, PlacementDirection direction = PlacementDirection.North)
             {
-                if (!CanPlace(t, type)) return false;
+                if (!CanPlace(t, type, direction)) return false;
                 Placed[t] = type; return true;
             }
             public bool Remove(Vector2Int t) => Placed.Remove(t);

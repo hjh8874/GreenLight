@@ -101,6 +101,8 @@ namespace CityFlow.Fakes
 
         public Vector2Int GetFootprintSize(TileType type) => TileFootprint.GetSize(type);
 
+        public PlacementDirection GetDirection(Vector2Int tile) => PlacementDirection.North;
+
         public bool TryGetFootprintAnchor(Vector2Int tile, out Vector2Int anchor)
         {
             anchor = tile;

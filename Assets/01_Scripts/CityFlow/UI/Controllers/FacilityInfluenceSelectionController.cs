@@ -108,7 +108,7 @@ namespace CityFlow.UI.Controllers
             selectedFacility = clicked;
             selectedFacilityType = type;
             BuildInfluenceTiles(clicked, type, radius);
-            highlightRenderer.ShowHighlights(areaTiles, coveredHouses, useXYPlane: true);
+            highlightRenderer.ShowHighlights(areaTiles, coveredHouses, useXYPlane: true, isHospital: type == TileType.Hospital);
         }
 
         private void Subscribe()
@@ -183,7 +183,8 @@ namespace CityFlow.UI.Controllers
             highlightRenderer.ShowHighlights(
                 areaTiles,
                 coveredHouses,
-                useXYPlane: true
+                useXYPlane: true,
+                isHospital: selectedFacilityType == TileType.Hospital
             );
         }
 

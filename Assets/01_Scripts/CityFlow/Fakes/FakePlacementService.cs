@@ -23,14 +23,14 @@ namespace CityFlow.Fakes
             this.services = services;
         }
 
-        public bool CanPlace(Vector2Int tile, TileType type)
+        public bool CanPlace(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
             return GridUtil.IsInside(tile, width, height) && type != TileType.Empty;
         }
 
-        public bool Place(Vector2Int tile, TileType type)
+        public bool Place(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
-            if (!CanPlace(tile, type))
+            if (!CanPlace(tile, type, direction))
             {
                 return false;
             }

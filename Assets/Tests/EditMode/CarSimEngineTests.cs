@@ -185,6 +185,22 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void Snapshot_RestoresRotatedBuildingDirection()
+        {
+            var engine = new SimEngine(Cfg(), new SimEventHub());
+            var coord = new Vector2Int(1, 1);
+            engine.Place(coord, TileType.School, PlacementDirection.East);
+
+            SimSaveData save = engine.CreateSnapshot();
+            var restored = new SimEngine(Cfg(), new SimEventHub());
+            restored.RestoreSnapshot(save);
+
+            var readOnlyData = (IReadOnlyTileData)restored;
+            Assert.AreEqual(TileType.School, readOnlyData.GetTileType(coord));
+            Assert.AreEqual(PlacementDirection.East, readOnlyData.GetDirection(coord));
+        }
+
+        [Test]
         public void JumpedDay_IsExcludedAtNextMidnightWrap()
         {
             SimEngine engine = BuildStraightCity(Cfg(), new SimEventHub());
