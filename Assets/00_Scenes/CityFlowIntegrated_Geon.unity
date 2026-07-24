@@ -7512,7 +7512,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: m_fontSize
-      value: 30
+      value: 24
       objectReference: {fileID: 0}
     - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: m_fontAsset
@@ -10984,6 +10984,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1606631343}
     m_Modifications:
+    - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_fontSize
+      value: 24
+      objectReference: {fileID: 0}
     - target: {fileID: 1933230856837756137, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -19423,6 +19427,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1606631343}
     m_Modifications:
+    - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_fontSize
+      value: 24
+      objectReference: {fileID: 0}
     - target: {fileID: 1933230856837756137, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -19575,6 +19583,9 @@ MonoBehaviour:
   canvasGroup: {fileID: 1281748611}
   reportCard: {fileID: 1256068581}
   closeButton: {fileID: 2115171978}
+  initialCoinsText: {fileID: 0}
+  earnedCoinsText: {fileID: 0}
+  currentCoinsText: {fileID: 0}
   transitionDuration: 0.18
   hiddenScale: 0.96
 --- !u!225 &1281748611
@@ -27848,7 +27859,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: m_fontSize
-      value: 30
+      value: 24
       objectReference: {fileID: 0}
     - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: m_fontAsset
