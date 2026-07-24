@@ -2454,6 +2454,10 @@ GameObject:
   - component: {fileID: 111543637}
   - component: {fileID: 111543638}
   - component: {fileID: 111543639}
+  - component: {fileID: 111543643}
+  - component: {fileID: 111543642}
+  - component: {fileID: 111543641}
+  - component: {fileID: 111543640}
   m_Layer: 0
   m_Name: CityFlow_Integrated
   m_TagString: Untagged
@@ -2591,6 +2595,110 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.FlowBurstJuice
   burstSfxId: flow_burst
   shakeDuration: 0.2
+--- !u!114 &111543640
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 111543627}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 41c7a08591f93c040bbb4df42d360275, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Controllers.FlowBurstFloatingText
+  floatDuration: 1.2
+  floatHeight: 1.5
+  initialScale: 0.8
+  peakScale: 1.3
+  waveTextColor: {r: 0.2, g: 1, b: 0.4, a: 1}
+  fontSize: 5
+  waveDisplayText: GREEN WAVE!
+  useXYPlane: 0
+  initialPoolSize: 5
+--- !u!114 &111543641
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 111543627}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b151161839484c5fbf8095d45473d3be, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Feed.GreenFeedPresenter
+  feedService: {fileID: 111543642}
+  panelController: {fileID: 1477593973}
+  clearPreviewPostsAtRuntime: 1
+--- !u!114 &111543642
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 111543627}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ae80175034c54d6c95f0fcaa2d083ca6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.CitizenFeedService
+  settings: {fileID: 11400000, guid: 2ba500597bab6f54a9b0814fb8cff358, type: 2}
+  eventRules:
+  - {fileID: 11400000, guid: d3c2125ff8cac554cadd7ec511e913b8, type: 2}
+  - {fileID: 11400000, guid: f9f0f4f553c6ab84b8c4825439153991, type: 2}
+  - {fileID: 11400000, guid: a82312834622fea4e9363783800626cf, type: 2}
+  - {fileID: 11400000, guid: 565c0836c3b9e9a4f912cabb8fa875ff, type: 2}
+  - {fileID: 11400000, guid: aaa7c9caa15baae44a1b6d2fddb4f31e, type: 2}
+  - {fileID: 11400000, guid: 6b114d8b2e5cb47469f4e1f519d2f1f7, type: 2}
+  - {fileID: 11400000, guid: 79774e0fe0466474fbb243ebae5d563f, type: 2}
+  - {fileID: 11400000, guid: 868241fc466217b4680eab98a5ec8c9c, type: 2}
+  - {fileID: 11400000, guid: 579d46b19d0bbb049b5e239bd84b2bd9, type: 2}
+  - {fileID: 11400000, guid: f9e69c83252a4eb42a309d9999869fb4, type: 2}
+  - {fileID: 11400000, guid: bb35bc844b60ab647b93da505b2fab28, type: 2}
+  authors:
+  - {fileID: 11400000, guid: 3c1ba7ddd2b842c489050235089497ba, type: 2}
+  - {fileID: 11400000, guid: d5c949f039c951b4b8808ab3bd974bac, type: 2}
+  - {fileID: 11400000, guid: 06b855e89d2033d42b72674b13f411fd, type: 2}
+  - {fileID: 11400000, guid: faf0212c496e12c40b27e944fb22e385, type: 2}
+  - {fileID: 11400000, guid: 4fa44ae8b2ebb5448b30ad09946d8cd2, type: 2}
+  - {fileID: 11400000, guid: f6cb787927e23794cb030432217f447d, type: 2}
+  - {fileID: 11400000, guid: a5ceeb9d876bbb845b4ec6be04721f0a, type: 2}
+  - {fileID: 11400000, guid: 1fa9ec5569874ac46a0e0e02134ee71b, type: 2}
+  - {fileID: 11400000, guid: 53fd6459aeaea9f40b7b06aaff15c6ac, type: 2}
+  - {fileID: 11400000, guid: 6b69c97718964654b8fb81258cdf0672, type: 2}
+  - {fileID: 11400000, guid: 6b85708e86adb624cb8c21350b4895f8, type: 2}
+  - {fileID: 11400000, guid: 97bdc13187c0b9044af916d594c9d939, type: 2}
+  templateCollections:
+  - {fileID: 11400000, guid: 3f42ab1931a695e47ab3c7af3e045d00, type: 2}
+  - {fileID: 11400000, guid: fc608d2c7b103bf438d1db4ccc5fcb38, type: 2}
+  - {fileID: 11400000, guid: 4761d1334ef9dd447828c03e0ea80e4d, type: 2}
+  - {fileID: 11400000, guid: 57e998d7d03e8de4f86a9099bad6b035, type: 2}
+  - {fileID: 11400000, guid: 1f24bd6798b34eb40857587c3295bc0d, type: 2}
+  - {fileID: 11400000, guid: 24b9e00241b517e47851f59242379034, type: 2}
+  - {fileID: 11400000, guid: 24871a2986bcbef41a1efc2145a814f1, type: 2}
+  - {fileID: 11400000, guid: 4f2a8c56cad507a4089639272456b27d, type: 2}
+  - {fileID: 11400000, guid: dd0c985144e83354d82cebab0b187d49, type: 2}
+  - {fileID: 11400000, guid: 403e2536ea178b54cb8d2d458fab7a84, type: 2}
+  - {fileID: 11400000, guid: 8cdc9e487b4171742a989aa1f62417c6, type: 2}
+  signalPollSeconds: 0.2
+  signalSettleSeconds: 0.5
+--- !u!114 &111543643
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 111543627}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aef6097ab712f874c8fac0915eadedfa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.HospitalSystem
+  hospitalDefinition: {fileID: 11400000, guid: 957ae3bfd2380cf40b562f1856594661, type: 2}
+  gridWidth: 20
+  gridHeight: 20
+  currentHospitalStabilityBonus: 0
 --- !u!1 &121550534
 GameObject:
   m_ObjectHideFlags: 0
@@ -7452,7 +7560,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.TileSelectionController
   analysisCard: {fileID: 1632095791}
-  buildingInfoCard: {fileID: 0}
+  buildingInfoCard: {fileID: 1331164514}
   placementController: {fileID: 492217481}
   highlightBox: {fileID: 427040753}
   useXYPlane: 1
@@ -19527,6 +19635,9 @@ MonoBehaviour:
   canvasGroup: {fileID: 1281748611}
   reportCard: {fileID: 1256068581}
   closeButton: {fileID: 2115171978}
+  initialCoinsText: {fileID: 0}
+  earnedCoinsText: {fileID: 0}
+  currentCoinsText: {fileID: 0}
   transitionDuration: 0.18
   hiddenScale: 0.96
 --- !u!225 &1281748611

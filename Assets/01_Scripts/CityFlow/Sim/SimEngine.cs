@@ -230,6 +230,12 @@ namespace CityFlow.Sim
                 _carSim.LastStepJumped,
                 jamRatio,
                 _config);
+                
+            if (StepCount % 50 == 0)
+            {
+                ScanGreenWaves();
+            }
+
             PublishStabilityIfChanged();
             _events.Drain();
         }
@@ -254,6 +260,45 @@ namespace CityFlow.Sim
                 if (level == CongestionLevel.Jam) jammed++;
             }
             return roads <= 0 ? 0f : (float)jammed / roads;
+        }
+
+        private void ScanGreenWaves()
+        {
+            foreach (var fromTile in _signals.Tiles)
+            {
+                if (!_signals.TryGet(fromTile, out var fromSignal)) continue;
+                
+                Vector2Int[] directions = { Vector2Int.right, Vector2Int.up, Vector2Int.left, Vector2Int.down };
+                foreach (Vector2Int dir in directions)
+                {
+                    Vector2Int current = fromTile + dir;
+                    int dist = 1;
+                    Signal toSignal = null;
+                    Vector2Int toTile = current;
+                    
+                    while (_grid.InBounds(current) && _grid.GetTile(current) == TileType.Road)
+                    {
+                        if (_signals.TryGet(current, out toSignal))
+                        {
+                            toTile = current;
+                            break;
+                        }
+                        current += dir;
+                        dist++;
+                    }
+
+                    if (toSignal != null)
+                    {
+                        float eff = SignalMath.GreenWaveEfficiency(fromSignal, toSignal, dist, 0.5f);
+                        if (eff >= 0.85f)
+                        {
+                            int magnitude = (int)((eff - 0.8f) * 10f); 
+                            if (magnitude < 1) magnitude = 1;
+                            _events.QueueBurst(new FlowBurstEvent(toTile, magnitude));
+                        }
+                    }
+                }
+            }
         }
 
         internal static CongestionLevel CongestionForOccupancy(float occupancy, in SimConfig cfg) =>
