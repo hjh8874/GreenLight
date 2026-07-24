@@ -307,6 +307,18 @@ namespace CityFlow.Sim
             return node == NoNode ? NoNode : _cars[node];
         }
 
+        internal bool IsSafeResumeTile(Vector2Int tile)
+        {
+            if (!InBounds(tile)) return false;
+            int tileIndex = TileIndex(tile);
+            // Rebuild enqueue has no intersection stage or roundabout ring reservation.
+            // Resume only on an ordinary queue tile so those state machines admit the
+            // vehicle through their normal entry paths.
+            return !UsesSharedBudget(tileIndex)
+                && !_roundabouts[tileIndex]
+                && !IsRoundaboutArm(tileIndex);
+        }
+
         internal bool TryLocateCar(int carId, out Vector2Int tile, out Dir direction, out int slot)
             => TryLocateCar(carId, out tile, out direction, out slot, out _, out _);
 

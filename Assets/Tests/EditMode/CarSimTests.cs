@@ -220,6 +220,53 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void RebuildResume_IntersectionTile_TwoCrossingCarsBacktrackAndExit()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(5, 5);
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 3), TileType.Road));
+            Assert.IsTrue(grid.IsIntersection(V(2, 2)));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+
+            var routes = new ResumeRouteProvider();
+            routes.Add(10, V(1, 2), V(2, 2), V(3, 2));
+            routes.Add(11, V(2, 1), V(2, 2), V(2, 3));
+            int eastboundStart = CarSim.FindResumeStart(
+                routes.RouteFor(10),
+                V(2, 2),
+                net);
+            int northboundStart = CarSim.FindResumeStart(
+                routes.RouteFor(11),
+                V(2, 2),
+                net);
+
+            Assert.AreEqual(0, eastboundStart);
+            Assert.AreEqual(0, northboundStart);
+            Assert.IsTrue(net.TryEnqueue(routes.RouteFor(10)[eastboundStart], Dir.E, 10));
+            Assert.IsTrue(net.TryEnqueue(routes.RouteFor(11)[northboundStart], Dir.N, 11));
+
+            var arrived = new HashSet<int>();
+            for (int tick = 0; tick < 8 && arrived.Count < 2; tick++)
+            {
+                net.Step(routes);
+                for (int i = 0; i < net.ArrivalCount; i++)
+                {
+                    arrived.Add(net.GetArrival(i).CarId);
+                }
+            }
+
+            CollectionAssert.AreEquivalent(
+                new[] { 10, 11 },
+                arrived,
+                "교차 방향 재개 차량도 일반 타일에서 중재를 거쳐 유한 틱 안에 빠져나가야 한다");
+        }
+
+        [Test]
         public void Departure_WhenAccessRoadIsRamp_EntersHighway()
         {
             SimConfig cfg = Cfg();
@@ -269,6 +316,48 @@ namespace CityFlow.Sim.Tests
             planner = new RoutePlanner(grid.Width, grid.Height);
             planner.Plan(demands, road, grid, cfg);
             Assert.AreEqual(2, demands.Demands.Count);
+        }
+
+        private sealed class ResumeRouteProvider : ICarRouteProvider
+        {
+            private readonly Dictionary<int, List<Vector2Int>> _routes = new();
+
+            public void Add(int carId, params Vector2Int[] route) =>
+                _routes.Add(carId, new List<Vector2Int>(route));
+
+            public IReadOnlyList<Vector2Int> RouteFor(int carId) => _routes[carId];
+
+            public bool TryGetNextTile(
+                int carId,
+                Vector2Int current,
+                out Vector2Int next,
+                out Dir entryDirAtNext)
+            {
+                List<Vector2Int> route = _routes[carId];
+                for (int i = 0; i < route.Count - 1; i++)
+                {
+                    if (route[i] != current) continue;
+                    next = route[i + 1];
+                    Vector2Int delta = next - current;
+                    entryDirAtNext = delta == Vector2Int.right
+                        ? Dir.E
+                        : delta == Vector2Int.left
+                            ? Dir.W
+                            : delta == Vector2Int.up
+                                ? Dir.N
+                                : Dir.S;
+                    return true;
+                }
+                next = default;
+                entryDirAtNext = default;
+                return false;
+            }
+
+            public bool IsDestination(int carId, Vector2Int tile)
+            {
+                List<Vector2Int> route = _routes[carId];
+                return route[route.Count - 1] == tile;
+            }
         }
 
         private static int TotalQueued(RoadQueueNetwork net, int width, int height)

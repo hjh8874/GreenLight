@@ -246,8 +246,7 @@ namespace CityFlow.Sim
                 if (car.HasResume)
                 {
                     car.HasResume = false;
-                    for (int p = 0; p < route.Count; p++)
-                        if (route[p] == car.ResumeTile) { start = p; break; }
+                    start = FindResumeStart(route, car.ResumeTile, net);
                 }
                 Dir entry = Dir.N;
                 if (start > 0 && !TryRouteDirection(route[start] - route[start - 1], out entry)) start = 0;
@@ -260,6 +259,35 @@ namespace CityFlow.Sim
                 _linkProgress[i] = 0f;
                 _roundaboutProgress[i] = -1f;
             }
+        }
+
+        internal static int FindResumeStart(
+            IReadOnlyList<Vector2Int> route,
+            Vector2Int resumeTile,
+            RoadQueueNetwork net)
+        {
+            int resumeIndex = -1;
+            for (int p = 0; p < route.Count; p++)
+            {
+                if (route[p] != resumeTile) continue;
+                resumeIndex = p;
+                break;
+            }
+            if (resumeIndex < 0) return 0;
+
+            for (int p = resumeIndex; p >= 0; p--)
+            {
+                if (net.IsSafeResumeTile(route[p])) return p;
+            }
+
+            // Access routes normally begin on an ordinary road. Keep the invariant
+            // even for an unusual route that starts on a special tile by resuming at
+            // the first ordinary tile ahead instead of spawning inside its state machine.
+            for (int p = resumeIndex + 1; p < route.Count; p++)
+            {
+                if (net.IsSafeResumeTile(route[p])) return p;
+            }
+            return 0;
         }
 
         private void SyncLocations(RoadQueueNetwork net)
