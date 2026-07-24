@@ -2547,6 +2547,7 @@ MonoBehaviour:
   zoomDistanceRange: 10
   zoomScrollSensitivity: 1
   cameraRotationSpeed: 500
+  cameraRotationSmoothTime: 0.15
   invertCameraRotationDirection: 0
   boardColor: {r: 0.78, g: 0.82, b: 0.78, a: 1}
   gridLineColor: {r: 0.28, g: 0.36, b: 0.38, a: 1}

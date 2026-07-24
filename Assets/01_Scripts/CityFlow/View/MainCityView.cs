@@ -99,6 +99,8 @@ namespace CityFlow.View
         [SerializeField, Min(0.001f)] private float zoomScrollSensitivity = 1f;
         [Tooltip("카메라가 목표 방향으로 회전하는 속도(초당 각도)")]
         [SerializeField, Min(1f)] private float cameraRotationSpeed = 500f;
+        [Tooltip("카메라 회전이 목표 방향에 도달할 때까지의 감속 시간")]
+        [SerializeField, Min(0.01f)] private float cameraRotationSmoothTime = 0.15f;
         [Tooltip("마우스 측면 버튼의 카메라 회전 방향을 반대로 적용")]
         [SerializeField] private bool invertCameraRotationDirection;
 
@@ -172,6 +174,7 @@ namespace CityFlow.View
         private float zoomDistance;
         private float currentCameraYawDegrees;
         private float targetCameraYawDegrees;
+        private float cameraYawVelocity;
         private bool isIsometricView;
 
         // 도착 코인 팝(항목 A): 풀 고정 크기 — 전부 사용 중이면 가장 오래된 슬롯을 라운드로빈으로 재사용.
@@ -375,15 +378,16 @@ namespace CityFlow.View
             zoomDistance = minimumZoomDistance;
             currentCameraYawDegrees = 0f;
             targetCameraYawDegrees = 0f;
+            cameraYawVelocity = 0f;
             isIsometricView = true;
             ApplyCameraView();
         }
 
-        private void HandleCameraViewInput()
+        private bool HandleCameraViewInput()
         {
             if (mainCamera == null)
             {
-                return;
+                return false;
             }
 
             bool cameraViewChanged = false;
@@ -449,28 +453,34 @@ namespace CityFlow.View
 
             if (cameraViewChanged)
             {
-                ApplyCameraView();
-
                 if (cameraModeChanged && tileData != null)
                 {
                     RefreshAllTiles();
                 }
             }
+
+            return cameraViewChanged;
         }
 
-        private void UpdateCameraRotation()
+        private bool UpdateCameraRotation()
         {
-            float nextYawDegrees = Mathf.MoveTowards(
+            float previousYawDegrees = currentCameraYawDegrees;
+            currentCameraYawDegrees = Mathf.SmoothDamp(
                 currentCameraYawDegrees,
                 targetCameraYawDegrees,
-                cameraRotationSpeed * Time.deltaTime);
-            if (Mathf.Approximately(nextYawDegrees, currentCameraYawDegrees))
+                ref cameraYawVelocity,
+                cameraRotationSmoothTime,
+                cameraRotationSpeed,
+                Time.deltaTime);
+
+            if (Mathf.Abs(targetCameraYawDegrees - currentCameraYawDegrees) < 0.01f
+                && Mathf.Abs(cameraYawVelocity) < 0.01f)
             {
-                return;
+                currentCameraYawDegrees = targetCameraYawDegrees;
+                cameraYawVelocity = 0f;
             }
 
-            currentCameraYawDegrees = nextYawDegrees;
-            ApplyCameraView();
+            return !Mathf.Approximately(previousYawDegrees, currentCameraYawDegrees);
         }
 
         private void ApplyCameraView()
@@ -518,17 +528,22 @@ namespace CityFlow.View
                 ExitDriveView();
             }
 
-            if (!IsDriveViewActive)
-            {
-                UpdateCameraRotation();
-            }
-
+            bool cameraViewChanged = false;
             if (!OfflineSettlementPopup.IsInteractionBlocked)
             {
                 HandleVehicleSelectionInput();
                 if (!IsDriveViewActive)
                 {
-                    HandleCameraViewInput();
+                    cameraViewChanged = HandleCameraViewInput();
+                }
+            }
+
+            if (!IsDriveViewActive)
+            {
+                cameraViewChanged |= UpdateCameraRotation();
+                if (cameraViewChanged)
+                {
+                    ApplyCameraView();
                 }
             }
 
