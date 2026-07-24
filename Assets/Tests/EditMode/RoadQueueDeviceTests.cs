@@ -893,6 +893,101 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(-1, q.CarAtHead(northArm, Dir.S));
         }
 
+        [Test]
+        public void Roundabout_BlockedExitToSameActiveArm_HandsOffAndBothProgress()
+        {
+            RoadQueueNetwork q = BuildRoundaboutExitHandoffScenario(
+                includeOtherArm: false,
+                out FakeRouteProvider routes);
+            Vector2Int center = V(2, 2);
+            Vector2Int westArm = V(1, 2);
+
+            q.Step(routes);
+
+            Assert.AreEqual(1, q.RingCellCar(center, Dir.W),
+                "The active entrant takes the vacated mouth in the same service round.");
+            Assert.AreEqual(3, q.CarAtHead(westArm, Dir.W),
+                "The exiting ring car moves behind the entrant, restoring arm capacity.");
+
+            var arrived = new HashSet<int>();
+            for (int tick = 0; tick < 8 && arrived.Count < 2; tick++)
+            {
+                q.Step(routes);
+                for (int i = 0; i < q.ArrivalCount; i++)
+                    arrived.Add(q.GetArrival(i).CarId);
+            }
+            CollectionAssert.AreEquivalent(
+                new[] { 1, 3 },
+                arrived,
+                "The same-arm ring/entry cycle must drain in finite ticks.");
+        }
+
+        [Test]
+        public void Roundabout_BlockedExitHandoff_DoesNotAdmitOtherArm()
+        {
+            RoadQueueNetwork q = BuildRoundaboutExitHandoffScenario(
+                includeOtherArm: true,
+                out FakeRouteProvider routes);
+            Vector2Int center = V(2, 2);
+            Vector2Int northArm = V(2, 3);
+            Vector2Int northApproach = V(2, 4);
+
+            q.Step(routes);
+
+            Assert.AreEqual(1, q.RingCellCar(center, Dir.W));
+            Assert.AreEqual(2, q.CarAtHead(northApproach, Dir.S),
+                "Only the blocked exit's W arm is exempt; N remains on its approach.");
+            Assert.AreEqual(-1, q.CarAtHead(northArm, Dir.S));
+        }
+
+        private static RoadQueueNetwork BuildRoundaboutExitHandoffScenario(
+            bool includeOtherArm,
+            out FakeRouteProvider routes)
+        {
+            CityGrid grid = CrossGrid5();
+            Vector2Int center = V(2, 2);
+            Vector2Int westArm = V(1, 2);
+            Vector2Int westApproach = V(0, 2);
+            Vector2Int eastArm = V(3, 2);
+            Vector2Int northArm = V(2, 3);
+            Vector2Int northApproach = V(2, 4);
+            Vector2Int southArm = V(2, 1);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var q = new RoadQueueNetwork(5, 5, Cfg());
+            q.RebuildTopology(grid, devices);
+            routes = new FakeRouteProvider();
+
+            // Car 3 enters at S and advances S -> E -> N -> W, where it exits.
+            // The S -> E transition leaves W's two merge cells free long enough
+            // for car 1 to claim the arm before car 3 reaches the exit.
+            routes.Add(3, center, westArm);
+            Assert.IsTrue(q.TryEnqueue(center, Dir.N, 3));
+            q.Step(routes);
+            Assert.AreEqual(3, q.RingCellCar(center, Dir.S));
+
+            // Car 1 obtains W-side ownership and occupies the single-cell arm.
+            routes.Add(1, westApproach, westArm, center, eastArm);
+            Assert.IsTrue(q.TryEnqueue(westApproach, Dir.E, 1));
+            q.Step(routes);
+            Assert.AreEqual(3, q.RingCellCar(center, Dir.E));
+            Assert.AreEqual(1, q.CarAtHead(westArm, Dir.E));
+
+            if (includeOtherArm)
+            {
+                routes.Add(2, northApproach, northArm, center, southArm);
+                Assert.IsTrue(q.TryEnqueue(northApproach, Dir.S, 2));
+            }
+
+            q.Step(routes);
+            Assert.AreEqual(3, q.RingCellCar(center, Dir.N));
+            Assert.AreEqual(1, q.CarAtHead(westArm, Dir.E));
+            q.Step(routes);
+            Assert.AreEqual(3, q.RingCellCar(center, Dir.W));
+            Assert.AreEqual(1, q.CarAtHead(westArm, Dir.E));
+            return q;
+        }
+
         private static void RegisterAllEntryDirections(RoundaboutTrafficState state)
         {
             state.RegisterEntryDemand(Dir.N);

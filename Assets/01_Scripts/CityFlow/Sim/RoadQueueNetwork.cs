@@ -1190,6 +1190,7 @@ namespace CityFlow.Sim
                 Vector2Int position = TileAt(tile);
                 RoundaboutTrafficState state = _roundaboutStates[tile];
                 int heldMask = 0;
+                int handoffSide = NoNode;
 
                 for (int cell = 0; cell < DirectionCount; cell++)
                 {
@@ -1208,14 +1209,35 @@ namespace CityFlow.Sim
                         || (int)exit != cell || !TryQueueIndex(next, exit, out int toQueue)) continue;
                     if (!CanAcceptNormally(toQueue))
                     {
-                        _blockedTicks[node]++;
-                        heldMask |= 1 << cell;
-                        continue;
+                        bool sameArmHandoff = state.CanHandoffBlockedExit(
+                                (Dir)cell,
+                                node,
+                                out int activeEntryNode)
+                            && IsNodeAtTileHead(activeEntryNode, TileIndex(next));
+                        if (!sameArmHandoff)
+                        {
+                            _blockedTicks[node]++;
+                            heldMask |= 1 << cell;
+                            continue;
+                        }
+
+                        // Temporarily append the exiting car behind the active arm car.
+                        // CollectIntents immediately admits that exact head into the now
+                        // empty ring cell, restoring the arm's physical capacity in-round.
+                        handoffSide = cell;
                     }
                     state.Remove((Dir)cell);
                     _movedThisTick[node] = true;
                     _blockedTicks[node] = 0;
                     AppendNode(toQueue, node);
+                }
+
+                if (handoffSide != NoNode)
+                {
+                    // Do not advance the ring into the vacated mouth. Only the active
+                    // entrant from the exit target arm may consume this exception.
+                    state.BlockEntriesExcept((Dir)handoffSide);
+                    continue;
                 }
 
                 // 이탈 대기차가 있으면 링 전체가 그 차의 점유를 존중해 정지한다.
@@ -1249,6 +1271,18 @@ namespace CityFlow.Sim
                     if (node != NoNode) _movedThisTick[node] = true;
                 }
             }
+        }
+
+        private bool IsNodeAtTileHead(int node, int tileIndex)
+        {
+            if (node == NoNode || tileIndex < 0 || tileIndex >= _roundabouts.Length)
+                return false;
+            int firstQueue = tileIndex * DirectionCount;
+            for (int direction = 0; direction < DirectionCount; direction++)
+            {
+                if (_heads[firstQueue + direction] == node) return true;
+            }
+            return false;
         }
 
         private void ServiceHighwayLinks(ref StepResult result)
