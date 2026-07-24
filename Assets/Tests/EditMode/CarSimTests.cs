@@ -220,6 +220,143 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void RebuildResume_IntersectionTile_TwoCrossingCarsBacktrackAndExit()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(5, 5);
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 3), TileType.Road));
+            Assert.IsTrue(grid.IsIntersection(V(2, 2)));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+
+            var routes = new ResumeRouteProvider();
+            routes.Add(10, V(1, 2), V(2, 2), V(3, 2));
+            routes.Add(11, V(2, 1), V(2, 2), V(2, 3));
+            int eastboundStart = CarSim.FindResumeStart(
+                routes.RouteFor(10),
+                V(2, 2),
+                net);
+            int northboundStart = CarSim.FindResumeStart(
+                routes.RouteFor(11),
+                V(2, 2),
+                net);
+
+            Assert.AreEqual(0, eastboundStart);
+            Assert.AreEqual(0, northboundStart);
+            Assert.IsTrue(net.TryEnqueue(routes.RouteFor(10)[eastboundStart], Dir.E, 10));
+            Assert.IsTrue(net.TryEnqueue(routes.RouteFor(11)[northboundStart], Dir.N, 11));
+
+            var arrived = new HashSet<int>();
+            for (int tick = 0; tick < 8 && arrived.Count < 2; tick++)
+            {
+                net.Step(routes);
+                for (int i = 0; i < net.ArrivalCount; i++)
+                {
+                    arrived.Add(net.GetArrival(i).CarId);
+                }
+            }
+
+            CollectionAssert.AreEquivalent(
+                new[] { 10, 11 },
+                arrived,
+                "교차 방향 재개 차량도 일반 타일에서 중재를 거쳐 유한 틱 안에 빠져나가야 한다");
+        }
+
+        [Test]
+        public void RebuildResume_AdjacentIntersection_FullOnlyOrdinaryTileRetriesAndProgresses()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(5, 5);
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 3), TileType.Road));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+
+            var routes = new ResumeRouteProvider();
+            routes.Add(10, V(1, 2), V(2, 2));
+            Assert.IsTrue(net.TryEnqueue(V(1, 2), Dir.E, 20));
+            Assert.IsTrue(net.TryEnqueue(V(1, 2), Dir.E, 21));
+            bool hasResume = true;
+
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(10),
+                V(2, 2),
+                ref hasResume,
+                net,
+                10,
+                out int start));
+            Assert.IsTrue(hasResume,
+                "유일한 일반 재개 타일이 잠시 만석이면 다음 틱에도 같은 재개를 재시도해야 한다");
+            Assert.AreEqual(0, start);
+
+            net.RemoveAllCars();
+            Assert.IsTrue(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(10),
+                V(2, 2),
+                ref hasResume,
+                net,
+                10,
+                out start));
+            Assert.IsFalse(hasResume);
+
+            bool arrived = false;
+            for (int tick = 0; tick < 4 && !arrived; tick++)
+            {
+                net.Step(routes);
+                for (int i = 0; i < net.ArrivalCount; i++)
+                {
+                    if (net.GetArrival(i).CarId == 10) arrived = true;
+                }
+            }
+            Assert.IsTrue(arrived, "재개 큐가 비면 정상 교차로 중재로 진입해 유한 틱 안에 도착한다");
+        }
+
+        [Test]
+        public void Departure_SpecialRouteOrigin_StaysOffNetwork()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(5, 5);
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 3), TileType.Road));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+
+            var routes = new ResumeRouteProvider();
+            routes.Add(12, V(2, 2), V(3, 2));
+            bool hasResume = true;
+
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(12),
+                V(2, 2),
+                ref hasResume,
+                net,
+                12,
+                out int start));
+            Assert.IsFalse(hasResume, "안전한 이전 타일이 없으면 중간 재개를 명시적으로 포기한다");
+            Assert.AreEqual(0, start);
+
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(12),
+                default,
+                ref hasResume,
+                net,
+                12,
+                out start));
+            Assert.AreEqual(0, TotalQueued(net, grid.Width, grid.Height),
+                "신규 출발도 특수 route[0]에 stage 없는 차를 앉히지 않고 오프네트워크 대기한다");
+        }
+
+        [Test]
         public void Departure_WhenAccessRoadIsRamp_EntersHighway()
         {
             SimConfig cfg = Cfg();
@@ -252,6 +389,163 @@ namespace CityFlow.Sim.Tests
                 "a car whose first route step is a highway jump must be enqueued on the link");
         }
 
+        [Test]
+        public void LivenessWatchdog_BlockRemovedWithDetour_ReroutesAtL2AndProgresses()
+        {
+            BuildWatchdogCity(
+                out CityGrid grid,
+                out RoadNetwork road,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.AreEqual(1, sim.GetCar(0).TileIndex, "전제: 교차로 직전 타일까지 전진");
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 90));
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
+
+            Assert.IsTrue(grid.Remove(V(2, 2)), "직선 경로를 철거해 위쪽 우회로만 남긴다");
+            planner.Plan(demands, road, grid, Cfg());
+
+            for (int tick = 0; tick < Cfg().GridlockValveTicks * 3 - 1; tick++)
+                sim.Step(7f, net, events);
+            Assert.AreEqual(0, sim.RescueRerouteCount, "L2 임계 전 조기 구제 금지");
+            sim.Step(7f, net, events);
+
+            Assert.AreEqual(1, sim.RescueRerouteCount);
+            Assert.AreEqual(0, sim.RescueRestartCount);
+            Assert.AreEqual(0, sim.LastRescueCarId);
+            Assert.AreEqual(V(1, 2), sim.LastRescueTile);
+            int rescueRouteIndex = sim.GetCar(0).RouteIndex;
+            Assert.GreaterOrEqual(rescueRouteIndex, planner.CarRoutes.Count);
+            CollectionAssert.DoesNotContain(
+                sim.ActiveRoutes[rescueRouteIndex],
+                V(2, 2),
+                "View가 읽는 route index도 차량별 L2 우회 경로를 가리켜야 한다");
+
+            for (int tick = 0;
+                 tick < 8 && sim.GetCar(0).State == CarState.Outbound;
+                 tick++)
+            {
+                sim.Step(7f, net, events);
+            }
+            Assert.AreEqual(
+                CarState.ParkedWork,
+                sim.GetCar(0).State,
+                "L2 경로 교체 뒤 철거 타일을 피해 유한 틱 안에 도착해야 한다");
+        }
+
+        [Test]
+        public void LivenessWatchdog_NoDetour_RestartsAtL3AndCountsRescue()
+        {
+            BuildWatchdogCity(
+                out CityGrid grid,
+                out RoadNetwork road,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 90));
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
+
+            Assert.IsTrue(grid.Remove(V(2, 2)));
+            Assert.IsTrue(grid.Remove(V(1, 3)), "우회로도 끊어 L2 재탐색을 실패시킨다");
+            planner.Plan(demands, road, grid, Cfg());
+
+            for (int tick = 0; tick < Cfg().GridlockValveTicks * 6 - 1; tick++)
+                sim.Step(7f, net, events);
+            Assert.AreEqual(0, sim.RescueRestartCount, "L3 임계 전 조기 재출발 금지");
+            sim.Step(7f, net, events);
+
+            Assert.AreEqual(1, sim.RescueRerouteCount, "L2 재탐색 시도도 발동 누계에 포함");
+            Assert.AreEqual(1, sim.RescueRestartCount);
+            Assert.AreEqual(0, sim.LastRescueCarId);
+            Assert.AreEqual(V(1, 2), sim.LastRescueTile);
+            Assert.AreEqual(
+                0,
+                sim.GetCar(0).TileIndex,
+                "L3는 막힌 중간 큐를 버리고 원래 출발 타일에서 트립을 재시작한다");
+        }
+
+        [Test]
+        public void LivenessWatchdog_TemporaryBlockBelowL2_DoesNotActivate()
+        {
+            BuildWatchdogCity(
+                out _,
+                out _,
+                out _,
+                out _,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 90));
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
+
+            for (int tick = 0; tick < Cfg().GridlockValveTicks * 3 - 1; tick++)
+                sim.Step(7f, net, events);
+            Assert.AreEqual(0, sim.RescueRerouteCount);
+            Assert.AreEqual(0, sim.RescueRestartCount);
+
+            Assert.IsTrue(net.TryRemoveCarForRescue(90));
+            Assert.IsTrue(net.TryRemoveCarForRescue(91));
+            for (int tick = 0;
+                 tick < 8 && sim.GetCar(0).State == CarState.Outbound;
+                 tick++)
+            {
+                sim.Step(7f, net, events);
+            }
+
+            Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
+            Assert.AreEqual(0, sim.RescueRerouteCount);
+            Assert.AreEqual(0, sim.RescueRestartCount);
+        }
+
+        private static void BuildWatchdogCity(
+            out CityGrid grid,
+            out RoadNetwork road,
+            out DemandMap demands,
+            out RoutePlanner planner,
+            out RoadQueueNetwork net,
+            out CarSim sim,
+            out SimEventBuffer events)
+        {
+            SimConfig cfg = Cfg();
+            grid = new CityGrid(6, 4);
+            for (int x = 0; x <= 5; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            for (int x = 1; x <= 4; x++)
+                Assert.IsTrue(grid.Place(V(x, 3), TileType.Road));
+            // The upper detour already makes (2,2) an intersection. A south spur at
+            // (2,1) would also become the 2x2 house's first frontage and bypass the
+            // intended ordinary approach tiles before the watchdog blockade.
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            Assert.IsTrue(grid.IsIntersection(V(2, 2)));
+
+            road = new RoadNetwork(grid);
+            demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+            CollectionAssert.AreEqual(
+                new[] { V(0, 2), V(1, 2), V(2, 2), V(3, 2), V(4, 2) },
+                planner.CarRoutes[0],
+                "전제: 최초 경로는 짧은 직선 교차로 경로");
+
+            net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            events = new SimEventBuffer(new SimEventHub());
+        }
+
         private static void BuildStraightCity(
             out CityGrid grid,
             out DemandMap demands,
@@ -269,6 +563,48 @@ namespace CityFlow.Sim.Tests
             planner = new RoutePlanner(grid.Width, grid.Height);
             planner.Plan(demands, road, grid, cfg);
             Assert.AreEqual(2, demands.Demands.Count);
+        }
+
+        private sealed class ResumeRouteProvider : ICarRouteProvider
+        {
+            private readonly Dictionary<int, List<Vector2Int>> _routes = new();
+
+            public void Add(int carId, params Vector2Int[] route) =>
+                _routes.Add(carId, new List<Vector2Int>(route));
+
+            public IReadOnlyList<Vector2Int> RouteFor(int carId) => _routes[carId];
+
+            public bool TryGetNextTile(
+                int carId,
+                Vector2Int current,
+                out Vector2Int next,
+                out Dir entryDirAtNext)
+            {
+                List<Vector2Int> route = _routes[carId];
+                for (int i = 0; i < route.Count - 1; i++)
+                {
+                    if (route[i] != current) continue;
+                    next = route[i + 1];
+                    Vector2Int delta = next - current;
+                    entryDirAtNext = delta == Vector2Int.right
+                        ? Dir.E
+                        : delta == Vector2Int.left
+                            ? Dir.W
+                            : delta == Vector2Int.up
+                                ? Dir.N
+                                : Dir.S;
+                    return true;
+                }
+                next = default;
+                entryDirAtNext = default;
+                return false;
+            }
+
+            public bool IsDestination(int carId, Vector2Int tile)
+            {
+                List<Vector2Int> route = _routes[carId];
+                return route[route.Count - 1] == tile;
+            }
         }
 
         private static int TotalQueued(RoadQueueNetwork net, int width, int height)

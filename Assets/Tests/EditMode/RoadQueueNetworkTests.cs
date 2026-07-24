@@ -424,6 +424,22 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void RescueRemoval_ClearsIntersectionRearState()
+        {
+            RoadQueueNetwork q = BuildIntersectionRearClearanceScenario(
+                out FakeRouteProvider routes);
+            Assert.IsTrue(q.TryRemoveCarForRescue(30));
+            Assert.AreEqual(0, q.GetBlockedTicks(30));
+
+            q.Step(routes);
+
+            Assert.AreEqual(
+                31,
+                q.CarAtHead(V(2, 1), Dir.N),
+                "ReleaseNode가 clearing/stage를 함께 지워 다음 틱 점유 재구성이 깨끗해야 한다");
+        }
+
+        [Test]
         public void Step_OpposingStraights_EnterIntersectionTogether()
         {
             SimConfig cfg = Cfg();
@@ -488,6 +504,11 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out turnProgress));
             Assert.AreEqual(0.25f, turnProgress, 1e-4f,
                 "The turn waits through the straight vehicle's exit tick.");
+
+            q.Step(routes);
+            Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out turnProgress));
+            Assert.AreEqual(0.25f, turnProgress, 1e-4f,
+                "The turn waits one rear-clearance tick after the straight vehicle exits.");
 
             q.Step(routes);
             Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out turnProgress));
@@ -579,8 +600,102 @@ namespace CityFlow.Sim.Tests
             q.Step(routes);
 
             Assert.IsTrue(q.TryLocateCar(10, out _, out _, out _, out firstProgress));
+            Assert.AreEqual(0.25f, firstProgress, 1e-4f,
+                "The inside turn waits through the exiting vehicle's rear-clearance tick.");
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(10, out _, out _, out _, out firstProgress));
             Assert.AreEqual(0.75f, firstProgress, 1e-4f,
                 "The inside turn proceeds after the conflicting vehicle fully clears.");
+        }
+
+        [Test]
+        public void Step_ContinuousOpposingStraights_StarvedLeftTurnPassesWithinBound()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridlockValveTicks = 8;
+            RoadQueueNetwork q = BuildContinuousOpposingStraightScenario(
+                cfg,
+                out FakeRouteProvider routes);
+            int advancedTick = -1;
+            int exitedTick = -1;
+
+            for (int tick = 1; tick <= cfg.GridlockValveTicks + 4; tick++)
+            {
+                EnqueueOpposingStraight(q, routes, 100 + tick);
+                q.Step(routes);
+                Assert.IsTrue(q.TryLocateCar(
+                    90,
+                    out _,
+                    out _,
+                    out _,
+                    out float turnProgress));
+                if (advancedTick < 0 && turnProgress >= 0.75f) advancedTick = tick;
+                if (q.CarAtHead(V(2, 2), Dir.N) == 90)
+                {
+                    exitedTick = tick;
+                    break;
+                }
+            }
+
+            Assert.That(
+                advancedTick,
+                Is.InRange(1, cfg.GridlockValveTicks + 3),
+                "A starved turn must win once the occupied path and one rear-clearance tick finish.");
+            Assert.That(
+                exitedTick,
+                Is.InRange(1, cfg.GridlockValveTicks + 4),
+                "Continuous straight arrivals cannot keep the turn inside forever.");
+        }
+
+        [Test]
+        public void Step_ContinuousCrossingStraights_StarvedLeftTurnEntersWithinBound()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridlockValveTicks = 8;
+            RoadQueueNetwork q = BuildContinuousCrossingStraightScenario(
+                cfg,
+                out FakeRouteProvider routes);
+            int enteredTick = -1;
+
+            for (int tick = 1; tick <= cfg.GridlockValveTicks + 3; tick++)
+            {
+                EnqueueCrossingStraight(q, routes, 300 + tick);
+                q.Step(routes);
+                if (q.CarAtHead(V(2, 1), Dir.E) == 90)
+                {
+                    enteredTick = tick;
+                    break;
+                }
+            }
+
+            Assert.That(
+                enteredTick,
+                Is.InRange(1, cfg.GridlockValveTicks + 3),
+                "A starved approach head must beat newly arriving non-starved straights.");
+        }
+
+        [Test]
+        public void Step_ContinuousCrossingStraights_BelowAgingThresholdKeepPriority()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridlockValveTicks = 8;
+            RoadQueueNetwork q = BuildContinuousCrossingStraightScenario(
+                cfg,
+                out FakeRouteProvider routes);
+
+            for (int tick = 1; tick < cfg.GridlockValveTicks; tick++)
+            {
+                EnqueueCrossingStraight(q, routes, 400 + tick);
+                q.Step(routes);
+            }
+
+            Assert.AreEqual(
+                90,
+                q.CarAtHead(V(1, 1), Dir.E),
+                "Before the threshold, the existing straight-over-turn rule is unchanged.");
+            Assert.AreEqual(-1, q.CarAtHead(V(2, 1), Dir.E));
         }
 
         [Test]
@@ -605,6 +720,33 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(30, q.CarAtHead(V(3, 1), Dir.E));
             Assert.AreEqual(31, q.CarAtHead(V(1, 1), Dir.E));
             Assert.AreEqual(0, q.QueueCount(V(2, 1), Dir.E));
+        }
+
+        [Test]
+        public void Step_IntersectionRearClearing_BlocksConflictingEntryForFollowingTick()
+        {
+            RoadQueueNetwork q = BuildIntersectionRearClearanceScenario(
+                out FakeRouteProvider routes);
+
+            q.Step(routes);
+
+            Assert.AreEqual(31, q.CarAtHead(V(2, 0), Dir.N),
+                "The crossing vehicle must wait while the exited vehicle's rear clears.");
+            Assert.AreEqual(0, q.QueueCount(V(2, 1), Dir.N));
+        }
+
+        [Test]
+        public void Step_IntersectionRearClearing_AllowsConflictingEntryAfterFollowingTick()
+        {
+            RoadQueueNetwork q = BuildIntersectionRearClearanceScenario(
+                out FakeRouteProvider routes);
+
+            q.Step(routes);
+            q.Step(routes);
+
+            Assert.AreEqual(31, q.CarAtHead(V(2, 1), Dir.N),
+                "The crossing path becomes available after the fixed one-tick rear-clearance window.");
+            Assert.AreEqual(-1, q.CarAtHead(V(2, 0), Dir.N));
         }
 
         [Test]
@@ -661,6 +803,95 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
             Assert.IsTrue(grid.IsIntersection(V(2, 1)));
             return grid;
+        }
+
+        private static RoadQueueNetwork BuildContinuousOpposingStraightScenario(
+            SimConfig cfg,
+            out FakeRouteProvider routes)
+        {
+            var q = new RoadQueueNetwork(5, 3, cfg);
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid, new FakeDeviceState());
+            routes = new FakeRouteProvider();
+            routes.AddRoute(90, true, V(1, 1), V(2, 1), V(2, 2));
+            routes.AddRoute(100, true, V(3, 1), V(2, 1), V(1, 1));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 90));
+            Assert.IsTrue(q.TryEnqueue(V(3, 1), Dir.W, 100));
+            q.Step(routes);
+            Assert.IsTrue(q.TryLocateCar(
+                90,
+                out _,
+                out _,
+                out _,
+                out float turnProgress));
+            Assert.AreEqual(0.25f, turnProgress, 1e-4f);
+            return q;
+        }
+
+        private static void EnqueueOpposingStraight(
+            RoadQueueNetwork q,
+            FakeRouteProvider routes,
+            int carId)
+        {
+            routes.AddRoute(carId, true, V(3, 1), V(2, 1), V(1, 1));
+            q.TryEnqueue(V(3, 1), Dir.W, carId);
+            Assert.Greater(
+                q.QueueCount(V(3, 1), Dir.W),
+                0,
+                "Every arbitration tick must have an opposing straight head.");
+        }
+
+        private static RoadQueueNetwork BuildContinuousCrossingStraightScenario(
+            SimConfig cfg,
+            out FakeRouteProvider routes)
+        {
+            var q = new RoadQueueNetwork(5, 3, cfg);
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid, new FakeDeviceState());
+            routes = new FakeRouteProvider();
+            routes.AddRoute(90, true, V(1, 1), V(2, 1), V(2, 2));
+            // Southbound crosses the turn's E-entry cell (SouthWest). The previous
+            // northbound route shared its N exit instead, so both could legally enter.
+            routes.AddRoute(300, true, V(2, 2), V(2, 1), V(2, 0));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 90));
+            Assert.IsTrue(q.TryEnqueue(V(2, 2), Dir.S, 300));
+            q.Step(routes);
+            Assert.AreEqual(90, q.CarAtHead(V(1, 1), Dir.E));
+            Assert.AreEqual(300, q.CarAtHead(V(2, 1), Dir.S));
+            return q;
+        }
+
+        private static void EnqueueCrossingStraight(
+            RoadQueueNetwork q,
+            FakeRouteProvider routes,
+            int carId)
+        {
+            routes.AddRoute(carId, true, V(2, 2), V(2, 1), V(2, 0));
+            q.TryEnqueue(V(2, 2), Dir.S, carId);
+            Assert.Greater(
+                q.QueueCount(V(2, 2), Dir.S),
+                0,
+                "Every arbitration tick must have a crossing straight head.");
+        }
+
+        private static RoadQueueNetwork BuildIntersectionRearClearanceScenario(
+            out FakeRouteProvider routes)
+        {
+            var q = new RoadQueueNetwork(5, 3, Cfg());
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid, new FakeDeviceState());
+            routes = new FakeRouteProvider();
+            routes.AddRoute(30, true, V(1, 1), V(2, 1), V(3, 1));
+            routes.AddRoute(31, true, V(2, 0), V(2, 1), V(2, 2));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 30));
+
+            q.Step(routes);
+            Assert.AreEqual(30, q.CarAtHead(V(2, 1), Dir.E));
+            q.Step(routes);
+            Assert.AreEqual(30, q.CarAtHead(V(3, 1), Dir.E),
+                "The scenario begins immediately after the eastbound vehicle exits.");
+            Assert.IsTrue(q.TryEnqueue(V(2, 0), Dir.N, 31));
+            return q;
         }
 
         private static RoadQueueNetwork BuildFullCycle(
