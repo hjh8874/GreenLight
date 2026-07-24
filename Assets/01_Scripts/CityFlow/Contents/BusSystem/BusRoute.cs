@@ -15,13 +15,7 @@ namespace CityFlow.Content.Transit
         RouteUnavailable = 4
     }
 
-    /// <summary>
-    /// 일반 버스와 스쿨버스가 공통으로 사용하는
-    /// 도로 경로 탐색 및 운행 엔진입니다.
-    /// </summary>
-    public sealed class BusRoute :
-        MonoBehaviour,
-        ICityFlowServiceConsumer
+    public sealed class BusRoute : MonoBehaviour, ICityFlowServiceConsumer
     {
         private static readonly Vector2Int[] Directions =
         {
@@ -32,103 +26,43 @@ namespace CityFlow.Content.Transit
         };
 
         [Header("그리드 크기")]
-
-        [SerializeField]
-        [Min(1)]
-        private int gridWidth =
-            GridUtil.DefaultWidth;
-
-        [SerializeField]
-        [Min(1)]
-        private int gridHeight =
-            GridUtil.DefaultHeight;
+        [SerializeField, Min(1)] private int gridWidth = GridUtil.DefaultWidth;
+        [SerializeField, Min(1)] private int gridHeight = GridUtil.DefaultHeight;
 
         [Header("운행 설정")]
-
-        [SerializeField]
-        [Min(0.01f)]
-        [Tooltip("도로 타일 한 칸을 이동하는 데 걸리는 시간입니다.")]
-        private float secondsPerTile = 0.2f;
-
-        [SerializeField]
-        [Min(0f)]
-        [Tooltip("정류장에서 대기하는 시간입니다.")]
-        private float stopWaitSeconds = 2f;
-
-        [SerializeField]
-        [Tooltip("마지막 정류장 이후 첫 정류장으로 돌아갑니다.")]
-        private bool loopRoute = true;
-
-        [SerializeField]
-        [Tooltip("초기화 후 설정된 노선이 있으면 자동 운행합니다.")]
-        private bool autoStart;
+        [SerializeField, Min(0.01f)] private float secondsPerTile = 0.2f;
+        [SerializeField, Min(0f)] private float stopWaitSeconds = 2f;
+        [SerializeField] private bool loopRoute = true;
+        [SerializeField] private bool autoStart;
 
         [Header("시간 처리")]
+        [SerializeField] private bool useUnityUpdate = true;
 
-        [SerializeField]
-        [Tooltip(
-            "활성화하면 Unity Update에서 운행합니다. " +
-            "공용 Simulation Tick에 연결할 경우 해제합니다.")]
-        private bool useUnityUpdate = true;
-
-        private readonly List<Vector2Int>
-            stops = new();
-
-        private readonly List<Vector2Int>
-            currentRoadPath = new();
-
-        private readonly Queue<Vector2Int>
-            searchQueue = new();
-
-        private readonly Dictionary<Vector2Int, Vector2Int>
-            cameFrom = new();
-
-        private readonly HashSet<Vector2Int>
-            visited = new();
+        private readonly List<Vector2Int> stops = new();
+        private readonly List<Vector2Int> currentRoadPath = new();
+        private readonly Queue<Vector2Int> searchQueue = new();
+        private readonly Dictionary<Vector2Int, Vector2Int> cameFrom = new();
+        private readonly HashSet<Vector2Int> visited = new();
 
         private IReadOnlyTileData tileData;
-
         private int currentStopIndex;
         private int currentRoadPathIndex;
-
         private float moveTimer;
         private float waitTimer;
-
         private bool isInitialized;
         private bool routeRequested;
 
-        public IReadOnlyList<Vector2Int> Stops =>
-            stops;
-
-        public IReadOnlyList<Vector2Int> CurrentRoadPath =>
-            currentRoadPath;
-
-        public BusRouteState State { get; private set; } =
-            BusRouteState.Idle;
-
+        public IReadOnlyList<Vector2Int> Stops => stops;
+        public IReadOnlyList<Vector2Int> CurrentRoadPath => currentRoadPath;
+        public BusRouteState State { get; private set; } = BusRouteState.Idle;
         public Vector2Int CurrentTile { get; private set; }
-
-        public Vector2Int CurrentStop =>
-            GetCurrentStop();
-
-        public Vector2Int NextStop =>
-            GetNextStop();
-
-        public int CurrentStopIndex =>
-            currentStopIndex;
-
-        public int CurrentRoadPathIndex =>
-            currentRoadPathIndex;
-
-        public bool IsInitialized =>
-            isInitialized;
-
-        public bool IsOperating =>
-            State == BusRouteState.Moving ||
-            State == BusRouteState.WaitingAtStop;
-
-        public float WaitRemaining =>
-            Mathf.Max(0f, waitTimer);
+        public Vector2Int CurrentStop => GetCurrentStop();
+        public Vector2Int NextStop => GetNextStop();
+        public int CurrentStopIndex => currentStopIndex;
+        public int CurrentRoadPathIndex => currentRoadPathIndex;
+        public bool IsInitialized => isInitialized;
+        public bool IsOperating => State == BusRouteState.Moving || State == BusRouteState.WaitingAtStop;
+        public float WaitRemaining => Mathf.Max(0f, waitTimer);
 
         public bool LoopRoute
         {
@@ -139,52 +73,39 @@ namespace CityFlow.Content.Transit
         public float SecondsPerTile
         {
             get => secondsPerTile;
-
-            set => secondsPerTile =
-                Mathf.Max(0.01f, value);
+            set => secondsPerTile = Mathf.Max(0.01f, value);
         }
 
         public float StopWaitSeconds
         {
             get => stopWaitSeconds;
-
-            set => stopWaitSeconds =
-                Mathf.Max(0f, value);
+            set => stopWaitSeconds = Mathf.Max(0f, value);
         }
 
         public event Action<Vector2Int> TileChanged;
-
-        public event Action<Vector2Int, int>
-            StopArrived;
-
+        public event Action<Vector2Int, int> StopArrived;
+        public event Action<BusRouteState> StateChanged;
         public event Action RouteStarted;
         public event Action RouteCompleted;
         public event Action RouteUnavailable;
 
-        public void Initialize(
-            CityFlowServices services)
+        public void Initialize(CityFlowServices services)
         {
-            if (!isActiveAndEnabled ||
-                isInitialized)
+            if (!isActiveAndEnabled || isInitialized)
             {
                 return;
             }
 
-            if (services == null ||
-                services.TileData == null)
+            if (services == null || services.TileData == null)
             {
-                Debug.LogError(
-                    "[BusRoute] CityFlowServices 또는 TileData가 없습니다.",
-                    this);
-
+                Debug.LogError("[BusRoute] CityFlowServices 또는 TileData가 없습니다.", this);
                 return;
             }
 
             tileData = services.TileData;
             isInitialized = true;
 
-            if (autoStart &&
-                stops.Count >= 2)
+            if (autoStart && stops.Count >= 2)
             {
                 StartRoute();
             }
@@ -192,44 +113,32 @@ namespace CityFlow.Content.Transit
 
         private void Update()
         {
-            if (!useUnityUpdate)
+            if (useUnityUpdate)
             {
-                return;
+                Tick(Time.deltaTime);
             }
-
-            Tick(Time.deltaTime);
         }
 
-        /// <summary>
-        /// 공용 Simulation Tick에서도 호출할 수 있습니다.
-        /// </summary>
         public void Tick(float deltaTime)
         {
-            if (!isInitialized ||
-                !routeRequested ||
-                deltaTime <= 0f)
+            if (!isInitialized || !routeRequested || deltaTime <= 0f)
             {
                 return;
             }
 
-            switch (State)
+            if (State == BusRouteState.Moving)
             {
-                case BusRouteState.Moving:
-                    TickMoving(deltaTime);
-                    break;
-
-                case BusRouteState.WaitingAtStop:
-                    TickWaiting(deltaTime);
-                    break;
+                TickMoving(deltaTime);
+            }
+            else if (State == BusRouteState.WaitingAtStop)
+            {
+                TickWaiting(deltaTime);
             }
         }
 
-        public bool ConfigureRoute(
-            IReadOnlyList<Vector2Int> newStops,
-            bool shouldLoop)
+        public bool ConfigureRoute(IReadOnlyList<Vector2Int> newStops, bool shouldLoop)
         {
             StopRoute();
-
             stops.Clear();
 
             if (newStops == null)
@@ -237,20 +146,14 @@ namespace CityFlow.Content.Transit
                 return false;
             }
 
-            for (int i = 0;
-                 i < newStops.Count;
-                 i++)
+            for (int i = 0; i < newStops.Count; i++)
             {
-                Vector2Int stop =
-                    newStops[i];
+                Vector2Int stop = newStops[i];
 
-                if (stops.Count > 0 &&
-                    stops[stops.Count - 1] == stop)
+                if (stops.Count == 0 || stops[stops.Count - 1] != stop)
                 {
-                    continue;
+                    stops.Add(stop);
                 }
-
-                stops.Add(stop);
             }
 
             loopRoute = shouldLoop;
@@ -262,11 +165,8 @@ namespace CityFlow.Content.Transit
 
             currentStopIndex = 0;
             currentRoadPathIndex = 0;
-
             CurrentTile = stops[0];
-
-            State = BusRouteState.Idle;
-
+            SetState(BusRouteState.Idle);
             TileChanged?.Invoke(CurrentTile);
 
             return stops.Count >= 2;
@@ -274,31 +174,16 @@ namespace CityFlow.Content.Transit
 
         public bool StartRoute()
         {
-            if (!isInitialized)
+            if (!isInitialized || stops.Count < 2)
             {
-                Debug.LogWarning(
-                    "[BusRoute] 초기화되지 않아 운행을 시작할 수 없습니다.",
-                    this);
-
-                return false;
-            }
-
-            if (stops.Count < 2)
-            {
-                Debug.LogWarning(
-                    "[BusRoute] 정류장이 최소 2개 필요합니다.",
-                    this);
-
+                Debug.LogWarning("[BusRoute] 초기화 또는 정류장 설정을 확인해 주세요.", this);
                 return false;
             }
 
             routeRequested = true;
-
             currentStopIndex = 0;
             currentRoadPathIndex = 0;
-
             CurrentTile = stops[0];
-
             moveTimer = 0f;
             waitTimer = 0f;
 
@@ -310,56 +195,38 @@ namespace CityFlow.Content.Transit
             }
 
             RouteStarted?.Invoke();
-
             return true;
         }
 
         public void StopRoute()
         {
             routeRequested = false;
-
             moveTimer = 0f;
             waitTimer = 0f;
-
             currentRoadPath.Clear();
             currentRoadPathIndex = 0;
-
-            State = BusRouteState.Idle;
+            SetState(BusRouteState.Idle);
         }
 
         public bool RestartRoute()
         {
             StopRoute();
-
             return StartRoute();
         }
 
         public bool RebuildCurrentSegment()
         {
-            if (!routeRequested ||
-                stops.Count < 2)
-            {
-                return false;
-            }
-
-            return BuildPathToNextStop();
+            return routeRequested && stops.Count >= 2 && BuildPathToNextStop();
         }
 
         private void TickMoving(float deltaTime)
         {
-            moveTimer +=
-                Mathf.Max(0f, deltaTime);
+            moveTimer += Mathf.Max(0f, deltaTime);
+            float interval = Mathf.Max(0.01f, secondsPerTile);
 
-            float safeSecondsPerTile =
-                Mathf.Max(
-                    0.01f,
-                    secondsPerTile);
-
-            while (moveTimer >= safeSecondsPerTile &&
-                   State == BusRouteState.Moving)
+            while (moveTimer >= interval && State == BusRouteState.Moving)
             {
-                moveTimer -= safeSecondsPerTile;
-
+                moveTimer -= interval;
                 MoveOneTile();
             }
         }
@@ -372,23 +239,17 @@ namespace CityFlow.Content.Transit
                 return;
             }
 
-            if (currentRoadPathIndex >=
-                currentRoadPath.Count - 1)
+            if (currentRoadPathIndex >= currentRoadPath.Count - 1)
             {
                 ArriveAtNextStop();
                 return;
             }
 
             currentRoadPathIndex++;
-
-            CurrentTile =
-                currentRoadPath[
-                    currentRoadPathIndex];
-
+            CurrentTile = currentRoadPath[currentRoadPathIndex];
             TileChanged?.Invoke(CurrentTile);
 
-            if (currentRoadPathIndex >=
-                currentRoadPath.Count - 1)
+            if (currentRoadPathIndex >= currentRoadPath.Count - 1)
             {
                 ArriveAtNextStop();
             }
@@ -396,8 +257,7 @@ namespace CityFlow.Content.Transit
 
         private void ArriveAtNextStop()
         {
-            int nextIndex =
-                GetNextStopIndex();
+            int nextIndex = GetNextStopIndex();
 
             if (nextIndex < 0)
             {
@@ -407,23 +267,15 @@ namespace CityFlow.Content.Transit
 
             currentStopIndex = nextIndex;
             CurrentTile = stops[currentStopIndex];
-
             currentRoadPath.Clear();
             currentRoadPathIndex = 0;
+            waitTimer = Mathf.Max(0f, stopWaitSeconds);
+
+            // StopArrived보다 먼저 정차 상태를 확정합니다.
+            SetState(BusRouteState.WaitingAtStop);
 
             TileChanged?.Invoke(CurrentTile);
-
-            StopArrived?.Invoke(
-                CurrentTile,
-                currentStopIndex);
-
-            waitTimer =
-                Mathf.Max(
-                    0f,
-                    stopWaitSeconds);
-
-            State =
-                BusRouteState.WaitingAtStop;
+            StopArrived?.Invoke(CurrentTile, currentStopIndex);
 
             if (waitTimer <= 0f)
             {
@@ -433,8 +285,7 @@ namespace CityFlow.Content.Transit
 
         private void TickWaiting(float deltaTime)
         {
-            waitTimer -=
-                Mathf.Max(0f, deltaTime);
+            waitTimer -= Mathf.Max(0f, deltaTime);
 
             if (waitTimer <= 0f)
             {
@@ -446,10 +297,7 @@ namespace CityFlow.Content.Transit
         {
             waitTimer = 0f;
 
-            int nextIndex =
-                GetNextStopIndex();
-
-            if (nextIndex < 0)
+            if (GetNextStopIndex() < 0)
             {
                 CompleteRoute();
                 return;
@@ -460,8 +308,7 @@ namespace CityFlow.Content.Transit
 
         private bool BuildPathToNextStop()
         {
-            int nextStopIndex =
-                GetNextStopIndex();
+            int nextStopIndex = GetNextStopIndex();
 
             if (nextStopIndex < 0)
             {
@@ -469,76 +316,43 @@ namespace CityFlow.Content.Transit
                 return false;
             }
 
-            Vector2Int startStop =
-                stops[currentStopIndex];
+            Vector2Int startStop = stops[currentStopIndex];
+            Vector2Int destinationStop = stops[nextStopIndex];
 
-            Vector2Int destinationStop =
-                stops[nextStopIndex];
-
-            if (!TryFindAccessRoad(
-                    startStop,
-                    out Vector2Int startRoad) ||
-                !TryFindAccessRoad(
-                    destinationStop,
-                    out Vector2Int destinationRoad))
+            if (!TryFindAccessRoad(startStop, out Vector2Int startRoad) ||
+                !TryFindAccessRoad(destinationStop, out Vector2Int destinationRoad))
             {
-                Debug.LogWarning(
-                    $"[BusRoute] 정류장 근처 도로를 찾지 못했습니다. " +
-                    $"출발: {startStop}, 목적지: {destinationStop}",
-                    this);
-
                 SetRouteUnavailable();
-
                 return false;
             }
 
-            if (!TryFindRoadPath(
-                    startRoad,
-                    destinationRoad,
-                    currentRoadPath))
+            if (!TryFindRoadPath(startRoad, destinationRoad, currentRoadPath))
             {
-                Debug.LogWarning(
-                    $"[BusRoute] 연결된 도로 경로가 없습니다. " +
-                    $"출발 도로: {startRoad}, " +
-                    $"목적지 도로: {destinationRoad}",
-                    this);
-
                 SetRouteUnavailable();
-
                 return false;
             }
 
-            if (currentRoadPath.Count == 0 ||
-                currentRoadPath[0] != startStop)
+            if (currentRoadPath.Count == 0 || currentRoadPath[0] != startStop)
             {
-                currentRoadPath.Insert(
-                    0,
-                    startStop);
+                currentRoadPath.Insert(0, startStop);
             }
 
-            if (currentRoadPath[
-                    currentRoadPath.Count - 1] !=
-                destinationStop)
+            if (currentRoadPath[currentRoadPath.Count - 1] != destinationStop)
             {
-                currentRoadPath.Add(
-                    destinationStop);
+                currentRoadPath.Add(destinationStop);
             }
 
             currentRoadPathIndex = 0;
             CurrentTile = currentRoadPath[0];
-
             moveTimer = 0f;
 
-            State = BusRouteState.Moving;
-
+            SetState(BusRouteState.Moving);
             TileChanged?.Invoke(CurrentTile);
 
             return true;
         }
 
-        private bool TryFindAccessRoad(
-            Vector2Int stopTile,
-            out Vector2Int roadTile)
+        private bool TryFindAccessRoad(Vector2Int stopTile, out Vector2Int roadTile)
         {
             if (IsRoad(stopTile))
             {
@@ -546,33 +360,20 @@ namespace CityFlow.Content.Transit
                 return true;
             }
 
-            TileType stopType =
-                tileData.GetTileType(stopTile);
+            TileType stopType = tileData.GetTileType(stopTile);
+            Vector2Int footprint = TileFootprint.IsBuilding(stopType)
+                ? tileData.GetFootprintSize(stopType)
+                : Vector2Int.one;
 
-            Vector2Int footprint =
-                TileFootprint.IsBuilding(stopType)
-                    ? tileData.GetFootprintSize(stopType)
-                    : Vector2Int.one;
-
-            for (int y = 0;
-                 y < footprint.y;
-                 y++)
+            for (int y = 0; y < footprint.y; y++)
             {
-                for (int x = 0;
-                     x < footprint.x;
-                     x++)
+                for (int x = 0; x < footprint.x; x++)
                 {
-                    Vector2Int footprintTile =
-                        stopTile +
-                        new Vector2Int(x, y);
+                    Vector2Int footprintTile = stopTile + new Vector2Int(x, y);
 
-                    for (int i = 0;
-                         i < Directions.Length;
-                         i++)
+                    for (int i = 0; i < Directions.Length; i++)
                     {
-                        Vector2Int candidate =
-                            footprintTile +
-                            Directions[i];
+                        Vector2Int candidate = footprintTile + Directions[i];
 
                         if (IsRoad(candidate))
                         {
@@ -584,7 +385,6 @@ namespace CityFlow.Content.Transit
             }
 
             roadTile = default;
-
             return false;
         }
 
@@ -598,8 +398,7 @@ namespace CityFlow.Content.Transit
             cameFrom.Clear();
             visited.Clear();
 
-            if (!IsRoad(start) ||
-                !IsRoad(destination))
+            if (!IsRoad(start) || !IsRoad(destination))
             {
                 return false;
             }
@@ -607,24 +406,17 @@ namespace CityFlow.Content.Transit
             searchQueue.Enqueue(start);
             visited.Add(start);
 
-            bool found =
-                start == destination;
+            bool found = start == destination;
 
-            while (searchQueue.Count > 0 &&
-                   !found)
+            while (searchQueue.Count > 0 && !found)
             {
-                Vector2Int current =
-                    searchQueue.Dequeue();
+                Vector2Int current = searchQueue.Dequeue();
 
-                for (int i = 0;
-                     i < Directions.Length;
-                     i++)
+                for (int i = 0; i < Directions.Length; i++)
                 {
-                    Vector2Int next =
-                        current + Directions[i];
+                    Vector2Int next = current + Directions[i];
 
-                    if (!IsRoad(next) ||
-                        !visited.Add(next))
+                    if (!IsRoad(next) || !visited.Add(next))
                     {
                         continue;
                     }
@@ -646,52 +438,38 @@ namespace CityFlow.Content.Transit
                 return false;
             }
 
-            Vector2Int pathTile =
-                destination;
+            Vector2Int tile = destination;
+            result.Add(tile);
 
-            result.Add(pathTile);
-
-            while (pathTile != start)
+            while (tile != start)
             {
-                if (!cameFrom.TryGetValue(
-                        pathTile,
-                        out Vector2Int previous))
+                if (!cameFrom.TryGetValue(tile, out Vector2Int previous))
                 {
                     result.Clear();
-
                     return false;
                 }
 
-                pathTile = previous;
-                result.Add(pathTile);
+                tile = previous;
+                result.Add(tile);
             }
 
             result.Reverse();
-
             return true;
         }
 
         private bool IsRoad(Vector2Int tile)
         {
-            if (!IsInsideGrid(tile) ||
-                tileData == null)
-            {
-                return false;
-            }
-
-            return
-                tileData.GetTileType(tile) ==
-                TileType.Road;
+            return IsInsideGrid(tile) &&
+                   tileData != null &&
+                   tileData.GetTileType(tile) == TileType.Road;
         }
 
-        private bool IsInsideGrid(
-            Vector2Int tile)
+        private bool IsInsideGrid(Vector2Int tile)
         {
-            return
-                tile.x >= 0 &&
-                tile.y >= 0 &&
-                tile.x < gridWidth &&
-                tile.y < gridHeight;
+            return tile.x >= 0 &&
+                   tile.y >= 0 &&
+                   tile.x < gridWidth &&
+                   tile.y < gridHeight;
         }
 
         private int GetNextStopIndex()
@@ -701,81 +479,65 @@ namespace CityFlow.Content.Transit
                 return -1;
             }
 
-            int nextIndex =
-                currentStopIndex + 1;
+            int next = currentStopIndex + 1;
 
-            if (nextIndex < stops.Count)
+            if (next < stops.Count)
             {
-                return nextIndex;
+                return next;
             }
 
-            return loopRoute
-                ? 0
-                : -1;
+            return loopRoute ? 0 : -1;
         }
 
         private Vector2Int GetCurrentStop()
         {
-            if (currentStopIndex < 0 ||
-                currentStopIndex >= stops.Count)
-            {
-                return default;
-            }
-
-            return stops[currentStopIndex];
+            return stops.Count > 0 &&
+                   currentStopIndex >= 0 &&
+                   currentStopIndex < stops.Count
+                ? stops[currentStopIndex]
+                : default;
         }
 
         private Vector2Int GetNextStop()
         {
-            int nextIndex =
-                GetNextStopIndex();
-
-            return nextIndex >= 0
-                ? stops[nextIndex]
-                : default;
+            int index = GetNextStopIndex();
+            return index >= 0 ? stops[index] : default;
         }
 
         private void CompleteRoute()
         {
             routeRequested = false;
-            waitTimer = 0f;
-
-            State = BusRouteState.Completed;
-
+            currentRoadPath.Clear();
+            SetState(BusRouteState.Completed);
             RouteCompleted?.Invoke();
         }
 
         private void SetRouteUnavailable()
         {
             routeRequested = false;
-
-            moveTimer = 0f;
-            waitTimer = 0f;
-
-            State =
-                BusRouteState.RouteUnavailable;
-
+            currentRoadPath.Clear();
+            SetState(BusRouteState.RouteUnavailable);
             RouteUnavailable?.Invoke();
+        }
+
+        private void SetState(BusRouteState newState)
+        {
+            if (State == newState)
+            {
+                return;
+            }
+
+            State = newState;
+            StateChanged?.Invoke(State);
         }
 
 #if UNITY_EDITOR
         private void OnValidate()
         {
-            gridWidth =
-                Mathf.Max(1, gridWidth);
-
-            gridHeight =
-                Mathf.Max(1, gridHeight);
-
-            secondsPerTile =
-                Mathf.Max(
-                    0.01f,
-                    secondsPerTile);
-
-            stopWaitSeconds =
-                Mathf.Max(
-                    0f,
-                    stopWaitSeconds);
+            gridWidth = Mathf.Max(1, gridWidth);
+            gridHeight = Mathf.Max(1, gridHeight);
+            secondsPerTile = Mathf.Max(0.01f, secondsPerTile);
+            stopWaitSeconds = Mathf.Max(0f, stopWaitSeconds);
         }
 #endif
     }

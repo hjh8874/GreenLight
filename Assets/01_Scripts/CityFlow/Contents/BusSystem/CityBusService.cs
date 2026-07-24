@@ -14,10 +14,6 @@ namespace CityFlow.Content.Transit
         RouteUnavailable = 3
     }
 
-    /// <summary>
-    /// BusStopRegistry에 등록된 일반 정류장을
-    /// 반복 순환하는 시내버스 운행을 관리합니다.
-    /// </summary>
     [RequireComponent(typeof(BusRoute))]
     public sealed class CityBusService :
         MonoBehaviour,
@@ -25,13 +21,10 @@ namespace CityFlow.Content.Transit
         IBusRuntimeProvider
     {
         [Header("버스 데이터")]
-
         [SerializeField]
-        [Tooltip("CityBus 타입의 BusDefinitionSO를 연결합니다.")]
         private BusDefinitionSO busDefinition;
 
         [Header("필수 참조")]
-
         [SerializeField]
         private BusStopRegistry stopRegistry;
 
@@ -39,31 +32,27 @@ namespace CityFlow.Content.Transit
         private BusRoute busRoute;
 
         [Header("노선 설정")]
-
-        [SerializeField]
-        [Min(2)]
-        [Tooltip("한 노선에서 사용할 최대 정류장 수입니다.")]
+        [SerializeField, Min(2)]
         private int maximumStops = 10;
 
-        [SerializeField]
-        [Min(0)]
-        [Tooltip("각 정류장에서 기본적으로 하차하는 승객 수입니다.")]
+        [SerializeField, Min(0)]
+        [Tooltip("학생/인구 시스템 연동 전 임시 하차 인원입니다.")]
         private int fallbackPassengersLeavingPerStop = 1;
 
-        [SerializeField]
-        [Min(0)]
-        [Tooltip("각 정류장에서 기본적으로 탑승하는 승객 수입니다.")]
+        [SerializeField, Min(0)]
+        [Tooltip("학생/인구 시스템 연동 전 임시 탑승 인원입니다.")]
         private int fallbackPassengersBoardingPerStop = 2;
 
         [SerializeField]
-        [Tooltip("초기화 후 자동으로 운행을 시작합니다.")]
         private bool autoStart = true;
 
-        private readonly List<Vector2Int>
-            routeStops = new();
+        [Header("디버그")]
+        [SerializeField]
+        private bool verboseLogging;
+
+        private readonly List<Vector2Int> routeStops = new();
 
         private BusRuntime runtime;
-
         private bool isInitialized;
         private bool isSubscribed;
         private bool wantsToOperate;
@@ -74,9 +63,7 @@ namespace CityFlow.Content.Transit
 
         public BusRuntime Runtime => runtime;
         public BusRoute Route => busRoute;
-
-        public bool IsInitialized =>
-            isInitialized;
+        public bool IsInitialized => isInitialized;
 
         public bool IsOperating =>
             busRoute != null &&
@@ -86,10 +73,7 @@ namespace CityFlow.Content.Transit
             routeStops;
 
         public event Action RouteStarted;
-
-        public event Action<Vector2Int, int, int>
-            StopServed;
-
+        public event Action<Vector2Int, int, int> StopServed;
         public event Action RouteUnavailable;
 
         private void Reset()
@@ -105,11 +89,9 @@ namespace CityFlow.Content.Transit
             }
         }
 
-        public void Initialize(
-            CityFlowServices services)
+        public void Initialize(CityFlowServices services)
         {
-            if (!isActiveAndEnabled ||
-                isInitialized)
+            if (!isActiveAndEnabled || isInitialized)
             {
                 return;
             }
@@ -119,7 +101,6 @@ namespace CityFlow.Content.Transit
                 Debug.LogError(
                     "[CityBusService] CityFlowServices가 없습니다.",
                     this);
-
                 return;
             }
 
@@ -128,7 +109,6 @@ namespace CityFlow.Content.Transit
                 Debug.LogError(
                     "[CityBusService] BusDefinitionSO가 연결되지 않았습니다.",
                     this);
-
                 return;
             }
 
@@ -137,7 +117,6 @@ namespace CityFlow.Content.Transit
                 Debug.LogError(
                     "[CityBusService] CityBus 타입의 데이터를 연결해야 합니다.",
                     this);
-
                 return;
             }
 
@@ -146,7 +125,6 @@ namespace CityFlow.Content.Transit
                 Debug.LogError(
                     "[CityBusService] BusStopRegistry가 연결되지 않았습니다.",
                     this);
-
                 return;
             }
 
@@ -160,7 +138,6 @@ namespace CityFlow.Content.Transit
                 Debug.LogError(
                     "[CityBusService] BusRoute가 없습니다.",
                     this);
-
                 return;
             }
 
@@ -173,12 +150,10 @@ namespace CityFlow.Content.Transit
                 Debug.LogError(
                     "[CityBusService] 버스 의존성 초기화에 실패했습니다.",
                     this);
-
                 return;
             }
 
-            runtime =
-                new BusRuntime(busDefinition);
+            runtime = new BusRuntime(busDefinition);
 
             busRoute.SecondsPerTile =
                 busDefinition.SecondsPerTile;
@@ -187,7 +162,6 @@ namespace CityFlow.Content.Transit
                 busDefinition.StopWaitSeconds;
 
             isInitialized = true;
-
             Subscribe();
 
             wantsToOperate =
@@ -196,6 +170,7 @@ namespace CityFlow.Content.Transit
 
             if (wantsToOperate)
             {
+                runtime.SetServiceEnabled(true);
                 TryStartRoute();
             }
         }
@@ -216,7 +191,6 @@ namespace CityFlow.Content.Transit
         private void OnDestroy()
         {
             Unsubscribe();
-
             isInitialized = false;
         }
 
@@ -255,6 +229,9 @@ namespace CityFlow.Content.Transit
             busRoute.StopArrived +=
                 OnStopArrived;
 
+            busRoute.StateChanged +=
+                OnRouteStateChanged;
+
             busRoute.RouteUnavailable +=
                 OnRouteUnavailable;
 
@@ -285,6 +262,9 @@ namespace CityFlow.Content.Transit
                 busRoute.StopArrived -=
                     OnStopArrived;
 
+                busRoute.StateChanged -=
+                    OnRouteStateChanged;
+
                 busRoute.RouteUnavailable -=
                     OnRouteUnavailable;
 
@@ -304,7 +284,6 @@ namespace CityFlow.Content.Transit
             }
 
             runtime.SetServiceEnabled(true);
-
             wantsToOperate = true;
 
             return TryStartRoute();
@@ -321,6 +300,7 @@ namespace CityFlow.Content.Transit
 
             runtime?.UnloadAllPassengers();
             runtime?.SetServiceEnabled(false);
+            runtime?.SetState(BusOperatingState.Idle);
         }
 
         public bool TryStartRoute()
@@ -340,7 +320,6 @@ namespace CityFlow.Content.Transit
             {
                 SetRouteUnavailable(
                     "[CityBusService] 일반 버스 정류장이 최소 2개 필요합니다.");
-
                 return false;
             }
 
@@ -353,7 +332,6 @@ namespace CityFlow.Content.Transit
             {
                 SetRouteUnavailable(
                     "[CityBusService] 노선 설정에 실패했습니다.");
-
                 return false;
             }
 
@@ -364,14 +342,8 @@ namespace CityFlow.Content.Transit
             {
                 SetRouteUnavailable(
                     "[CityBusService] 도로 경로를 생성하지 못했습니다.");
-
                 return false;
             }
-
-            State = CityBusState.Operating;
-
-            runtime.SetState(
-                BusOperatingState.Moving);
 
             runtime.SetCurrentTile(
                 busRoute.CurrentTile);
@@ -382,10 +354,13 @@ namespace CityFlow.Content.Transit
 
             RouteStarted?.Invoke();
 
-            Debug.Log(
-                $"[CityBusService] 시내버스 운행 시작. " +
-                $"정류장 수: {routeStops.Count}",
-                this);
+            if (verboseLogging)
+            {
+                Debug.Log(
+                    $"[CityBusService] 시내버스 운행 시작. " +
+                    $"정류장 수: {routeStops.Count}",
+                    this);
+            }
 
             return true;
         }
@@ -394,18 +369,15 @@ namespace CityFlow.Content.Transit
         {
             routeStops.Clear();
 
-            IReadOnlyList<Vector2Int>
-                registeredStops =
-                    stopRegistry.BusStops;
+            IReadOnlyList<Vector2Int> registeredStops =
+                stopRegistry.BusStops;
 
             int stopCount =
                 Mathf.Min(
                     maximumStops,
                     registeredStops.Count);
 
-            for (int i = 0;
-                 i < stopCount;
-                 i++)
+            for (int i = 0; i < stopCount; i++)
             {
                 routeStops.Add(
                     registeredStops[i]);
@@ -429,13 +401,6 @@ namespace CityFlow.Content.Transit
             Vector2Int stopTile,
             int stopIndex)
         {
-            State =
-                CityBusState.WaitingAtStop;
-
-            runtime?.SetState(
-                BusOperatingState
-                    .WaitingAtStop);
-
             int leaving =
                 runtime?.LeavePassengers(
                     fallbackPassengersLeavingPerStop)
@@ -457,21 +422,54 @@ namespace CityFlow.Content.Transit
                 boarding,
                 leaving);
 
-            Debug.Log(
-                $"[CityBusService] 정류장 도착. " +
-                $"Tile: {stopTile}, " +
-                $"탑승: {boarding}, " +
-                $"하차: {leaving}, " +
-                $"현재 승객: " +
-                $"{runtime?.CurrentPassengers ?? 0}/" +
-                $"{runtime?.PassengerCapacity ?? 0}",
-                this);
+            if (verboseLogging)
+            {
+                Debug.Log(
+                    $"[CityBusService] 정류장 도착. " +
+                    $"Tile: {stopTile}, " +
+                    $"탑승: {boarding}, " +
+                    $"하차: {leaving}, " +
+                    $"현재 승객: " +
+                    $"{runtime?.CurrentPassengers ?? 0}/" +
+                    $"{runtime?.PassengerCapacity ?? 0}",
+                    this);
+            }
+        }
 
-            State =
-                CityBusState.Operating;
+        private void OnRouteStateChanged(
+            BusRouteState routeState)
+        {
+            switch (routeState)
+            {
+                case BusRouteState.Moving:
+                    State = CityBusState.Operating;
 
-            runtime?.SetState(
-                BusOperatingState.Moving);
+                    runtime?.SetState(
+                        BusOperatingState.Moving);
+                    break;
+
+                case BusRouteState.WaitingAtStop:
+                    State = CityBusState.WaitingAtStop;
+
+                    runtime?.SetState(
+                        BusOperatingState.WaitingAtStop);
+                    break;
+
+                case BusRouteState.Completed:
+                case BusRouteState.Idle:
+                    State = CityBusState.Idle;
+
+                    runtime?.SetState(
+                        BusOperatingState.Idle);
+                    break;
+
+                case BusRouteState.RouteUnavailable:
+                    State = CityBusState.RouteUnavailable;
+
+                    runtime?.SetState(
+                        BusOperatingState.RouteUnavailable);
+                    break;
+            }
         }
 
         private void OnRouteCompleted()
@@ -501,8 +499,7 @@ namespace CityFlow.Content.Transit
         private void SetRouteUnavailable(
             string message)
         {
-            State =
-                CityBusState.RouteUnavailable;
+            State = CityBusState.RouteUnavailable;
 
             runtime?.SetState(
                 BusOperatingState.RouteUnavailable);

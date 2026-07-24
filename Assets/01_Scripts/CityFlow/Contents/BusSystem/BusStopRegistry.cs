@@ -10,48 +10,44 @@ namespace CityFlow.Content.Transit
     /// <summary>
     /// 일반 버스 정류장, 학교, 주거 건물의 기준 타일을 관리합니다.
     ///
-    /// 학교와 주거 건물은 타일 데이터에서 자동 검색하고,
-    /// 일반 버스 정류장은 RegisterBusStop을 통해 등록합니다.
+    /// 학교와 주거 건물은 타일 데이터에서 자동 검색합니다.
+    /// 일반 정류장은 현재 단계에서 씬에 직렬화되는 고정 좌표로 관리합니다.
+    /// 플레이 중 건설 가능한 정류장은 추후 SaveData 연동이 필요합니다.
     /// </summary>
     public sealed class BusStopRegistry :
         MonoBehaviour,
         ICityFlowServiceConsumer
     {
         [Header("그리드 크기")]
+        [SerializeField, Min(1)]
+        private int gridWidth = GridUtil.DefaultWidth;
 
-        [SerializeField]
-        [Min(1)]
-        private int gridWidth =
-            GridUtil.DefaultWidth;
-
-        [SerializeField]
-        [Min(1)]
-        private int gridHeight =
-            GridUtil.DefaultHeight;
+        [SerializeField, Min(1)]
+        private int gridHeight = GridUtil.DefaultHeight;
 
         [Header("초기화")]
-
         [SerializeField]
         [Tooltip("초기화 시 학교와 주거 건물 목록을 다시 검색합니다.")]
         private bool rebuildOnInitialize = true;
 
-        private readonly List<Vector2Int>
-            busStops = new();
+        [Header("고정 버스 정류장")]
+        [SerializeField]
+        [Tooltip(
+            "현재 단계에서는 씬에 고정 배치되는 정류장 좌표입니다. " +
+            "플레이 중 건설되는 정류장은 추후 SaveData 연동이 필요합니다.")]
+        private List<Vector2Int> busStops = new();
 
-        private readonly List<Vector2Int>
-            schools = new();
+        [Header("디버그")]
+        [SerializeField]
+        [Tooltip("활성화하면 목록 재구성 결과를 출력합니다.")]
+        private bool verboseLogging;
 
-        private readonly List<Vector2Int>
-            residentialStops = new();
+        private readonly List<Vector2Int> schools = new();
+        private readonly List<Vector2Int> residentialStops = new();
 
-        private readonly HashSet<Vector2Int>
-            busStopSet = new();
-
-        private readonly HashSet<Vector2Int>
-            schoolSet = new();
-
-        private readonly HashSet<Vector2Int>
-            residentialSet = new();
+        private readonly HashSet<Vector2Int> busStopSet = new();
+        private readonly HashSet<Vector2Int> schoolSet = new();
+        private readonly HashSet<Vector2Int> residentialSet = new();
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
@@ -60,26 +56,14 @@ namespace CityFlow.Content.Transit
         private bool isPlacedSubscribed;
         private bool isRestoreSubscribed;
 
-        public IReadOnlyList<Vector2Int> BusStops =>
-            busStops;
+        public IReadOnlyList<Vector2Int> BusStops => busStops;
+        public IReadOnlyList<Vector2Int> Schools => schools;
+        public IReadOnlyList<Vector2Int> ResidentialStops => residentialStops;
 
-        public IReadOnlyList<Vector2Int> Schools =>
-            schools;
-
-        public IReadOnlyList<Vector2Int> ResidentialStops =>
-            residentialStops;
-
-        public int BusStopCount =>
-            busStops.Count;
-
-        public int SchoolCount =>
-            schools.Count;
-
-        public int ResidentialStopCount =>
-            residentialStops.Count;
-
-        public bool IsInitialized =>
-            isInitialized;
+        public int BusStopCount => busStops.Count;
+        public int SchoolCount => schools.Count;
+        public int ResidentialStopCount => residentialStops.Count;
+        public bool IsInitialized => isInitialized;
 
         public event Action RegistryChanged;
 
@@ -97,7 +81,6 @@ namespace CityFlow.Content.Transit
                 Debug.LogError(
                     "[BusStopRegistry] CityFlowServices가 없습니다.",
                     this);
-
                 return;
             }
 
@@ -106,15 +89,15 @@ namespace CityFlow.Content.Transit
                 Debug.LogError(
                     "[BusStopRegistry] IReadOnlyTileData가 등록되지 않았습니다.",
                     this);
-
                 return;
             }
 
             this.services = services;
             tileData = services.TileData;
 
-            isInitialized = true;
+            RebuildBusStopSet();
 
+            isInitialized = true;
             SubscribeEvents();
 
             if (rebuildOnInitialize)
@@ -212,6 +195,7 @@ namespace CityFlow.Content.Transit
         private void OnRestoreCompleted(
             RestoreCompletedEvent restoreEvent)
         {
+            RebuildBusStopSet();
             RebuildFromTileData();
         }
 
@@ -238,10 +222,6 @@ namespace CityFlow.Content.Transit
             NotifyRegistryChanged();
         }
 
-        /// <summary>
-        /// 현재 타일 데이터를 기준으로 학교와 주거 건물을 재검색합니다.
-        /// 일반 버스 정류장 수동 등록 목록은 유지합니다.
-        /// </summary>
         public void RebuildFromTileData()
         {
             if (tileData == null)
@@ -280,12 +260,36 @@ namespace CityFlow.Content.Transit
             SortAll();
             NotifyRegistryChanged();
 
-            Debug.Log(
-                $"[BusStopRegistry] 목록 재구성 완료. " +
-                $"일반 정류장: {busStops.Count}, " +
-                $"학교: {schools.Count}, " +
-                $"주거지역: {residentialStops.Count}",
-                this);
+            if (verboseLogging)
+            {
+                Debug.Log(
+                    $"[BusStopRegistry] 목록 재구성 완료. " +
+                    $"일반 정류장: {busStops.Count}, " +
+                    $"학교: {schools.Count}, " +
+                    $"주거지역: {residentialStops.Count}",
+                    this);
+            }
+        }
+
+        private void RebuildBusStopSet()
+        {
+            busStopSet.Clear();
+
+            for (int i = busStops.Count - 1;
+                 i >= 0;
+                 i--)
+            {
+                Vector2Int tile =
+                    busStops[i];
+
+                if (!IsInsideGrid(tile) ||
+                    !busStopSet.Add(tile))
+                {
+                    busStops.RemoveAt(i);
+                }
+            }
+
+            SortTiles(busStops);
         }
 
         private void RegisterTypedTile(
@@ -311,10 +315,6 @@ namespace CityFlow.Content.Transit
             }
         }
 
-        // ------------------------------------------------------------
-        // 일반 버스 정류장
-        // ------------------------------------------------------------
-
         public bool RegisterBusStop(
             Vector2Int tile)
         {
@@ -323,7 +323,6 @@ namespace CityFlow.Content.Transit
                 Debug.LogWarning(
                     $"[BusStopRegistry] 그리드 밖의 정류장은 등록할 수 없습니다: {tile}",
                     this);
-
                 return false;
             }
 
@@ -334,7 +333,6 @@ namespace CityFlow.Content.Transit
 
             busStops.Add(tile);
             SortTiles(busStops);
-
             NotifyRegistryChanged();
 
             return true;
@@ -349,7 +347,6 @@ namespace CityFlow.Content.Transit
             }
 
             NotifyRegistryChanged();
-
             return true;
         }
 
@@ -362,7 +359,6 @@ namespace CityFlow.Content.Transit
             }
 
             busStops.Remove(tile);
-
             return true;
         }
 
@@ -378,10 +374,6 @@ namespace CityFlow.Content.Transit
                 busStops);
         }
 
-        // ------------------------------------------------------------
-        // 학교
-        // ------------------------------------------------------------
-
         public bool RegisterSchool(
             Vector2Int tile)
         {
@@ -392,7 +384,6 @@ namespace CityFlow.Content.Transit
 
             SortTiles(schools);
             NotifyRegistryChanged();
-
             return true;
         }
 
@@ -405,7 +396,6 @@ namespace CityFlow.Content.Transit
             }
 
             schools.Add(tile);
-
             return true;
         }
 
@@ -418,7 +408,6 @@ namespace CityFlow.Content.Transit
             }
 
             NotifyRegistryChanged();
-
             return true;
         }
 
@@ -431,7 +420,6 @@ namespace CityFlow.Content.Transit
             }
 
             schools.Remove(tile);
-
             return true;
         }
 
@@ -454,10 +442,6 @@ namespace CityFlow.Content.Transit
             return false;
         }
 
-        // ------------------------------------------------------------
-        // 주거지역
-        // ------------------------------------------------------------
-
         public bool RegisterResidentialStop(
             Vector2Int tile)
         {
@@ -468,7 +452,6 @@ namespace CityFlow.Content.Transit
 
             SortTiles(residentialStops);
             NotifyRegistryChanged();
-
             return true;
         }
 
@@ -481,7 +464,6 @@ namespace CityFlow.Content.Transit
             }
 
             residentialStops.Add(tile);
-
             return true;
         }
 
@@ -494,7 +476,6 @@ namespace CityFlow.Content.Transit
             }
 
             NotifyRegistryChanged();
-
             return true;
         }
 
@@ -507,7 +488,6 @@ namespace CityFlow.Content.Transit
             }
 
             residentialStops.Remove(tile);
-
             return true;
         }
 
@@ -568,10 +548,16 @@ namespace CityFlow.Content.Transit
         private void OnValidate()
         {
             gridWidth =
-                Mathf.Max(1, gridWidth);
+                Mathf.Max(
+                    1,
+                    gridWidth);
 
             gridHeight =
-                Mathf.Max(1, gridHeight);
+                Mathf.Max(
+                    1,
+                    gridHeight);
+
+            RebuildBusStopSet();
         }
 #endif
     }
