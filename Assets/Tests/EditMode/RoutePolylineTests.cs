@@ -159,6 +159,86 @@ namespace CityFlow.Sim.Tests
                 p.DistanceAtQueueSlot(1, queueSlot: 3, slotGap: 0.55f), 1e-4f);
         }
 
+        [Test]
+        public void ReprojectDistance_QueueSlot_MapsPhysicalSlot()
+        {
+            var p = RoutePolyline.Bake(Straight3());
+
+            float actual = p.ReprojectDistance(
+                tileIndex: 1,
+                queueSlot: 1,
+                slotGap: 0.55f,
+                headInset: 0.1f,
+                intersectionProgress01: -1f,
+                linkProgress01: 0f,
+                roundaboutProgress01: -1f,
+                roundaboutTransitionSpan: 0.66f);
+
+            Assert.AreEqual(p.DistanceAtQueueSlot(1, 1, 0.55f, 0.1f), actual, 1e-4f);
+        }
+
+        [Test]
+        public void ReprojectDistance_Intersection_MapsAuthorizedStage()
+        {
+            var p = RoutePolyline.Bake(Straight3());
+
+            float actual = p.ReprojectDistance(
+                tileIndex: 1,
+                queueSlot: 1,
+                slotGap: 0.55f,
+                headInset: 0.1f,
+                intersectionProgress01: 0.75f,
+                linkProgress01: 0f,
+                roundaboutProgress01: -1f,
+                roundaboutTransitionSpan: 0.66f);
+
+            Assert.AreEqual(p.DistanceAtTile(1) + 0.25f, actual, 1e-4f);
+        }
+
+        [Test]
+        public void ReprojectDistance_Link_InterpolatesAdjacentTileDistances()
+        {
+            var p = RoutePolyline.Bake(Straight3());
+
+            float actual = p.ReprojectDistance(
+                tileIndex: 0,
+                queueSlot: 1,
+                slotGap: 0.55f,
+                headInset: 0.1f,
+                intersectionProgress01: -1f,
+                linkProgress01: 0.25f,
+                roundaboutProgress01: -1f,
+                roundaboutTransitionSpan: 0.66f);
+
+            Assert.AreEqual(
+                Mathf.Lerp(p.DistanceAtTile(0), p.DistanceAtTile(1), 0.25f),
+                actual,
+                1e-4f);
+        }
+
+        [Test]
+        public void ReprojectDistance_Roundabout_MapsAuthorizedOrbitPhaseFirst()
+        {
+            var p = RoutePolyline.Bake(Straight3());
+            const float span = 0.66f;
+            const float progress = 0.25f;
+
+            float actual = p.ReprojectDistance(
+                tileIndex: 1,
+                queueSlot: 1,
+                slotGap: 0.55f,
+                headInset: 0.1f,
+                intersectionProgress01: 0.75f,
+                linkProgress01: 0.5f,
+                roundaboutProgress01: progress,
+                roundaboutTransitionSpan: span);
+
+            Assert.AreEqual(
+                p.DistanceAtPhase(Mathf.Lerp(1f - span, 1f + span, progress)),
+                actual,
+                1e-4f);
+        }
+
         // 로터리 링: 경계 ±0.15 세그 창(구 완전 블렌드 창)의 샘플은 링 반경 위 —
         // 접선 기하 재구성(QA E-1) 이후 이 창은 항상 순수 원호라 더 강하게 성립.
         // 반경은 input.OrbitRadius 파생(QA F — 하드코딩 제거).

@@ -386,7 +386,9 @@ namespace CityFlow.View
             var previousBakes = new Dictionary<CommuteCar, BakedRoutePair>(carVehicles.Count);
             foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
             {
-                if (bakedRoutes.TryGetValue(kv.Key.RouteIndex, out BakedRoutePair old))
+                // SyncCarSimMirrors가 이미 car.RouteIndex를 새 경로 키로 바꿨다. 기존 베이크는
+                // vehicle에 남아 있는 직전 키로 찾아야 재라우팅 생존 차를 재투영할 수 있다.
+                if (bakedRoutes.TryGetValue(kv.Value.RouteIndex, out BakedRoutePair old))
                 {
                     previousBakes[kv.Key] = old;
                 }
@@ -404,7 +406,7 @@ namespace CityFlow.View
             var previousBakes = new Dictionary<CommuteCar, BakedRoutePair>(carVehicles.Count);
             foreach (KeyValuePair<CommuteCar, RouteVehicle> kv in carVehicles)
             {
-                if (bakedRoutes.TryGetValue(kv.Key.RouteIndex, out BakedRoutePair old))
+                if (bakedRoutes.TryGetValue(kv.Value.RouteIndex, out BakedRoutePair old))
                 {
                     previousBakes[kv.Key] = old;
                 }
@@ -545,8 +547,9 @@ namespace CityFlow.View
                           + side * (tileSize * offset.y);
         }
 
-        // sticky 바인딩(QA A): 생존 차는 vehicle·위치 무접촉 유지, 사라진 짝만 풀 반납, 신규만 할당.
-        // 경로 타일이 실제로 바뀐 이동 중 차만 페이드(렌더러 off) + 주차 상태로 개별 수렴(순간이동 금지).
+        // sticky 바인딩(QA A): 생존 차는 vehicle 바인딩을 유지하고, 사라진 짝만 풀 반납, 신규만 할당.
+        // 경로 타일이 바뀐 이동 차는 Sim 논리 위치를 새 아크렝스에 재투영한다. 새 왕복 경로
+        // 자체가 베이크되지 않는 진짜 소실만 숨기고, 같은 타일의 노브 재베이크는 무접촉이다.
         // 총 인구 상한 = SimConfig.MaxSimCars = 풀 크기.
         private void SyncCommuteVehicleBindings(Dictionary<CommuteCar, BakedRoutePair> previousBakes)
         {
@@ -592,10 +595,23 @@ namespace CityFlow.View
                     bool moving = car.State == CarState.Outbound || car.State == CarState.Inbound;
                     if (moving
                         && previousBakes.TryGetValue(car, out BakedRoutePair old)
-                        && !SamePolylineTiles(old.Outbound, pair.Outbound))
+                        && !SamePolylineTiles(
+                            car.State == CarState.Inbound ? old.Inbound : old.Outbound,
+                            car.State == CarState.Inbound ? pair.Inbound : pair.Outbound))
                     {
-                        // 이동 중 경로 변경: Distance가 새 폴리라인과 무의미 — 페이드 + 주차로 개별 수렴.
-                        SetVehicleRenderersEnabled(vehicle, false);
+                        CarSnapshot snapshot = simEngine.GetCarSnapshot(i);
+                        RoutePolyline newPolyline = snapshot.State == CarState.Inbound
+                            ? pair.Inbound
+                            : pair.Outbound;
+                        float reprojectedDistance = ReprojectDistance(
+                            snapshot,
+                            newPolyline,
+                            snapshot.QueueSlot);
+                        car.Distance = reprojectedDistance;
+                        vehicle.HasTickTarget = false;
+                        vehicle.TargetTileIndex = -1;
+                        vehicle.TargetRouteIndex = -1;
+                        intersectionMotionStates.Remove(vehicle);
                     }
 
                     // 주차 차/경로 불변 이동 차: 무접촉 — 위치·상태 그대로(주차 앵커는 다음 프레임 재계산).
@@ -660,6 +676,27 @@ namespace CityFlow.View
             }
 
             return true;
+        }
+
+        private float ReprojectDistance(
+            CarSnapshot snapshot,
+            RoutePolyline polyline,
+            int queueSlot)
+        {
+            int tileIndex = Mathf.Clamp(snapshot.TileIndex, 0, polyline.TileCount - 1);
+            Vector2Int simTile = polyline.TileAt(tileIndex);
+            float headInset = simEngine.IsSharedCarIntersection(simTile)
+                ? intersectionQueueInset * tileSize
+                : 0f;
+            return polyline.ReprojectDistance(
+                tileIndex,
+                queueSlot,
+                vehicleMinHeadway * tileSize,
+                headInset,
+                snapshot.IntersectionProgress01,
+                snapshot.LinkProgress01,
+                snapshot.RoundaboutProgress01,
+                RoundaboutTransitionSpan());
         }
 
         private void ResetVehicleForCommute(RouteVehicle vehicle, int routeIndex)
@@ -854,6 +891,8 @@ namespace CityFlow.View
             int targetQueueSlot = isRoundaboutTile || roundaboutEntryLimited
                 ? 0
                 : snapshot.QueueSlot;
+            // 매 프레임 주행 권한은 기존 상태 기계가 소유한다. ReprojectDistance는 리빌드
+            // 바인딩 시점 전용이며, 여기서 공용화하면 권한 우선순위·단조 상태가 달라진다.
             float targetDistance = poly.DistanceAtQueueSlot(
                 tileIndex,
                 targetQueueSlot,
@@ -1033,6 +1072,26 @@ namespace CityFlow.View
                 float authorizedCruise = hasIntersectionAuthorization
                     ? intersectionAuthorizedSpeed
                     : (intersectionEntryLimited ? intersectionApproachSpeed : nominal);
+                bool paceQueueArrival = vehicle.TargetAdvancing
+                    && !hasIntersectionAuthorization
+                    && !hasRoundaboutAuthorization
+                    && snapshot.LinkProgress01 <= 0f
+                    && !roundaboutEntryLimited
+                    && !signalEntryLimited
+                    && !intersectionEntryLimited;
+                if (paceQueueArrival)
+                {
+                    float remainingTickSeconds = Mathf.Max(
+                        0.02f,
+                        (1f - simEngine.TickProgress01) * simEngine.TickInterval);
+                    float pacedArrivalSpeed = Mathf.Min(
+                        nominal,
+                        Mathf.Max(0f, corridor - car.Distance) / remainingTickSeconds);
+                    // 2026-07-21에 기각한 "연속 천장 보간"과 다르다: corridor를 앞으로
+                    // 발명하지 않고 고정된 Sim 상한 안에서 속도만 낮춰 틱 끝 도착을 맞춘다.
+                    // 기존 가감속과 뒤처짐 catch-up은 이 속도 목표의 바깥에서 그대로 작동한다.
+                    authorizedCruise = Mathf.Min(authorizedCruise, pacedArrivalSpeed);
+                }
                 float cruise = authorizedCruise * (1f + behind * vehicleCatchUpRange);
 
                 // 제동식은 **상대가 움직이는지**를 반영해야 한다. √(2a·여유)는 '정지한 벽'
