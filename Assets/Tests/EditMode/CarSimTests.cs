@@ -267,6 +267,96 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void RebuildResume_AdjacentIntersection_FullOnlyOrdinaryTileRetriesAndProgresses()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(5, 5);
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 3), TileType.Road));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+
+            var routes = new ResumeRouteProvider();
+            routes.Add(10, V(1, 2), V(2, 2));
+            Assert.IsTrue(net.TryEnqueue(V(1, 2), Dir.E, 20));
+            Assert.IsTrue(net.TryEnqueue(V(1, 2), Dir.E, 21));
+            bool hasResume = true;
+
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(10),
+                V(2, 2),
+                ref hasResume,
+                net,
+                10,
+                out int start));
+            Assert.IsTrue(hasResume,
+                "유일한 일반 재개 타일이 잠시 만석이면 다음 틱에도 같은 재개를 재시도해야 한다");
+            Assert.AreEqual(0, start);
+
+            net.RemoveAllCars();
+            Assert.IsTrue(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(10),
+                V(2, 2),
+                ref hasResume,
+                net,
+                10,
+                out start));
+            Assert.IsFalse(hasResume);
+
+            bool arrived = false;
+            for (int tick = 0; tick < 4 && !arrived; tick++)
+            {
+                net.Step(routes);
+                for (int i = 0; i < net.ArrivalCount; i++)
+                {
+                    if (net.GetArrival(i).CarId == 10) arrived = true;
+                }
+            }
+            Assert.IsTrue(arrived, "재개 큐가 비면 정상 교차로 중재로 진입해 유한 틱 안에 도착한다");
+        }
+
+        [Test]
+        public void Departure_SpecialRouteOrigin_StaysOffNetwork()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(5, 5);
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 3), TileType.Road));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+
+            var routes = new ResumeRouteProvider();
+            routes.Add(12, V(2, 2), V(3, 2));
+            bool hasResume = true;
+
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(12),
+                V(2, 2),
+                ref hasResume,
+                net,
+                12,
+                out int start));
+            Assert.IsFalse(hasResume, "안전한 이전 타일이 없으면 중간 재개를 명시적으로 포기한다");
+            Assert.AreEqual(0, start);
+
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(12),
+                default,
+                ref hasResume,
+                net,
+                12,
+                out start));
+            Assert.AreEqual(0, TotalQueued(net, grid.Width, grid.Height),
+                "신규 출발도 특수 route[0]에 stage 없는 차를 앉히지 않고 오프네트워크 대기한다");
+        }
+
+        [Test]
         public void Departure_WhenAccessRoadIsRamp_EntersHighway()
         {
             SimConfig cfg = Cfg();

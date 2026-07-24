@@ -242,16 +242,16 @@ namespace CityFlow.Sim
                 if (!moving || _enqueued[i] || !TryRoute(i, out List<Vector2Int> route)) continue;
                 // 리빌드 생존 차는 있던 자리에서 이어 달린다. 새 경로에 그 타일이 없으면
                 // (도로가 헐렸다 등) 진행도를 포기하고 route[0]에서 다시 출발한다.
-                int start = 0;
-                if (car.HasResume)
+                if (!TryEnqueueRouteStart(
+                        route,
+                        car.ResumeTile,
+                        ref car.HasResume,
+                        net,
+                        i,
+                        out int start))
                 {
-                    car.HasResume = false;
-                    start = FindResumeStart(route, car.ResumeTile, net);
+                    continue;
                 }
-                Dir entry = Dir.N;
-                if (start > 0 && !TryRouteDirection(route[start] - route[start - 1], out entry)) start = 0;
-                if (start == 0 && route.Count > 1 && !TryRouteDirection(route[1] - route[0], out entry)) continue;
-                if (!net.TryEnqueue(route[start], entry, i)) continue;
                 _enqueued[i] = true;
                 _tileIndices[i] = start;
                 _queueSlots[i] = 0;
@@ -273,21 +273,57 @@ namespace CityFlow.Sim
                 resumeIndex = p;
                 break;
             }
-            if (resumeIndex < 0) return 0;
+            if (resumeIndex < 0) return -1;
 
             for (int p = resumeIndex; p >= 0; p--)
             {
                 if (net.IsSafeResumeTile(route[p])) return p;
             }
+            return -1;
+        }
 
-            // Access routes normally begin on an ordinary road. Keep the invariant
-            // even for an unusual route that starts on a special tile by resuming at
-            // the first ordinary tile ahead instead of spawning inside its state machine.
-            for (int p = resumeIndex + 1; p < route.Count; p++)
+        internal static bool TryEnqueueRouteStart(
+            IReadOnlyList<Vector2Int> route,
+            Vector2Int resumeTile,
+            ref bool hasResume,
+            RoadQueueNetwork net,
+            int carId,
+            out int start)
+        {
+            start = 0;
+            bool retryingResume = hasResume;
+            if (retryingResume)
             {
-                if (net.IsSafeResumeTile(route[p])) return p;
+                start = FindResumeStart(route, resumeTile, net);
+                if (start < 0)
+                {
+                    // No safe tile at or behind the logical position: abandon the
+                    // ambiguous mid-route resume and explicitly restart from origin.
+                    hasResume = false;
+                    retryingResume = false;
+                    start = 0;
+                }
             }
-            return 0;
+
+            // A route whose origin itself is an intersection/roundabout state-machine
+            // tile has no valid queue-only spawn. Keep it off-network and retry; a
+            // later watchdog owns convergence for routes with no ordinary tile.
+            if (route.Count == 0 || !net.IsSafeResumeTile(route[start])) return false;
+
+            Dir entry = Dir.N;
+            bool hasDirection = start > 0
+                ? TryRouteDirection(route[start] - route[start - 1], out entry)
+                : route.Count <= 1 || TryRouteDirection(route[1] - route[0], out entry);
+            if (!hasDirection)
+            {
+                if (retryingResume) hasResume = false;
+                return false;
+            }
+            if (!net.TryEnqueue(route[start], entry, carId)) return false;
+
+            // A temporarily full resume queue keeps HasResume armed until this point.
+            hasResume = false;
+            return true;
         }
 
         private void SyncLocations(RoadQueueNetwork net)
