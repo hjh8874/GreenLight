@@ -51,5 +51,5 @@ MonoBehaviour:
   waveTextColor: {r: 0.2, g: 1, b: 0.4, a: 1}
   fontSize: 5
   waveDisplayText: GREEN WAVE!
-  useXYPlane: 0
+  useXYPlane: 1
   initialPoolSize: 5

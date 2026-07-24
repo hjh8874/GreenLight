@@ -555,14 +555,15 @@ namespace CityFlow.Sim.Tests
             SimConfig cfg = Cfg();
             cfg.GreenWaveScanInterval = 1;
             cfg.GreenWaveThreshold = 0.5f;
+            cfg.AutoDetectSignals = false;
             
             var engine = new SimEngine(cfg, hub);
             Assert.IsTrue(engine.Place(V(0, 0), TileType.Road));
             Assert.IsTrue(engine.Place(V(1, 0), TileType.Road));
             Assert.IsTrue(engine.Place(V(2, 0), TileType.Road));
             
-            engine.TryPlaceSignal(V(0, 0), 10);
-            engine.TryPlaceSignal(V(2, 0), 10);
+            Assert.IsTrue(engine.TryPlaceSignal(V(0, 0), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 0), 10));
             engine.TrySetSignalOffsetSlots(V(0, 0), 0);
             engine.TrySetSignalOffsetSlots(V(2, 0), 0);
             
@@ -591,12 +592,13 @@ namespace CityFlow.Sim.Tests
             SimConfig cfg = Cfg();
             cfg.GreenWaveScanInterval = 1;
             cfg.GreenWaveThreshold = 0.5f;
+            cfg.AutoDetectSignals = false;
             
             var engine = new SimEngine(cfg, hub);
             Assert.IsTrue(engine.Place(V(0, 0), TileType.Road));
             Assert.IsTrue(engine.Place(V(1, 0), TileType.Road));
-            engine.TryPlaceSignal(V(0, 0), 10);
-            engine.TryPlaceSignal(V(1, 0), 10);
+            Assert.IsTrue(engine.TryPlaceSignal(V(0, 0), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(1, 0), 10));
             
             engine.TrySetSignalOffsetSlots(V(0, 0), 0);
             engine.TrySetSignalOffsetSlots(V(1, 0), 0);
@@ -615,18 +617,19 @@ namespace CityFlow.Sim.Tests
             SimConfig cfg = Cfg();
             cfg.GreenWaveScanInterval = 1;
             cfg.GreenWaveThreshold = 0.5f;
+            cfg.AutoDetectSignals = false;
             
             var engine = new SimEngine(cfg, hub);
             
             Assert.IsTrue(engine.Place(V(0, 0), TileType.Road));
             Assert.IsTrue(engine.Place(V(1, 0), TileType.Road));
-            engine.TryPlaceSignal(V(0, 0), 10);
-            engine.TryPlaceSignal(V(1, 0), 10);
+            Assert.IsTrue(engine.TryPlaceSignal(V(0, 0), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(1, 0), 10));
             
             Assert.IsTrue(engine.Place(V(0, 2), TileType.Road));
             Assert.IsTrue(engine.Place(V(1, 2), TileType.Road));
-            engine.TryPlaceSignal(V(0, 2), 10);
-            engine.TryPlaceSignal(V(1, 2), 10);
+            Assert.IsTrue(engine.TryPlaceSignal(V(0, 2), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(1, 2), 10));
             
             engine.Tick(cfg.TickInterval);
             Assert.AreEqual(2, burstCount, "독립적인 신호 구간 2개 동시 처리 검증");
