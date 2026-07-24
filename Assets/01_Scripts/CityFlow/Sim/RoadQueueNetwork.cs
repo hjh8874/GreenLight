@@ -514,6 +514,63 @@ namespace CityFlow.Sim
             ArrivalCount = 0;
         }
 
+        internal int GetBlockedTicks(int carId)
+        {
+            int node = FindAllocatedNode(carId);
+            return node == NoNode ? 0 : _blockedTicks[node];
+        }
+
+        internal bool TryRemoveCarForRescue(int carId)
+        {
+            int node = FindAllocatedNode(carId);
+            if (node == NoNode) return false;
+
+            bool detached = false;
+            for (int queue = 0; queue < _heads.Length && !detached; queue++)
+            {
+                int previous = NoNode;
+                int current = _heads[queue];
+                while (current != NoNode)
+                {
+                    if (current == node)
+                    {
+                        DetachNode(queue, previous, current);
+                        detached = true;
+                        break;
+                    }
+                    previous = current;
+                    current = _nextNodes[current];
+                }
+            }
+
+            // An arm/approach node may also own active-entry state, while a ring
+            // node lives only in RoundaboutTrafficState. The state object clears
+            // both physical cells and ephemeral reservations through one path.
+            for (int tile = 0; tile < _roundaboutStates.Length; tile++)
+            {
+                if (_roundaboutStates[tile].RemoveNodeForRescue(node))
+                    detached = true;
+            }
+
+            for (int lane = 0; lane < _highwayCars.Length; lane++)
+            {
+                var cars = _highwayCars[lane];
+                for (int index = 0; index < cars.Count; index++)
+                {
+                    if (cars[index].Node != node) continue;
+                    cars.RemoveAt(index);
+                    detached = true;
+                    break;
+                }
+            }
+
+            if (!detached) return false;
+            // ReleaseNode is the single cleanup source for blocked ticks,
+            // intersection stages, rear-clearance ownership and pool reuse.
+            ReleaseNode(node);
+            return true;
+        }
+
         public float MaxOccupancy01(Vector2Int tile)
         {
             if (!InBounds(tile)) return 0f;
@@ -1524,6 +1581,16 @@ namespace CityFlow.Sim
             return true;
         }
 
+        private int FindAllocatedNode(int carId)
+        {
+            if (carId < 0) return NoNode;
+            for (int node = 0; node < _cars.Length; node++)
+            {
+                if (_cars[node] == carId) return node;
+            }
+            return NoNode;
+        }
+
         private void ReleaseNode(int node)
         {
             _cars[node] = NoNode;
@@ -1553,6 +1620,16 @@ namespace CityFlow.Sim
             if (next == NoNode) _tails[queue] = NoNode;
             _nextNodes[node] = NoNode;
             return node;
+        }
+
+        private void DetachNode(int queue, int previous, int node)
+        {
+            int next = _nextNodes[node];
+            if (previous == NoNode) _heads[queue] = next;
+            else _nextNodes[previous] = next;
+            if (_tails[queue] == node) _tails[queue] = previous;
+            _counts[queue]--;
+            _nextNodes[node] = NoNode;
         }
 
         private void MoveHead(int from, int to)

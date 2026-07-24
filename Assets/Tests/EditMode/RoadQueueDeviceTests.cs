@@ -940,6 +940,34 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(-1, q.CarAtHead(northArm, Dir.S));
         }
 
+        [Test]
+        public void RescueRemoval_ClearsRoundaboutRingActiveEntryAndReservations()
+        {
+            RoadQueueNetwork q = BuildRoundaboutExitHandoffScenario(
+                includeOtherArm: false,
+                out FakeRouteProvider routes);
+            Vector2Int center = V(2, 2);
+            Vector2Int westArm = V(1, 2);
+            Vector2Int westApproach = V(0, 2);
+            Vector2Int eastArm = V(3, 2);
+
+            Assert.IsTrue(q.TryRemoveCarForRescue(1), "activeEntry를 가진 arm 차량 제거");
+            Assert.IsTrue(q.TryRemoveCarForRescue(3), "링 셀 점유 차량 제거");
+            Assert.AreEqual(-1, q.CarAtHead(westArm, Dir.E));
+            foreach (Dir cell in new[] { Dir.N, Dir.E, Dir.S, Dir.W })
+                Assert.AreEqual(-1, q.RingCellCar(center, cell));
+
+            routes.Add(4, westApproach, westArm, center, eastArm);
+            Assert.IsTrue(q.TryEnqueue(westApproach, Dir.E, 4));
+            q.Step(routes);
+            q.Step(routes);
+
+            Assert.AreEqual(
+                4,
+                q.RingCellCar(center, Dir.W),
+                "activeEntry/reservation 잔여 없이 다음 차량이 정상 입장해야 한다");
+        }
+
         private static RoadQueueNetwork BuildRoundaboutExitHandoffScenario(
             bool includeOtherArm,
             out FakeRouteProvider routes)

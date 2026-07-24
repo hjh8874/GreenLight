@@ -424,6 +424,22 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void RescueRemoval_ClearsIntersectionRearState()
+        {
+            RoadQueueNetwork q = BuildIntersectionRearClearanceScenario(
+                out FakeRouteProvider routes);
+            Assert.IsTrue(q.TryRemoveCarForRescue(30));
+            Assert.AreEqual(0, q.GetBlockedTicks(30));
+
+            q.Step(routes);
+
+            Assert.AreEqual(
+                31,
+                q.CarAtHead(V(2, 1), Dir.N),
+                "ReleaseNode가 clearing/stage를 함께 지워 다음 틱 점유 재구성이 깨끗해야 한다");
+        }
+
+        [Test]
         public void Step_OpposingStraights_EnterIntersectionTogether()
         {
             SimConfig cfg = Cfg();
