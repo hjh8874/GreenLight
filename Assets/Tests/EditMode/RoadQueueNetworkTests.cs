@@ -88,21 +88,69 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void Enqueue_UpToCapacity_ThenRejects()
+        public void Enqueue_FourCarsSpillAcrossTwoTilesAtPhysicalCapacity()
         {
-            var q = new RoadQueueNetwork(5, 5, Cfg());
-            for (int i = 0; i < 4; i++)
-            {
-                Assert.IsTrue(
-                    q.TryEnqueue(V(2, 2), Dir.E, carId: i),
-                    $"{i}번째 인큐");
-            }
+            var q = new RoadQueueNetwork(2, 1, Cfg());
 
-            Assert.IsFalse(
-                q.TryEnqueue(V(2, 2), Dir.E, 99),
-                "용량 초과 거부");
-            Assert.AreEqual(4, q.QueueCount(V(2, 2), Dir.E));
-            Assert.AreEqual(0, q.CarAtHead(V(2, 2), Dir.E), "FIFO 머리");
+            Assert.IsTrue(q.TryEnqueue(V(1, 0), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(1, 0), Dir.E, 1));
+            Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 2));
+            Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 3));
+
+            Assert.AreEqual(2, q.QueueCount(V(1, 0), Dir.E), "목표 타일 물리 슬롯 2개");
+            Assert.AreEqual(2, q.QueueCount(V(0, 0), Dir.E), "초과 수요는 상류 타일에 잔류");
+            Assert.AreEqual(0, q.CarAtHead(V(1, 0), Dir.E), "하류 FIFO 머리");
+            Assert.AreEqual(2, q.CarAtHead(V(0, 0), Dir.E), "상류 FIFO 머리");
+        }
+
+        [Test]
+        public void ConfiguredCapacityFour_NormalQueueNeverAcceptsThirdVehicle()
+        {
+            var q = new RoadQueueNetwork(1, 1, Cfg());
+
+            Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 1));
+            Assert.IsFalse(q.TryEnqueue(V(0, 0), Dir.E, 2));
+            Assert.AreEqual(2, q.QueueCount(V(0, 0), Dir.E));
+        }
+
+        [Test]
+        public void ThreeWaitingCars_LeaveOneUpstream_AndQueueSlotsStayPhysical()
+        {
+            var q = new RoadQueueNetwork(2, 1, Cfg());
+            var routes = new FakeRouteProvider();
+            routes.AddRoute(0, destinationAtEnd: false, V(1, 0));
+            routes.AddRoute(1, destinationAtEnd: false, V(1, 0));
+            routes.AddRoute(2, destinationAtEnd: true, V(0, 0), V(1, 0));
+            Assert.IsTrue(q.TryEnqueue(V(1, 0), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(1, 0), Dir.E, 1));
+            Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 2));
+
+            q.Step(routes);
+
+            Assert.AreEqual(2, q.QueueCount(V(1, 0), Dir.E));
+            Assert.AreEqual(1, q.QueueCount(V(0, 0), Dir.E), "세 번째 차는 상류 잔류");
+            for (int carId = 0; carId < 3; carId++)
+            {
+                Assert.IsTrue(q.TryLocateCar(carId, out _, out _, out int slot));
+                Assert.LessOrEqual(slot, 1, $"car {carId} 물리 슬롯 상한");
+            }
+        }
+
+        [Test]
+        public void TwoVehiclesOccupancy_IsJamAtConfiguredThreshold()
+        {
+            SimConfig cfg = Cfg();
+            var q = new RoadQueueNetwork(1, 1, cfg);
+            Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 1));
+
+            float occupancy = q.MaxOccupancy01(V(0, 0));
+
+            Assert.AreEqual(1f, occupancy, 1e-4f, "2/2 = 물리 만석");
+            Assert.AreEqual(
+                CongestionLevel.Jam,
+                SimEngine.CongestionForOccupancy(occupancy, cfg));
         }
 
         [Test]
@@ -114,19 +162,19 @@ namespace CityFlow.Sim.Tests
             q.TryEnqueue(V(1, 1), Dir.E, 2);
 
             Assert.AreEqual(
-                0.5f,
+                1f,
                 q.MaxOccupancy01(V(1, 1)),
                 1e-4f,
-                "N큐 2/4가 최대");
+                "N큐 2/2가 최대");
         }
 
         [Test]
         public void DirectionQueues_AreIndependent()
         {
             var q = new RoadQueueNetwork(5, 5, Cfg());
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 2; i++)
             {
-                q.TryEnqueue(V(3, 3), Dir.N, i);
+                Assert.IsTrue(q.TryEnqueue(V(3, 3), Dir.N, i));
             }
 
             Assert.IsTrue(
@@ -167,7 +215,7 @@ namespace CityFlow.Sim.Tests
             routes.AddRoute(0, true, V(0, 0), V(1, 0), V(2, 0));
             Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 0));
 
-            for (int id = 10; id < 14; id++)
+            for (int id = 10; id < 12; id++)
             {
                 routes.AddRoute(id, true, V(1, 0));
                 Assert.IsTrue(q.TryEnqueue(V(1, 0), Dir.E, id));
@@ -175,11 +223,11 @@ namespace CityFlow.Sim.Tests
 
             q.Step(routes);
             Assert.AreEqual(0, q.CarAtHead(V(0, 0), Dir.E), "만석이면 상류 대기");
-            Assert.AreEqual(3, q.QueueCount(V(1, 0), Dir.E), "하류 머리 1대 드레인");
+            Assert.AreEqual(1, q.QueueCount(V(1, 0), Dir.E), "하류 머리 1대 드레인");
 
             q.Step(routes);
             Assert.AreEqual(-1, q.CarAtHead(V(0, 0), Dir.E), "공간이 생긴 다음 틱에 진행");
-            Assert.AreEqual(3, q.QueueCount(V(1, 0), Dir.E), "이동 차가 하류 FIFO에 보존");
+            Assert.AreEqual(1, q.QueueCount(V(1, 0), Dir.E), "이동 차가 하류 FIFO에 보존");
         }
 
         [Test]

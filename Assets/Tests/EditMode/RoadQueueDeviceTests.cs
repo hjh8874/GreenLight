@@ -176,27 +176,55 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void Signal_RedAccumulatesQueue_ThenGreenDrainsOnePerTick()
         {
-            var q = new RoadQueueNetwork(4, 1, Cfg());
+            var q = new RoadQueueNetwork(5, 1, Cfg());
             var routes = new FakeRouteProvider();
             var signals = new FakeSignalGate();
-            Vector2Int approach = V(0, 0);
-            Vector2Int signalTile = V(1, 0);
+            Vector2Int farUpstream = V(0, 0);
+            Vector2Int upstream = V(1, 0);
+            Vector2Int approach = V(2, 0);
+            Vector2Int signalTile = V(3, 0);
+            Vector2Int destination = V(4, 0);
             signals.AddWindow(signalTile, start: 3, end: 20);
 
-            for (int id = 0; id < 3; id++)
-            {
-                routes.Add(id, approach, signalTile, V(2, 0), V(3, 0));
-                Assert.IsTrue(q.TryEnqueue(approach, Dir.E, id));
-                q.Step(routes, signals, tick: id);
-                Assert.AreEqual(0, q.QueueCount(signalTile, Dir.E), "적색: 교차로는 비어 있어야");
-                Assert.AreEqual(id + 1, q.QueueCount(approach, Dir.E), "적색: 정지선에 누적");
-            }
+            routes.Add(0, approach, signalTile, destination);
+            routes.Add(1, approach, signalTile, destination);
+            routes.Add(2, upstream, approach, signalTile, destination);
+            routes.Add(3, upstream, approach, signalTile, destination);
+            routes.Add(4, farUpstream, upstream, approach, signalTile, destination);
+            Assert.IsTrue(q.TryEnqueue(approach, Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(approach, Dir.E, 1));
+            Assert.IsTrue(q.TryEnqueue(upstream, Dir.E, 2));
+            Assert.IsTrue(q.TryEnqueue(upstream, Dir.E, 3));
+            Assert.IsTrue(q.TryEnqueue(farUpstream, Dir.E, 4));
 
-            for (int tick = 3; tick < 6; tick++)
+            for (int tick = 0; tick < 3; tick++)
             {
                 q.Step(routes, signals, tick);
-                Assert.AreEqual(5 - tick, q.QueueCount(approach, Dir.E), "초록: 틱당 1대 진입");
+                Assert.AreEqual(0, q.QueueCount(signalTile, Dir.E), "적색: 교차로는 비어 있어야");
+                Assert.AreEqual(2, q.QueueCount(approach, Dir.E), "적색: 정지선 물리 슬롯 만석");
+                Assert.AreEqual(2, q.QueueCount(upstream, Dir.E), "적색: 첫 상류 스필백");
+                Assert.AreEqual(1, q.QueueCount(farUpstream, Dir.E), "적색: 둘째 상류 스필백");
             }
+
+            q.Step(routes, signals, tick: 3);
+            Assert.AreEqual(1, q.QueueCount(farUpstream, Dir.E));
+            Assert.AreEqual(2, q.QueueCount(upstream, Dir.E));
+            Assert.AreEqual(1, q.QueueCount(approach, Dir.E));
+            Assert.AreEqual(1, q.QueueCount(signalTile, Dir.E));
+
+            q.Step(routes, signals, tick: 4);
+            Assert.AreEqual(1, q.QueueCount(farUpstream, Dir.E));
+            Assert.AreEqual(1, q.QueueCount(upstream, Dir.E));
+            Assert.AreEqual(1, q.QueueCount(approach, Dir.E));
+            Assert.AreEqual(1, q.QueueCount(signalTile, Dir.E));
+            Assert.AreEqual(1, q.QueueCount(destination, Dir.E));
+
+            StepResult firstArrival = q.Step(routes, signals, tick: 5);
+            Assert.AreEqual(1, firstArrival.Arrivals);
+            Assert.AreEqual(0, q.QueueCount(farUpstream, Dir.E));
+            Assert.AreEqual(1, q.QueueCount(upstream, Dir.E));
+            Assert.AreEqual(1, q.QueueCount(approach, Dir.E));
+            Assert.AreEqual(1, q.QueueCount(signalTile, Dir.E));
         }
 
         [Test]
@@ -221,11 +249,11 @@ namespace CityFlow.Sim.Tests
             out int arrivals,
             out int closedAttempts)
         {
-            var q = new RoadQueueNetwork(5, 1, Cfg());
+            var q = new RoadQueueNetwork(6, 1, Cfg());
             var routes = new FakeRouteProvider();
             var signals = new FakeSignalGate();
-            Vector2Int firstSignal = V(1, 0);
-            Vector2Int secondSignal = V(3, 0);
+            Vector2Int firstSignal = V(2, 0);
+            Vector2Int secondSignal = V(4, 0);
             // 진입 게이트 의미론: 검사가 접근 타일에서 이뤄지므로 창이 구(舊) 의미론보다
             // 1틱 앞으로 당겨진다. 선두 타임라인: t0 진입1 → t2 진입2 검사 → t2~ 통과.
             signals.AddWindow(firstSignal, start: 0, end: 2);
@@ -234,11 +262,12 @@ namespace CityFlow.Sim.Tests
                 start: aligned ? 2 : 0,
                 end: aligned ? 4 : 1);
 
-            for (int id = 0; id < 3; id++)
-            {
-                routes.Add(id, V(0, 0), V(1, 0), V(2, 0), V(3, 0), V(4, 0));
-                Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, id));
-            }
+            routes.Add(0, V(1, 0), V(2, 0), V(3, 0), V(4, 0), V(5, 0));
+            routes.Add(1, V(1, 0), V(2, 0), V(3, 0), V(4, 0), V(5, 0));
+            routes.Add(2, V(0, 0), V(1, 0), V(2, 0), V(3, 0), V(4, 0), V(5, 0));
+            Assert.IsTrue(q.TryEnqueue(V(1, 0), Dir.E, 0));
+            Assert.IsTrue(q.TryEnqueue(V(1, 0), Dir.E, 1));
+            Assert.IsTrue(q.TryEnqueue(V(0, 0), Dir.E, 2));
 
             arrivals = 0;
             for (int tick = 0; tick < 9; tick++)
@@ -692,7 +721,7 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(60, q.CarAtHead(center, Dir.E), "Adjacent east entry waits.");
             Assert.AreEqual(61, q.CarAtHead(center, Dir.N), "Adjacent north entry waits.");
             Assert.AreEqual(63, q.CarAtHead(center, Dir.S), "Opposite entry waits for merge clearance.");
-            Assert.AreEqual(0.25f, q.MaxOccupancy01(center), 1e-4f);
+            Assert.AreEqual(0.5f, q.MaxOccupancy01(center), 1e-4f);
 
             q.Step(routes);
             Assert.AreEqual(62, q.RingCellCar(center, Dir.N));
