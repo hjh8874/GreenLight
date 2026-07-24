@@ -14,6 +14,7 @@ namespace CityFlow.Save
         public IProgressionSaveSource ProgressionSaveSource { get; private set; }
         public IGameCalendarSaveSource GameCalendarSaveSource { get; private set; }
         public IRadioSaveSource RadioSaveSource { get; private set; }
+        public ITerrainDecorationSaveSource TerrainDecorationSaveSource { get; private set; }
         public IOfflineSettlementSource OfflineSettlementSource { get; private set; }
         public IOfflineCalendarProgressionSource OfflineCalendarProgressionSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
@@ -31,6 +32,7 @@ namespace CityFlow.Save
         private ResearchSaveData retainedResearch;
         private ProgressionSaveData retainedProgression;
         private RadioSaveData retainedRadio;
+        private TerrainDecorationSaveData retainedTerrainDecorations;
         private bool hasLoadedSave;
 
         public event Action<RestoreCompletedEvent> RestoreCompleted;
@@ -113,6 +115,19 @@ namespace CityFlow.Save
             }
         }
 
+        public void RegisterTerrainDecorationSaveSource(
+            ITerrainDecorationSaveSource terrainDecorationSaveSource)
+        {
+            TerrainDecorationSaveSource = terrainDecorationSaveSource;
+
+            if (hasLoadedSave)
+            {
+                TerrainDecorationSaveSource?.RestoreSnapshot(
+                    retainedTerrainDecorations ??
+                    CreateEmptyTerrainDecorationSaveData());
+            }
+        }
+
         public GameSaveData CreateSnapshot()
         {
             return new GameSaveData
@@ -131,7 +146,10 @@ namespace CityFlow.Save
                     ?? retainedProgression,
                 Calendar = GameCalendarSaveSource?.CreateSnapshot(),
                 Radio = RadioSaveSource?.CreateSnapshot()
-                    ?? retainedRadio
+                    ?? retainedRadio,
+                TerrainDecorations =
+                    TerrainDecorationSaveSource?.CreateSnapshot()
+                    ?? retainedTerrainDecorations
             };
         }
 
@@ -192,6 +210,13 @@ namespace CityFlow.Save
             {
                 RadioSaveSource.RestoreSnapshot(
                     saveData.Radio ?? CreateEmptyRadioSaveData());
+            }
+
+            if (TerrainDecorationSaveSource != null)
+            {
+                TerrainDecorationSaveSource.RestoreSnapshot(
+                    saveData.TerrainDecorations ??
+                    CreateEmptyTerrainDecorationSaveData());
             }
         }
 
@@ -520,6 +545,7 @@ namespace CityFlow.Save
             retainedResearch = saveData?.Research;
             retainedProgression = saveData?.Progression;
             retainedRadio = saveData?.Radio;
+            retainedTerrainDecorations = saveData?.TerrainDecorations;
         }
 
         private static RadioSaveData CreateEmptyRadioSaveData()
@@ -528,6 +554,15 @@ namespace CityFlow.Save
             {
                 Slots = Array.Empty<RadioSlotSaveData>(),
                 CurrentSlotIndex = -1
+            };
+        }
+
+        private static TerrainDecorationSaveData
+            CreateEmptyTerrainDecorationSaveData()
+        {
+            return new TerrainDecorationSaveData
+            {
+                ClearedTileIndices = Array.Empty<int>()
             };
         }
     }

@@ -16,5 +16,6 @@ namespace CityFlow.Contracts.Save
         public ProgressionSaveData Progression;
         public GameCalendarSaveData Calendar;
         public RadioSaveData Radio;
+        public TerrainDecorationSaveData TerrainDecorations;
     }
 }

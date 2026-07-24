@@ -9,7 +9,10 @@ namespace CityFlow.View
 {
     [DisallowMultipleComponent]
     [RequireComponent(typeof(MainCityView))]
-    public sealed class TerrainDecorationView : MonoBehaviour, ICityFlowServiceConsumer
+    public sealed class TerrainDecorationView :
+        MonoBehaviour,
+        ICityFlowServiceConsumer,
+        ITerrainDecorationSaveSource
     {
         [Header("Generation")]
         [SerializeField] private TerrainDecorationCatalogSO catalog;
@@ -53,7 +56,58 @@ namespace CityFlow.View
 
             initialized = true;
             EnsureClearedTileMask();
+            services.RegisterTerrainDecorationSaveSource(this);
             RebuildAll();
+        }
+
+        public TerrainDecorationSaveData CreateSnapshot()
+        {
+            EnsureClearedTileMask();
+
+            int clearedCount = 0;
+            for (int i = 0; i < clearedTiles.Length; i++)
+            {
+                if (clearedTiles[i])
+                {
+                    clearedCount++;
+                }
+            }
+
+            int[] clearedTileIndices = new int[clearedCount];
+            int destinationIndex = 0;
+            for (int i = 0; i < clearedTiles.Length; i++)
+            {
+                if (clearedTiles[i])
+                {
+                    clearedTileIndices[destinationIndex++] = i;
+                }
+            }
+
+            return new TerrainDecorationSaveData
+            {
+                ClearedTileIndices = clearedTileIndices
+            };
+        }
+
+        public void RestoreSnapshot(TerrainDecorationSaveData snapshot)
+        {
+            EnsureClearedTileMask();
+            System.Array.Clear(clearedTiles, 0, clearedTiles.Length);
+
+            int[] clearedTileIndices = snapshot?.ClearedTileIndices;
+            if (clearedTileIndices == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < clearedTileIndices.Length; i++)
+            {
+                int tileIndex = clearedTileIndices[i];
+                if (tileIndex >= 0 && tileIndex < clearedTiles.Length)
+                {
+                    clearedTiles[tileIndex] = true;
+                }
+            }
         }
 
         private void OnDestroy()

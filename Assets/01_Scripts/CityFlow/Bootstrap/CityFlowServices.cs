@@ -127,5 +127,17 @@ namespace CityFlow.Bootstrap
 
             Save?.RegisterRadioSaveSource(radioSaveSource);
         }
+
+        public void RegisterTerrainDecorationSaveSource(
+            ITerrainDecorationSaveSource terrainDecorationSaveSource)
+        {
+            if (terrainDecorationSaveSource == null)
+            {
+                return;
+            }
+
+            Save?.RegisterTerrainDecorationSaveSource(
+                terrainDecorationSaveSource);
+        }
     }
 }
