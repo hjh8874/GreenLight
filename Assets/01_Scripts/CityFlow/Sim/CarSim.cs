@@ -53,6 +53,7 @@ namespace CityFlow.Sim
         private float _lastHour;
         private bool _hasLastHour;
         private bool _needsSnap;
+        private bool _populationInitialized;
 
         private readonly struct PreviousAssignment
         {
@@ -146,6 +147,7 @@ namespace CityFlow.Sim
             Array.Clear(_offNetworkBlockedTicks, 0, _offNetworkBlockedTicks.Length);
             _hasLastHour = false;
             _needsSnap = false;
+            _populationInitialized = false;
         }
 
         public void Rebuild(DemandMap demands, RoutePlanner planner, RoadQueueNetwork net)
@@ -251,6 +253,14 @@ namespace CityFlow.Sim
                     continue;
                 }
 
+                if (reason == RetireReason.WorkLost && car.State == CarState.Outbound)
+                {
+                    // 회사 철거 시 출근 보상을 만들지 않고, 같은 ResumeTile을 구 귀가
+                    // 경로에 재큐잉해 즉시 "포기 귀가"로 전환한다.
+                    car.State = CarState.Inbound;
+                    car.Distance = 0f;
+                }
+
                 int viewRouteIndex = _viewOutboundRoutes.Count;
                 _sources.Add(car.Home);
                 _sinks.Add(car.Work);
@@ -270,7 +280,9 @@ namespace CityFlow.Sim
                 _cfg.MorningStartHour,
                 _cfg.MorningEndHour,
                 _cfg.EveningStartHour,
-                _cfg.EveningEndHour);
+                _cfg.EveningEndHour,
+                deferNewAssignments: _populationInitialized);
+            _populationInitialized = true;
             Array.Clear(_enqueued, 0, _enqueued.Length);
             Array.Clear(_tileIndices, 0, _tileIndices.Length);
             Array.Fill(_queueSlots, -1);

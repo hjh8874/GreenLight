@@ -541,6 +541,78 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0, sim.CarCount, "안전한 주차 경계 다음 리빌드에서만 은퇴한다");
         }
 
+        [Test]
+        public void Rebuild_RemovedWork_OutboundCarTurnsBackAndReturnsHome()
+        {
+            BuildRetirementCity(
+                out CityGrid grid,
+                out RoadNetwork road,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
+
+            Assert.IsTrue(grid.Remove(V(4, 0)));
+            RebuildCarTopology(grid, road, demands, planner, net, sim);
+
+            Assert.AreEqual(1, sim.CarCount);
+            Assert.AreEqual(
+                CarState.Inbound,
+                sim.GetCar(0).State,
+                "WorkLost 출근 차는 보상 가능한 출근을 계속하지 않고 즉시 포기 귀가로 전환한다");
+            for (int tick = 0;
+                 tick < 8 && sim.GetCar(0).State == CarState.Inbound;
+                 tick++)
+            {
+                sim.Step(7f, net, events);
+            }
+            Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State);
+        }
+
+        [Test]
+        public void Rebuild_AddedHome_NewAssignmentWaitsUntilNextMorningWave()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(6, 3);
+            for (int x = 0; x <= 5; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            var events = new SimEventBuffer(new SimEventHub());
+
+            Assert.AreEqual(0, sim.CarCount);
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            RebuildCarTopology(grid, road, demands, planner, net, sim);
+
+            sim.Step(7f, net, events);
+            Assert.AreEqual(1, sim.CarCount);
+            Assert.AreEqual(
+                CarState.ParkedHome,
+                sim.GetCar(0).State,
+                "이미 시작된 아침 웨이브에 신규 배정을 소급 출발시키면 안 된다");
+            sim.Step(7f, net, events);
+            Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State);
+
+            sim.Step(0f, net, events);
+            sim.Step(7f, net, events);
+            Assert.AreEqual(
+                CarState.Outbound,
+                sim.GetCar(0).State,
+                "다음 날 출발 시각 경계를 지난 뒤 신규 배정이 활성화되어야 한다");
+        }
+
         private static void BuildRetirementCity(
             out CityGrid grid,
             out RoadNetwork road,
