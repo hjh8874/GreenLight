@@ -416,6 +416,12 @@ namespace CityFlow.Sim.Tests
             q.Step(routes);
 
             Assert.IsTrue(q.TryLocateCar(44, out _, out _, out _, out southProgress));
+            Assert.AreEqual(-1f, southProgress, 1e-4f,
+                "The conflicting path waits through the following rear-clearance tick.");
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(44, out _, out _, out _, out southProgress));
             Assert.AreEqual(0.75f, southProgress, 1e-4f);
         }
 
@@ -513,6 +519,12 @@ namespace CityFlow.Sim.Tests
 
             Assert.AreEqual(47, q.CarAtHead(V(2, 1), Dir.E));
             Assert.AreEqual(48, q.CarAtHead(north, Dir.S));
+
+            q.Step(routes);
+
+            Assert.AreEqual(48, q.CarAtHead(north, Dir.S),
+                "The next entry must wait through the exited vehicle's rear-clearance tick.");
+            Assert.AreEqual(-1, q.CarAtHead(center, Dir.S));
 
             q.Step(routes);
 
