@@ -834,12 +834,29 @@ namespace CityFlow.View
             // 간격은 기존 앞차 추종 노브와 동일하게 두되, 슬롯 증가로 상한이 현재 위치보다
             // 뒤로 가더라도 아래에서 차를 후진시키지 않는다. 타일 경계를 넘는 연속 대기열은
             // Phase B 범위이며, 이번 단계에서도 앞차 추종의 headway 방어는 그대로 유지한다.
+            // 07-20 계측: 슬롯 갭 0.55 단독(추종 방어 없이)은 SAME-DIR 겹침 385→769 —
+            // 슬롯 목표는 반드시 headway 추종과 병행한다.
             float slotGap = vehicleMinHeadway * tileSize;
             bool stateChanged = hadPrevious && previous != snapshot.State;
             if (stateChanged) car.Distance = 0f;
+            bool isRoundaboutTile = IsRoundaboutTile(simTile);
+            bool hasRoundaboutAuthorization = snapshot.RoundaboutProgress01 >= 0f
+                && isRoundaboutTile;
+            float roundaboutStopDistance = 0f;
+            bool roundaboutEntryLimited = !hasRoundaboutAuthorization
+                && TryGetRoundaboutEntryStopDistance(
+                    poly,
+                    tileIndex,
+                    vehicle,
+                    out roundaboutStopDistance);
+            // 접근 외곽·arm은 roundaboutEntryLimited가 진입 간격을, 링은 로터리 권한이
+            // 위치를 책임진다. 이 구간에 일반 타일 슬롯까지 적용하면 같은 거리를 이중 제한한다.
+            int targetQueueSlot = isRoundaboutTile || roundaboutEntryLimited
+                ? 0
+                : snapshot.QueueSlot;
             float targetDistance = poly.DistanceAtQueueSlot(
                 tileIndex,
-                snapshot.QueueSlot,
+                targetQueueSlot,
                 slotGap,
                 headInset);
             float queueHeadTargetDistance = poly.DistanceAtQueueSlot(
@@ -848,8 +865,6 @@ namespace CityFlow.View
                 slotGap,
                 headInset);
             bool hasIntersectionAuthorization = snapshot.IntersectionProgress01 >= 0f;
-            bool hasRoundaboutAuthorization = snapshot.RoundaboutProgress01 >= 0f
-                && IsRoundaboutTile(simTile);
             float intersectionAuthorizedSpeed = 0f;
             if (hasIntersectionAuthorization)
             {
@@ -955,13 +970,6 @@ namespace CityFlow.View
                 : Mathf.Min(
                     vehicle.TargetDistance + vehicleCorridorTiles * tileSize,
                     poly.Length);
-            float roundaboutStopDistance = 0f;
-            bool roundaboutEntryLimited = !hasRoundaboutAuthorization
-                && TryGetRoundaboutEntryStopDistance(
-                    poly,
-                    tileIndex,
-                    vehicle,
-                    out roundaboutStopDistance);
             if (roundaboutEntryLimited)
             {
                 corridor = Mathf.Min(corridor, roundaboutStopDistance);
@@ -996,7 +1004,8 @@ namespace CityFlow.View
                     distanceToBoundary / remainingTickSeconds);
             }
 
-            bool usesQueueSlotTarget = !hasIntersectionAuthorization
+            bool usesQueueSlotTarget = targetQueueSlot > 0
+                && !hasIntersectionAuthorization
                 && !hasRoundaboutAuthorization
                 && snapshot.LinkProgress01 <= 0f;
             float corridorWithoutQueueSlot = Mathf.Min(
