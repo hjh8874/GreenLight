@@ -960,16 +960,10 @@ namespace CityFlow.View
             // 평균 속도는 Sim이 정한다(틱당 1타일) — 개성으로 최고속도를 바꾸면 느린 차는
             // 영원히 목표를 못 따라잡는다. 개성은 가속도(AccelMul)에만 건다.
             float nominal = tileSize / Mathf.Max(0.0001f, simEngine.TickInterval);
-            // 천장 = Sim 목표 + 1타일 (틱마다 이산 전진). 연속 천장(틱위상 보간)을 계측으로
-            // 시험했으나(2026-07-21) 기각했다: 감속 이벤트가 줄지 않았고(106 vs 101/1k)
-            // 뷰가 Sim 스냅샷보다 최대 2타일 앞서 헌법의 "Sim+1 상한"을 어겼다.
-            // 남는 중간 브레이크의 뿌리는 뷰가 아니라 **Sim 틱 양자화**다(0.4s 홀드) — §4.10.
-            // 도로 끝 클램프는 poly.Length — 목적지 도달 차를 회사 앞에서 얼리지 않는다(§4.6.2).
-            float corridor = hasIntersectionAuthorization || hasRoundaboutAuthorization
-                ? vehicle.TargetDistance
-                : Mathf.Min(
-                    vehicle.TargetDistance + vehicleCorridorTiles * tileSize,
-                    poly.Length);
+            // 일반 도로는 QueueSlot 목표(슬롯0 포함), 교차로·로터리·링크는 위에서 덮어쓴
+            // 각 권한 거리가 그대로 상한이다. +1타일 선행은 Sim 타일 전환 때 새 슬롯 목표보다
+            // 앞서 있던 차를 도로 한가운데 세웠으므로 폐지한다(2026-07-24 라이브 계측).
+            float corridor = vehicle.TargetDistance;
             if (roundaboutEntryLimited)
             {
                 corridor = Mathf.Min(corridor, roundaboutStopDistance);
@@ -1008,19 +1002,16 @@ namespace CityFlow.View
                 && !hasIntersectionAuthorization
                 && !hasRoundaboutAuthorization
                 && snapshot.LinkProgress01 <= 0f;
-            float corridorWithoutQueueSlot = Mathf.Min(
-                queueHeadTargetDistance + vehicleCorridorTiles * tileSize,
-                poly.Length);
+            float queueHeadCorridor = queueHeadTargetDistance;
             if (roundaboutEntryLimited)
-                corridorWithoutQueueSlot = Mathf.Min(corridorWithoutQueueSlot, roundaboutStopDistance);
+                queueHeadCorridor = Mathf.Min(queueHeadCorridor, roundaboutStopDistance);
             if (signalEntryLimited)
-                corridorWithoutQueueSlot = Mathf.Min(corridorWithoutQueueSlot, signalStopDistance);
+                queueHeadCorridor = Mathf.Min(queueHeadCorridor, signalStopDistance);
             if (intersectionEntryLimited)
-                corridorWithoutQueueSlot = Mathf.Min(corridorWithoutQueueSlot, intersectionStopDistance);
+                queueHeadCorridor = Mathf.Min(queueHeadCorridor, intersectionStopDistance);
             bool queueSlotOnlyRegression = usesQueueSlotTarget
-                && snapshot.QueueSlot > 0
                 && targetDistance < queueHeadTargetDistance - 0.0001f
-                && corridorWithoutQueueSlot >= car.Distance;
+                && queueHeadCorridor >= car.Distance;
 
             if (corridor < car.Distance)
             {
