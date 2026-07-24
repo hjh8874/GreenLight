@@ -1017,6 +1017,10 @@ namespace CityFlow.Sim
         private static IntersectionCell GetIntentMovementMask(Intent intent, bool useReservation)
         {
             if (useReservation) return intent.ReservationMask;
+            // Arrival removes the current node in place; it traverses no new cell.
+            // In particular, an intersection destination must not request All and
+            // conflict with the occupancy mask contributed by that same vehicle.
+            if (intent.Kind == IntentKind.Arrival) return IntersectionCell.None;
             if (intent.Kind == IntentKind.IntersectionAdvance) return intent.ReservationMask;
             if (intent.Kind == IntentKind.Move)
                 return IntersectionMicroGrid.MovementMask(intent.MovementEntry, intent.MovementExit);
