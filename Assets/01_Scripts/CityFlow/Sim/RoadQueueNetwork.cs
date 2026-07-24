@@ -307,6 +307,18 @@ namespace CityFlow.Sim
             return node == NoNode ? NoNode : _cars[node];
         }
 
+        internal bool IsSafeResumeTile(Vector2Int tile)
+        {
+            if (!InBounds(tile)) return false;
+            int tileIndex = TileIndex(tile);
+            // Rebuild enqueue has no intersection stage or roundabout ring reservation.
+            // Resume only on an ordinary queue tile so those state machines admit the
+            // vehicle through their normal entry paths.
+            return !UsesSharedBudget(tileIndex)
+                && !_roundabouts[tileIndex]
+                && !IsRoundaboutArm(tileIndex);
+        }
+
         internal bool TryLocateCar(int carId, out Vector2Int tile, out Dir direction, out int slot)
             => TryLocateCar(carId, out tile, out direction, out slot, out _, out _);
 
@@ -940,6 +952,7 @@ namespace CityFlow.Sim
                         && _intents[i].Kind == IntentKind.IntersectionAdvance
                         && !IsStraightMovement(_intents[i])
                         && HasOpposingStraightThreat(
+                            _intents[i].Node,
                             intersectionTile,
                             _intents[i].MovementEntry,
                             _intents[i].MovementExit))
@@ -1004,6 +1017,10 @@ namespace CityFlow.Sim
         private static IntersectionCell GetIntentMovementMask(Intent intent, bool useReservation)
         {
             if (useReservation) return intent.ReservationMask;
+            // Arrival removes the current node in place; it traverses no new cell.
+            // In particular, an intersection destination must not request All and
+            // conflict with the occupancy mask contributed by that same vehicle.
+            if (intent.Kind == IntentKind.Arrival) return IntersectionCell.None;
             if (intent.Kind == IntentKind.IntersectionAdvance) return intent.ReservationMask;
             if (intent.Kind == IntentKind.Move)
                 return IntersectionMicroGrid.MovementMask(intent.MovementEntry, intent.MovementExit);
@@ -1030,6 +1047,7 @@ namespace CityFlow.Sim
                 intent.MovementEntry,
                 intent.MovementExit);
             bool yieldsToStraight = HasOpposingStraightThreat(
+                intent.Node,
                 intersectionTile,
                 intent.MovementEntry,
                 intent.MovementExit);
@@ -1046,10 +1064,15 @@ namespace CityFlow.Sim
             intent.MovementEntry == intent.MovementExit;
 
         private bool HasOpposingStraightThreat(
+            int turningNode,
             int intersectionTile,
             Dir turningEntry,
             Dir turningExit)
         {
+            // 신호 게이트는 intent 생성 전에 continue하므로 그 대기는 _blockedTicks에
+            // 포함되지 않는다. 실제 교차로 중재에서 임계까지 밀린 회전만 양보를 끝낸다.
+            if (IsIntersectionStarved(turningNode)) return false;
+
             // The opposite tile may also contain traffic moving away. Its direction queue
             // is distinct, so only the queue entering this intersection can block the turn.
             Dir opposingEntry = Opposite(turningEntry);
@@ -1129,6 +1152,7 @@ namespace CityFlow.Sim
                         _blockedTicks[intent.Node]++;
                         return;
                     }
+                    int blockedTicksBeforeMove = _blockedTicks[intent.Node];
                     bool leavingIntersection = UsesSharedBudget(intent.TileIndex);
                     MoveHead(intent.FromQueue, intent.ToQueue);
                     if (leavingIntersection)
@@ -1145,6 +1169,9 @@ namespace CityFlow.Sim
                             ? IntersectionStage.Exit
                             : IntersectionStage.Entry;
                         _intersectionMovementExits[intent.Node] = intent.MovementExit;
+                        // 진입 셀은 아직 교차로 통과 완료가 아니다. 접근 중 쌓인 aging을
+                        // 보존해야 starved 회전이 Entry에서 다시 임계만큼 굶지 않는다.
+                        _blockedTicks[intent.Node] = blockedTicksBeforeMove;
                     }
                     else
                     {
@@ -1163,6 +1190,7 @@ namespace CityFlow.Sim
                 Vector2Int position = TileAt(tile);
                 RoundaboutTrafficState state = _roundaboutStates[tile];
                 int heldMask = 0;
+                int handoffSide = NoNode;
 
                 for (int cell = 0; cell < DirectionCount; cell++)
                 {
@@ -1181,14 +1209,35 @@ namespace CityFlow.Sim
                         || (int)exit != cell || !TryQueueIndex(next, exit, out int toQueue)) continue;
                     if (!CanAcceptNormally(toQueue))
                     {
-                        _blockedTicks[node]++;
-                        heldMask |= 1 << cell;
-                        continue;
+                        bool sameArmHandoff = state.CanHandoffBlockedExit(
+                                (Dir)cell,
+                                node,
+                                out int activeEntryNode)
+                            && IsNodeAtTileHead(activeEntryNode, TileIndex(next));
+                        if (!sameArmHandoff)
+                        {
+                            _blockedTicks[node]++;
+                            heldMask |= 1 << cell;
+                            continue;
+                        }
+
+                        // Temporarily append the exiting car behind the active arm car.
+                        // CollectIntents immediately admits that exact head into the now
+                        // empty ring cell, restoring the arm's physical capacity in-round.
+                        handoffSide = cell;
                     }
                     state.Remove((Dir)cell);
                     _movedThisTick[node] = true;
                     _blockedTicks[node] = 0;
                     AppendNode(toQueue, node);
+                }
+
+                if (handoffSide != NoNode)
+                {
+                    // Do not advance the ring into the vacated mouth. Only the active
+                    // entrant from the exit target arm may consume this exception.
+                    state.BlockEntriesExcept((Dir)handoffSide);
+                    continue;
                 }
 
                 // 이탈 대기차가 있으면 링 전체가 그 차의 점유를 존중해 정지한다.
@@ -1222,6 +1271,18 @@ namespace CityFlow.Sim
                     if (node != NoNode) _movedThisTick[node] = true;
                 }
             }
+        }
+
+        private bool IsNodeAtTileHead(int node, int tileIndex)
+        {
+            if (node == NoNode || tileIndex < 0 || tileIndex >= _roundabouts.Length)
+                return false;
+            int firstQueue = tileIndex * DirectionCount;
+            for (int direction = 0; direction < DirectionCount; direction++)
+            {
+                if (_heads[firstQueue + direction] == node) return true;
+            }
+            return false;
         }
 
         private void ServiceHighwayLinks(ref StepResult result)
@@ -1293,6 +1354,10 @@ namespace CityFlow.Sim
             bool currentInside = current.Kind == IntentKind.IntersectionAdvance;
             if (candidateInside != currentInside) return candidateInside;
 
+            bool candidateStarved = IsIntersectionStarved(candidate.Node);
+            bool currentStarved = IsIntersectionStarved(current.Node);
+            if (candidateStarved != currentStarved) return candidateStarved;
+
             Dir candidateEntry = useReservation ? candidate.MovementEntry : candidate.Entry;
             Dir candidateExit = useReservation ? candidate.MovementExit : candidate.Exit;
             Dir currentEntry = useReservation ? current.MovementEntry : current.Entry;
@@ -1310,6 +1375,9 @@ namespace CityFlow.Sim
                 ? candidateTurn < currentTurn
                 : candidateEntry < currentEntry;
         }
+
+        private bool IsIntersectionStarved(int node) =>
+            node != NoNode && _blockedTicks[node] >= _gridlockValveTicks;
 
         private bool IsIntersectionExitBlocked(ICarRouteProvider routes, int carId, Vector2Int intersection, int tileIndex)
         {
