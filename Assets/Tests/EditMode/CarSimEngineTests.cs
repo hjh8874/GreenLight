@@ -221,6 +221,38 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1f, engine.TripSuccessRateForTest, "점프가 낀 날은 EMA 미산출");
         }
 
+        // 채용 게이지 오버레이(CompanyHiringGaugeOverlay)의 데이터 계약 고정:
+        // staffing 조회는 회사 "앵커" 타일에서만 응답해야 라벨이 회사당 1개가 되고,
+        // Filled는 채용 램프를 따라 배정 인원까지 차오른다.
+        [Test]
+        public void CompanyStaffing_RespondsOnlyAtAnchor_AndFillsOverHiringRamp()
+        {
+            SimConfig cfg = Cfg();
+            var engine = BuildStraightCity(cfg, new SimEventHub());
+            Vector2Int anchor = V(4, 0);
+            engine.SetGameHour(7f);
+            engine.Tick(0.25f);
+
+            Assert.IsTrue(
+                engine.TryGetCompanyStaffing(anchor, out CompanyStaffing staffing),
+                "앵커 타일은 staffing을 보고한다");
+            Assert.AreEqual(cfg.OfficeCapacity, staffing.Capacity, "게이지 분모 = 총 정원");
+            foreach (Vector2Int offset in new[] { V(1, 0), V(0, 1), V(1, 1) })
+            {
+                Assert.IsFalse(
+                    engine.TryGetCompanyStaffing(anchor + offset, out _),
+                    $"풋프린트 비앵커 타일 {anchor + offset}은 응답하지 않는다(라벨 중복 방지)");
+            }
+
+            for (int tick = 0; tick < 16 && staffing.Filled < 2; tick++)
+            {
+                engine.Tick(0.25f);
+                Assert.IsTrue(engine.TryGetCompanyStaffing(anchor, out staffing));
+            }
+            Assert.AreEqual(2, staffing.Filled, "채용 램프를 따라 배정 인원까지 차오른다");
+            Assert.LessOrEqual(staffing.Filled, staffing.Capacity);
+        }
+
         private static SimEngine BuildStraightCity(SimConfig cfg, SimEventHub hub)
         {
             var engine = new SimEngine(cfg, hub);
