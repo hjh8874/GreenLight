@@ -23,6 +23,8 @@ namespace CityFlow.View
         [SerializeField] private float tileSize = GridUtil.TileSize;
 
         [Header("Optional Prefabs")]
+        [SerializeField] private GameObject fieldTilePrefab;
+        [SerializeField] private float fieldTileZ = 0.14f;
         [SerializeField] private GameObject roadPrefab;
         [SerializeField] private GameObject housePrefab;
         [SerializeField] private GameObject officePrefab;
@@ -127,6 +129,7 @@ namespace CityFlow.View
         [SerializeField] private Color turnSignColor = new Color(0.95f, 0.35f, 0.75f);
 
         private readonly Dictionary<Vector2Int, TileVisual> tileVisuals = new();
+        private readonly Dictionary<Vector2Int, GridCellView> gridCells = new();
         private readonly Dictionary<Vector2Int, SignalVisual> signalVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> roundaboutVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> overpassVisuals = new();
@@ -157,6 +160,7 @@ namespace CityFlow.View
         private IHighwayService highwayService;
         private Transform gridRoot;
         private Transform boardRoot;
+        private Transform fieldTileRoot;
         private Transform tileRoot;
         private Transform vehicleRoot;
         private Transform signalRoot;
@@ -201,10 +205,19 @@ namespace CityFlow.View
 
         public GameObject FlowBurstPrefab => burstPrefab;
         public Transform EffectRoot => effectRoot;
+        public int GridWidth => width;
+        public int GridHeight => height;
         public float TileSize => tileSize;
+        public float FieldTileZ => fieldTileZ;
         public float FlowBurstSeconds => burstSeconds;
         public Color FlowBurstColor => flowBurstColor;
         public bool IsDriveViewActive => driveViewCamera != null && driveViewCamera.IsFollowing;
+        public event System.Action GridCellsBuilt;
+
+        public bool TryGetGridCell(Vector2Int coordinate, out GridCellView cell)
+        {
+            return gridCells.TryGetValue(coordinate, out cell);
+        }
 
         public string SelectedSignalSummary
         {
@@ -684,6 +697,7 @@ namespace CityFlow.View
         private void BuildRoots()
         {
             boardRoot = CreateChildRoot("Board");
+            fieldTileRoot = CreateChildRoot("GridCells");
             gridRoot = CreateChildRoot("GridLines");
             tileRoot = CreateChildRoot("Tiles");
             vehicleRoot = CreateChildRoot("Vehicles");
@@ -742,10 +756,69 @@ namespace CityFlow.View
             board.transform.localPosition = new Vector3(width * tileSize * 0.5f, height * tileSize * 0.5f, 0.15f);
             board.transform.localScale = new Vector3(width * tileSize, height * tileSize, 0.04f);
             Renderer boardRenderer = board.GetComponent<Renderer>();
-            boardRenderer.sharedMaterial = CreateGridMaterial(boardRenderer.sharedMaterial);
+            bool usesFieldTiles = BuildFieldTiles();
+
+            if (usesFieldTiles)
+            {
+                boardRenderer.enabled = false;
+            }
+            else
+            {
+                boardRenderer.sharedMaterial = CreateGridMaterial(boardRenderer.sharedMaterial);
+            }
+
             boardRenderer.allowOcclusionWhenDynamic = false;
             boardRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             boardRenderer.receiveShadows = false;
+        }
+
+        private bool BuildFieldTiles()
+        {
+            if (fieldTileRoot == null)
+            {
+                return false;
+            }
+
+            gridCells.Clear();
+            ClearChildren(fieldTileRoot);
+
+            if (fieldTilePrefab == null)
+            {
+                return false;
+            }
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    GameObject fieldTile = Instantiate(fieldTilePrefab, fieldTileRoot, false);
+                    Vector2Int coordinate = new Vector2Int(x, y);
+                    GridCellView gridCell = fieldTile.GetComponent<GridCellView>();
+
+                    if (gridCell == null)
+                    {
+                        Debug.LogError(
+                            $"[MainCityView] Field tile prefab is missing GridCellView at {coordinate}.",
+                            fieldTile);
+                        Destroy(fieldTile);
+                        continue;
+                    }
+
+                    fieldTile.name = $"GridCell_{x}_{y}";
+                    fieldTile.transform.localPosition = new Vector3(
+                        (x + 0.5f) * tileSize,
+                        (y + 0.5f) * tileSize,
+                        fieldTileZ);
+                    fieldTile.transform.localRotation = Quaternion.identity;
+                    fieldTile.transform.localScale = Vector3.one;
+                    gridCell.Initialize(coordinate);
+                    gridCells.Add(coordinate, gridCell);
+                }
+            }
+
+            GridCellsBuilt?.Invoke();
+            Debug.Log($"[MainCityView] Built {gridCells.Count} grid cell visuals.");
+            return gridCells.Count > 0;
         }
 
         private void BuildGridLines()
@@ -756,6 +829,59 @@ namespace CityFlow.View
             }
 
             ClearChildren(gridRoot);
+
+            if (fieldTilePrefab == null)
+            {
+                return;
+            }
+
+            const float lineDepth = 0.005f;
+            const float surfaceOffset = 0.01f;
+            float lineZ = fieldTileZ - surfaceOffset;
+            Material gridMaterial = CreateUnlitMaterial(renderQueue: 1900);
+
+            for (int x = 0; x <= width; x++)
+            {
+                CreateGridLine(
+                    $"GridLine_V_{x}",
+                    new Vector3(x * tileSize, height * tileSize * 0.5f, lineZ),
+                    new Vector3(gridLineThickness, height * tileSize, lineDepth),
+                    gridMaterial);
+            }
+
+            for (int y = 0; y <= height; y++)
+            {
+                CreateGridLine(
+                    $"GridLine_H_{y}",
+                    new Vector3(width * tileSize * 0.5f, y * tileSize, lineZ),
+                    new Vector3(width * tileSize, gridLineThickness, lineDepth),
+                    gridMaterial);
+            }
+        }
+
+        private void CreateGridLine(
+            string lineName,
+            Vector3 localPosition,
+            Vector3 localScale,
+            Material sharedMaterial)
+        {
+            GameObject line = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            line.name = lineName;
+            line.transform.SetParent(gridRoot, false);
+            line.transform.localPosition = localPosition;
+            line.transform.localScale = localScale;
+
+            Collider collider = line.GetComponent<Collider>();
+            if (collider != null)
+            {
+                Destroy(collider);
+            }
+
+            Renderer renderer = line.GetComponent<Renderer>();
+            renderer.sharedMaterial = sharedMaterial;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            ApplyRendererColor(renderer, gridLineColor);
         }
 
         private static void ClearChildren(Transform root)
