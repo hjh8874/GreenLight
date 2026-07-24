@@ -298,6 +298,84 @@ namespace CityFlow.Sim.Tests
                 "일방통행이 겹치면 구 경로 carry-over 대신 재계획해야 한다");
         }
 
+        // 리뷰 지적(2026-07-24 hjh8874): 회사 철거 시 ResumeTile은 아웃바운드 경로에서
+        // 캡처되는데 재큐잉은 인바운드 경로에서 찾는다. 일방통행 두 개로 출근=서쪽 링,
+        // 귀가=동쪽 링을 강제해 왕복 타일 집합을 갈라 놓으면, 미수정 코드는 start=0
+        // 폴백으로 철거된 회사 쪽 타일에 순간이동한다.
+        [Test]
+        public void RemovedWork_DivergedReturnLoop_ResumesNearCurrentTile()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 8;
+            cfg.GridHeight = 9;
+            cfg.AutoDetectSignals = false;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            for (int x = 0; x <= 7; x++)
+            {
+                Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
+                Assert.IsTrue(engine.Place(V(x, 6), TileType.Road));
+            }
+            for (int y = 3; y <= 5; y++)
+            {
+                Assert.IsTrue(engine.Place(V(0, y), TileType.Road));
+                Assert.IsTrue(engine.Place(V(7, y), TileType.Road));
+            }
+            // 서쪽 기둥은 북행 전용(출근), 동쪽 기둥은 남행 전용(귀가) → 왕복 경로 분리.
+            Assert.IsTrue(engine.TryPlaceOneway(V(0, 4), V(0, 1)));
+            Assert.IsTrue(engine.TryPlaceOneway(V(7, 4), V(0, -1)));
+            Assert.IsTrue(engine.Place(V(2, 0), TileType.House));
+            Assert.IsTrue(engine.Place(V(2, 7), TileType.Office));
+            engine.SetGameHour(7f);
+
+            // 출근 차가 서쪽 링 초입(y=2, x<=1)에 도달할 때까지 진행.
+            Vector2Int carTile = default;
+            bool reached = false;
+            for (int tick = 0; tick < 20 && !reached; tick++)
+            {
+                engine.Tick(0.25f);
+                Assert.AreEqual(1, engine.ActiveVehicleCount);
+                CarSnapshot s = engine.GetCarSnapshot(0);
+                if (s.State != CarState.Outbound) continue;
+                carTile = engine.ActiveRoutes[s.RouteIndex][s.TileIndex];
+                reached = carTile.y == 2 && carTile.x <= 1;
+            }
+            Assert.IsTrue(reached, "전제: 출근 차가 서쪽 링 초입 도달");
+
+            List<Vector2Int> returnRoute =
+                engine.ActiveReturnRoutes[engine.GetCarSnapshot(0).RouteIndex];
+            CollectionAssert.DoesNotContain(
+                returnRoute, carTile, "전제: 왕복 경로가 실제로 갈라져 있어야 한다");
+            Vector2Int officeSideStart = returnRoute[0];
+            Assert.IsTrue(engine.Remove(V(2, 7)));
+            engine.EnsureCarTopologyCurrent();
+            engine.Tick(0.25f);
+
+            // 미수정 코드: officeSideStart(철거된 회사 쪽)에서 귀가 시작 → 한 틱 뒤에도
+            // 회사 근방 Inbound(직전 위치와 멀리 떨어짐). 수정 코드: 직전 위치 최근접
+            // 타일 재큐잉 → 근방 Inbound이거나, 그 지점이 귀가 종점이면 즉시 귀가 완료.
+            CarSnapshot after = engine.GetCarSnapshot(0);
+            if (after.State == CarState.Inbound)
+            {
+                Vector2Int resumed =
+                    engine.ActiveReturnRoutes[after.RouteIndex][after.TileIndex];
+                Assert.AreNotEqual(
+                    officeSideStart,
+                    resumed,
+                    "철거된 회사 쪽 귀가 시작 타일로 순간이동하면 안 된다");
+                int jump = Mathf.Abs(resumed.x - carTile.x)
+                    + Mathf.Abs(resumed.y - carTile.y);
+                Assert.LessOrEqual(
+                    jump, 3, $"재큐잉 타일 {resumed}은 직전 위치 {carTile} 근방이어야 한다");
+            }
+            else
+            {
+                Assert.AreEqual(
+                    CarState.ParkedHome,
+                    after.State,
+                    "집 근방 재큐잉이라면 한 틱 내 귀가 완료만 허용된다");
+            }
+        }
+
         [Test]
         public void CompletedDay_BlendsSuccessByHalf_AndPersistsAcrossSave()
         {

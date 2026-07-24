@@ -245,7 +245,7 @@ namespace CityFlow.Sim
                         {
                             continue;
                         }
-                        PrepareWorkLostReturn(car, reason);
+                        PrepareWorkLostReturn(car, reason, previous.Inbound);
                         AppendPreviousAssignment(previous, preserveViewIndex: true);
                         continue;
                     }
@@ -288,7 +288,7 @@ namespace CityFlow.Sim
                         continue;
                     }
 
-                    PrepareWorkLostReturn(car, reason);
+                    PrepareWorkLostReturn(car, reason, previous.Inbound);
                     AppendPreviousAssignment(previous, preserveViewIndex: false);
                 }
             }
@@ -381,7 +381,8 @@ namespace CityFlow.Sim
 
         private static void PrepareWorkLostReturn(
             CommuteCar car,
-            RetireReason reason)
+            RetireReason reason,
+            List<Vector2Int> inboundRoute)
         {
             if (reason != RetireReason.WorkLost || car.State != CarState.Outbound)
                 return;
@@ -389,6 +390,23 @@ namespace CityFlow.Sim
             // 경로에 재큐잉해 즉시 "포기 귀가"로 전환한다.
             car.State = CarState.Inbound;
             car.Distance = 0f;
+            if (!car.HasResume) return;
+            // ResumeTile은 아웃바운드 경로에서 캡처됐다. 일방통행 등으로 왕복 경로가
+            // 갈라져 있으면 인바운드 경로에서 못 찾아 start=0(철거된 회사 쪽 타일)으로
+            // 폴백한다 — 이 파일 상단 주석이 막으려는 순간이동 그 자체. 인바운드 경로
+            // 기준 최근접 타일로 다시 잡는다(동률은 먼저 나온 인덱스, 결정론적).
+            int best = 0;
+            int bestDist = int.MaxValue;
+            for (int p = 0; p < inboundRoute.Count; p++)
+            {
+                int dist = Mathf.Abs(inboundRoute[p].x - car.ResumeTile.x)
+                    + Mathf.Abs(inboundRoute[p].y - car.ResumeTile.y);
+                if (dist >= bestDist) continue;
+                bestDist = dist;
+                best = p;
+                if (dist == 0) break;
+            }
+            car.ResumeTile = inboundRoute[best];
         }
 
         private void AppendPreviousAssignment(
