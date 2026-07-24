@@ -160,6 +160,36 @@ namespace CityFlow.Sim
             return node;
         }
 
+        public bool RemoveNodeForRescue(int node)
+        {
+            bool removed = false;
+            for (int cell = 0; cell < CellCount; cell++)
+            {
+                if (_nodes[cell] != node) continue;
+                _nodes[cell] = NoNode;
+                OccupiedCount--;
+                removed = true;
+                break;
+            }
+
+            if (_activeEntryNode == node)
+            {
+                _activeEntryNode = NoNode;
+                _activeEntrySide = default;
+                removed = true;
+            }
+
+            if (!removed) return false;
+
+            // Rescue runs after a completed service step. Clear every ephemeral
+            // grant owned by the removed node so the next tick cannot inherit a
+            // phantom mouth reservation or admission.
+            Array.Clear(_reservations, 0, _reservations.Length);
+            _admittedThisTick = false;
+            _hasBlockedEntryException = false;
+            return true;
+        }
+
         public void AdvanceCounterClockwise()
         {
             int north = _nodes[(int)Dir.N];

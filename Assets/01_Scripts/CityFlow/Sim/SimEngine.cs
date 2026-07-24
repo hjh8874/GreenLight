@@ -396,8 +396,12 @@ namespace CityFlow.Sim
         public int CarSimMaxCars => Math.Max(1, _config.MaxSimCars);
         // 뷰가 큐 표시 간격을 타일 안에 담기 위해 필요(한 타일에 몇 대까지 서는가).
         public int CarSimQueueCapacity => Math.Max(1, _config.QueueCapacityPerTile);
-        public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _planner.CarRoutes;
-        public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _planner.ReturnRoutes;
+        public int RescueRerouteCount => _carSim.RescueRerouteCount;
+        public int RescueRestartCount => _carSim.RescueRestartCount;
+        public int LastRescueCarId => _carSim.LastRescueCarId;
+        public Vector2Int LastRescueTile => _carSim.LastRescueTile;
+        public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _carSim.ActiveRoutes;
+        public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _carSim.ActiveReturnRoutes;
         public int ActiveVehicleCount => _carSim.CarCount;
         public CarSnapshot GetCarSnapshot(int index) => _carSim.GetCar(index);
 

@@ -389,6 +389,161 @@ namespace CityFlow.Sim.Tests
                 "a car whose first route step is a highway jump must be enqueued on the link");
         }
 
+        [Test]
+        public void LivenessWatchdog_BlockRemovedWithDetour_ReroutesAtL2AndProgresses()
+        {
+            BuildWatchdogCity(
+                out CityGrid grid,
+                out RoadNetwork road,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.AreEqual(1, sim.GetCar(0).TileIndex, "전제: 교차로 직전 타일까지 전진");
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 90));
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
+
+            Assert.IsTrue(grid.Remove(V(2, 2)), "직선 경로를 철거해 위쪽 우회로만 남긴다");
+            planner.Plan(demands, road, grid, Cfg());
+
+            for (int tick = 0; tick < Cfg().GridlockValveTicks * 3 - 1; tick++)
+                sim.Step(7f, net, events);
+            Assert.AreEqual(0, sim.RescueRerouteCount, "L2 임계 전 조기 구제 금지");
+            sim.Step(7f, net, events);
+
+            Assert.AreEqual(1, sim.RescueRerouteCount);
+            Assert.AreEqual(0, sim.RescueRestartCount);
+            Assert.AreEqual(0, sim.LastRescueCarId);
+            Assert.AreEqual(V(1, 2), sim.LastRescueTile);
+            int rescueRouteIndex = sim.GetCar(0).RouteIndex;
+            Assert.GreaterOrEqual(rescueRouteIndex, planner.CarRoutes.Count);
+            CollectionAssert.DoesNotContain(
+                sim.ActiveRoutes[rescueRouteIndex],
+                V(2, 2),
+                "View가 읽는 route index도 차량별 L2 우회 경로를 가리켜야 한다");
+
+            for (int tick = 0;
+                 tick < 8 && sim.GetCar(0).State == CarState.Outbound;
+                 tick++)
+            {
+                sim.Step(7f, net, events);
+            }
+            Assert.AreEqual(
+                CarState.ParkedWork,
+                sim.GetCar(0).State,
+                "L2 경로 교체 뒤 철거 타일을 피해 유한 틱 안에 도착해야 한다");
+        }
+
+        [Test]
+        public void LivenessWatchdog_NoDetour_RestartsAtL3AndCountsRescue()
+        {
+            BuildWatchdogCity(
+                out CityGrid grid,
+                out RoadNetwork road,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 90));
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
+
+            Assert.IsTrue(grid.Remove(V(2, 2)));
+            Assert.IsTrue(grid.Remove(V(1, 3)), "우회로도 끊어 L2 재탐색을 실패시킨다");
+            planner.Plan(demands, road, grid, Cfg());
+
+            for (int tick = 0; tick < Cfg().GridlockValveTicks * 6 - 1; tick++)
+                sim.Step(7f, net, events);
+            Assert.AreEqual(0, sim.RescueRestartCount, "L3 임계 전 조기 재출발 금지");
+            sim.Step(7f, net, events);
+
+            Assert.AreEqual(1, sim.RescueRerouteCount, "L2 재탐색 시도도 발동 누계에 포함");
+            Assert.AreEqual(1, sim.RescueRestartCount);
+            Assert.AreEqual(0, sim.LastRescueCarId);
+            Assert.AreEqual(V(1, 2), sim.LastRescueTile);
+            Assert.AreEqual(
+                0,
+                sim.GetCar(0).TileIndex,
+                "L3는 막힌 중간 큐를 버리고 원래 출발 타일에서 트립을 재시작한다");
+        }
+
+        [Test]
+        public void LivenessWatchdog_TemporaryBlockBelowL2_DoesNotActivate()
+        {
+            BuildWatchdogCity(
+                out _,
+                out _,
+                out _,
+                out _,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 90));
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
+
+            for (int tick = 0; tick < Cfg().GridlockValveTicks * 3 - 1; tick++)
+                sim.Step(7f, net, events);
+            Assert.AreEqual(0, sim.RescueRerouteCount);
+            Assert.AreEqual(0, sim.RescueRestartCount);
+
+            Assert.IsTrue(net.TryRemoveCarForRescue(90));
+            Assert.IsTrue(net.TryRemoveCarForRescue(91));
+            for (int tick = 0;
+                 tick < 8 && sim.GetCar(0).State == CarState.Outbound;
+                 tick++)
+            {
+                sim.Step(7f, net, events);
+            }
+
+            Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
+            Assert.AreEqual(0, sim.RescueRerouteCount);
+            Assert.AreEqual(0, sim.RescueRestartCount);
+        }
+
+        private static void BuildWatchdogCity(
+            out CityGrid grid,
+            out RoadNetwork road,
+            out DemandMap demands,
+            out RoutePlanner planner,
+            out RoadQueueNetwork net,
+            out CarSim sim,
+            out SimEventBuffer events)
+        {
+            SimConfig cfg = Cfg();
+            grid = new CityGrid(6, 4);
+            for (int x = 0; x <= 5; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            for (int x = 1; x <= 4; x++)
+                Assert.IsTrue(grid.Place(V(x, 3), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            Assert.IsTrue(grid.IsIntersection(V(2, 2)));
+
+            road = new RoadNetwork(grid);
+            demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+            CollectionAssert.AreEqual(
+                new[] { V(0, 2), V(1, 2), V(2, 2), V(3, 2), V(4, 2) },
+                planner.CarRoutes[0],
+                "전제: 최초 경로는 짧은 직선 교차로 경로");
+
+            net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            events = new SimEventBuffer(new SimEventHub());
+        }
+
         private static void BuildStraightCity(
             out CityGrid grid,
             out DemandMap demands,
