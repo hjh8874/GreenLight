@@ -472,6 +472,69 @@ namespace CityFlow.Sim.Tests
                 "L3는 막힌 중간 큐를 버리고 원래 출발 타일에서 트립을 재시작한다");
         }
 
+        // 리뷰 지적(2026-07-24 abicodue): preserve 리빌드가 진행 중 rescue 상태를 지우면
+        // rescue 경로 위의 ResumeTile을 일반 경로에서 못 찾아 route[0] 순간이동이 재발한다.
+        // L2 우회 주행 중 무관한 건물을 배치(preserve 리빌드)해도 rescue 경로·뷰 인덱스·
+        // 위치가 유지되어야 한다.
+        [Test]
+        public void LivenessRescue_SurvivesUnrelatedBuildingPreserveRebuild()
+        {
+            BuildWatchdogCity(
+                out CityGrid grid,
+                out RoadNetwork road,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 90));
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
+            Assert.IsTrue(grid.Remove(V(2, 2)), "직선 경로를 철거해 위쪽 우회로만 남긴다");
+            planner.Plan(demands, road, grid, Cfg());
+            for (int tick = 0; tick < Cfg().GridlockValveTicks * 3; tick++)
+                sim.Step(7f, net, events);
+            Assert.AreEqual(1, sim.RescueRerouteCount, "전제: L2 rescue 발동");
+            sim.Step(7f, net, events);
+            sim.Step(7f, net, events);
+
+            CarSnapshot beforeSnap = sim.GetCar(0);
+            int rescueViewIndex = beforeSnap.RouteIndex;
+            Assert.GreaterOrEqual(
+                rescueViewIndex, planner.CarRoutes.Count, "전제: rescue 뷰 경로 사용 중");
+            List<Vector2Int> rescueRoute = sim.ActiveRoutes[rescueViewIndex];
+            Vector2Int beforeTile = rescueRoute[
+                Mathf.Clamp(beforeSnap.TileIndex, 0, rescueRoute.Count - 1)];
+            Assert.AreEqual(3, beforeTile.y, "전제: 차가 우회로(y=3) 위에 있다");
+
+            // 무관한 건물 배치 → SimEngine이라면 preserve 리빌드를 태우는 상황.
+            Assert.IsTrue(grid.Place(V(2, 0), TileType.House));
+            demands.Reassign(grid, road);
+            planner.Plan(demands, road, grid, Cfg());
+            net.RebuildTopology(grid);
+            sim.Rebuild(demands, planner, net, preserveExistingAssignments: true);
+            sim.Step(7f, net, events);
+
+            Assert.AreEqual(2, sim.CarCount, "기존 차 + 신규 짝");
+            CarSnapshot afterSnap = sim.GetCar(0);
+            Assert.AreEqual(
+                rescueViewIndex,
+                afterSnap.RouteIndex,
+                "preserve 리빌드 후에도 rescue 뷰 경로 인덱스가 유지되어야 한다");
+            CollectionAssert.DoesNotContain(
+                sim.ActiveRoutes[afterSnap.RouteIndex],
+                V(2, 2),
+                "유지된 경로는 여전히 철거 타일을 피하는 rescue 우회 경로다");
+            List<Vector2Int> afterRoute = sim.ActiveRoutes[afterSnap.RouteIndex];
+            Vector2Int afterTile = afterRoute[
+                Mathf.Clamp(afterSnap.TileIndex, 0, afterRoute.Count - 1)];
+            int jump = Mathf.Abs(afterTile.x - beforeTile.x)
+                + Mathf.Abs(afterTile.y - beforeTile.y);
+            Assert.LessOrEqual(
+                jump, 1, $"rescue 주행 위치 {afterTile}는 직전 위치 {beforeTile} 근방이어야 한다");
+        }
+
         [Test]
         public void LivenessWatchdog_TemporaryBlockBelowL2_DoesNotActivate()
         {

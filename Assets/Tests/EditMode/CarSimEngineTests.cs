@@ -433,6 +433,54 @@ namespace CityFlow.Sim.Tests
             Assert.LessOrEqual(jump, 2, $"재계획 후 위치 {afterTile}는 직전 위치 {beforeTile} 근방이어야 한다");
         }
 
+        // 리뷰 지적(2026-07-24 abicodue): 스케줄러의 MaxSimCars 확정 루프는 꼬리를 자른다.
+        // 상한 포화 상태에서 건물 교체가 non-preserve 리빌드(라우팅 변경 동반과 동일 경로)에
+        // 들어올 때, 주행 중 은퇴 차가 신규 배정에 밀려 즉시 소멸하면 안 된다("트립 완주 후
+        // 은퇴" 계약). CarSim 레벨인 이유: 엔진 경유는 회사 고용 램프·sticky가 슬롯 경합으로
+        // 결함을 가릴 수 있어, append 순서 vs 상한이라는 결함 지점을 직접 검증한다.
+        [Test]
+        public void MaxCarsSaturated_DrivingRetireeOutranksNewAssignment()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 8;
+            cfg.GridHeight = 5;
+            cfg.MaxSimCars = 1;
+            var grid = new CityGrid(8, 5);
+            for (int x = 0; x <= 7; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(6, 0), TileType.Office));
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            var planner = new RoutePlanner(8, 5);
+            planner.Plan(demands, road, grid, cfg);
+            var net = new RoadQueueNetwork(8, 5, cfg);
+            net.RebuildTopology(grid);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            var events = new SimEventBuffer(new SimEventHub());
+            sim.Step(7f, net, events);
+            Assert.AreEqual(1, sim.CarCount);
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
+
+            // 같은 리빌드 윈도우: 기존 집 철거 + 새 집 배치 → 신규 짝 1개가 유일한 자리를
+            // 노린다. 주행 중 HomeLost 차가 자리를 지켜야 한다.
+            Assert.IsTrue(grid.Remove(V(0, 0)));
+            Assert.IsTrue(grid.Place(V(2, 0), TileType.House));
+            demands.Reassign(grid, road);
+            planner.Plan(demands, road, grid, cfg);
+            net.RebuildTopology(grid);
+            sim.Rebuild(demands, planner, net);
+
+            Assert.AreEqual(1, sim.CarCount);
+            Assert.AreEqual(
+                V(0, 0),
+                sim.GetCar(0).Home,
+                "상한 포화 시 주행 중 은퇴 차가 신규 배정보다 우선해야 한다");
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
+        }
+
         [Test]
         public void CompletedDay_BlendsSuccessByHalf_AndPersistsAcrossSave()
         {

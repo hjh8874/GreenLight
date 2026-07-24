@@ -61,17 +61,28 @@ namespace CityFlow.Sim
             public readonly List<Vector2Int> Outbound;
             public readonly List<Vector2Int> Inbound;
             public readonly int ViewRouteIndex;
+            // 진행 중 워치독 rescue 상태 — preserve 리빌드가 이걸 안 넘기면 rescue 경로
+            // 위의 ResumeTile을 일반 경로에서 못 찾아 route[0] 순간이동이 재발한다.
+            public readonly List<Vector2Int> RescueRoute;
+            public readonly int RescueViewIndex;
+            public readonly byte RescueStage;
 
             public PreviousAssignment(
                 CommuteCar car,
                 List<Vector2Int> outbound,
                 List<Vector2Int> inbound,
-                int viewRouteIndex)
+                int viewRouteIndex,
+                List<Vector2Int> rescueRoute = null,
+                int rescueViewIndex = -1,
+                byte rescueStage = 0)
             {
                 Car = car;
                 Outbound = outbound;
                 Inbound = inbound;
                 ViewRouteIndex = viewRouteIndex;
+                RescueRoute = rescueRoute;
+                RescueViewIndex = rescueViewIndex;
+                RescueStage = rescueStage;
             }
         }
 
@@ -196,8 +207,13 @@ namespace CityFlow.Sim
                     car,
                     _outboundRoutes[car.RouteIndex],
                     _returnRoutes[car.RouteIndex],
-                    _plannerRouteIndices[car.RouteIndex]));
+                    _plannerRouteIndices[car.RouteIndex],
+                    _rescueRoutes[i],
+                    _rescueViewRouteIndices[i],
+                    _rescueStages[i]));
             }
+            // preserve 리빌드에서 새 인덱스로 넘길 rescue 상태 (append 순서 = 새 car 인덱스).
+            var rescueCarry = new List<(int index, PreviousAssignment src)>();
             List<List<Vector2Int>> previousViewOutbound = preserveExistingAssignments
                 ? new List<List<Vector2Int>>(_viewOutboundRoutes)
                 : null;
@@ -245,12 +261,21 @@ namespace CityFlow.Sim
                         {
                             continue;
                         }
+                        // 포기 귀가로 전환되는 차는 rescue 목적지(회사)가 무효 — rescue를
+                        // 버리고 Prepare의 제자리 재계획 경로를 쓴다. 그 외 은퇴 차는 유지.
+                        bool flipped = reason == RetireReason.WorkLost
+                            && car.State == CarState.Outbound;
                         previous = new PreviousAssignment(
                             car,
                             previous.Outbound,
                             PrepareWorkLostReturn(car, reason, previous.Inbound),
-                            previous.ViewRouteIndex);
+                            previous.ViewRouteIndex,
+                            flipped ? null : previous.RescueRoute,
+                            flipped ? -1 : previous.RescueViewIndex,
+                            flipped ? (byte)0 : previous.RescueStage);
                         AppendPreviousAssignment(previous, preserveViewIndex: true);
+                        if (previous.RescueRoute != null)
+                            rescueCarry.Add((_sources.Count - 1, previous));
                         continue;
                     }
 
@@ -263,20 +288,16 @@ namespace CityFlow.Sim
                     if (pairIndex < 0) continue;
                     consumedPairs[pairIndex] = true;
                     AppendPreviousAssignment(previous, preserveViewIndex: true);
+                    if (previous.RescueRoute != null)
+                        rescueCarry.Add((_sources.Count - 1, previous));
                 }
             }
             else
             {
-                for (int i = 0; i < count; i++)
-                {
-                    if (!HasUsableRoutes(planner, i)) continue;
-                    AppendPlannerAssignment(pairs[i], planner, i);
-                    consumedPairs[i] = true;
-                }
-            }
-
-            if (!preserveExistingAssignments)
-            {
+                // 은퇴 carry-over를 planner 신규 배정보다 먼저 싣는다 — 스케줄러의
+                // MaxSimCars 확정 루프는 꼬리를 자르므로, 뒤에 실으면 상한 포화 시
+                // 주행 중 은퇴 차가 신규 배정에 밀려 즉시 소멸한다("트립 완주 후
+                // 은퇴" 계약 위반).
                 for (int i = 0; i < previousAssignments.Count; i++)
                 {
                     PreviousAssignment previous = previousAssignments[i];
@@ -314,6 +335,13 @@ namespace CityFlow.Sim
                         previous.ViewRouteIndex);
                     AppendPreviousAssignment(previous, preserveViewIndex: false);
                 }
+
+                for (int i = 0; i < count; i++)
+                {
+                    if (!HasUsableRoutes(planner, i)) continue;
+                    AppendPlannerAssignment(pairs[i], planner, i);
+                    consumedPairs[i] = true;
+                }
             }
 
             if (preserveExistingAssignments)
@@ -349,6 +377,17 @@ namespace CityFlow.Sim
             Array.Fill(_rescueViewRouteIndices, -1);
             Array.Clear(_rescueStages, 0, _rescueStages.Length);
             Array.Clear(_offNetworkBlockedTicks, 0, _offNetworkBlockedTicks.Length);
+            // preserve 리빌드: 진행 중 rescue 상태를 새 car 인덱스로 재적용한다. 뷰 리스트는
+            // 통째로 복사됐으므로 rescue 뷰 인덱스도 그대로 유효하다. (non-preserve는
+            // 라우팅이 바뀐 리빌드라 rescue 경로 자체가 무효 — 기존대로 폐기.)
+            for (int i = 0; i < rescueCarry.Count; i++)
+            {
+                (int index, PreviousAssignment src) = rescueCarry[i];
+                if (index < 0 || index >= _rescueRoutes.Length) continue;
+                _rescueRoutes[index] = src.RescueRoute;
+                _rescueViewRouteIndices[index] = src.RescueViewIndex;
+                _rescueStages[index] = src.RescueStage;
+            }
             _needsSnap = true;
         }
 
