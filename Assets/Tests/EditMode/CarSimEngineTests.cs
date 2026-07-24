@@ -554,7 +554,7 @@ namespace CityFlow.Sim.Tests
             
             SimConfig cfg = Cfg();
             cfg.GreenWaveScanInterval = 1;
-            cfg.GreenWaveThreshold = 0.5f;
+            cfg.GreenWaveThreshold = 0.8f;
             cfg.AutoDetectSignals = false;
             
             var engine = new SimEngine(cfg, hub);
