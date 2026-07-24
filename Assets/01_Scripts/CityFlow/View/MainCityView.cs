@@ -97,6 +97,12 @@ namespace CityFlow.View
         [SerializeField, Min(0.1f)] private float zoomDistanceRange = 10f;
         [Tooltip("마우스 휠 입력 1단위당 변경할 카메라 거리")]
         [SerializeField, Min(0.001f)] private float zoomScrollSensitivity = 1f;
+        [Tooltip("카메라가 목표 방향으로 회전하는 속도(초당 각도)")]
+        [SerializeField, Min(1f)] private float cameraRotationSpeed = 500f;
+        [Tooltip("카메라 회전이 목표 방향에 도달할 때까지의 감속 시간")]
+        [SerializeField, Min(0.01f)] private float cameraRotationSmoothTime = 0.15f;
+        [Tooltip("마우스 측면 버튼의 카메라 회전 방향을 반대로 적용")]
+        [SerializeField] private bool invertCameraRotationDirection;
 
         private const float OrthographicSizePerDistance = 0.9375f;
         private const float CameraYawStepDegrees = 90f;
@@ -166,7 +172,9 @@ namespace CityFlow.View
         private Vector3 cameraTarget;
         private Vector3 cameraUpDirection;
         private float zoomDistance;
-        private int cameraYawQuarterTurns;
+        private float currentCameraYawDegrees;
+        private float targetCameraYawDegrees;
+        private float cameraYawVelocity;
         private bool isIsometricView;
 
         // 도착 코인 팝(항목 A): 풀 고정 크기 — 전부 사용 중이면 가장 오래된 슬롯을 라운드로빈으로 재사용.
@@ -368,16 +376,18 @@ namespace CityFlow.View
                 0f));
             cameraUpDirection = (transform.up - transform.right).normalized;
             zoomDistance = minimumZoomDistance;
-            cameraYawQuarterTurns = 0;
+            currentCameraYawDegrees = 0f;
+            targetCameraYawDegrees = 0f;
+            cameraYawVelocity = 0f;
             isIsometricView = true;
             ApplyCameraView();
         }
 
-        private void HandleCameraViewInput()
+        private bool HandleCameraViewInput()
         {
             if (mainCamera == null)
             {
-                return;
+                return false;
             }
 
             bool cameraViewChanged = false;
@@ -412,8 +422,8 @@ namespace CityFlow.View
 
                     if (yawStep != 0)
                     {
-                        cameraYawQuarterTurns = (cameraYawQuarterTurns + yawStep + 4) % 4;
-                        cameraViewChanged = true;
+                        float direction = invertCameraRotationDirection ? -1f : 1f;
+                        targetCameraYawDegrees += yawStep * CameraYawStepDegrees * direction;
                     }
 
                     float nextZoomDistance = Mathf.Clamp(
@@ -443,13 +453,34 @@ namespace CityFlow.View
 
             if (cameraViewChanged)
             {
-                ApplyCameraView();
-
                 if (cameraModeChanged && tileData != null)
                 {
                     RefreshAllTiles();
                 }
             }
+
+            return cameraViewChanged;
+        }
+
+        private bool UpdateCameraRotation()
+        {
+            float previousYawDegrees = currentCameraYawDegrees;
+            currentCameraYawDegrees = Mathf.SmoothDamp(
+                currentCameraYawDegrees,
+                targetCameraYawDegrees,
+                ref cameraYawVelocity,
+                cameraRotationSmoothTime,
+                cameraRotationSpeed,
+                Time.deltaTime);
+
+            if (Mathf.Abs(targetCameraYawDegrees - currentCameraYawDegrees) < 0.01f
+                && Mathf.Abs(cameraYawVelocity) < 0.01f)
+            {
+                currentCameraYawDegrees = targetCameraYawDegrees;
+                cameraYawVelocity = 0f;
+            }
+
+            return !Mathf.Approximately(previousYawDegrees, currentCameraYawDegrees);
         }
 
         private void ApplyCameraView()
@@ -461,7 +492,7 @@ namespace CityFlow.View
             mainCamera.useOcclusionCulling = false;
             Vector3 cameraPosition = cameraTarget - transform.forward * viewDistance;
             Quaternion yawRotation = Quaternion.AngleAxis(
-                cameraYawQuarterTurns * CameraYawStepDegrees,
+                currentCameraYawDegrees,
                 transform.forward);
             Vector3 rotatedCameraUpDirection = yawRotation * cameraUpDirection;
 
@@ -497,12 +528,22 @@ namespace CityFlow.View
                 ExitDriveView();
             }
 
+            bool cameraViewChanged = false;
             if (!OfflineSettlementPopup.IsInteractionBlocked)
             {
                 HandleVehicleSelectionInput();
                 if (!IsDriveViewActive)
                 {
-                    HandleCameraViewInput();
+                    cameraViewChanged = HandleCameraViewInput();
+                }
+            }
+
+            if (!IsDriveViewActive)
+            {
+                cameraViewChanged |= UpdateCameraRotation();
+                if (cameraViewChanged)
+                {
+                    ApplyCameraView();
                 }
             }
 
