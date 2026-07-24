@@ -940,6 +940,7 @@ namespace CityFlow.Sim
                         && _intents[i].Kind == IntentKind.IntersectionAdvance
                         && !IsStraightMovement(_intents[i])
                         && HasOpposingStraightThreat(
+                            _intents[i].Node,
                             intersectionTile,
                             _intents[i].MovementEntry,
                             _intents[i].MovementExit))
@@ -1030,6 +1031,7 @@ namespace CityFlow.Sim
                 intent.MovementEntry,
                 intent.MovementExit);
             bool yieldsToStraight = HasOpposingStraightThreat(
+                intent.Node,
                 intersectionTile,
                 intent.MovementEntry,
                 intent.MovementExit);
@@ -1046,10 +1048,15 @@ namespace CityFlow.Sim
             intent.MovementEntry == intent.MovementExit;
 
         private bool HasOpposingStraightThreat(
+            int turningNode,
             int intersectionTile,
             Dir turningEntry,
             Dir turningExit)
         {
+            // 신호 게이트는 intent 생성 전에 continue하므로 그 대기는 _blockedTicks에
+            // 포함되지 않는다. 실제 교차로 중재에서 임계까지 밀린 회전만 양보를 끝낸다.
+            if (IsIntersectionStarved(turningNode)) return false;
+
             // The opposite tile may also contain traffic moving away. Its direction queue
             // is distinct, so only the queue entering this intersection can block the turn.
             Dir opposingEntry = Opposite(turningEntry);
@@ -1129,6 +1136,7 @@ namespace CityFlow.Sim
                         _blockedTicks[intent.Node]++;
                         return;
                     }
+                    int blockedTicksBeforeMove = _blockedTicks[intent.Node];
                     bool leavingIntersection = UsesSharedBudget(intent.TileIndex);
                     MoveHead(intent.FromQueue, intent.ToQueue);
                     if (leavingIntersection)
@@ -1145,6 +1153,9 @@ namespace CityFlow.Sim
                             ? IntersectionStage.Exit
                             : IntersectionStage.Entry;
                         _intersectionMovementExits[intent.Node] = intent.MovementExit;
+                        // 진입 셀은 아직 교차로 통과 완료가 아니다. 접근 중 쌓인 aging을
+                        // 보존해야 starved 회전이 Entry에서 다시 임계만큼 굶지 않는다.
+                        _blockedTicks[intent.Node] = blockedTicksBeforeMove;
                     }
                     else
                     {
@@ -1293,6 +1304,10 @@ namespace CityFlow.Sim
             bool currentInside = current.Kind == IntentKind.IntersectionAdvance;
             if (candidateInside != currentInside) return candidateInside;
 
+            bool candidateStarved = IsIntersectionStarved(candidate.Node);
+            bool currentStarved = IsIntersectionStarved(current.Node);
+            if (candidateStarved != currentStarved) return candidateStarved;
+
             Dir candidateEntry = useReservation ? candidate.MovementEntry : candidate.Entry;
             Dir candidateExit = useReservation ? candidate.MovementExit : candidate.Exit;
             Dir currentEntry = useReservation ? current.MovementEntry : current.Entry;
@@ -1310,6 +1325,9 @@ namespace CityFlow.Sim
                 ? candidateTurn < currentTurn
                 : candidateEntry < currentEntry;
         }
+
+        private bool IsIntersectionStarved(int node) =>
+            node != NoNode && _blockedTicks[node] >= _gridlockValveTicks;
 
         private bool IsIntersectionExitBlocked(ICarRouteProvider routes, int carId, Vector2Int intersection, int tileIndex)
         {
