@@ -110,6 +110,9 @@ namespace CityFlow.Sim
         private readonly bool[] _approachingStraightThreats;
         private readonly IntersectionStage[] _intersectionStages;
         private readonly Dir[] _intersectionMovementExits;
+        // Encodes the previous intersection and movement entry for one rear-clearance tick.
+        // Pending values are negative so multiple service rounds in the exit tick still see them.
+        private readonly int[] _clearingIntersection;
         private readonly ArrivalRecord[] _arrivals;
         private int _freeHead;
 
@@ -172,6 +175,7 @@ namespace CityFlow.Sim
             _approachingStraightThreats = new bool[queueCount];
             _intersectionStages = new IntersectionStage[maxCars];
             _intersectionMovementExits = new Dir[maxCars];
+            _clearingIntersection = new int[maxCars];
             _arrivals = new ArrivalRecord[maxCars];
 
             Array.Fill(_heads, NoNode);
@@ -179,6 +183,7 @@ namespace CityFlow.Sim
             Array.Fill(_highwayPartners, NoNode);
             Array.Fill(_roundaboutCenters, NoNode);
             Array.Fill(_roundaboutArmSides, NoNode);
+            Array.Fill(_clearingIntersection, NoNode);
             Array.Fill(_queueActive, true);
             Array.Fill(_turnAllowed, true);
             for (int node = 0; node < maxCars; node++)
@@ -449,8 +454,19 @@ namespace CityFlow.Sim
                 int node = _heads[queue];
                 while (node != NoNode)
                 {
+                    if (TryDecodeClearingIntersection(
+                            _clearingIntersection[node],
+                            out int clearingTile,
+                            out _)
+                        && UsesSharedBudget(clearingTile))
+                    {
+                        node = _nextNodes[node];
+                        continue;
+                    }
+
                     _intersectionStages[node] = IntersectionStage.None;
                     _intersectionMovementExits[node] = default;
+                    _clearingIntersection[node] = NoNode;
                     node = _nextNodes[node];
                 }
             }
@@ -478,6 +494,8 @@ namespace CityFlow.Sim
                 _movedThisTick[node] = false;
                 _blockedTicks[node] = 0;
                 _intersectionStages[node] = IntersectionStage.None;
+                _intersectionMovementExits[node] = default;
+                _clearingIntersection[node] = NoNode;
                 _nextNodes[node] = node + 1 < _cars.Length ? node + 1 : NoNode;
             }
             _freeHead = _cars.Length > 0 ? 0 : NoNode;
@@ -509,6 +527,7 @@ namespace CityFlow.Sim
         {
             if (routes == null) throw new ArgumentNullException(nameof(routes));
             ArrivalCount = 0;
+            AdvanceIntersectionClearanceWindows();
             Array.Clear(_movedThisTick, 0, _movedThisTick.Length);
             for (int tile = 0; tile < _roundaboutStates.Length; tile++)
                 _roundaboutStates[tile].BeginTick();
@@ -834,6 +853,30 @@ namespace CityFlow.Sim
                     }
                 }
             }
+
+            // A vehicle that just entered its exit tile still has its rear inside the
+            // conflict zone for the following simulation tick. Keep the full movement
+            // mask, not only the exit cell, so crossing paths cannot reuse it early.
+            for (int queue = 0; queue < _heads.Length; queue++)
+            {
+                int node = _heads[queue];
+                while (node != NoNode)
+                {
+                    if (TryDecodeClearingIntersection(
+                            _clearingIntersection[node],
+                            out int clearingTile,
+                            out Dir movementEntry)
+                        && UsesSharedBudget(clearingTile))
+                    {
+                        _intersectionOccupancy[clearingTile] |=
+                            IntersectionMicroGrid.MovementMask(
+                                movementEntry,
+                                _intersectionMovementExits[node]);
+                    }
+
+                    node = _nextNodes[node];
+                }
+            }
         }
 
         private void ResolveIntents(int intentCount, ref StepResult result)
@@ -1086,7 +1129,14 @@ namespace CityFlow.Sim
                         _blockedTicks[intent.Node]++;
                         return;
                     }
+                    bool leavingIntersection = UsesSharedBudget(intent.TileIndex);
                     MoveHead(intent.FromQueue, intent.ToQueue);
+                    if (leavingIntersection)
+                    {
+                        _clearingIntersection[intent.Node] = EncodePendingClearingIntersection(
+                            intent.TileIndex,
+                            intent.MovementEntry);
+                    }
                     if (intent.ReservationTile != NoNode)
                     {
                         bool straightMovement = intent.MovementEntry == intent.MovementExit;
@@ -1412,6 +1462,8 @@ namespace CityFlow.Sim
             _movedThisTick[node] = false;
             _blockedTicks[node] = 0;
             _intersectionStages[node] = IntersectionStage.None;
+            _intersectionMovementExits[node] = default;
+            _clearingIntersection[node] = NoNode;
             _nextNodes[node] = _freeHead;
             _freeHead = node;
         }
@@ -1458,5 +1510,45 @@ namespace CityFlow.Sim
         private Vector2Int TileAt(int index) => new Vector2Int(index % _width, index / _width);
         private int TileIndex(Vector2Int tile) => tile.y * _width + tile.x;
         private bool InBounds(Vector2Int tile) => tile.x >= 0 && tile.x < _width && tile.y >= 0 && tile.y < _height;
+
+        private void AdvanceIntersectionClearanceWindows()
+        {
+            for (int node = 0; node < _clearingIntersection.Length; node++)
+            {
+                int encoded = _clearingIntersection[node];
+                if (encoded == NoNode) continue;
+                _clearingIntersection[node] = encoded < NoNode
+                    ? DecodePendingClearingIntersection(encoded)
+                    : NoNode;
+            }
+        }
+
+        private static int EncodePendingClearingIntersection(int tile, Dir movementEntry)
+        {
+            int encoded = checked(tile * DirectionCount + (int)movementEntry);
+            return checked(-encoded - 2);
+        }
+
+        private static int DecodePendingClearingIntersection(int encoded) => -encoded - 2;
+
+        private static bool TryDecodeClearingIntersection(
+            int encoded,
+            out int tile,
+            out Dir movementEntry)
+        {
+            if (encoded == NoNode)
+            {
+                tile = NoNode;
+                movementEntry = default;
+                return false;
+            }
+
+            int decoded = encoded < NoNode
+                ? DecodePendingClearingIntersection(encoded)
+                : encoded;
+            tile = decoded / DirectionCount;
+            movementEntry = (Dir)(decoded % DirectionCount);
+            return true;
+        }
     }
 }

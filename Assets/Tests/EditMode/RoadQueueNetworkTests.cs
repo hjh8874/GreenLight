@@ -491,6 +491,11 @@ namespace CityFlow.Sim.Tests
 
             q.Step(routes);
             Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out turnProgress));
+            Assert.AreEqual(0.25f, turnProgress, 1e-4f,
+                "The turn waits one rear-clearance tick after the straight vehicle exits.");
+
+            q.Step(routes);
+            Assert.IsTrue(q.TryLocateCar(0, out _, out _, out _, out turnProgress));
             Assert.AreEqual(0.75f, turnProgress, 1e-4f,
                 "The turn proceeds after the opposing approach queue fully clears.");
         }
@@ -579,6 +584,12 @@ namespace CityFlow.Sim.Tests
             q.Step(routes);
 
             Assert.IsTrue(q.TryLocateCar(10, out _, out _, out _, out firstProgress));
+            Assert.AreEqual(0.25f, firstProgress, 1e-4f,
+                "The inside turn waits through the exiting vehicle's rear-clearance tick.");
+
+            q.Step(routes);
+
+            Assert.IsTrue(q.TryLocateCar(10, out _, out _, out _, out firstProgress));
             Assert.AreEqual(0.75f, firstProgress, 1e-4f,
                 "The inside turn proceeds after the conflicting vehicle fully clears.");
         }
@@ -605,6 +616,33 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(30, q.CarAtHead(V(3, 1), Dir.E));
             Assert.AreEqual(31, q.CarAtHead(V(1, 1), Dir.E));
             Assert.AreEqual(0, q.QueueCount(V(2, 1), Dir.E));
+        }
+
+        [Test]
+        public void Step_IntersectionRearClearing_BlocksConflictingEntryForFollowingTick()
+        {
+            RoadQueueNetwork q = BuildIntersectionRearClearanceScenario(
+                out FakeRouteProvider routes);
+
+            q.Step(routes);
+
+            Assert.AreEqual(31, q.CarAtHead(V(2, 0), Dir.N),
+                "The crossing vehicle must wait while the exited vehicle's rear clears.");
+            Assert.AreEqual(0, q.QueueCount(V(2, 1), Dir.N));
+        }
+
+        [Test]
+        public void Step_IntersectionRearClearing_AllowsConflictingEntryAfterFollowingTick()
+        {
+            RoadQueueNetwork q = BuildIntersectionRearClearanceScenario(
+                out FakeRouteProvider routes);
+
+            q.Step(routes);
+            q.Step(routes);
+
+            Assert.AreEqual(31, q.CarAtHead(V(2, 1), Dir.N),
+                "The crossing path becomes available after the fixed one-tick rear-clearance window.");
+            Assert.AreEqual(-1, q.CarAtHead(V(2, 0), Dir.N));
         }
 
         [Test]
@@ -661,6 +699,26 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
             Assert.IsTrue(grid.IsIntersection(V(2, 1)));
             return grid;
+        }
+
+        private static RoadQueueNetwork BuildIntersectionRearClearanceScenario(
+            out FakeRouteProvider routes)
+        {
+            var q = new RoadQueueNetwork(5, 3, Cfg());
+            CityGrid grid = BuildCrossIntersection();
+            q.RebuildTopology(grid, new FakeDeviceState());
+            routes = new FakeRouteProvider();
+            routes.AddRoute(30, true, V(1, 1), V(2, 1), V(3, 1));
+            routes.AddRoute(31, true, V(2, 0), V(2, 1), V(2, 2));
+            Assert.IsTrue(q.TryEnqueue(V(1, 1), Dir.E, 30));
+
+            q.Step(routes);
+            Assert.AreEqual(30, q.CarAtHead(V(2, 1), Dir.E));
+            q.Step(routes);
+            Assert.AreEqual(30, q.CarAtHead(V(3, 1), Dir.E),
+                "The scenario begins immediately after the eastbound vehicle exits.");
+            Assert.IsTrue(q.TryEnqueue(V(2, 0), Dir.N, 31));
+            return q;
         }
 
         private static RoadQueueNetwork BuildFullCycle(
