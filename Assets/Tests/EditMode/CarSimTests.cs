@@ -522,7 +522,9 @@ namespace CityFlow.Sim.Tests
                 Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
             for (int x = 1; x <= 4; x++)
                 Assert.IsTrue(grid.Place(V(x, 3), TileType.Road));
-            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            // The upper detour already makes (2,2) an intersection. A south spur at
+            // (2,1) would also become the 2x2 house's first frontage and bypass the
+            // intended ordinary approach tiles before the watchdog blockade.
             Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
             Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
             Assert.IsTrue(grid.IsIntersection(V(2, 2)));
