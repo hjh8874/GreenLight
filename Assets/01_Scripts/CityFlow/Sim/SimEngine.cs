@@ -26,6 +26,7 @@ namespace CityFlow.Sim
         readonly HashSet<Vector2Int> _placedSet = new();
         // 회전교차로(스펙 2026-07-11): 신호와 배타 배치. SignalMap과 독립된 장치 상태.
         readonly List<Vector2Int> _placedRoundabouts = new();
+        readonly HashSet<GreenWaveSegment> _activeGreenWaves = new HashSet<GreenWaveSegment>();
         readonly HashSet<Vector2Int> _roundaboutSet = new();
         // 입체교차(스펙 2026-07-12): 신호·로터리와 3자 배타. 로터리와 동형(SignalMap 무관, Rebuild 불필요).
         readonly List<Vector2Int> _placedOverpasses = new();
@@ -231,7 +232,7 @@ namespace CityFlow.Sim
                 jamRatio,
                 _config);
                 
-            if (StepCount % 50 == 0)
+            if (_config.GreenWaveScanInterval > 0 && StepCount % _config.GreenWaveScanInterval == 0)
             {
                 ScanGreenWaves();
             }
@@ -262,8 +263,33 @@ namespace CityFlow.Sim
             return roads <= 0 ? 0f : (float)jammed / roads;
         }
 
+        private struct GreenWaveSegment : System.IEquatable<GreenWaveSegment>
+        {
+            public readonly Vector2Int A;
+            public readonly Vector2Int B;
+            public GreenWaveSegment(Vector2Int a, Vector2Int b)
+            {
+                if (a.x < b.x || (a.x == b.x && a.y < b.y))
+                {
+                    A = a;
+                    B = b;
+                }
+                else
+                {
+                    A = b;
+                    B = a;
+                }
+            }
+
+            public bool Equals(GreenWaveSegment other) => A == other.A && B == other.B;
+            public override bool Equals(object obj) => obj is GreenWaveSegment other && Equals(other);
+            public override int GetHashCode() => (A.GetHashCode() * 397) ^ B.GetHashCode();
+        }
+
         private void ScanGreenWaves()
         {
+            HashSet<GreenWaveSegment> currentWaves = new HashSet<GreenWaveSegment>();
+            
             foreach (var fromTile in _signals.Tiles)
             {
                 if (!_signals.TryGet(fromTile, out var fromSignal)) continue;
@@ -289,15 +315,28 @@ namespace CityFlow.Sim
 
                     if (toSignal != null)
                     {
-                        float eff = SignalMath.GreenWaveEfficiency(fromSignal, toSignal, dist, 0.5f);
-                        if (eff >= 0.85f)
+                        float travelSlots = (dist * _config.TickInterval) / SignalMath.SlotSeconds;
+                        float eff = SignalMath.GreenWaveEfficiency(fromSignal, toSignal, travelSlots, _config.GreenWaveFloor);
+                        
+                        if (eff >= _config.GreenWaveThreshold)
                         {
-                            int magnitude = (int)((eff - 0.8f) * 10f); 
-                            if (magnitude < 1) magnitude = 1;
-                            _events.QueueBurst(new FlowBurstEvent(toTile, magnitude));
+                            var seg = new GreenWaveSegment(fromTile, toTile);
+                            if (!_activeGreenWaves.Contains(seg))
+                            {
+                                int magnitude = (int)((eff - _config.GreenWaveMagnitudeOffset) * _config.GreenWaveMagnitudeScale); 
+                                if (magnitude < 1) magnitude = 1;
+                                _events.QueueBurst(new FlowBurstEvent(toTile, magnitude));
+                            }
+                            currentWaves.Add(seg);
                         }
                     }
                 }
+            }
+            
+            _activeGreenWaves.Clear();
+            foreach (var wave in currentWaves)
+            {
+                _activeGreenWaves.Add(wave);
             }
         }
 

@@ -48,6 +48,10 @@ namespace CityFlow.Sim
 
         // ── 신호 그린웨이브 ─────────────────────
         public float GreenWaveFloor;     // 오프셋 최악(반주기 어긋남) 시 효율 바닥 🔓
+        public int GreenWaveScanInterval; // 그린웨이브 판정 주기 (틱)
+        public float GreenWaveThreshold; // 그린웨이브 연출 달성 임계 (기본 0.85f)
+        public float GreenWaveMagnitudeOffset; // 강도 환산 기준 (기본 0.8f)
+        public float GreenWaveMagnitudeScale; // 강도 환산 배율 (기본 10f)
 
         // ── 수요처 용량 캡 (가구 수) ──
         // 회사 정원은 배정과 주차가 함께 쓰는 단일 값이며 프리팹 주차 자리 수를 넘기지 않는다.
@@ -145,6 +149,10 @@ namespace CityFlow.Sim
             EfficiencyMinRatio = 2.0f,
             StabilityJamWeight = 0.5f,
             GreenWaveFloor = 0.5f,
+            GreenWaveScanInterval = 50,
+            GreenWaveThreshold = 0.85f,
+            GreenWaveMagnitudeOffset = 0.8f,
+            GreenWaveMagnitudeScale = 10f,
             OfficeCapacity = 6,
             CompanyHiringSlotsPerGameHour = 2f,
             SchoolCapacity = 10,
