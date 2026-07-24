@@ -148,6 +148,17 @@ namespace CityFlow.Sim.Tests
                 p.DistanceAtQueueSlot(1, queueSlot: 1, slotGap: 0.4f, headInset: 0.25f), 1e-4f);
         }
 
+        [Test]
+        public void DistanceAtQueueSlot_SlotsBeforeRouteStartClampToStart()
+        {
+            var p = RoutePolyline.Bake(Straight3());
+
+            Assert.AreEqual(0f,
+                p.DistanceAtQueueSlot(1, queueSlot: 2, slotGap: 0.55f), 1e-4f);
+            Assert.AreEqual(0f,
+                p.DistanceAtQueueSlot(1, queueSlot: 3, slotGap: 0.55f), 1e-4f);
+        }
+
         // 로터리 링: 경계 ±0.15 세그 창(구 완전 블렌드 창)의 샘플은 링 반경 위 —
         // 접선 기하 재구성(QA E-1) 이후 이 창은 항상 순수 원호라 더 강하게 성립.
         // 반경은 input.OrbitRadius 파생(QA F — 하드코딩 제거).

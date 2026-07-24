@@ -830,32 +830,41 @@ namespace CityFlow.View
             float headInset = simEngine.IsSharedCarIntersection(simTile)
                 ? intersectionQueueInset * tileSize
                 : 0f;
-            // 큐 간격은 **뷰가 정한다**(MM 전환 레버 A, 2026-07-20). 예전엔 "대기줄이 타일 안에
-            // 들어가야 한다"는 제약 때문에 간격을 (타일−inset)/정원 = 0.250타일로 조였는데,
-            // 차 길이가 0.38~0.44라 **차 길이의 43%가 항상 앞차와 겹쳤다.** 이건 줌 불변이라
-            // (0.44 > 0.25는 타일 단위 비율) 카메라를 아무리 밀어도 안 사라진다 —
-            // 실측 2026-07-20: 최대확대 1080p에서 차 41.5px에 겹침 17.9px.
-            //
-            // **슬롯은 위치를 정하지 않는다.** 목표는 언제나 '내 타일의 머리'이고, 차 사이
-            // 간격은 앞차 추종이 낳는다. 이게 레버 A의 핵심이다 —
-            //   · 슬롯 간격을 0.25로 조이면: 차 길이 0.44의 43%가 항상 겹친다(줌 불변).
-            //   · 슬롯 간격만 0.55로 넓히면: 큐가 2.2타일로 늘어나 **상류 타일 slot0 차와 충돌**
-            //     한다(계측 2026-07-20: SAME-DIR 겹침 385→769). 타일별 슬롯 산술은 다른 타일의
-            //     차를 모르기 때문에, 간격을 넓히는 순간 타일 경계에서 깨진다.
-            //   · 추종이 간격을 낳으면: 앞차 관계가 이미 타일 경계를 넘어 정의돼 있어
-            //     (선두면 다음 타일 큐의 꼬리) 줄이 상류로 자연스럽게 이어진다.
-            // Sim 정원(=처리량·경제)은 하나도 건드리지 않는다.
-            // QueueSlot<0(큐 진입 실패 등)이어도 안전하다 — 어차피 타일 머리를 쓴다.
+            // Sim QueueSlot을 코리도 상한에 반영해 같은 타일 차량의 목표를 분리한다.
+            // 간격은 기존 앞차 추종 노브와 동일하게 두되, 슬롯 증가로 상한이 현재 위치보다
+            // 뒤로 가더라도 아래에서 차를 후진시키지 않는다. 타일 경계를 넘는 연속 대기열은
+            // Phase B 범위이며, 이번 단계에서도 앞차 추종의 headway 방어는 그대로 유지한다.
+            // 07-20 계측: 슬롯 갭 0.55 단독(추종 방어 없이)은 SAME-DIR 겹침 385→769 —
+            // 슬롯 목표는 반드시 headway 추종과 병행한다.
+            float slotGap = vehicleMinHeadway * tileSize;
             bool stateChanged = hadPrevious && previous != snapshot.State;
             if (stateChanged) car.Distance = 0f;
+            bool isRoundaboutTile = IsRoundaboutTile(simTile);
+            bool hasRoundaboutAuthorization = snapshot.RoundaboutProgress01 >= 0f
+                && isRoundaboutTile;
+            float roundaboutStopDistance = 0f;
+            bool roundaboutEntryLimited = !hasRoundaboutAuthorization
+                && TryGetRoundaboutEntryStopDistance(
+                    poly,
+                    tileIndex,
+                    vehicle,
+                    out roundaboutStopDistance);
+            // 접근 외곽·arm은 roundaboutEntryLimited가 진입 간격을, 링은 로터리 권한이
+            // 위치를 책임진다. 이 구간에 일반 타일 슬롯까지 적용하면 같은 거리를 이중 제한한다.
+            int targetQueueSlot = isRoundaboutTile || roundaboutEntryLimited
+                ? 0
+                : snapshot.QueueSlot;
             float targetDistance = poly.DistanceAtQueueSlot(
                 tileIndex,
+                targetQueueSlot,
+                slotGap,
+                headInset);
+            float queueHeadTargetDistance = poly.DistanceAtQueueSlot(
+                tileIndex,
                 0,
-                0f,
+                slotGap,
                 headInset);
             bool hasIntersectionAuthorization = snapshot.IntersectionProgress01 >= 0f;
-            bool hasRoundaboutAuthorization = snapshot.RoundaboutProgress01 >= 0f
-                && IsRoundaboutTile(simTile);
             float intersectionAuthorizedSpeed = 0f;
             if (hasIntersectionAuthorization)
             {
@@ -916,10 +925,9 @@ namespace CityFlow.View
                     snapshot.LinkProgress01);
             }
             float previousDistance = car.Distance;
-            // ⚠️ QueueSlot은 조건에 넣지 않는다. 슬롯이 위치에서 빠졌으므로(위) 슬롯 변화는
-            // 목표 불변인데, 조건에 남겨두면 슬롯이 바뀔 때마다 "목표 전진"으로 오판해
-            // 홀드 중에도 TargetAdvancing이 스퓨리어스로 켜졌다(계측 2026-07-21) —
-            // Sim이 잡고 있는 차에 v² 부스트가 들어가 남몰래 앞으로 기어나가는 버그.
+            // QueueSlot 자체가 아니라 그 결과인 목표 거리의 방향을 본다. 슬롯 감소로 목표가
+            // 앞으로 갈 때만 TargetAdvancing=true이며, 슬롯 증가로 목표가 후퇴하면 false라
+            // ceilingSpeed 사슬에 "전진 중"이라는 오신호를 주지 않는다.
             bool targetChanged = !vehicle.HasTickTarget
                 || stateChanged
                 || vehicle.TargetTileIndex != tileIndex
@@ -927,11 +935,15 @@ namespace CityFlow.View
                 || Mathf.Abs(vehicle.TargetDistance - targetDistance) > 0.0001f;
             if (targetChanged)
             {
+                bool targetAdvancing = !vehicle.HasTickTarget
+                    || stateChanged
+                    || vehicle.TargetRouteIndex != car.RouteIndex
+                    || targetDistance > vehicle.TargetDistance + 0.0001f;
                 vehicle.TargetDistance = targetDistance;
                 vehicle.TargetTileIndex = tileIndex;
                 vehicle.TargetRouteIndex = car.RouteIndex;
                 vehicle.HasTickTarget = true;
-                vehicle.TargetAdvancing = true;    // 흐르는 중 — 천장이 나와 같이 전진한다
+                vehicle.TargetAdvancing = targetAdvancing;
             }
             else if (tickEdge)
             {
@@ -948,23 +960,10 @@ namespace CityFlow.View
             // 평균 속도는 Sim이 정한다(틱당 1타일) — 개성으로 최고속도를 바꾸면 느린 차는
             // 영원히 목표를 못 따라잡는다. 개성은 가속도(AccelMul)에만 건다.
             float nominal = tileSize / Mathf.Max(0.0001f, simEngine.TickInterval);
-            // 천장 = Sim 목표 + 1타일 (틱마다 이산 전진). 연속 천장(틱위상 보간)을 계측으로
-            // 시험했으나(2026-07-21) 기각했다: 감속 이벤트가 줄지 않았고(106 vs 101/1k)
-            // 뷰가 Sim 스냅샷보다 최대 2타일 앞서 헌법의 "Sim+1 상한"을 어겼다.
-            // 남는 중간 브레이크의 뿌리는 뷰가 아니라 **Sim 틱 양자화**다(0.4s 홀드) — §4.10.
-            // 도로 끝 클램프는 poly.Length — 목적지 도달 차를 회사 앞에서 얼리지 않는다(§4.6.2).
-            float corridor = hasIntersectionAuthorization || hasRoundaboutAuthorization
-                ? vehicle.TargetDistance
-                : Mathf.Min(
-                    vehicle.TargetDistance + vehicleCorridorTiles * tileSize,
-                    poly.Length);
-            float roundaboutStopDistance = 0f;
-            bool roundaboutEntryLimited = !hasRoundaboutAuthorization
-                && TryGetRoundaboutEntryStopDistance(
-                    poly,
-                    tileIndex,
-                    vehicle,
-                    out roundaboutStopDistance);
+            // 일반 도로는 QueueSlot 목표(슬롯0 포함), 교차로·로터리·링크는 위에서 덮어쓴
+            // 각 권한 거리가 그대로 상한이다. +1타일 선행은 Sim 타일 전환 때 새 슬롯 목표보다
+            // 앞서 있던 차를 도로 한가운데 세웠으므로 폐지한다(2026-07-24 라이브 계측).
+            float corridor = vehicle.TargetDistance;
             if (roundaboutEntryLimited)
             {
                 corridor = Mathf.Min(corridor, roundaboutStopDistance);
@@ -999,10 +998,28 @@ namespace CityFlow.View
                     distanceToBoundary / remainingTickSeconds);
             }
 
+            bool usesQueueSlotTarget = targetQueueSlot > 0
+                && !hasIntersectionAuthorization
+                && !hasRoundaboutAuthorization
+                && snapshot.LinkProgress01 <= 0f;
+            float queueHeadCorridor = queueHeadTargetDistance;
+            if (roundaboutEntryLimited)
+                queueHeadCorridor = Mathf.Min(queueHeadCorridor, roundaboutStopDistance);
+            if (signalEntryLimited)
+                queueHeadCorridor = Mathf.Min(queueHeadCorridor, signalStopDistance);
+            if (intersectionEntryLimited)
+                queueHeadCorridor = Mathf.Min(queueHeadCorridor, intersectionStopDistance);
+            bool queueSlotOnlyRegression = usesQueueSlotTarget
+                && targetDistance < queueHeadTargetDistance - 0.0001f
+                && queueHeadCorridor >= car.Distance;
+
             if (corridor < car.Distance)
             {
-                // 상한이 뒤로 갔다(밸브 초과 슬롯·재베이크). 스냅하면 순간이동이므로 굴러서 물러난다.
-                car.Distance = Mathf.MoveTowards(car.Distance, corridor, nominal * dt);
+                // 슬롯 간격만 제거하면 현재 위치를 허용하는 경우에만 제자리에서 기다린다.
+                // 재베이크로 poly.Length 자체가 Distance 뒤로 줄었거나 시작점 클램프 때문에
+                // slot0도 같은 상한이면 기다려도 풀릴 수 없으므로 옛 동작처럼 완만히 수렴한다.
+                if (!queueSlotOnlyRegression)
+                    car.Distance = Mathf.MoveTowards(car.Distance, corridor, nominal * dt);
                 vehicle.TravelSpeed = 0f;
             }
             else
