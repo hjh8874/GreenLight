@@ -7,6 +7,11 @@ namespace CityFlow.Sim
     [System.Serializable]   // SimConfigAsset(SO)이 인스펙터에 노출하기 위해
     public struct SimConfig
     {
+        // 시뮬레이션 물리량 헬퍼
+        // 차 1대가 방해 없이 이동할 때 1초당 몇 타일을 가는가
+        public float GetFreeFlowSpeed() => QueueServicePerTick / TickInterval;
+        public float GetTravelSeconds(int distTiles) => distTiles / GetFreeFlowSpeed();
+
         // ── 고정 틱 ─────────────────────────────
         public float TickInterval;      // 시뮬 1스텝(초). blueprint §3 = 0.1
         public int   MaxStepsPerFrame;  // 누산기 while 폭주 방지 캡

@@ -562,32 +562,40 @@ namespace CityFlow.Sim.Tests
             hub.FlowBurst += e => burstCount++;
             
             SimConfig cfg = Cfg();
+            cfg.GridWidth = 20;
+            cfg.GridHeight = 20;
             cfg.GreenWaveScanInterval = 1;
             cfg.GreenWaveThreshold = 0.8f;
             cfg.AutoDetectSignals = false;
             
             var engine = new SimEngine(cfg, hub);
-            BuildTestIntersection(engine, V(0, 0));
-            BuildTestIntersection(engine, V(2, 0));
-            Assert.IsTrue(engine.Place(V(1, 0), TileType.Road));
+            BuildTestIntersection(engine, V(2, 2));
+            BuildTestIntersection(engine, V(6, 2));
+            engine.Place(V(4, 2), TileType.Road);
             
-            Assert.IsTrue(engine.TryPlaceSignal(V(0, 0), 10));
-            Assert.IsTrue(engine.TryPlaceSignal(V(2, 0), 10));
-            engine.TrySetSignalOffsetSlots(V(0, 0), 0);
-            engine.TrySetSignalOffsetSlots(V(2, 0), 0);
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 2), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(6, 2), 10));
             
-            engine.Tick(cfg.TickInterval);
-            Assert.AreEqual(1, burstCount, "미달성→달성 1회 발행 검증");
+            // 기본 상태(오프셋 모두 0)일 때는 혜택이 발동하지 않아야 함
+            engine.TrySetSignalOffsetSlots(V(2, 2), 0);
+            engine.TrySetSignalOffsetSlots(V(6, 2), 0);
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(0, burstCount, "기본 상태(0, 0)에서는 우연히 맞아도 발동 안 함");
+
+            // 거리에 맞춰 오프셋 조절 (V(6,2)을 거리만큼 미룸)
+            engine.TrySetSignalOffsetSlots(V(6, 2), 2);
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(1, burstCount, "오프셋 조작 시 미달성→달성 1회 발행 검증");
             
-            engine.Tick(cfg.TickInterval);
+            engine.Tick(cfg.GreenWaveScanInterval);
             Assert.AreEqual(1, burstCount, "달성 유지 중 미발행 검증");
             
-            engine.TrySetSignalOffsetSlots(V(2, 0), 20); // Break wave
-            engine.Tick(cfg.TickInterval);
+            engine.TrySetSignalOffsetSlots(V(6, 2), 7); // Break wave
+            engine.Tick(cfg.GreenWaveScanInterval);
             Assert.AreEqual(1, burstCount, "해제 시 미발행");
             
-            engine.TrySetSignalOffsetSlots(V(2, 0), 0); // Restore wave
-            engine.Tick(cfg.TickInterval);
+            engine.TrySetSignalOffsetSlots(V(6, 2), 2); // Restore wave
+            engine.Tick(cfg.GreenWaveScanInterval);
             Assert.AreEqual(2, burstCount, "해제 후 재달성 시 발행 검증");
         }
 
@@ -599,21 +607,23 @@ namespace CityFlow.Sim.Tests
             hub.FlowBurst += e => burstCount++;
             
             SimConfig cfg = Cfg();
+            cfg.GridWidth = 20;
+            cfg.GridHeight = 20;
             cfg.GreenWaveScanInterval = 1;
             cfg.GreenWaveThreshold = 0.5f;
             cfg.AutoDetectSignals = false;
             
             var engine = new SimEngine(cfg, hub);
-            BuildTestIntersection(engine, V(0, 0));
-            BuildTestIntersection(engine, V(2, 0));
-            Assert.IsTrue(engine.Place(V(1, 0), TileType.Road));
-            Assert.IsTrue(engine.TryPlaceSignal(V(0, 0), 10));
-            Assert.IsTrue(engine.TryPlaceSignal(V(2, 0), 10));
+            BuildTestIntersection(engine, V(2, 2));
+            BuildTestIntersection(engine, V(6, 2));
+            engine.Place(V(4, 2), TileType.Road);
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 2), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(6, 2), 10));
             
-            engine.TrySetSignalOffsetSlots(V(0, 0), 0);
-            engine.TrySetSignalOffsetSlots(V(2, 0), 0);
+            engine.TrySetSignalOffsetSlots(V(2, 2), 0);
+            engine.TrySetSignalOffsetSlots(V(6, 2), 2);
             
-            engine.Tick(cfg.TickInterval);
+            engine.Tick(cfg.GreenWaveScanInterval);
             Assert.AreEqual(1, burstCount, "양방향 동시 스캔되어도 1회만 발행 검증");
         }
 
@@ -625,25 +635,32 @@ namespace CityFlow.Sim.Tests
             hub.FlowBurst += e => burstCount++;
             
             SimConfig cfg = Cfg();
+            cfg.GridWidth = 20;
+            cfg.GridHeight = 20;
             cfg.GreenWaveScanInterval = 1;
             cfg.GreenWaveThreshold = 0.5f;
             cfg.AutoDetectSignals = false;
             
             var engine = new SimEngine(cfg, hub);
             
-            BuildTestIntersection(engine, V(0, 0));
-            BuildTestIntersection(engine, V(2, 0));
-            Assert.IsTrue(engine.Place(V(1, 0), TileType.Road));
-            Assert.IsTrue(engine.TryPlaceSignal(V(0, 0), 10));
-            Assert.IsTrue(engine.TryPlaceSignal(V(2, 0), 10));
+            BuildTestIntersection(engine, V(2, 2));
+            BuildTestIntersection(engine, V(6, 2));
+            engine.Place(V(4, 2), TileType.Road);
+            if (!engine.TryPlaceSignal(V(2, 2), 10)) throw new System.Exception("TryPlaceSignal V(2,2) failed");
+            if (!engine.TryPlaceSignal(V(6, 2), 10)) throw new System.Exception("TryPlaceSignal V(6,2) failed");
             
-            BuildTestIntersection(engine, V(0, 4));
-            BuildTestIntersection(engine, V(2, 4));
-            Assert.IsTrue(engine.Place(V(1, 4), TileType.Road));
-            Assert.IsTrue(engine.TryPlaceSignal(V(0, 4), 10));
-            Assert.IsTrue(engine.TryPlaceSignal(V(2, 4), 10));
+            BuildTestIntersection(engine, V(2, 8));
+            BuildTestIntersection(engine, V(6, 8));
+            engine.Place(V(4, 8), TileType.Road);
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 8), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(6, 8), 10));
+
+            engine.TrySetSignalOffsetSlots(V(2, 2), 0);
+            engine.TrySetSignalOffsetSlots(V(6, 2), 2);
+            engine.TrySetSignalOffsetSlots(V(2, 8), 0);
+            engine.TrySetSignalOffsetSlots(V(6, 8), 2);
             
-            engine.Tick(cfg.TickInterval);
+            engine.Tick(cfg.GreenWaveScanInterval);
             Assert.AreEqual(2, burstCount, "독립적인 신호 구간 2개 동시 처리 검증");
         }
 

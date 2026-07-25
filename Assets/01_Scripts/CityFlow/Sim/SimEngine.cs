@@ -315,7 +315,14 @@ namespace CityFlow.Sim
 
                     if (toSignal != null)
                     {
-                        float travelSlots = (dist * _config.TickInterval) / SignalMath.SlotSeconds;
+                        // 1. 유저가 오프셋을 조작(0이 아님)한 적이 있어야만 보상 허용 (조작 전 기본 상태에서 남발 방지)
+                        if (fromSignal.OffsetSlots == 0 && toSignal.OffsetSlots == 0)
+                            continue;
+
+                        // 2. 단일 헬퍼를 사용하여 일관된 이동 시간(초) 산출
+                        float travelSecs = _config.GetTravelSeconds(dist);
+                        float travelSlots = travelSecs / SignalMath.SlotSeconds;
+                        
                         float eff = SignalMath.GreenWaveEfficiency(fromSignal, toSignal, travelSlots, _config.GreenWaveFloor);
                         
                         if (eff >= _config.GreenWaveThreshold)
