@@ -1,0 +1,164 @@
+using System;
+using UnityEngine;
+using CityFlow.Contracts;
+using CityFlow.Bootstrap;
+
+namespace CityFlow.UI.Controllers.Placement
+{
+    internal class PlacementActionDispatcher
+    {
+        private readonly CityFlow.Configs.TileDataSO[] _availableTiles;
+        private readonly bool _useFakeMode;
+
+        public PlacementActionDispatcher(CityFlow.Configs.TileDataSO[] availableTiles, bool useFakeMode)
+        {
+            _availableTiles = availableTiles;
+            _useFakeMode = useFakeMode;
+        }
+
+        public long GetTileCost(TileType type)
+        {
+            if (_availableTiles == null) return 0;
+            foreach (var t in _availableTiles)
+            {
+                if (t != null && t.Category == type) return t.BuildCost;
+            }
+            return 0;
+        }
+
+        public bool CheckCanPlace(Vector2Int coord, TileType currentType, PlacementDirection direction, CityFlowServices services)
+        {
+            if (_useFakeMode) return true;
+            
+            if (services != null && services.Placement != null && services.TileData != null)
+            {
+                if (!GridUtil.IsInside(coord)) return false;
+                if (currentType == TileType.Empty) return true;
+
+                Vector2Int previousAnchor = ResolveFootprintAnchor(coord, services);
+                TileType previousType = services.TileData.GetTileType(previousAnchor);
+                
+                if (previousType != TileType.Empty)
+                {
+                    return false;
+                }
+
+                return services.Placement.CanPlace(coord, currentType, direction); 
+            }
+            return false;
+        }
+
+        public void PlaceInfrastructure(Vector2Int coord, TileType currentType, PlacementDirection direction, CityFlowServices services)
+        {
+            if (_useFakeMode)
+            {
+                Debug.Log($"[UI Fake Mode] 타일 {currentType} 적용 성공! 위치: {coord}");
+                return;
+            }
+
+            if (services != null && services.Placement != null && services.TileData != null)
+            {
+                Vector2Int previousAnchor = ResolveFootprintAnchor(coord, services);
+                TileType previousType = services.TileData.GetTileType(previousAnchor);
+
+                if (currentType == TileType.Empty)
+                {
+                    long refundCost = GetTileCost(previousType);
+                    if (services.Placement.Remove(previousAnchor))
+                    {
+                        if (services.Economy != null && refundCost > 0)
+                            services.Economy.AddCoins(refundCost, "Demolish Refund");
+                            
+                        Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 철거 명령 전달 (환불 {refundCost}).");
+                    }
+                }
+                else
+                {
+                    long buildCost = GetTileCost(currentType);
+                    
+                    if (previousType != TileType.Empty)
+                    {
+                        Debug.LogWarning("[UI] 기존 건물이나 도로가 있는 위치에는 새 건물을 지을 수 없습니다.");
+                        return;
+                    }
+
+                    if (services.Economy != null && buildCost > 0 && services.Economy.Coins < buildCost)
+                    {
+                        Debug.LogWarning("[UI] 코인이 부족하여 건설할 수 없습니다!");
+                        return;
+                    }
+
+                    if (services.Placement.Place(coord, currentType, direction))
+                    {
+                        if (services.Economy != null && buildCost > 0)
+                            services.Economy.TrySpend(buildCost);
+
+                        Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 {currentType} 건설 명령 전달 (비용 {buildCost}).");
+                    }
+                }
+            }
+        }
+
+        public bool TryDemolishAt(Vector2Int coord, CityFlowServices services)
+        {
+            var infraCoord = UnityEngine.Object.FindAnyObjectByType<CityFlow.UI.Controllers.InfrastructurePlacementCoordinator>();
+            if (infraCoord != null && infraCoord.TryDemolishInfrastructureAt(coord))
+            {
+                return true;
+            }
+
+            if (_useFakeMode)
+            {
+                Debug.Log($"[UI Fake Mode] 타일 {coord} 철거 성공!");
+                return true;
+            }
+
+            if (services == null || services.Placement == null || services.TileData == null)
+            {
+                return false;
+            }
+
+            Vector2Int targetCoord = ResolveFootprintAnchor(coord, services);
+            TileType previousType = services.TileData.GetTileType(targetCoord);
+            if (previousType == TileType.Empty)
+            {
+                return false;
+            }
+
+            long refundCost = GetTileCost(previousType);
+            if (!services.Placement.Remove(targetCoord))
+            {
+                return false;
+            }
+
+            if (services.Economy != null && refundCost > 0)
+            {
+                services.Economy.AddCoins(refundCost, "Demolish Refund");
+            }
+
+            Debug.Log($"[Real Mode] 코어 엔진에 {targetCoord} 위치 철거 명령 전달 (환불 {refundCost}).");
+            return true;
+        }
+
+        public void HandleRoadExpandClicked(CityFlowServices services)
+        {
+            var expansion = services?.Placement as CityFlow.Contracts.IRoadExpansionService;
+            if (expansion == null || services.Economy == null) return;
+
+            if (expansion.TryPurchaseRoadExpansion(services.Economy))
+                Debug.Log($"[PlacementController] 도로 확장권 구매 — 캡 +10, 다음 가격 {expansion.NextRoadExpandCost}");
+            else
+                Debug.LogWarning("[PlacementController] 코인이 부족하여 도로 확장권을 구매할 수 없습니다!");
+        }
+
+        private Vector2Int ResolveFootprintAnchor(Vector2Int coord, CityFlowServices services)
+        {
+            if (services != null && services.TileData != null &&
+                services.TileData.TryGetFootprintAnchor(coord, out Vector2Int anchor))
+            {
+                return anchor;
+            }
+            return coord;
+        }
+    }
+}
