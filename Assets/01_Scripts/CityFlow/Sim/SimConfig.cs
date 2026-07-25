@@ -8,8 +8,8 @@ namespace CityFlow.Sim
     public struct SimConfig
     {
         // 시뮬레이션 물리량 헬퍼
-        // 차 1대가 방해 없이 이동할 때 1초당 몇 타일을 가는가
-        public float GetFreeFlowSpeed() => QueueServicePerTick / TickInterval;
+        // 차 1대가 방해 없이 이동할 때 1초당 몇 타일을 가는가 (현재 엔진 규약 상 1틱당 1칸)
+        public float GetFreeFlowSpeed() => 1f / TickInterval;
         public float GetTravelSeconds(int distTiles) => distTiles / GetFreeFlowSpeed();
 
         // ── 고정 틱 ─────────────────────────────

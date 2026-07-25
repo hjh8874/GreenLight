@@ -664,6 +664,51 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2, burstCount, "독립적인 신호 구간 2개 동시 처리 검증");
         }
 
+        [Test]
+        public void GreenWave_QueueServicePerTick_DoesNotBreakEfficiency()
+        {
+            var hub = new SimEventHub();
+            int burstCount = 0;
+            hub.FlowBurst += e => burstCount++;
+            
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 20;
+            cfg.GridHeight = 20;
+            cfg.GreenWaveScanInterval = 1;
+            cfg.GreenWaveThreshold = 0.5f;
+            cfg.AutoDetectSignals = false;
+            
+            // 테스트 1: QueueServicePerTick = 0 인 경우 (실제로는 Math.Max(1, ...)로 보정되지만, 
+            // GetFreeFlowSpeed 헬퍼가 0을 반환하면 안 됨)
+            cfg.QueueServicePerTick = 0;
+            
+            var engine0 = new SimEngine(cfg, hub);
+            BuildTestIntersection(engine0, V(2, 2));
+            BuildTestIntersection(engine0, V(6, 2));
+            engine0.Place(V(4, 2), TileType.Road);
+            engine0.TryPlaceSignal(V(2, 2), 10);
+            engine0.TryPlaceSignal(V(6, 2), 10);
+            
+            engine0.TrySetSignalOffsetSlots(V(2, 2), 0);
+            engine0.TrySetSignalOffsetSlots(V(6, 2), 2);
+            engine0.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(1, burstCount, "QueueServicePerTick=0 일 때도 효율 판정이 정상이어야 함");
+            
+            // 테스트 2: QueueServicePerTick = 2 인 경우
+            cfg.QueueServicePerTick = 2;
+            var engine2 = new SimEngine(cfg, hub);
+            BuildTestIntersection(engine2, V(2, 2));
+            BuildTestIntersection(engine2, V(6, 2));
+            engine2.Place(V(4, 2), TileType.Road);
+            engine2.TryPlaceSignal(V(2, 2), 10);
+            engine2.TryPlaceSignal(V(6, 2), 10);
+            
+            engine2.TrySetSignalOffsetSlots(V(2, 2), 0);
+            engine2.TrySetSignalOffsetSlots(V(6, 2), 2);
+            engine2.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(2, burstCount, "QueueServicePerTick=2 일 때도 과도하게 빠른 도착으로 판정하지 않아야 함");
+        }
+
         private static SimEngine BuildStraightCity(SimConfig cfg, SimEventHub hub)
         {
             var engine = new SimEngine(cfg, hub);
