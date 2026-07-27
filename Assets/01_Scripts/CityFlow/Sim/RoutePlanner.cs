@@ -12,6 +12,8 @@ namespace CityFlow.Sim
     // ponytail: 20×20이라 배열 스캔 Dijkstra(O(n²))로 충분 — 힙 불요. 틱 밖이라 경로 List 할당 허용.
     internal sealed class RoutePlanner
     {
+        // Route regions bound each local path search. They are independent
+        // from the data-driven unlock chunks in WorldGridConfigSO.
         internal const int RouteRegionSize = 20;
 
         // 이웃 순서 N,E,S,W 고정(결정론 공유 규약). 대각 연결은 차 큐로 표현할 수 없어 지원하지 않는다.

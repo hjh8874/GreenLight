@@ -15,8 +15,10 @@ namespace CityFlow.WorldGrid
         [SerializeField] private WorldGridService worldGrid;
         [SerializeField] private WorldGridUnlockProfileSO profile;
 
+#if UNITY_EDITOR
         [Header("Play Mode Test")]
         [SerializeField, Min(0)] private int testStageIndex = 1;
+#endif
 
         private bool initialized;
         private int currentStageIndex = -1;
@@ -112,6 +114,7 @@ namespace CityFlow.WorldGrid
             return currentStageIndex == 0 && IsStageFullyUnlocked(0);
         }
 
+#if UNITY_EDITOR
         [ContextMenu("Play Mode Test/Unlock Next Stage")]
         private void UnlockNextStageForPlayModeTest()
         {
@@ -184,6 +187,7 @@ namespace CityFlow.WorldGrid
                 $"{CurrentStageId} ({CurrentStageIndex}).",
                 this);
         }
+#endif
 
         private void OnDestroy()
         {
