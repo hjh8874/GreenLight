@@ -8,13 +8,15 @@ namespace CityFlow.UI
         [Header("Settings UI")]
         [SerializeField] private Toggle tglMuteAudio;
         [SerializeField] private Button btnQuitGame;
+        [SerializeField] private Button btnTitleScene;
 
         private bool _isBound;
 
-        public void Configure(Toggle muteAudio, Button quitGame)
+        public void Configure(Toggle muteAudio, Button quitGame, Button titleScene)
         {
             tglMuteAudio = muteAudio;
             btnQuitGame = quitGame;
+            btnTitleScene = titleScene;
             BindButtons();
         }
 
@@ -44,6 +46,12 @@ namespace CityFlow.UI
                 btnQuitGame.onClick.AddListener(OnQuitClicked);
             }
 
+            // 타이틀 이동 버튼 이벤트 바인딩
+            if (btnTitleScene != null)
+            {
+                btnTitleScene.onClick.AddListener(OnTitleSceneClicked);
+            }
+
             _isBound = true;
         }
 
@@ -65,6 +73,12 @@ namespace CityFlow.UI
             // 실제 빌드에서는 프로그램을 종료합니다.
             Application.Quit();
 #endif
+        }
+
+        private void OnTitleSceneClicked()
+        {
+            Debug.Log("[Settings] 타이틀 화면으로 이동합니다.");
+            UnityEngine.SceneManagement.SceneManager.LoadScene("TitleScene");
         }
     }
 }

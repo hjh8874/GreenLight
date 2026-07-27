@@ -295,7 +295,14 @@ namespace CityFlow.UI
             // 1. 시간 표시 (00:00 포맷 및 게임 달력 연동)
             if (timeText != null)
             {
-                timeText.text = System.DateTime.Now.ToString("MM월 dd일 HH:mm");
+                if (_gameCalendar != null)
+                {
+                    timeText.text = $"{_gameCalendar.Month:D2}월 {_gameCalendar.Day:D2}일 {_gameCalendar.Hour:D2}:00";
+                }
+                else
+                {
+                    timeText.text = "01월 01일 00:00"; // 기본값
+                }
             }
 
             // 2. 계약 계층에서 제공하는 실제 활성 차량 수

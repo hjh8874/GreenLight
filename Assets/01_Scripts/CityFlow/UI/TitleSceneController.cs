@@ -19,6 +19,8 @@ namespace CityFlow.UI
         [SerializeField] private Button continueButton;
         [Tooltip("설정 토글로 켜고 끌 패널(옵션).")]
         [SerializeField] private GameObject settingsPanel;
+        [Tooltip("새 게임 시 띄울 경고 팝업(옵션).")]
+        [SerializeField] private ConfirmPopupController confirmPopup;
 
         private void Start()
         {
@@ -34,8 +36,27 @@ namespace CityFlow.UI
         }
 
         // 새 게임 — 기존 저장과 백업을 제거해 게임 씬의 자동 불러오기 대상에서 제외한다.
-        // 세이브 덮어쓰기 확인 UX는 후속으로 추가한다.
+        // 세이브 덮어쓰기 확인 UX 연동.
         public void OnStartNewGame()
+        {
+            if (HasSave())
+            {
+                if (confirmPopup != null)
+                {
+                    confirmPopup.Show("새로하기를 누르시면 지금까지 진행한 내용이 모두 지워집니다. 계속하시겠습니까?", ExecuteStartNewGame);
+                }
+                else
+                {
+                    ExecuteStartNewGame();
+                }
+            }
+            else
+            {
+                ExecuteStartNewGame();
+            }
+        }
+
+        private void ExecuteStartNewGame()
         {
             try
             {
