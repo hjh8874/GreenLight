@@ -5,6 +5,7 @@ using UnityEngine;
 namespace CityFlow.Sim
 {
     public enum CarState { ParkedHome, Outbound, ParkedWork, Inbound }
+    public enum RetireReason { None, HomeLost, WorkLost }
 
     public sealed class CommuteCar
     {
@@ -17,6 +18,12 @@ namespace CityFlow.Sim
         // sticky 매칭으로 유지되므로, 진행도를 차에 실어 리빌드를 건너보낸다.
         public Vector2Int ResumeTile;
         public bool HasResume;
+        // 건물 소멸은 주행 중인 차를 즉시 삭제하지 않는다. CarSim이 구 짝/경로를
+        // carry-over하는 동안 이 사유를 보존하고, 안전한 주차 경계에서만 제거한다.
+        public RetireReason RetireReason;
+        // 리빌드로 새로 생긴 배정은 생성 시각이 이미 지난 출근 창을 소급하지 않는다.
+        // 다음 날 출발 시각 이전 구간을 관측한 뒤에만 정상 출발 전이를 허용한다.
+        public bool AwaitingNextWave;
     }
 
     // 하루 주기 통근 안무. 세이브 불필요 — 로드/큰 시각 점프 시 SnapToHour로 주차 상태에
@@ -37,7 +44,8 @@ namespace CityFlow.Sim
         // 슬롯 유일성 불변식: (Work, WorkSlot)/(Home, HomeSlot)은 점유 셋이 절대 보장.
         public void Rebuild(IReadOnlyList<Vector2Int> sources, IReadOnlyList<Vector2Int> sinks,
             Func<Vector2Int, int> workCapacityFor, int homeSlots, int maxCars,
-            float morningStart, float morningEnd, float eveningStart, float eveningEnd)
+            float morningStart, float morningEnd, float eveningStart, float eveningEnd,
+            bool deferNewAssignments = false)
         {
             if (workCapacityFor == null)
                 throw new ArgumentNullException(nameof(workCapacityFor));
@@ -115,6 +123,7 @@ namespace CityFlow.Sim
                     DepartHomeHour = StaggerHour(sources[i], morningStart, morningEnd),
                     DepartWorkHour = StaggerHour(sources[i], eveningStart, eveningEnd),
                     State = CarState.ParkedHome,
+                    AwaitingNextWave = deferNewAssignments,
                 };
                 _cars.Add(fresh);
                 _newCars.Add(fresh);
@@ -152,10 +161,18 @@ namespace CityFlow.Sim
             for (int i = 0; i < _cars.Count; i++)
             {
                 CommuteCar car = _cars[i];
+                if (car.State == CarState.ParkedHome && car.AwaitingNextWave)
+                {
+                    if (hour < car.DepartHomeHour)
+                        car.AwaitingNextWave = false;
+                    else
+                        continue;
+                }
                 if (car.State == CarState.ParkedHome
                     && hour >= car.DepartHomeHour && hour < _eveningEnd)
                 { car.State = CarState.Outbound; car.Distance = 0f; }
-                else if (car.State == CarState.ParkedWork && hour >= car.DepartWorkHour)
+                else if (car.State == CarState.ParkedWork
+                    && (hour >= car.DepartWorkHour || car.RetireReason == RetireReason.WorkLost))
                 { car.State = CarState.Inbound; car.Distance = 0f; }
             }
         }
@@ -192,8 +209,15 @@ namespace CityFlow.Sim
         // UpdateDepartures가 다음 틱에 곧바로 Outbound로 전이시킨다. 첫 움직임은 항상 출근이어야 한다.
         public void SnapCar(CommuteCar car, float hour)
         {
-            bool inEveningWindow = hour >= _eveningStart && hour < _eveningEnd;
-            car.State = inEveningWindow ? CarState.ParkedWork : CarState.ParkedHome;
+            if (car.AwaitingNextWave)
+            {
+                car.State = CarState.ParkedHome;
+            }
+            else
+            {
+                bool inEveningWindow = hour >= _eveningStart && hour < _eveningEnd;
+                car.State = inEveningWindow ? CarState.ParkedWork : CarState.ParkedHome;
+            }
             car.Distance = 0f;
         }
 

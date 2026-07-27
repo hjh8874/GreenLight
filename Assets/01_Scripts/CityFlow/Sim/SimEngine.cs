@@ -55,6 +55,8 @@ namespace CityFlow.Sim
         float _gameHour;
         int _lastStepArrivals;
         bool _demandRebalancePending;
+        bool _buildingAssignmentChangePending;
+        bool _roadTopologyChangePending;
 
         // 테스트 관찰용 seam. internal이라 테스트 어셈블리만 봄(InternalsVisibleTo).
         internal int StepCount { get; private set; }
@@ -141,7 +143,7 @@ namespace CityFlow.Sim
 
             _config = merged;
             _demand.ApplyConfig(_config);
-            _grid.MarkTopologyDirty();   // 다음 틱에 Reassign+Plan 강제(즉시 재계산은 안 함 — 파이프라인 순서 보존)
+            MarkRoutingChangePending();   // 다음 틱에 Reassign+Plan 강제(즉시 재계산은 안 함 — 파이프라인 순서 보존)
             return true;
         }
 
@@ -191,6 +193,9 @@ namespace CityFlow.Sim
             {
                 _demand.ClearStickyAssignments();
                 _demandRebalancePending = false;
+                // 전원 귀가 뒤의 명시적 sticky clear는 전체 재최적화 경계다.
+                // 직전 건물 추가의 생존 짝 고정 모드는 여기서 끝낸다.
+                _buildingAssignmentChangePending = false;
                 _grid.MarkTopologyDirty();
             }
 
@@ -201,11 +206,21 @@ namespace CityFlow.Sim
                 RebuildSignals();                              // 교차로 재감지(살아남은 신호 오프셋 보존)
                 _planner.Plan(_demand, _network, _grid, _config, _onewayDirs, _turnSigns, _highwayLinks);   // 방향 규칙 + 고가 링크
                 _roadQueues.RebuildTopology(_grid, _deviceState);
-                _carSim.Rebuild(_demand, _planner, _roadQueues);
+                _carSim.Rebuild(
+                    _demand,
+                    _planner,
+                    _roadQueues,
+                    PreserveExistingAssignmentsForRebuild());
+                ClearRebuildChangeKinds();
                 _grid.ClearTopologyDirty();
             }
 
             StepResult carResult = _carSim.Step(_gameHour, _roadQueues, _events, _signalGate, StepCount);
+            if (_carSim.HasCompletedRetirements)
+            {
+                _buildingAssignmentChangePending = true;
+                _grid.MarkTopologyDirty();
+            }
             _lastStepArrivals = carResult.Arrivals;
             float jamRatio = ScanCarCongestion();
             _stats.UpdateCarSim(
@@ -303,15 +318,39 @@ namespace CityFlow.Sim
             _signals.Rebuild(_grid, _placedSignals);
         }
 
-        private void EnsureCarTopologyCurrent()
+        internal void EnsureCarTopologyCurrent()
         {
             if (!_grid.TopologyDirty) return;
             _demand.Reassign(_grid, _network);
             RebuildSignals();
             _planner.Plan(_demand, _network, _grid, _config, _onewayDirs, _turnSigns, _highwayLinks);
             _roadQueues.RebuildTopology(_grid, _deviceState);
-            _carSim.Rebuild(_demand, _planner, _roadQueues);
+            _carSim.Rebuild(
+                _demand,
+                _planner,
+                _roadQueues,
+                PreserveExistingAssignmentsForRebuild());
+            ClearRebuildChangeKinds();
             _grid.ClearTopologyDirty();
+        }
+
+        private bool PreserveExistingAssignmentsForRebuild() =>
+            _buildingAssignmentChangePending && !_roadTopologyChangePending;
+
+        // 경로 계획 입력(도로·일방통행·턴 표지판·고가 링크·config)이 바뀌면 preserve 리빌드
+        // 금지 — 구 경로가 새 규칙을 위반한 채 유지된다. 같은 틱 윈도우에 건물 배치가 겹쳐도
+        // 이 플래그가 이긴다. 로터리·입체·우선도로는 Plan 입력이 아니라(큐 토폴로지만 변경)
+        // 구 경로 = 재계획 결과이므로 제외.
+        private void MarkRoutingChangePending()
+        {
+            _roadTopologyChangePending = true;
+            _grid.MarkTopologyDirty();
+        }
+
+        private void ClearRebuildChangeKinds()
+        {
+            _buildingAssignmentChangePending = false;
+            _roadTopologyChangePending = false;
         }
 
         // 도로 예산제: 일반도로 + 고속도로 길이 스톡이 유효 캡에 닿으면 신규 도로 배치 금지.
@@ -356,6 +395,10 @@ namespace CityFlow.Sim
                 _demand.RegisterCompany(tile, type, _simTime);
             if (type == TileType.Office || type == TileType.School)
                 _demandRebalancePending = true;
+            if (TileFootprint.IsBuilding(type))
+                _buildingAssignmentChangePending = true;
+            else if (type == TileType.Road)
+                _roadTopologyChangePending = true;
             _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false, direction));
             return true;
         }
@@ -366,6 +409,15 @@ namespace CityFlow.Sim
             if (!_grid.TryRemove(tile, out var removed, out Vector2Int anchor)) return false;
             if (removed == TileType.Office)
                 _demand.RemoveCompany(anchor);
+            if (TileFootprint.IsBuilding(removed))
+            {
+                _demandRebalancePending = true;
+                _buildingAssignmentChangePending = true;
+            }
+            else if (removed == TileType.Road)
+            {
+                _roadTopologyChangePending = true;
+            }
             // 철거 = 조용: 그 타일의 연출 원료(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
             _events.QueuePlaced(new PlacedEvent(anchor, removed, isRemove: true, removedDir));
             return true;
@@ -657,7 +709,7 @@ namespace CityFlow.Sim
             int idx = _placedOneways.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
             if (idx < 0) _placedOneways.Add(tile); else _placedOneways.Insert(idx, tile);
             _onewayDirs[tile] = dir;
-            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 신호 가족과 다른 점(다음 틱 재계획 강제)
+            MarkRoutingChangePending();   // 라우팅에 영향 — 신호 가족과 다른 점(다음 틱 재계획 강제)
             return true;
         }
 
@@ -665,7 +717,7 @@ namespace CityFlow.Sim
         {
             if (_config.AutoDetectSignals || !_onewayDirs.Remove(tile)) return false;
             _placedOneways.Remove(tile);
-            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 배치와 동일 이유
+            MarkRoutingChangePending();   // 라우팅에 영향 — 배치와 동일 이유
             return true;
         }
 
@@ -693,7 +745,7 @@ namespace CityFlow.Sim
             int idx = _placedTurnSigns.FindIndex(t => t.y * _config.GridWidth + t.x > flat);
             if (idx < 0) _placedTurnSigns.Add(tile); else _placedTurnSigns.Insert(idx, tile);
             _turnSigns[tile] = mode;
-            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 일방통행과 동일 이유(다음 틱 재계획 강제)
+            MarkRoutingChangePending();   // 라우팅에 영향 — 일방통행과 동일 이유(다음 틱 재계획 강제)
             return true;
         }
 
@@ -701,7 +753,7 @@ namespace CityFlow.Sim
         {
             if (_config.AutoDetectSignals || !_turnSigns.Remove(tile)) return false;
             _placedTurnSigns.Remove(tile);
-            _grid.MarkTopologyDirty();   // 라우팅에 영향 — 배치와 동일 이유
+            MarkRoutingChangePending();   // 라우팅에 영향 — 배치와 동일 이유
             return true;
         }
 
@@ -741,7 +793,7 @@ namespace CityFlow.Sim
             _highwayPartners[a] = b;
             _highwayPartners[b] = a;
             _highwayBudgetTiles += HighwayDistance(a, b);
-            _grid.MarkTopologyDirty();
+            MarkRoutingChangePending();
             return true;
         }
 
@@ -755,7 +807,7 @@ namespace CityFlow.Sim
             _highwayPartners.Remove(partner);
             _highwayLinks.RemoveAt(linkIndex);
             _highwayBudgetTiles = Math.Max(0, _highwayBudgetTiles - link.Distance);
-            _grid.MarkTopologyDirty();
+            MarkRoutingChangePending();
             return true;
         }
 
@@ -953,6 +1005,9 @@ namespace CityFlow.Sim
             _highwayPartners.Clear();
             _highwayBudgetTiles = 0;
             _roadQueues.RemoveAllCars();
+            _carSim.ClearPopulation();
+            _buildingAssignmentChangePending = false;
+            _roadTopologyChangePending = false;
             _stats.RestoreCarSim(
                 snapshot.CarTripSuccessRate,
                 snapshot.CarDayArrivalCount,

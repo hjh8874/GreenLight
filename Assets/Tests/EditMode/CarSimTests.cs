@@ -472,6 +472,69 @@ namespace CityFlow.Sim.Tests
                 "L3는 막힌 중간 큐를 버리고 원래 출발 타일에서 트립을 재시작한다");
         }
 
+        // 리뷰 지적(2026-07-24 abicodue): preserve 리빌드가 진행 중 rescue 상태를 지우면
+        // rescue 경로 위의 ResumeTile을 일반 경로에서 못 찾아 route[0] 순간이동이 재발한다.
+        // L2 우회 주행 중 무관한 건물을 배치(preserve 리빌드)해도 rescue 경로·뷰 인덱스·
+        // 위치가 유지되어야 한다.
+        [Test]
+        public void LivenessRescue_SurvivesUnrelatedBuildingPreserveRebuild()
+        {
+            BuildWatchdogCity(
+                out CityGrid grid,
+                out RoadNetwork road,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 90));
+            Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
+            Assert.IsTrue(grid.Remove(V(2, 2)), "직선 경로를 철거해 위쪽 우회로만 남긴다");
+            planner.Plan(demands, road, grid, Cfg());
+            for (int tick = 0; tick < Cfg().GridlockValveTicks * 3; tick++)
+                sim.Step(7f, net, events);
+            Assert.AreEqual(1, sim.RescueRerouteCount, "전제: L2 rescue 발동");
+            sim.Step(7f, net, events);
+            sim.Step(7f, net, events);
+
+            CarSnapshot beforeSnap = sim.GetCar(0);
+            int rescueViewIndex = beforeSnap.RouteIndex;
+            Assert.GreaterOrEqual(
+                rescueViewIndex, planner.CarRoutes.Count, "전제: rescue 뷰 경로 사용 중");
+            List<Vector2Int> rescueRoute = sim.ActiveRoutes[rescueViewIndex];
+            Vector2Int beforeTile = rescueRoute[
+                Mathf.Clamp(beforeSnap.TileIndex, 0, rescueRoute.Count - 1)];
+            Assert.AreEqual(3, beforeTile.y, "전제: 차가 우회로(y=3) 위에 있다");
+
+            // 무관한 건물 배치 → SimEngine이라면 preserve 리빌드를 태우는 상황.
+            Assert.IsTrue(grid.Place(V(2, 0), TileType.House));
+            demands.Reassign(grid, road);
+            planner.Plan(demands, road, grid, Cfg());
+            net.RebuildTopology(grid);
+            sim.Rebuild(demands, planner, net, preserveExistingAssignments: true);
+            sim.Step(7f, net, events);
+
+            Assert.AreEqual(2, sim.CarCount, "기존 차 + 신규 짝");
+            CarSnapshot afterSnap = sim.GetCar(0);
+            Assert.AreEqual(
+                rescueViewIndex,
+                afterSnap.RouteIndex,
+                "preserve 리빌드 후에도 rescue 뷰 경로 인덱스가 유지되어야 한다");
+            CollectionAssert.DoesNotContain(
+                sim.ActiveRoutes[afterSnap.RouteIndex],
+                V(2, 2),
+                "유지된 경로는 여전히 철거 타일을 피하는 rescue 우회 경로다");
+            List<Vector2Int> afterRoute = sim.ActiveRoutes[afterSnap.RouteIndex];
+            Vector2Int afterTile = afterRoute[
+                Mathf.Clamp(afterSnap.TileIndex, 0, afterRoute.Count - 1)];
+            int jump = Mathf.Abs(afterTile.x - beforeTile.x)
+                + Mathf.Abs(afterTile.y - beforeTile.y);
+            Assert.LessOrEqual(
+                jump, 1, $"rescue 주행 위치 {afterTile}는 직전 위치 {beforeTile} 근방이어야 한다");
+        }
+
         [Test]
         public void LivenessWatchdog_TemporaryBlockBelowL2_DoesNotActivate()
         {
@@ -505,6 +568,200 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
             Assert.AreEqual(0, sim.RescueRerouteCount);
             Assert.AreEqual(0, sim.RescueRestartCount);
+        }
+
+        [Test]
+        public void Rebuild_RemovedHome_CarFinishesCurrentTripBeforeRetiring()
+        {
+            BuildRetirementCity(
+                out CityGrid grid,
+                out RoadNetwork road,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
+
+            Assert.IsTrue(grid.Remove(V(0, 0)));
+            RebuildCarTopology(grid, road, demands, planner, net, sim);
+
+            Assert.AreEqual(1, sim.CarCount, "집 철거 리빌드가 주행 차를 즉시 소멸시키면 안 된다");
+            for (int tick = 0;
+                 tick < 8 && sim.GetCar(0).State == CarState.Outbound;
+                 tick++)
+            {
+                sim.Step(7f, net, events);
+            }
+            Assert.AreEqual(
+                CarState.ParkedWork,
+                sim.GetCar(0).State,
+                "HomeLost 차는 철거 전 출근 경로와 보상 의미를 유지해 현재 트립을 완주한다");
+
+            RebuildCarTopology(grid, road, demands, planner, net, sim);
+            Assert.AreEqual(0, sim.CarCount, "안전한 주차 경계 다음 리빌드에서만 은퇴한다");
+        }
+
+        [Test]
+        public void Rebuild_RemovedWork_OutboundCarTurnsBackAndReturnsHome()
+        {
+            BuildRetirementCity(
+                out CityGrid grid,
+                out RoadNetwork road,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork net,
+                out CarSim sim,
+                out SimEventBuffer events);
+
+            sim.Step(7f, net, events);
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
+
+            Assert.IsTrue(grid.Remove(V(4, 0)));
+            RebuildCarTopology(grid, road, demands, planner, net, sim);
+
+            Assert.AreEqual(1, sim.CarCount);
+            Assert.AreEqual(
+                CarState.Inbound,
+                sim.GetCar(0).State,
+                "WorkLost 출근 차는 보상 가능한 출근을 계속하지 않고 즉시 포기 귀가로 전환한다");
+            for (int tick = 0;
+                 tick < 8 && sim.GetCar(0).State == CarState.Inbound;
+                 tick++)
+            {
+                sim.Step(7f, net, events);
+            }
+            Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State);
+        }
+
+        [Test]
+        public void Rebuild_AddedHome_NewAssignmentWaitsUntilNextMorningWave()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(6, 3);
+            for (int x = 0; x <= 5; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            var events = new SimEventBuffer(new SimEventHub());
+
+            Assert.AreEqual(0, sim.CarCount);
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            RebuildCarTopology(grid, road, demands, planner, net, sim);
+
+            sim.Step(7f, net, events);
+            Assert.AreEqual(1, sim.CarCount);
+            Assert.AreEqual(
+                CarState.ParkedHome,
+                sim.GetCar(0).State,
+                "이미 시작된 아침 웨이브에 신규 배정을 소급 출발시키면 안 된다");
+            sim.Step(7f, net, events);
+            Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State);
+
+            sim.Step(0f, net, events);
+            sim.Step(7f, net, events);
+            Assert.AreEqual(
+                CarState.Outbound,
+                sim.GetCar(0).State,
+                "다음 날 출발 시각 경계를 지난 뒤 신규 배정이 활성화되어야 한다");
+        }
+
+        [Test]
+        public void Rebuild_AddedHomeDuringEvening_NewAssignmentWaitsAtHome()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(6, 3);
+            for (int x = 0; x <= 5; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            var events = new SimEventBuffer(new SimEventHub());
+
+            Assert.AreEqual(0, sim.CarCount);
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            RebuildCarTopology(grid, road, demands, planner, net, sim);
+
+            sim.Step(17.5f, net, events);
+
+            Assert.AreEqual(1, sim.CarCount);
+            CarSnapshot deferred = sim.GetCar(0);
+            Assert.AreEqual(
+                CarState.ParkedHome,
+                deferred.State,
+                "저녁에 생긴 신규 배정은 방문하지 않은 회사에서 퇴근하면 안 된다");
+            Assert.IsTrue(deferred.AwaitingNextWave);
+            Assert.AreEqual(
+                0,
+                TotalQueued(net, grid.Width, grid.Height),
+                "대기 중인 신규 배정은 출근·퇴근 어느 큐에도 들어가면 안 된다");
+
+            sim.Step(0f, net, events);
+            Assert.IsFalse(sim.GetCar(0).AwaitingNextWave);
+            Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State);
+            sim.Step(7f, net, events);
+            Assert.AreEqual(
+                CarState.Outbound,
+                sim.GetCar(0).State,
+                "다음 날 출근 전 구간을 관측한 뒤에만 신규 배정이 출근해야 한다");
+        }
+
+        private static void BuildRetirementCity(
+            out CityGrid grid,
+            out RoadNetwork road,
+            out DemandMap demands,
+            out RoutePlanner planner,
+            out RoadQueueNetwork net,
+            out CarSim sim,
+            out SimEventBuffer events)
+        {
+            SimConfig cfg = Cfg();
+            grid = new CityGrid(6, 3);
+            for (int x = 0; x <= 5; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            road = new RoadNetwork(grid);
+            demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+            net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            events = new SimEventBuffer(new SimEventHub());
+        }
+
+        private static void RebuildCarTopology(
+            CityGrid grid,
+            RoadNetwork road,
+            DemandMap demands,
+            RoutePlanner planner,
+            RoadQueueNetwork net,
+            CarSim sim)
+        {
+            demands.Reassign(grid, road);
+            planner.Plan(demands, road, grid, Cfg());
+            net.RebuildTopology(grid);
+            sim.Rebuild(demands, planner, net);
         }
 
         private static void BuildWatchdogCity(
