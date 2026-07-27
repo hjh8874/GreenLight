@@ -12,7 +12,7 @@ namespace CityFlow.UI
 
         private bool _isBound;
 
-        public void Configure(Toggle muteAudio, Button quitGame, Button titleScene)
+        public void Configure(Toggle muteAudio, Button quitGame, Button titleScene = null)
         {
             tglMuteAudio = muteAudio;
             btnQuitGame = quitGame;
