@@ -180,6 +180,8 @@ namespace CityFlow.View
         private float targetCameraYawDegrees;
         private float cameraYawVelocity;
         private bool isIsometricView;
+        private int visualGridWidth;
+        private int visualGridHeight;
 
         // 도착 코인 팝(항목 A): 풀 고정 크기 — 전부 사용 중이면 가장 오래된 슬롯을 라운드로빈으로 재사용.
         private const int CoinPopPoolSize = 12;
@@ -210,6 +212,9 @@ namespace CityFlow.View
         public float TileSize => tileSize;
         public float FieldTileZ => fieldTileZ;
         public GameObject FieldTilePrefab => fieldTilePrefab;
+        public float GridLineThickness => gridLineThickness;
+        public Color GridLineColor => gridLineColor;
+        public Material GridLineMaterial { get; private set; }
         public float FlowBurstSeconds => burstSeconds;
         public Color FlowBurstColor => flowBurstColor;
         public bool IsDriveViewActive => driveViewCamera != null && driveViewCamera.IsFollowing;
@@ -244,6 +249,41 @@ namespace CityFlow.View
             }
 
             return true;
+        }
+
+        public void SetVisualGridExtent(
+            int visualWidth,
+            int visualHeight,
+            bool frameCamera)
+        {
+            visualGridWidth = Mathf.Max(width, visualWidth);
+            visualGridHeight = Mathf.Max(height, visualHeight);
+
+            float requiredDistance =
+                Mathf.Max(visualGridWidth, visualGridHeight) * 0.8f;
+            zoomDistanceRange = Mathf.Max(
+                zoomDistanceRange,
+                requiredDistance - minimumZoomDistance);
+
+            if (frameCamera)
+            {
+                zoomDistance = Mathf.Max(
+                    minimumZoomDistance,
+                    requiredDistance);
+            }
+
+            if (mainCamera != null)
+            {
+                ApplyCameraView();
+            }
+        }
+
+        public void SetBaseGridLinesVisible(bool isVisible)
+        {
+            if (gridRoot != null)
+            {
+                gridRoot.gameObject.SetActive(isVisible);
+            }
         }
 
         public string SelectedSignalSummary
@@ -410,6 +450,9 @@ namespace CityFlow.View
                 return;
             }
 
+            visualGridWidth = Mathf.Max(width, visualGridWidth);
+            visualGridHeight = Mathf.Max(height, visualGridHeight);
+
             cameraTarget = transform.TransformPoint(new Vector3(
                 width * tileSize * 0.5f,
                 height * tileSize * 0.5f,
@@ -543,9 +586,11 @@ namespace CityFlow.View
                 Vector3 angledOffsetDirection = southEastDirection * Mathf.Cos(angleRadians)
                     - transform.forward * Mathf.Sin(angleRadians);
                 Vector3 cameraForward = -angledOffsetDirection;
-                float projectedBoardHalfDepth = width * tileSize * 0.5f
+                int cameraGridWidth = Mathf.Max(width, visualGridWidth);
+                int cameraGridHeight = Mathf.Max(height, visualGridHeight);
+                float projectedBoardHalfDepth = cameraGridWidth * tileSize * 0.5f
                     * Mathf.Abs(Vector3.Dot(transform.right, cameraForward))
-                    + height * tileSize * 0.5f
+                    + cameraGridHeight * tileSize * 0.5f
                     * Mathf.Abs(Vector3.Dot(transform.up, cameraForward));
                 float safeCameraDistance = projectedBoardHalfDepth
                     + mainCamera.nearClipPlane
@@ -865,7 +910,7 @@ namespace CityFlow.View
             const float lineDepth = 0.005f;
             const float surfaceOffset = 0.01f;
             float lineZ = fieldTileZ - surfaceOffset;
-            Material gridMaterial = CreateUnlitMaterial(renderQueue: 1900);
+            GridLineMaterial = CreateUnlitMaterial(renderQueue: 1900);
 
             for (int x = 0; x <= width; x++)
             {
@@ -873,7 +918,7 @@ namespace CityFlow.View
                     $"GridLine_V_{x}",
                     new Vector3(x * tileSize, height * tileSize * 0.5f, lineZ),
                     new Vector3(gridLineThickness, height * tileSize, lineDepth),
-                    gridMaterial);
+                    GridLineMaterial);
             }
 
             for (int y = 0; y <= height; y++)
@@ -882,7 +927,7 @@ namespace CityFlow.View
                     $"GridLine_H_{y}",
                     new Vector3(width * tileSize * 0.5f, y * tileSize, lineZ),
                     new Vector3(width * tileSize, gridLineThickness, lineDepth),
-                    gridMaterial);
+                    GridLineMaterial);
             }
         }
 

@@ -15,6 +15,7 @@ namespace CityFlow.Save
         public IGameCalendarSaveSource GameCalendarSaveSource { get; private set; }
         public IRadioSaveSource RadioSaveSource { get; private set; }
         public ITerrainDecorationSaveSource TerrainDecorationSaveSource { get; private set; }
+        public IWorldGridSaveSource WorldGridSaveSource { get; private set; }
         public IOfflineSettlementSource OfflineSettlementSource { get; private set; }
         public IOfflineCalendarProgressionSource OfflineCalendarProgressionSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
@@ -33,6 +34,7 @@ namespace CityFlow.Save
         private ProgressionSaveData retainedProgression;
         private RadioSaveData retainedRadio;
         private TerrainDecorationSaveData retainedTerrainDecorations;
+        private WorldGridSaveData retainedWorldGrid;
         private bool hasLoadedSave;
 
         public event Action<RestoreCompletedEvent> RestoreCompleted;
@@ -128,6 +130,17 @@ namespace CityFlow.Save
             }
         }
 
+        public void RegisterWorldGridSaveSource(
+            IWorldGridSaveSource worldGridSaveSource)
+        {
+            WorldGridSaveSource = worldGridSaveSource;
+
+            if (hasLoadedSave)
+            {
+                WorldGridSaveSource?.RestoreSnapshot(retainedWorldGrid);
+            }
+        }
+
         public GameSaveData CreateSnapshot()
         {
             return new GameSaveData
@@ -149,7 +162,9 @@ namespace CityFlow.Save
                     ?? retainedRadio,
                 TerrainDecorations =
                     TerrainDecorationSaveSource?.CreateSnapshot()
-                    ?? retainedTerrainDecorations
+                    ?? retainedTerrainDecorations,
+                WorldGrid = WorldGridSaveSource?.CreateSnapshot()
+                    ?? retainedWorldGrid
             };
         }
 
@@ -218,6 +233,8 @@ namespace CityFlow.Save
                     saveData.TerrainDecorations ??
                     CreateEmptyTerrainDecorationSaveData());
             }
+
+            WorldGridSaveSource?.RestoreSnapshot(saveData.WorldGrid);
         }
 
         public bool Save(bool createAutomaticSlot = false)
@@ -546,6 +563,7 @@ namespace CityFlow.Save
             retainedProgression = saveData?.Progression;
             retainedRadio = saveData?.Radio;
             retainedTerrainDecorations = saveData?.TerrainDecorations;
+            retainedWorldGrid = saveData?.WorldGrid;
         }
 
         private static RadioSaveData CreateEmptyRadioSaveData()

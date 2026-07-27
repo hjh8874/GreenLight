@@ -15,10 +15,15 @@ namespace CityFlow.Bootstrap
         public IEconomyService Economy { get; private set; }
         public IGameCalendarService GameCalendar { get; private set; }
         public IWeeklyEconomyService WeeklyEconomy { get; private set; }
+        public IWorldGridService WorldGrid { get; private set; }
+        public IWorldGridExpansionService WorldGridExpansion { get; private set; }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
         public event Action<IWeeklyEconomyService> WeeklyEconomyRegistered;
+        public event Action<IWorldGridService> WorldGridRegistered;
+        public event Action<IWorldGridExpansionService>
+            WorldGridExpansionRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -138,6 +143,49 @@ namespace CityFlow.Bootstrap
 
             Save?.RegisterTerrainDecorationSaveSource(
                 terrainDecorationSaveSource);
+        }
+
+        public bool RegisterWorldGrid(IWorldGridService worldGrid)
+        {
+            if (worldGrid == null)
+            {
+                return false;
+            }
+
+            if (WorldGrid != null)
+            {
+                return ReferenceEquals(WorldGrid, worldGrid);
+            }
+
+            WorldGrid = worldGrid;
+
+            if (worldGrid is IWorldGridSaveSource saveSource)
+            {
+                Save?.RegisterWorldGridSaveSource(saveSource);
+            }
+
+            WorldGridRegistered?.Invoke(worldGrid);
+            return true;
+        }
+
+        public bool RegisterWorldGridExpansion(
+            IWorldGridExpansionService worldGridExpansion)
+        {
+            if (worldGridExpansion == null)
+            {
+                return false;
+            }
+
+            if (WorldGridExpansion != null)
+            {
+                return ReferenceEquals(
+                    WorldGridExpansion,
+                    worldGridExpansion);
+            }
+
+            WorldGridExpansion = worldGridExpansion;
+            WorldGridExpansionRegistered?.Invoke(worldGridExpansion);
+            return true;
         }
     }
 }
