@@ -11,9 +11,9 @@ namespace CityFlow.Tests
     public sealed class TerrainDecorationTests
     {
         private const string CatalogPath =
-            "Assets/02_Prefabs/Tiles/Decorations/TerrainDecorationCatalog.asset";
+            "Assets/02_Prefabs/Environment/Decorations/TerrainDecorationCatalog.asset";
         private const string SystemPrefabPath =
-            "Assets/02_Prefabs/Tiles/TerrainDecorationSystem.prefab";
+            "Assets/02_Prefabs/Environment/TerrainDecorationSystem.prefab";
 
         [Test]
         public void Catalog_SameSeedAndCoordinate_ProducesSameSample()
