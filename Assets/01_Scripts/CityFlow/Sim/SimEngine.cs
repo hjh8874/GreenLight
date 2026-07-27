@@ -231,7 +231,7 @@ namespace CityFlow.Sim
                 _carSim.LastStepJumped,
                 jamRatio,
                 _config);
-                
+
             if (_config.GreenWaveScanInterval > 0 && StepCount % _config.GreenWaveScanInterval == 0)
             {
                 ScanGreenWaves();
@@ -286,22 +286,23 @@ namespace CityFlow.Sim
             public override int GetHashCode() => (A.GetHashCode() * 397) ^ B.GetHashCode();
         }
 
+        private static readonly Vector2Int[] _scanDirections = { Vector2Int.right, Vector2Int.up, Vector2Int.left, Vector2Int.down };
+
         private void ScanGreenWaves()
         {
             HashSet<GreenWaveSegment> currentWaves = new HashSet<GreenWaveSegment>();
-            
+
             foreach (var fromTile in _signals.Tiles)
             {
                 if (!_signals.TryGet(fromTile, out var fromSignal)) continue;
-                
-                Vector2Int[] directions = { Vector2Int.right, Vector2Int.up, Vector2Int.left, Vector2Int.down };
-                foreach (Vector2Int dir in directions)
+
+                foreach (Vector2Int dir in _scanDirections)
                 {
                     Vector2Int current = fromTile + dir;
                     int dist = 1;
                     Signal toSignal = null;
                     Vector2Int toTile = current;
-                    
+
                     while (_grid.InBounds(current) && _grid.GetTile(current) == TileType.Road)
                     {
                         if (_signals.TryGet(current, out toSignal))
@@ -322,15 +323,15 @@ namespace CityFlow.Sim
                         // 2. 단일 헬퍼를 사용하여 일관된 이동 시간(초) 산출
                         float travelSecs = _config.GetTravelSeconds(dist);
                         float travelSlots = travelSecs / SignalMath.SlotSeconds;
-                        
+
                         float eff = SignalMath.GreenWaveEfficiency(fromSignal, toSignal, travelSlots, _config.GreenWaveFloor);
-                        
+
                         if (eff >= _config.GreenWaveThreshold)
                         {
                             var seg = new GreenWaveSegment(fromTile, toTile);
                             if (currentWaves.Add(seg) && !_activeGreenWaves.Contains(seg))
                             {
-                                int magnitude = (int)((eff - _config.GreenWaveMagnitudeOffset) * _config.GreenWaveMagnitudeScale); 
+                                int magnitude = (int)((eff - _config.GreenWaveMagnitudeOffset) * _config.GreenWaveMagnitudeScale);
                                 if (magnitude < 1) magnitude = 1;
                                 _events.QueueBurst(new FlowBurstEvent(toTile, magnitude));
                             }
@@ -338,7 +339,7 @@ namespace CityFlow.Sim
                     }
                 }
             }
-            
+
             _activeGreenWaves.Clear();
             foreach (var wave in currentWaves)
             {
@@ -595,8 +596,8 @@ namespace CityFlow.Sim
         public int RoadTileCount => _grid.RoadTileCount + _highwayBudgetTiles;
         // 유효 캡 = 기본 상한 + 확장권 구매횟수 × 10 (스펙 §2단계).
         public int MaxRoadTiles => _config.MaxRoadTiles + _roadCapacityPurchases * RoadExpandChunkTiles;
-        
-        // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게 
+
+        // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게
         public float DeliveredTotal => _config.TickInterval > 0f ? _lastStepArrivals / _config.TickInterval : 0f;
 
         public bool TryGetAverageRouteDistance(
@@ -991,7 +992,7 @@ namespace CityFlow.Sim
         public float GetOverrideCooldownLeft(Vector2Int tile) =>
             _overrideReadyAt.TryGetValue(tile, out var ready) && ready > _simTime
                 ? (float)(ready - _simTime) : 0f;
-                
+
         public float GetTotalOverrideCooldown() => _config.OverrideCooldownSeconds;
 
         // 진입 허가 = 초록만(노랑·적색은 진입 금지).
@@ -1252,7 +1253,7 @@ namespace CityFlow.Sim
         public TileType GetTileType(Vector2Int tile) =>
             _grid.InBounds(tile) ? _grid.GetTile(tile) : TileType.Empty;
 
-        public PlacementDirection GetDirection(Vector2Int tile) => 
+        public PlacementDirection GetDirection(Vector2Int tile) =>
             _grid.InBounds(tile) ? _grid.GetDirection(tile) : PlacementDirection.North;
 
         public Vector2Int GetFootprintSize(TileType type) => TileFootprint.GetSize(type);
