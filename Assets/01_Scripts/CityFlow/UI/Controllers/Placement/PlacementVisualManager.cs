@@ -72,10 +72,17 @@ namespace CityFlow.UI.Controllers.Placement
 
         public void Cleanup()
         {
-            if (_footprintGhostSprite != null) UnityEngine.Object.Destroy(_footprintGhostSprite);
-            if (_footprintGhostTexture != null) UnityEngine.Object.Destroy(_footprintGhostTexture);
-            if (_ghostVolumeMaterial != null) UnityEngine.Object.Destroy(_ghostVolumeMaterial);
-            if (_ghostVolumeObj != null) UnityEngine.Object.Destroy(_ghostVolumeObj);
+            SafeDestroy(_footprintGhostSprite);
+            SafeDestroy(_footprintGhostTexture);
+            SafeDestroy(_ghostVolumeMaterial);
+            SafeDestroy(_ghostVolumeObj);
+        }
+
+        private void SafeDestroy(UnityEngine.Object obj)
+        {
+            if (obj == null) return;
+            if (Application.isPlaying) UnityEngine.Object.Destroy(obj);
+            else UnityEngine.Object.DestroyImmediate(obj);
         }
 
         public void SetGhostActive(bool active)
@@ -246,7 +253,7 @@ namespace CityFlow.UI.Controllers.Placement
             _ghostVolumeObj.hideFlags = HideFlags.HideAndDontSave;
 
             var collider = _ghostVolumeObj.GetComponent<Collider>();
-            if (collider != null) UnityEngine.Object.Destroy(collider);
+            SafeDestroy(collider);
 
             var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             _ghostVolumeMaterial = new Material(shader)

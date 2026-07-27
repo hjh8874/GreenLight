@@ -43,7 +43,9 @@ namespace CityFlow.UI.Controllers.Placement
         {
             Vector2 mousePos = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
 
-            if (useXYPlane && Camera.main != null)
+            if (Camera.main == null) return Vector2Int.zero;
+
+            if (useXYPlane)
             {
                 Ray xyRay = Camera.main.ScreenPointToRay(mousePos);
                 Plane xyPlane = new Plane(Vector3.forward, Vector3.zero);

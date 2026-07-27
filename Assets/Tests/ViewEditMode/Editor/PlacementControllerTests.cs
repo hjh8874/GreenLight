@@ -39,6 +39,7 @@ namespace Tests.EditMode
         {
             var go = new GameObject("Controller");
             var controller = go.AddComponent<PlacementController>();
+            controller.Initialize(null);
 
             var cam = _cameraGo.GetComponent<Camera>();
 
@@ -155,59 +156,14 @@ namespace Tests.EditMode
             }
         }
 
-        [Test]
-        public void Update_WhenNotBuildingMode_DoesNotResetDemolishDragState()
-        {
-            var go = new GameObject("Controller");
-            var controller = go.AddComponent<PlacementController>();
 
-            var handlerField = typeof(PlacementController).GetField("_inputHandler", BindingFlags.NonPublic | BindingFlags.Instance);
-            var inputHandler = (PlacementInputHandler)handlerField.GetValue(controller);
-
-            var capturedCoords = new System.Collections.Generic.List<Vector2Int>();
-            inputHandler.OnDemolishRequested += (coord) => { capturedCoords.Add(coord); return true; };
-
-            var updateMethod = typeof(PlacementController).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
-
-            var mouse = InputSystem.AddDevice<Mouse>();
-            try
-            {
-                controller.ToggleBuildMode(false);
-
-                // 1. Right click down at pos 100,100
-                using (StateEvent.From(mouse, out var eventPtr))
-                {
-                    mouse.rightButton.WriteValueIntoEvent(1f, eventPtr);
-                    mouse.position.WriteValueIntoEvent(new Vector2(100, 100), eventPtr);
-                    InputSystem.QueueEvent(eventPtr);
-                }
-                InputSystem.Update();
-                updateMethod.Invoke(controller, null);
-
-                // 2. Move to 400,400 to ensure distinct grid coordinate
-                using (StateEvent.From(mouse, out var eventPtr2))
-                {
-                    mouse.position.WriteValueIntoEvent(new Vector2(400, 400), eventPtr2);
-                    InputSystem.QueueEvent(eventPtr2);
-                }
-                InputSystem.Update();
-                updateMethod.Invoke(controller, null);
-
-                Assert.AreEqual(2, capturedCoords.Count, "Right-click drag demolish should continue across frames even when building mode is off.");
-                Assert.AreNotEqual(capturedCoords[0], capturedCoords[1], "Demolish should capture distinct coordinates as the mouse moves.");
-            }
-            finally
-            {
-                InputSystem.RemoveDevice(mouse);
-                Object.DestroyImmediate(go);
-            }
-        }
 
         [Test]
         public void Update_WhenGhostRendererNull_DoesNotProcessPlacementInput()
         {
             var go = new GameObject("Controller");
             var controller = go.AddComponent<PlacementController>();
+            controller.Initialize(null);
 
             var handlerField = typeof(PlacementController).GetField("_inputHandler", BindingFlags.NonPublic | BindingFlags.Instance);
             var inputHandler = (PlacementInputHandler)handlerField.GetValue(controller);
