@@ -14,7 +14,7 @@ namespace CityFlow.EditorTools
         private const string TargetCanvasName = "UI_MainCanvas";
         private const string ContentRootName = "FloatingWindowContentRoot";
         private const string FeedRootName = "GreenSNSFeedDock";
-        private const string KoreanFontPath = "Assets/03_Art/Fonts/NanumGothic SDF.asset";
+        private const string KoreanFontPath = "Assets/99_Download/Fonts/NanumGothic SDF.asset";
 
         private static TMP_FontAsset uiFont;
 
