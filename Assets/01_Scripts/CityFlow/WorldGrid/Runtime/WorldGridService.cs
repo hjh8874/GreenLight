@@ -26,6 +26,7 @@ namespace CityFlow.WorldGrid
         public int ChunkRows => EnsureState() ? state.Partition.ChunkRows : 0;
 
         public event Action<GridChunkId> ChunkUnlocked;
+        public event Action AccessRestored;
 
         public void Initialize(CityFlowServices services)
         {
@@ -110,6 +111,8 @@ namespace CityFlow.WorldGrid
                     "the current configuration. Initial access was restored.",
                     this);
             }
+
+            AccessRestored?.Invoke();
         }
 
         private bool EnsureState()

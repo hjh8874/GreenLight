@@ -151,11 +151,20 @@ namespace CityFlow.WorldGrid
         public void ResetToInitialAccess()
         {
             ResetAll(isUnlocked: false);
-            for (int chunkY = 0; chunkY < initialUnlockedRows; chunkY++)
+            int firstChunkX =
+                (partition.ChunkColumns - initialUnlockedColumns) / 2;
+            int firstChunkY =
+                (partition.ChunkRows - initialUnlockedRows) / 2;
+
+            for (int row = 0; row < initialUnlockedRows; row++)
             {
-                for (int chunkX = 0; chunkX < initialUnlockedColumns; chunkX++)
+                for (int column = 0;
+                     column < initialUnlockedColumns;
+                     column++)
                 {
-                    TryUnlockChunk(new GridChunkId(chunkX, chunkY));
+                    TryUnlockChunk(new GridChunkId(
+                        firstChunkX + column,
+                        firstChunkY + row));
                 }
             }
         }

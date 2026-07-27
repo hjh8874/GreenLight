@@ -14,6 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.WorldGrid.WorldGridConfigSO
   worldWidth: 200
   worldHeight: 200
-  chunkSize: 20
-  initialUnlockedColumns: 1
-  initialUnlockedRows: 1
+  chunkSize: 10
+  initialUnlockedColumns: 2
+  initialUnlockedRows: 2

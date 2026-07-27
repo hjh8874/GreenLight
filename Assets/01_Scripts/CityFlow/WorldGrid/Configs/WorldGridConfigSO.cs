@@ -10,11 +10,11 @@ namespace CityFlow.WorldGrid
         [Header("Logical World")]
         [SerializeField, Min(1)] private int worldWidth = 200;
         [SerializeField, Min(1)] private int worldHeight = 200;
-        [SerializeField, Min(1)] private int chunkSize = 20;
+        [SerializeField, Min(1)] private int chunkSize = 10;
 
-        [Header("Initial Access")]
-        [SerializeField, Min(1)] private int initialUnlockedColumns = 1;
-        [SerializeField, Min(1)] private int initialUnlockedRows = 1;
+        [Header("Centered Initial Access")]
+        [SerializeField, Min(1)] private int initialUnlockedColumns = 2;
+        [SerializeField, Min(1)] private int initialUnlockedRows = 2;
 
         public int WorldWidth => Mathf.Max(1, worldWidth);
         public int WorldHeight => Mathf.Max(1, worldHeight);

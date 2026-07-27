@@ -12,6 +12,7 @@ namespace CityFlow.Contracts
         int ChunkRows { get; }
 
         event Action<GridChunkId> ChunkUnlocked;
+        event Action AccessRestored;
 
         bool IsInsideWorld(Vector2Int tile);
         bool IsTileUnlocked(Vector2Int tile);
