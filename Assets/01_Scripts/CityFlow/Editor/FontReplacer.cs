@@ -1,21 +1,21 @@
 using UnityEditor;
 using UnityEngine;
 using TMPro;
+using CityFlow.EditorTools;
 
 namespace CityFlow.Editor
 {
     public static class FontReplacer
     {
-        private const string FontPath = "Assets/99_Download/Fonts/NanumGothic SDF.asset";
-
         [MenuItem("Tools/Fix Fonts (Replace with NanumGothic)")]
         public static void ReplaceFonts()
         {
-            TMP_FontAsset newFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+            TMP_FontAsset newFont = ExternalKoreanFontAsset.LoadConfigured();
             if (newFont == null)
             {
                 Debug.LogError(
-                    $"NanumGothic SDF.asset not found at '{FontPath}'. " +
+                    $"NanumGothic SDF.asset was not found or invalid at " +
+                    $"'{ExternalKoreanFontAsset.FontAssetPath}'. " +
                     "Install the external font assets before replacing fonts.");
                 return;
             }
