@@ -132,6 +132,93 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void Save_RoundTripsClearedTerrainDecorationTiles()
+        {
+            var calls = new List<string>();
+            var repository = new JsonSaveRepository(savePath, backupPath);
+            var terrainDecorations = new FakeTerrainDecorations
+            {
+                Current = new TerrainDecorationSaveData
+                {
+                    ClearedTileIndices = new[] { 2, 17, 399 }
+                }
+            };
+            var service = new SaveService(
+                new FakeSim(calls),
+                repository,
+                new FakeClock());
+            service.RegisterTerrainDecorationSaveSource(
+                terrainDecorations);
+
+            Assert.IsTrue(service.Save());
+            Assert.IsTrue(repository.TryLoad(out GameSaveData loaded));
+            CollectionAssert.AreEqual(
+                new[] { 2, 17, 399 },
+                loaded.TerrainDecorations.ClearedTileIndices);
+
+            terrainDecorations.Current =
+                new TerrainDecorationSaveData();
+            service.RestoreSnapshot(loaded);
+
+            CollectionAssert.AreEqual(
+                new[] { 2, 17, 399 },
+                terrainDecorations.Current.ClearedTileIndices);
+        }
+
+        [Test]
+        public void RestoreSnapshot_LegacyTerrainDecorationSection_UsesEmptyState()
+        {
+            var terrainDecorations = new FakeTerrainDecorations();
+            var service = new SaveService(
+                new FakeSim(new List<string>()),
+                new JsonSaveRepository(savePath, backupPath),
+                new FakeClock());
+            service.RegisterTerrainDecorationSaveSource(
+                terrainDecorations);
+
+            service.RestoreSnapshot(new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                Simulation = new SimSaveData()
+            });
+
+            Assert.NotNull(terrainDecorations.Current);
+            CollectionAssert.IsEmpty(
+                terrainDecorations.Current.ClearedTileIndices);
+        }
+
+        [Test]
+        public void RegisterTerrainDecorationSaveSource_AfterLoad_RestoresRetainedState()
+        {
+            var repository = new JsonSaveRepository(
+                savePath,
+                backupPath);
+            var service = new SaveService(
+                new FakeSim(new List<string>()),
+                repository,
+                new FakeClock());
+
+            Assert.IsTrue(repository.TrySave(new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                Simulation = new SimSaveData(),
+                TerrainDecorations = new TerrainDecorationSaveData
+                {
+                    ClearedTileIndices = new[] { 4, 28 }
+                }
+            }));
+            Assert.IsTrue(service.TryLoadAndRestore());
+
+            var terrainDecorations = new FakeTerrainDecorations();
+            service.RegisterTerrainDecorationSaveSource(
+                terrainDecorations);
+
+            CollectionAssert.AreEqual(
+                new[] { 4, 28 },
+                terrainDecorations.Current.ClearedTileIndices);
+        }
+
+        [Test]
         public void Repository_TrySaveAtomically_PreservesPreviousPrimaryAsBackup()
         {
             var repository =
@@ -597,6 +684,22 @@ namespace CityFlow.Sim.Tests
             public ProgressionSaveData Current = new ProgressionSaveData();
             public ProgressionSaveData CreateSnapshot() => Current;
             public void RestoreSnapshot(ProgressionSaveData snapshot) => Current = snapshot;
+        }
+
+        sealed class FakeTerrainDecorations :
+            ITerrainDecorationSaveSource
+        {
+            public TerrainDecorationSaveData Current =
+                new TerrainDecorationSaveData();
+
+            public TerrainDecorationSaveData CreateSnapshot() =>
+                Current;
+
+            public void RestoreSnapshot(
+                TerrainDecorationSaveData snapshot)
+            {
+                Current = snapshot;
+            }
         }
     }
 }
