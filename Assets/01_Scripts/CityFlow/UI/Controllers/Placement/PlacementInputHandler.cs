@@ -101,6 +101,8 @@ namespace CityFlow.UI.Controllers.Placement
                 }
             }
 
+        }
+
         public void UpdatePlacementInput(bool canPlace, Vector2Int gridCoord)
         {
             if (IsPointerOverBlockingUI()) return;
