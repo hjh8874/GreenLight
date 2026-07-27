@@ -8,7 +8,7 @@ namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IRouteDistanceProvider, IRoadExpansionService, IHighwayService
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IRouteDistanceProvider, IRoadExpansionService, IHighwayService, IBusStopInfrastructureService
     {
         SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
@@ -47,6 +47,8 @@ namespace CityFlow.Sim
         readonly List<Vector2Int> _placedTurnSigns = new();
         readonly List<HighwayLink> _highwayLinks = new();
         readonly Dictionary<Vector2Int, Vector2Int> _highwayPartners = new();
+        readonly List<Vector2Int> _placedBusStops = new();
+        readonly HashSet<Vector2Int> _busStopSet = new();
         int _highwayBudgetTiles;   // 링크 맨해튼 길이 합 — 일반도로와 MaxRoadTiles 스톡을 공유한다.
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
         readonly SimStats _stats = new SimStats();
@@ -1057,6 +1059,14 @@ namespace CityFlow.Sim
                 priorityRoads[i] = new PriorityRoadSaveData { X = t.x, Y = t.y, Axis = (int)_priorityDirs[t] };
             }
 
+            var busStops = new BusStopSaveData[_placedBusStops.Count];
+            for (int i = 0; i < _placedBusStops.Count; i++)
+                busStops[i] = new BusStopSaveData
+                {
+                    X = _placedBusStops[i].x,
+                    Y = _placedBusStops[i].y
+                };
+
             var highways = new HighwaySaveData[_highwayLinks.Count];
             for (int i = 0; i < _highwayLinks.Count; i++)
                 highways[i] = new HighwaySaveData
@@ -1075,6 +1085,7 @@ namespace CityFlow.Sim
                 TurnSigns = turnSigns,
                 PriorityRoads = priorityRoads,
                 Highways = highways,
+                BusStops = busStops,
                 RoadCapacityPurchases = _roadCapacityPurchases,
                 HasCarSimStats = true,
                 CarTripSuccessRate = _stats.TripSuccessRate,
@@ -1095,6 +1106,8 @@ namespace CityFlow.Sim
             _highwayLinks.Clear();
             _highwayPartners.Clear();
             _highwayBudgetTiles = 0;
+            _placedBusStops.Clear();
+            _busStopSet.Clear();
             _roadQueues.RemoveAllCars();
             _carSim.ClearPopulation();
             _buildingAssignmentChangePending = false;
@@ -1213,6 +1226,14 @@ namespace CityFlow.Sim
                 _placedPriorityRoads.Sort((a, b) =>
                     (a.y * _config.GridWidth + a.x).CompareTo(b.y * _config.GridWidth + b.x));
             }
+            if (snapshot.BusStops != null)
+            {
+                foreach (var stop in snapshot.BusStops)
+                {
+                    TryPlaceBusStop(new Vector2Int(stop.X, stop.Y));
+                }
+            }
+
             if (snapshot.Highways != null)
                 foreach (var h in snapshot.Highways)
                 {
@@ -1262,5 +1283,64 @@ namespace CityFlow.Sim
             _grid.TryGetFootprintAnchor(tile, out anchor);
 
         public bool IsFootprintAnchor(Vector2Int tile) => _grid.IsFootprintAnchor(tile);
+
+        public IReadOnlyList<Vector2Int> BusStopTiles => _placedBusStops;
+
+        public bool CanPlaceBusStop(Vector2Int tile)
+        {
+            if (!_grid.InBounds(tile) ||
+                _grid.GetTile(tile) != TileType.Empty ||
+                _busStopSet.Contains(tile))
+            {
+                return false;
+            }
+
+            return IsRoad(tile + Vector2Int.left) ||
+                   IsRoad(tile + Vector2Int.right) ||
+                   IsRoad(tile + Vector2Int.up) ||
+                   IsRoad(tile + Vector2Int.down);
+        }
+
+        public bool TryPlaceBusStop(Vector2Int tile)
+        {
+            if (!CanPlaceBusStop(tile) || !_busStopSet.Add(tile))
+            {
+                return false;
+            }
+
+            InsertSorted(_placedBusStops, tile);
+            return true;
+        }
+
+        public bool TryRemoveBusStop(Vector2Int tile)
+        {
+            if (!_busStopSet.Remove(tile))
+            {
+                return false;
+            }
+
+            _placedBusStops.Remove(tile);
+            return true;
+        }
+
+        private bool IsRoad(Vector2Int tile) =>
+            _grid.InBounds(tile) &&
+            _grid.GetTile(tile) == TileType.Road;
+
+        private void InsertSorted(List<Vector2Int> tiles, Vector2Int tile)
+        {
+            int flat = tile.y * _config.GridWidth + tile.x;
+            int index = tiles.FindIndex(
+                candidate => candidate.y * _config.GridWidth + candidate.x > flat);
+
+            if (index < 0)
+            {
+                tiles.Add(tile);
+            }
+            else
+            {
+                tiles.Insert(index, tile);
+            }
+        }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
@@ -43,6 +43,7 @@ namespace CityFlow.Content.Transit
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
+        private IBusStopInfrastructureService busStopInfrastructure;
 
         private bool isInitialized;
         private bool isSubscribed;
@@ -90,6 +91,8 @@ namespace CityFlow.Content.Transit
 
             this.services = services;
             tileData = services.TileData;
+            busStopInfrastructure =
+                services.Placement as IBusStopInfrastructureService;
             isInitialized = true;
 
             if (rebuildOnInitialize)
@@ -211,6 +214,24 @@ namespace CityFlow.Content.Transit
             if (tileData == null)
             {
                 return;
+            }
+
+            busStops.Clear();
+            busStopSet.Clear();
+
+            if (busStopInfrastructure != null)
+            {
+                IReadOnlyList<Vector2Int> installedStops =
+                    busStopInfrastructure.BusStopTiles;
+
+                for (int i = 0; i < installedStops.Count; i++)
+                {
+                    Vector2Int stop = installedStops[i];
+                    if (busStopSet.Add(stop))
+                    {
+                        busStops.Add(stop);
+                    }
+                }
             }
 
             schools.Clear();

@@ -4,6 +4,7 @@ using CityFlow.UI.Data;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Linq;
+using CityFlow.Content.Transit;
 using CityFlow.Bootstrap;
 
 namespace CityFlow.UI.Controllers
@@ -20,6 +21,8 @@ namespace CityFlow.UI.Controllers
         private IIntersectionFacilityService _facilityService;
         private ITrafficRuleService _trafficRuleService;
         private IHighwayService _highwayService;
+        private IBusStopInfrastructureService _busStopService;
+        private BusStopRegistry _busStopRegistry;
         private IPlacementService _placement;
 
         private bool _isBuildingMode = false;
@@ -47,6 +50,8 @@ namespace CityFlow.UI.Controllers
             _facilityService = services.Placement as IIntersectionFacilityService;
             _trafficRuleService = services.Placement as ITrafficRuleService;
             _highwayService = services.Placement as IHighwayService;
+            _busStopService = services.Placement as IBusStopInfrastructureService;
+            _busStopRegistry = FindFirstObjectByType<BusStopRegistry>();
             
             if (_economy == null)
             {
@@ -311,6 +316,9 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.Oneway => _trafficRuleService.CanPlaceOneway(coord),
                 InfrastructureKind.TurnRestriction => _trafficRuleService.CanPlaceTurnSign(coord),
                 InfrastructureKind.PriorityRoad => _facilityService.CanPlacePriorityRoad(coord),
+                InfrastructureKind.BusStop =>
+                    _busStopService != null &&
+                    _busStopService.CanPlaceBusStop(coord),
                 InfrastructureKind.Highway => _pendingHighwayStart.HasValue
                     ? _highwayService.CanPlaceHighway(_pendingHighwayStart.Value, coord)
                     : _highwayService.CanSelectHighwayRamp(coord),
@@ -362,6 +370,9 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.Oneway => _trafficRuleService.TryPlaceOneway(coord, _currentData.OnewayDir),
                 InfrastructureKind.TurnRestriction => _trafficRuleService.TryPlaceTurnSign(coord, _currentData.TurnMode),
                 InfrastructureKind.PriorityRoad => _facilityService.TryPlacePriorityRoad(coord, _currentData.PriorityAxis),
+                InfrastructureKind.BusStop =>
+                    _busStopService != null &&
+                    _busStopService.TryPlaceBusStop(coord),
                 InfrastructureKind.Highway => _highwayService.TryPlaceHighway(_pendingHighwayStart.Value, coord),
                 _ => false
             };
@@ -378,7 +389,15 @@ namespace CityFlow.UI.Controllers
             }
 
             Vector2Int eventCoord = _pendingHighwayStart ?? coord;
-            if (_currentData.Kind == InfrastructureKind.Highway) _pendingHighwayStart = null;
+            if (_currentData.Kind == InfrastructureKind.Highway)
+            {
+                _pendingHighwayStart = null;
+            }
+            if (_currentData.Kind == InfrastructureKind.BusStop)
+            {
+                _busStopRegistry ??= FindFirstObjectByType<BusStopRegistry>();
+                _busStopRegistry?.RegisterBusStop(coord);
+            }
 
             if (_services != null && _services.Events != null)
             {
@@ -394,7 +413,18 @@ namespace CityFlow.UI.Controllers
         {
             if (_facilityService == null || _trafficRuleService == null || _highwayService == null) return false;
 
-            if (_highwayService.IsHighwayRamp(coord) && _highwayService.TryRemoveHighway(coord))
+            if (_busStopService != null &&
+                _busStopService.BusStopTiles.Contains(coord) &&
+                _busStopService.TryRemoveBusStop(coord))
+            {
+                _busStopRegistry ??= FindFirstObjectByType<BusStopRegistry>();
+                _busStopRegistry?.RemoveBusStop(coord);
+                ProcessRefundAndEvent(InfrastructureKind.BusStop, coord);
+                return true;
+            }
+
+            if (_highwayService.IsHighwayRamp(coord) &&
+                _highwayService.TryRemoveHighway(coord))
             {
                 ProcessRefundAndEvent(InfrastructureKind.Highway, coord);
                 return true;
