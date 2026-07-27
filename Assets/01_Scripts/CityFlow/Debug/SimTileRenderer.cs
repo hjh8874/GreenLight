@@ -13,7 +13,7 @@ namespace CityFlow.DebugTools
     {
         [SerializeField] private int size = 20;
         private const int CellPx = 12;
-        // 엔진과의 일관성을 위해 하드코딩 속도를 제거하고, 런타임에 Config.GetFreeFlowSpeed()를 호출하여 사용
+        private const float CarSpeed = 2f;   // 타일/초 — 엔진 1타일=SlotSeconds(0.5s)=2타일/초에 맞춤(화면 이동시간=엔진 travelSlots → 그린웨이브 일치)
 
         private static readonly Color32 Cream  = new Color32(238, 232, 210, 255);
         private static readonly Color32 Road   = new Color32(150, 150, 156, 255);
@@ -208,8 +208,7 @@ namespace CityFlow.DebugTools
                 int at = Mathf.Clamp((int)p, 0, segs);
                 int seg = Mathf.Min(at, segs - 1);
 
-                float freeFlowSpeed = 2f;
-                float target = freeFlowSpeed * Mathf.Lerp(1f, 0.25f, _data.GetDensity01(path[at]));
+                float target = CarSpeed * Mathf.Lerp(1f, 0.25f, _data.GetDensity01(path[at]));
 
                 // 회전 마찰: 코너에 붙은 세그먼트는 감속 — 이 찰나가 뒤차로 전파되며 꼬리가 생긴다.
                 bool bend = (seg + 2 <= segs && path[seg + 1] - path[seg] != path[seg + 2] - path[seg + 1]) ||

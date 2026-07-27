@@ -315,8 +315,8 @@ namespace CityFlow.Sim
 
                     if (toSignal != null)
                     {
-                        // 1. 유저가 오프셋을 조작(0이 아님)한 적이 있어야만 보상 허용 (조작 전 기본 상태에서 남발 방지)
-                        if (fromSignal.OffsetSlots == 0 && toSignal.OffsetSlots == 0)
+                        // 1. 유저가 오프셋을 조작하여 상대 위상이 변경되어야만 보상 허용 (조작 전 기본 상태 및 단순 전체 쉬프트에서 남발 방지)
+                        if (fromSignal.OffsetSlots == toSignal.OffsetSlots)
                             continue;
 
                         // 2. 단일 헬퍼를 사용하여 일관된 이동 시간(초) 산출

@@ -665,7 +665,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void GreenWave_QueueServicePerTick_DoesNotBreakEfficiency()
+        public void GreenWave_TickInterval_DoesNotBreakEfficiency()
         {
             var hub = new SimEventHub();
             int burstCount = 0;
@@ -678,10 +678,8 @@ namespace CityFlow.Sim.Tests
             cfg.GreenWaveThreshold = 0.5f;
             cfg.AutoDetectSignals = false;
             
-            // 테스트 1: QueueServicePerTick = 0 인 경우 (실제로는 Math.Max(1, ...)로 보정되지만, 
-            // GetFreeFlowSpeed 헬퍼가 0을 반환하면 안 됨)
-            cfg.QueueServicePerTick = 0;
-            
+            // 테스트 1: 기본 TickInterval = 0.1f
+            cfg.TickInterval = 0.1f;
             var engine0 = new SimEngine(cfg, hub);
             BuildTestIntersection(engine0, V(2, 2));
             BuildTestIntersection(engine0, V(6, 2));
@@ -692,10 +690,10 @@ namespace CityFlow.Sim.Tests
             engine0.TrySetSignalOffsetSlots(V(2, 2), 0);
             engine0.TrySetSignalOffsetSlots(V(6, 2), 2);
             engine0.Tick(cfg.GreenWaveScanInterval);
-            Assert.AreEqual(1, burstCount, "QueueServicePerTick=0 일 때도 효율 판정이 정상이어야 함");
+            Assert.AreEqual(1, burstCount, "TickInterval=0.1f 일 때 정상 판정");
             
-            // 테스트 2: QueueServicePerTick = 2 인 경우
-            cfg.QueueServicePerTick = 2;
+            // 테스트 2: TickInterval = 0.5f 인 경우
+            cfg.TickInterval = 0.5f;
             var engine2 = new SimEngine(cfg, hub);
             BuildTestIntersection(engine2, V(2, 2));
             BuildTestIntersection(engine2, V(6, 2));
@@ -706,7 +704,37 @@ namespace CityFlow.Sim.Tests
             engine2.TrySetSignalOffsetSlots(V(2, 2), 0);
             engine2.TrySetSignalOffsetSlots(V(6, 2), 2);
             engine2.Tick(cfg.GreenWaveScanInterval);
-            Assert.AreEqual(2, burstCount, "QueueServicePerTick=2 일 때도 과도하게 빠른 도착으로 판정하지 않아야 함");
+            Assert.AreEqual(2, burstCount, "TickInterval=0.5f 일 때도 동일한 여행 시간이 산출되어 정상 판정");
+        }
+
+        [Test]
+        public void GreenWave_SameOffset_DoesNotTrigger()
+        {
+            var hub = new SimEventHub();
+            int burstCount = 0;
+            hub.FlowBurst += e => burstCount++;
+            
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 20;
+            cfg.GridHeight = 20;
+            cfg.GreenWaveScanInterval = 1;
+            cfg.GreenWaveThreshold = 0.8f;
+            cfg.AutoDetectSignals = false;
+            
+            var engine = new SimEngine(cfg, hub);
+            BuildTestIntersection(engine, V(2, 2));
+            BuildTestIntersection(engine, V(6, 2));
+            engine.Place(V(4, 2), TileType.Road);
+            
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 2), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(6, 2), 10));
+            
+            // (1, 1) 같은 동일 오프셋으로 설정
+            engine.TrySetSignalOffsetSlots(V(2, 2), 1);
+            engine.TrySetSignalOffsetSlots(V(6, 2), 1);
+            
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(0, burstCount, "(1,1)과 같이 상대 위상이 동일한 오프셋 조작은 보상하지 않음");
         }
 
         private static SimEngine BuildStraightCity(SimConfig cfg, SimEventHub hub)
