@@ -12,6 +12,8 @@ namespace CityFlow.Sim
     // ponytail: 20×20이라 배열 스캔 Dijkstra(O(n²))로 충분 — 힙 불요. 틱 밖이라 경로 List 할당 허용.
     internal sealed class RoutePlanner
     {
+        internal const int RouteRegionSize = 20;
+
         // 이웃 순서 N,E,S,W 고정(결정론 공유 규약). 대각 연결은 차 큐로 표현할 수 없어 지원하지 않는다.
         static readonly int[] DX = { 0, 1, 0, -1 };
         static readonly int[] DY = { 1, 0, -1, 0 };
@@ -31,6 +33,8 @@ namespace CityFlow.Sim
         readonly bool[] _turnDone;
         readonly int[] _turnCameFrom;
         readonly int[] _rampPartner;
+        readonly ChunkedRouteSearch _chunkedSearch;
+        readonly List<HighwayLink> _activeHighways = new();
 
         readonly List<List<Vector2Int>> _carRoutes = new(128);
         readonly List<List<Vector2Int>> _returnRoutes = new(128);
@@ -43,6 +47,8 @@ namespace CityFlow.Sim
         public IReadOnlyList<List<Vector2Int>> Routes => _carRoutes;
         public IReadOnlyList<List<Vector2Int>> CarRoutes => _carRoutes;
         public IReadOnlyList<List<Vector2Int>> ReturnRoutes => _returnRoutes;
+        internal RouteSearchDiagnostics LastChunkedSearchDiagnostics =>
+            _chunkedSearch.LastDiagnostics;
 
         public RoutePlanner(int width, int height)
         {
@@ -57,6 +63,10 @@ namespace CityFlow.Sim
             _turnCameFrom = new int[n * 4];
             _rampPartner = new int[n];
             Array.Fill(_rampPartner, -1);
+            _chunkedSearch = new ChunkedRouteSearch(
+                width,
+                height,
+                RouteRegionSize);
         }
 
         // 수요별 경로 테이블 계산. 각 경로는 차 토큰 1대의 부하를 적립한다.
@@ -91,15 +101,7 @@ namespace CityFlow.Sim
             _carRoutes.Clear();
             _returnRoutes.Clear();
             Array.Clear(_load, 0, _load.Length);
-            Array.Fill(_rampPartner, -1);
-            if (highways != null)
-                for (int i = 0; i < highways.Count; i++)
-                {
-                    int a = highways[i].A.y * _w + highways[i].A.x;
-                    int b = highways[i].B.y * _w + highways[i].B.x;
-                    if (a >= 0 && a < _rampPartner.Length && b >= 0 && b < _rampPartner.Length)
-                    { _rampPartner[a] = b; _rampPartner[b] = a; }
-                }
+            SetHighways(highways);
 
             var demands = demand.Demands;
             for (int i = 0; i < demands.Count; i++)
@@ -143,21 +145,27 @@ namespace CityFlow.Sim
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                           IReadOnlyList<HighwayLink> highways)
         {
-            Array.Fill(_rampPartner, -1);
-            if (highways != null)
-                for (int i = 0; i < highways.Count; i++)
-                {
-                    int a = highways[i].A.y * _w + highways[i].A.x;
-                    int b = highways[i].B.y * _w + highways[i].B.x;
-                    _rampPartner[a] = b;
-                    _rampPartner[b] = a;
-                }
+            SetHighways(highways);
             return SearchCore(grid, from, to, cfg, null);
         }
 
         private List<Vector2Int> SearchCore(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg,
                                              IReadOnlyDictionary<Vector2Int, Vector2Int> oneways)
         {
+            if (_chunkedSearch.IsRequired)
+            {
+                return _chunkedSearch.Search(
+                    grid,
+                    from,
+                    to,
+                    cfg,
+                    oneways,
+                    null,
+                    _activeHighways,
+                    _rampPartner,
+                    _load);
+            }
+
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
             bool hasOneways = oneways != null && oneways.Count > 0;
 
@@ -254,6 +262,20 @@ namespace CityFlow.Sim
                                                           IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
                                                           IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns)
         {
+            if (_chunkedSearch.IsRequired)
+            {
+                return _chunkedSearch.Search(
+                    grid,
+                    from,
+                    to,
+                    cfg,
+                    oneways,
+                    turnSigns,
+                    _activeHighways,
+                    _rampPartner,
+                    _load);
+            }
+
             if (!IsRoad(grid, from.x, from.y) || !IsRoad(grid, to.x, to.y)) return null;
             if (from == to) return new List<Vector2Int> { from };   // legacy Search_SameTile_ReturnsSingle과 동형
 
@@ -440,6 +462,35 @@ namespace CityFlow.Sim
             distanceTiles = count > 0 ? total / count : 0f;
             return count > 0;
         }
+
+        private void SetHighways(IReadOnlyList<HighwayLink> highways)
+        {
+            Array.Fill(_rampPartner, -1);
+            _activeHighways.Clear();
+            if (highways == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < highways.Count; i++)
+            {
+                HighwayLink link = highways[i];
+                if (!IsInsideGrid(link.A) || !IsInsideGrid(link.B))
+                {
+                    continue;
+                }
+
+                int first = link.A.y * _w + link.A.x;
+                int second = link.B.y * _w + link.B.x;
+                _rampPartner[first] = second;
+                _rampPartner[second] = first;
+                _activeHighways.Add(link);
+            }
+        }
+
+        private bool IsInsideGrid(Vector2Int tile) =>
+            tile.x >= 0 && tile.x < _w &&
+            tile.y >= 0 && tile.y < _h;
 
         bool IsRoad(CityGrid grid, int x, int y) =>
             x >= 0 && x < _w && y >= 0 && y < _h &&
