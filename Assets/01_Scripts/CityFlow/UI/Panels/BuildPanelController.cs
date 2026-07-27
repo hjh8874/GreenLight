@@ -284,6 +284,12 @@ namespace CityFlow.UI
                 return;
             }
 
+            if (FindAnyObjectByType<
+                    CityFlow.Content.Transit.BusStopRegistry>() == null)
+            {
+                return;
+            }
+
             busStopData ??= Resources.Load<InfrastructureDataSO>(
                 "CityFlow/InfrastructureData/BusStopData");
 

@@ -66,6 +66,16 @@ namespace CityFlow.UI.Controllers
 
         public void StartPlacement(InfrastructureDataSO data)
         {
+            if (data != null &&
+                data.Kind == InfrastructureKind.BusStop &&
+                !TryResolveBusStopRegistry())
+            {
+                Debug.LogWarning(
+                    "[InfrastructurePlacementCoordinator] " +
+                    "Bus-stop placement requires an active BusStopRegistry.");
+                return;
+            }
+
             CancelPlacement(); // Ensure clean state
             _currentData = data;
             _isBuildingMode = true;
@@ -318,6 +328,7 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.PriorityRoad => _facilityService.CanPlacePriorityRoad(coord),
                 InfrastructureKind.BusStop =>
                     _busStopService != null &&
+                    TryResolveBusStopRegistry() &&
                     _busStopService.CanPlaceBusStop(coord),
                 InfrastructureKind.Highway => _pendingHighwayStart.HasValue
                     ? _highwayService.CanPlaceHighway(_pendingHighwayStart.Value, coord)
@@ -395,8 +406,7 @@ namespace CityFlow.UI.Controllers
             }
             if (_currentData.Kind == InfrastructureKind.BusStop)
             {
-                _busStopRegistry ??= FindFirstObjectByType<BusStopRegistry>();
-                _busStopRegistry?.RegisterBusStop(coord);
+                _busStopRegistry.RegisterBusStop(coord);
             }
 
             if (_services != null && _services.Events != null)
@@ -406,6 +416,17 @@ namespace CityFlow.UI.Controllers
 
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
             
+        }
+
+        private bool TryResolveBusStopRegistry()
+        {
+            if (_busStopRegistry == null)
+            {
+                _busStopRegistry =
+                    FindAnyObjectByType<BusStopRegistry>();
+            }
+
+            return _busStopRegistry != null;
         }
 
         // --- Demolish Logic (LIFO priority handling) ---
