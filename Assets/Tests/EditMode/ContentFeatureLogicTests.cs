@@ -5,6 +5,7 @@ using CityFlow.Contracts.Save;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace CityFlow.Sim.Tests
 {
@@ -233,6 +234,35 @@ namespace CityFlow.Sim.Tests
             Assert.That(
                 restored.Remove(alternativeRoad),
                 Is.False);
+        }
+
+        [Test]
+        public void BusStopInfrastructure_InvalidSavedStop_LogsRestoreWarning()
+        {
+            SimConfig config = SimConfig.Default();
+            var restored =
+                new SimEngine(config, new SimEventHub());
+            Vector2Int invalidStop = new(8, 8);
+            var snapshot = new SimSaveData
+            {
+                BusStops = new[]
+                {
+                    new BusStopSaveData
+                    {
+                        X = invalidStop.x,
+                        Y = invalidStop.y
+                    }
+                }
+            };
+
+            LogAssert.Expect(
+                LogType.Warning,
+                $"[SimEngine] 저장된 버스 정류장 {invalidStop}을(를) " +
+                "복원할 수 없습니다. 빈 타일과 인접 도로를 확인하세요.");
+
+            restored.RestoreSnapshot(snapshot);
+
+            Assert.That(restored.BusStopTiles, Is.Empty);
         }
 
         [Test]

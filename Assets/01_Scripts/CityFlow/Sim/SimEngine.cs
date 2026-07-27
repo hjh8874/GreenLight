@@ -1269,7 +1269,13 @@ namespace CityFlow.Sim
             {
                 foreach (var stop in snapshot.BusStops)
                 {
-                    TryPlaceBusStop(new Vector2Int(stop.X, stop.Y));
+                    var tile = new Vector2Int(stop.X, stop.Y);
+                    if (!TryPlaceBusStop(tile))
+                    {
+                        Debug.LogWarning(
+                            $"[SimEngine] 저장된 버스 정류장 {tile}을(를) " +
+                            "복원할 수 없습니다. 빈 타일과 인접 도로를 확인하세요.");
+                    }
                 }
             }
 
