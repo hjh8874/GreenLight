@@ -60,3 +60,7 @@ MonoBehaviour:
     BurstFreeReturnRatio: 0.6
     BurstCooldownSeconds: 10
     BurstRewardThreshold: 1
+    GreenWaveScanInterval: 50
+    GreenWaveThreshold: 0.85
+    GreenWaveMagnitudeOffset: 0.8
+    GreenWaveMagnitudeScale: 10

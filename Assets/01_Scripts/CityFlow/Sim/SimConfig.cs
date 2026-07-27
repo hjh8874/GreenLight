@@ -7,6 +7,11 @@ namespace CityFlow.Sim
     [System.Serializable]   // SimConfigAsset(SO)이 인스펙터에 노출하기 위해
     public struct SimConfig
     {
+        // 시뮬레이션 물리량 헬퍼
+        // 차 1대가 방해 없이 이동할 때 1초당 몇 타일을 가는가 (현재 엔진 규약 상 1틱당 1칸)
+        public float GetFreeFlowSpeed() => 1f / TickInterval;
+        public float GetTravelSeconds(int distTiles) => distTiles / GetFreeFlowSpeed();
+
         // ── 고정 틱 ─────────────────────────────
         public float TickInterval;      // 시뮬 1스텝(초). blueprint §3 = 0.1
         public int   MaxStepsPerFrame;  // 누산기 while 폭주 방지 캡
@@ -48,6 +53,10 @@ namespace CityFlow.Sim
 
         // ── 신호 그린웨이브 ─────────────────────
         public float GreenWaveFloor;     // 오프셋 최악(반주기 어긋남) 시 효율 바닥 🔓
+        public int GreenWaveScanInterval; // 그린웨이브 판정 주기 (틱)
+        public float GreenWaveThreshold; // 그린웨이브 연출 달성 임계 (기본 0.85f)
+        public float GreenWaveMagnitudeOffset; // 강도 환산 기준 (기본 0.8f)
+        public float GreenWaveMagnitudeScale; // 강도 환산 배율 (기본 10f)
 
         // ── 수요처 용량 캡 (가구 수) ──
         // 회사 정원은 배정과 주차가 함께 쓰는 단일 값이며 프리팹 주차 자리 수를 넘기지 않는다.
@@ -145,6 +154,10 @@ namespace CityFlow.Sim
             EfficiencyMinRatio = 2.0f,
             StabilityJamWeight = 0.5f,
             GreenWaveFloor = 0.5f,
+            GreenWaveScanInterval = 50,
+            GreenWaveThreshold = 0.85f,
+            GreenWaveMagnitudeOffset = 0.8f,
+            GreenWaveMagnitudeScale = 10f,
             OfficeCapacity = 6,
             CompanyHiringSlotsPerGameHour = 2f,
             SchoolCapacity = 10,

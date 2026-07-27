@@ -34,6 +34,15 @@ namespace CityFlow.Sim.Tests
             return cfg;
         }
 
+        private void BuildTestIntersection(SimEngine engine, Vector2Int pos)
+        {
+            engine.Place(pos, TileType.Road);
+            engine.Place(pos + Vector2Int.up, TileType.Road);
+            engine.Place(pos + Vector2Int.down, TileType.Road);
+            engine.Place(pos + Vector2Int.left, TileType.Road);
+            engine.Place(pos + Vector2Int.right, TileType.Road);
+        }
+
         [Test]
         public void QueueOccupancy_TranslatesToThreeCongestionLevels()
         {
@@ -543,6 +552,176 @@ namespace CityFlow.Sim.Tests
             engine.Tick(0.25f);
 
             Assert.AreEqual(1f, engine.TripSuccessRateForTest, "점프가 낀 날은 EMA 미산출");
+        }
+
+        [Test]
+        public void GreenWave_TriggersBurstEvent_OnlyOnTransition()
+        {
+            var hub = new SimEventHub();
+            int burstCount = 0;
+            hub.FlowBurst += e => burstCount++;
+
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 20;
+            cfg.GridHeight = 20;
+            cfg.GreenWaveScanInterval = 1;
+            cfg.GreenWaveThreshold = 0.8f;
+            cfg.AutoDetectSignals = false;
+
+            var engine = new SimEngine(cfg, hub);
+            BuildTestIntersection(engine, V(2, 2));
+            BuildTestIntersection(engine, V(6, 2));
+            engine.Place(V(4, 2), TileType.Road);
+
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 2), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(6, 2), 10));
+
+            // 기본 상태(오프셋 모두 0)일 때는 혜택이 발동하지 않아야 함
+            engine.TrySetSignalOffsetSlots(V(2, 2), 0);
+            engine.TrySetSignalOffsetSlots(V(6, 2), 0);
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(0, burstCount, "기본 상태(0, 0)에서는 우연히 맞아도 발동 안 함");
+
+            // 거리에 맞춰 오프셋 조절 (V(6,2)을 거리만큼 미룸)
+            engine.TrySetSignalOffsetSlots(V(6, 2), 2);
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(1, burstCount, "오프셋 조작 시 미달성→달성 1회 발행 검증");
+
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(1, burstCount, "달성 유지 중 미발행 검증");
+
+            engine.TrySetSignalOffsetSlots(V(6, 2), 7); // Break wave
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(1, burstCount, "해제 시 미발행");
+
+            engine.TrySetSignalOffsetSlots(V(6, 2), 2); // Restore wave
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(2, burstCount, "해제 후 재달성 시 발행 검증");
+        }
+
+        [Test]
+        public void GreenWave_PreventsBidirectionalDuplicate()
+        {
+            var hub = new SimEventHub();
+            int burstCount = 0;
+            hub.FlowBurst += e => burstCount++;
+
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 20;
+            cfg.GridHeight = 20;
+            cfg.GreenWaveScanInterval = 1;
+            cfg.GreenWaveThreshold = 0.5f;
+            cfg.AutoDetectSignals = false;
+
+            var engine = new SimEngine(cfg, hub);
+            BuildTestIntersection(engine, V(2, 2));
+            BuildTestIntersection(engine, V(6, 2));
+            engine.Place(V(4, 2), TileType.Road);
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 2), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(6, 2), 10));
+
+            engine.TrySetSignalOffsetSlots(V(2, 2), 0);
+            engine.TrySetSignalOffsetSlots(V(6, 2), 2);
+
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(1, burstCount, "양방향 동시 스캔되어도 1회만 발행 검증");
+        }
+
+        [Test]
+        public void GreenWave_MultipleSegmentsTriggerSeparately()
+        {
+            var hub = new SimEventHub();
+            int burstCount = 0;
+            hub.FlowBurst += e => burstCount++;
+
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 20;
+            cfg.GridHeight = 20;
+            cfg.GreenWaveScanInterval = 1;
+            cfg.GreenWaveThreshold = 0.5f;
+            cfg.AutoDetectSignals = false;
+
+            var engine = new SimEngine(cfg, hub);
+
+            BuildTestIntersection(engine, V(2, 2));
+            BuildTestIntersection(engine, V(6, 2));
+            engine.Place(V(4, 2), TileType.Road);
+            if (!engine.TryPlaceSignal(V(2, 2), 10)) throw new System.Exception("TryPlaceSignal V(2,2) failed");
+            if (!engine.TryPlaceSignal(V(6, 2), 10)) throw new System.Exception("TryPlaceSignal V(6,2) failed");
+
+            BuildTestIntersection(engine, V(2, 8));
+            BuildTestIntersection(engine, V(6, 8));
+            engine.Place(V(4, 8), TileType.Road);
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 8), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(6, 8), 10));
+
+            engine.TrySetSignalOffsetSlots(V(2, 2), 0);
+            engine.TrySetSignalOffsetSlots(V(6, 2), 2);
+            engine.TrySetSignalOffsetSlots(V(2, 8), 0);
+            engine.TrySetSignalOffsetSlots(V(6, 8), 2);
+
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(2, burstCount, "독립적인 신호 구간 2개 동시 처리 검증");
+        }
+
+        [Test]
+        public void GreenWave_TravelTimeAndEfficiency_CalculatedCorrectly()
+        {
+            SimConfig cfg = Cfg();
+            int distTiles = 4;
+
+            // 1) TickInterval = 0.1f -> GetFreeFlowSpeed = 10, TravelSeconds = 0.4s
+            cfg.TickInterval = 0.1f;
+            float travelSecs1 = cfg.GetTravelSeconds(distTiles);
+            Assert.AreEqual(0.4f, travelSecs1, 0.001f, "TickInterval 0.1f에서 4타일 이동 시간은 0.4초여야 합니다.");
+
+            // 2) TickInterval = 0.5f -> GetFreeFlowSpeed = 2, TravelSeconds = 2.0s
+            cfg.TickInterval = 0.5f;
+            float travelSecs2 = cfg.GetTravelSeconds(distTiles);
+            Assert.AreEqual(2.0f, travelSecs2, 0.001f, "TickInterval 0.5f에서 4타일 이동 시간은 2.0초여야 합니다.");
+
+            var fromSignal = new Signal { CycleSlots = 16, OffsetSlots = 0, GreenSlots = 8 };
+            var toSignal = new Signal { CycleSlots = 16, OffsetSlots = 2, GreenSlots = 8 };
+
+            float travelSlots1 = travelSecs1 / SignalMath.SlotSeconds;
+            float eff1 = SignalMath.GreenWaveEfficiency(fromSignal, toSignal, travelSlots1, 0.5f);
+
+            float travelSlots2 = travelSecs2 / SignalMath.SlotSeconds;
+            float eff2 = SignalMath.GreenWaveEfficiency(fromSignal, toSignal, travelSlots2, 0.5f);
+
+            // 각 이동 시간에 따른 실제 효율값 단정
+            Assert.AreEqual(0.8888889f, eff1, 0.001f, "0.4초(0.8슬롯) 이동 시의 효율");
+            Assert.AreEqual(1.0f, eff2, 0.001f, "2.0초(4.0슬롯) 이동 시의 효율");
+        }
+
+        [Test]
+        public void GreenWave_SameOffset_DoesNotTrigger()
+        {
+            var hub = new SimEventHub();
+            int burstCount = 0;
+            hub.FlowBurst += e => burstCount++;
+
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 20;
+            cfg.GridHeight = 20;
+            cfg.GreenWaveScanInterval = 1;
+            cfg.GreenWaveThreshold = 0.8f;
+            cfg.AutoDetectSignals = false;
+
+            var engine = new SimEngine(cfg, hub);
+            BuildTestIntersection(engine, V(2, 2));
+            BuildTestIntersection(engine, V(6, 2));
+            engine.Place(V(4, 2), TileType.Road);
+
+            Assert.IsTrue(engine.TryPlaceSignal(V(2, 2), 10));
+            Assert.IsTrue(engine.TryPlaceSignal(V(6, 2), 10));
+
+            // (1, 1) 같은 동일 오프셋으로 설정
+            engine.TrySetSignalOffsetSlots(V(2, 2), 1);
+            engine.TrySetSignalOffsetSlots(V(6, 2), 1);
+
+            engine.Tick(cfg.GreenWaveScanInterval);
+            Assert.AreEqual(0, burstCount, "(1,1)과 같이 상대 위상이 동일한 오프셋 조작은 보상하지 않음");
         }
 
         private static SimEngine BuildStraightCity(SimConfig cfg, SimEventHub hub)

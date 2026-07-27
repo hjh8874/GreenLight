@@ -26,6 +26,7 @@ namespace CityFlow.Sim
         readonly HashSet<Vector2Int> _placedSet = new();
         // 회전교차로(스펙 2026-07-11): 신호와 배타 배치. SignalMap과 독립된 장치 상태.
         readonly List<Vector2Int> _placedRoundabouts = new();
+        readonly HashSet<GreenWaveSegment> _activeGreenWaves = new HashSet<GreenWaveSegment>();
         readonly HashSet<Vector2Int> _roundaboutSet = new();
         // 입체교차(스펙 2026-07-12): 신호·로터리와 3자 배타. 로터리와 동형(SignalMap 무관, Rebuild 불필요).
         readonly List<Vector2Int> _placedOverpasses = new();
@@ -230,6 +231,12 @@ namespace CityFlow.Sim
                 _carSim.LastStepJumped,
                 jamRatio,
                 _config);
+
+            if (_config.GreenWaveScanInterval > 0 && StepCount % _config.GreenWaveScanInterval == 0)
+            {
+                ScanGreenWaves();
+            }
+
             PublishStabilityIfChanged();
             _events.Drain();
         }
@@ -254,6 +261,90 @@ namespace CityFlow.Sim
                 if (level == CongestionLevel.Jam) jammed++;
             }
             return roads <= 0 ? 0f : (float)jammed / roads;
+        }
+
+        private struct GreenWaveSegment : System.IEquatable<GreenWaveSegment>
+        {
+            public readonly Vector2Int A;
+            public readonly Vector2Int B;
+            public GreenWaveSegment(Vector2Int a, Vector2Int b)
+            {
+                if (a.x < b.x || (a.x == b.x && a.y < b.y))
+                {
+                    A = a;
+                    B = b;
+                }
+                else
+                {
+                    A = b;
+                    B = a;
+                }
+            }
+
+            public bool Equals(GreenWaveSegment other) => A == other.A && B == other.B;
+            public override bool Equals(object obj) => obj is GreenWaveSegment other && Equals(other);
+            public override int GetHashCode() => (A.GetHashCode() * 397) ^ B.GetHashCode();
+        }
+
+        private static readonly Vector2Int[] _scanDirections = { Vector2Int.right, Vector2Int.up, Vector2Int.left, Vector2Int.down };
+
+        private void ScanGreenWaves()
+        {
+            HashSet<GreenWaveSegment> currentWaves = new HashSet<GreenWaveSegment>();
+
+            foreach (var fromTile in _signals.Tiles)
+            {
+                if (!_signals.TryGet(fromTile, out var fromSignal)) continue;
+
+                foreach (Vector2Int dir in _scanDirections)
+                {
+                    Vector2Int current = fromTile + dir;
+                    int dist = 1;
+                    Signal toSignal = null;
+                    Vector2Int toTile = current;
+
+                    while (_grid.InBounds(current) && _grid.GetTile(current) == TileType.Road)
+                    {
+                        if (_signals.TryGet(current, out toSignal))
+                        {
+                            toTile = current;
+                            break;
+                        }
+                        current += dir;
+                        dist++;
+                    }
+
+                    if (toSignal != null)
+                    {
+                        // 1. 유저가 오프셋을 조작하여 상대 위상이 변경되어야만 보상 허용 (조작 전 기본 상태 및 단순 전체 쉬프트에서 남발 방지)
+                        if (fromSignal.OffsetSlots == toSignal.OffsetSlots)
+                            continue;
+
+                        // 2. 단일 헬퍼를 사용하여 일관된 이동 시간(초) 산출
+                        float travelSecs = _config.GetTravelSeconds(dist);
+                        float travelSlots = travelSecs / SignalMath.SlotSeconds;
+
+                        float eff = SignalMath.GreenWaveEfficiency(fromSignal, toSignal, travelSlots, _config.GreenWaveFloor);
+
+                        if (eff >= _config.GreenWaveThreshold)
+                        {
+                            var seg = new GreenWaveSegment(fromTile, toTile);
+                            if (currentWaves.Add(seg) && !_activeGreenWaves.Contains(seg))
+                            {
+                                int magnitude = (int)((eff - _config.GreenWaveMagnitudeOffset) * _config.GreenWaveMagnitudeScale);
+                                if (magnitude < 1) magnitude = 1;
+                                _events.QueueBurst(new FlowBurstEvent(toTile, magnitude));
+                            }
+                        }
+                    }
+                }
+            }
+
+            _activeGreenWaves.Clear();
+            foreach (var wave in currentWaves)
+            {
+                _activeGreenWaves.Add(wave);
+            }
         }
 
         internal static CongestionLevel CongestionForOccupancy(float occupancy, in SimConfig cfg) =>
@@ -505,8 +596,8 @@ namespace CityFlow.Sim
         public int RoadTileCount => _grid.RoadTileCount + _highwayBudgetTiles;
         // 유효 캡 = 기본 상한 + 확장권 구매횟수 × 10 (스펙 §2단계).
         public int MaxRoadTiles => _config.MaxRoadTiles + _roadCapacityPurchases * RoadExpandChunkTiles;
-        
-        // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게 
+
+        // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게
         public float DeliveredTotal => _config.TickInterval > 0f ? _lastStepArrivals / _config.TickInterval : 0f;
 
         public bool TryGetAverageRouteDistance(
@@ -901,7 +992,7 @@ namespace CityFlow.Sim
         public float GetOverrideCooldownLeft(Vector2Int tile) =>
             _overrideReadyAt.TryGetValue(tile, out var ready) && ready > _simTime
                 ? (float)(ready - _simTime) : 0f;
-                
+
         public float GetTotalOverrideCooldown() => _config.OverrideCooldownSeconds;
 
         // 진입 허가 = 초록만(노랑·적색은 진입 금지).
@@ -1162,7 +1253,7 @@ namespace CityFlow.Sim
         public TileType GetTileType(Vector2Int tile) =>
             _grid.InBounds(tile) ? _grid.GetTile(tile) : TileType.Empty;
 
-        public PlacementDirection GetDirection(Vector2Int tile) => 
+        public PlacementDirection GetDirection(Vector2Int tile) =>
             _grid.InBounds(tile) ? _grid.GetDirection(tile) : PlacementDirection.North;
 
         public Vector2Int GetFootprintSize(TileType type) => TileFootprint.GetSize(type);
