@@ -1,3 +1,4 @@
+using System.Reflection;
 using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
@@ -132,6 +133,11 @@ namespace CityFlow.Sim.Tests
                     components,
                     "CityBusStopWorldView"),
                 Is.True);
+            Assert.That(
+                HasComponentNamed(
+                    components,
+                    "ContentFeaturePrototypeScenario"),
+                Is.False);
         }
 
         [Test]
@@ -156,8 +162,176 @@ namespace CityFlow.Sim.Tests
 
             Assert.That(restored.BusStopTiles.Count, Is.EqualTo(1));
             Assert.That(restored.BusStopTiles[0], Is.EqualTo(stop));
+            Assert.That(
+                restored.CanPlace(stop, TileType.Road),
+                Is.False);
+            Assert.That(
+                restored.Place(stop, TileType.Road),
+                Is.False);
             Assert.That(restored.TryRemoveBusStop(stop), Is.True);
             Assert.That(restored.BusStopTiles.Count, Is.Zero);
+        }
+
+        [Test]
+        public void BusStopInfrastructure_BlocksOverlappingPlacementAndLastAccessRemoval()
+        {
+            SimConfig config = SimConfig.Default();
+            var source = new SimEngine(config, new SimEventHub());
+            Vector2Int primaryRoad = new(2, 2);
+            Vector2Int alternativeRoad = new(3, 3);
+            Vector2Int stop = new(2, 3);
+            Vector2Int buildingAnchor = new(1, 3);
+
+            Assert.That(
+                source.Place(primaryRoad, TileType.Road),
+                Is.True);
+            Assert.That(source.TryPlaceBusStop(stop), Is.True);
+
+            Assert.That(
+                source.CanPlace(stop, TileType.Road),
+                Is.False);
+            Assert.That(
+                source.Place(stop, TileType.Road),
+                Is.False);
+            Assert.That(
+                source.CanPlace(
+                    buildingAnchor,
+                    TileType.House),
+                Is.False);
+            Assert.That(
+                source.Place(
+                    buildingAnchor,
+                    TileType.House),
+                Is.False);
+
+            Assert.That(
+                source.Remove(primaryRoad),
+                Is.False,
+                "The last access road must remain while the stop is installed.");
+            Assert.That(
+                source.Place(alternativeRoad, TileType.Road),
+                Is.True);
+            Assert.That(source.Remove(primaryRoad), Is.True);
+            Assert.That(source.BusStopTiles, Does.Contain(stop));
+
+            SimSaveData snapshot = source.CreateSnapshot();
+            var restored =
+                new SimEngine(config, new SimEventHub());
+            restored.RestoreSnapshot(snapshot);
+
+            Assert.That(
+                restored.BusStopTiles,
+                Does.Contain(stop));
+            Assert.That(
+                restored.CanPlace(stop, TileType.Road),
+                Is.False);
+            Assert.That(
+                restored.Place(
+                    buildingAnchor,
+                    TileType.House),
+                Is.False);
+            Assert.That(
+                restored.Remove(alternativeRoad),
+                Is.False);
+        }
+
+        [Test]
+        public void IntegrationPrefab_InitializesWithoutChangingExistingTiles()
+        {
+            const string prefabPath =
+                "Assets/02_Prefabs/PR151_ContentFeaturePrototype.prefab";
+            GameObject prefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    prefabPath);
+            Assert.That(prefab, Is.Not.Null);
+
+            SimConfig config = SimConfig.Default();
+            var events = new SimEventHub();
+            var engine = new SimEngine(config, events);
+            Vector2Int stop = new(2, 3);
+
+            PlaceRoadLoop(engine);
+            Assert.That(
+                engine.Place(
+                    new Vector2Int(8, 8),
+                    TileType.House),
+                Is.True);
+            Assert.That(engine.TryPlaceBusStop(stop), Is.True);
+
+            TileType[,] before =
+                CaptureTiles(engine, config);
+            GameObject instance =
+                Object.Instantiate(prefab);
+
+            try
+            {
+                Assert.That(
+                    HasComponentNamed(
+                        instance.GetComponents<MonoBehaviour>(),
+                        "ContentFeaturePrototypeScenario"),
+                    Is.False);
+
+                System.Type servicesType =
+                    System.Type.GetType(
+                    "CityFlow.Bootstrap.CityFlowServices, Assembly-CSharp");
+                Assert.That(servicesType, Is.Not.Null);
+                object services =
+                    System.Activator.CreateInstance(
+                    servicesType,
+                    events,
+                    engine,
+                    engine,
+                    null,
+                    null,
+                    engine);
+                MonoBehaviour[] consumers =
+                    instance.GetComponents<MonoBehaviour>();
+
+                for (int i = 0; i < consumers.Length; i++)
+                {
+                    MethodInfo initialize =
+                        consumers[i].GetType().GetMethod(
+                            "Initialize",
+                            BindingFlags.Instance |
+                            BindingFlags.Public,
+                            null,
+                            new[] { servicesType },
+                            null);
+
+                    if (initialize != null)
+                    {
+                        initialize.Invoke(
+                            consumers[i],
+                            new[] { services });
+                    }
+                }
+
+                AssertTilesEqual(
+                    before,
+                    engine,
+                    config);
+
+                MonoBehaviour bus = FindComponentNamed(
+                    consumers,
+                    "CityBusService");
+                Assert.That(bus, Is.Not.Null);
+                object runtime =
+                    bus.GetType()
+                        .GetProperty("Runtime")
+                        ?.GetValue(bus);
+                Assert.That(runtime, Is.Not.Null);
+                object state =
+                    runtime.GetType()
+                        .GetProperty("State")
+                        ?.GetValue(runtime);
+                Assert.That(
+                    state?.ToString(),
+                    Is.EqualTo("Moving"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(instance);
+            }
         }
 
         [Test]
@@ -185,16 +359,86 @@ namespace CityFlow.Sim.Tests
             MonoBehaviour[] components,
             string typeName)
         {
+            return FindComponentNamed(
+                       components,
+                       typeName) != null;
+        }
+
+        private static MonoBehaviour FindComponentNamed(
+            MonoBehaviour[] components,
+            string typeName)
+        {
             for (int i = 0; i < components.Length; i++)
             {
                 if (components[i] != null &&
                     components[i].GetType().Name == typeName)
                 {
-                    return true;
+                    return components[i];
                 }
             }
 
-            return false;
+            return null;
+        }
+
+        private static void PlaceRoadLoop(SimEngine engine)
+        {
+            var roads = new[]
+            {
+                new Vector2Int(1, 2),
+                new Vector2Int(2, 2),
+                new Vector2Int(3, 2),
+                new Vector2Int(3, 3),
+                new Vector2Int(3, 4),
+                new Vector2Int(2, 4),
+                new Vector2Int(1, 4),
+                new Vector2Int(1, 3)
+            };
+
+            for (int i = 0; i < roads.Length; i++)
+            {
+                Assert.That(
+                    engine.Place(roads[i], TileType.Road),
+                    Is.True);
+            }
+        }
+
+        private static TileType[,] CaptureTiles(
+            SimEngine engine,
+            SimConfig config)
+        {
+            var result = new TileType[
+                config.GridWidth,
+                config.GridHeight];
+
+            for (int y = 0; y < config.GridHeight; y++)
+            {
+                for (int x = 0; x < config.GridWidth; x++)
+                {
+                    result[x, y] =
+                        engine.GetTileType(
+                            new Vector2Int(x, y));
+                }
+            }
+
+            return result;
+        }
+
+        private static void AssertTilesEqual(
+            TileType[,] expected,
+            SimEngine actual,
+            SimConfig config)
+        {
+            for (int y = 0; y < config.GridHeight; y++)
+            {
+                for (int x = 0; x < config.GridWidth; x++)
+                {
+                    Vector2Int tile = new(x, y);
+                    Assert.That(
+                        actual.GetTileType(tile),
+                        Is.EqualTo(expected[x, y]),
+                        $"Integration prefab changed tile {tile}.");
+                }
+            }
         }
     }
 }

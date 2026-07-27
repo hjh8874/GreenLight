@@ -269,9 +269,6 @@ namespace CityFlow.EditorTools
                 EmergencyIncidentSystem emergency =
                     root.AddComponent<
                         EmergencyIncidentSystem>();
-                ContentFeaturePrototypeScenario scenario =
-                    root.AddComponent<
-                        ContentFeaturePrototypeScenario>();
                 CityBusWorldView busWorldView =
                     root.AddComponent<CityBusWorldView>();
                 CityBusStopWorldView busStopWorldView =
@@ -289,10 +286,6 @@ namespace CityFlow.EditorTools
                     cityBus,
                     "stopRegistry",
                     registry);
-                SetObjectReference(
-                    scenario,
-                    "cityBus",
-                    cityBus);
                 SetObjectReference(
                     emergency,
                     "config",
@@ -332,7 +325,7 @@ namespace CityFlow.EditorTools
                 SerializedObject cityBusSerialized =
                     new(cityBus);
                 cityBusSerialized.FindProperty("autoStart")
-                    .boolValue = false;
+                    .boolValue = true;
                 cityBusSerialized
                     .ApplyModifiedPropertiesWithoutUndo();
 
@@ -742,12 +735,16 @@ namespace CityFlow.EditorTools
             if (AssetDatabase.LoadAssetAtPath<SceneAsset>(
                     TargetScene) != null)
             {
-                AssetDatabase.DeleteAsset(TargetScene);
-            }
-
-            if (!AssetDatabase.CopyAsset(
+                FileUtil.ReplaceFile(
                     SourceScene,
-                    TargetScene))
+                    TargetScene);
+                AssetDatabase.ImportAsset(
+                    TargetScene,
+                    ImportAssetOptions.ForceUpdate);
+            }
+            else if (!AssetDatabase.CopyAsset(
+                         SourceScene,
+                         TargetScene))
             {
                 throw new System.InvalidOperationException(
                     $"Could not copy {SourceScene}.");
@@ -775,6 +772,17 @@ namespace CityFlow.EditorTools
             Undo.RegisterCreatedObjectUndo(
                 instance,
                 "Add PR151 content prototype");
+
+            var scenarioObject =
+                new GameObject("PR151_DebugPrototypeScenario");
+            SceneManager.MoveGameObjectToScene(
+                scenarioObject,
+                scene);
+            scenarioObject.AddComponent<
+                ContentFeaturePrototypeScenario>();
+            Undo.RegisterCreatedObjectUndo(
+                scenarioObject,
+                "Add PR151 Debug scenario");
 
             DisablePlayerSaveLifecycle();
             EnsureCamera(scene);

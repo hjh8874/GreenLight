@@ -13,7 +13,6 @@ GameObject:
   - component: {fileID: 5161138187899254478}
   - component: {fileID: 4217619027936533916}
   - component: {fileID: 3543354564565336222}
-  - component: {fileID: 8349346935877868567}
   - component: {fileID: 4742349870720195101}
   - component: {fileID: 1183233741817494639}
   m_Layer: 0
@@ -87,7 +86,7 @@ MonoBehaviour:
   definition: {fileID: 11400000, guid: 1389367586db78444a80782f0611acfd, type: 2}
   busRoute: {fileID: 6527074732818209294}
   stopRegistry: {fileID: 5161138187899254478}
-  autoStart: 0
+  autoStart: 1
   verboseLogging: 0
 --- !u!114 &3543354564565336222
 MonoBehaviour:
@@ -106,20 +105,6 @@ MonoBehaviour:
   gridHeight: 20
   enableAutomaticSpawn: 1
   verboseLogging: 0
---- !u!114 &8349346935877868567
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3007267175668421125}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 403529c0924f0f548910b70fbffb9909, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.ContentFeaturePrototypeScenario
-  logResult: 1
-  cityBus: {fileID: 4217619027936533916}
 --- !u!114 &4742349870720195101
 MonoBehaviour:
   m_ObjectHideFlags: 0

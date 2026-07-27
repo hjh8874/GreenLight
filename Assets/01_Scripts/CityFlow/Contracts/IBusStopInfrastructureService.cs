@@ -6,6 +6,8 @@ namespace CityFlow.Contracts
     /// <summary>
     /// Authoritative placement state for purchasable city-bus stops.
     /// Stops occupy an empty roadside tile and are persisted with simulation data.
+    /// General placement cannot overlap an installed stop. A road can be removed
+    /// only when every adjacent stop keeps at least one other access road.
     /// </summary>
     public interface IBusStopInfrastructureService
     {

@@ -1,5 +1,4 @@
 using CityFlow.Bootstrap;
-using CityFlow.Content;
 using CityFlow.Contracts;
 using UnityEngine;
 
@@ -15,7 +14,6 @@ namespace CityFlow.DebugTools
         ICityFlowServiceConsumer
     {
         [SerializeField] private bool logResult = true;
-        [SerializeField] private CityBusService cityBus;
 
         private static bool seeded;
 
@@ -37,14 +35,11 @@ namespace CityFlow.DebugTools
             int placed = BuildPrototypeCity(
                 services.Placement);
             seeded = true;
-            cityBus ??= GetComponent<CityBusService>();
-            cityBus?.StartService();
 
             if (logResult)
             {
                 Debug.Log(
-                    $"[ContentPrototype] Seeded {placed} tiles. " +
-                    "City bus and emergency flow are ready.",
+                    $"[ContentPrototype] Seeded {placed} Debug-only tiles.",
                     this);
             }
         }

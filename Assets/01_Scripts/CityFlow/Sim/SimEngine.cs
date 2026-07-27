@@ -49,6 +49,13 @@ namespace CityFlow.Sim
         readonly Dictionary<Vector2Int, Vector2Int> _highwayPartners = new();
         readonly List<Vector2Int> _placedBusStops = new();
         readonly HashSet<Vector2Int> _busStopSet = new();
+        static readonly Vector2Int[] BusStopNeighborDirections =
+        {
+            Vector2Int.right,
+            Vector2Int.up,
+            Vector2Int.left,
+            Vector2Int.down
+        };
         int _highwayBudgetTiles;   // 링크 맨해튼 길이 합 — 일반도로와 MaxRoadTiles 스톡을 공유한다.
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
         readonly SimStats _stats = new SimStats();
@@ -477,12 +484,15 @@ namespace CityFlow.Sim
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
         public bool CanPlace(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North) =>
             WithinRoadBudget(type)
-            && !OverlapsRoundaboutFootprint(tile, type, direction) && _grid.CanPlace(tile, type, direction);
+            && !OverlapsRoundaboutFootprint(tile, type, direction)
+            && !OverlapsBusStopFootprint(tile, type, direction)
+            && _grid.CanPlace(tile, type, direction);
 
         public bool Place(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
             if (!WithinRoadBudget(type)) return false;   // 예산 초과 도로는 Place도 거부(CanPlace 우회 방지)
             if (OverlapsRoundaboutFootprint(tile, type, direction)) return false;   // 로터리 풋프린트에 건물 금지
+            if (OverlapsBusStopFootprint(tile, type, direction)) return false;
             if (!_grid.Place(tile, type, direction)) return false;
             if (type == TileType.Office)
                 _demand.RegisterCompany(tile, type, _simTime);
@@ -499,6 +509,12 @@ namespace CityFlow.Sim
         public bool Remove(Vector2Int tile)
         {
             PlacementDirection removedDir = _grid.GetDirection(tile);
+            if (_grid.GetTile(tile) == TileType.Road &&
+                WouldOrphanBusStopIfRoadRemoved(tile))
+            {
+                return false;
+            }
+
             if (!_grid.TryRemove(tile, out var removed, out Vector2Int anchor)) return false;
             if (removed == TileType.Office)
                 _demand.RemoveCompany(anchor);
@@ -526,6 +542,29 @@ namespace CityFlow.Sim
                 for (int x = 0; x < size.x; x++)
                 {
                     if (IsInRoundaboutFootprint(tile + new Vector2Int(x, y)))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private bool OverlapsBusStopFootprint(
+            Vector2Int tile,
+            TileType type,
+            PlacementDirection direction)
+        {
+            Vector2Int size =
+                TileFootprint.GetRotatedSize(type, direction);
+
+            for (int y = 0; y < size.y; y++)
+            {
+                for (int x = 0; x < size.x; x++)
+                {
+                    if (_busStopSet.Contains(
+                            tile + new Vector2Int(x, y)))
                     {
                         return true;
                     }
@@ -1321,6 +1360,50 @@ namespace CityFlow.Sim
 
             _placedBusStops.Remove(tile);
             return true;
+        }
+
+        private bool WouldOrphanBusStopIfRoadRemoved(
+            Vector2Int roadTile)
+        {
+            for (int i = 0;
+                 i < BusStopNeighborDirections.Length;
+                 i++)
+            {
+                Vector2Int stopTile =
+                    roadTile + BusStopNeighborDirections[i];
+
+                if (!_busStopSet.Contains(stopTile))
+                {
+                    continue;
+                }
+
+                bool hasAlternativeAccess = false;
+
+                for (int directionIndex = 0;
+                     directionIndex <
+                     BusStopNeighborDirections.Length;
+                     directionIndex++)
+                {
+                    Vector2Int candidateRoad =
+                        stopTile +
+                        BusStopNeighborDirections[
+                            directionIndex];
+
+                    if (candidateRoad != roadTile &&
+                        IsRoad(candidateRoad))
+                    {
+                        hasAlternativeAccess = true;
+                        break;
+                    }
+                }
+
+                if (!hasAlternativeAccess)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private bool IsRoad(Vector2Int tile) =>
