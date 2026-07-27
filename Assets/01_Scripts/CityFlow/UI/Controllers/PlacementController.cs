@@ -36,11 +36,11 @@ namespace CityFlow.UI
         [Tooltip("월~화 코어엔진 미연동 시 UI 단독 테스트를 위한 강제 성공 모드")]
         [SerializeField] private bool useFakeMode = false;
         [SerializeField] private bool useXYPlane = false;
-        
+
         [Header("Economy Data")]
         [Tooltip("비용(Cost)을 조회하기 위한 타일 데이터 모음")]
         [SerializeField] private CityFlow.Configs.TileDataSO[] availableTiles;
-        
+
         [Header("UI References")]
         [SerializeField] private ConfirmPopupController confirmPopup;
         [Tooltip("도로 예산제(스펙 2026-07-17): 도로 배치 모드에서 \"도로 N/M\" 카운터. 미할당 시 표시 생략.")]
@@ -62,7 +62,7 @@ namespace CityFlow.UI
 
         private CityFlowServices _services;
         private bool _isBuildingMode = false;
-        private TileType _currentType = TileType.Road; 
+        private TileType _currentType = TileType.Road;
         private PlacementDirection _currentDirection = PlacementDirection.North;
 
         private PlacementInputHandler _inputHandler;
@@ -74,21 +74,21 @@ namespace CityFlow.UI
         private void Awake()
         {
             var uiRaycastBlocker = new UIRaycastBlocker();
-            
+
             _inputHandler = new PlacementInputHandler(uiRaycastBlocker, confirmPopup);
-            
+
             _visualManager = new PlacementVisualManager(
                 ghostRenderer, colorValid, colorInvalid,
                 use3DGhostVolume, ghostVolumeHeight, volumeValidColor, volumeInvalidColor,
                 GetComponent<BenefitHighlightRenderer>(),
                 populationConfig, hospitalDefinition);
-                
+
             _costLabelManager = new PlacementCostLabelManager(showCostLabel, costAffordableColor, costUnaffordableColor);
-            
+
             _budgetUI = new PlacementBudgetUI(
-                roadBudgetText, roadExpandButton, roadExpandCostText, 
+                roadBudgetText, roadExpandButton, roadExpandCostText,
                 expandAffordableColor, expandUnaffordableColor);
-                
+
             _actionDispatcher = new PlacementActionDispatcher(availableTiles, useFakeMode);
 
             _inputHandler.OnRotateRequested += HandleRotate;
@@ -102,7 +102,7 @@ namespace CityFlow.UI
             _services = services;
             _visualManager.Initialize();
             _costLabelManager.Initialize();
-            
+
             _budgetUI.Initialize(() => _actionDispatcher.HandleRoadExpandClicked(_services));
         }
 
@@ -110,7 +110,7 @@ namespace CityFlow.UI
         {
             _currentType = type;
             _currentDirection = PlacementDirection.North;
-            
+
             _costLabelManager.ResetState();
             _visualManager.HideBenefitHighlights();
             _visualManager.UpdateGhostSprite(_currentType, availableTiles);
@@ -129,17 +129,17 @@ namespace CityFlow.UI
         public void ToggleBuildMode(bool isOn)
         {
             _isBuildingMode = isOn;
-            
+
             if (isOn)
             {
                 _visualManager.HideBenefitHighlights();
                 _visualManager.UpdateGhostSprite(_currentType, availableTiles);
                 _visualManager.UpdateGhostFootprint(_currentType, _currentDirection);
             }
-            
+
             _visualManager.SetGhostActive(isOn);
             BuildModeCursorFeedback.SetBuilding(this, isOn);
-            
+
             if (!isOn)
             {
                 _visualManager.HideBenefitHighlights();
@@ -150,17 +150,17 @@ namespace CityFlow.UI
         public void ConfigureGhost(SpriteRenderer renderer)
         {
             ghostRenderer = renderer;
-            
+
             // 기존 매니저의 동적 리소스(3D 큐브 등) 해제 (메모리 누수 방지)
             _visualManager?.Cleanup();
-            
+
             // Recreate visual manager with new ghost renderer
             _visualManager = new PlacementVisualManager(
                 ghostRenderer, colorValid, colorInvalid,
                 use3DGhostVolume, ghostVolumeHeight, volumeValidColor, volumeInvalidColor,
                 GetComponent<BenefitHighlightRenderer>(),
                 populationConfig, hospitalDefinition);
-                
+
             _visualManager.Initialize();
             _visualManager.SetGhostActive(_isBuildingMode);
         }
@@ -222,16 +222,25 @@ namespace CityFlow.UI
         private void Update()
         {
             _budgetUI.UpdateUI(_isBuildingMode, _currentType, _services);
-            
+
             Vector2Int gridCoord = _inputHandler.GetMouseGridCoordinate(useXYPlane);
             bool canPlace = _actionDispatcher.CheckCanPlace(gridCoord, _currentType, _currentDirection, _services);
             bool isBuildingType = TileFootprint.IsBuilding(_currentType);
 
             _inputHandler.UpdateInput(_isBuildingMode, isBuildingType, canPlace, gridCoord);
 
-            if (!_isBuildingMode || _inputHandler.IsPointerOverBlockingUI())
+            if (_inputHandler.IsPointerOverBlockingUI())
             {
-                _inputHandler.ResetDragState();
+                _inputHandler.ResetAllDragStates();
+                _visualManager.SetGhostActive(false);
+                _costLabelManager.SetCostLabelActive(false);
+                _visualManager.HideBenefitHighlights();
+                return;
+            }
+
+            if (!_isBuildingMode)
+            {
+                _inputHandler.ResetPlacementDragState();
                 _visualManager.SetGhostActive(false);
                 _costLabelManager.SetCostLabelActive(false);
                 _visualManager.HideBenefitHighlights();
@@ -239,18 +248,18 @@ namespace CityFlow.UI
             }
 
             _visualManager.SetGhostActive(true);
-            
+
             Vector2Int rotatedSize = TileFootprint.GetRotatedSize(_currentType, _currentDirection);
             float surfaceZ = GetSurfaceMarkerZ(gridCoord);
-            
+
             Vector3 ghostPos = GetGhostPosition(gridCoord, rotatedSize, surfaceZ);
-            
+
             _visualManager.SyncGhostPosition(ghostPos, TileFootprint.ToAngle(_currentDirection), useXYPlane);
             _visualManager.UpdateColors(canPlace);
             _visualManager.UpdateBenefitPreview(gridCoord, _currentType, useXYPlane, _services);
 
             _costLabelManager.SyncPosition(ghostPos, surfaceZ, useXYPlane);
-            
+
             long cost = _actionDispatcher.GetTileCost(_currentType);
             bool affordable = _services?.Economy == null || _services.Economy.Coins >= cost;
             _costLabelManager.UpdateCost(cost, affordable, canPlace, Time.deltaTime);
@@ -297,7 +306,7 @@ namespace CityFlow.UI
                 _actionDispatcher.PlaceInfrastructure(coord, _currentType, _currentDirection, _services);
             }
         }
-        
+
         public bool TryDemolishAt(Vector2Int coord)
         {
             return _actionDispatcher.TryDemolishAt(coord, _services);

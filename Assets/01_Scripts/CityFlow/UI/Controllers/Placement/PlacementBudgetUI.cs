@@ -15,10 +15,10 @@ namespace CityFlow.UI.Controllers.Placement
         private readonly Color _expandUnaffordableColor;
 
         public PlacementBudgetUI(
-            TextMeshProUGUI roadBudgetText, 
-            Button roadExpandButton, 
-            TextMeshProUGUI roadExpandCostText, 
-            Color expandAffordableColor, 
+            TextMeshProUGUI roadBudgetText,
+            Button roadExpandButton,
+            TextMeshProUGUI roadExpandCostText,
+            Color expandAffordableColor,
             Color expandUnaffordableColor)
         {
             _roadBudgetText = roadBudgetText;
@@ -45,7 +45,7 @@ namespace CityFlow.UI.Controllers.Placement
             {
                 if (_roadBudgetText.gameObject.activeSelf != showRoad)
                     _roadBudgetText.gameObject.SetActive(showRoad);
-                
+
                 if (showRoad)
                     _roadBudgetText.text = $"도로 {services.Stats.RoadTileCount}/{services.Stats.MaxRoadTiles}";
             }

@@ -3,8 +3,12 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using CityFlow.UI.Controllers;
 using CityFlow.UI.Controllers.Placement;
+using CityFlow.Sim;
+using CityFlow.UI;
 
 namespace Tests.EditMode
 {
@@ -35,16 +39,32 @@ namespace Tests.EditMode
             var go = new GameObject("Controller");
             var controller = go.AddComponent<PlacementController>();
 
-            // Should not throw and successfully return default/calculated coord
-            Assert.DoesNotThrow(() =>
-            {
-                controller.GetMouseGridCoordinate();
-            }, "Parameterless overload should exist and not throw.");
+            var cam = _cameraGo.GetComponent<Camera>();
+            cam.transform.position = new Vector3(0, 10, -10);
+            cam.transform.LookAt(Vector3.zero);
 
-            Assert.DoesNotThrow(() =>
+            var mouse = InputSystem.AddDevice<Mouse>();
+            try
             {
-                controller.GetMouseGridCoordinate(true);
-            }, "Explicit bool overload should exist and not throw.");
+                using (StateEvent.From(mouse, out var eventPtr))
+                {
+                    mouse.position.WriteValueIntoEvent(new Vector2(100, 100), eventPtr);
+                    InputSystem.QueueEvent(eventPtr);
+                }
+                InputSystem.Update();
+
+                controller.SetUseXYPlane(true);
+                var coordXY = controller.GetMouseGridCoordinate();
+
+                controller.SetUseXYPlane(false);
+                var coordXZ = controller.GetMouseGridCoordinate();
+
+                Assert.AreNotEqual(coordXY, coordXZ, "XY plane and XZ plane should yield different coordinates for the same screen position.");
+            }
+            finally
+            {
+                InputSystem.RemoveDevice(mouse);
+            }
 
             Object.DestroyImmediate(go);
         }
@@ -52,18 +72,102 @@ namespace Tests.EditMode
         [Test]
         public void Update_WhenPointerOverUI_ResetsDragState()
         {
-            // Regression test for Issue #157 (Point 2)
-            // Ensures that dragging over a UI clears the drag state
-            // Validated via reflection since _inputHandler is internal/private
-            
             var go = new GameObject("Controller");
             var controller = go.AddComponent<PlacementController>();
 
-            // Check if ResetDragState exists in PlacementInputHandler
-            var method = typeof(PlacementInputHandler).GetMethod("ResetDragState", BindingFlags.Public | BindingFlags.Instance);
-            Assert.IsNotNull(method, "PlacementInputHandler must have a public ResetDragState method to prevent drag leaks across UI.");
+            var handlerField = typeof(PlacementController).GetField("_inputHandler", BindingFlags.NonPublic | BindingFlags.Instance);
+            var inputHandler = (PlacementInputHandler)handlerField.GetValue(controller);
 
-            Object.DestroyImmediate(go);
+            bool dragRequested = false;
+            inputHandler.OnDragPlaceRequested += (start, end) => dragRequested = true;
+
+            var updateMethod = typeof(PlacementController).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
+            var blockedProp = typeof(OfflineSettlementPopup).GetProperty("IsInteractionBlocked", BindingFlags.Public | BindingFlags.Static);
+
+            var mouse = InputSystem.AddDevice<Mouse>();
+            try
+            {
+                controller.SetBuildType(TileType.Road);
+
+                // 1. Mouse left click down
+                using (StateEvent.From(mouse, out var eventPtr))
+                {
+                    mouse.leftButton.WriteValueIntoEvent(1f, eventPtr);
+                    mouse.position.WriteValueIntoEvent(new Vector2(100, 100), eventPtr);
+                    InputSystem.QueueEvent(eventPtr);
+                }
+                InputSystem.Update();
+                updateMethod.Invoke(controller, null);
+
+                // 2. UI block true, trigger Update (should reset drag state)
+                blockedProp.SetValue(null, true);
+                updateMethod.Invoke(controller, null);
+
+                // 3. UI block false, drag to new pos
+                blockedProp.SetValue(null, false);
+                using (StateEvent.From(mouse, out var eventPtr2))
+                {
+                    mouse.position.WriteValueIntoEvent(new Vector2(200, 200), eventPtr2);
+                    InputSystem.QueueEvent(eventPtr2);
+                }
+                InputSystem.Update();
+                updateMethod.Invoke(controller, null);
+
+                Assert.IsFalse(dragRequested, "Drag should not be requested after resetting drag state via UI block.");
+            }
+            finally
+            {
+                blockedProp.SetValue(null, false); // cleanup
+                InputSystem.RemoveDevice(mouse);
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void Update_WhenNotBuildingMode_DoesNotResetDemolishDragState()
+        {
+            var go = new GameObject("Controller");
+            var controller = go.AddComponent<PlacementController>();
+
+            var handlerField = typeof(PlacementController).GetField("_inputHandler", BindingFlags.NonPublic | BindingFlags.Instance);
+            var inputHandler = (PlacementInputHandler)handlerField.GetValue(controller);
+
+            int demolishRequests = 0;
+            inputHandler.OnDemolishRequested += (coord) => { demolishRequests++; return true; };
+
+            var updateMethod = typeof(PlacementController).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            var mouse = InputSystem.AddDevice<Mouse>();
+            try
+            {
+                controller.ToggleBuildMode(false);
+
+                // 1. Right click down at pos 100,100
+                using (StateEvent.From(mouse, out var eventPtr))
+                {
+                    mouse.rightButton.WriteValueIntoEvent(1f, eventPtr);
+                    mouse.position.WriteValueIntoEvent(new Vector2(100, 100), eventPtr);
+                    InputSystem.QueueEvent(eventPtr);
+                }
+                InputSystem.Update();
+                updateMethod.Invoke(controller, null);
+
+                // 2. Move to 200,200
+                using (StateEvent.From(mouse, out var eventPtr2))
+                {
+                    mouse.position.WriteValueIntoEvent(new Vector2(200, 200), eventPtr2);
+                    InputSystem.QueueEvent(eventPtr2);
+                }
+                InputSystem.Update();
+                updateMethod.Invoke(controller, null);
+
+                Assert.AreEqual(2, demolishRequests, "Right-click drag demolish should continue across frames even when building mode is off.");
+            }
+            finally
+            {
+                InputSystem.RemoveDevice(mouse);
+                Object.DestroyImmediate(go);
+            }
         }
     }
 }

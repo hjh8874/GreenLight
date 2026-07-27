@@ -14,7 +14,7 @@ namespace CityFlow.UI.Controllers.Placement
 
         private readonly UIRaycastBlocker _uiRaycastBlocker;
         private readonly ConfirmPopupController _confirmPopup;
-        
+
         private Vector2Int? _rightClickStartCoord = null;
         private Vector2Int? _lastRemovedCoord = null;
         private Vector2Int? _lastPlacedCoord = null;
@@ -25,9 +25,19 @@ namespace CityFlow.UI.Controllers.Placement
             _confirmPopup = confirmPopup;
         }
 
-        public void ResetDragState()
+        public void ResetAllDragStates()
+        {
+            ResetPlacementDragState();
+            ResetDemolishDragState();
+        }
+
+        public void ResetPlacementDragState()
         {
             _lastPlacedCoord = null;
+        }
+
+        public void ResetDemolishDragState()
+        {
             _lastRemovedCoord = null;
             _rightClickStartCoord = null;
         }

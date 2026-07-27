@@ -14,7 +14,7 @@ namespace CityFlow.UI.Controllers.Placement
         private readonly SpriteRenderer _ghostRenderer;
         private readonly Color _colorValid;
         private readonly Color _colorInvalid;
-        
+
         private readonly bool _use3DGhostVolume;
         private readonly float _ghostVolumeHeight;
         private readonly Color _volumeValidColor;
@@ -23,7 +23,7 @@ namespace CityFlow.UI.Controllers.Placement
         private GameObject _ghostVolumeObj;
         private MeshRenderer _ghostVolumeMeshRenderer;
         private Material _ghostVolumeMaterial;
-        
+
         private Sprite _defaultGhostSprite;
         private Texture2D _footprintGhostTexture;
         private Sprite _footprintGhostSprite;
@@ -140,7 +140,7 @@ namespace CityFlow.UI.Controllers.Placement
         public void SetGhostFootprint(Vector2Int size)
         {
             if (_ghostRenderer == null || !_ghostScaleInitialized) return;
-            
+
             _ghostRenderer.transform.localScale = new Vector3(
                 _ghostBaseScale.x * size.x,
                 _ghostBaseScale.y * size.y,
@@ -225,7 +225,7 @@ namespace CityFlow.UI.Controllers.Placement
                         bool isCovered = isSchool
                             ? CityFlow.Content.PopulationCalculator.IsWithinSchoolCoverage(targetTile, gridCoord, radius)
                             : CityFlow.Content.HospitalEffectCalculator.IsWithinHospitalCoverage(targetTile, gridCoord, radius);
-                        
+
                         if (!isCovered) continue;
 
                         _areaTileBuffer.Add(targetTile);
@@ -262,8 +262,8 @@ namespace CityFlow.UI.Controllers.Placement
                 hideFlags = HideFlags.HideAndDontSave
             };
 
-            _ghostVolumeMaterial.SetFloat("_Surface", 1f);  
-            _ghostVolumeMaterial.SetFloat("_Blend", 0f);    
+            _ghostVolumeMaterial.SetFloat("_Surface", 1f);
+            _ghostVolumeMaterial.SetFloat("_Blend", 0f);
             _ghostVolumeMaterial.SetFloat("_AlphaClip", 0f);
             _ghostVolumeMaterial.SetOverrideTag("RenderType", "Transparent");
             _ghostVolumeMaterial.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);

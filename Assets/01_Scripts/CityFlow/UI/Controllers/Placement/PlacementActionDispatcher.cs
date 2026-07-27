@@ -29,7 +29,7 @@ namespace CityFlow.UI.Controllers.Placement
         public bool CheckCanPlace(Vector2Int coord, TileType currentType, PlacementDirection direction, CityFlowServices services)
         {
             if (_useFakeMode) return true;
-            
+
             if (services != null && services.Placement != null && services.TileData != null)
             {
                 if (!GridUtil.IsInside(coord)) return false;
@@ -37,13 +37,13 @@ namespace CityFlow.UI.Controllers.Placement
 
                 Vector2Int previousAnchor = ResolveFootprintAnchor(coord, services);
                 TileType previousType = services.TileData.GetTileType(previousAnchor);
-                
+
                 if (previousType != TileType.Empty)
                 {
                     return false;
                 }
 
-                return services.Placement.CanPlace(coord, currentType, direction); 
+                return services.Placement.CanPlace(coord, currentType, direction);
             }
             return false;
         }
@@ -68,14 +68,14 @@ namespace CityFlow.UI.Controllers.Placement
                     {
                         if (services.Economy != null && refundCost > 0)
                             services.Economy.AddCoins(refundCost, "Demolish Refund");
-                            
+
                         Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 철거 명령 전달 (환불 {refundCost}).");
                     }
                 }
                 else
                 {
                     long buildCost = GetTileCost(currentType);
-                    
+
                     if (previousType != TileType.Empty)
                     {
                         Debug.LogWarning("[UI] 기존 건물이나 도로가 있는 위치에는 새 건물을 지을 수 없습니다.");
