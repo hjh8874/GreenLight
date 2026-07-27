@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -7,7 +6,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
 using CityFlow.UI.Controllers;
 using CityFlow.UI.Controllers.Placement;
-using CityFlow.Sim;
+using CityFlow.Contracts;
 using CityFlow.UI;
 
 namespace Tests.EditMode
@@ -21,7 +20,9 @@ namespace Tests.EditMode
         {
             _cameraGo = new GameObject("MainCamera");
             _cameraGo.tag = "MainCamera";
-            _cameraGo.AddComponent<Camera>();
+            var cam = _cameraGo.AddComponent<Camera>();
+            cam.transform.position = new Vector3(0, 10, -10);
+            cam.transform.LookAt(Vector3.zero);
         }
 
         [TearDown]
@@ -40,8 +41,6 @@ namespace Tests.EditMode
             var controller = go.AddComponent<PlacementController>();
 
             var cam = _cameraGo.GetComponent<Camera>();
-            cam.transform.position = new Vector3(0, 10, -10);
-            cam.transform.LookAt(Vector3.zero);
 
             var mouse = InputSystem.AddDevice<Mouse>();
             try
@@ -132,8 +131,8 @@ namespace Tests.EditMode
             var handlerField = typeof(PlacementController).GetField("_inputHandler", BindingFlags.NonPublic | BindingFlags.Instance);
             var inputHandler = (PlacementInputHandler)handlerField.GetValue(controller);
 
-            int demolishRequests = 0;
-            inputHandler.OnDemolishRequested += (coord) => { demolishRequests++; return true; };
+            var capturedCoords = new System.Collections.Generic.List<Vector2Int>();
+            inputHandler.OnDemolishRequested += (coord) => { capturedCoords.Add(coord); return true; };
 
             var updateMethod = typeof(PlacementController).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
 
@@ -152,16 +151,17 @@ namespace Tests.EditMode
                 InputSystem.Update();
                 updateMethod.Invoke(controller, null);
 
-                // 2. Move to 200,200
+                // 2. Move to 400,400 to ensure distinct grid coordinate
                 using (StateEvent.From(mouse, out var eventPtr2))
                 {
-                    mouse.position.WriteValueIntoEvent(new Vector2(200, 200), eventPtr2);
+                    mouse.position.WriteValueIntoEvent(new Vector2(400, 400), eventPtr2);
                     InputSystem.QueueEvent(eventPtr2);
                 }
                 InputSystem.Update();
                 updateMethod.Invoke(controller, null);
 
-                Assert.AreEqual(2, demolishRequests, "Right-click drag demolish should continue across frames even when building mode is off.");
+                Assert.AreEqual(2, capturedCoords.Count, "Right-click drag demolish should continue across frames even when building mode is off.");
+                Assert.AreNotEqual(capturedCoords[0], capturedCoords[1], "Demolish should capture distinct coordinates as the mouse moves.");
             }
             finally
             {

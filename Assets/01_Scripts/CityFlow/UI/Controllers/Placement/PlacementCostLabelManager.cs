@@ -5,7 +5,6 @@ namespace CityFlow.UI.Controllers.Placement
 {
     internal class PlacementCostLabelManager
     {
-        private const int GhostSortingOrder = 100;
         private const float CostUpdateInterval = 0.2f;
 
         private GameObject _costLabelObj;
@@ -38,7 +37,7 @@ namespace CityFlow.UI.Controllers.Placement
             _costLabelTMP.fontStyle = FontStyles.Bold;
             _costLabelTMP.enableWordWrapping = false;
             _costLabelTMP.overflowMode = TextOverflowModes.Overflow;
-            _costLabelTMP.sortingOrder = GhostSortingOrder + 10;
+            _costLabelTMP.sortingOrder = PlacementVisualManager.GhostSortingOrder + 10;
 
             _costLabelObj.SetActive(false);
         }

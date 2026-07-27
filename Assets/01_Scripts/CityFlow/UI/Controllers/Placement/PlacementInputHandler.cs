@@ -25,21 +25,9 @@ namespace CityFlow.UI.Controllers.Placement
             _confirmPopup = confirmPopup;
         }
 
-        public void ResetAllDragStates()
-        {
-            ResetPlacementDragState();
-            ResetDemolishDragState();
-        }
-
         public void ResetPlacementDragState()
         {
             _lastPlacedCoord = null;
-        }
-
-        public void ResetDemolishDragState()
-        {
-            _lastRemovedCoord = null;
-            _rightClickStartCoord = null;
         }
 
         public bool IsPointerOverBlockingUI()

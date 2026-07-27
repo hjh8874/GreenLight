@@ -8,7 +8,7 @@ namespace CityFlow.UI.Controllers.Placement
 {
     internal class PlacementVisualManager
     {
-        private const int GhostSortingOrder = 100;
+        public const int GhostSortingOrder = 100;
         public const float MinimumGhostAlpha = 0.75f;
 
         private readonly SpriteRenderer _ghostRenderer;

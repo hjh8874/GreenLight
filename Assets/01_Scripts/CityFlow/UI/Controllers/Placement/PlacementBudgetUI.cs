@@ -28,12 +28,18 @@ namespace CityFlow.UI.Controllers.Placement
             _expandUnaffordableColor = expandUnaffordableColor;
         }
 
+        private UnityEngine.Events.UnityAction _expandAction;
+
         public void Initialize(System.Action onExpandClicked)
         {
             if (_roadExpandButton != null)
             {
-                _roadExpandButton.onClick.RemoveAllListeners();
-                _roadExpandButton.onClick.AddListener(() => onExpandClicked?.Invoke());
+                if (_expandAction != null)
+                {
+                    _roadExpandButton.onClick.RemoveListener(_expandAction);
+                }
+                _expandAction = () => onExpandClicked?.Invoke();
+                _roadExpandButton.onClick.AddListener(_expandAction);
             }
         }
 

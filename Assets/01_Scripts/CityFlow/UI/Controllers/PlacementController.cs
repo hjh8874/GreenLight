@@ -71,8 +71,17 @@ namespace CityFlow.UI
         private PlacementBudgetUI _budgetUI;
         private PlacementActionDispatcher _actionDispatcher;
 
+        private bool _managersInitialized = false;
+
         private void Awake()
         {
+            EnsureManagers();
+        }
+
+        private void EnsureManagers()
+        {
+            if (_managersInitialized) return;
+
             var uiRaycastBlocker = new UIRaycastBlocker();
 
             _inputHandler = new PlacementInputHandler(uiRaycastBlocker, confirmPopup);
@@ -95,11 +104,14 @@ namespace CityFlow.UI
             _inputHandler.OnDemolishRequested += HandleDemolish;
             _inputHandler.OnPlaceRequested += HandlePlace;
             _inputHandler.OnDragPlaceRequested += HandleDragPlace;
+
+            _managersInitialized = true;
         }
 
         public void Initialize(CityFlowServices services)
         {
             _services = services;
+            EnsureManagers();
             _visualManager.Initialize();
             _costLabelManager.Initialize();
 
@@ -181,24 +193,9 @@ namespace CityFlow.UI
             return _inputHandler?.GetMouseGridCoordinate(useXYPlane) ?? default;
         }
 
-        public Vector2Int GetMouseGridCoordinate(bool explicitUseXYPlane)
-        {
-            return _inputHandler?.GetMouseGridCoordinate(explicitUseXYPlane) ?? default;
-        }
-
-        public void SetGhostFootprint(TileType currentType, PlacementDirection direction)
-        {
-            _visualManager?.UpdateGhostFootprint(currentType, direction);
-        }
-
         public void SetGhostFootprint(Vector2Int size)
         {
             _visualManager?.SetGhostFootprint(size);
-        }
-
-        public Color GetVisibleGhostColor(bool canPlace)
-        {
-            return canPlace ? colorValid : colorInvalid;
         }
 
         public Color GetVisibleGhostColor(Color baseColor)
@@ -231,7 +228,7 @@ namespace CityFlow.UI
 
             if (_inputHandler.IsPointerOverBlockingUI())
             {
-                _inputHandler.ResetAllDragStates();
+                _inputHandler.ResetPlacementDragState();
                 _visualManager.SetGhostActive(false);
                 _costLabelManager.SetCostLabelActive(false);
                 _visualManager.HideBenefitHighlights();
@@ -246,6 +243,8 @@ namespace CityFlow.UI
                 _visualManager.HideBenefitHighlights();
                 return;
             }
+
+            if (ghostRenderer == null) return;
 
             _visualManager.SetGhostActive(true);
 
