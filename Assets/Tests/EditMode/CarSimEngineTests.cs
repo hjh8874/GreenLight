@@ -680,8 +680,8 @@ namespace CityFlow.Sim.Tests
             float travelSecs2 = cfg.GetTravelSeconds(distTiles);
             Assert.AreEqual(2.0f, travelSecs2, 0.001f, "TickInterval 0.5f에서 4타일 이동 시간은 2.0초여야 합니다.");
 
-            var fromSignal = new Signal { CycleSlots = 16, OffsetSlots = 0 };
-            var toSignal = new Signal { CycleSlots = 16, OffsetSlots = 2 };
+            var fromSignal = new Signal { CycleSlots = 16, OffsetSlots = 0, GreenSlots = 8 };
+            var toSignal = new Signal { CycleSlots = 16, OffsetSlots = 2, GreenSlots = 8 };
 
             float travelSlots1 = travelSecs1 / SignalMath.SlotSeconds;
             float eff1 = SignalMath.GreenWaveEfficiency(fromSignal, toSignal, travelSlots1, 0.5f);
@@ -690,8 +690,8 @@ namespace CityFlow.Sim.Tests
             float eff2 = SignalMath.GreenWaveEfficiency(fromSignal, toSignal, travelSlots2, 0.5f);
 
             // 각 이동 시간에 따른 실제 효율값 단정
-            Assert.AreEqual(1.0f, eff1, 0.001f, "0.4초(0.8슬롯) 이동 시의 효율");
-            Assert.AreEqual(0.706f, eff2, 0.01f, "2.0초(4.0슬롯) 이동 시의 효율");
+            Assert.AreEqual(0.8888889f, eff1, 0.001f, "0.4초(0.8슬롯) 이동 시의 효율");
+            Assert.AreEqual(1.0f, eff2, 0.001f, "2.0초(4.0슬롯) 이동 시의 효율");
         }
 
         [Test]
