@@ -93,7 +93,7 @@ namespace CityFlow.View
         [Header("Camera View")]
         [SerializeField, Range(1f, 89f)] private float angledViewDegrees = 35.264f;
         [Tooltip("지면에서 가장 가까운 A 줌 지점까지의 거리")]
-        [SerializeField, Min(0.5f)] private float minimumZoomDistance = 5f;
+        [SerializeField, Min(0.5f)] private float minimumZoomDistance = 2f;
         [Tooltip("A-B 줌 지점 사이에 적용할 거리")]
         [FormerlySerializedAs("zoomStepDistance")]
         [SerializeField, Min(0.1f)] private float zoomDistanceRange = 10f;
@@ -315,6 +315,7 @@ namespace CityFlow.View
             public Renderer HorizontalRenderer;
             public Renderer VerticalRenderer;
             public Renderer SelectionRenderer;
+            public TrafficLightLensView[] LensViews;
             public MaterialPropertyBlock HorizontalBlock;
             public MaterialPropertyBlock VerticalBlock;
             public MaterialPropertyBlock SelectionBlock;
@@ -1956,18 +1957,31 @@ namespace CityFlow.View
 
             root.name = $"Signal_{tile.x}_{tile.y}";
             root.transform.SetParent(signalRoot, false);
-            root.transform.localPosition = GridToLocal(tile, signalZ);
+            TrafficLightLensView[] lensViews =
+                root.GetComponentsInChildren<TrafficLightLensView>(includeInactive: true);
+            root.transform.localPosition = GridToLocal(
+                tile,
+                lensViews.Length > 0 ? 0f : signalZ);
 
-            Renderer post = CreateSignalBar(root.transform, "Post",
-                new Vector3(tileSize * 0.08f, tileSize * 0.08f, tileSize * 0.6f), new Vector3(0f, 0f, tileSize * 0.15f));
-            ApplyRendererColor(post, new Color(0.18f, 0.2f, 0.22f));
+            Renderer horizontal = null;
+            Renderer vertical = null;
+            if (lensViews.Length == 0)
+            {
+                Renderer post = CreateSignalBar(root.transform, "Post",
+                    new Vector3(tileSize * 0.08f, tileSize * 0.08f, tileSize * 0.6f), new Vector3(0f, 0f, tileSize * 0.15f));
+                ApplyRendererColor(post, new Color(0.18f, 0.2f, 0.22f));
 
-            Renderer horizontal = CreateSignalBar(root.transform, "Horizontal",
-                new Vector3(tileSize * 0.42f, tileSize * 0.1f, tileSize * 0.14f), new Vector3(0f, 0f, -tileSize * 0.18f));
-            Renderer vertical = CreateSignalBar(root.transform, "Vertical",
-                new Vector3(tileSize * 0.1f, tileSize * 0.42f, tileSize * 0.14f), new Vector3(0f, 0f, -tileSize * 0.18f));
+                horizontal = CreateSignalBar(root.transform, "Horizontal",
+                    new Vector3(tileSize * 0.42f, tileSize * 0.1f, tileSize * 0.14f), new Vector3(0f, 0f, -tileSize * 0.18f));
+                vertical = CreateSignalBar(root.transform, "Vertical",
+                    new Vector3(tileSize * 0.1f, tileSize * 0.42f, tileSize * 0.14f), new Vector3(0f, 0f, -tileSize * 0.18f));
+            }
+
+            float selectionZ = lensViews.Length > 0
+                ? -0.03f
+                : tileSize * 0.42f;
             Renderer selection = CreateSignalBar(root.transform, "Selection",
-                new Vector3(tileSize * 0.72f, tileSize * 0.72f, 0.03f), new Vector3(0f, 0f, tileSize * 0.42f));
+                new Vector3(tileSize * 0.72f, tileSize * 0.72f, 0.03f), new Vector3(0f, 0f, selectionZ));
 
             return new SignalVisual
             {
@@ -1975,6 +1989,7 @@ namespace CityFlow.View
                 HorizontalRenderer = horizontal,
                 VerticalRenderer = vertical,
                 SelectionRenderer = selection,
+                LensViews = lensViews,
                 HorizontalBlock = new MaterialPropertyBlock(),
                 VerticalBlock = new MaterialPropertyBlock(),
                 SelectionBlock = new MaterialPropertyBlock()
@@ -2013,9 +2028,27 @@ namespace CityFlow.View
             Color horizontal = GetSignalColor(tile, horizontal: true);
             Color vertical = GetSignalColor(tile, horizontal: false);
 
-            visual.Root.transform.localPosition = GridToLocal(tile, signalZ);
+            bool usesPrefab = visual.LensViews != null && visual.LensViews.Length > 0;
+            visual.Root.transform.localPosition = GridToLocal(
+                tile,
+                usesPrefab ? 0f : signalZ);
             ApplyRendererColor(visual.HorizontalRenderer, horizontal, visual.HorizontalBlock);
             ApplyRendererColor(visual.VerticalRenderer, vertical, visual.VerticalBlock);
+
+            if (visual.LensViews != null)
+            {
+                SignalPhase horizontalPhase = simEngine != null
+                    ? simEngine.GetSignalPhase(tile, horizontal: true)
+                    : SignalPhase.Green;
+                SignalPhase verticalPhase = simEngine != null
+                    ? simEngine.GetSignalPhase(tile, horizontal: false)
+                    : SignalPhase.Green;
+
+                foreach (TrafficLightLensView lensView in visual.LensViews)
+                {
+                    lensView.ApplyPhases(horizontalPhase, verticalPhase);
+                }
+            }
 
             if (visual.SelectionRenderer != null)
             {
