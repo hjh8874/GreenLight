@@ -13,7 +13,10 @@ namespace CityFlow.EditorTools
             "Assets/99_Download/Fonts/NanumGothic SDF.asset";
 
         private const string SourceFontPath =
-            "Assets/03_Art/Fonts/NanumGothic-Regular.ttf";
+            "Assets/99_Download/Fonts/NanumGothic-Regular.ttf";
+
+        private const string BuildSlotPrefabPath =
+            "Assets/02_Prefabs/UI_BuildSlot.prefab";
 
         private const string ValidationCharacters =
             "한글 폰트 검증 저장 불러오기 삭제 시민 요청 새로운 일자리가 필요해요";
@@ -69,6 +72,7 @@ namespace CityFlow.EditorTools
             EditorUtility.SetDirty(fontAsset);
             AssetDatabase.SaveAssetIfDirty(fontAsset);
             ValidateTextMesh(fontAsset);
+            ValidateBuildSlotPrefab(fontAsset);
             Debug.Log(
                 $"[ExternalKoreanFontAsset] Korean glyph validation passed: " +
                 $"'{ValidationCharacters}'.");
@@ -159,6 +163,39 @@ namespace CityFlow.EditorTools
             finally
             {
                 UnityEngine.Object.DestroyImmediate(canvasObject);
+            }
+        }
+
+        private static void ValidateBuildSlotPrefab(
+            TMP_FontAsset fontAsset)
+        {
+            GameObject prefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    BuildSlotPrefabPath);
+            if (prefab == null)
+            {
+                throw new InvalidOperationException(
+                    $"Required prefab is missing: '{BuildSlotPrefabPath}'.");
+            }
+
+            TextMeshProUGUI[] texts =
+                prefab.GetComponentsInChildren<TextMeshProUGUI>(true);
+            if (texts.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    $"No TextMeshProUGUI component was found in " +
+                    $"'{BuildSlotPrefabPath}'.");
+            }
+
+            foreach (TextMeshProUGUI text in texts)
+            {
+                if (text.font != fontAsset
+                    || text.fontSharedMaterial == null)
+                {
+                    throw new InvalidOperationException(
+                        $"'{text.name}' in '{BuildSlotPrefabPath}' does not " +
+                        "reference the standard external Korean font.");
+                }
             }
         }
     }
