@@ -74,6 +74,10 @@ namespace Tests.EditMode
             var go = new GameObject("Controller");
             var controller = go.AddComponent<PlacementController>();
 
+            var ghostGo = new GameObject("Ghost");
+            var renderer = ghostGo.AddComponent<SpriteRenderer>();
+            controller.ConfigureGhost(renderer);
+
             var handlerField = typeof(PlacementController).GetField("_inputHandler", BindingFlags.NonPublic | BindingFlags.Instance);
             var inputHandler = (PlacementInputHandler)handlerField.GetValue(controller);
 
@@ -113,12 +117,41 @@ namespace Tests.EditMode
                 updateMethod.Invoke(controller, null);
 
                 Assert.IsFalse(dragRequested, "Drag should not be requested after resetting drag state via UI block.");
+
+                // 4. Release mouse, start new drag
+                using (StateEvent.From(mouse, out var eventPtr3))
+                {
+                    mouse.leftButton.WriteValueIntoEvent(0f, eventPtr3);
+                    InputSystem.QueueEvent(eventPtr3);
+                }
+                InputSystem.Update();
+                updateMethod.Invoke(controller, null);
+
+                using (StateEvent.From(mouse, out var eventPtr4))
+                {
+                    mouse.leftButton.WriteValueIntoEvent(1f, eventPtr4);
+                    mouse.position.WriteValueIntoEvent(new Vector2(300, 300), eventPtr4);
+                    InputSystem.QueueEvent(eventPtr4);
+                }
+                InputSystem.Update();
+                updateMethod.Invoke(controller, null);
+
+                using (StateEvent.From(mouse, out var eventPtr5))
+                {
+                    mouse.position.WriteValueIntoEvent(new Vector2(400, 400), eventPtr5);
+                    InputSystem.QueueEvent(eventPtr5);
+                }
+                InputSystem.Update();
+                updateMethod.Invoke(controller, null);
+
+                Assert.IsTrue(dragRequested, "Drag should resume after releasing and starting a new drag.");
             }
             finally
             {
                 blockedProp.SetValue(null, false); // cleanup
                 InputSystem.RemoveDevice(mouse);
                 Object.DestroyImmediate(go);
+                Object.DestroyImmediate(ghostGo);
             }
         }
 
@@ -162,6 +195,44 @@ namespace Tests.EditMode
 
                 Assert.AreEqual(2, capturedCoords.Count, "Right-click drag demolish should continue across frames even when building mode is off.");
                 Assert.AreNotEqual(capturedCoords[0], capturedCoords[1], "Demolish should capture distinct coordinates as the mouse moves.");
+            }
+            finally
+            {
+                InputSystem.RemoveDevice(mouse);
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void Update_WhenGhostRendererNull_DoesNotProcessPlacementInput()
+        {
+            var go = new GameObject("Controller");
+            var controller = go.AddComponent<PlacementController>();
+
+            var handlerField = typeof(PlacementController).GetField("_inputHandler", BindingFlags.NonPublic | BindingFlags.Instance);
+            var inputHandler = (PlacementInputHandler)handlerField.GetValue(controller);
+
+            bool placeRequested = false;
+            inputHandler.OnPlaceRequested += (coord) => placeRequested = true;
+
+            var updateMethod = typeof(PlacementController).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            var mouse = InputSystem.AddDevice<Mouse>();
+            try
+            {
+                controller.SetBuildType(TileType.Road);
+
+                // Mouse left click down
+                using (StateEvent.From(mouse, out var eventPtr))
+                {
+                    mouse.leftButton.WriteValueIntoEvent(1f, eventPtr);
+                    mouse.position.WriteValueIntoEvent(new Vector2(100, 100), eventPtr);
+                    InputSystem.QueueEvent(eventPtr);
+                }
+                InputSystem.Update();
+                updateMethod.Invoke(controller, null);
+
+                Assert.IsFalse(placeRequested, "Place should not be requested when ghost renderer is null.");
             }
             finally
             {

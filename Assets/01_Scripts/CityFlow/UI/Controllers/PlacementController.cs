@@ -224,7 +224,7 @@ namespace CityFlow.UI
             bool canPlace = _actionDispatcher.CheckCanPlace(gridCoord, _currentType, _currentDirection, _services);
             bool isBuildingType = TileFootprint.IsBuilding(_currentType);
 
-            _inputHandler.UpdateInput(_isBuildingMode, isBuildingType, canPlace, gridCoord);
+            _inputHandler.UpdateGlobalInput(_isBuildingMode, isBuildingType, gridCoord);
 
             if (_inputHandler.IsPointerOverBlockingUI())
             {
@@ -245,6 +245,8 @@ namespace CityFlow.UI
             }
 
             if (ghostRenderer == null) return;
+
+            _inputHandler.UpdatePlacementInput(canPlace, gridCoord);
 
             _visualManager.SetGhostActive(true);
 

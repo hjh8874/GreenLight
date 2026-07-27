@@ -63,7 +63,7 @@ namespace CityFlow.UI.Controllers.Placement
             return GridUtil.WorldToGrid(Camera.main.ScreenToWorldPoint(mousePos));
         }
 
-        public void UpdateInput(bool isBuildingMode, bool isBuildingType, bool canPlace, Vector2Int gridCoord)
+        public void UpdateGlobalInput(bool isBuildingMode, bool isBuildingType, Vector2Int gridCoord)
         {
             // R키 회전
             if (isBuildingMode && isBuildingType && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
@@ -101,7 +101,9 @@ namespace CityFlow.UI.Controllers.Placement
                 }
             }
 
-            if (!isBuildingMode || IsPointerOverBlockingUI()) return;
+        public void UpdatePlacementInput(bool canPlace, Vector2Int gridCoord)
+        {
+            if (IsPointerOverBlockingUI()) return;
 
             // 좌클릭 건설
             if (Mouse.current != null)
