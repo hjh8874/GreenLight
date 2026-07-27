@@ -8,7 +8,7 @@ namespace CityFlow.UI.Controllers.Placement
     internal class PlacementInputHandler
     {
         public event Action OnRotateRequested;
-        public event Action<Vector2Int> OnDemolishRequested;
+        public event Func<Vector2Int, bool> OnDemolishRequested;
         public event Action<Vector2Int> OnPlaceRequested;
         public event Action<Vector2Int, Vector2Int> OnDragPlaceRequested;
 
@@ -81,7 +81,6 @@ namespace CityFlow.UI.Controllers.Placement
 
                 if (rightPressedThisFrame && !IsPointerOverBlockingUI())
                 {
-                    _rightClickStartCoord = GetMouseGridCoordinate(false); // Get from current mouse explicitly? Or use gridCoord?
                     _rightClickStartCoord = gridCoord; // Use the already resolved one
                 }
 
@@ -89,8 +88,11 @@ namespace CityFlow.UI.Controllers.Placement
                 {
                     if (_lastRemovedCoord == null || _lastRemovedCoord.Value != gridCoord)
                     {
-                        OnDemolishRequested?.Invoke(gridCoord);
-                        _lastRemovedCoord = gridCoord;
+                        bool success = OnDemolishRequested?.Invoke(gridCoord) ?? false;
+                        if (success)
+                        {
+                            _lastRemovedCoord = gridCoord;
+                        }
                     }
                 }
 

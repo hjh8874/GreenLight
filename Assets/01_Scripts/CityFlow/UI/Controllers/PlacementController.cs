@@ -176,9 +176,14 @@ namespace CityFlow.UI
             useXYPlane = isOn;
         }
 
-        public Vector2Int GetMouseGridCoordinate(bool useXYPlane = false)
+        public Vector2Int GetMouseGridCoordinate()
         {
             return _inputHandler?.GetMouseGridCoordinate(useXYPlane) ?? default;
+        }
+
+        public Vector2Int GetMouseGridCoordinate(bool explicitUseXYPlane)
+        {
+            return _inputHandler?.GetMouseGridCoordinate(explicitUseXYPlane) ?? default;
         }
 
         public void SetGhostFootprint(TileType currentType, PlacementDirection direction)
@@ -198,7 +203,7 @@ namespace CityFlow.UI
 
         public Color GetVisibleGhostColor(Color baseColor)
         {
-            baseColor.a = Mathf.Max(baseColor.a, 0.75f);
+            baseColor.a = Mathf.Max(baseColor.a, PlacementVisualManager.MinimumGhostAlpha);
             return baseColor;
         }
 
@@ -226,6 +231,7 @@ namespace CityFlow.UI
 
             if (!_isBuildingMode || _inputHandler.IsPointerOverBlockingUI())
             {
+                _inputHandler.ResetDragState();
                 _visualManager.SetGhostActive(false);
                 _costLabelManager.SetCostLabelActive(false);
                 _visualManager.HideBenefitHighlights();
@@ -257,9 +263,9 @@ namespace CityFlow.UI
             _costLabelManager.ResetState();
         }
 
-        private void HandleDemolish(Vector2Int coord)
+        private bool HandleDemolish(Vector2Int coord)
         {
-            _actionDispatcher.TryDemolishAt(coord, _services);
+            return _actionDispatcher.TryDemolishAt(coord, _services);
         }
 
         private void HandlePlace(Vector2Int coord)
@@ -297,14 +303,17 @@ namespace CityFlow.UI
             return _actionDispatcher.TryDemolishAt(coord, _services);
         }
 
+        public const float EmptyGroundMarkerZ = 0.12f;
+        public const float RoadSurfaceMarkerZ = -0.05f;
+
         public float GetSurfaceMarkerZ(Vector2Int gridCoord)
         {
             if (_services != null && _services.TileData != null
                 && _services.TileData.GetTileType(gridCoord) == TileType.Empty)
             {
-                return 0.12f; // EmptyGroundMarkerZ
+                return EmptyGroundMarkerZ;
             }
-            return -0.05f; // RoadSurfaceMarkerZ
+            return RoadSurfaceMarkerZ;
         }
 
         public Vector3 GetGhostPosition(Vector2Int gridCoord, Vector2Int footprintSize)
