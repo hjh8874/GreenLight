@@ -69,13 +69,13 @@ namespace CityFlow.Sim.Tests
 
             buf.QueueArrival(new ArrivalEvent(Vector2Int.zero, 1));
             buf.QueueBurst(new FlowBurstEvent(Vector2Int.zero, 5));
-            LogAssert.Expect(LogType.Exception, new Regex(".*"));
+            LogAssert.Expect(LogType.Exception, new Regex("Arrival 구독자 고장"));
             Assert.DoesNotThrow(() => buf.Drain());
             Assert.AreEqual(1, bursts);   // Arrival 구독자가 죽어도 Burst 구독자는 이벤트를 받음
 
             buf.QueueArrival(new ArrivalEvent(Vector2Int.zero, 2));
             buf.QueueBurst(new FlowBurstEvent(Vector2Int.zero, 7));
-            LogAssert.Expect(LogType.Exception, new Regex(".*"));
+            LogAssert.Expect(LogType.Exception, new Regex("Arrival 구독자 고장"));
             buf.Drain();
             Assert.AreEqual(2, bursts);   // 다음 틱에 이중 발행 없음(정상적으로 1회만 증가)
         }
