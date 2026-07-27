@@ -209,8 +209,15 @@ namespace CityFlow.Sim
         // UpdateDepartures가 다음 틱에 곧바로 Outbound로 전이시킨다. 첫 움직임은 항상 출근이어야 한다.
         public void SnapCar(CommuteCar car, float hour)
         {
-            bool inEveningWindow = hour >= _eveningStart && hour < _eveningEnd;
-            car.State = inEveningWindow ? CarState.ParkedWork : CarState.ParkedHome;
+            if (car.AwaitingNextWave)
+            {
+                car.State = CarState.ParkedHome;
+            }
+            else
+            {
+                bool inEveningWindow = hour >= _eveningStart && hour < _eveningEnd;
+                car.State = inEveningWindow ? CarState.ParkedWork : CarState.ParkedHome;
+            }
             car.Distance = 0f;
         }
 

@@ -15,6 +15,7 @@ namespace CityFlow.Sim
         public int QueueSlot;
         public int HomeSlot;
         public int WorkSlot;
+        public bool AwaitingNextWave { get; internal set; }
         public float IntersectionProgress01 { get; internal set; }
         public float LinkProgress01;
         public float RoundaboutProgress01 { get; internal set; }
@@ -639,6 +640,7 @@ namespace CityFlow.Sim
                 QueueSlot = _queueSlots[index],
                 HomeSlot = car.HomeSlot,
                 WorkSlot = car.WorkSlot,
+                AwaitingNextWave = car.AwaitingNextWave,
                 IntersectionProgress01 = _intersectionProgress[index],
                 LinkProgress01 = _linkProgress[index],
                 RoundaboutProgress01 = _roundaboutProgress[index]

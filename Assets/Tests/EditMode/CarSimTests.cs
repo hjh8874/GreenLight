@@ -676,6 +676,53 @@ namespace CityFlow.Sim.Tests
                 "다음 날 출발 시각 경계를 지난 뒤 신규 배정이 활성화되어야 한다");
         }
 
+        [Test]
+        public void Rebuild_AddedHomeDuringEvening_NewAssignmentWaitsAtHome()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(6, 3);
+            for (int x = 0; x <= 5; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            var events = new SimEventBuffer(new SimEventHub());
+
+            Assert.AreEqual(0, sim.CarCount);
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            RebuildCarTopology(grid, road, demands, planner, net, sim);
+
+            sim.Step(17.5f, net, events);
+
+            Assert.AreEqual(1, sim.CarCount);
+            CarSnapshot deferred = sim.GetCar(0);
+            Assert.AreEqual(
+                CarState.ParkedHome,
+                deferred.State,
+                "저녁에 생긴 신규 배정은 방문하지 않은 회사에서 퇴근하면 안 된다");
+            Assert.IsTrue(deferred.AwaitingNextWave);
+            Assert.AreEqual(
+                0,
+                TotalQueued(net, grid.Width, grid.Height),
+                "대기 중인 신규 배정은 출근·퇴근 어느 큐에도 들어가면 안 된다");
+
+            sim.Step(0f, net, events);
+            Assert.IsFalse(sim.GetCar(0).AwaitingNextWave);
+            Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State);
+            sim.Step(7f, net, events);
+            Assert.AreEqual(
+                CarState.Outbound,
+                sim.GetCar(0).State,
+                "다음 날 출근 전 구간을 관측한 뒤에만 신규 배정이 출근해야 한다");
+        }
+
         private static void BuildRetirementCity(
             out CityGrid grid,
             out RoadNetwork road,
