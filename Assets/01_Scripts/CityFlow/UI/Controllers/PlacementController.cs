@@ -4,7 +4,6 @@ using CityFlow.Contracts;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.Rendering;
 using CityFlow.UI.Controllers;
 using CityFlow.UI.Controllers.Placement;
 
@@ -161,6 +160,7 @@ namespace CityFlow.UI
 
         public void ConfigureGhost(SpriteRenderer renderer)
         {
+            EnsureManagers();
             ghostRenderer = renderer;
 
             // 기존 매니저의 동적 리소스(3D 큐브 등) 해제 (메모리 누수 방지)

@@ -21,10 +21,8 @@ namespace CityFlow.UI.Controllers.Placement
         private readonly Color _volumeInvalidColor;
 
         private GameObject _ghostVolumeObj;
-        private MeshRenderer _ghostVolumeMeshRenderer;
         private Material _ghostVolumeMaterial;
 
-        private Sprite _defaultGhostSprite;
         private Texture2D _footprintGhostTexture;
         private Sprite _footprintGhostSprite;
 
@@ -61,11 +59,6 @@ namespace CityFlow.UI.Controllers.Placement
         public void Initialize()
         {
             if (_ghostRenderer == null) return;
-
-            if (_defaultGhostSprite == null && _ghostRenderer.sprite != null)
-            {
-                _defaultGhostSprite = _ghostRenderer.sprite;
-            }
 
             if (!_ghostScaleInitialized)
             {
@@ -274,10 +267,10 @@ namespace CityFlow.UI.Controllers.Placement
             _ghostVolumeMaterial.DisableKeyword("_ALPHAPREMULTIPLY_ON");
             _ghostVolumeMaterial.color = _volumeValidColor;
 
-            _ghostVolumeMeshRenderer = _ghostVolumeObj.GetComponent<MeshRenderer>();
-            _ghostVolumeMeshRenderer.material = _ghostVolumeMaterial;
-            _ghostVolumeMeshRenderer.shadowCastingMode = ShadowCastingMode.Off;
-            _ghostVolumeMeshRenderer.receiveShadows = false;
+            var meshRenderer = _ghostVolumeObj.GetComponent<MeshRenderer>();
+            meshRenderer.material = _ghostVolumeMaterial;
+            meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            meshRenderer.receiveShadows = false;
 
             _ghostVolumeObj.SetActive(false);
         }
