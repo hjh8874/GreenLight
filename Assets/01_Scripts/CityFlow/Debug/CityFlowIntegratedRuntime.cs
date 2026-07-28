@@ -250,7 +250,7 @@ namespace CityFlow.DebugTools
             burstEffect.SetActive(false);
 
             HUDDashboard dashboard = hudPanel.AddComponent<HUDDashboard>();
-            dashboard.Configure(timeText, vehicleText, coinText, efficiency, burstEffect);
+            dashboard.Configure(timeText, vehicleText, coinText, burstEffect);
             dashboard.Initialize(services);
 
             GameObject dock = CreatePanel(canvas, "Geon_UIDock", new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-16f, 0f), new Vector2(132f, 188f));
