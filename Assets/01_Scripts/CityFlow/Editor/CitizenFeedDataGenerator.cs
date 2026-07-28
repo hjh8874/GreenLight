@@ -95,26 +95,7 @@ namespace CityFlow.EditorTools
                     75f,
                     25f,
                     AllRoles()));
-            FeedEventRuleSO stabilityDeclinedRule = LoadOrCreate<FeedEventRuleSO>(
-                $"{RootFolder}/Rule_StabilityDeclined.asset",
-                asset => asset.Configure(
-                    CitizenFeedEventType.StabilityDeclined,
-                    0.85f,
-                    4f,
-                    40f,
-                    0f,
-                    AllRoles(),
-                    targetStabilityDeltaMultiplier: 350f));
-            FeedEventRuleSO stabilityImprovedRule = LoadOrCreate<FeedEventRuleSO>(
-                $"{RootFolder}/Rule_StabilityImproved.asset",
-                asset => asset.Configure(
-                    CitizenFeedEventType.StabilityImproved,
-                    0.85f,
-                    4f,
-                    45f,
-                    0f,
-                    AllRoles(),
-                    targetStabilityDeltaMultiplier: 350f));
+
             FeedEventRuleSO infrastructurePlacedRule = LoadOrCreate<FeedEventRuleSO>(
                 $"{RootFolder}/Rule_InfrastructurePlaced.asset",
                 asset => asset.Configure(

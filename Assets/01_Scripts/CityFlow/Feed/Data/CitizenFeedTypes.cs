@@ -7,8 +7,7 @@ namespace CityFlow.Feed
         SignalChanged,
         CongestionSlowed,
         CongestionSustained,
-        StabilityDeclined,
-        StabilityImproved,
+
         InfrastructurePlaced,
         InfrastructureRemoved,
         NotableArrival,
