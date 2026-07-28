@@ -1,3 +1,4 @@
+using CityFlow.Bootstrap;
 using CityFlow.Content.Transit;
 using CityFlow.Contracts;
 using UnityEngine;
@@ -5,7 +6,9 @@ using UnityEngine;
 namespace CityFlow.UI.Controllers
 {
     [RequireComponent(typeof(BusRoute))]
-    public sealed class SchoolBusRouteView : MonoBehaviour
+    public sealed class SchoolBusRouteView :
+        MonoBehaviour,
+        ICityFlowServiceConsumer
     {
         [SerializeField]
         private BusRoute busRoute;
@@ -28,6 +31,12 @@ namespace CityFlow.UI.Controllers
         private Texture2D busTexture;
         private Sprite busSprite;
         private bool isSubscribed;
+        private CityFlowServices services;
+
+        public void Initialize(CityFlowServices cityFlowServices)
+        {
+            services = cityFlowServices;
+        }
 
         private void Awake()
         {
@@ -102,25 +111,43 @@ namespace CityFlow.UI.Controllers
                 return;
             }
 
-            Vector3 position;
-            if (useXYPlane)
+            IWorldCoordinateSpace coordinateSpace =
+                services?.WorldCoordinates;
+            if (coordinateSpace != null)
             {
-                position = GridUtil.GridToWorld(tile);
-                position.z = visualDepth;
+                busVisual.transform.position =
+                    coordinateSpace.GridToWorld(
+                        tile,
+                        Mathf.Abs(visualDepth));
+                busVisual.transform.rotation =
+                    coordinateSpace.CoordinateRotation;
+                busVisual.transform.localScale = new Vector3(
+                    visualSize.x,
+                    visualSize.y,
+                    1f);
             }
             else
             {
-                position = new Vector3(
-                    tile.x + 0.5f,
-                    Mathf.Abs(visualDepth),
-                    tile.y + 0.5f
-                );
+                Vector3 position;
+                if (useXYPlane)
+                {
+                    position = GridUtil.GridToWorld(tile);
+                    position.z = visualDepth;
+                }
+                else
+                {
+                    position = new Vector3(
+                        tile.x + 0.5f,
+                        Mathf.Abs(visualDepth),
+                        tile.y + 0.5f);
+                }
+
+                busVisual.transform.position = position;
+                busVisual.transform.localScale = useXYPlane
+                    ? new Vector3(visualSize.x, visualSize.y, 1f)
+                    : new Vector3(visualSize.x, 1f, visualSize.y);
             }
 
-            busVisual.transform.position = position;
-            busVisual.transform.localScale = useXYPlane
-                ? new Vector3(visualSize.x, visualSize.y, 1f)
-                : new Vector3(visualSize.x, 1f, visualSize.y);
             busVisual.SetActive(true);
         }
 

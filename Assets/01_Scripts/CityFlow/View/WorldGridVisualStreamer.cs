@@ -103,6 +103,12 @@ namespace CityFlow.View
         {
             if (target != null)
             {
+                if (cityView != null && cityView != target)
+                {
+                    cityView.CoordinateSpaceChanged -=
+                        OnCoordinateSpaceChanged;
+                }
+
                 cityView = target;
             }
             else if (cityView == null)
@@ -157,6 +163,8 @@ namespace CityFlow.View
             gridLineProperties.SetColor("_BaseColor", cityView.GridLineColor);
             gridLineProperties.SetColor("_Color", cityView.GridLineColor);
             BuildDecorationSources();
+            cityView.CoordinateSpaceChanged -= OnCoordinateSpaceChanged;
+            cityView.CoordinateSpaceChanged += OnCoordinateSpaceChanged;
             return true;
         }
 
@@ -329,8 +337,14 @@ namespace CityFlow.View
 
             if (cityView != null)
             {
+                cityView.CoordinateSpaceChanged -= OnCoordinateSpaceChanged;
                 cityView.SetBaseGridLinesVisible(true);
             }
+        }
+
+        private void OnCoordinateSpaceChanged()
+        {
+            visualsDirty = true;
         }
 
         private void AddChunkMatrices(

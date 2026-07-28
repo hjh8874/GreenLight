@@ -172,20 +172,37 @@ namespace CityFlow.UI.Controllers
             float dynamicPeak = peakScale * (1f + (magnitude - 1f) * 0.1f);
 
             // 타일 좌표 → 월드 좌표 변환 (XY / XZ 분기)
-            Vector3 startPos = GetWorldPosition(e.Tile);
+            IWorldCoordinateSpace coordinateSpace =
+                _services?.WorldCoordinates;
+            Vector3 startPos = GetWorldPosition(e.Tile, coordinateSpace);
             tmp.transform.position = startPos;
 
             // 카메라를 향하도록 빌보드 회전 적용
-            ApplyBillboardRotation(tmp.transform);
+            ApplyBillboardRotation(tmp.transform, coordinateSpace);
 
             tmp.transform.localScale = Vector3.one * initialScale;
             tmp.gameObject.SetActive(true);
 
-            StartCoroutine(FloatAndFadeCoroutine(tmp, startPos, dynamicPeak));
+            StartCoroutine(FloatAndFadeCoroutine(
+                tmp,
+                startPos,
+                dynamicPeak,
+                coordinateSpace));
         }
 
-        private Vector3 GetWorldPosition(Vector2Int tile)
+        private Vector3 GetWorldPosition(
+            Vector2Int tile,
+            IWorldCoordinateSpace coordinateSpace)
         {
+            if (coordinateSpace != null)
+            {
+                float surfaceOffset = coordinateSpace.Plane ==
+                    WorldCoordinatePlane.XY
+                    ? 0.1f
+                    : 0.5f;
+                return coordinateSpace.GridToWorld(tile, surfaceOffset);
+            }
+
             if (useXYPlane)
             {
                 // 2D (XY 평면): GridUtil.GridToWorld 사용
@@ -200,10 +217,21 @@ namespace CityFlow.UI.Controllers
             }
         }
 
-        private void ApplyBillboardRotation(Transform target)
+        private void ApplyBillboardRotation(
+            Transform target,
+            IWorldCoordinateSpace coordinateSpace)
         {
             Camera cam = Camera.main;
             if (cam == null) return;
+
+            if (coordinateSpace != null)
+            {
+                target.rotation = coordinateSpace.Plane ==
+                    WorldCoordinatePlane.XY
+                    ? coordinateSpace.CoordinateRotation
+                    : cam.transform.rotation;
+                return;
+            }
 
             if (useXYPlane)
             {
@@ -217,11 +245,16 @@ namespace CityFlow.UI.Controllers
             }
         }
 
-        private IEnumerator FloatAndFadeCoroutine(TextMeshPro tmp, Vector3 startPos, float dynamicPeak)
+        private IEnumerator FloatAndFadeCoroutine(
+            TextMeshPro tmp,
+            Vector3 startPos,
+            float dynamicPeak,
+            IWorldCoordinateSpace coordinateSpace)
         {
             float elapsed = 0f;
             float duration = Mathf.Max(0.01f, floatDuration);
             Color baseColor = waveTextColor;
+            Vector3 floatDirection = GetFloatDirection(coordinateSpace);
 
             while (elapsed < duration)
             {
@@ -230,7 +263,8 @@ namespace CityFlow.UI.Controllers
 
                 // 위치: 위로 떠오르기
                 float yOffset = floatHeight * EaseOutQuad(t);
-                tmp.transform.position = startPos + new Vector3(0f, yOffset, 0f);
+                tmp.transform.position =
+                    startPos + floatDirection * yOffset;
 
                 // 스케일: 연출 강도(magnitude)에 비례하여 빠르게 커졌다가 안정
                 float scaleT = t < 0.3f
@@ -244,12 +278,25 @@ namespace CityFlow.UI.Controllers
                 tmp.color = baseColor;
 
                 // 빌보드 유지
-                ApplyBillboardRotation(tmp.transform);
+                ApplyBillboardRotation(tmp.transform, coordinateSpace);
 
                 yield return null;
             }
 
             ReturnToPool(tmp);
+        }
+
+        private Vector3 GetFloatDirection(
+            IWorldCoordinateSpace coordinateSpace)
+        {
+            if (coordinateSpace == null)
+            {
+                return Vector3.up;
+            }
+
+            return coordinateSpace.Plane == WorldCoordinatePlane.XY
+                ? coordinateSpace.GridYAxis
+                : coordinateSpace.GroundNormal;
         }
 
         private static float EaseOutQuad(float t)

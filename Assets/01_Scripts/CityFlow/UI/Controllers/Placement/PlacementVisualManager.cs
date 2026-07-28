@@ -149,14 +149,39 @@ namespace CityFlow.UI.Controllers.Placement
             UpdateGhostVolumeScale(size);
         }
 
-        public void SyncGhostPosition(Vector3 position, float angle, bool useXYPlane)
+        public void SyncGhostPosition(
+            Vector3 position,
+            float angle,
+            bool useXYPlane,
+            IWorldCoordinateSpace coordinateSpace = null)
         {
             if (_ghostRenderer == null) return;
             _ghostRenderer.transform.position = position;
 
+            if (coordinateSpace != null)
+            {
+                _ghostRenderer.transform.rotation =
+                    coordinateSpace.CoordinateRotation;
+            }
+
             if (_ghostVolumeObj != null)
             {
-                if (useXYPlane)
+                if (coordinateSpace != null)
+                {
+                    Quaternion surfaceRotation = Quaternion.LookRotation(
+                        coordinateSpace.GridYAxis,
+                        coordinateSpace.GroundNormal);
+                    _ghostVolumeObj.transform.position =
+                        position +
+                        coordinateSpace.GroundNormal *
+                        (_ghostVolumeHeight * 0.5f);
+                    _ghostVolumeObj.transform.rotation =
+                        Quaternion.AngleAxis(
+                            angle,
+                            coordinateSpace.GroundNormal) *
+                        surfaceRotation;
+                }
+                else if (useXYPlane)
                 {
                     _ghostVolumeObj.transform.position = new Vector3(
                         position.x, position.y, position.z - _ghostVolumeHeight * 0.5f);
@@ -240,7 +265,12 @@ namespace CityFlow.UI.Controllers.Placement
 
             if (_benefitRenderer != null)
             {
-                _benefitRenderer.ShowHighlights(_areaTileBuffer, _benefitTileBuffer, useXYPlane, isHospital);
+                _benefitRenderer.ShowHighlights(
+                    _areaTileBuffer,
+                    _benefitTileBuffer,
+                    useXYPlane,
+                    isHospital,
+                    services?.WorldCoordinates);
             }
         }
 

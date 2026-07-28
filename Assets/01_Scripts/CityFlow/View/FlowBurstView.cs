@@ -115,10 +115,21 @@ namespace CityFlow.View
             instance.TargetVehicle = null;
             instance.Marker.position = cityView != null
                 ? cityView.GetFlowBurstAnchor(e.Tile, out instance.TargetVehicle)
-                : GridUtil.GridToWorld(e.Tile);
+                : GetFallbackAnchor(e.Tile);
             instance.Marker.localScale = instance.BaseScale * 0.15f;
             instance.Marker.gameObject.SetActive(true);
             instance.HideAtTime = Time.time + Mathf.Max(0.01f, visibleSeconds);
+        }
+
+        private Vector3 GetFallbackAnchor(Vector2Int tile)
+        {
+            IWorldCoordinateSpace coordinateSpace =
+                services?.WorldCoordinates;
+            return coordinateSpace != null
+                ? coordinateSpace.GridToWorld(
+                    tile,
+                    coordinateSpace.TileSize * 0.35f)
+                : GridUtil.GridToWorld(tile);
         }
 
         private void EnsureBurstMarker()

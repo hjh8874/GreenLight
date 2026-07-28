@@ -57,7 +57,12 @@ namespace CityFlow.UI.Controllers
             _highlightSprite.hideFlags = HideFlags.HideAndDontSave;
         }
 
-        public void ShowHighlights(IReadOnlyList<Vector2Int> areaCoords, IReadOnlyList<Vector2Int> houseCoords, bool useXYPlane = false, bool isHospital = false)
+        public void ShowHighlights(
+            IReadOnlyList<Vector2Int> areaCoords,
+            IReadOnlyList<Vector2Int> houseCoords,
+            bool useXYPlane = false,
+            bool isHospital = false,
+            IWorldCoordinateSpace coordinateSpace = null)
         {
             if (_highlightSprite == null) InitializeSprite();
 
@@ -76,13 +81,25 @@ namespace CityFlow.UI.Controllers
             // 1. 넓은 반경 영역 그리기 (바닥에 더 가깝게)
             for (int i = 0; i < areaCoords.Count; i++)
             {
-                SetupTile(_pool[poolIndex++], areaCoords[i], areaColor, useXYPlane, yOffset - 0.02f);
+                SetupTile(
+                    _pool[poolIndex++],
+                    areaCoords[i],
+                    areaColor,
+                    useXYPlane,
+                    yOffset - 0.02f,
+                    coordinateSpace);
             }
 
             // 2. 집 타일 진하게 그리기 (기존 높이 유지)
             for (int i = 0; i < houseCoords.Count; i++)
             {
-                SetupTile(_pool[poolIndex++], houseCoords[i], houseColor, useXYPlane, yOffset);
+                SetupTile(
+                    _pool[poolIndex++],
+                    houseCoords[i],
+                    houseColor,
+                    useXYPlane,
+                    yOffset,
+                    coordinateSpace);
             }
 
             // 나머지 비활성화
@@ -95,16 +112,36 @@ namespace CityFlow.UI.Controllers
             }
         }
 
-        private void SetupTile(GameObject tileGo, Vector2Int coord, Color color, bool useXYPlane, float yOff)
+        private void SetupTile(
+            GameObject tileGo,
+            Vector2Int coord,
+            Color color,
+            bool useXYPlane,
+            float yOff,
+            IWorldCoordinateSpace coordinateSpace)
         {
-            Vector3 pos = useXYPlane
-                ? new Vector3(coord.x + 0.5f, coord.y + 0.5f, -0.06f - yOff)
-                : new Vector3(coord.x, yOff, coord.y);
+            Vector3 pos;
+            Quaternion rotation;
+            if (coordinateSpace != null)
+            {
+                pos = coordinateSpace.GridToWorld(coord, 0.06f + yOff);
+                rotation = coordinateSpace.CoordinateRotation;
+            }
+            else
+            {
+                pos = useXYPlane
+                    ? new Vector3(
+                        coord.x + 0.5f,
+                        coord.y + 0.5f,
+                        -0.06f - yOff)
+                    : new Vector3(coord.x, yOff, coord.y);
+                rotation = useXYPlane
+                    ? Quaternion.identity
+                    : Quaternion.Euler(90f, 0f, 0f);
+            }
 
             tileGo.transform.position = pos;
-            tileGo.transform.rotation = useXYPlane
-                ? Quaternion.identity
-                : Quaternion.Euler(90f, 0f, 0f);
+            tileGo.transform.rotation = rotation;
             tileGo.SetActive(true);
 
             if (tileGo.TryGetComponent<SpriteRenderer>(out var renderer))
