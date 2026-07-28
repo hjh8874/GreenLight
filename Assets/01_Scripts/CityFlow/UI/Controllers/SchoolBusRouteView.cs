@@ -126,30 +126,26 @@ namespace CityFlow.UI.Controllers
                     visualSize.y,
                     1f);
             }
-            else if (useXYPlane)
-            {
-                Vector3 position = GridUtil.GridToWorld(tile);
-                position.z = visualDepth;
-                busVisual.transform.position = position;
-                busVisual.transform.rotation = Quaternion.identity;
-                busVisual.transform.localScale = new Vector3(
-                    visualSize.x,
-                    visualSize.y,
-                    1f);
-            }
             else
             {
-                busVisual.transform.position = new Vector3(
-                    tile.x + 0.5f,
-                    Mathf.Abs(visualDepth),
-                    tile.y + 0.5f
-                );
-                busVisual.transform.rotation =
-                    Quaternion.Euler(90f, 0f, 0f);
-                busVisual.transform.localScale = new Vector3(
-                    visualSize.x,
-                    visualSize.y,
-                    1f);
+                Vector3 position;
+                if (useXYPlane)
+                {
+                    position = GridUtil.GridToWorld(tile);
+                    position.z = visualDepth;
+                }
+                else
+                {
+                    position = new Vector3(
+                        tile.x + 0.5f,
+                        Mathf.Abs(visualDepth),
+                        tile.y + 0.5f);
+                }
+
+                busVisual.transform.position = position;
+                busVisual.transform.localScale = useXYPlane
+                    ? new Vector3(visualSize.x, visualSize.y, 1f)
+                    : new Vector3(visualSize.x, 1f, visualSize.y);
             }
 
             busVisual.SetActive(true);
