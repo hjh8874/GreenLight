@@ -14,8 +14,6 @@ namespace CityFlow.EditorTools
         private const string TargetCanvasName = "UI_MainCanvas";
         private const string ContentRootName = "FloatingWindowContentRoot";
         private const string FeedRootName = "GreenSNSFeedDock";
-        private const string KoreanFontPath = "Assets/03_Art/Fonts/NanumGothic SDF.asset";
-
         private static TMP_FontAsset uiFont;
 
         [MenuItem("Tools/GreenLight/UI/Bake Green SNS Feed")]
@@ -624,14 +622,15 @@ namespace CityFlow.EditorTools
 
         private static TMP_FontAsset LoadRequiredUiFont()
         {
-            TMP_FontAsset font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(KoreanFontPath);
+            TMP_FontAsset font = ExternalKoreanFontAsset.LoadConfigured();
             if (font != null)
             {
                 return font;
             }
 
             Debug.LogError(
-                $"[GreenFeedUiBaker] Required font is missing: '{KoreanFontPath}'. " +
+                $"[GreenFeedUiBaker] Required font is missing or invalid: " +
+                $"'{ExternalKoreanFontAsset.FontAssetPath}'. " +
                 "Bake was cancelled to prevent a fallback font reference.");
             return null;
         }

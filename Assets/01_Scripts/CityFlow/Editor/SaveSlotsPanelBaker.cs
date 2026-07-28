@@ -17,8 +17,6 @@ namespace CityFlow.EditorTools
         private const string OpenButtonName = "OpenSaveSlotsButton";
         private const string LoadButtonName = "OpenLoadSlotsButton";
         private const string DeleteButtonName = "DeleteSaveButton";
-        private const string FontPath = "Assets/99_Download/Fonts/NanumGothic SDF.asset";
-
         private static TMP_FontAsset uiFont;
 
         [MenuItem("Tools/GreenLight/UI/Bake Save Slots Panel")]
@@ -63,12 +61,13 @@ namespace CityFlow.EditorTools
 
         private static void BakeIntoScene(Scene scene)
         {
-            uiFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+            uiFont = ExternalKoreanFontAsset.LoadConfigured();
 
             if (uiFont == null)
             {
                 Debug.LogError(
-                    $"[SaveSlotsPanelBaker] NanumGothic SDF.asset was not found at '{FontPath}'. " +
+                    $"[SaveSlotsPanelBaker] NanumGothic SDF.asset was not found or invalid at " +
+                    $"'{ExternalKoreanFontAsset.FontAssetPath}'. " +
                     "Install the external font assets before baking the save slot UI.");
                 return;
             }
