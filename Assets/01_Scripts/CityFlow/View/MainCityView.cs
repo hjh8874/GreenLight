@@ -1073,6 +1073,12 @@ namespace CityFlow.View
                 return;
             }
 
+            if (type == TileType.SpecialBuilding)
+            {
+                RemoveTileVisual(tile);
+                return;
+            }
+
             if (!tileVisuals.TryGetValue(tile, out TileVisual visual))
             {
                 visual = CreateTileVisual(tile, type);

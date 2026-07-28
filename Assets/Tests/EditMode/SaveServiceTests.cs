@@ -219,6 +219,122 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void Save_RoundTripsSpecialBuildingIdentity()
+        {
+            var repository = new JsonSaveRepository(savePath, backupPath);
+            var buildings = new FakeSpecialBuildings
+            {
+                Current = new SpecialBuildingSaveData
+                {
+                    Buildings = new[]
+                    {
+                        new SpecialBuildingInstanceSaveData
+                        {
+                            BuildingId = "cinema",
+                            X = 4,
+                            Y = 7,
+                            Direction = PlacementDirection.East
+                        }
+                    }
+                }
+            };
+            var service = new SaveService(
+                new FakeSim(new List<string>()),
+                repository,
+                new FakeClock());
+            service.RegisterSpecialBuildingSaveSource(buildings);
+
+            Assert.IsTrue(service.Save());
+            Assert.IsTrue(repository.TryLoad(out GameSaveData loaded));
+            Assert.AreEqual(1, loaded.SpecialBuildings.Buildings.Length);
+            Assert.AreEqual(
+                "cinema",
+                loaded.SpecialBuildings.Buildings[0].BuildingId);
+            Assert.AreEqual(
+                PlacementDirection.East,
+                loaded.SpecialBuildings.Buildings[0].Direction);
+        }
+
+        [Test]
+        public void RegisterSpecialBuildingSaveSource_AfterLoad_RestoresRetainedState()
+        {
+            var repository = new JsonSaveRepository(savePath, backupPath);
+            var service = new SaveService(
+                new FakeSim(new List<string>()),
+                repository,
+                new FakeClock());
+
+            Assert.IsTrue(repository.TrySave(new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                Simulation = new SimSaveData(),
+                SpecialBuildings = new SpecialBuildingSaveData
+                {
+                    Buildings = new[]
+                    {
+                        new SpecialBuildingInstanceSaveData
+                        {
+                            BuildingId = "mall",
+                            X = 2,
+                            Y = 3
+                        }
+                    }
+                }
+            }));
+            Assert.IsTrue(service.TryLoadAndRestore());
+
+            var buildings = new FakeSpecialBuildings();
+            service.RegisterSpecialBuildingSaveSource(buildings);
+
+            Assert.AreEqual(1, buildings.Current.Buildings.Length);
+            Assert.AreEqual(
+                "mall",
+                buildings.Current.Buildings[0].BuildingId);
+        }
+
+        [Test]
+        public void Save_RoundTripsSpecialBuildingVisitStatistics()
+        {
+            var repository = new JsonSaveRepository(savePath, backupPath);
+            var visits = new FakeSpecialBuildingVisits
+            {
+                Current = new SpecialBuildingVisitSaveData
+                {
+                    HasState = true,
+                    LastProcessedTotalDay = 42L,
+                    Statistics = new[]
+                    {
+                        new SpecialBuildingVisitStatisticsSaveData
+                        {
+                            BuildingId = "cinema",
+                            X = 4,
+                            Y = 7,
+                            Day = 42L,
+                            PlannedToday = 3,
+                            TotalPlannedVisits = 18
+                        }
+                    }
+                }
+            };
+            var service = new SaveService(
+                new FakeSim(new List<string>()),
+                repository,
+                new FakeClock());
+            service.RegisterSpecialBuildingVisitSaveSource(visits);
+
+            Assert.IsTrue(service.Save());
+            Assert.IsTrue(repository.TryLoad(out GameSaveData loaded));
+            Assert.IsTrue(loaded.SpecialBuildingVisits.HasState);
+            Assert.AreEqual(
+                42L,
+                loaded.SpecialBuildingVisits.LastProcessedTotalDay);
+            Assert.AreEqual(
+                18,
+                loaded.SpecialBuildingVisits.Statistics[0]
+                    .TotalPlannedVisits);
+        }
+
+        [Test]
         public void Repository_TrySaveAtomically_PreservesPreviousPrimaryAsBackup()
         {
             var repository =
@@ -697,6 +813,38 @@ namespace CityFlow.Sim.Tests
 
             public void RestoreSnapshot(
                 TerrainDecorationSaveData snapshot)
+            {
+                Current = snapshot;
+            }
+        }
+
+        sealed class FakeSpecialBuildings :
+            ISpecialBuildingSaveSource
+        {
+            public SpecialBuildingSaveData Current =
+                new SpecialBuildingSaveData();
+
+            public SpecialBuildingSaveData CreateSnapshot() =>
+                Current;
+
+            public void RestoreSnapshot(
+                SpecialBuildingSaveData snapshot)
+            {
+                Current = snapshot;
+            }
+        }
+
+        sealed class FakeSpecialBuildingVisits :
+            ISpecialBuildingVisitSaveSource
+        {
+            public SpecialBuildingVisitSaveData Current =
+                new SpecialBuildingVisitSaveData();
+
+            public SpecialBuildingVisitSaveData CreateSnapshot() =>
+                Current;
+
+            public void RestoreSnapshot(
+                SpecialBuildingVisitSaveData snapshot)
             {
                 Current = snapshot;
             }

@@ -20,8 +20,15 @@ namespace CityFlow.UI
 
         private PlacementController _placementController;
         private TooltipController _tooltipController;
+        private TextMeshProUGUI _buyText;
+        private string _defaultBuyText;
+        private SpecialBuildingBuildOption _specialBuilding;
+        private bool _usesSpecialBuilding;
 
         public TileDataSO TileData => tileData;
+        public string SpecialBuildingId => _usesSpecialBuilding
+            ? _specialBuilding.BuildingId
+            : string.Empty;
 
         public void Initialize(PlacementController placement, TooltipController tooltip)
         {
@@ -30,19 +37,7 @@ namespace CityFlow.UI
 
             ResolveReferences();
 
-            // UI 초기화
-            if (tileData != null)
-            {
-                if (iconImage != null && tileData.BuildingIcon != null)
-                {
-                    iconImage.sprite = tileData.BuildingIcon;
-                }
-                
-                if (costText != null)
-                {
-                    costText.text = tileData.BuildCost.ToString();
-                }
-            }
+            ApplyPresentation();
 
             if (btnBuy != null)
             {
@@ -72,6 +67,33 @@ namespace CityFlow.UI
             }
         }
 
+        public void ConfigureSpecialBuilding(
+            SpecialBuildingBuildOption option,
+            PlacementController placement,
+            TooltipController tooltip)
+        {
+            _specialBuilding = option;
+            _usesSpecialBuilding = true;
+            tileData = null;
+            Initialize(placement, tooltip);
+        }
+
+        public void RefreshSpecialBuilding(
+            SpecialBuildingBuildOption option)
+        {
+            if (!_usesSpecialBuilding ||
+                !string.Equals(
+                    _specialBuilding.BuildingId,
+                    option.BuildingId,
+                    System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _specialBuilding = option;
+            ApplyPresentation();
+        }
+
         private void ResolveReferences()
         {
             Transform iconTransform = transform.Find("Icon");
@@ -91,6 +113,75 @@ namespace CityFlow.UI
             if (buyTransform != null)
             {
                 btnBuy = buyTransform.GetComponent<Button>();
+                _buyText = buyTransform.GetComponentInChildren<
+                    TextMeshProUGUI>(true);
+                if (_buyText != null && _defaultBuyText == null)
+                {
+                    _defaultBuyText = _buyText.text;
+                }
+            }
+        }
+
+        private void ApplyPresentation()
+        {
+            ResolveReferences();
+
+            if (_usesSpecialBuilding)
+            {
+                if (iconImage != null)
+                {
+                    iconImage.sprite = _specialBuilding.Icon;
+                    iconImage.color = _specialBuilding.Icon != null
+                        ? Color.white
+                        : _specialBuilding.FallbackColor;
+                }
+
+                if (costText != null)
+                {
+                    costText.text = _specialBuilding.IsUnlocked
+                        ? _specialBuilding.BuildCost.ToString()
+                        : "잠김";
+                }
+
+                if (btnBuy != null)
+                {
+                    btnBuy.interactable = _specialBuilding.IsUnlocked;
+                }
+
+                if (_buyText != null)
+                {
+                    _buyText.text = _specialBuilding.IsUnlocked
+                        ? (_defaultBuyText ?? "건설")
+                        : "연구 필요";
+                }
+
+                return;
+            }
+
+            if (tileData == null)
+            {
+                return;
+            }
+
+            if (iconImage != null)
+            {
+                iconImage.sprite = tileData.BuildingIcon;
+                iconImage.color = Color.white;
+            }
+
+            if (costText != null)
+            {
+                costText.text = tileData.BuildCost.ToString();
+            }
+
+            if (btnBuy != null)
+            {
+                btnBuy.interactable = true;
+            }
+
+            if (_buyText != null && _defaultBuyText != null)
+            {
+                _buyText.text = _defaultBuyText;
             }
         }
 
@@ -100,7 +191,11 @@ namespace CityFlow.UI
         {
             // Tooltip 표시 (DOTween 애니메이션은 btnBuy의 EventTrigger로 이동)
 
-            if (_tooltipController != null && tileData != null)
+            if (_tooltipController != null && _usesSpecialBuilding)
+            {
+                _tooltipController.ShowTooltip(_specialBuilding);
+            }
+            else if (_tooltipController != null && tileData != null)
             {
                 _tooltipController.ShowTooltip(tileData);
             }
@@ -141,7 +236,24 @@ namespace CityFlow.UI
                 btnBuy.transform.DOPunchScale(new Vector3(-0.2f, -0.2f, 0f), 0.2f, 5, 1f);
             }
 
-            if (_placementController != null && tileData != null)
+            if (_placementController != null && _usesSpecialBuilding)
+            {
+                if (!_specialBuilding.IsUnlocked)
+                {
+                    Debug.LogWarning(
+                        $"[BuildSlot] {_specialBuilding.DisplayName} requires " +
+                        $"research {_specialBuilding.RequiredResearchId}.",
+                        this);
+                    return;
+                }
+
+                _placementController.SetSpecialBuilding(
+                    _specialBuilding.BuildingId);
+                Debug.Log(
+                    $"[BuildSlot] {_specialBuilding.DisplayName} 건설 모드 활성화",
+                    this);
+            }
+            else if (_placementController != null && tileData != null)
             {
                 _placementController.SetBuildType(tileData.Category);
                 Debug.Log($"[BuildSlot] {tileData.BuildingName} 건설 모드 활성화");

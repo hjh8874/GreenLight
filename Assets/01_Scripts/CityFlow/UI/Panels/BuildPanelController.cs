@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using CityFlow.Bootstrap;
 using UnityEngine;
 using UnityEngine.UI;
 using CityFlow.Contracts;
@@ -6,7 +8,9 @@ using CityFlow.UI.Data;
 using DG.Tweening;
 namespace CityFlow.UI
 {
-    public class BuildPanelController : MonoBehaviour
+    public class BuildPanelController :
+        MonoBehaviour,
+        ICityFlowServiceConsumer
     {
         [Header("System References")]
         [Tooltip("씬에 배치된 PlacementManager (PlacementController) 오브젝트 연결")]
@@ -31,6 +35,32 @@ namespace CityFlow.UI
         [SerializeField] private InfrastructureDataSO busStopData;
 
         private bool _isBound;
+        private readonly Dictionary<string, BuildSlotController>
+            _specialBuildingSlots = new();
+        private CityFlowServices _services;
+        private ISpecialBuildingService _specialBuildings;
+        private bool _started;
+
+        public void Initialize(CityFlowServices services)
+        {
+            if (_services != null)
+            {
+                _services.SpecialBuildingsRegistered -=
+                    OnSpecialBuildingsRegistered;
+            }
+
+            _services = services;
+            if (_services == null)
+            {
+                BindSpecialBuildings(null);
+                return;
+            }
+
+            _services.SpecialBuildingsRegistered +=
+                OnSpecialBuildingsRegistered;
+            BindSpecialBuildings(_services.SpecialBuildings);
+            RefreshSpecialBuildingSlots();
+        }
         // [통합 테스트 호환용] 
         // 팀원이 추가한 Configure 함수를 유지하여 테스트 씬(Runtime) 에러를 방지합니다.
         public void Configure(
@@ -62,6 +92,7 @@ namespace CityFlow.UI
         }
         private void Start()
         {
+            _started = true;
             LocalizeCategoryTabs();
 
             // DOTween 등장 팝업 슬라이드 인 애니메이션
@@ -110,6 +141,163 @@ namespace CityFlow.UI
             }
 
             BindButtons();
+            RefreshSpecialBuildingSlots();
+        }
+
+        private void OnDestroy()
+        {
+            if (_services != null)
+            {
+                _services.SpecialBuildingsRegistered -=
+                    OnSpecialBuildingsRegistered;
+            }
+
+            BindSpecialBuildings(null);
+        }
+
+        private void OnSpecialBuildingsRegistered(
+            ISpecialBuildingService service)
+        {
+            BindSpecialBuildings(service);
+            RefreshSpecialBuildingSlots();
+        }
+
+        private void BindSpecialBuildings(
+            ISpecialBuildingService service)
+        {
+            if (ReferenceEquals(_specialBuildings, service))
+            {
+                return;
+            }
+
+            if (_specialBuildings != null)
+            {
+                _specialBuildings.BuildOptionsChanged -=
+                    RefreshSpecialBuildingSlots;
+            }
+
+            _specialBuildings = service;
+            if (_specialBuildings != null)
+            {
+                _specialBuildings.BuildOptionsChanged +=
+                    RefreshSpecialBuildingSlots;
+            }
+        }
+
+        private void RefreshSpecialBuildingSlots()
+        {
+            if (!_started || placementController == null ||
+                _specialBuildings == null || categoryPages == null)
+            {
+                return;
+            }
+
+            BuildSlotController template = FindBuildSlotTemplate();
+            if (template == null)
+            {
+                Debug.LogWarning(
+                    "[BuildPanelController] A build slot template is required " +
+                    "for special building slots.",
+                    this);
+                return;
+            }
+
+            SpecialBuildingBuildOption[] options =
+                _specialBuildings.CreateBuildOptionSnapshot();
+            var activeIds = new HashSet<string>();
+
+            for (int index = 0; index < options.Length; index++)
+            {
+                SpecialBuildingBuildOption option = options[index];
+                activeIds.Add(option.BuildingId);
+
+                if (_specialBuildingSlots.TryGetValue(
+                        option.BuildingId,
+                        out BuildSlotController existing))
+                {
+                    existing.RefreshSpecialBuilding(option);
+                    continue;
+                }
+
+                Transform page = ResolveSpecialBuildingPage(
+                    option.MenuCategory);
+                if (page == null)
+                {
+                    continue;
+                }
+
+                BuildSlotController slot = Instantiate(template, page, false);
+                slot.name = $"SpecialBuilding_{option.BuildingId}_Slot";
+                slot.gameObject.SetActive(true);
+                slot.ConfigureSpecialBuilding(
+                    option,
+                    placementController,
+                    tooltipController);
+                _specialBuildingSlots.Add(option.BuildingId, slot);
+            }
+
+            var removedIds = new List<string>();
+            foreach (KeyValuePair<string, BuildSlotController> pair in
+                     _specialBuildingSlots)
+            {
+                if (activeIds.Contains(pair.Key))
+                {
+                    continue;
+                }
+
+                if (pair.Value != null)
+                {
+                    Destroy(pair.Value.gameObject);
+                }
+                removedIds.Add(pair.Key);
+            }
+
+            for (int index = 0; index < removedIds.Count; index++)
+            {
+                _specialBuildingSlots.Remove(removedIds[index]);
+            }
+        }
+
+        private BuildSlotController FindBuildSlotTemplate()
+        {
+            if (buildSlots != null)
+            {
+                for (int index = 0; index < buildSlots.Length; index++)
+                {
+                    if (buildSlots[index] != null &&
+                        string.IsNullOrEmpty(
+                            buildSlots[index].SpecialBuildingId))
+                    {
+                        return buildSlots[index];
+                    }
+                }
+            }
+
+            BuildSlotController[] candidates =
+                GetComponentsInChildren<BuildSlotController>(true);
+            for (int index = 0; index < candidates.Length; index++)
+            {
+                if (candidates[index] != null &&
+                    string.IsNullOrEmpty(
+                        candidates[index].SpecialBuildingId))
+                {
+                    return candidates[index];
+                }
+            }
+
+            return null;
+        }
+
+        private Transform ResolveSpecialBuildingPage(
+            SpecialBuildingMenuCategory category)
+        {
+            int index = category == SpecialBuildingMenuCategory.Public
+                ? 3
+                : 2;
+            return index >= 0 && index < categoryPages.Length &&
+                   categoryPages[index] != null
+                ? categoryPages[index].transform
+                : null;
         }
 
         private void EnsurePriorityRoadSlot()

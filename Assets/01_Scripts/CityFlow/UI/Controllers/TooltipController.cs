@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using UnityEngine.InputSystem;
 using DG.Tweening;
 using CityFlow.Configs;
+using CityFlow.Contracts;
 using CityFlow.UI.Data;
 
 namespace CityFlow.UI
@@ -86,6 +87,40 @@ namespace CityFlow.UI
             if (Mouse.current != null)
             {
                 transform.position = Mouse.current.position.ReadValue() + offset;
+            }
+
+            transform.DOKill();
+            transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutBack);
+        }
+
+        public void ShowTooltip(SpecialBuildingBuildOption option)
+        {
+            if (string.IsNullOrEmpty(option.BuildingId))
+            {
+                return;
+            }
+
+            gameObject.SetActive(true);
+
+            if (txtName != null) txtName.text = option.DisplayName;
+            if (txtCategory != null)
+                txtCategory.text = $"분류: {option.CategoryName}";
+            if (txtCost != null)
+                txtCost.text = $"비용: {option.BuildCost:N0} 코인";
+            if (txtIncome != null)
+                txtIncome.text =
+                    $"방문: {option.VisitsPerPeriod}회 / {option.PeriodDays}일";
+            if (txtEffect != null)
+                txtEffect.text = option.IsUnlocked
+                    ? "상태: 건설 가능"
+                    : "상태: 연구 필요";
+            if (txtDescription != null)
+                txtDescription.text = option.Description;
+
+            if (Mouse.current != null)
+            {
+                transform.position =
+                    Mouse.current.position.ReadValue() + offset;
             }
 
             transform.DOKill();
