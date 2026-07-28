@@ -83,7 +83,17 @@ namespace CityFlow.EditorTools
         private static void ConfigureAfterDomainReload()
         {
             EditorApplication.delayCall -= ConfigureAfterDomainReload;
-            LoadConfigured();
+
+            try
+            {
+                LoadConfigured();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError(
+                    $"[ExternalKoreanFontAsset] Automatic configuration " +
+                    $"failed after domain reload: {exception.Message}");
+            }
         }
 
         private static void EnsureSourceFontReference(
