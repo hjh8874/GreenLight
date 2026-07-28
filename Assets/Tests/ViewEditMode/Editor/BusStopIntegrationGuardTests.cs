@@ -104,7 +104,7 @@ namespace Tests.EditMode
             {
                 GameObject integrationPrefab =
                     AssetDatabase.LoadAssetAtPath<GameObject>(
-                        "Assets/02_Prefabs/PR151_ContentFeaturePrototype.prefab");
+                        "Assets/02_Prefabs/Vehicles/CityBusContent.prefab");
                 Assert.That(integrationPrefab, Is.Not.Null);
                 integrationObject =
                     Object.Instantiate(integrationPrefab);
@@ -415,7 +415,7 @@ namespace Tests.EditMode
                 busObject.AddComponent<CityBusService>();
             BusDefinitionSO definition =
                 AssetDatabase.LoadAssetAtPath<BusDefinitionSO>(
-                    "Assets/05_ScriptableObjects/PR151_CityBusDefinition.asset");
+                    "Assets/05_ScriptableObjects/CityFlow/Transit/CityBusDefinition.asset");
             Assert.That(definition, Is.Not.Null);
 
             SetPrivateField(

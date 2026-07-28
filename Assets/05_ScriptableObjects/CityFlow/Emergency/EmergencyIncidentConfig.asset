@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: cf4a171b9d2da9d4182b63eac9373a49, type: 3}
-  m_Name: PR151_EmergencyIncidentConfig
+  m_Name: EmergencyIncidentConfig
   m_EditorClassIdentifier: CityFlow.Content::CityFlow.Content.EmergencyIncidentConfigSO
   minimumSpawnInterval: 5
   maximumSpawnInterval: 8

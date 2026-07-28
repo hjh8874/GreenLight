@@ -79,7 +79,7 @@ namespace CityFlow.Sim.Tests
         public void PrototypeAssets_AreReadyForSceneIntegration()
         {
             const string prefabPath =
-                "Assets/02_Prefabs/PR151_ContentFeaturePrototype.prefab";
+                "Assets/02_Prefabs/Vehicles/CityBusContent.prefab";
             const string scenePath =
                 "Assets/00_Scenes/Debug/PR151_ContentPrototype_cmt.unity";
 
@@ -92,14 +92,14 @@ namespace CityFlow.Sim.Tests
             BusDefinitionSO busConfig =
                 AssetDatabase.LoadAssetAtPath<
                     BusDefinitionSO>(
-                    "Assets/05_ScriptableObjects/PR151_CityBusDefinition.asset");
+                    "Assets/05_ScriptableObjects/CityFlow/Transit/CityBusDefinition.asset");
             Object busStopData =
                 AssetDatabase.LoadMainAssetAtPath(
                     "Assets/Resources/CityFlow/InfrastructureData/BusStopData.asset");
             EmergencyIncidentConfigSO emergencyConfig =
                 AssetDatabase.LoadAssetAtPath<
                     EmergencyIncidentConfigSO>(
-                    "Assets/05_ScriptableObjects/PR151_EmergencyIncidentConfig.asset");
+                    "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset");
 
             Assert.That(prefab, Is.Not.Null);
             Assert.That(scene, Is.Not.Null);
@@ -269,7 +269,7 @@ namespace CityFlow.Sim.Tests
         public void IntegrationPrefab_InitializesWithoutChangingExistingTiles()
         {
             const string prefabPath =
-                "Assets/02_Prefabs/PR151_ContentFeaturePrototype.prefab";
+                "Assets/02_Prefabs/Vehicles/CityBusContent.prefab";
             GameObject prefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
                     prefabPath);

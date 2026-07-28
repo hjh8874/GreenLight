@@ -7,7 +7,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: PR151_CityBus_URP
+  m_Name: CityBus_URP
   m_Shader: {fileID: 4800000, guid: 5ad214d544be4acaa0d9a64c835dd0f5, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0

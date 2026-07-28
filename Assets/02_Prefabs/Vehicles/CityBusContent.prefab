@@ -16,7 +16,7 @@ GameObject:
   - component: {fileID: 4742349870720195101}
   - component: {fileID: 1183233741817494639}
   m_Layer: 0
-  m_Name: PR151_ContentFeaturePrototype
+  m_Name: CityBusContent
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

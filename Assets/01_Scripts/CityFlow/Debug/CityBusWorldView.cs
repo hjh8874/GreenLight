@@ -142,7 +142,7 @@ namespace CityFlow.DebugTools
             GameObject instance = Instantiate(
                 busVisualPrefab,
                 cityView.transform);
-            instance.name = "PR151_CityBusVisual";
+            instance.name = "CityBusVisual";
             visual = instance.transform;
             visual.localScale = Vector3.one * visualScale;
             ApplyFeatureMaterial(instance);

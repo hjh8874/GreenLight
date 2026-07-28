@@ -111,7 +111,7 @@ namespace CityFlow.DebugTools
                 return;
             }
 
-            var root = new GameObject("PR151_CityBusStops");
+            var root = new GameObject("CityBusStops");
             markerRoot = root.transform;
             markerRoot.SetParent(cityView.transform, false);
         }

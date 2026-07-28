@@ -18,17 +18,17 @@ namespace CityFlow.EditorTools
         private const string TargetScene =
             "Assets/00_Scenes/Debug/PR151_ContentPrototype_cmt.unity";
         private const string PrefabPath =
-            "Assets/02_Prefabs/PR151_ContentFeaturePrototype.prefab";
+            "Assets/02_Prefabs/Vehicles/CityBusContent.prefab";
         private const string BusConfigPath =
-            "Assets/05_ScriptableObjects/PR151_CityBusDefinition.asset";
+            "Assets/05_ScriptableObjects/CityFlow/Transit/CityBusDefinition.asset";
         private const string EmergencyConfigPath =
-            "Assets/05_ScriptableObjects/PR151_EmergencyIncidentConfig.asset";
+            "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset";
         private const string FontPath =
             "Assets/03_Art/Fonts/NanumGothic SDF.asset";
         private const string BusVisualPrefabPath =
             "Assets/99_Download/SimpleTown/Prefabs/Vehicles/bus_blue.prefab";
         private const string BusMaterialPath =
-            "Assets/03_Art/Materials/PR151_CityBus_URP.mat";
+            "Assets/03_Art/Materials/Vehicles/CityBus_URP.mat";
 
         private static readonly Color PanelColor =
             new(0.028f, 0.045f, 0.041f, 0.985f);
@@ -48,7 +48,7 @@ namespace CityFlow.EditorTools
             new(0.16f, 0.32f, 0.26f, 0.85f);
 
         [MenuItem(
-            "Tools/GreenLight/Content/Build PR151 Prototype")]
+            "Tools/GreenLight/Content/Build City Bus Prototype")]
         public static void Build()
         {
             if (!AssetDatabase.LoadAssetAtPath<SceneAsset>(
@@ -227,7 +227,7 @@ namespace CityFlow.EditorTools
             {
                 material = new Material(shader)
                 {
-                    name = "PR151_CityBus_URP"
+                    name = "CityBus_URP"
                 };
                 AssetDatabase.CreateAsset(
                     material,
@@ -254,7 +254,7 @@ namespace CityFlow.EditorTools
             Material busMaterial)
         {
             var root =
-                new GameObject("PR151_ContentFeaturePrototype");
+                new GameObject("CityBusContent");
 
             try
             {
