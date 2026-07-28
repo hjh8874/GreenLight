@@ -89,6 +89,8 @@ namespace CityFlow.Content.Transit
 
         private bool isInitialized;
         private bool routeRequested;
+        private Vector2Int departureStop;
+        private bool hasDepartureStop;
         private Vector2Int forbiddenDepartureTile;
         private bool hasForbiddenDepartureTile;
 
@@ -261,6 +263,62 @@ namespace CityFlow.Content.Transit
             return configured;
         }
 
+        public bool ReconfigureLoopFromCurrentPosition(
+            Vector2Int currentPosition,
+            IReadOnlyList<Vector2Int> newStops)
+        {
+            Vector2Int preservedForbiddenTile =
+                forbiddenDepartureTile;
+            bool preservedForbidden =
+                hasForbiddenDepartureTile;
+
+            StopRoute();
+            stops.Clear();
+            stopAccessRoads.Clear();
+
+            if (newStops == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < newStops.Count; i++)
+            {
+                Vector2Int stop = newStops[i];
+
+                if (stops.Count > 0 &&
+                    stops[stops.Count - 1] == stop)
+                {
+                    continue;
+                }
+
+                stops.Add(stop);
+            }
+
+            if (stops.Count == 0)
+            {
+                return false;
+            }
+
+            loopRoute = true;
+            departureStop = currentPosition;
+            hasDepartureStop = true;
+            currentStopIndex = -1;
+            currentRoadPathIndex = 0;
+            CurrentTile = currentPosition;
+            State = BusRouteState.Idle;
+
+            if (avoidImmediateUTurn)
+            {
+                forbiddenDepartureTile =
+                    preservedForbiddenTile;
+                hasForbiddenDepartureTile =
+                    preservedForbidden;
+            }
+
+            TileChanged?.Invoke(CurrentTile);
+            return true;
+        }
+
         public bool StartRoute()
         {
             if (!isInitialized)
@@ -283,8 +341,12 @@ namespace CityFlow.Content.Transit
             }
 
             routeRequested = true;
-            currentStopIndex = 0;
-            CurrentTile = stops[0];
+
+            if (!hasDepartureStop)
+            {
+                currentStopIndex = 0;
+                CurrentTile = stops[0];
+            }
 
             TileChanged?.Invoke(CurrentTile);
 
@@ -300,6 +362,7 @@ namespace CityFlow.Content.Transit
 
             currentRoadPath.Clear();
             currentRoadPathIndex = 0;
+            hasDepartureStop = false;
             hasForbiddenDepartureTile = false;
 
             State = BusRouteState.Idle;
@@ -383,6 +446,7 @@ namespace CityFlow.Content.Transit
         private void ArriveAtStop(int stopIndex)
         {
             RememberArrivalApproach();
+            hasDepartureStop = false;
             currentStopIndex = stopIndex;
             CurrentTile = stops[currentStopIndex];
 
@@ -511,7 +575,7 @@ namespace CityFlow.Content.Transit
                 return false;
             }
 
-            Vector2Int startStop = stops[currentStopIndex];
+            Vector2Int startStop = GetCurrentStop();
             Vector2Int destinationStop = stops[nextStopIndex];
 
             if (!TryFindAccessRoad(startStop, out Vector2Int startRoad) ||
@@ -835,6 +899,11 @@ namespace CityFlow.Content.Transit
                 return -1;
             }
 
+            if (hasDepartureStop)
+            {
+                return 0;
+            }
+
             if (stops.Count == 1)
             {
                 return loopRoute ? 0 : -1;
@@ -854,6 +923,11 @@ namespace CityFlow.Content.Transit
 
         private Vector2Int GetCurrentStop()
         {
+            if (hasDepartureStop)
+            {
+                return departureStop;
+            }
+
             if (currentStopIndex < 0 ||
                 currentStopIndex >= stops.Count)
             {

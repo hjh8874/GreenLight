@@ -224,7 +224,7 @@ namespace CityFlow.Content
             }
         }
 
-        private void BuildRouteStopsFrom(
+        private bool BuildRouteStopsFrom(
             Vector2Int currentStop)
         {
             routeStops.Clear();
@@ -242,7 +242,10 @@ namespace CityFlow.Content
                 }
             }
 
-            routeStops.Add(currentStop);
+            if (currentIndex >= 0)
+            {
+                routeStops.Add(currentStop);
+            }
 
             for (int offset = 1; offset <= stops.Count; offset++)
             {
@@ -256,18 +259,27 @@ namespace CityFlow.Content
                     routeStops.Add(stop);
                 }
             }
+
+            return currentIndex >= 0;
         }
 
         private void RefreshRouteAtCurrentStop()
         {
             routeRefreshPending = false;
             Vector2Int currentStop = busRoute.CurrentStop;
-            BuildRouteStopsFrom(currentStop);
+            bool currentStopIsRegistered =
+                BuildRouteStopsFrom(currentStop);
+            bool routeConfigured =
+                currentStopIsRegistered
+                    ? busRoute.ReconfigureLoopAtCurrentStop(
+                        routeStops)
+                    : busRoute.ReconfigureLoopFromCurrentPosition(
+                        currentStop,
+                        routeStops);
 
             if (stopRegistry.BusStopCount < 1 ||
                 routeStops.Count < 1 ||
-                !busRoute.ReconfigureLoopAtCurrentStop(
-                    routeStops) ||
+                !routeConfigured ||
                 !busRoute.StartRoute())
             {
                 busRoute.StopRoute();

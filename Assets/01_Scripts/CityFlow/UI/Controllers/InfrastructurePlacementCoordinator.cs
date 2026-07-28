@@ -435,11 +435,28 @@ namespace CityFlow.UI.Controllers
             if (_facilityService == null || _trafficRuleService == null || _highwayService == null) return false;
 
             if (_busStopService != null &&
-                _busStopService.BusStopTiles.Contains(coord) &&
-                _busStopService.TryRemoveBusStop(coord))
+                _busStopService.BusStopTiles.Contains(coord))
             {
-                _busStopRegistry ??= FindFirstObjectByType<BusStopRegistry>();
-                _busStopRegistry?.RemoveBusStop(coord);
+                if (!TryResolveBusStopRegistry())
+                {
+                    Debug.LogError(
+                        "[InfrastructurePlacementCoordinator] " +
+                        $"Cannot remove bus stop at {coord} without an active BusStopRegistry.");
+                    return false;
+                }
+
+                if (!_busStopService.TryRemoveBusStop(coord))
+                {
+                    return false;
+                }
+
+                if (!_busStopRegistry.RemoveBusStop(coord))
+                {
+                    Debug.LogWarning(
+                        "[InfrastructurePlacementCoordinator] " +
+                        $"Bus stop at {coord} was removed from placement data but was missing from BusStopRegistry.");
+                }
+
                 ProcessRefundAndEvent(InfrastructureKind.BusStop, coord);
                 return true;
             }

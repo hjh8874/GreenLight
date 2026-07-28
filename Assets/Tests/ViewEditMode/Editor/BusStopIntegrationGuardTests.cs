@@ -1,12 +1,18 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
+using CityFlow.Bootstrap;
+using CityFlow.Content;
 using CityFlow.Content.Transit;
+using CityFlow.Contracts;
+using CityFlow.Sim;
 using CityFlow.UI;
 using CityFlow.UI.Controllers;
 using CityFlow.UI.Data;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
 namespace Tests.EditMode
@@ -157,6 +163,380 @@ namespace Tests.EditMode
             }
         }
 
+        [Test]
+        public void BusStopDemolition_IsBlockedWithoutRegistry()
+        {
+            GameObject coordinatorObject =
+                new("InfrastructurePlacementCoordinator");
+
+            try
+            {
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                Vector2Int road = new(2, 2);
+                Vector2Int stop = new(2, 3);
+                Assert.That(
+                    engine.Place(road, TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.TryPlaceBusStop(stop),
+                    Is.True);
+
+                InfrastructurePlacementCoordinator coordinator =
+                    coordinatorObject.AddComponent<
+                        InfrastructurePlacementCoordinator>();
+                coordinator.Initialize(
+                    new CityFlowServices(
+                        events,
+                        engine,
+                        engine));
+
+                LogAssert.Expect(
+                    LogType.Error,
+                    "[InfrastructurePlacementCoordinator] " +
+                    $"Cannot remove bus stop at {stop} without an active BusStopRegistry.");
+                Assert.That(
+                    coordinator.TryDemolishInfrastructureAt(stop),
+                    Is.False);
+                Assert.That(
+                    engine.BusStopTiles,
+                    Does.Contain(stop));
+            }
+            finally
+            {
+                Object.DestroyImmediate(coordinatorObject);
+            }
+        }
+
+        [Test]
+        public void BusStopDemolition_RemovesPlacementAndRegistryState()
+        {
+            GameObject registryObject =
+                new("BusStopRegistry");
+            GameObject coordinatorObject =
+                new("InfrastructurePlacementCoordinator");
+
+            try
+            {
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                Vector2Int road = new(2, 2);
+                Vector2Int stop = new(2, 3);
+                Assert.That(
+                    engine.Place(road, TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.TryPlaceBusStop(stop),
+                    Is.True);
+
+                BusStopRegistry registry =
+                    registryObject.AddComponent<BusStopRegistry>();
+                registry.Initialize(
+                    new CityFlowServices(
+                        events,
+                        engine,
+                        engine));
+                Assert.That(
+                    registry.ContainsBusStop(stop),
+                    Is.True);
+
+                InfrastructurePlacementCoordinator coordinator =
+                    coordinatorObject.AddComponent<
+                        InfrastructurePlacementCoordinator>();
+                coordinator.Initialize(
+                    new CityFlowServices(
+                        events,
+                        engine,
+                        engine));
+
+                Assert.That(
+                    coordinator.TryDemolishInfrastructureAt(stop),
+                    Is.True);
+                Assert.That(
+                    engine.BusStopTiles.Count,
+                    Is.Zero);
+                Assert.That(
+                    registry.ContainsBusStop(stop),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(coordinatorObject);
+                Object.DestroyImmediate(registryObject);
+            }
+        }
+
+        [Test]
+        public void CityBus_RemovedNextStop_IsOnlyUsedAsDepartureOnce()
+        {
+            GameObject busObject = new("CityBus");
+
+            try
+            {
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                PlaceBusLoop(engine);
+                (
+                    CityBusService service,
+                    BusRoute route,
+                    BusStopRegistry registry) =
+                    CreateBusService(
+                        busObject,
+                        events,
+                        engine);
+                List<Vector2Int> servedStops = new();
+                service.StopServed +=
+                    (tile, _, _) => servedStops.Add(tile);
+
+                Assert.That(service.StartService(), Is.True);
+                Vector2Int removedStop = route.NextStop;
+                Assert.That(
+                    registry.RemoveBusStop(removedStop),
+                    Is.True);
+
+                AdvanceToNextStop(route);
+                Assert.That(
+                    route.CurrentStop,
+                    Is.EqualTo(removedStop));
+                InvokePrivate(service, "Update");
+
+                Assert.That(
+                    route.State,
+                    Is.EqualTo(BusRouteState.Moving));
+                Assert.That(
+                    ContainsTile(route.Stops, removedStop),
+                    Is.False);
+                Assert.That(
+                    ContainsTile(
+                        service.RouteStops,
+                        removedStop),
+                    Is.False);
+
+                servedStops.Clear();
+                AdvanceRepeatedStops(
+                    service,
+                    route,
+                    arrivalCount: 6);
+
+                Assert.That(
+                    ContainsTile(
+                        servedStops,
+                        removedStop),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(busObject);
+            }
+        }
+
+        [Test]
+        public void CityBus_RemovedCurrentWaitingStop_IsNotServedAgain()
+        {
+            GameObject busObject = new("CityBus");
+
+            try
+            {
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                PlaceBusLoop(engine);
+                (
+                    CityBusService service,
+                    BusRoute route,
+                    BusStopRegistry registry) =
+                    CreateBusService(
+                        busObject,
+                        events,
+                        engine);
+                List<Vector2Int> servedStops = new();
+                service.StopServed +=
+                    (tile, _, _) => servedStops.Add(tile);
+
+                Assert.That(service.StartService(), Is.True);
+                AdvanceToNextStop(route);
+                Vector2Int removedStop = route.CurrentStop;
+                Assert.That(
+                    route.State,
+                    Is.EqualTo(BusRouteState.WaitingAtStop));
+                Assert.That(
+                    registry.RemoveBusStop(removedStop),
+                    Is.True);
+
+                InvokePrivate(service, "Update");
+
+                Assert.That(
+                    route.State,
+                    Is.EqualTo(BusRouteState.Moving));
+                Assert.That(
+                    ContainsTile(route.Stops, removedStop),
+                    Is.False);
+                Assert.That(
+                    ContainsTile(
+                        service.RouteStops,
+                        removedStop),
+                    Is.False);
+
+                servedStops.Clear();
+                AdvanceRepeatedStops(
+                    service,
+                    route,
+                    arrivalCount: 6);
+
+                Assert.That(
+                    ContainsTile(
+                        servedStops,
+                        removedStop),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(busObject);
+            }
+        }
+
+        private static (
+            CityBusService service,
+            BusRoute route,
+            BusStopRegistry registry)
+            CreateBusService(
+                GameObject busObject,
+                SimEventHub events,
+                SimEngine engine)
+        {
+            BusRoute route =
+                busObject.AddComponent<BusRoute>();
+            BusStopRegistry registry =
+                busObject.AddComponent<BusStopRegistry>();
+            CityBusService service =
+                busObject.AddComponent<CityBusService>();
+            BusDefinitionSO definition =
+                AssetDatabase.LoadAssetAtPath<BusDefinitionSO>(
+                    "Assets/05_ScriptableObjects/PR151_CityBusDefinition.asset");
+            Assert.That(definition, Is.Not.Null);
+
+            SetPrivateField(
+                service,
+                "definition",
+                definition);
+            SetPrivateField(
+                service,
+                "busRoute",
+                route);
+            SetPrivateField(
+                service,
+                "stopRegistry",
+                registry);
+            SetPrivateField(
+                service,
+                "autoStart",
+                false);
+
+            service.Initialize(
+                new CityFlowServices(
+                    events,
+                    engine,
+                    engine));
+            Assert.That(service.IsInitialized, Is.True);
+            Assert.That(registry.BusStopCount, Is.EqualTo(3));
+            return (service, route, registry);
+        }
+
+        private static void PlaceBusLoop(
+            SimEngine engine)
+        {
+            for (int x = 2; x <= 8; x++)
+            {
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(x, 2),
+                        TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(x, 6),
+                        TileType.Road),
+                    Is.True);
+            }
+
+            for (int y = 3; y <= 5; y++)
+            {
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(2, y),
+                        TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(8, y),
+                        TileType.Road),
+                    Is.True);
+            }
+
+            Assert.That(
+                engine.TryPlaceBusStop(
+                    new Vector2Int(2, 1)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(
+                    new Vector2Int(8, 1)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(
+                    new Vector2Int(8, 7)),
+                Is.True);
+        }
+
+        private static void AdvanceToNextStop(
+            BusRoute route)
+        {
+            InvokePrivate(
+                route,
+                "UpdateMoving",
+                100f);
+            Assert.That(
+                route.State,
+                Is.EqualTo(BusRouteState.WaitingAtStop));
+        }
+
+        private static void AdvanceRepeatedStops(
+            CityBusService service,
+            BusRoute route,
+            int arrivalCount)
+        {
+            for (int i = 0; i < arrivalCount; i++)
+            {
+                Assert.That(
+                    route.State,
+                    Is.EqualTo(BusRouteState.Moving));
+                AdvanceToNextStop(route);
+                InvokePrivate(service, "Update");
+                InvokePrivate(
+                    route,
+                    "UpdateWaiting",
+                    100f);
+                InvokePrivate(service, "Update");
+            }
+        }
+
+        private static bool ContainsTile(
+            IReadOnlyList<Vector2Int> tiles,
+            Vector2Int target)
+        {
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                if (tiles[i] == target)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static InfrastructureDataSO
             CreateInfrastructureData(
                 InfrastructureKind kind)
@@ -188,7 +568,8 @@ namespace Tests.EditMode
 
         private static void InvokePrivate(
             object target,
-            string methodName)
+            string methodName,
+            params object[] arguments)
         {
             MethodInfo method =
                 target.GetType().GetMethod(
@@ -199,7 +580,7 @@ namespace Tests.EditMode
                 method,
                 Is.Not.Null,
                 $"Method {methodName} was not found.");
-            method.Invoke(target, null);
+            method.Invoke(target, arguments);
         }
     }
 }
