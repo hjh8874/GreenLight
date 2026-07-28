@@ -190,7 +190,9 @@ namespace CityFlow.UI
 
         public Vector2Int GetMouseGridCoordinate()
         {
-            return _inputHandler?.GetMouseGridCoordinate(useXYPlane) ?? default;
+            return _inputHandler?.GetMouseGridCoordinate(
+                useXYPlane,
+                _services?.WorldCoordinates) ?? default;
         }
 
         public void SetGhostFootprint(Vector2Int size)
@@ -220,7 +222,11 @@ namespace CityFlow.UI
         {
             _budgetUI.UpdateUI(_isBuildingMode, _currentType, _services);
 
-            Vector2Int gridCoord = _inputHandler.GetMouseGridCoordinate(useXYPlane);
+            IWorldCoordinateSpace coordinateSpace =
+                _services?.WorldCoordinates;
+            Vector2Int gridCoord = _inputHandler.GetMouseGridCoordinate(
+                useXYPlane,
+                coordinateSpace);
             bool canPlace = _actionDispatcher.CheckCanPlace(gridCoord, _currentType, _currentDirection, _services);
             bool isBuildingType = TileFootprint.IsBuilding(_currentType);
 
@@ -255,11 +261,19 @@ namespace CityFlow.UI
 
             Vector3 ghostPos = GetGhostPosition(gridCoord, rotatedSize, surfaceZ);
 
-            _visualManager.SyncGhostPosition(ghostPos, TileFootprint.ToAngle(_currentDirection), useXYPlane);
+            _visualManager.SyncGhostPosition(
+                ghostPos,
+                TileFootprint.ToAngle(_currentDirection),
+                useXYPlane,
+                coordinateSpace);
             _visualManager.UpdateColors(canPlace);
             _visualManager.UpdateBenefitPreview(gridCoord, _currentType, useXYPlane, _services);
 
-            _costLabelManager.SyncPosition(ghostPos, surfaceZ, useXYPlane);
+            _costLabelManager.SyncPosition(
+                ghostPos,
+                surfaceZ,
+                useXYPlane,
+                coordinateSpace);
 
             long cost = _actionDispatcher.GetTileCost(_currentType);
             bool affordable = _services?.Economy == null || _services.Economy.Coins >= cost;
@@ -339,6 +353,17 @@ namespace CityFlow.UI
             );
             float offsetX = (size.x - 1) * 0.5f;
             float offsetY = (size.y - 1) * 0.5f;
+
+            IWorldCoordinateSpace coordinateSpace =
+                _services?.WorldCoordinates;
+            if (coordinateSpace != null)
+            {
+                return coordinateSpace.GridPointToWorld(
+                    new Vector2(
+                        gridCoord.x + 0.5f + offsetX,
+                        gridCoord.y + 0.5f + offsetY),
+                    -surfaceZ);
+            }
 
             return useXYPlane
                 ? new Vector3(gridCoord.x + 0.5f + offsetX, gridCoord.y + 0.5f + offsetY, surfaceZ)

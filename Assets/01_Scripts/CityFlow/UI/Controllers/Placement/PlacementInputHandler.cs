@@ -39,23 +39,34 @@ namespace CityFlow.UI.Controllers.Placement
             return _uiRaycastBlocker.IsPointerOverBlockingUI();
         }
 
-        public Vector2Int GetMouseGridCoordinate(bool useXYPlane)
+        public Vector2Int GetMouseGridCoordinate(
+            bool useXYPlane,
+            IWorldCoordinateSpace coordinateSpace = null)
         {
             Vector2 mousePos = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
 
             if (Camera.main == null) return Vector2Int.zero;
 
+            Ray ray = Camera.main.ScreenPointToRay(mousePos);
+            if (coordinateSpace != null)
+            {
+                return coordinateSpace.TryRayToGrid(
+                    ray,
+                    out Vector2Int coordinate,
+                    out _)
+                    ? coordinate
+                    : Vector2Int.zero;
+            }
+
             if (useXYPlane)
             {
-                Ray xyRay = Camera.main.ScreenPointToRay(mousePos);
                 Plane xyPlane = new Plane(Vector3.forward, Vector3.zero);
-                if (xyPlane.Raycast(xyRay, out float xyEnter))
+                if (xyPlane.Raycast(ray, out float xyEnter))
                 {
-                    return GridUtil.WorldToGrid(xyRay.GetPoint(xyEnter));
+                    return GridUtil.WorldToGrid(ray.GetPoint(xyEnter));
                 }
             }
 
-            Ray ray = Camera.main.ScreenPointToRay(mousePos);
             Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
             if (groundPlane.Raycast(ray, out float enter))
             {

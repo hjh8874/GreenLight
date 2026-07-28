@@ -187,20 +187,34 @@ namespace CityFlow.UI
         {
             Vector2 mousePos = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
 
-            if (useXYPlane && Camera.main != null)
+            if (Camera.main == null)
             {
-                Ray xyRay = Camera.main.ScreenPointToRay(mousePos);
+                return null;
+            }
+
+            Ray ray = Camera.main.ScreenPointToRay(mousePos);
+            if (_services?.WorldCoordinates != null)
+            {
+                return _services.WorldCoordinates.TryRayToGrid(
+                    ray,
+                    out Vector2Int tile,
+                    out _)
+                    ? tile
+                    : null;
+            }
+
+            if (useXYPlane)
+            {
                 Plane xyPlane = new Plane(Vector3.forward, Vector3.zero);
-                if (xyPlane.Raycast(xyRay, out float xyEnter))
+                if (xyPlane.Raycast(ray, out float xyEnter))
                 {
-                    Vector3 worldPos = xyRay.GetPoint(xyEnter);
+                    Vector3 worldPos = ray.GetPoint(xyEnter);
                     return new Vector2Int(Mathf.FloorToInt(worldPos.x), Mathf.FloorToInt(worldPos.y));
                 }
 
                 return null;
             }
 
-            Ray ray = Camera.main.ScreenPointToRay(mousePos);
             Plane groundPlane = new Plane(Vector3.up, Vector3.zero); // Y=0 바닥
             
             if (groundPlane.Raycast(ray, out float enter))
@@ -226,12 +240,41 @@ namespace CityFlow.UI
                 float markerZ = placementController != null
                     ? placementController.GetSurfaceMarkerZ(coord)
                     : -0.05f;
-                highlightBox.transform.position = useXYPlane
-                    ? new Vector3(coord.x + 0.5f + offsetX, coord.y + 0.5f + offsetY, markerZ)
-                    : new Vector3(coord.x + offsetX, 0, coord.y + offsetY);
-                highlightBox.transform.localScale = useXYPlane
-                    ? Vector3.Scale(_highlightBaseScale, new Vector3(size.x, size.y, 1f))
-                    : Vector3.Scale(_highlightBaseScale, new Vector3(size.x, 1f, size.y));
+                IWorldCoordinateSpace coordinateSpace =
+                    _services?.WorldCoordinates;
+                if (coordinateSpace != null)
+                {
+                    highlightBox.transform.position =
+                        coordinateSpace.GridPointToWorld(
+                            new Vector2(
+                                coord.x + 0.5f + offsetX,
+                                coord.y + 0.5f + offsetY),
+                            -markerZ);
+                    highlightBox.transform.rotation =
+                        coordinateSpace.CoordinateRotation;
+                    highlightBox.transform.localScale = Vector3.Scale(
+                        _highlightBaseScale,
+                        new Vector3(size.x, size.y, 1f));
+                }
+                else
+                {
+                    highlightBox.transform.position = useXYPlane
+                        ? new Vector3(
+                            coord.x + 0.5f + offsetX,
+                            coord.y + 0.5f + offsetY,
+                            markerZ)
+                        : new Vector3(
+                            coord.x + offsetX,
+                            0,
+                            coord.y + offsetY);
+                    highlightBox.transform.localScale = useXYPlane
+                        ? Vector3.Scale(
+                            _highlightBaseScale,
+                            new Vector3(size.x, size.y, 1f))
+                        : Vector3.Scale(
+                            _highlightBaseScale,
+                            new Vector3(size.x, 1f, size.y));
+                }
             }
 
             // 상세 분석 카드 열기

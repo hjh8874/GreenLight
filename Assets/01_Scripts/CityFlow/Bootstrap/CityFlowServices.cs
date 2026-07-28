@@ -17,6 +17,8 @@ namespace CityFlow.Bootstrap
         public IWeeklyEconomyService WeeklyEconomy { get; private set; }
         public IWorldGridService WorldGrid { get; private set; }
         public IWorldGridExpansionService WorldGridExpansion { get; private set; }
+        public IWorldCoordinateSpace WorldCoordinates { get; private set; }
+        public IWorldCoordinateRoot WorldCoordinateRoot { get; private set; }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
@@ -24,6 +26,8 @@ namespace CityFlow.Bootstrap
         public event Action<IWorldGridService> WorldGridRegistered;
         public event Action<IWorldGridExpansionService>
             WorldGridExpansionRegistered;
+        public event Action<IWorldCoordinateSpace> WorldCoordinatesRegistered;
+        public event Action<IWorldCoordinateRoot> WorldCoordinateRootRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -185,6 +189,44 @@ namespace CityFlow.Bootstrap
 
             WorldGridExpansion = worldGridExpansion;
             WorldGridExpansionRegistered?.Invoke(worldGridExpansion);
+            return true;
+        }
+
+        public bool RegisterWorldCoordinates(
+            IWorldCoordinateSpace worldCoordinates)
+        {
+            if (worldCoordinates == null)
+            {
+                return false;
+            }
+
+            if (WorldCoordinates != null)
+            {
+                return ReferenceEquals(WorldCoordinates, worldCoordinates);
+            }
+
+            WorldCoordinates = worldCoordinates;
+            WorldCoordinatesRegistered?.Invoke(worldCoordinates);
+            return true;
+        }
+
+        public bool RegisterWorldCoordinateRoot(
+            IWorldCoordinateRoot worldCoordinateRoot)
+        {
+            if (worldCoordinateRoot == null)
+            {
+                return false;
+            }
+
+            if (WorldCoordinateRoot != null)
+            {
+                return ReferenceEquals(
+                    WorldCoordinateRoot,
+                    worldCoordinateRoot);
+            }
+
+            WorldCoordinateRoot = worldCoordinateRoot;
+            WorldCoordinateRootRegistered?.Invoke(worldCoordinateRoot);
             return true;
         }
     }

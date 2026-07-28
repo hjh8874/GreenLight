@@ -1,4 +1,5 @@
 using TMPro;
+using CityFlow.Contracts;
 using UnityEngine;
 
 namespace CityFlow.UI.Controllers.Placement
@@ -64,11 +65,22 @@ namespace CityFlow.UI.Controllers.Placement
             }
         }
 
-        public void SyncPosition(Vector3 ghostPos, float surfaceZ, bool useXYPlane)
+        public void SyncPosition(
+            Vector3 ghostPos,
+            float surfaceZ,
+            bool useXYPlane,
+            IWorldCoordinateSpace coordinateSpace = null)
         {
             if (_costLabelObj == null) return;
 
-            if (useXYPlane)
+            if (coordinateSpace != null)
+            {
+                _costLabelObj.transform.position =
+                    ghostPos + coordinateSpace.GroundNormal * 0.05f;
+                _costLabelObj.transform.rotation =
+                    coordinateSpace.CoordinateRotation;
+            }
+            else if (useXYPlane)
             {
                 _costLabelObj.transform.position = new Vector3(
                     ghostPos.x,

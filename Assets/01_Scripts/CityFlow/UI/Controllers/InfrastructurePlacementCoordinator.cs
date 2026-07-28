@@ -246,7 +246,15 @@ namespace CityFlow.UI.Controllers
             ghostRenderer.gameObject.SetActive(true);
             ghostRenderer.transform.position = _originalPlacementController != null
                 ? _originalPlacementController.GetGhostPosition(gridCoord, Vector2Int.one)
-                : new Vector3(gridCoord.x, 0f, gridCoord.y);
+                : _services?.WorldCoordinates != null
+                    ? _services.WorldCoordinates.GridToWorld(gridCoord)
+                    : new Vector3(gridCoord.x, 0f, gridCoord.y);
+
+            if (_services?.WorldCoordinates != null)
+            {
+                ghostRenderer.transform.rotation =
+                    _services.WorldCoordinates.CoordinateRotation;
+            }
         }
 
         private Vector2Int GetMouseGridCoordinate()
@@ -257,8 +265,23 @@ namespace CityFlow.UI.Controllers
             }
 
             // Fallback if no PlacementController exists (sandbox without it)
+            if (Camera.main == null)
+            {
+                return Vector2Int.zero;
+            }
+
             Vector2 mousePos = Mouse.current != null ? Mouse.current.position.ReadValue() : Vector2.zero;
             Ray ray = Camera.main.ScreenPointToRay(mousePos);
+            if (_services?.WorldCoordinates != null)
+            {
+                return _services.WorldCoordinates.TryRayToGrid(
+                    ray,
+                    out Vector2Int coordinate,
+                    out _)
+                    ? coordinate
+                    : Vector2Int.zero;
+            }
+
             Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
 
             if (groundPlane.Raycast(ray, out float enter))

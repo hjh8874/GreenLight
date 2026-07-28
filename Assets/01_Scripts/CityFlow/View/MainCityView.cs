@@ -15,7 +15,10 @@ using UnityEngine.Serialization;
 
 namespace CityFlow.View
 {
-    public sealed partial class MainCityView : MonoBehaviour, ICityFlowServiceConsumer
+    public sealed partial class MainCityView :
+        MonoBehaviour,
+        ICityFlowServiceConsumer,
+        IWorldCoordinateRoot
     {
         [Header("Grid")]
         [SerializeField] private int width = GridUtil.DefaultWidth;
@@ -219,6 +222,7 @@ namespace CityFlow.View
         public Color FlowBurstColor => flowBurstColor;
         public bool IsDriveViewActive => driveViewCamera != null && driveViewCamera.IsFollowing;
         public event System.Action GridCellsBuilt;
+        public event System.Action CoordinateSpaceChanged;
 
         public bool TryGetGridCell(Vector2Int coordinate, out GridCellView cell)
         {
@@ -383,6 +387,14 @@ namespace CityFlow.View
             }
 
             this.services = services;
+            if (!services.RegisterWorldCoordinateRoot(this))
+            {
+                Debug.LogWarning(
+                    "[MainCityView] Another world coordinate root is already " +
+                    "registered.",
+                    this);
+            }
+
             tileData = services.TileData;
             placement = services.Placement;
             simEngine = services.Placement as SimEngine;
@@ -419,6 +431,41 @@ namespace CityFlow.View
             placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
             infrastructurePlacementCoordinator = FindAnyObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
             gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize, false);
+        }
+
+        public void ApplyCoordinateSpace(
+            IWorldCoordinateSpace coordinateSpace)
+        {
+            if (coordinateSpace == null)
+            {
+                return;
+            }
+
+            bool changed =
+                Vector3.SqrMagnitude(
+                    transform.position - coordinateSpace.Origin) > 0.000001f ||
+                Quaternion.Angle(
+                    transform.rotation,
+                    coordinateSpace.CoordinateRotation) > 0.001f;
+            if (!changed)
+            {
+                return;
+            }
+
+            transform.SetPositionAndRotation(
+                coordinateSpace.Origin,
+                coordinateSpace.CoordinateRotation);
+
+            if (mainCamera != null)
+            {
+                InitializeCameraView();
+            }
+
+            CoordinateSpaceChanged?.Invoke();
+            Debug.Log(
+                $"[MainCityView] Applied {coordinateSpace.Plane} world " +
+                "coordinate space.",
+                this);
         }
 
         private void OnDestroy()
