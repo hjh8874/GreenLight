@@ -369,12 +369,7 @@ namespace CityFlow.EditorTools
             FeedTemplateCollectionSO congestionSustainedTemplates = LoadOrCreateTemplateCollection(
                 CitizenFeedEventType.CongestionSustained,
                 CreateCongestionSustainedTemplates());
-            FeedTemplateCollectionSO stabilityDeclinedTemplates = LoadOrCreateTemplateCollection(
-                CitizenFeedEventType.StabilityDeclined,
-                CreateStabilityDeclinedTemplates());
-            FeedTemplateCollectionSO stabilityImprovedTemplates = LoadOrCreateTemplateCollection(
-                CitizenFeedEventType.StabilityImproved,
-                CreateStabilityImprovedTemplates());
+
             FeedTemplateCollectionSO infrastructurePlacedTemplates = LoadOrCreateTemplateCollection(
                 CitizenFeedEventType.InfrastructurePlaced,
                 CreateInfrastructurePlacedTemplates());
@@ -399,8 +394,7 @@ namespace CityFlow.EditorTools
                     signalChangedRule,
                     congestionSlowedRule,
                     congestionSustainedRule,
-                    stabilityDeclinedRule,
-                    stabilityImprovedRule,
+
                     infrastructurePlacedRule,
                     infrastructureRemovedRule,
                     notableArrivalRule,
@@ -428,8 +422,7 @@ namespace CityFlow.EditorTools
                     signalChangedTemplates,
                     congestionSlowedTemplates,
                     congestionSustainedTemplates,
-                    stabilityDeclinedTemplates,
-                    stabilityImprovedTemplates,
+
                     infrastructurePlacedTemplates,
                     infrastructureRemovedTemplates,
                     notableArrivalTemplates,
@@ -705,75 +698,6 @@ namespace CityFlow.EditorTools
             };
         }
 
-        private static CitizenFeedTemplateEntry[] CreateStabilityDeclinedTemplates()
-        {
-            return new[]
-            {
-                CreateDetailedTemplate(
-                    "StabilityDown_Parent_01",
-                    "요즘 동네가 계속 어수선해요. 전처럼 편하게 다니기 어려워진 느낌입니다.",
-                    CitizenFeedTone.Complaint,
-                    1f,
-                    CitizenFeedCategory.LifeInconvenience,
-                    new[] { CitizenFeedRole.Parent, CitizenFeedRole.Resident }),
-                CreateDetailedTemplate(
-                    "StabilityDown_Merchant_01",
-                    "도시 흐름이 불안정해지니 손님과 납품 일정도 함께 흔들리고 있습니다.",
-                    CitizenFeedTone.Complaint,
-                    1.1f,
-                    CitizenFeedCategory.EconomyReaction,
-                    new[] { CitizenFeedRole.Merchant, CitizenFeedRole.SelfEmployed }),
-                CreateDetailedTemplate(
-                    "StabilityDown_RealEstate_01",
-                    "도시 체감 안정도가 {PreviousStabilityPercent}에서 {StabilityPercent} 수준으로 내려갔습니다. 접근성 개선이 필요해 보입니다.",
-                    CitizenFeedTone.Information,
-                    1.2f,
-                    CitizenFeedCategory.EconomyReaction,
-                    new[] { CitizenFeedRole.RealEstateAgent }),
-                CreateDetailedTemplate(
-                    "StabilityDown_Activist_01",
-                    "도시 곳곳에서 불편 제보가 늘고 있습니다. 단기 조치보다 전체 흐름을 점검해야 합니다.",
-                    CitizenFeedTone.Complaint,
-                    1.2f,
-                    CitizenFeedCategory.LifeInconvenience,
-                    new[] { CitizenFeedRole.CivicActivist })
-            };
-        }
-
-        private static CitizenFeedTemplateEntry[] CreateStabilityImprovedTemplates()
-        {
-            return new[]
-            {
-                CreateDetailedTemplate(
-                    "StabilityUp_Parent_01",
-                    "요즘 우리 동네가 한결 차분해졌어요. 이동하기도 훨씬 편해졌네요.",
-                    CitizenFeedTone.Praise,
-                    1f,
-                    CitizenFeedCategory.LifeInconvenience,
-                    new[] { CitizenFeedRole.Parent, CitizenFeedRole.Resident }),
-                CreateDetailedTemplate(
-                    "StabilityUp_Merchant_01",
-                    "도시 흐름이 안정되니 거리 분위기도 살아나는 것 같습니다. 오늘 장사가 기대되네요.",
-                    CitizenFeedTone.Praise,
-                    1.1f,
-                    CitizenFeedCategory.EconomyReaction,
-                    new[] { CitizenFeedRole.Merchant, CitizenFeedRole.SelfEmployed }),
-                CreateDetailedTemplate(
-                    "StabilityUp_RealEstate_01",
-                    "체감 안정도가 {PreviousStabilityPercent}에서 {StabilityPercent} 수준으로 회복됐습니다. 지역 접근성이 좋아지고 있습니다.",
-                    CitizenFeedTone.Information,
-                    1.2f,
-                    CitizenFeedCategory.EconomyReaction,
-                    new[] { CitizenFeedRole.RealEstateAgent }),
-                CreateDetailedTemplate(
-                    "StabilityUp_Activist_01",
-                    "최근 교통 개선이 생활 속에서 느껴집니다. 주민 의견이 반영된 결과라면 반가운 일입니다.",
-                    CitizenFeedTone.Praise,
-                    1.2f,
-                    CitizenFeedCategory.LifeInconvenience,
-                    new[] { CitizenFeedRole.CivicActivist })
-            };
-        }
 
         private static CitizenFeedTemplateEntry[] CreateInfrastructurePlacedTemplates()
         {

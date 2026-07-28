@@ -13,7 +13,6 @@ namespace CityFlow.Fakes
         private readonly int height;
         private readonly int queueCapacityPerTile;
         private float lastBurstTime;
-        private float lastStabilityTime;
 
 
 
@@ -118,11 +117,6 @@ namespace CityFlow.Fakes
                 return;
             }
 
-            if (time - lastStabilityTime >= 1f)
-            {
-                lastStabilityTime = time;
-
-            }
 
             if (time - lastBurstTime >= 3f)
             {

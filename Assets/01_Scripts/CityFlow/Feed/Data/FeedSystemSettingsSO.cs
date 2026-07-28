@@ -24,7 +24,6 @@ namespace CityFlow.Feed
 
         [Header("World Event Thresholds")]
         [SerializeField, Min(0.1f)] private float sustainedCongestionGameHours = 2f;
-        [SerializeField, Range(0.01f, 1f)] private float stabilityChangeThreshold = 0.1f;
         [SerializeField, Min(1f)] private float notableArrivalDistanceTiles = 12f;
         [SerializeField, Min(1)] private int vehicleSurgeCount = 20;
         [SerializeField, Range(0.1f, 0.95f)] private float vehicleSurgeResetRatio = 0.65f;
@@ -42,7 +41,6 @@ namespace CityFlow.Feed
         public float MinimumFeedScore => minimumFeedScore;
         public bool LogDiagnostics => logDiagnostics;
         public float SustainedCongestionGameHours => sustainedCongestionGameHours;
-        public float StabilityChangeThreshold => stabilityChangeThreshold;
         public float NotableArrivalDistanceTiles => notableArrivalDistanceTiles;
         public int VehicleSurgeCount => vehicleSurgeCount;
         public float VehicleSurgeResetRatio => vehicleSurgeResetRatio;
@@ -61,7 +59,6 @@ namespace CityFlow.Feed
             minimumFeedScore = 30f;
             logDiagnostics = true;
             sustainedCongestionGameHours = 2f;
-            stabilityChangeThreshold = 0.1f;
             notableArrivalDistanceTiles = 12f;
             vehicleSurgeCount = 20;
             vehicleSurgeResetRatio = 0.65f;

@@ -49,7 +49,6 @@ namespace CityFlow.Sim
         public float EfficiencyMinRatio; // E가 바닥에 닿는 ratio = 2.0 (Free 1.0 → 2.0서 0.2)
 
         // ── 안정도 국지 감점 ─────────────────────
-        public float StabilityJamWeight;  // jam 타일 비율이 안정도에 주는 가중치 🔓
 
         // ── 신호 그린웨이브 ─────────────────────
         public float GreenWaveFloor;     // 오프셋 최악(반주기 어긋남) 시 효율 바닥 🔓
@@ -152,7 +151,6 @@ namespace CityFlow.Sim
             JamRatio = 1.0f,
             EfficiencyMin = 0.2f,
             EfficiencyMinRatio = 2.0f,
-            StabilityJamWeight = 0.5f,
             GreenWaveFloor = 0.5f,
             GreenWaveScanInterval = 50,
             GreenWaveThreshold = 0.85f,

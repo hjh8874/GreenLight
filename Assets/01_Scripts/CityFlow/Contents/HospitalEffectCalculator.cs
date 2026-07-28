@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using CityFlow.Contracts;
 using UnityEngine;
@@ -78,29 +78,6 @@ namespace CityFlow.Content
             }
 
             return coveredCount;
-        }
-
-        /// <summary>
-        /// 의료 혜택을 받는 집 수를 기준으로
-        /// 총 안정도 보너스를 계산합니다.
-        /// </summary>
-        public static int CalculateStabilityBonus(
-            int coveredHouseCount,
-            int stabilityBonusPerHouse)
-        {
-            if (coveredHouseCount <= 0 ||
-                stabilityBonusPerHouse <= 0)
-            {
-                return 0;
-            }
-
-            long calculatedBonus =
-                (long)coveredHouseCount *
-                stabilityBonusPerHouse;
-
-            return calculatedBonus >= int.MaxValue
-                ? int.MaxValue
-                : (int)calculatedBonus;
         }
     }
 }

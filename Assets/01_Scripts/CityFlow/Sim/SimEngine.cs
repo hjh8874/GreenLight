@@ -57,7 +57,6 @@ namespace CityFlow.Sim
             Vector2Int.left,
             Vector2Int.down
         };
-        int _highwayBudgetTiles;   // 링크 맨해튼 길이 합 — 일반도로와 MaxRoadTiles 스톡을 공유한다.
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
         readonly SimStats _stats = new SimStats();
         readonly SimEventBuffer _events;
@@ -627,9 +626,8 @@ namespace CityFlow.Sim
             && !_roundaboutSet.Contains(tile)
             && !_overpassSet.Contains(tile);
 
-        // 도로 예산제(스펙 2026-07-17/고속도로 정정 2026-07-21): UI 카운터·배치 가드 공용.
-        // 고속도로는 상판 길이만큼 같은 스톡을 먹는다. CityGrid는 그대로 두고 링크 합만 더한다.
-        public int RoadTileCount => _grid.RoadTileCount + _highwayBudgetTiles;
+        public int RoadTileCount => _grid.RoadTileCount;
+
 
         // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게
         public float DeliveredTotal => _config.TickInterval > 0f ? _lastStepArrivals / _config.TickInterval : 0f;
@@ -916,7 +914,6 @@ namespace CityFlow.Sim
             _highwayLinks.Add(new HighwayLink(a, b));
             _highwayPartners[a] = b;
             _highwayPartners[b] = a;
-            _highwayBudgetTiles += HighwayDistance(a, b);
             MarkRoutingChangePending();
             return true;
         }
@@ -926,11 +923,9 @@ namespace CityFlow.Sim
             if (!_highwayPartners.TryGetValue(ramp, out Vector2Int partner)) return false;
             int linkIndex = _highwayLinks.FindIndex(link => link.Contains(ramp));
             if (linkIndex < 0) return false;
-            HighwayLink link = _highwayLinks[linkIndex];
+            _highwayLinks.RemoveAt(linkIndex);
             _highwayPartners.Remove(ramp);
             _highwayPartners.Remove(partner);
-            _highwayLinks.RemoveAt(linkIndex);
-            _highwayBudgetTiles = Math.Max(0, _highwayBudgetTiles - link.Distance);
             MarkRoutingChangePending();
             return true;
         }
@@ -1138,7 +1133,6 @@ namespace CityFlow.Sim
             _demand.ClearCompanies();
             _highwayLinks.Clear();
             _highwayPartners.Clear();
-            _highwayBudgetTiles = 0;
             _placedBusStops.Clear();
             _busStopSet.Clear();
             _roadQueues.RemoveAllCars();
@@ -1284,7 +1278,6 @@ namespace CityFlow.Sim
                     _highwayLinks.Add(link);
                     _highwayPartners[a] = b;
                     _highwayPartners[b] = a;
-                    _highwayBudgetTiles += link.Distance;
                 }
             RebuildSignals();
             if (snapshot.SignalOffsets != null)
