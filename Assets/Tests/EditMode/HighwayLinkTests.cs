@@ -29,68 +29,6 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0, engine.HighwayLinks.Count);
         }
 
-        [Test]
-        public void Engine_HighwayLengthConsumesRoadBudgetAndRemovalReturnsIt()
-        {
-            SimConfig cfg = SimConfig.Default();
-            cfg.GridWidth = 10; cfg.GridHeight = 2; cfg.MaxRoadTiles = 14;
-            cfg.AutoDetectSignals = false;
-            var engine = new SimEngine(cfg, new SimEventHub());
-            for (int x = 1; x <= 8; x++) Assert.IsTrue(engine.Place(V(x, 0), TileType.Road));
-
-            Assert.IsTrue(engine.TryPlaceHighway(V(1, 0), V(7, 0)));
-            Assert.AreEqual(14, engine.RoadTileCount,
-                "eight road tiles plus six highway tiles must consume the full budget");
-            Assert.IsFalse(engine.CanPlace(V(0, 1), TileType.Road),
-                "ordinary roads share the same stock budget with highways");
-
-            Assert.IsTrue(engine.TryRemoveHighway(V(7, 0)));
-            Assert.AreEqual(8, engine.RoadTileCount);
-            Assert.IsTrue(engine.CanPlace(V(0, 1), TileType.Road),
-                "removing the link must return its distance to the shared budget");
-        }
-
-        [Test]
-        public void Engine_RejectsHighwayBeyondRemainingRoadBudget()
-        {
-            SimConfig cfg = SimConfig.Default();
-            cfg.GridWidth = 10; cfg.GridHeight = 2; cfg.MaxRoadTiles = 13;
-            cfg.AutoDetectSignals = false;
-            var engine = new SimEngine(cfg, new SimEventHub());
-            for (int x = 1; x <= 8; x++) Assert.IsTrue(engine.Place(V(x, 0), TileType.Road));
-
-            Assert.IsFalse(engine.CanPlaceHighway(V(1, 0), V(7, 0)));
-            Assert.IsFalse(engine.TryPlaceHighway(V(1, 0), V(7, 0)));
-            Assert.AreEqual(8, engine.RoadTileCount, "failed placement must not consume budget");
-        }
-
-        [Test]
-        public void Restore_OverBudgetHighwaySurvivesButBlocksNewConstruction()
-        {
-            SimConfig cfg = SimConfig.Default();
-            cfg.GridWidth = 10; cfg.GridHeight = 2; cfg.MaxRoadTiles = 8;
-            cfg.AutoDetectSignals = false;
-            var tiles = new TileSaveData[8];
-            for (int i = 0; i < tiles.Length; i++)
-                tiles[i] = new TileSaveData { X = i + 1, Y = 0, Type = TileType.Road };
-            var snapshot = new SimSaveData
-            {
-                PlacedTiles = tiles,
-                Highways = new[]
-                {
-                    new HighwaySaveData { AX = 1, AY = 0, BX = 7, BY = 0 }
-                }
-            };
-            var engine = new SimEngine(cfg, new SimEventHub());
-
-            engine.RestoreSnapshot(snapshot);
-
-            Assert.AreEqual(1, engine.HighwayLinks.Count,
-                "migration must preserve an existing over-budget highway");
-            Assert.AreEqual(14, engine.RoadTileCount,
-                "restored budget is recomputed from road tiles and link coordinates");
-            Assert.IsFalse(engine.CanPlace(V(0, 1), TileType.Road));
-        }
 
         [Test]
         public void Save_RestoresRampPairWithoutChargingEconomy()

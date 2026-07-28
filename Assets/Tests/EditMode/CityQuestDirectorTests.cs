@@ -13,12 +13,9 @@ namespace CityFlow.Sim.Tests
             long arrivals = 0,
             long pending = 0,
             bool harvested = false,
-            int jams = 0,
-            float stability = 1f,
-            int usedRoads = 0,
-            int maxRoads = 60)
+            int jams = 0)
         {
-            return new CityQuestSnapshot(roads, houses, offices, schools, arrivals, pending, harvested, jams, stability, usedRoads, maxRoads);
+            return new CityQuestSnapshot(roads, houses, offices, schools, arrivals, pending, harvested, jams);
         }
 
         [Test]
@@ -145,7 +142,7 @@ namespace CityFlow.Sim.Tests
         public void HigherPriorityNeed_WinsWhenSeveralAreEligible()
         {
             var director = new CityQuestDirector();
-            CityQuestSnapshot needs = Snapshot(roads: 3, houses: 7, offices: 1, arrivals: 1, harvested: true, jams: 1, stability: 0.5f);
+            CityQuestSnapshot needs = Snapshot(roads: 3, houses: 7, offices: 1, arrivals: 1, harvested: true, jams: 1);
 
             director.Tick(needs, 10f);
 
