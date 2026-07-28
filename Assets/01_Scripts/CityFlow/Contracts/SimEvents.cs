@@ -87,6 +87,7 @@ namespace CityFlow.Contracts
         public event Action<CongestionEvent> CongestionChanged;
         public event Action<PlacedEvent> Placed;
         public event Action<InfrastructureChangedEvent> InfrastructureChanged;
+        public event Action<bool> CongestionViewToggled;
 
         public void Publish(ArrivalEvent e) => Arrival?.Invoke(e);
 
@@ -100,5 +101,7 @@ namespace CityFlow.Contracts
         public void Publish(PlacedEvent e) => Placed?.Invoke(e);
 
         public void Publish(InfrastructureChangedEvent e) => InfrastructureChanged?.Invoke(e);
+        
+        public void PublishCongestionViewToggled(bool isOn) => CongestionViewToggled?.Invoke(isOn);
     }
 }

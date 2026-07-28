@@ -16,6 +16,7 @@ namespace CityFlow.View
         private MaterialPropertyBlock propertyBlock;
         private CityFlowServices services;
         private bool subscribed;
+        private bool isOverlayEnabled = false;
 
         public void Configure(
             Vector2Int tile,
@@ -44,11 +45,13 @@ namespace CityFlow.View
             if (subscribed && this.services != null)
             {
                 this.services.Events.CongestionChanged -= OnCongestionChanged;
+                this.services.Events.CongestionViewToggled -= OnCongestionViewToggled;
             }
 
             this.services = services;
             tileData = services.TileData;
             services.Events.CongestionChanged += OnCongestionChanged;
+            services.Events.CongestionViewToggled += OnCongestionViewToggled;
             subscribed = true;
             Refresh();
         }
@@ -65,13 +68,14 @@ namespace CityFlow.View
             if (subscribed && services != null)
             {
                 services.Events.CongestionChanged -= OnCongestionChanged;
+                services.Events.CongestionViewToggled -= OnCongestionViewToggled;
             }
             subscribed = false;
         }
 
         private void OnCongestionChanged(CongestionEvent e)
         {
-            if (e.Tile != tile)
+            if (e.Tile != tile || !isOverlayEnabled)
             {
                 return;
             }
@@ -79,14 +83,32 @@ namespace CityFlow.View
             ApplyColor(e.Level);
         }
 
+        private void OnCongestionViewToggled(bool isEnabled)
+        {
+            isOverlayEnabled = isEnabled;
+            if (isEnabled)
+            {
+                Refresh();
+            }
+            else
+            {
+                ClearColor();
+            }
+        }
+
         private void Refresh()
         {
-            if (tileData == null || cachedRenderer == null)
+            if (tileData == null || cachedRenderer == null || !isOverlayEnabled)
             {
                 return;
             }
 
             ApplyColor(tileData.GetCongestion(tile));
+        }
+
+        private void ClearColor()
+        {
+            ApplyColor(CongestionLevel.Free);
         }
 
         private void ApplyColor(CongestionLevel level)
