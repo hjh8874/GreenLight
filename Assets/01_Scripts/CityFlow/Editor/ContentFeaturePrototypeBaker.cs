@@ -24,7 +24,7 @@ namespace CityFlow.EditorTools
         private const string EmergencyConfigPath =
             "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset";
         private const string FontPath =
-            "Assets/03_Art/Fonts/NanumGothic SDF.asset";
+            "Assets/99_Download/Fonts/NanumGothic SDF.asset";
         private const string BusVisualPrefabPath =
             "Assets/99_Download/SimpleTown/Prefabs/Vehicles/bus_blue.prefab";
         private const string BusMaterialPath =
