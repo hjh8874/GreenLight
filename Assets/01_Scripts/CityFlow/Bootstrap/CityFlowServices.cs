@@ -1,4 +1,5 @@
 using System;
+using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using CityFlow.Save;
@@ -19,6 +20,14 @@ namespace CityFlow.Bootstrap
         public IWorldGridExpansionService WorldGridExpansion { get; private set; }
         public IWorldCoordinateSpace WorldCoordinates { get; private set; }
         public IWorldCoordinateRoot WorldCoordinateRoot { get; private set; }
+        public IResearchUnlockService Research { get; private set; }
+        public ISpecialBuildingService SpecialBuildings { get; private set; }
+        public IReadOnlyPopulationData Population { get; private set; }
+        public ISpecialBuildingVisitService SpecialBuildingVisits
+        {
+            get;
+            private set;
+        }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
@@ -28,6 +37,11 @@ namespace CityFlow.Bootstrap
             WorldGridExpansionRegistered;
         public event Action<IWorldCoordinateSpace> WorldCoordinatesRegistered;
         public event Action<IWorldCoordinateRoot> WorldCoordinateRootRegistered;
+        public event Action<IResearchUnlockService> ResearchRegistered;
+        public event Action<ISpecialBuildingService> SpecialBuildingsRegistered;
+        public event Action<IReadOnlyPopulationData> PopulationRegistered;
+        public event Action<ISpecialBuildingVisitService>
+            SpecialBuildingVisitsRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -115,6 +129,29 @@ namespace CityFlow.Bootstrap
             }
 
             Save?.RegisterResearchSaveSource(researchSaveSource);
+        }
+
+        public bool RegisterResearch(IResearchUnlockService research)
+        {
+            if (research == null)
+            {
+                return false;
+            }
+
+            if (Research != null)
+            {
+                return ReferenceEquals(Research, research);
+            }
+
+            Research = research;
+
+            if (research is IResearchSaveSource saveSource)
+            {
+                Save?.RegisterResearchSaveSource(saveSource);
+            }
+
+            ResearchRegistered?.Invoke(research);
+            return true;
         }
 
         public void RegisterProgressionSaveSource(IProgressionSaveSource progressionSaveSource)
@@ -207,6 +244,73 @@ namespace CityFlow.Bootstrap
 
             WorldCoordinates = worldCoordinates;
             WorldCoordinatesRegistered?.Invoke(worldCoordinates);
+            return true;
+        }
+
+        public bool RegisterSpecialBuildings(
+            ISpecialBuildingService specialBuildings)
+        {
+            if (specialBuildings == null)
+            {
+                return false;
+            }
+
+            if (SpecialBuildings != null)
+            {
+                return ReferenceEquals(SpecialBuildings, specialBuildings);
+            }
+
+            SpecialBuildings = specialBuildings;
+
+            if (specialBuildings is ISpecialBuildingSaveSource saveSource)
+            {
+                Save?.RegisterSpecialBuildingSaveSource(saveSource);
+            }
+
+            SpecialBuildingsRegistered?.Invoke(specialBuildings);
+            return true;
+        }
+
+        public bool RegisterPopulation(IReadOnlyPopulationData population)
+        {
+            if (population == null)
+            {
+                return false;
+            }
+
+            if (Population != null)
+            {
+                return ReferenceEquals(Population, population);
+            }
+
+            Population = population;
+            PopulationRegistered?.Invoke(population);
+            return true;
+        }
+
+        public bool RegisterSpecialBuildingVisits(
+            ISpecialBuildingVisitService specialBuildingVisits)
+        {
+            if (specialBuildingVisits == null)
+            {
+                return false;
+            }
+
+            if (SpecialBuildingVisits != null)
+            {
+                return ReferenceEquals(
+                    SpecialBuildingVisits,
+                    specialBuildingVisits);
+            }
+
+            SpecialBuildingVisits = specialBuildingVisits;
+            if (specialBuildingVisits is ISpecialBuildingVisitSaveSource
+                saveSource)
+            {
+                Save?.RegisterSpecialBuildingVisitSaveSource(saveSource);
+            }
+
+            SpecialBuildingVisitsRegistered?.Invoke(specialBuildingVisits);
             return true;
         }
 

@@ -98,9 +98,18 @@ namespace CityFlow.UI.Controllers.Placement
             if (_benefitRenderer != null) _benefitRenderer.HideAll();
         }
 
-        public void UpdateGhostSprite(TileType currentType, CityFlow.Configs.TileDataSO[] availableTiles)
+        public void UpdateGhostSprite(
+            TileType currentType,
+            CityFlow.Configs.TileDataSO[] availableTiles,
+            Sprite overrideSprite = null)
         {
             if (_ghostRenderer == null) return;
+
+            if (overrideSprite != null)
+            {
+                _ghostRenderer.sprite = overrideSprite;
+                return;
+            }
 
             CityFlow.Configs.TileDataSO selectedTile = null;
             if (availableTiles != null)

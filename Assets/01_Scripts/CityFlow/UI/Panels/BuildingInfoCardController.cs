@@ -40,6 +40,11 @@ namespace CityFlow.UI
         [Tooltip("이 해상도 높이 이하에서는 카드가 자동으로 닫힙니다 (S 모드 = 270).")]
         [SerializeField] private int minimumScreenHeight = 540;
 
+        [Header("World Position")]
+        [SerializeField]
+        [Min(0f)]
+        private float worldHeightOffset = 1.5f;
+
         // ─── 내부 상태 ──────────────────────────────────────────────
         private CityFlowServices services;
         private PopulationSystem populationSystem;
@@ -48,6 +53,15 @@ namespace CityFlow.UI
         private TileType currentType;
         private float accumulatedDelay;
         private bool isClosing;
+        private TMP_Text labelTotalStaff;
+        private TMP_Text labelTardyStaff;
+        private TMP_Text labelIncomePerMin;
+        private TMP_Text labelDelaySeconds;
+        private string defaultTotalStaffLabel;
+        private string defaultTardyStaffLabel;
+        private string defaultIncomeLabel;
+        private string defaultDelayLabel;
+        private bool metricLabelsCached;
 
         // UI 플로팅 좌표 변환용 캐싱
         private Canvas rootCanvas;
@@ -64,19 +78,8 @@ namespace CityFlow.UI
         {
             services = cityFlowServices;
             populationSystem = FindAnyObjectByType<PopulationSystem>();
-
-            // 캐싱 최적화
-            rootCanvas = GetComponentInParent<Canvas>();
-
-            // UI 레이아웃 그룹(AnalysisCard 하위 등)에 묶여있어 위치가 겹치는 현상 방지
-            // 말풍선처럼 화면 전체를 자유롭게 날아다닐 수 있도록 최상위 캔버스로 독립시킵니다.
-            if (rootCanvas != null && transform.parent != rootCanvas.transform)
-            {
-                transform.SetParent(rootCanvas.transform, false);
-                transform.SetAsLastSibling(); // 항상 가장 위(맨 앞)에 렌더링되도록 보장
-            }
-
-            parentRectTransform = transform.parent as RectTransform;
+            CacheMetricLabels();
+            EnsureFloatingCanvas();
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -94,14 +97,20 @@ namespace CityFlow.UI
                 return;
             }
 
-            // 이미 같은 타일이 열려있으면 무시
-            if (gameObject.activeSelf && currentTile == tile && !isClosing)
+            EnsureFloatingCanvas();
+
+            Vector2Int displayAnchor = ResolveDisplayAnchor(tile, type);
+
+            // 이미 같은 건물이 열려있으면 무시
+            if (gameObject.activeSelf &&
+                currentTile == displayAnchor &&
+                !isClosing)
             {
                 return;
             }
 
             isClosing = false;
-            currentTile = tile;
+            currentTile = displayAnchor;
             currentType = type;
             accumulatedDelay = 0f;
 
@@ -135,19 +144,23 @@ namespace CityFlow.UI
 
         private void UpdateFloatingPosition()
         {
+            EnsureFloatingCanvas();
             if (Camera.main == null) return;
 
-            // 1. 타일의 정중앙 바닥 좌표 (XY 평면 사용 시 x, y가 맵 바닥, z가 높이/깊이)
-            Vector3 worldPos = new Vector3(currentTile.x + 0.5f, currentTile.y + 0.5f, 0f);
-
-            // 건물 Footprint 크기에 따른 중앙 정렬 오프셋
             Vector2Int size = TileFootprint.GetSize(currentType);
-            worldPos.x += (size.x - 1) * 0.5f;
-            worldPos.y += (size.y - 1) * 0.5f;
-
-            // 2. 높이 오프셋 적용 (아이소매트릭 뷰에서 Z축은 카메라 쪽으로 튀어나오는 높이)
-            // 건물의 지붕 근처에 띄우기 위해 Z축을 카메라 방향(-)으로 이동 (유니티 2D/XY 평면 기준 -Z가 카메라 쪽)
-            worldPos.z -= 1.5f;
+            Vector2 center = new Vector2(
+                currentTile.x + size.x * 0.5f,
+                currentTile.y + size.y * 0.5f);
+            IWorldCoordinateSpace coordinateSpace =
+                services?.WorldCoordinates;
+            Vector3 worldPos = coordinateSpace != null
+                ? coordinateSpace.GridPointToWorld(
+                    center,
+                    worldHeightOffset)
+                : new Vector3(
+                    center.x,
+                    center.y,
+                    -worldHeightOffset);
 
             Vector3 screenPos = Camera.main.WorldToScreenPoint(worldPos);
 
@@ -192,6 +205,40 @@ namespace CityFlow.UI
             }
         }
 
+        private Vector2Int ResolveDisplayAnchor(
+            Vector2Int tile,
+            TileType type)
+        {
+            if (!TileFootprint.IsBuilding(type) ||
+                services?.TileData == null)
+            {
+                return tile;
+            }
+
+            return services.TileData.TryGetFootprintAnchor(
+                tile,
+                out Vector2Int anchor)
+                ? anchor
+                : tile;
+        }
+
+        private void EnsureFloatingCanvas()
+        {
+            if (rootCanvas == null)
+            {
+                rootCanvas = GetComponentInParent<Canvas>();
+            }
+
+            if (rootCanvas != null &&
+                transform.parent != rootCanvas.transform)
+            {
+                transform.SetParent(rootCanvas.transform, false);
+                transform.SetAsLastSibling();
+            }
+
+            parentRectTransform = transform.parent as RectTransform;
+        }
+
         /// <summary>
         /// 카드를 닫습니다. DOTween 축소 애니메이션 후 비활성화.
         /// </summary>
@@ -229,6 +276,15 @@ namespace CityFlow.UI
                 // 코어 엔진에서 density/congestion 시드 수신
                 float density = GetTileDensity();
                 CongestionLevel congestion = GetTileCongestion();
+
+                if (currentType == TileType.SpecialBuilding &&
+                    TryBindSpecialBuilding(congestion))
+                {
+                    yield return wait;
+                    continue;
+                }
+
+                ApplySpecialMetricLabels(false);
 
                 // 지연 시간 누적 (요구사항 수식: += 0.2f * density)
                 accumulatedDelay += 0.2f * density;
@@ -310,6 +366,144 @@ namespace CityFlow.UI
                     txtDelaySeconds.text = delayText;
                 }
             }
+        }
+
+        private bool TryBindSpecialBuilding(CongestionLevel congestion)
+        {
+            if (services?.SpecialBuildings == null ||
+                !services.SpecialBuildings.TryGetBuilding(
+                    currentTile,
+                    out SpecialBuildingInstance building) ||
+                !services.SpecialBuildings.TryGetBuildOption(
+                    building.BuildingId,
+                    out SpecialBuildingBuildOption option))
+            {
+                return false;
+            }
+
+            ApplySpecialMetricLabels(true);
+
+            SpecialBuildingVisitStatistics statistics = default;
+            services.SpecialBuildingVisits?.TryGetStatistics(
+                currentTile,
+                out statistics);
+
+            if (txtBuildingName != null)
+            {
+                txtBuildingName.text = option.DisplayName;
+            }
+
+            if (txtStoryComment != null)
+            {
+                txtStoryComment.text = congestion == CongestionLevel.Jam
+                    ? $"{option.Description} · 인접 도로 정체"
+                    : option.Description;
+                txtStoryComment.color = congestion == CongestionLevel.Jam
+                    ? warningColor
+                    : normalColor;
+            }
+
+            if (txtTotalStaff != null)
+            {
+                txtTotalStaff.text =
+                    $"{statistics.PlannedToday:N0}명";
+                txtTotalStaff.color = normalColor;
+            }
+
+            if (txtTardyStaff != null)
+            {
+                txtTardyStaff.text =
+                    $"{statistics.TotalPlannedVisits:N0}명";
+                txtTardyStaff.color = normalColor;
+            }
+
+            if (txtIncomePerMin != null)
+            {
+                txtIncomePerMin.text = option.VisitorCapacity > 0
+                    ? $"{option.VisitorCapacity:N0}명"
+                    : "제한 없음";
+                txtIncomePerMin.color = normalColor;
+            }
+
+            if (txtDelaySeconds != null)
+            {
+                txtDelaySeconds.text =
+                    $"{option.VisitsPerPeriod}회 / " +
+                    $"{option.PeriodDays}일";
+                txtDelaySeconds.color = normalColor;
+            }
+
+            return true;
+        }
+
+        private void CacheMetricLabels()
+        {
+            if (metricLabelsCached)
+            {
+                return;
+            }
+
+            labelTotalStaff = ResolveMetricLabel(txtTotalStaff);
+            labelTardyStaff = ResolveMetricLabel(txtTardyStaff);
+            labelIncomePerMin = ResolveMetricLabel(txtIncomePerMin);
+            labelDelaySeconds = ResolveMetricLabel(txtDelaySeconds);
+            defaultTotalStaffLabel = labelTotalStaff?.text;
+            defaultTardyStaffLabel = labelTardyStaff?.text;
+            defaultIncomeLabel = labelIncomePerMin?.text;
+            defaultDelayLabel = labelDelaySeconds?.text;
+            metricLabelsCached = true;
+        }
+
+        private void ApplySpecialMetricLabels(bool specialBuilding)
+        {
+            CacheMetricLabels();
+            if (labelTotalStaff != null)
+            {
+                labelTotalStaff.text = specialBuilding
+                    ? "오늘 방문 수요"
+                    : defaultTotalStaffLabel;
+            }
+
+            if (labelTardyStaff != null)
+            {
+                labelTardyStaff.text = specialBuilding
+                    ? "누적 방문 수요"
+                    : defaultTardyStaffLabel;
+            }
+
+            if (labelIncomePerMin != null)
+            {
+                labelIncomePerMin.text = specialBuilding
+                    ? "방문 수용량"
+                    : defaultIncomeLabel;
+            }
+
+            if (labelDelaySeconds != null)
+            {
+                labelDelaySeconds.text = specialBuilding
+                    ? "방문 주기"
+                    : defaultDelayLabel;
+            }
+        }
+
+        private static TMP_Text ResolveMetricLabel(TMP_Text valueText)
+        {
+            if (valueText == null || valueText.transform.parent == null)
+            {
+                return null;
+            }
+
+            TMP_Text[] texts = valueText.transform.parent
+                .GetComponentsInChildren<TMP_Text>(true);
+            for (int index = 0; index < texts.Length; index++)
+            {
+                if (texts[index] != valueText)
+                {
+                    return texts[index];
+                }
+            }
+
+            return null;
         }
 
         // ═══════════════════════════════════════════════════════════════

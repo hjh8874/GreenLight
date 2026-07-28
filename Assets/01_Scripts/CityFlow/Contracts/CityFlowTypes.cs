@@ -9,7 +9,8 @@ namespace CityFlow.Contracts
         House,
         Office,
         School,
-        Hospital
+        Hospital,
+        SpecialBuilding
     }
 
     /// <summary>

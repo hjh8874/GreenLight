@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 56833a33ddfead049a9a41fad0e32eea, type: 3}
+  m_Name: Building_PoliceStation
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.BuildingDefinitionSO
+  buildingId: police_station
+  buildingName: "\uACBD\uCC30\uC11C"
+  category: 8
+  menuCategory: 1
+  description: Civic safety facility.
+  canGenerateTraffic: 0
+  canReceiveTraffic: 1
+  trafficGenerationAmount: 0
+  destinationRewardMultiplier: 1
+  buildCost: 0
+  dailyCoinValue: 0
+  prosperityValue: 0
+  unlockedByDefault: 0
+  buildingIcon: {fileID: 0}
+  visualPrefab: {fileID: 0}
+  visualOffset: {x: 0, y: 0, z: 0}
+  visualEulerAngles: {x: 0, y: 0, z: 0}
+  visualScale: {x: 1, y: 1, z: 1}
+  fallbackColor: {r: 0.2, g: 0.42, b: 0.84, a: 1}
+  fallbackHeight: 0.9
+  footprint: {x: 2, y: 2}
+  requiredResearchId: research_building_police_station
+  canReceiveVisitors: 1
+  visitCadence:
+    visitsPerPeriod: 1
+    periodDays: 10
+  visitorCapacity: 0
+  attractionWeight: 1
+  coinPerVisit: 0
+  happinessEffectKey: happiness_building_police_station
+  schoolCoverageCapacity: 0
+  coveredPopulationCapBonus: 0
+  hospitalCoverageRadius: 0
+  hospitalPatientCapacity: 0
+  hospitalStabilityBonus: 0
