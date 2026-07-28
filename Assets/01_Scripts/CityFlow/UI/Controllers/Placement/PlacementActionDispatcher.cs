@@ -200,9 +200,6 @@ namespace CityFlow.UI.Controllers.Placement
             return true;
         }
 
-        public void HandleRoadExpandClicked(CityFlowServices services)
-        {
-        }
 
         private Vector2Int ResolveFootprintAnchor(Vector2Int coord, CityFlowServices services)
         {

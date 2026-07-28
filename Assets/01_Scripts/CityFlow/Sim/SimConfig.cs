@@ -115,11 +115,6 @@ namespace CityFlow.Sim
         // 기존 RoadMaintPerSec 유지비 체인은 삭제됨(MaintenanceEvent dead chain 포함).
 
 
-        // ── 도로 확장권(스펙 §2단계): "+10칸"을 코인으로 구매, 가격 = 기본가 × 성장률^구매횟수 ──
-        // 에스컬레이션이 도배의 수학적 소프트 캡(맵 도배 총비용 >> 현실 지평) 🔓
-        public int   RoadExpandBaseCost;     // 첫 확장권 가격(코인, 반올림 정수 산출의 기저)
-        public float RoadExpandCostGrowth;   // 구매마다 곱해지는 성장률(1.5 = +50%)
-
         // ── Burst 감지 (히스테리시스 + 쿨다운) ──
         public float BurstJamEnterRatio;    // Jam 진입 1.0
         public float BurstFreeReturnRatio;  // Free 복귀 0.6 (경계 진동 방지)
@@ -174,9 +169,6 @@ namespace CityFlow.Sim
             RoutingCongestionWeight = 2f,
             AutoDetectSignals = true,
             CoinBase = 1f,
-
-            RoadExpandBaseCost = 100,
-            RoadExpandCostGrowth = 1.5f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,
             BurstCooldownSeconds = 10f,
