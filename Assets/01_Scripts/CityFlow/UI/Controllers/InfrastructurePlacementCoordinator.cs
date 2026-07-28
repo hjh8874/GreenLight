@@ -406,7 +406,10 @@ namespace CityFlow.UI.Controllers
             }
             if (_currentData.Kind == InfrastructureKind.BusStop)
             {
-                _busStopRegistry.RegisterBusStop(coord);
+                if (!TryCommitBusStopRegistration(coord, cost))
+                {
+                    return;
+                }
             }
 
             if (_services != null && _services.Events != null)
@@ -416,6 +419,45 @@ namespace CityFlow.UI.Controllers
 
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
             
+        }
+
+        private bool TryCommitBusStopRegistration(
+            Vector2Int coord,
+            long cost)
+        {
+            if (TryResolveBusStopRegistry())
+            {
+                _busStopRegistry.RegisterBusStop(coord);
+                return true;
+            }
+
+            bool rolledBack =
+                _busStopService != null &&
+                _busStopService.TryRemoveBusStop(coord);
+
+            if (rolledBack && _economy != null && cost > 0)
+            {
+                _economy.AddCoins(
+                    cost,
+                    "Bus Stop Registry Rollback Refund");
+            }
+
+            if (rolledBack)
+            {
+                Debug.LogError(
+                    "[InfrastructurePlacementCoordinator] " +
+                    $"Bus-stop placement at {coord} was rolled back because " +
+                    "BusStopRegistry became unavailable.");
+            }
+            else
+            {
+                Debug.LogError(
+                    "[InfrastructurePlacementCoordinator] " +
+                    $"BusStopRegistry became unavailable after placing a bus " +
+                    $"stop at {coord}, and placement rollback failed.");
+            }
+
+            return false;
         }
 
         private bool TryResolveBusStopRegistry()
