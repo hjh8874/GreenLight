@@ -4,6 +4,7 @@ using CityFlow.UI.Data;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Linq;
+using CityFlow.Content.Transit;
 using CityFlow.Bootstrap;
 
 namespace CityFlow.UI.Controllers
@@ -20,6 +21,8 @@ namespace CityFlow.UI.Controllers
         private IIntersectionFacilityService _facilityService;
         private ITrafficRuleService _trafficRuleService;
         private IHighwayService _highwayService;
+        private IBusStopInfrastructureService _busStopService;
+        private BusStopRegistry _busStopRegistry;
         private IPlacementService _placement;
 
         private bool _isBuildingMode = false;
@@ -47,6 +50,8 @@ namespace CityFlow.UI.Controllers
             _facilityService = services.Placement as IIntersectionFacilityService;
             _trafficRuleService = services.Placement as ITrafficRuleService;
             _highwayService = services.Placement as IHighwayService;
+            _busStopService = services.Placement as IBusStopInfrastructureService;
+            _busStopRegistry = FindFirstObjectByType<BusStopRegistry>();
             
             if (_economy == null)
             {
@@ -61,6 +66,16 @@ namespace CityFlow.UI.Controllers
 
         public void StartPlacement(InfrastructureDataSO data)
         {
+            if (data != null &&
+                data.Kind == InfrastructureKind.BusStop &&
+                !TryResolveBusStopRegistry())
+            {
+                Debug.LogWarning(
+                    "[InfrastructurePlacementCoordinator] " +
+                    "Bus-stop placement requires an active BusStopRegistry.");
+                return;
+            }
+
             CancelPlacement(); // Ensure clean state
             _currentData = data;
             _isBuildingMode = true;
@@ -311,6 +326,10 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.Oneway => _trafficRuleService.CanPlaceOneway(coord),
                 InfrastructureKind.TurnRestriction => _trafficRuleService.CanPlaceTurnSign(coord),
                 InfrastructureKind.PriorityRoad => _facilityService.CanPlacePriorityRoad(coord),
+                InfrastructureKind.BusStop =>
+                    _busStopService != null &&
+                    TryResolveBusStopRegistry() &&
+                    _busStopService.CanPlaceBusStop(coord),
                 InfrastructureKind.Highway => _pendingHighwayStart.HasValue
                     ? _highwayService.CanPlaceHighway(_pendingHighwayStart.Value, coord)
                     : _highwayService.CanSelectHighwayRamp(coord),
@@ -362,6 +381,9 @@ namespace CityFlow.UI.Controllers
                 InfrastructureKind.Oneway => _trafficRuleService.TryPlaceOneway(coord, _currentData.OnewayDir),
                 InfrastructureKind.TurnRestriction => _trafficRuleService.TryPlaceTurnSign(coord, _currentData.TurnMode),
                 InfrastructureKind.PriorityRoad => _facilityService.TryPlacePriorityRoad(coord, _currentData.PriorityAxis),
+                InfrastructureKind.BusStop =>
+                    _busStopService != null &&
+                    _busStopService.TryPlaceBusStop(coord),
                 InfrastructureKind.Highway => _highwayService.TryPlaceHighway(_pendingHighwayStart.Value, coord),
                 _ => false
             };
@@ -378,7 +400,17 @@ namespace CityFlow.UI.Controllers
             }
 
             Vector2Int eventCoord = _pendingHighwayStart ?? coord;
-            if (_currentData.Kind == InfrastructureKind.Highway) _pendingHighwayStart = null;
+            if (_currentData.Kind == InfrastructureKind.Highway)
+            {
+                _pendingHighwayStart = null;
+            }
+            if (_currentData.Kind == InfrastructureKind.BusStop)
+            {
+                if (!TryCommitBusStopRegistration(coord, cost))
+                {
+                    return;
+                }
+            }
 
             if (_services != null && _services.Events != null)
             {
@@ -389,12 +421,90 @@ namespace CityFlow.UI.Controllers
             
         }
 
+        private bool TryCommitBusStopRegistration(
+            Vector2Int coord,
+            long cost)
+        {
+            if (TryResolveBusStopRegistry())
+            {
+                _busStopRegistry.RegisterBusStop(coord);
+                return true;
+            }
+
+            bool rolledBack =
+                _busStopService != null &&
+                _busStopService.TryRemoveBusStop(coord);
+
+            if (rolledBack && _economy != null && cost > 0)
+            {
+                _economy.AddCoins(
+                    cost,
+                    "Bus Stop Registry Rollback Refund");
+            }
+
+            if (rolledBack)
+            {
+                Debug.LogError(
+                    "[InfrastructurePlacementCoordinator] " +
+                    $"Bus-stop placement at {coord} was rolled back because " +
+                    "BusStopRegistry became unavailable.");
+            }
+            else
+            {
+                Debug.LogError(
+                    "[InfrastructurePlacementCoordinator] " +
+                    $"BusStopRegistry became unavailable after placing a bus " +
+                    $"stop at {coord}, and placement rollback failed.");
+            }
+
+            return false;
+        }
+
+        private bool TryResolveBusStopRegistry()
+        {
+            if (_busStopRegistry == null)
+            {
+                _busStopRegistry =
+                    FindAnyObjectByType<BusStopRegistry>();
+            }
+
+            return _busStopRegistry != null;
+        }
+
         // --- Demolish Logic (LIFO priority handling) ---
         public bool TryDemolishInfrastructureAt(Vector2Int coord)
         {
             if (_facilityService == null || _trafficRuleService == null || _highwayService == null) return false;
 
-            if (_highwayService.IsHighwayRamp(coord) && _highwayService.TryRemoveHighway(coord))
+            if (_busStopService != null &&
+                _busStopService.BusStopTiles.Contains(coord))
+            {
+                if (!TryResolveBusStopRegistry())
+                {
+                    Debug.LogError(
+                        "[InfrastructurePlacementCoordinator] " +
+                        $"Cannot remove bus stop at {coord} without an active BusStopRegistry.");
+                    return false;
+                }
+
+                if (!_busStopService.TryRemoveBusStop(coord))
+                {
+                    return false;
+                }
+
+                if (!_busStopRegistry.RemoveBusStop(coord))
+                {
+                    Debug.LogWarning(
+                        "[InfrastructurePlacementCoordinator] " +
+                        $"Bus stop at {coord} was removed from placement data but was missing from BusStopRegistry.");
+                }
+
+                ProcessRefundAndEvent(InfrastructureKind.BusStop, coord);
+                return true;
+            }
+
+            if (_highwayService.IsHighwayRamp(coord) &&
+                _highwayService.TryRemoveHighway(coord))
             {
                 ProcessRefundAndEvent(InfrastructureKind.Highway, coord);
                 return true;

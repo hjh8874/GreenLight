@@ -13,6 +13,7 @@ namespace CityFlow.Contracts.Save
         public TurnSignSaveData[] TurnSigns;       // 구세이브 = null(턴 제한 표지판 0개) — 마이그레이션 공짜
         public PriorityRoadSaveData[] PriorityRoads;   // 구세이브 = null — 마이그레이션 공짜
         public HighwaySaveData[] Highways;
+        public BusStopSaveData[] BusStops;
         public int RoadCapacityPurchases;              // 도로 확장권 구매횟수. 구세이브 = 0(미구매) — 마이그레이션 공짜
         public bool HasCarSimStats;
         public float CarTripSuccessRate;

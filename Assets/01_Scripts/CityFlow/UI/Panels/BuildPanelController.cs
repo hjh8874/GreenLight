@@ -28,6 +28,7 @@ namespace CityFlow.UI
         [Tooltip("Infra 탭에 별도 슬롯으로 추가할 우선도로 데이터")]
         [SerializeField] private InfrastructureDataSO priorityRoadData;
         [SerializeField] private InfrastructureDataSO highwayData;
+        [SerializeField] private InfrastructureDataSO busStopData;
 
         private bool _isBound;
         // [통합 테스트 호환용] 
@@ -77,8 +78,8 @@ namespace CityFlow.UI
                 Debug.LogError("[BuildPanelController] PlacementController가 할당되지 않았습니다. 인스펙터를 확인해주세요.");
                 return;
             }
-
             ConfigureInfrastructureSlots();
+            EnsureBusStopSlot();
             EnsureHighwaySlot();
 
             // 인스펙터에서 할당 안 했으면 자식 오브젝트에서 자동으로 찾기 (우리의 새로운 슬롯 로직)
@@ -272,6 +273,68 @@ namespace CityFlow.UI
                     }
                 }
             }
+        }
+
+        private void EnsureBusStopSlot()
+        {
+            if (categoryPages == null ||
+                categoryPages.Length == 0 ||
+                categoryPages[0] == null)
+            {
+                return;
+            }
+
+            if (FindAnyObjectByType<
+                    CityFlow.Content.Transit.BusStopRegistry>() == null)
+            {
+                return;
+            }
+
+            busStopData ??= Resources.Load<InfrastructureDataSO>(
+                "CityFlow/InfrastructureData/BusStopData");
+
+            if (busStopData == null)
+            {
+                Debug.LogWarning(
+                    "[BuildPanelController] BusStopData asset was not found in Resources.");
+                return;
+            }
+
+            Transform infraPage = categoryPages[0].transform;
+            InfrastructureSlotController template = null;
+
+            foreach (InfrastructureSlotController slot in
+                     infraPage.GetComponentsInChildren<InfrastructureSlotController>(true))
+            {
+                if (slot.InfraData != null &&
+                    slot.InfraData.Kind == InfrastructureKind.BusStop)
+                {
+                    slot.gameObject.SetActive(true);
+                    return;
+                }
+
+                if (template == null &&
+                    slot.InfraData != null &&
+                    slot.InfraData.Kind == InfrastructureKind.Signal)
+                {
+                    template = slot;
+                }
+            }
+
+            if (template == null)
+            {
+                Debug.LogWarning(
+                    "[BuildPanelController] Bus-stop slot template was not found.");
+                return;
+            }
+
+            InfrastructureSlotController clone =
+                Instantiate(template, infraPage, false);
+            clone.name = "BusStop_Slot";
+            clone.Configure(busStopData);
+            clone.gameObject.SetActive(true);
+            clone.transform.SetSiblingIndex(
+                Mathf.Min(3, infraPage.childCount - 1));
         }
     }
 }

@@ -8,6 +8,7 @@ namespace CityFlow.UI.Data
         Oneway,             // 일방통행
         TurnRestriction,    // 턴 제한
         PriorityRoad,       // 우선도로 (무신호 교차로 λ 비대칭 — 주축 무정차, 곁길 양보)
-        Highway             // 램프 두 지점을 잇는 고가 직결
+        Highway,            // 램프 두 지점을 잇는 고가 직결
+        BusStop             // 시내버스 정류장
     }
 }

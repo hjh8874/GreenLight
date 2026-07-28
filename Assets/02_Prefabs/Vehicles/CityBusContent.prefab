@@ -1,0 +1,143 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &3007267175668421125
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3956754350364538008}
+  - component: {fileID: 6527074732818209294}
+  - component: {fileID: 5161138187899254478}
+  - component: {fileID: 4217619027936533916}
+  - component: {fileID: 3543354564565336222}
+  - component: {fileID: 4742349870720195101}
+  - component: {fileID: 1183233741817494639}
+  m_Layer: 0
+  m_Name: CityBusContent
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3956754350364538008
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3007267175668421125}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &6527074732818209294
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3007267175668421125}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c4d02a002001664a850814f1611aa1b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.Transit.BusRoute
+  gridWidth: 20
+  gridHeight: 20
+  secondsPerTile: 0.22
+  stopWaitSeconds: 0.8
+  loopRoute: 1
+  autoStart: 0
+  avoidImmediateUTurn: 1
+--- !u!114 &5161138187899254478
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3007267175668421125}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc4d81c25b30b774b95d19101cb547a8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.Transit.BusStopRegistry
+  gridWidth: 20
+  gridHeight: 20
+  rebuildOnInitialize: 1
+--- !u!114 &4217619027936533916
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3007267175668421125}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5f6fb244614b35542a0bcf154591240f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.CityBusService
+  definition: {fileID: 11400000, guid: 1389367586db78444a80782f0611acfd, type: 2}
+  busRoute: {fileID: 6527074732818209294}
+  stopRegistry: {fileID: 5161138187899254478}
+  autoStart: 1
+  verboseLogging: 0
+--- !u!114 &3543354564565336222
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3007267175668421125}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f806933de2bcb76429159d84e2adc8ca, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.EmergencyIncidentSystem
+  config: {fileID: 11400000, guid: 022333a06aa647d4d80d76196e435cde, type: 2}
+  gridWidth: 20
+  gridHeight: 20
+  enableAutomaticSpawn: 1
+  verboseLogging: 0
+--- !u!114 &4742349870720195101
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3007267175668421125}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e15a9c6d7deb0f247889367b3afd84c7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.CityBusWorldView
+  busRoute: {fileID: 6527074732818209294}
+  cityView: {fileID: 0}
+  busVisualPrefab: {fileID: 100000, guid: 81de690e0bb3130439ed3ffedbd27be2, type: 3}
+  busMaterial: {fileID: 2100000, guid: 27df31b99e4d03c4d85000f0c27dc500, type: 2}
+  visualScale: 0.085
+  visualDepth: -0.38
+  movementDuration: 0.22
+  laneOffset: 0.18
+--- !u!114 &1183233741817494639
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3007267175668421125}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5d4b8f923524ae04f86d36a7486c8cbc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.CityBusStopWorldView
+  stopRegistry: {fileID: 5161138187899254478}
+  cityView: {fileID: 0}
+  stationMaterial: {fileID: 2100000, guid: 27df31b99e4d03c4d85000f0c27dc500, type: 2}
+  visualDepth: -0.24
