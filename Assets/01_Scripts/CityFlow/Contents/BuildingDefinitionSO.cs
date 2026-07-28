@@ -279,8 +279,7 @@ namespace CityFlow.Content
             hospitalPatientCapacity =
                 Mathf.Max(0, hospitalPatientCapacity);
 
-            hospitalStabilityBonus =
-                Mathf.Max(0, hospitalStabilityBonus);
+
         }
 #endif
     }
