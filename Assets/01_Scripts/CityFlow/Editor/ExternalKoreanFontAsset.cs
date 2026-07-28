@@ -190,7 +190,7 @@ namespace CityFlow.EditorTools
             foreach (TextMeshProUGUI text in texts)
             {
                 if (text.font != fontAsset
-                    || text.fontSharedMaterial == null)
+                    || text.fontSharedMaterial != fontAsset.material)
                 {
                     throw new InvalidOperationException(
                         $"'{text.name}' in '{BuildSlotPrefabPath}' does not " +
@@ -203,7 +203,7 @@ namespace CityFlow.EditorTools
     internal sealed class ExternalKoreanFontBuildValidator
         : IPreprocessBuildWithReport
     {
-        public int callbackOrder => 0;
+        public int callbackOrder => -1;
 
         public void OnPreprocessBuild(BuildReport report)
         {
