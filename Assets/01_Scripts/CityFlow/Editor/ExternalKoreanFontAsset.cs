@@ -3,7 +3,9 @@ using TMPro;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace CityFlow.EditorTools
 {
@@ -100,6 +102,16 @@ namespace CityFlow.EditorTools
             SerializedProperty populationModeProperty =
                 serializedFont.FindProperty("m_AtlasPopulationMode");
 
+            if (sourceFontProperty == null
+                || sourceGuidProperty == null
+                || creationSourceGuidProperty == null
+                || populationModeProperty == null)
+            {
+                throw new InvalidOperationException(
+                    $"Unsupported TMP_FontAsset serialized layout for " +
+                    $"'{FontAssetPath}'.");
+            }
+
             bool requiresUpdate =
                 sourceFontProperty.objectReferenceValue != sourceFont
                 || sourceGuidProperty.stringValue != sourceGuid
@@ -129,12 +141,17 @@ namespace CityFlow.EditorTools
 
         private static void ValidateTextMesh(TMP_FontAsset fontAsset)
         {
-            GameObject canvasObject = new GameObject(
-                "ExternalKoreanFontValidationCanvas",
-                typeof(Canvas));
+            Scene previewScene = EditorSceneManager.NewPreviewScene();
 
             try
             {
+                GameObject canvasObject = new GameObject(
+                    "ExternalKoreanFontValidationCanvas",
+                    typeof(Canvas));
+                SceneManager.MoveGameObjectToScene(
+                    canvasObject,
+                    previewScene);
+
                 GameObject textObject = new GameObject(
                     "ExternalKoreanFontValidationText",
                     typeof(RectTransform),
@@ -162,7 +179,7 @@ namespace CityFlow.EditorTools
             }
             finally
             {
-                UnityEngine.Object.DestroyImmediate(canvasObject);
+                EditorSceneManager.ClosePreviewScene(previewScene);
             }
         }
 
