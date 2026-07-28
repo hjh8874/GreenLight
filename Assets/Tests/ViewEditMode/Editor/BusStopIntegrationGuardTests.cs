@@ -164,6 +164,79 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void BusStopPlacement_RegistryLostDuringPurchase_RollsBackTransaction()
+        {
+            GameObject registryObject =
+                new("BusStopRegistry");
+            GameObject coordinatorObject =
+                new("InfrastructurePlacementCoordinator");
+            InfrastructureDataSO busStopData =
+                CreateInfrastructureData(
+                    InfrastructureKind.BusStop);
+
+            try
+            {
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                Vector2Int road = new(2, 2);
+                Vector2Int stop = new(2, 3);
+                Assert.That(
+                    engine.Place(road, TileType.Road),
+                    Is.True);
+
+                BusStopRegistry registry =
+                    registryObject.AddComponent<BusStopRegistry>();
+                RegistryDestroyingEconomy economy =
+                    new(registryObject, 1000L);
+                CityFlowServices services =
+                    new(
+                        events,
+                        engine,
+                        engine,
+                        economy: economy);
+                registry.Initialize(services);
+
+                InfrastructurePlacementCoordinator coordinator =
+                    coordinatorObject.AddComponent<
+                        InfrastructurePlacementCoordinator>();
+                coordinator.Initialize(services);
+                busStopData.Cost = 150;
+                coordinator.StartPlacement(busStopData);
+
+                int infrastructureChangedCount = 0;
+                events.InfrastructureChanged +=
+                    _ => infrastructureChangedCount++;
+
+                LogAssert.Expect(
+                    LogType.Error,
+                    "[InfrastructurePlacementCoordinator] " +
+                    $"Bus-stop placement at {stop} was rolled back because " +
+                    "BusStopRegistry became unavailable.");
+                InvokePrivate(
+                    coordinator,
+                    "TryPurchaseAndPlace",
+                    stop);
+
+                Assert.That(
+                    engine.BusStopTiles,
+                    Is.Empty);
+                Assert.That(
+                    economy.Coins,
+                    Is.EqualTo(1000L));
+                Assert.That(
+                    infrastructureChangedCount,
+                    Is.Zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(coordinatorObject);
+                Object.DestroyImmediate(registryObject);
+                Object.DestroyImmediate(busStopData);
+            }
+        }
+
+        [Test]
         public void BusStopDemolition_IsBlockedWithoutRegistry()
         {
             GameObject coordinatorObject =
@@ -535,6 +608,45 @@ namespace Tests.EditMode
             }
 
             return false;
+        }
+
+        private sealed class RegistryDestroyingEconomy
+            : IEconomyService
+        {
+            private readonly GameObject registryObject;
+
+            public RegistryDestroyingEconomy(
+                GameObject registryObject,
+                long coins)
+            {
+                this.registryObject = registryObject;
+                Coins = coins;
+            }
+
+            public long Coins { get; private set; }
+
+            public event Action<long> CoinsChanged
+            {
+                add { }
+                remove { }
+            }
+
+            public bool TrySpend(long amount)
+            {
+                if (amount <= 0L || Coins < amount)
+                {
+                    return false;
+                }
+
+                Coins -= amount;
+                Object.DestroyImmediate(registryObject);
+                return true;
+            }
+
+            public void AddCoins(long amount, string reason)
+            {
+                Coins += amount;
+            }
         }
 
         private static InfrastructureDataSO
