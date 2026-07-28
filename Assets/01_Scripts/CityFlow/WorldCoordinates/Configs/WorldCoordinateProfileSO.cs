@@ -10,18 +10,11 @@ namespace CityFlow.WorldCoordinates
     {
         [SerializeField] private WorldCoordinatePlane plane =
             WorldCoordinatePlane.XY;
-        [SerializeField, Min(0.01f)] private float tileSize = 1f;
 
         public WorldCoordinatePlane Plane => plane;
-        public float TileSize => Mathf.Max(0.01f, tileSize);
         public Quaternion PlaneRotation => plane == WorldCoordinatePlane.XZ
             ? Quaternion.Euler(90f, 0f, 0f)
             : Quaternion.identity;
-
-        private void OnValidate()
-        {
-            tileSize = Mathf.Max(0.01f, tileSize);
-        }
     }
 }
 

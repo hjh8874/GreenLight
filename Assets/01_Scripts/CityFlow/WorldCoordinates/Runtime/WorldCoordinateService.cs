@@ -20,9 +20,7 @@ namespace CityFlow.WorldCoordinates
         public WorldCoordinatePlane Plane => profile != null
             ? profile.Plane
             : WorldCoordinatePlane.XY;
-        public float TileSize => profile != null
-            ? profile.TileSize
-            : GridUtil.TileSize;
+        public float TileSize => GridUtil.TileSize;
         public Vector3 Origin => initialized
             ? registeredOrigin
             : transform.position;

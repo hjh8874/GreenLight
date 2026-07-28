@@ -13,4 +13,3 @@ MonoBehaviour:
   m_Name: WorldCoordinateProfile
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.WorldCoordinates.WorldCoordinateProfileSO
   plane: 1
-  tileSize: 1

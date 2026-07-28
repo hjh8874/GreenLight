@@ -33,7 +33,8 @@ namespace CityFlow.Tests
                 Assert.NotNull(profile);
                 Assert.NotNull(prefab);
                 Assert.AreEqual(WorldCoordinatePlane.XZ, profile.Plane);
-                Assert.AreEqual(1f, profile.TileSize);
+                Assert.IsNull(
+                    new SerializedObject(profile).FindProperty("tileSize"));
 
                 instance = Object.Instantiate(prefab);
                 WorldCoordinateService coordinateService =
@@ -53,6 +54,9 @@ namespace CityFlow.Tests
                 Assert.AreSame(
                     coordinateService,
                     services.WorldCoordinates);
+                Assert.AreEqual(
+                    GridUtil.TileSize,
+                    coordinateService.TileSize);
                 AssertVector(
                     new Vector3(2.5f, 0f, 3.5f),
                     coordinateService.GridToWorld(new Vector2Int(2, 3)));
