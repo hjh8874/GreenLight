@@ -25,6 +25,23 @@ namespace CityFlow.WorldGrid
             Mathf.Clamp(initialUnlockedColumns, 1, ChunkColumns);
         public int InitialUnlockedRows =>
             Mathf.Clamp(initialUnlockedRows, 1, ChunkRows);
+        public Vector2Int InitialPlayableOrigin => new Vector2Int(
+            ((ChunkColumns - InitialUnlockedColumns) / 2) * ChunkSize,
+            ((ChunkRows - InitialUnlockedRows) / 2) * ChunkSize);
+        public Vector2Int InitialPlayableSize
+        {
+            get
+            {
+                Vector2Int origin = InitialPlayableOrigin;
+                return new Vector2Int(
+                    Mathf.Min(
+                        InitialUnlockedColumns * ChunkSize,
+                        WorldWidth - origin.x),
+                    Mathf.Min(
+                        InitialUnlockedRows * ChunkSize,
+                        WorldHeight - origin.y));
+            }
+        }
 
         private void OnValidate()
         {

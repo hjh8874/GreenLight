@@ -8,9 +8,13 @@ namespace CityFlow.View
     {
         private readonly int width;
         private readonly int height;
+        private readonly Vector2Int origin;
         private readonly bool[] clearedTiles;
 
-        public TerrainDecorationState(int width, int height)
+        public TerrainDecorationState(
+            int width,
+            int height,
+            Vector2Int origin = default)
         {
             if (width <= 0)
             {
@@ -24,6 +28,7 @@ namespace CityFlow.View
 
             this.width = width;
             this.height = height;
+            this.origin = origin;
             clearedTiles = new bool[width * height];
         }
 
@@ -81,11 +86,19 @@ namespace CityFlow.View
 
             return new TerrainDecorationSaveData
             {
+                GridWidth = width,
+                GridHeight = height,
+                OriginX = origin.x,
+                OriginY = origin.y,
                 ClearedTileIndices = clearedTileIndices
             };
         }
 
-        public void RestoreSnapshot(TerrainDecorationSaveData snapshot)
+        public void RestoreSnapshot(
+            TerrainDecorationSaveData snapshot,
+            int legacyWidth = 0,
+            int legacyHeight = 0,
+            Vector2Int legacyOrigin = default)
         {
             Array.Clear(clearedTiles, 0, clearedTiles.Length);
 
@@ -95,27 +108,49 @@ namespace CityFlow.View
                 return;
             }
 
+            bool hasSavedGrid = snapshot.GridWidth > 0 &&
+                                snapshot.GridHeight > 0;
+            int sourceWidth = hasSavedGrid
+                ? snapshot.GridWidth
+                : legacyWidth > 0 ? legacyWidth : width;
+            int sourceHeight = hasSavedGrid
+                ? snapshot.GridHeight
+                : legacyHeight > 0 ? legacyHeight : height;
+            Vector2Int sourceOrigin = hasSavedGrid
+                ? new Vector2Int(snapshot.OriginX, snapshot.OriginY)
+                : legacyOrigin;
+            int sourceTileCount = sourceWidth * sourceHeight;
+
             for (int i = 0; i < clearedTileIndices.Length; i++)
             {
                 int tileIndex = clearedTileIndices[i];
-                if (tileIndex >= 0 && tileIndex < clearedTiles.Length)
+                if (tileIndex < 0 || tileIndex >= sourceTileCount)
                 {
-                    clearedTiles[tileIndex] = true;
+                    continue;
+                }
+
+                Vector2Int tile = sourceOrigin + new Vector2Int(
+                    tileIndex % sourceWidth,
+                    tileIndex / sourceWidth);
+                if (IsInsideGrid(tile))
+                {
+                    clearedTiles[ToIndex(tile)] = true;
                 }
             }
         }
 
         private int ToIndex(Vector2Int tile)
         {
-            return tile.y * width + tile.x;
+            Vector2Int localTile = tile - origin;
+            return localTile.y * width + localTile.x;
         }
 
         private bool IsInsideGrid(Vector2Int tile)
         {
-            return tile.x >= 0 &&
-                   tile.x < width &&
-                   tile.y >= 0 &&
-                   tile.y < height;
+            return tile.x >= origin.x &&
+                   tile.x < origin.x + width &&
+                   tile.y >= origin.y &&
+                   tile.y < origin.y + height;
         }
     }
 }

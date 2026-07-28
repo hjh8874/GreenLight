@@ -24,6 +24,12 @@ namespace CityFlow.WorldGrid
         public int ChunkSize => EnsureState() ? state.Partition.ChunkSize : 0;
         public int ChunkColumns => EnsureState() ? state.Partition.ChunkColumns : 0;
         public int ChunkRows => EnsureState() ? state.Partition.ChunkRows : 0;
+        public Vector2Int InitialPlayableOrigin => config != null
+            ? config.InitialPlayableOrigin
+            : Vector2Int.zero;
+        public Vector2Int InitialPlayableSize => config != null
+            ? config.InitialPlayableSize
+            : Vector2Int.zero;
 
         public event Action<GridChunkId> ChunkUnlocked;
         public event Action AccessRestored;

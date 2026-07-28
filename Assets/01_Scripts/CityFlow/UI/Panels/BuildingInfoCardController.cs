@@ -400,7 +400,7 @@ namespace CityFlow.UI
 
         private void CheckDensity(Vector2Int neighbor, ref float maxNeighborDensity)
         {
-            if (!GridUtil.IsInside(neighbor)) return;
+            if (!IsInsideWorld(neighbor)) return;
             if (services.TileData.GetTileType(neighbor) == TileType.Road)
             {
                 float neighborDensity = services.TileData.GetDensity01(neighbor);
@@ -413,7 +413,7 @@ namespace CityFlow.UI
 
         private void CheckCongestion(Vector2Int neighbor, ref CongestionLevel worstLevel)
         {
-            if (!GridUtil.IsInside(neighbor)) return;
+            if (!IsInsideWorld(neighbor)) return;
             if (services.TileData.GetTileType(neighbor) == TileType.Road)
             {
                 CongestionLevel level = services.TileData.GetCongestion(neighbor);
@@ -424,6 +424,13 @@ namespace CityFlow.UI
             }
         }
         // ═══════════════════════════════════════════════════════════════
+
+        private bool IsInsideWorld(Vector2Int tile)
+        {
+            return services?.WorldGrid != null
+                ? services.WorldGrid.IsInsideWorld(tile)
+                : GridUtil.IsInside(tile);
+        }
 
         private void StopUpdateRoutine()
         {

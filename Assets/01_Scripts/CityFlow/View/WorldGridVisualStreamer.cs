@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Configs;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using CityFlow.WorldGrid;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -33,6 +34,9 @@ namespace CityFlow.View
         private readonly Dictionary<Material, Material> ownedMaterials = new();
 
         private IWorldGridAccess worldGridAccess;
+        private IReadOnlyTileData tileData;
+        private ITerrainDecorationSaveSource terrainDecorations;
+        private CityFlowServices services;
         private Mesh sourceMesh;
         private Material renderMaterial;
         private Material ownedMaterial;
@@ -82,6 +86,8 @@ namespace CityFlow.View
                 return;
             }
 
+            this.services = services;
+            tileData = services.TileData;
             worldGrid.Initialize(services);
             worldGridAccess = services.WorldGrid;
             if (!ReferenceEquals(worldGridAccess, worldGrid) ||
@@ -95,6 +101,10 @@ namespace CityFlow.View
 
             worldGridAccess.ChunkUnlocked += OnChunkUnlocked;
             worldGridAccess.AccessRestored += OnAccessRestored;
+            services.Events.Placed += OnPlaced;
+            services.TerrainDecorationsRegistered +=
+                OnTerrainDecorationsRegistered;
+            SetTerrainDecorations(services.TerrainDecorations);
             initialized = true;
             visualsDirty = true;
         }
@@ -181,10 +191,10 @@ namespace CityFlow.View
 
             var matrices = new List<Matrix4x4>();
             ClearDecorationMatrices();
-            int baseMinX =
-                (worldGridAccess.WorldWidth - cityView.GridWidth) / 2;
-            int baseMinY =
-                (worldGridAccess.WorldHeight - cityView.GridHeight) / 2;
+            Vector2Int initialOrigin =
+                worldGridAccess.InitialPlayableOrigin;
+            int baseMinX = initialOrigin.x;
+            int baseMinY = initialOrigin.y;
             int minUnlockedX = worldGridAccess.WorldWidth;
             int minUnlockedY = worldGridAccess.WorldHeight;
             int maxUnlockedX = 0;
@@ -316,6 +326,15 @@ namespace CityFlow.View
                 worldGridAccess.ChunkUnlocked -= OnChunkUnlocked;
                 worldGridAccess.AccessRestored -= OnAccessRestored;
             }
+
+            if (services != null)
+            {
+                services.Events.Placed -= OnPlaced;
+                services.TerrainDecorationsRegistered -=
+                    OnTerrainDecorationsRegistered;
+            }
+
+            SetTerrainDecorations(null);
 
             if (ownedMaterial != null)
             {
@@ -525,6 +544,10 @@ namespace CityFlow.View
             Matrix4x4 cityLocalToWorld)
         {
             if (decorationCatalog == null ||
+                (tileData != null &&
+                 tileData.GetTileType(logicalTile) != TileType.Empty) ||
+                (terrainDecorations != null &&
+                 terrainDecorations.IsCleared(logicalTile)) ||
                 !decorationCatalog.TryCreateSample(
                     logicalTile,
                     cityView.TileSize,
@@ -700,6 +723,40 @@ namespace CityFlow.View
         }
 
         private void OnAccessRestored()
+        {
+            visualsDirty = true;
+        }
+
+        private void OnPlaced(PlacedEvent _)
+        {
+            visualsDirty = true;
+        }
+
+        private void OnTerrainDecorationsRegistered(
+            ITerrainDecorationSaveSource source)
+        {
+            SetTerrainDecorations(source);
+            visualsDirty = true;
+        }
+
+        private void SetTerrainDecorations(
+            ITerrainDecorationSaveSource source)
+        {
+            if (terrainDecorations != null)
+            {
+                terrainDecorations.StateChanged -=
+                    OnTerrainDecorationStateChanged;
+            }
+
+            terrainDecorations = source;
+            if (terrainDecorations != null)
+            {
+                terrainDecorations.StateChanged +=
+                    OnTerrainDecorationStateChanged;
+            }
+        }
+
+        private void OnTerrainDecorationStateChanged()
         {
             visualsDirty = true;
         }

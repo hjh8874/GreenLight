@@ -127,6 +127,12 @@ namespace CityFlow.Tests
                 Assert.AreEqual(10, config.ChunkSize);
                 Assert.AreEqual(2, config.InitialUnlockedColumns);
                 Assert.AreEqual(2, config.InitialUnlockedRows);
+                Assert.AreEqual(
+                    new Vector2Int(90, 90),
+                    config.InitialPlayableOrigin);
+                Assert.AreEqual(
+                    new Vector2Int(20, 20),
+                    config.InitialPlayableSize);
 
                 instance = Object.Instantiate(prefab);
                 WorldGridService worldGrid =
@@ -135,14 +141,20 @@ namespace CityFlow.Tests
                     instance.GetComponent<WorldGridExpansionService>();
                 WorldGridVisualStreamer visualStreamer =
                     instance.GetComponent<WorldGridVisualStreamer>();
+                TerrainDecorationView terrainDecorations =
+                    instance.GetComponent<TerrainDecorationView>();
                 Assert.NotNull(worldGrid);
                 Assert.NotNull(expansion);
                 Assert.NotNull(visualStreamer);
+                Assert.NotNull(terrainDecorations);
                 Assert.AreSame(config, worldGrid.Config);
                 Assert.AreSame(worldGrid, expansion.WorldGrid);
                 Assert.AreSame(profile, expansion.Profile);
                 Assert.AreSame(worldGrid, visualStreamer.WorldGrid);
                 Assert.NotNull(visualStreamer.FieldTilePrefab);
+                Assert.AreSame(
+                    visualStreamer.DecorationCatalog,
+                    terrainDecorations.Catalog);
 
                 var save = new SaveService(null, null, null);
                 var services = new CityFlowServices(
@@ -431,6 +443,75 @@ namespace CityFlow.Tests
                 if (cityObject != null)
                 {
                     Object.DestroyImmediate(cityObject);
+                }
+            }
+        }
+
+        [Test]
+        public void MainCityView_RendersCentralLogicalBuildingOnBaseBoard()
+        {
+            GameObject cityObject = null;
+            GameObject systemInstance = null;
+
+            try
+            {
+                GameObject prefab =
+                    AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+                Assert.NotNull(prefab);
+                systemInstance = Object.Instantiate(prefab);
+                WorldGridService worldGrid =
+                    systemInstance.GetComponent<WorldGridService>();
+                Assert.NotNull(worldGrid);
+
+                CityFlow.Sim.SimConfig config =
+                    CityFlow.Sim.SimConfig.Default();
+                var hub = new SimEventHub();
+                var engine = new CityFlow.Sim.SimEngine(
+                    config,
+                    hub,
+                    worldGrid);
+                var services = new CityFlowServices(
+                    hub,
+                    engine,
+                    engine,
+                    new SaveService(engine, null, null));
+                worldGrid.Initialize(services);
+                Assert.IsTrue(
+                    engine.Place(
+                        new Vector2Int(90, 90),
+                        TileType.House));
+
+                cityObject = new GameObject("WorldGridCentralBuildingTest");
+                MainCityView cityView =
+                    cityObject.AddComponent<MainCityView>();
+                cityView.Initialize(services);
+
+                Transform building = null;
+                Transform[] children =
+                    cityObject.GetComponentsInChildren<Transform>(true);
+                for (int index = 0; index < children.Length; index++)
+                {
+                    if (children[index].name == "House_90_90")
+                    {
+                        building = children[index];
+                        break;
+                    }
+                }
+
+                Assert.NotNull(building);
+                Assert.That(building.localPosition.x, Is.InRange(0f, 20f));
+                Assert.That(building.localPosition.y, Is.InRange(0f, 20f));
+            }
+            finally
+            {
+                if (cityObject != null)
+                {
+                    Object.DestroyImmediate(cityObject);
+                }
+
+                if (systemInstance != null)
+                {
+                    Object.DestroyImmediate(systemInstance);
                 }
             }
         }

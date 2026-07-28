@@ -19,6 +19,11 @@ namespace CityFlow.Bootstrap
         public IWorldGridExpansionService WorldGridExpansion { get; private set; }
         public IWorldCoordinateSpace WorldCoordinates { get; private set; }
         public IWorldCoordinateRoot WorldCoordinateRoot { get; private set; }
+        public ITerrainDecorationSaveSource TerrainDecorations
+        {
+            get;
+            private set;
+        }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
@@ -28,6 +33,8 @@ namespace CityFlow.Bootstrap
             WorldGridExpansionRegistered;
         public event Action<IWorldCoordinateSpace> WorldCoordinatesRegistered;
         public event Action<IWorldCoordinateRoot> WorldCoordinateRootRegistered;
+        public event Action<ITerrainDecorationSaveSource>
+            TerrainDecorationsRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -137,16 +144,27 @@ namespace CityFlow.Bootstrap
             Save?.RegisterRadioSaveSource(radioSaveSource);
         }
 
-        public void RegisterTerrainDecorationSaveSource(
+        public bool RegisterTerrainDecorationSaveSource(
             ITerrainDecorationSaveSource terrainDecorationSaveSource)
         {
             if (terrainDecorationSaveSource == null)
             {
-                return;
+                return false;
             }
 
+            if (TerrainDecorations != null)
+            {
+                return ReferenceEquals(
+                    TerrainDecorations,
+                    terrainDecorationSaveSource);
+            }
+
+            TerrainDecorations = terrainDecorationSaveSource;
             Save?.RegisterTerrainDecorationSaveSource(
                 terrainDecorationSaveSource);
+            TerrainDecorationsRegistered?.Invoke(
+                terrainDecorationSaveSource);
+            return true;
         }
 
         public bool RegisterWorldGrid(IWorldGridService worldGrid)

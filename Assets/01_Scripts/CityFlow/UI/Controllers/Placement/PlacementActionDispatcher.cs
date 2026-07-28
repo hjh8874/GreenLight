@@ -32,7 +32,13 @@ namespace CityFlow.UI.Controllers.Placement
 
             if (services != null && services.Placement != null && services.TileData != null)
             {
-                if (!GridUtil.IsInside(coord)) return false;
+                Vector2Int footprint = TileFootprint.GetRotatedSize(
+                    currentType,
+                    direction);
+                bool isAccessible = services.WorldGrid != null
+                    ? services.WorldGrid.IsAreaUnlocked(coord, footprint)
+                    : GridUtil.IsInside(coord);
+                if (!isAccessible) return false;
                 if (currentType == TileType.Empty) return true;
 
                 Vector2Int previousAnchor = ResolveFootprintAnchor(coord, services);

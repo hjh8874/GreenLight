@@ -3,6 +3,7 @@ using CityFlow.Contracts;
 using CityFlow.UI;
 using CityFlow.UI.Controllers;
 using CityFlow.WorldCoordinates;
+using CityFlow.WorldGrid;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -17,6 +18,8 @@ namespace CityFlow.Tests
         private const string PrefabPath =
             "Assets/02_Prefabs/WorldCoordinates/" +
             "WorldCoordinateSystem.prefab";
+        private const string WorldGridPrefabPath =
+            "Assets/02_Prefabs/WorldGrid/WorldGridSystem.prefab";
 
         [Test]
         public void SystemPrefab_RegistersDefaultXzCoordinateSpace()
@@ -70,6 +73,59 @@ namespace CityFlow.Tests
                 if (instance != null)
                 {
                     Object.DestroyImmediate(instance);
+                }
+            }
+        }
+
+        [Test]
+        public void WorldGridOrigin_MapsCentralLogicalTileToBoardOrigin()
+        {
+            GameObject coordinateInstance = null;
+            GameObject worldGridInstance = null;
+
+            try
+            {
+                GameObject coordinatePrefab =
+                    AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+                GameObject worldGridPrefab =
+                    AssetDatabase.LoadAssetAtPath<GameObject>(
+                        WorldGridPrefabPath);
+                Assert.NotNull(coordinatePrefab);
+                Assert.NotNull(worldGridPrefab);
+
+                coordinateInstance = Object.Instantiate(coordinatePrefab);
+                worldGridInstance = Object.Instantiate(worldGridPrefab);
+                WorldCoordinateService coordinateService =
+                    coordinateInstance.GetComponent<WorldCoordinateService>();
+                WorldGridService worldGrid =
+                    worldGridInstance.GetComponent<WorldGridService>();
+                var services = new CityFlowServices(null, null, null);
+
+                worldGrid.Initialize(services);
+                coordinateService.Initialize(services);
+
+                Assert.AreEqual(
+                    new Vector2Int(90, 90),
+                    coordinateService.GridOrigin);
+                AssertVector(
+                    new Vector3(0.5f, 0f, 0.5f),
+                    coordinateService.GridToWorld(
+                        new Vector2Int(90, 90)));
+                Assert.AreEqual(
+                    new Vector2Int(90, 90),
+                    coordinateService.WorldToGrid(
+                        new Vector3(0.5f, 0f, 0.5f)));
+            }
+            finally
+            {
+                if (worldGridInstance != null)
+                {
+                    Object.DestroyImmediate(worldGridInstance);
+                }
+
+                if (coordinateInstance != null)
+                {
+                    Object.DestroyImmediate(coordinateInstance);
                 }
             }
         }

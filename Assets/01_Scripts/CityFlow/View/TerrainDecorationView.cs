@@ -1,3 +1,4 @@
+using System;
 using CityFlow.Bootstrap;
 using CityFlow.Configs;
 using CityFlow.Contracts;
@@ -29,6 +30,7 @@ namespace CityFlow.View
         public int SpawnedCount => spawnedCount;
         public MainCityView CityView => cityView;
         public TerrainDecorationCatalogSO Catalog => catalog;
+        public event Action StateChanged;
 
         private void Awake()
         {
@@ -92,6 +94,17 @@ namespace CityFlow.View
                 return;
             }
 
+            EnsureDecorationState();
+            if (!services.RegisterTerrainDecorationSaveSource(this))
+            {
+                Debug.LogWarning(
+                    "[TerrainDecorationView] Another terrain decoration " +
+                    "state owner is already registered. This duplicate " +
+                    "view was skipped.",
+                    this);
+                return;
+            }
+
             services.Events.Placed += OnPlaced;
             cityView.GridCellsBuilt += OnGridCellsBuilt;
             if (services.Save != null)
@@ -100,8 +113,6 @@ namespace CityFlow.View
             }
 
             initialized = true;
-            EnsureDecorationState();
-            services.RegisterTerrainDecorationSaveSource(this);
             RebuildAll();
         }
 
@@ -111,10 +122,22 @@ namespace CityFlow.View
             return decorationState.CreateSnapshot();
         }
 
+        public bool IsCleared(Vector2Int tile)
+        {
+            EnsureDecorationState();
+            return decorationState.IsCleared(tile);
+        }
+
         public void RestoreSnapshot(TerrainDecorationSaveData snapshot)
         {
             EnsureDecorationState();
-            decorationState.RestoreSnapshot(snapshot);
+            decorationState.RestoreSnapshot(
+                snapshot,
+                cityView.GridWidth,
+                cityView.GridHeight,
+                cityView.GridOrigin);
+            ApplyOccupiedTilesToState();
+            StateChanged?.Invoke();
         }
 
         private void OnDestroy()
@@ -140,7 +163,8 @@ namespace CityFlow.View
             {
                 for (int x = 0; x < cityView.GridWidth; x++)
                 {
-                    TrySpawnDecoration(new Vector2Int(x, y));
+                    TrySpawnDecoration(
+                        cityView.GridOrigin + new Vector2Int(x, y));
                 }
             }
 
@@ -176,6 +200,8 @@ namespace CityFlow.View
                     RemoveDecoration(tile);
                 }
             }
+
+            StateChanged?.Invoke();
         }
 
         private void OnGridCellsBuilt()
@@ -235,7 +261,8 @@ namespace CityFlow.View
             {
                 for (int x = 0; x < cityView.GridWidth; x++)
                 {
-                    Vector2Int tile = new Vector2Int(x, y);
+                    Vector2Int tile =
+                        cityView.GridOrigin + new Vector2Int(x, y);
                     if (cityView.TryGetGridCell(tile, out GridCellView gridCell))
                     {
                         gridCell.RemoveDecoration();
@@ -248,18 +275,56 @@ namespace CityFlow.View
         {
             if (decorationState == null)
             {
+                int stateWidth = services?.WorldGrid?.WorldWidth ??
+                                 cityView.GridWidth;
+                int stateHeight = services?.WorldGrid?.WorldHeight ??
+                                  cityView.GridHeight;
+                Vector2Int stateOrigin = services?.WorldGrid != null
+                    ? Vector2Int.zero
+                    : cityView.GridOrigin;
                 decorationState = new TerrainDecorationState(
-                    cityView.GridWidth,
-                    cityView.GridHeight);
+                    stateWidth,
+                    stateHeight,
+                    stateOrigin);
+            }
+        }
+
+        private void ApplyOccupiedTilesToState()
+        {
+            int minX = services?.WorldGrid != null
+                ? 0
+                : cityView.GridOrigin.x;
+            int minY = services?.WorldGrid != null
+                ? 0
+                : cityView.GridOrigin.y;
+            int maxX = services?.WorldGrid?.WorldWidth ??
+                       cityView.GridOrigin.x + cityView.GridWidth;
+            int maxY = services?.WorldGrid?.WorldHeight ??
+                       cityView.GridOrigin.y + cityView.GridHeight;
+
+            for (int y = minY; y < maxY; y++)
+            {
+                for (int x = minX; x < maxX; x++)
+                {
+                    Vector2Int tile = new Vector2Int(x, y);
+                    if (tileData.GetTileType(tile) != TileType.Empty)
+                    {
+                        decorationState.ApplyPlacement(
+                            tile,
+                            Vector2Int.one,
+                            isRemove: false);
+                    }
+                }
             }
         }
 
         private bool IsInsideGrid(Vector2Int tile)
         {
-            return tile.x >= 0 &&
-                   tile.x < cityView.GridWidth &&
-                   tile.y >= 0 &&
-                   tile.y < cityView.GridHeight;
+            Vector2Int origin = cityView.GridOrigin;
+            return tile.x >= origin.x &&
+                   tile.x < origin.x + cityView.GridWidth &&
+                   tile.y >= origin.y &&
+                   tile.y < origin.y + cityView.GridHeight;
         }
     }
 }

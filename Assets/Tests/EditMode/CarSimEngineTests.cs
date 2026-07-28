@@ -733,5 +733,103 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(engine.Place(V(4, 0), TileType.Office));
             return engine;
         }
+
+        [Test]
+        public void WorldGridContract_CreatesTwoHundredTileEngineAndGatesPlacement()
+        {
+            SimConfig config = Cfg();
+            var worldGrid = new TestWorldGridAccess();
+            var engine = new SimEngine(
+                config,
+                new SimEventHub(),
+                worldGrid);
+
+            Assert.AreEqual(200, engine.GridWidth);
+            Assert.AreEqual(200, engine.GridHeight);
+            Assert.IsTrue(engine.Place(V(90, 90), TileType.Road));
+            Assert.IsFalse(engine.Place(V(89, 90), TileType.Road));
+            Assert.IsFalse(engine.Place(V(109, 109), TileType.House));
+        }
+
+        [Test]
+        public void RestoreSnapshot_MigratesLegacyTwentyTileCoordinatesToCenter()
+        {
+            SimConfig config = Cfg();
+            var engine = new SimEngine(
+                config,
+                new SimEventHub(),
+                new TestWorldGridAccess());
+            var snapshot = new SimSaveData
+            {
+                GridWidth = 20,
+                GridHeight = 20,
+                PlacedTiles = new[]
+                {
+                    new TileSaveData
+                    {
+                        X = 0,
+                        Y = 0,
+                        Type = TileType.Road
+                    }
+                }
+            };
+
+            engine.RestoreSnapshot(snapshot);
+
+            Assert.AreEqual(TileType.Road, engine.GetTileType(V(90, 90)));
+            Assert.AreEqual(TileType.Empty, engine.GetTileType(V(0, 0)));
+            Assert.AreEqual(200, engine.CreateSnapshot().GridWidth);
+            Assert.AreEqual(200, engine.CreateSnapshot().GridHeight);
+        }
+
+        private sealed class TestWorldGridAccess : IWorldGridAccess
+        {
+            public int WorldWidth => 200;
+            public int WorldHeight => 200;
+            public int ChunkSize => 10;
+            public int ChunkColumns => 20;
+            public int ChunkRows => 20;
+            public Vector2Int InitialPlayableOrigin => V(90, 90);
+            public Vector2Int InitialPlayableSize => V(20, 20);
+
+            public event System.Action<GridChunkId> ChunkUnlocked;
+            public event System.Action AccessRestored;
+
+            public bool IsInsideWorld(Vector2Int tile) =>
+                tile.x >= 0 && tile.x < WorldWidth &&
+                tile.y >= 0 && tile.y < WorldHeight;
+
+            public bool IsTileUnlocked(Vector2Int tile) =>
+                IsAreaUnlocked(tile, Vector2Int.one);
+
+            public bool IsChunkUnlocked(GridChunkId chunk) =>
+                chunk.X >= 9 && chunk.X <= 10 &&
+                chunk.Y >= 9 && chunk.Y <= 10;
+
+            public bool IsAreaUnlocked(
+                Vector2Int anchor,
+                Vector2Int footprint)
+            {
+                Vector2Int max = anchor + footprint;
+                return anchor.x >= 90 && anchor.y >= 90 &&
+                       max.x <= 110 && max.y <= 110;
+            }
+
+            public bool TryGetChunkId(
+                Vector2Int tile,
+                out GridChunkId chunk)
+            {
+                if (!IsInsideWorld(tile))
+                {
+                    chunk = default;
+                    return false;
+                }
+
+                chunk = new GridChunkId(
+                    tile.x / ChunkSize,
+                    tile.y / ChunkSize);
+                return true;
+            }
+        }
     }
 }

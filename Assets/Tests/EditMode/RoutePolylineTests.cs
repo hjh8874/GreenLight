@@ -26,6 +26,27 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2f, p.Length, 0.01f, "직선 3타일 = 2 tileSize");
         }
 
+        [Test]
+        public void GridOrigin_OffsetsGeometryButPreservesLogicalTiles()
+        {
+            var input = Straight3();
+            input.Tiles = new List<Vector2Int>
+            {
+                new(90, 90),
+                new(91, 90),
+                new(92, 90)
+            };
+            input.GridOrigin = new Vector2Int(90, 90);
+            input.LaneOffset = 0f;
+
+            RoutePolyline polyline = RoutePolyline.Bake(input);
+            Sample start = polyline.SampleAt(0f);
+
+            Assert.AreEqual(new Vector3(0.5f, 0.5f, 0f), start.Pos);
+            Assert.AreEqual(new Vector2Int(90, 90), polyline.TileAt(0));
+            Assert.AreEqual(2f, polyline.Length, 0.01f);
+        }
+
         [TestCase(0.1f, RoutePolyline.MinTransitionSpan)]
         [TestCase(0.8f, 0.8f)]
         [TestCase(1.2f, RoutePolyline.MaxTransitionSpan)]

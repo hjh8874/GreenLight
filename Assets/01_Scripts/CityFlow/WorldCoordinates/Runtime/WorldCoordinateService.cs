@@ -21,6 +21,7 @@ namespace CityFlow.WorldCoordinates
             ? profile.Plane
             : WorldCoordinatePlane.XY;
         public float TileSize => GridUtil.TileSize;
+        public Vector2Int GridOrigin { get; private set; }
         public Vector3 Origin => initialized
             ? registeredOrigin
             : transform.position;
@@ -56,6 +57,8 @@ namespace CityFlow.WorldCoordinates
 
             registeredOrigin = transform.position;
             registeredRotation = transform.rotation * ProfileRotation;
+            GridOrigin = services.WorldGrid?.InitialPlayableOrigin
+                ?? Vector2Int.zero;
             if (!services.RegisterWorldCoordinates(this))
             {
                 Debug.LogWarning(
@@ -86,8 +89,8 @@ namespace CityFlow.WorldCoordinates
             float surfaceOffset = 0f)
         {
             return Origin +
-                   GridXAxis * (gridPoint.x * TileSize) +
-                   GridYAxis * (gridPoint.y * TileSize) +
+                   GridXAxis * ((gridPoint.x - GridOrigin.x) * TileSize) +
+                   GridYAxis * ((gridPoint.y - GridOrigin.y) * TileSize) +
                    GroundNormal * surfaceOffset;
         }
 
@@ -95,8 +98,8 @@ namespace CityFlow.WorldCoordinates
         {
             Vector3 fromOrigin = worldPosition - Origin;
             return new Vector2(
-                Vector3.Dot(fromOrigin, GridXAxis) / TileSize,
-                Vector3.Dot(fromOrigin, GridYAxis) / TileSize);
+                Vector3.Dot(fromOrigin, GridXAxis) / TileSize + GridOrigin.x,
+                Vector3.Dot(fromOrigin, GridYAxis) / TileSize + GridOrigin.y);
         }
 
         public Vector2Int WorldToGrid(Vector3 worldPosition)

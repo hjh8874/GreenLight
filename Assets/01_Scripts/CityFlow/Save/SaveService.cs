@@ -190,6 +190,16 @@ namespace CityFlow.Save
 
             if (saveData.Simulation != null)
             {
+                if (saveData.Simulation.GridWidth <= 0)
+                {
+                    saveData.Simulation.GridWidth = saveData.GridWidth;
+                }
+
+                if (saveData.Simulation.GridHeight <= 0)
+                {
+                    saveData.Simulation.GridHeight = saveData.GridHeight;
+                }
+
                 SimSaveSource?.RestoreSnapshot(saveData.Simulation);
             }
 

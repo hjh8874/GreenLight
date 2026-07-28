@@ -691,6 +691,13 @@ namespace CityFlow.Sim.Tests
         {
             public TerrainDecorationSaveData Current =
                 new TerrainDecorationSaveData();
+            public event Action StateChanged
+            {
+                add { }
+                remove { }
+            }
+
+            public bool IsCleared(UnityEngine.Vector2Int tile) => false;
 
             public TerrainDecorationSaveData CreateSnapshot() =>
                 Current;
