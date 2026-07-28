@@ -18,5 +18,7 @@ namespace CityFlow.Contracts.Save
         public RadioSaveData Radio;
         public TerrainDecorationSaveData TerrainDecorations;
         public WorldGridSaveData WorldGrid;
+        public SpecialBuildingSaveData SpecialBuildings;
+        public SpecialBuildingVisitSaveData SpecialBuildingVisits;
     }
 }

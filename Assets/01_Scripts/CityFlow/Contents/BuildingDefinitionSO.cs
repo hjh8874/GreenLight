@@ -1,3 +1,4 @@
+using CityFlow.Contracts;
 using UnityEngine;
 
 namespace CityFlow.Content
@@ -15,7 +16,8 @@ namespace CityFlow.Content
         Utility,        // 보조: 주유소, 공영주차장
         Finance,        // 금융: 은행
         Transit,        // 대중교통: 버스정류장, 지하철역
-        Medical         // 의료: 병원, 보건소
+        Medical,        // 의료: 병원, 보건소
+        Civic           // 공공: 경찰서, 행정 시설
     }
 
     /// <summary>
@@ -37,6 +39,10 @@ namespace CityFlow.Content
 
         [Tooltip("건물의 용도 분류")]
         public BuildingCategory category;
+
+        [SerializeField]
+        private SpecialBuildingMenuCategory menuCategory =
+            SpecialBuildingMenuCategory.Commercial;
 
         [TextArea]
         [Tooltip("건물 설명")]
@@ -78,6 +84,84 @@ namespace CityFlow.Content
 
         [Tooltip("게임 시작 시 기본으로 해금되는 건물인지 여부")]
         public bool unlockedByDefault;
+
+        [Header("Visuals")]
+
+        [SerializeField]
+        private Sprite buildingIcon;
+
+        [SerializeField]
+        private GameObject visualPrefab;
+
+        [SerializeField]
+        private Vector3 visualOffset;
+
+        [SerializeField]
+        private Vector3 visualEulerAngles;
+
+        [SerializeField]
+        private Vector3 visualScale = Vector3.one;
+
+        [SerializeField]
+        private Color fallbackColor = new Color(0.25f, 0.65f, 0.8f, 1f);
+
+        [SerializeField]
+        [Min(0.1f)]
+        private float fallbackHeight = 1f;
+
+        [Header("Placement")]
+
+        [SerializeField]
+        private Vector2Int footprint = new Vector2Int(2, 2);
+
+        [Header("Future Research")]
+
+        [SerializeField]
+        private string requiredResearchId;
+
+        [Header("Visitor Demand")]
+
+        [SerializeField]
+        private bool canReceiveVisitors;
+
+        [SerializeField]
+        private VisitCadence visitCadence = new VisitCadence(1, 1);
+
+        [SerializeField]
+        [Min(0)]
+        private int visitorCapacity;
+
+        [SerializeField]
+        [Min(0f)]
+        private float attractionWeight = 1f;
+
+        [SerializeField]
+        [Min(0)]
+        private int coinPerVisit;
+
+        [Header("Future Happiness")]
+
+        [SerializeField]
+        private string happinessEffectKey;
+
+        public Sprite BuildingIcon => buildingIcon;
+        public SpecialBuildingMenuCategory MenuCategory => menuCategory;
+        public GameObject VisualPrefab => visualPrefab;
+        public Vector3 VisualOffset => visualOffset;
+        public Vector3 VisualEulerAngles => visualEulerAngles;
+        public Vector3 VisualScale => visualScale;
+        public Color FallbackColor => fallbackColor;
+        public float FallbackHeight => Mathf.Max(0.1f, fallbackHeight);
+        public Vector2Int Footprint => new Vector2Int(
+            Mathf.Max(1, footprint.x),
+            Mathf.Max(1, footprint.y));
+        public string RequiredResearchId => requiredResearchId;
+        public bool CanReceiveVisitors => canReceiveVisitors;
+        public VisitCadence VisitCadence => visitCadence;
+        public int VisitorCapacity => Mathf.Max(0, visitorCapacity);
+        public float AttractionWeight => Mathf.Max(0f, attractionWeight);
+        public int CoinPerVisit => Mathf.Max(0, coinPerVisit);
+        public string HappinessEffectKey => happinessEffectKey;
 
         [Header("학교 기능")]
 
@@ -182,6 +266,19 @@ namespace CityFlow.Content
 
             prosperityValue =
                 Mathf.Max(0, prosperityValue);
+
+            visualScale.x = Mathf.Max(0.01f, visualScale.x);
+            visualScale.y = Mathf.Max(0.01f, visualScale.y);
+            visualScale.z = Mathf.Max(0.01f, visualScale.z);
+            fallbackHeight = Mathf.Max(0.1f, fallbackHeight);
+            footprint.x = Mathf.Max(1, footprint.x);
+            footprint.y = Mathf.Max(1, footprint.y);
+            requiredResearchId = requiredResearchId?.Trim();
+            visitCadence = visitCadence.Sanitized();
+            visitorCapacity = Mathf.Max(0, visitorCapacity);
+            attractionWeight = Mathf.Max(0f, attractionWeight);
+            coinPerVisit = Mathf.Max(0, coinPerVisit);
+            happinessEffectKey = happinessEffectKey?.Trim();
 
             schoolCoverageCapacity =
                 Mathf.Max(0, schoolCoverageCapacity);

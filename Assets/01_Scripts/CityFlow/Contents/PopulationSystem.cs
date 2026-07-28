@@ -136,6 +136,14 @@ namespace CityFlow.Content
                 return;
             }
 
+            if (!services.RegisterPopulation(this))
+            {
+                Debug.LogWarning(
+                    "[PopulationSystem] Another population service is registered.",
+                    this);
+                return;
+            }
+
             /*
              * 이벤트를 연결하기 전에 현재 Sim 타일 상태를
              * 한 번 스캔하여 인구를 계산합니다.

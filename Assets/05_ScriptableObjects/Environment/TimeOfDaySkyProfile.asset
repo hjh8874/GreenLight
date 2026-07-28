@@ -1,0 +1,67 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9576416fd69b412b9f89ee1c60797e0b, type: 3}
+  m_Name: TimeOfDaySkyProfile
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Environment.TimeOfDaySkyProfile
+  keyframes:
+  - hour: 0
+    skyboxMaterial: {fileID: 2100000, guid: 2ee22d71509094ad5a0ab36a390840a9, type: 2}
+    skyRotation: 0
+    skyExposure: 0.85
+    transitionHours: 0
+    lightColor: {r: 0.32, g: 0.42, b: 0.65, a: 1}
+    lightIntensity: 0.2
+    lightEuler: {x: 50, y: -30, z: 0}
+    shadowStrength: 0.3
+    ambientSkyColor: {r: 0.06, g: 0.09, b: 0.16, a: 1}
+    ambientEquatorColor: {r: 0.035, g: 0.05, b: 0.09, a: 1}
+    ambientGroundColor: {r: 0.02, g: 0.025, b: 0.04, a: 1}
+    ambientIntensity: 0.65
+  - hour: 6
+    skyboxMaterial: {fileID: 2100000, guid: 3bb43d941cab34b688a93c4b1aee9159, type: 2}
+    skyRotation: 0
+    skyExposure: 1
+    transitionHours: 0
+    lightColor: {r: 1, g: 0.96, b: 0.9, a: 1}
+    lightIntensity: 1
+    lightEuler: {x: 50, y: -30, z: 0}
+    shadowStrength: 0.8
+    ambientSkyColor: {r: 0.72, g: 0.8, b: 0.92, a: 1}
+    ambientEquatorColor: {r: 0.52, g: 0.6, b: 0.7, a: 1}
+    ambientGroundColor: {r: 0.25, g: 0.27, b: 0.3, a: 1}
+    ambientIntensity: 1
+  - hour: 12
+    skyboxMaterial: {fileID: 2100000, guid: b6c9329c7bf2d4e7d89f3ee71506bcac, type: 2}
+    skyRotation: 0
+    skyExposure: 1
+    transitionHours: 0
+    lightColor: {r: 1, g: 0.98, b: 0.92, a: 1}
+    lightIntensity: 1.05
+    lightEuler: {x: 50, y: -30, z: 0}
+    shadowStrength: 0.85
+    ambientSkyColor: {r: 0.78, g: 0.84, b: 0.95, a: 1}
+    ambientEquatorColor: {r: 0.58, g: 0.66, b: 0.76, a: 1}
+    ambientGroundColor: {r: 0.28, g: 0.29, b: 0.31, a: 1}
+    ambientIntensity: 1
+  - hour: 18
+    skyboxMaterial: {fileID: 2100000, guid: 3a0d0e8a75d90402b8d47a5dada002ab, type: 2}
+    skyRotation: 0
+    skyExposure: 0.9
+    transitionHours: 0
+    lightColor: {r: 0.62, g: 0.38, b: 0.48, a: 1}
+    lightIntensity: 0.25
+    lightEuler: {x: 50, y: -30, z: 0}
+    shadowStrength: 0.3
+    ambientSkyColor: {r: 0.22, g: 0.15, b: 0.2, a: 1}
+    ambientEquatorColor: {r: 0.14, g: 0.08, b: 0.12, a: 1}
+    ambientGroundColor: {r: 0.04, g: 0.035, b: 0.05, a: 1}
+    ambientIntensity: 0.7

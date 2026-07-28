@@ -62,6 +62,7 @@ namespace CityFlow.UI
         private CityFlowServices _services;
         private bool _isBuildingMode = false;
         private TileType _currentType = TileType.Road;
+        private string _currentSpecialBuildingId = string.Empty;
         private PlacementDirection _currentDirection = PlacementDirection.North;
 
         private PlacementInputHandler _inputHandler;
@@ -120,6 +121,7 @@ namespace CityFlow.UI
         public void SetBuildType(TileType type)
         {
             _currentType = type;
+            _currentSpecialBuildingId = string.Empty;
             _currentDirection = PlacementDirection.North;
 
             _costLabelManager.ResetState();
@@ -137,6 +139,42 @@ namespace CityFlow.UI
             ToggleBuildMode(true);
         }
 
+        public void SetSpecialBuilding(string buildingId)
+        {
+            string normalizedId = buildingId?.Trim() ?? string.Empty;
+            if (normalizedId.Length == 0 ||
+                _services?.SpecialBuildings == null ||
+                !_services.SpecialBuildings.IsBuildingUnlocked(normalizedId))
+            {
+                Debug.LogWarning(
+                    "[PlacementController] The selected special building " +
+                    "is invalid or locked.",
+                    this);
+                return;
+            }
+
+            _currentType = TileType.SpecialBuilding;
+            _currentSpecialBuildingId = normalizedId;
+            _currentDirection = PlacementDirection.North;
+
+            _costLabelManager.ResetState();
+            _visualManager.HideBenefitHighlights();
+            UpdateGhostSprite();
+            _visualManager.UpdateGhostFootprint(
+                _currentType,
+                _currentDirection);
+
+            var infraCoord = UnityEngine.Object.FindAnyObjectByType<
+                InfrastructurePlacementCoordinator>();
+            if (infraCoord != null && infraCoord.IsBuildingMode)
+            {
+                infraCoord.CancelPlacement();
+            }
+
+            enabled = true;
+            ToggleBuildMode(true);
+        }
+
         public void ToggleBuildMode(bool isOn)
         {
             _isBuildingMode = isOn;
@@ -144,7 +182,7 @@ namespace CityFlow.UI
             if (isOn)
             {
                 _visualManager.HideBenefitHighlights();
-                _visualManager.UpdateGhostSprite(_currentType, availableTiles);
+                UpdateGhostSprite();
                 _visualManager.UpdateGhostFootprint(_currentType, _currentDirection);
             }
 
@@ -227,7 +265,12 @@ namespace CityFlow.UI
             Vector2Int gridCoord = _inputHandler.GetMouseGridCoordinate(
                 useXYPlane,
                 coordinateSpace);
-            bool canPlace = _actionDispatcher.CheckCanPlace(gridCoord, _currentType, _currentDirection, _services);
+            bool canPlace = _actionDispatcher.CheckCanPlace(
+                gridCoord,
+                _currentType,
+                _currentDirection,
+                _services,
+                _currentSpecialBuildingId);
             bool isBuildingType = TileFootprint.IsBuilding(_currentType);
 
             _inputHandler.UpdateGlobalInput(_isBuildingMode, isBuildingType, gridCoord);
@@ -275,7 +318,10 @@ namespace CityFlow.UI
                 useXYPlane,
                 coordinateSpace);
 
-            long cost = _actionDispatcher.GetTileCost(_currentType);
+            long cost = _actionDispatcher.GetTileCost(
+                _currentType,
+                _currentSpecialBuildingId,
+                _services);
             bool affordable = _services?.Economy == null || _services.Economy.Coins >= cost;
             _costLabelManager.UpdateCost(cost, affordable, canPlace, Time.deltaTime);
         }
@@ -294,7 +340,12 @@ namespace CityFlow.UI
 
         private void HandlePlace(Vector2Int coord)
         {
-            _actionDispatcher.PlaceInfrastructure(coord, _currentType, _currentDirection, _services);
+            _actionDispatcher.PlaceInfrastructure(
+                coord,
+                _currentType,
+                _currentDirection,
+                _services,
+                _currentSpecialBuildingId);
         }
 
         private void HandleDragPlace(Vector2Int from, Vector2Int to)
@@ -316,15 +367,43 @@ namespace CityFlow.UI
 
         private void TryPlaceDragTile(Vector2Int coord)
         {
-            if (_actionDispatcher.CheckCanPlace(coord, _currentType, _currentDirection, _services))
+            if (_actionDispatcher.CheckCanPlace(
+                    coord,
+                    _currentType,
+                    _currentDirection,
+                    _services,
+                    _currentSpecialBuildingId))
             {
-                _actionDispatcher.PlaceInfrastructure(coord, _currentType, _currentDirection, _services);
+                _actionDispatcher.PlaceInfrastructure(
+                    coord,
+                    _currentType,
+                    _currentDirection,
+                    _services,
+                    _currentSpecialBuildingId);
             }
         }
 
         public bool TryDemolishAt(Vector2Int coord)
         {
             return _actionDispatcher.TryDemolishAt(coord, _services);
+        }
+
+        private void UpdateGhostSprite()
+        {
+            Sprite overrideSprite = null;
+            if (_currentType == TileType.SpecialBuilding &&
+                _services?.SpecialBuildings != null &&
+                _services.SpecialBuildings.TryGetBuildOption(
+                    _currentSpecialBuildingId,
+                    out SpecialBuildingBuildOption option))
+            {
+                overrideSprite = option.Icon;
+            }
+
+            _visualManager.UpdateGhostSprite(
+                _currentType,
+                availableTiles,
+                overrideSprite);
         }
 
         public const float EmptyGroundMarkerZ = 0.12f;

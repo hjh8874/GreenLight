@@ -16,8 +16,20 @@ namespace CityFlow.UI.Controllers.Placement
             _useFakeMode = useFakeMode;
         }
 
-        public long GetTileCost(TileType type)
+        public long GetTileCost(
+            TileType type,
+            string specialBuildingId = null,
+            CityFlowServices services = null)
         {
+            if (type == TileType.SpecialBuilding &&
+                services?.SpecialBuildings != null &&
+                services.SpecialBuildings.TryGetBuildOption(
+                    specialBuildingId,
+                    out SpecialBuildingBuildOption option))
+            {
+                return option.BuildCost;
+            }
+
             if (_availableTiles == null) return 0;
             foreach (var t in _availableTiles)
             {
@@ -26,7 +38,12 @@ namespace CityFlow.UI.Controllers.Placement
             return 0;
         }
 
-        public bool CheckCanPlace(Vector2Int coord, TileType currentType, PlacementDirection direction, CityFlowServices services)
+        public bool CheckCanPlace(
+            Vector2Int coord,
+            TileType currentType,
+            PlacementDirection direction,
+            CityFlowServices services,
+            string specialBuildingId = null)
         {
             if (_useFakeMode) return true;
 
@@ -41,6 +58,14 @@ namespace CityFlow.UI.Controllers.Placement
                 if (!isAccessible) return false;
                 if (currentType == TileType.Empty) return true;
 
+                if (currentType == TileType.SpecialBuilding)
+                {
+                    return services.SpecialBuildings?.CanPlace(
+                        specialBuildingId,
+                        coord,
+                        direction) == true;
+                }
+
                 Vector2Int previousAnchor = ResolveFootprintAnchor(coord, services);
                 TileType previousType = services.TileData.GetTileType(previousAnchor);
 
@@ -54,7 +79,12 @@ namespace CityFlow.UI.Controllers.Placement
             return false;
         }
 
-        public void PlaceInfrastructure(Vector2Int coord, TileType currentType, PlacementDirection direction, CityFlowServices services)
+        public void PlaceInfrastructure(
+            Vector2Int coord,
+            TileType currentType,
+            PlacementDirection direction,
+            CityFlowServices services,
+            string specialBuildingId = null)
         {
             if (_useFakeMode)
             {
@@ -69,8 +99,14 @@ namespace CityFlow.UI.Controllers.Placement
 
                 if (currentType == TileType.Empty)
                 {
-                    long refundCost = GetTileCost(previousType);
-                    if (services.Placement.Remove(previousAnchor))
+                    long refundCost = GetDemolitionRefund(
+                        previousAnchor,
+                        previousType,
+                        services);
+                    bool removed = previousType == TileType.SpecialBuilding
+                        ? services.SpecialBuildings?.TryRemove(previousAnchor) == true
+                        : services.Placement.Remove(previousAnchor);
+                    if (removed)
                     {
                         if (services.Economy != null && refundCost > 0)
                             services.Economy.AddCoins(refundCost, "Demolish Refund");
@@ -80,7 +116,10 @@ namespace CityFlow.UI.Controllers.Placement
                 }
                 else
                 {
-                    long buildCost = GetTileCost(currentType);
+                    long buildCost = GetTileCost(
+                        currentType,
+                        specialBuildingId,
+                        services);
 
                     if (previousType != TileType.Empty)
                     {
@@ -94,7 +133,16 @@ namespace CityFlow.UI.Controllers.Placement
                         return;
                     }
 
-                    if (services.Placement.Place(coord, currentType, direction))
+                    bool placed = currentType == TileType.SpecialBuilding
+                        ? services.SpecialBuildings?.TryPlace(
+                            specialBuildingId,
+                            coord,
+                            direction) == true
+                        : services.Placement.Place(
+                            coord,
+                            currentType,
+                            direction);
+                    if (placed)
                     {
                         if (services.Economy != null && buildCost > 0)
                             services.Economy.TrySpend(buildCost);
@@ -131,8 +179,14 @@ namespace CityFlow.UI.Controllers.Placement
                 return false;
             }
 
-            long refundCost = GetTileCost(previousType);
-            if (!services.Placement.Remove(targetCoord))
+            long refundCost = GetDemolitionRefund(
+                targetCoord,
+                previousType,
+                services);
+            bool removed = previousType == TileType.SpecialBuilding
+                ? services.SpecialBuildings?.TryRemove(targetCoord) == true
+                : services.Placement.Remove(targetCoord);
+            if (!removed)
             {
                 return false;
             }
@@ -165,6 +219,26 @@ namespace CityFlow.UI.Controllers.Placement
                 return anchor;
             }
             return coord;
+        }
+
+        private long GetDemolitionRefund(
+            Vector2Int anchor,
+            TileType previousType,
+            CityFlowServices services)
+        {
+            if (previousType == TileType.SpecialBuilding &&
+                services?.SpecialBuildings != null &&
+                services.SpecialBuildings.TryGetBuilding(
+                    anchor,
+                    out SpecialBuildingInstance building))
+            {
+                return GetTileCost(
+                    previousType,
+                    building.BuildingId,
+                    services);
+            }
+
+            return GetTileCost(previousType);
         }
     }
 }

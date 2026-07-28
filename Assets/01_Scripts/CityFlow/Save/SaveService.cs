@@ -16,6 +16,12 @@ namespace CityFlow.Save
         public IRadioSaveSource RadioSaveSource { get; private set; }
         public ITerrainDecorationSaveSource TerrainDecorationSaveSource { get; private set; }
         public IWorldGridSaveSource WorldGridSaveSource { get; private set; }
+        public ISpecialBuildingSaveSource SpecialBuildingSaveSource { get; private set; }
+        public ISpecialBuildingVisitSaveSource SpecialBuildingVisitSaveSource
+        {
+            get;
+            private set;
+        }
         public IOfflineSettlementSource OfflineSettlementSource { get; private set; }
         public IOfflineCalendarProgressionSource OfflineCalendarProgressionSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
@@ -35,6 +41,8 @@ namespace CityFlow.Save
         private RadioSaveData retainedRadio;
         private TerrainDecorationSaveData retainedTerrainDecorations;
         private WorldGridSaveData retainedWorldGrid;
+        private SpecialBuildingSaveData retainedSpecialBuildings;
+        private SpecialBuildingVisitSaveData retainedSpecialBuildingVisits;
         private bool hasLoadedSave;
 
         public event Action<RestoreCompletedEvent> RestoreCompleted;
@@ -141,6 +149,32 @@ namespace CityFlow.Save
             }
         }
 
+        public void RegisterSpecialBuildingSaveSource(
+            ISpecialBuildingSaveSource specialBuildingSaveSource)
+        {
+            SpecialBuildingSaveSource = specialBuildingSaveSource;
+
+            if (hasLoadedSave)
+            {
+                SpecialBuildingSaveSource?.RestoreSnapshot(
+                    retainedSpecialBuildings ??
+                    CreateEmptySpecialBuildingSaveData());
+            }
+        }
+
+        public void RegisterSpecialBuildingVisitSaveSource(
+            ISpecialBuildingVisitSaveSource specialBuildingVisitSaveSource)
+        {
+            SpecialBuildingVisitSaveSource = specialBuildingVisitSaveSource;
+
+            if (hasLoadedSave)
+            {
+                SpecialBuildingVisitSaveSource?.RestoreSnapshot(
+                    retainedSpecialBuildingVisits ??
+                    CreateEmptySpecialBuildingVisitSaveData());
+            }
+        }
+
         public GameSaveData CreateSnapshot()
         {
             return new GameSaveData
@@ -164,7 +198,13 @@ namespace CityFlow.Save
                     TerrainDecorationSaveSource?.CreateSnapshot()
                     ?? retainedTerrainDecorations,
                 WorldGrid = WorldGridSaveSource?.CreateSnapshot()
-                    ?? retainedWorldGrid
+                    ?? retainedWorldGrid,
+                SpecialBuildings =
+                    SpecialBuildingSaveSource?.CreateSnapshot()
+                    ?? retainedSpecialBuildings,
+                SpecialBuildingVisits =
+                    SpecialBuildingVisitSaveSource?.CreateSnapshot()
+                    ?? retainedSpecialBuildingVisits
             };
         }
 
@@ -245,6 +285,20 @@ namespace CityFlow.Save
             }
 
             WorldGridSaveSource?.RestoreSnapshot(saveData.WorldGrid);
+
+            if (SpecialBuildingSaveSource != null)
+            {
+                SpecialBuildingSaveSource.RestoreSnapshot(
+                    saveData.SpecialBuildings ??
+                    CreateEmptySpecialBuildingSaveData());
+            }
+
+            if (SpecialBuildingVisitSaveSource != null)
+            {
+                SpecialBuildingVisitSaveSource.RestoreSnapshot(
+                    saveData.SpecialBuildingVisits ??
+                    CreateEmptySpecialBuildingVisitSaveData());
+            }
         }
 
         public bool Save(bool createAutomaticSlot = false)
@@ -574,6 +628,9 @@ namespace CityFlow.Save
             retainedRadio = saveData?.Radio;
             retainedTerrainDecorations = saveData?.TerrainDecorations;
             retainedWorldGrid = saveData?.WorldGrid;
+            retainedSpecialBuildings = saveData?.SpecialBuildings;
+            retainedSpecialBuildingVisits =
+                saveData?.SpecialBuildingVisits;
         }
 
         private static RadioSaveData CreateEmptyRadioSaveData()
@@ -591,6 +648,27 @@ namespace CityFlow.Save
             return new TerrainDecorationSaveData
             {
                 ClearedTileIndices = Array.Empty<int>()
+            };
+        }
+
+        private static SpecialBuildingSaveData
+            CreateEmptySpecialBuildingSaveData()
+        {
+            return new SpecialBuildingSaveData
+            {
+                Buildings = Array.Empty<SpecialBuildingInstanceSaveData>()
+            };
+        }
+
+        private static SpecialBuildingVisitSaveData
+            CreateEmptySpecialBuildingVisitSaveData()
+        {
+            return new SpecialBuildingVisitSaveData
+            {
+                HasState = false,
+                LastProcessedTotalDay = 0L,
+                Statistics =
+                    Array.Empty<SpecialBuildingVisitStatisticsSaveData>()
             };
         }
     }
