@@ -29,6 +29,10 @@ namespace CityFlow.UI
         public void Initialize(CityFlowServices services)
         {
             _services = services;
+            if (tglCongestionView != null && _services?.Events != null)
+            {
+                tglCongestionView.SetIsOnWithoutNotify(_services.Events.IsCongestionViewEnabled);
+            }
         }
 
         private void Start()
@@ -124,6 +128,19 @@ namespace CityFlow.UI
             }
             
             UnityEngine.SceneManagement.SceneManager.LoadScene(titleSceneName);
+        }
+
+        private void OnDestroy()
+        {
+            if (tglMuteAudio != null)
+                tglMuteAudio.onValueChanged.RemoveListener(OnMuteToggleChanged);
+            if (btnQuitGame != null)
+                btnQuitGame.onClick.RemoveListener(OnQuitClicked);
+            if (tglCongestionView != null)
+                tglCongestionView.onValueChanged.RemoveListener(OnCongestionToggleChanged);
+            if (btnTitleScene != null)
+                btnTitleScene.onClick.RemoveListener(OnTitleSceneClicked);
+        }
         }
     }
 }

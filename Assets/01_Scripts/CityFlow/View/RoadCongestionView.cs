@@ -16,7 +16,7 @@ namespace CityFlow.View
         private MaterialPropertyBlock propertyBlock;
         private CityFlowServices services;
         private bool subscribed;
-        private bool isOverlayEnabled = false;
+        private bool isOverlayEnabled = true;
 
         public void Configure(
             Vector2Int tile,
@@ -52,6 +52,9 @@ namespace CityFlow.View
             tileData = services.TileData;
             services.Events.CongestionChanged += OnCongestionChanged;
             services.Events.CongestionViewToggled += OnCongestionViewToggled;
+            
+            isOverlayEnabled = services.Events.IsCongestionViewEnabled;
+            
             subscribed = true;
             Refresh();
         }
@@ -98,12 +101,19 @@ namespace CityFlow.View
 
         private void Refresh()
         {
-            if (tileData == null || cachedRenderer == null || !isOverlayEnabled)
+            if (tileData == null || cachedRenderer == null)
             {
                 return;
             }
 
-            ApplyColor(tileData.GetCongestion(tile));
+            if (isOverlayEnabled)
+            {
+                ApplyColor(tileData.GetCongestion(tile));
+            }
+            else
+            {
+                ClearColor();
+            }
         }
 
         private void ClearColor()
