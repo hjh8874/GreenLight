@@ -1395,6 +1395,8 @@ namespace CityFlow.Sim
         public bool CanPlaceBusStop(Vector2Int tile)
         {
             if (!_grid.InBounds(tile) ||
+                (_worldGridAccess != null &&
+                 !_worldGridAccess.IsTileUnlocked(tile)) ||
                 _grid.GetTile(tile) != TileType.Empty ||
                 _busStopSet.Contains(tile))
             {

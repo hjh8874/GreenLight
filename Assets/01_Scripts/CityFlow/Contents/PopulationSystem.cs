@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using UnityEngine;
 
 namespace CityFlow.Content
@@ -68,6 +69,7 @@ namespace CityFlow.Content
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
+        private bool isRestoreSubscribed;
 
         public int CurrentPopulation =>
             currentPopulation;
@@ -113,6 +115,7 @@ namespace CityFlow.Content
 
             this.services = services;
             tileData = services.TileData;
+            ApplyWorldGridBounds(services.WorldGrid);
 
             if (populationConfig == null)
             {
@@ -154,6 +157,7 @@ namespace CityFlow.Content
             RebuildPopulationFromTileData();
 
             services.Events.Placed += OnPlaced;
+            SubscribeRestore();
         }
 
         private void OnDestroy()
@@ -164,6 +168,45 @@ namespace CityFlow.Content
             }
 
             services.Events.Placed -= OnPlaced;
+            UnsubscribeRestore();
+        }
+
+        private void ApplyWorldGridBounds(IWorldGridAccess worldGrid)
+        {
+            if (worldGrid == null)
+            {
+                return;
+            }
+
+            gridWidth = Mathf.Max(1, worldGrid.WorldWidth);
+            gridHeight = Mathf.Max(1, worldGrid.WorldHeight);
+        }
+
+        private void SubscribeRestore()
+        {
+            if (isRestoreSubscribed || services?.Save == null)
+            {
+                return;
+            }
+
+            services.Save.RestoreCompleted += OnRestoreCompleted;
+            isRestoreSubscribed = true;
+        }
+
+        private void UnsubscribeRestore()
+        {
+            if (!isRestoreSubscribed || services?.Save == null)
+            {
+                return;
+            }
+
+            services.Save.RestoreCompleted -= OnRestoreCompleted;
+            isRestoreSubscribed = false;
+        }
+
+        private void OnRestoreCompleted(RestoreCompletedEvent _)
+        {
+            RebuildPopulationFromTileData();
         }
 
         /// <summary>

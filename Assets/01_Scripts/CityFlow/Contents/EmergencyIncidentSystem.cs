@@ -66,10 +66,22 @@ namespace CityFlow.Content
 
             services = cityServices;
             tileData = services.TileData;
+            ApplyWorldGridBounds(services.WorldGrid);
             initialized = true;
             RebuildLocations();
             ScheduleNextSpawn();
             Subscribe();
+        }
+
+        private void ApplyWorldGridBounds(IWorldGridAccess worldGrid)
+        {
+            if (worldGrid == null)
+            {
+                return;
+            }
+
+            gridWidth = Mathf.Max(1, worldGrid.WorldWidth);
+            gridHeight = Mathf.Max(1, worldGrid.WorldHeight);
         }
 
         private void Update()

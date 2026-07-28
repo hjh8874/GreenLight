@@ -126,7 +126,8 @@ namespace CityFlow.Bootstrap
             saveService = new SaveService(
                 simSaveSource,
                 new JsonSaveRepository(),
-                new SystemSaveClock());
+                new SystemSaveClock(),
+                worldGridAccess: worldGridAccess);
 
             return saveService;
         }

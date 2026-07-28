@@ -782,6 +782,20 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(200, engine.CreateSnapshot().GridHeight);
         }
 
+        [Test]
+        public void BusStopPlacement_RejectsLockedTileBesideUnlockedRoad()
+        {
+            var engine = new SimEngine(
+                Cfg(),
+                new SimEventHub(),
+                new TestWorldGridAccess());
+
+            Assert.IsTrue(engine.Place(V(90, 90), TileType.Road));
+            Assert.IsTrue(engine.CanPlaceBusStop(V(90, 91)));
+            Assert.IsFalse(engine.CanPlaceBusStop(V(89, 90)));
+            Assert.IsFalse(engine.TryPlaceBusStop(V(89, 90)));
+        }
+
         private sealed class TestWorldGridAccess : IWorldGridAccess
         {
             public int WorldWidth => 200;

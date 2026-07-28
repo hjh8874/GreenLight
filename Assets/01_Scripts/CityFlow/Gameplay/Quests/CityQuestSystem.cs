@@ -49,6 +49,8 @@ namespace CityFlow.Gameplay.Quests
         private bool needsLegacyProgressionMigration;
         private bool hasRestoredLifetimeDeliveredTotal;
         private long restoredLifetimeDeliveredTotal;
+        private int gridWidth = GridUtil.DefaultWidth;
+        private int gridHeight = GridUtil.DefaultHeight;
 
         public event Action<CityQuestViewState> ViewStateChanged;
 
@@ -80,6 +82,12 @@ namespace CityFlow.Gameplay.Quests
             {
                 PublishViewState();
                 return;
+            }
+
+            if (services.WorldGrid != null)
+            {
+                gridWidth = Math.Max(1, services.WorldGrid.WorldWidth);
+                gridHeight = Math.Max(1, services.WorldGrid.WorldHeight);
             }
 
             services.Events.Arrival += OnArrival;
@@ -217,9 +225,9 @@ namespace CityFlow.Gameplay.Quests
             int officeCount = 0;
             int schoolCount = 0;
 
-            for (int y = 0; y < GridUtil.DefaultHeight; y++)
+            for (int y = 0; y < gridHeight; y++)
             {
-                for (int x = 0; x < GridUtil.DefaultWidth; x++)
+                for (int x = 0; x < gridWidth; x++)
                 {
                     TileType type = services.TileData.GetTileType(new Vector2Int(x, y));
 
@@ -263,9 +271,9 @@ namespace CityFlow.Gameplay.Quests
         {
             jamTiles.Clear();
 
-            for (int y = 0; y < GridUtil.DefaultHeight; y++)
+            for (int y = 0; y < gridHeight; y++)
             {
-                for (int x = 0; x < GridUtil.DefaultWidth; x++)
+                for (int x = 0; x < gridWidth; x++)
                 {
                     Vector2Int tile = new Vector2Int(x, y);
 

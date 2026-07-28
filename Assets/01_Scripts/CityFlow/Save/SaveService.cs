@@ -43,6 +43,7 @@ namespace CityFlow.Save
         private WorldGridSaveData retainedWorldGrid;
         private SpecialBuildingSaveData retainedSpecialBuildings;
         private SpecialBuildingVisitSaveData retainedSpecialBuildingVisits;
+        private readonly IWorldGridAccess worldGridAccess;
         private bool hasLoadedSave;
 
         public event Action<RestoreCompletedEvent> RestoreCompleted;
@@ -55,7 +56,8 @@ namespace CityFlow.Save
             ISaveClock clock,
             IEconomySaveSource economySaveSource = null,
             IResearchSaveSource researchSaveSource = null,
-            IProgressionSaveSource progressionSaveSource = null)
+            IProgressionSaveSource progressionSaveSource = null,
+            IWorldGridAccess worldGridAccess = null)
         {
             SimSaveSource = simSaveSource;
             Repository = repository ?? new JsonSaveRepository();
@@ -63,6 +65,7 @@ namespace CityFlow.Save
             EconomySaveSource = economySaveSource;
             ResearchSaveSource = researchSaveSource;
             ProgressionSaveSource = progressionSaveSource;
+            this.worldGridAccess = worldGridAccess;
             SaveSlots = new SaveSlotRepository();
         }
 
@@ -289,15 +292,13 @@ namespace CityFlow.Save
             if (SpecialBuildingSaveSource != null)
             {
                 SpecialBuildingSaveSource.RestoreSnapshot(
-                    saveData.SpecialBuildings ??
-                    CreateEmptySpecialBuildingSaveData());
+                    CreateRestoredSpecialBuildingData(saveData));
             }
 
             if (SpecialBuildingVisitSaveSource != null)
             {
                 SpecialBuildingVisitSaveSource.RestoreSnapshot(
-                    saveData.SpecialBuildingVisits ??
-                    CreateEmptySpecialBuildingVisitSaveData());
+                    CreateRestoredSpecialBuildingVisitData(saveData));
             }
         }
 
@@ -628,9 +629,108 @@ namespace CityFlow.Save
             retainedRadio = saveData?.Radio;
             retainedTerrainDecorations = saveData?.TerrainDecorations;
             retainedWorldGrid = saveData?.WorldGrid;
-            retainedSpecialBuildings = saveData?.SpecialBuildings;
+            retainedSpecialBuildings =
+                CreateRestoredSpecialBuildingData(saveData);
             retainedSpecialBuildingVisits =
+                CreateRestoredSpecialBuildingVisitData(saveData);
+        }
+
+        private SpecialBuildingSaveData CreateRestoredSpecialBuildingData(
+            GameSaveData saveData)
+        {
+            SpecialBuildingSaveData source = saveData?.SpecialBuildings;
+            SpecialBuildingInstanceSaveData[] entries = source?.Buildings;
+
+            if (entries == null || entries.Length == 0)
+            {
+                return CreateEmptySpecialBuildingSaveData();
+            }
+
+            Vector2Int offset = GetLegacyWorldOffset(saveData);
+            var migrated = new SpecialBuildingInstanceSaveData[entries.Length];
+
+            for (int index = 0; index < entries.Length; index++)
+            {
+                SpecialBuildingInstanceSaveData entry = entries[index];
+                migrated[index] = entry == null
+                    ? null
+                    : new SpecialBuildingInstanceSaveData
+                    {
+                        BuildingId = entry.BuildingId,
+                        X = entry.X + offset.x,
+                        Y = entry.Y + offset.y,
+                        Direction = entry.Direction
+                    };
+            }
+
+            return new SpecialBuildingSaveData
+            {
+                Buildings = migrated
+            };
+        }
+
+        private SpecialBuildingVisitSaveData
+            CreateRestoredSpecialBuildingVisitData(GameSaveData saveData)
+        {
+            SpecialBuildingVisitSaveData source =
                 saveData?.SpecialBuildingVisits;
+
+            if (source == null)
+            {
+                return CreateEmptySpecialBuildingVisitSaveData();
+            }
+
+            SpecialBuildingVisitStatisticsSaveData[] entries =
+                source.Statistics ??
+                Array.Empty<SpecialBuildingVisitStatisticsSaveData>();
+            Vector2Int offset = GetLegacyWorldOffset(saveData);
+            var migrated =
+                new SpecialBuildingVisitStatisticsSaveData[entries.Length];
+
+            for (int index = 0; index < entries.Length; index++)
+            {
+                SpecialBuildingVisitStatisticsSaveData entry = entries[index];
+                migrated[index] = entry == null
+                    ? null
+                    : new SpecialBuildingVisitStatisticsSaveData
+                    {
+                        BuildingId = entry.BuildingId,
+                        X = entry.X + offset.x,
+                        Y = entry.Y + offset.y,
+                        Day = entry.Day,
+                        PlannedToday = entry.PlannedToday,
+                        TotalPlannedVisits = entry.TotalPlannedVisits
+                    };
+            }
+
+            return new SpecialBuildingVisitSaveData
+            {
+                HasState = source.HasState,
+                LastProcessedTotalDay = source.LastProcessedTotalDay,
+                Statistics = migrated
+            };
+        }
+
+        private Vector2Int GetLegacyWorldOffset(GameSaveData saveData)
+        {
+            if (worldGridAccess == null || saveData == null)
+            {
+                return Vector2Int.zero;
+            }
+
+            int savedWidth = saveData.Simulation?.GridWidth > 0
+                ? saveData.Simulation.GridWidth
+                : saveData.GridWidth;
+            int savedHeight = saveData.Simulation?.GridHeight > 0
+                ? saveData.Simulation.GridHeight
+                : saveData.GridHeight;
+
+            return savedWidth == worldGridAccess.InitialPlayableSize.x &&
+                   savedHeight == worldGridAccess.InitialPlayableSize.y &&
+                   (savedWidth != worldGridAccess.WorldWidth ||
+                    savedHeight != worldGridAccess.WorldHeight)
+                ? worldGridAccess.InitialPlayableOrigin
+                : Vector2Int.zero;
         }
 
         private static RadioSaveData CreateEmptyRadioSaveData()
