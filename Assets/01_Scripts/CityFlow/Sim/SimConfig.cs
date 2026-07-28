@@ -114,7 +114,7 @@ namespace CityFlow.Sim
         // ── 도로 카운터코스트: 예산제(스펙 2026-07-17, 기획 결정 환) ──
         // 유지비(러닝코스트) → 도로 타일 스톡 상한. 도배 방어를 "손해"→"물리적 불가"로 전환.
         // 기존 RoadMaintPerSec 유지비 체인은 삭제됨(MaintenanceEvent dead chain 포함).
-        public int MaxRoadTiles;        // 기본 도로 타일 상한(확장권 제외) 🔓 (환 라이브 밸런스)
+
 
         // ── 도로 확장권(스펙 §2단계): "+10칸"을 코인으로 구매, 가격 = 기본가 × 성장률^구매횟수 ──
         // 에스컬레이션이 도배의 수학적 소프트 캡(맵 도배 총비용 >> 현실 지평) 🔓
@@ -176,7 +176,7 @@ namespace CityFlow.Sim
             RoutingCongestionWeight = 2f,
             AutoDetectSignals = true,
             CoinBase = 1f,
-            MaxRoadTiles = 60,   // 임시 — "필요 연결을 다 못 하는 빠듯함"이 목표(20×20=400칸의 15%)
+
             RoadExpandBaseCost = 100,
             RoadExpandCostGrowth = 1.5f,
             BurstJamEnterRatio = 1.0f,

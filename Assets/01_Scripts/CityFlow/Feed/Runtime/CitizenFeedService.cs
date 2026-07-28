@@ -46,12 +46,10 @@ namespace CityFlow.Feed
         private IRouteDistanceProvider routeDistanceProvider;
         private float nextSignalPollTime;
         private float lastPostRealTime = float.NegativeInfinity;
-        private float stabilityReference;
         private long currentHourBucket = long.MinValue;
         private long currentDayBucket = long.MinValue;
         private int postsThisHour;
         private int postsThisDay;
-        private bool hasStabilityReference;
         private bool vehicleSurgeArmed = true;
         private bool initialized;
 
@@ -116,7 +114,6 @@ namespace CityFlow.Feed
             facilityService = services.Placement as IIntersectionFacilityService;
             routeDistanceProvider = services.Placement as IRouteDistanceProvider;
             services.Events.CongestionChanged += OnCongestionChanged;
-            services.Events.StabilityChanged += OnStabilityChanged;
             services.Events.InfrastructureChanged += OnInfrastructureChanged;
             services.Events.Arrival += OnArrival;
             services.GameCalendarRegistered += OnGameCalendarRegistered;
@@ -124,8 +121,6 @@ namespace CityFlow.Feed
             RebuildLookups();
             SnapshotSignals();
             SnapshotInfrastructure();
-            stabilityReference = services.TileData.Stability01;
-            hasStabilityReference = true;
             vehicleSurgeArmed = true;
             initialized = settings != null && ruleByType.Count > 0 && templatesByType.Count > 0;
 
@@ -465,39 +460,6 @@ namespace CityFlow.Feed
             }
         }
 
-        private void OnStabilityChanged(StabilityEvent stabilityEvent)
-        {
-            if (!initialized || settings == null)
-            {
-                return;
-            }
-
-            float current = stabilityEvent.Stability01;
-            if (!hasStabilityReference)
-            {
-                stabilityReference = current;
-                hasStabilityReference = true;
-                return;
-            }
-
-            float delta = current - stabilityReference;
-            bool crossedBand = GetStabilityBand(current) != GetStabilityBand(stabilityReference);
-            if (!crossedBand && Mathf.Abs(delta) < settings.StabilityChangeThreshold)
-            {
-                return;
-            }
-
-            CitizenFeedEventType eventType = delta < 0f
-                ? CitizenFeedEventType.StabilityDeclined
-                : CitizenFeedEventType.StabilityImproved;
-            CitizenFeedContext context = CitizenFeedContext.ForStability(
-                eventType,
-                stabilityReference,
-                current,
-                GetGameHour());
-            stabilityReference = current;
-            TryGeneratePost(context);
-        }
 
         private void OnInfrastructureChanged(InfrastructureChangedEvent infrastructureEvent)
         {
@@ -674,7 +636,6 @@ namespace CityFlow.Feed
             if (services != null)
             {
                 services.Events.CongestionChanged -= OnCongestionChanged;
-                services.Events.StabilityChanged -= OnStabilityChanged;
                 services.Events.InfrastructureChanged -= OnInfrastructureChanged;
                 services.Events.Arrival -= OnArrival;
                 services.GameCalendarRegistered -= OnGameCalendarRegistered;
@@ -763,14 +724,6 @@ namespace CityFlow.Feed
             return false;
         }
 
-        private static int GetStabilityBand(float stability01)
-        {
-            if (stability01 < 0.2f) return 0;
-            if (stability01 < 0.4f) return 1;
-            if (stability01 < 0.6f) return 2;
-            if (stability01 < 0.8f) return 3;
-            return 4;
-        }
 
         private sealed class FeedCandidate
         {

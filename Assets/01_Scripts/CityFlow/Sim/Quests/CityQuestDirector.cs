@@ -14,8 +14,6 @@ namespace CityFlow.Sim.Quests
         AddOfficeCapacity,
         BuildSchool,
         ResolveCongestion,
-        ImproveStability,
-        ExpandRoadLimit,
         HarvestSavings
     }
 
@@ -45,9 +43,6 @@ namespace CityFlow.Sim.Quests
         public readonly long PendingCoins;
         public readonly bool HasHarvested;
         public readonly int JamTileCount;
-        public readonly float Stability01;
-        public readonly int UsedRoadTiles;
-        public readonly int MaxRoadTiles;
 
         public CityQuestSnapshot(
             int roadCount,
@@ -57,10 +52,7 @@ namespace CityFlow.Sim.Quests
             long totalArrivals,
             long pendingCoins,
             bool hasHarvested,
-            int jamTileCount,
-            float stability01,
-            int usedRoadTiles,
-            int maxRoadTiles)
+            int jamTileCount)
         {
             RoadCount = Math.Max(0, roadCount);
             HouseCount = Math.Max(0, houseCount);
@@ -70,9 +62,6 @@ namespace CityFlow.Sim.Quests
             PendingCoins = Math.Max(0L, pendingCoins);
             HasHarvested = hasHarvested;
             JamTileCount = Math.Max(0, jamTileCount);
-            Stability01 = Math.Max(0f, Math.Min(1f, stability01));
-            UsedRoadTiles = Math.Max(0, usedRoadTiles);
-            MaxRoadTiles = Math.Max(0, maxRoadTiles);
         }
     }
 
@@ -113,8 +102,6 @@ namespace CityFlow.Sim.Quests
             new QuestDefinition(CityQuestId.AddOfficeCapacity, "새로운 일자리가 필요해요", "회사와 연결할 수 있는 거주지가 가득 찼어요. 회사를 하나 더 지어 주세요.", 90, 5f, 120f),
             new QuestDefinition(CityQuestId.BuildHousing, "살 곳이 부족해요", "일자리에 비해 거주지가 부족해요. 시민들이 살 집을 더 지어 주세요.", 85, 5f, 120f),
             new QuestDefinition(CityQuestId.BuildSchool, "학교가 필요해요", "도시의 가족들이 늘고 있어요. 아이들이 다닐 학교를 지어 주세요.", 80, 5f, 120f),
-            new QuestDefinition(CityQuestId.ImproveStability, "도시가 불안정해요", "교통 문제로 시민들의 불만이 커지고 있어요. 도시 흐름을 안정시켜 주세요.", 75, 10f, 120f),
-            new QuestDefinition(CityQuestId.ExpandRoadLimit, "도로를 더 확장하고 싶어요", "사용 가능한 도로가 거의 다 찼어요. 도로 한도를 늘리거나 불필요한 길을 정리해 주세요.", 60, 5f, 120f),
             new QuestDefinition(CityQuestId.HarvestSavings, "수익이 쌓였어요", "도시에 수익이 많이 쌓였어요. HARVEST 버튼으로 재화를 수확해 주세요.", 40, 5f, 60f)
         };
 
@@ -330,8 +317,6 @@ namespace CityFlow.Sim.Quests
             CityQuestId.AddOfficeCapacity => snapshot.OfficeCount > 0 && snapshot.HouseCount <= snapshot.OfficeCount * 6,
             CityQuestId.BuildSchool => snapshot.SchoolCount > 0 && snapshot.HouseCount <= snapshot.SchoolCount * 10,
             CityQuestId.ResolveCongestion => snapshot.JamTileCount == 0,
-            CityQuestId.ImproveStability => snapshot.Stability01 >= 0.75f,
-            CityQuestId.ExpandRoadLimit => GetRoadUsage(snapshot) < 0.75f,
             CityQuestId.HarvestSavings => snapshot.PendingCoins == 0,
             _ => false
         };
@@ -342,15 +327,10 @@ namespace CityFlow.Sim.Quests
             CityQuestId.AddOfficeCapacity => snapshot.OfficeCount > 0 && snapshot.HouseCount > snapshot.OfficeCount * 6,
             CityQuestId.BuildSchool => snapshot.HouseCount >= 2 && (snapshot.SchoolCount == 0 || snapshot.HouseCount > snapshot.SchoolCount * 10),
             CityQuestId.ResolveCongestion => snapshot.JamTileCount > 0,
-            CityQuestId.ImproveStability => snapshot.Stability01 < 0.70f,
-            CityQuestId.ExpandRoadLimit => snapshot.MaxRoadTiles > 0 && GetRoadUsage(snapshot) >= 0.85f,
             CityQuestId.HarvestSavings => snapshot.PendingCoins >= 100,
             _ => false
         };
 
-        private static float GetRoadUsage(in CityQuestSnapshot snapshot)
-        {
-            return snapshot.MaxRoadTiles <= 0 ? 0f : (float)snapshot.UsedRoadTiles / snapshot.MaxRoadTiles;
-        }
+
     }
 }

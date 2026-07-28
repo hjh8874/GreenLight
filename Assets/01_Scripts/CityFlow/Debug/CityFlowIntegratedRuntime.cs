@@ -44,7 +44,6 @@ namespace CityFlow.DebugTools
         private TextMeshProUGUI signalInfoText;
         private readonly List<RouteVehicle> movingVehicles = new List<RouteVehicle>();
         private long coins;
-        private float stability01 = 1f;
         private float hudRefreshTimer;
         private int selectedSignalIndex;
         private string currentMode = "Road";
@@ -82,7 +81,6 @@ namespace CityFlow.DebugTools
             services.Events.CongestionChanged += OnCongestionChanged;
             services.Events.Arrival += OnArrival;
             services.Events.FlowBurst += OnFlowBurst;
-            services.Events.StabilityChanged += OnStabilityChanged;
 
             RefreshHud();
             Debug.Log("[INTEGRATED] CityFlowIntegrated_cmt ?곌껐 ?꾨즺 - UI 諛곗튂 ?낅젰?쇰줈 SimEngine/?붾㈃ ?쇰뱶諛깆쓣 ?뺤씤?섏꽭??");
@@ -99,7 +97,6 @@ namespace CityFlow.DebugTools
             services.Events.CongestionChanged -= OnCongestionChanged;
             services.Events.Arrival -= OnArrival;
             services.Events.FlowBurst -= OnFlowBurst;
-            services.Events.StabilityChanged -= OnStabilityChanged;
         }
 
         private void Update()
@@ -108,8 +105,6 @@ namespace CityFlow.DebugTools
             {
                 return;
             }
-
-            stability01 = services.TileData.Stability01;
 
             foreach (KeyValuePair<Vector2Int, TileVisual> pair in visuals)
             {
@@ -443,12 +438,6 @@ namespace CityFlow.DebugTools
             RefreshHud();
         }
 
-        private void OnStabilityChanged(StabilityEvent e)
-        {
-            stability01 = e.Stability01;
-            RefreshHud();
-        }
-
         private void RefreshHud()
         {
             if (statusText != null)
@@ -460,11 +449,6 @@ namespace CityFlow.DebugTools
             if (walletText != null)
             {
                 walletText.text = $"Coins: {coins}";
-            }
-
-            if (efficiencyText != null)
-            {
-                efficiencyText.text = $"Stability: {Mathf.RoundToInt(stability01 * 100f)}%";
             }
         }
 

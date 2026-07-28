@@ -202,13 +202,6 @@ namespace CityFlow.UI.Controllers.Placement
 
         public void HandleRoadExpandClicked(CityFlowServices services)
         {
-            var expansion = services?.Placement as CityFlow.Contracts.IRoadExpansionService;
-            if (expansion == null || services.Economy == null) return;
-
-            if (expansion.TryPurchaseRoadExpansion(services.Economy))
-                Debug.Log($"[PlacementController] 도로 확장권 구매 — 캡 +10, 다음 가격 {expansion.NextRoadExpandCost}");
-            else
-                Debug.LogWarning("[PlacementController] 코인이 부족하여 도로 확장권을 구매할 수 없습니다!");
         }
 
         private Vector2Int ResolveFootprintAnchor(Vector2Int coord, CityFlowServices services)

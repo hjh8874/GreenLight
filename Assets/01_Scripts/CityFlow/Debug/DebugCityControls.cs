@@ -72,14 +72,13 @@ namespace CityFlow.DebugTools
             var cal = _services.GameCalendar;
             int vehicles = _services.Stats?.ActiveVehicleCount ?? 0;
             float delivered = _engine != null ? _engine.DeliveredTotal : 0f;
-            float stability = _services.TileData?.Stability01 ?? 0f;
             int signals = _facility?.SignalTiles.Count ?? 0;
             string calText = cal != null ? $"Y{cal.Year} M{cal.Month} D{cal.Day} {cal.Hour:00}시" : "-";
 
             GUI.Label(new Rect(x, 10, w, 26), $"💰 코인 {coins:N0}", label);
             GUI.Label(new Rect(x, 34, w, 26), $"📅 {calText}", label);
             GUI.Label(new Rect(x, 58, w, 26), $"🚗 차량 {vehicles}   처리량 {delivered:F2}/s", label);
-            GUI.Label(new Rect(x, 82, w, 26), $"📈 안정도 {stability:P0}   신호 {signals}개", label);
+            GUI.Label(new Rect(x, 82, w, 26), $"🚦 신호 {signals}개", label);
             GUI.Label(new Rect(x, 106, w, 26), $"⏱ 배속 x{Time.timeScale:0.##}", label);
 
             // ── 버튼 ──

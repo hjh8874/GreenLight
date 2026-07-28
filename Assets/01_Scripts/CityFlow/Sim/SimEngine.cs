@@ -8,7 +8,7 @@ namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IRouteDistanceProvider, IRoadExpansionService, IHighwayService, IBusStopInfrastructureService
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IRouteDistanceProvider, IHighwayService, IBusStopInfrastructureService
     {
         SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
@@ -62,7 +62,6 @@ namespace CityFlow.Sim
         readonly SimStats _stats = new SimStats();
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
-        float _lastStability = -1f;   // 직전 발행한 안정도(-1=아직 없음 → 첫 틱은 무조건 발행)
         float _gameHour;
         int _lastStepArrivals;
         bool _demandRebalancePending;
@@ -257,7 +256,6 @@ namespace CityFlow.Sim
                 ScanGreenWaves();
             }
 
-            PublishStabilityIfChanged();
             _events.Drain();
         }
 
@@ -374,12 +372,6 @@ namespace CityFlow.Sim
                     ? CongestionLevel.Slow
                     : CongestionLevel.Free;
 
-        private void PublishStabilityIfChanged()
-        {
-            if (Mathf.Abs(_stats.Stability01 - _lastStability) <= 0.001f) return;
-            _lastStability = _stats.Stability01;
-            _events.QueueStability(new StabilityEvent(_stats.Stability01));
-        }
 
         // 신호 재구축 단일 창구: 자동 = 전 교차로 스캔 / 배치 = 배치 목록(비교차로는 먼저 소멸).
         void RebuildSignals()
@@ -464,38 +456,11 @@ namespace CityFlow.Sim
             _roadTopologyChangePending = false;
         }
 
-        // 도로 예산제: 일반도로 + 고속도로 길이 스톡이 유효 캡에 닿으면 신규 도로 배치 금지.
-        // 비도로 타입은 무영향. 두 카운터 모두 필드/캐시 조회라 매 호출 O(1).
-        bool WithinRoadBudget(TileType type) =>
-            type != TileType.Road || RoadTileCount < MaxRoadTiles;
 
-        // ── IRoadExpansionService(스펙 §2단계): "+10칸" 확장권 — 코인 구매·가격 에스컬레이션·세이브 영속 ──
-        // 칸 수 10은 기획 고정("도로 +10칸" 상품명 자체) — 튜닝 축은 가격 2종(SimConfig 🔓)이다.
-        const int RoadExpandChunkTiles = 10;
-        int _roadCapacityPurchases;   // 세이브 영속(SimSaveData.RoadCapacityPurchases)
-
-        public int RoadCapacityPurchases => _roadCapacityPurchases;
-
-        // 가격 = 기본가 × 성장률^구매횟수, 반올림 정수. 퇴화 config(성장률<1)는 1로 클램프(가격 역주행 방지).
-        public long NextRoadExpandCost =>
-            (long)Math.Round(Math.Max(0, _config.RoadExpandBaseCost)
-                             * Math.Pow(Math.Max(1f, _config.RoadExpandCostGrowth), _roadCapacityPurchases));
-
-        // 소유권 경계: 차감은 경제 레이어의 TrySpend 안에서만 일어남 — 실패 시 캡·잔고 전부 무변화(원자성).
-        public bool TryPurchaseRoadExpansion(IEconomyService economy)
-        {
-            if (economy == null) return false;
-            if (!economy.TrySpend(NextRoadExpandCost)) return false;
-            AddRoadCapacity();
-            return true;
-        }
-
-        public void AddRoadCapacity() => _roadCapacityPurchases++;
 
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
         public bool CanPlace(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North) =>
             IsAreaUnlocked(tile, type, direction)
-            && WithinRoadBudget(type)
             && !OverlapsRoundaboutFootprint(tile, type, direction)
             && !OverlapsBusStopFootprint(tile, type, direction)
             && _grid.CanPlace(tile, type, direction);
@@ -503,7 +468,6 @@ namespace CityFlow.Sim
         public bool Place(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
             if (!IsAreaUnlocked(tile, type, direction)) return false;
-            if (!WithinRoadBudget(type)) return false;   // 예산 초과 도로는 Place도 거부(CanPlace 우회 방지)
             if (OverlapsRoundaboutFootprint(tile, type, direction)) return false;   // 로터리 풋프린트에 건물 금지
             if (OverlapsBusStopFootprint(tile, type, direction)) return false;
             if (!_grid.Place(tile, type, direction)) return false;
@@ -666,8 +630,6 @@ namespace CityFlow.Sim
         // 도로 예산제(스펙 2026-07-17/고속도로 정정 2026-07-21): UI 카운터·배치 가드 공용.
         // 고속도로는 상판 길이만큼 같은 스톡을 먹는다. CityGrid는 그대로 두고 링크 합만 더한다.
         public int RoadTileCount => _grid.RoadTileCount + _highwayBudgetTiles;
-        // 유효 캡 = 기본 상한 + 확장권 구매횟수 × 10 (스펙 §2단계).
-        public int MaxRoadTiles => _config.MaxRoadTiles + _roadCapacityPurchases * RoadExpandChunkTiles;
 
         // 뷰용 : 이번 틱 처리량 (대/초) 튜너가 오프셋 조율 효과를 숫자로 보게
         public float DeliveredTotal => _config.TickInterval > 0f ? _lastStepArrivals / _config.TickInterval : 0f;
@@ -940,8 +902,7 @@ namespace CityFlow.Sim
             && Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) >= 5;
 
         public bool CanPlaceHighway(Vector2Int a, Vector2Int b) =>
-            CanPlaceHighwayGeometry(a, b)
-            && RoadTileCount + HighwayDistance(a, b) <= MaxRoadTiles;
+            CanPlaceHighwayGeometry(a, b);
 
         private static int HighwayDistance(Vector2Int a, Vector2Int b) =>
             Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y);
@@ -951,7 +912,7 @@ namespace CityFlow.Sim
 
         public bool TryPlaceHighway(Vector2Int a, Vector2Int b)
         {
-            if (!CanPlaceHighway(a, b)) return false;
+            if (!CanPlaceHighwayGeometry(a, b)) return false;
             _highwayLinks.Add(new HighwayLink(a, b));
             _highwayPartners[a] = b;
             _highwayPartners[b] = a;
@@ -1158,7 +1119,6 @@ namespace CityFlow.Sim
                 PriorityRoads = priorityRoads,
                 Highways = highways,
                 BusStops = busStops,
-                RoadCapacityPurchases = _roadCapacityPurchases,
                 HasCarSimStats = true,
                 CarTripSuccessRate = _stats.TripSuccessRate,
                 CarDayArrivalCount = _stats.DayArrivalCount,
@@ -1190,8 +1150,7 @@ namespace CityFlow.Sim
                 snapshot.CarDayArrivalCount,
                 snapshot.CarSkipCurrentDay,
                 snapshot.HasCarSimStats);
-            // 확장권 구매횟수 복원(스펙 §2단계 — 로드 시 캡 리셋 금지). 구세이브는 필드 부재 = 0(미구매) 우아 복원.
-            _roadCapacityPurchases = Math.Max(0, snapshot.RoadCapacityPurchases);
+
             if (snapshot.PlacedTiles != null)
                 foreach (var t in snapshot.PlacedTiles)
                 {
@@ -1340,7 +1299,7 @@ namespace CityFlow.Sim
         }
 
         // ── IReadOnlyTileData: 차 큐/grid에 위임 ──
-        public float Stability01 => _stats.Stability01;
+
         // OOB는 예외가 아니라 중립값 — 뷰의 화면 밖 클릭/스캔이 트러스트 경계(감사 2026-07-12).
         private Vector2Int GetRestoreOffset(SimSaveData snapshot)
         {

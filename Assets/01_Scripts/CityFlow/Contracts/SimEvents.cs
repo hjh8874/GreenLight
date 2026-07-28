@@ -40,15 +40,6 @@ namespace CityFlow.Contracts
         }
     }
 
-    public readonly struct StabilityEvent
-    {
-        public readonly float Stability01;
-
-        public StabilityEvent(float stability01)
-        {
-            Stability01 = Mathf.Clamp01(stability01);
-        }
-    }
 
     public readonly struct PlacedEvent
     {
@@ -83,7 +74,6 @@ namespace CityFlow.Contracts
         public event Action<ArrivalEvent> Arrival;
         public event Action<FlowBurstEvent> FlowBurst;
         public event Action<CongestionEvent> CongestionChanged;
-        public event Action<StabilityEvent> StabilityChanged;
         public event Action<PlacedEvent> Placed;
         public event Action<InfrastructureChangedEvent> InfrastructureChanged;
 
@@ -92,8 +82,6 @@ namespace CityFlow.Contracts
         public void Publish(FlowBurstEvent e) => FlowBurst?.Invoke(e);
 
         public void Publish(CongestionEvent e) => CongestionChanged?.Invoke(e);
-
-        public void Publish(StabilityEvent e) => StabilityChanged?.Invoke(e);
 
         public void Publish(PlacedEvent e) => Placed?.Invoke(e);
 
