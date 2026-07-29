@@ -139,8 +139,11 @@ namespace CityFlow.UI.Editor
             UnityEventTools.AddPersistentListener(settingsBtn.onClick, ctrl.OnSettings);
             UnityEventTools.AddPersistentListener(quitBtn.onClick, ctrl.OnQuit);
 
+            var confirmPopup = MakeConfirmPopup(canvasGo.transform, Card, BtnSecondary, Ink, rounded);
+
             var so = new SerializedObject(ctrl);
             so.FindProperty("continueButton").objectReferenceValue = continueBtn;
+            so.FindProperty("confirmPopup").objectReferenceValue = confirmPopup;
             so.ApplyModifiedProperties();
 
             // --- 저장 ---
@@ -151,6 +154,53 @@ namespace CityFlow.UI.Editor
         }
 
         // ---- 헬퍼 ----
+
+        static ConfirmPopupController MakeConfirmPopup(Transform parent, Color bg, Color btnColor, Color textCol, Sprite sprite)
+        {
+            var panel = Panel("ConfirmPopup", parent, new Color(0, 0, 0, 0.7f), null);
+            var pr = panel.rectTransform;
+            pr.anchorMin = Vector2.zero; pr.anchorMax = Vector2.one;
+            pr.offsetMin = pr.offsetMax = Vector2.zero;
+
+            var card = Panel("Card", panel.transform, bg, sprite);
+            var cr = card.rectTransform;
+            cr.anchorMin = cr.anchorMax = new Vector2(0.5f, 0.5f);
+            cr.pivot = new Vector2(0.5f, 0.5f);
+            cr.sizeDelta = new Vector2(480f, 280f);
+
+            var vlg = card.gameObject.AddComponent<VerticalLayoutGroup>();
+            vlg.padding = new RectOffset(30, 30, 40, 30);
+            vlg.spacing = 30f;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = true;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
+            vlg.childAlignment = TextAnchor.MiddleCenter;
+
+            var msg = Label("Message", card.transform, "Message", 22f, textCol, FontStyles.Normal, 80f);
+            
+            var btnGroup = new GameObject("ButtonGroup").AddComponent<RectTransform>();
+            btnGroup.SetParent(card.transform, false);
+            var hlg = btnGroup.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 20f;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = true;
+            hlg.childForceExpandHeight = false;
+
+            var yesBtn = MakeButton("YesButton", btnGroup.transform, "확인", SignalRed, Color.white, sprite, 20f);
+            var noBtn = MakeButton("NoButton", btnGroup.transform, "취소", btnColor, textCol, sprite, 20f);
+
+            var popup = panel.gameObject.AddComponent<ConfirmPopupController>();
+            var so = new SerializedObject(popup);
+            so.FindProperty("txtMessage").objectReferenceValue = msg;
+            so.FindProperty("btnYes").objectReferenceValue = yesBtn;
+            so.FindProperty("btnNo").objectReferenceValue = noBtn;
+            so.ApplyModifiedProperties();
+
+            panel.gameObject.SetActive(false);
+            return popup;
+        }
 
         static Image Panel(string name, Transform parent, Color col, Sprite sprite)
         {

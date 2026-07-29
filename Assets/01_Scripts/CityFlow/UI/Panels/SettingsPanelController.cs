@@ -1,16 +1,23 @@
+using CityFlow.Contracts;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace CityFlow.UI
 {
-    public class SettingsPanelController : MonoBehaviour
+    public class SettingsPanelController : MonoBehaviour, ICityFlowServiceConsumer
     {
         [Header("Settings UI")]
         [SerializeField] private Toggle tglMuteAudio;
         [SerializeField] private Button btnQuitGame;
         [SerializeField] private Button btnTitleScene;
 
+        private CityFlowServices _services;
         private bool _isBound;
+
+        public void Initialize(CityFlowServices services)
+        {
+            _services = services;
+        }
 
         public void Configure(Toggle muteAudio, Button quitGame, Button titleScene = null)
         {
@@ -77,7 +84,8 @@ namespace CityFlow.UI
 
         private void OnTitleSceneClicked()
         {
-            Debug.Log("[Settings] 타이틀 화면으로 이동합니다.");
+            Debug.Log("[Settings] 게임 상태를 저장하고 타이틀 화면으로 이동합니다.");
+            _services?.Save?.Save();
             UnityEngine.SceneManagement.SceneManager.LoadScene("TitleScene");
         }
     }
