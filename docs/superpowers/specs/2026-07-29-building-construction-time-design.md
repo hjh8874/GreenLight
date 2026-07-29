@@ -174,13 +174,19 @@ public float ConstructionHoursSpecial;    // 🔓
 ```
 
 ```csharp
-// Default() 초기 제안값 (라이브 튜닝 전제)
-ConstructionHoursHouse    = 2f,
-ConstructionHoursOffice   = 4f,
-ConstructionHoursSchool   = 6f,
-ConstructionHoursHospital = 8f,
-ConstructionHoursSpecial  = 6f,
+// Default()는 전부 0 = 즉시 완성.
+// 근거: Default()는 "테스트/디버그용"으로 명시돼 있고(SimConfig.cs:120),
+// 0이 아닌 값을 넣으면 BuildStraightCity류 헬퍼를 쓰는 기존 EditMode 테스트가
+// "집·회사를 놓으면 바로 통근이 돈다"는 전제 때문에 대량으로 깨진다.
+// 부수 효과로 기능이 config 단위 opt-in이 되어 롤아웃도 안전하다.
+ConstructionHoursHouse    = 0f,
+ConstructionHoursOffice   = 0f,
+ConstructionHoursSchool   = 0f,
+ConstructionHoursHospital = 0f,
+ConstructionHoursSpecial  = 0f,
 ```
+
+**실제 게임 값은 `.asset` 3개에만 기입한다** (아래 제안값, 라이브 튜닝 전제).
 
 **필수 절차 (2026-07-22 팀 규칙)**: `.asset` **3개를 반드시 함께 채운다.**
 누락 시 조용히 0이 들어가 공사가 즉시 끝난다 — 순서가 아니라 **누락**이 위험이다.
@@ -198,7 +204,7 @@ durationSimSeconds = hours × DayLengthSeconds / 24
 ```
 
 `SimConfig.DayLengthSeconds = 120f`(`SimConfig.cs:166`)이므로 **1 게임시간 = 5 시뮬초**다.
-위 제안값의 실제 길이:
+`.asset` 3개에 넣을 제안값과 실제 길이:
 
 | 종류 | 게임시간 | 시뮬초 |
 |---|---|---|
