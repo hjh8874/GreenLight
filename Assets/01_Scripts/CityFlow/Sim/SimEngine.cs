@@ -523,7 +523,12 @@ namespace CityFlow.Sim
                 : 0d;
             if (constructionSeconds > 0d)
             {
-                _grid.Promote(tile, TileType.UnderConstruction);
+                // 현재는 둘 다 2x2 건물이라 실패할 수 없지만, 타입별 풋프린트 분화에 대비해 원자적으로 되돌린다.
+                if (!_grid.Promote(tile, TileType.UnderConstruction))
+                {
+                    _grid.TryRemove(tile, out _, out _);
+                    return false;
+                }
                 _construction.Register(
                     tile, type, direction, _simTime, _simTime + constructionSeconds);
                 _events.QueuePlaced(
@@ -563,11 +568,13 @@ namespace CityFlow.Sim
         private void AdvanceConstruction()
         {
             if (_construction.Count == 0) return;
-            _construction.DrainCompleted(_simTime, _completedBuffer);
+            _construction.CollectCompleted(_simTime, _completedBuffer);
             for (int i = 0; i < _completedBuffer.Count; i++)
             {
                 ConstructionSite site = _completedBuffer[i];
-                if (!_grid.Promote(site.Anchor, site.TargetType)) continue;   // 철거된 사이트 방어
+                // 실패 사이트는 목록에 남겨 다음 틱에 재시도한다. 도달 불가 불변식이 깨져도 영구 소실시키지 않는다.
+                if (!_grid.Promote(site.Anchor, site.TargetType)) continue;
+                _construction.Cancel(site.Anchor);
 
                 if (site.TargetType == TileType.Office)
                     _demand.RegisterCompany(site.Anchor, site.TargetType, _simTime);

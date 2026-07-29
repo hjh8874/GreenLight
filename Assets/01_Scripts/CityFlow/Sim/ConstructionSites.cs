@@ -72,16 +72,15 @@ namespace CityFlow.Sim
             return false;
         }
 
-        // 완성된 사이트를 목록에서 빼서 반환한다. 호출자가 승격 후처리를 실행한다.
-        // 역순 순회 — 제거하면서 순회하기 위함.
-        public void DrainCompleted(double simSeconds, List<ConstructionSite> completed)
+        // 완성 시각이 지난 사이트를 제거하지 않고 반환한다.
+        // 승격 실패 시 목록에 남겨 다음 틱에 재시도한다. 현재 불변식상 도달 불가지만 소실보다 안전하다.
+        public void CollectCompleted(double simSeconds, List<ConstructionSite> completed)
         {
             completed.Clear();
             for (int i = _sites.Count - 1; i >= 0; i--)
             {
                 if (_sites[i].CompleteAtSimSeconds > simSeconds) continue;
                 completed.Add(_sites[i]);
-                _sites.RemoveAt(i);
             }
         }
 
