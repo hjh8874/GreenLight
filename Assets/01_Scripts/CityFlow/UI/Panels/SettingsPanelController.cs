@@ -53,11 +53,14 @@ namespace CityFlow.UI
             if (btnQuitGame != null)
             {
                 btnQuitGame.onClick.AddListener(OnQuitClicked);
+            }
+
             // 타이틀 이동 버튼 이벤트 바인딩
             if (btnTitleScene != null)
             {
                 btnTitleScene.onClick.AddListener(OnTitleSceneClicked);
             }
+            
             _isBound = true;
         }
 

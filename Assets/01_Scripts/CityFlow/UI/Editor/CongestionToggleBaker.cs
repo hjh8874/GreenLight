@@ -8,11 +8,16 @@ namespace CityFlow.UI.Editor
 {
     public static class CongestionToggleBaker
     {
-        private const string PrefabPath = "Assets/03_Prefabs/UI/UI_CongestionToggle.prefab";
+        private const string PrefabPath = "Assets/02_Prefabs/UI/UI_CongestionToggle.prefab";
 
         [MenuItem("CityFlow/Bake UI/UI_CongestionToggle")]
         public static void Bake()
         {
+            if (!AssetDatabase.IsValidFolder("Assets/02_Prefabs"))
+                AssetDatabase.CreateFolder("Assets", "02_Prefabs");
+            if (!AssetDatabase.IsValidFolder("Assets/02_Prefabs/UI"))
+                AssetDatabase.CreateFolder("Assets/02_Prefabs", "UI");
+
             GameObject root = new GameObject("UI_CongestionToggle", typeof(RectTransform));
             RectTransform rootRect = root.GetComponent<RectTransform>();
             rootRect.sizeDelta = new Vector2(200f, 40f);

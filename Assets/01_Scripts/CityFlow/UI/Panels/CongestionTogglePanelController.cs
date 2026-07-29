@@ -11,6 +11,7 @@ namespace CityFlow.UI
         [SerializeField] private Toggle tglCongestionView;
 
         private CityFlowServices _services;
+        private bool _subscribed;
 
         public void Configure(Toggle congestionToggle)
         {
@@ -21,12 +22,13 @@ namespace CityFlow.UI
         public void Initialize(CityFlowServices services)
         {
             _services = services;
-            if (tglCongestionView != null && _services?.Events != null)
+            if (tglCongestionView != null && _services?.Events != null && !_subscribed)
             {
                 tglCongestionView.SetIsOnWithoutNotify(_services.Events.IsCongestionViewEnabled);
                 
                 // Subscribe to external changes
                 _services.Events.CongestionViewToggled += OnExternalToggleChanged;
+                _subscribed = true;
             }
         }
 
@@ -71,6 +73,7 @@ namespace CityFlow.UI
             {
                 _services.Events.CongestionViewToggled -= OnExternalToggleChanged;
             }
+            _subscribed = false;
         }
     }
 }
