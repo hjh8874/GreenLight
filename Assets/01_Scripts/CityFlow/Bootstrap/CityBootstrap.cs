@@ -70,6 +70,7 @@ namespace CityFlow.Bootstrap
                     simEngine,
                     CreateSaveService(simEngine),
                     stats: simEngine);
+                Services.RegisterVehicleTrips(simEngine);
             }
 
             worldGridConsumer?.Initialize(Services);
@@ -89,7 +90,9 @@ namespace CityFlow.Bootstrap
             else
             {
                 if (simEngine != null && Services?.GameCalendar != null)
-                    simEngine.SetGameHour(Services.GameCalendar.Hour);
+                    simEngine.SetGameTime(
+                        Services.GameCalendar.TotalDays,
+                        Services.GameCalendar.Hour);
                 simEngine?.Tick(Time.deltaTime);
             }
         }
