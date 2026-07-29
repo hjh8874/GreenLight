@@ -733,6 +733,76 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void Rebuild_TransientStorageDoesNotReduceRoutineCapacity()
+        {
+            var scheduler = new CommuteScheduler();
+            var sources = new List<Vector2Int>
+            {
+                V(0, 0),
+                V(1, 0),
+                V(2, 0),
+                V(3, 0)
+            };
+            var sinks = new List<Vector2Int>
+            {
+                V(0, 2),
+                V(1, 2),
+                V(2, 2),
+                V(3, 2)
+            };
+
+            scheduler.Rebuild(
+                sources,
+                sinks,
+                _ => 1,
+                homeSlots: 1,
+                maxCars: 4,
+                morningStart: 6f,
+                morningEnd: 7f,
+                eveningStart: 17f,
+                eveningEnd: 18f,
+                transientStorageCapacity: 2);
+
+            Assert.AreEqual(
+                4,
+                scheduler.Cars.Count,
+                "Unused special-trip storage must not reduce routine cars.");
+            Assert.AreEqual(4, scheduler.ActiveCount);
+
+            CommuteCar routineOwner = scheduler.Cars[0];
+            CommuteCar transient = scheduler.AcquireTransient(
+                routineOwner.Home,
+                maxCars: 6);
+            Assert.IsNotNull(transient);
+            routineOwner.SetSpecialTripReservation(true);
+
+            scheduler.Rebuild(
+                sources,
+                sinks,
+                _ => 1,
+                homeSlots: 1,
+                maxCars: 4,
+                morningStart: 6f,
+                morningEnd: 7f,
+                eveningStart: 17f,
+                eveningEnd: 18f,
+                transientStorageCapacity: 2);
+
+            Assert.AreEqual(
+                5,
+                scheduler.Cars.Count,
+                "The transient object should use the storage-only capacity.");
+            Assert.AreEqual(
+                4,
+                scheduler.ActiveCount,
+                "A hidden routine owner and its transient replacement count as one active vehicle.");
+
+            scheduler.ReleaseTransient(transient);
+            routineOwner.SetSpecialTripReservation(false);
+            Assert.AreEqual(4, scheduler.ActiveCount);
+        }
+
+        [Test]
         public void VehicleTrip_TransitionsThroughDrivingAndArrival()
         {
             var trip = new VehicleTrip(
