@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - 브랜치: `feat-building-construction-time-hwan` (develop `b4690be` 직분기). **스택 금지** — 팀 규칙상 Squash 머지라 브랜치를 쌓으면 diff가 중복된다.
-- 회귀 기준선: **EditMode `CityFlow.Sim.Tests` 394/394 green** (2026-07-29 develop `b4690be` 실측). CLAUDE.md의 340은 낡은 값이다. **부분 실패 허용 없음.**
+- 회귀 기준선: **EditMode `CityFlow.Sim.Tests` 393/393 green** (2026-07-29 develop `b4690be` 실측). CLAUDE.md의 340은 낡은 값이다. **부분 실패 허용 없음.**
 - 검증 순서 (매 태스크 끝): `mcp__unityMCP__refresh_unity`(compile=request) → `mcp__unityMCP__read_console`(types=error, 0건) → `mcp__unityMCP__run_tests`(EditMode, `CityFlow.Sim.Tests`).
 - **작업은 본 체크아웃 `/Users/hwan/Gamemaker/GreenLight`에서만.** `git worktree`·격리 사본 금지 — `Library/`가 없어 전체 재임포트(10~30분)가 필요하고 Unity 에디터·unityMCP가 본 체크아웃에만 붙어 있어 컴파일 검증이 불가능하다.
 - **통합 씬을 커밋하지 않는다.** `MainCityView`가 붙은 씬 7개. 라이브 확인은 `Assets/00_Scenes/Debug/CityFlowIntegrated_hwan.unity`에서만 하고 씬 diff는 커밋에서 제외한다.
@@ -47,7 +47,7 @@
 
 ### Task 1: `TileType.UnderConstruction` 추가
 
-새 enum 값을 넣고 기존 394 테스트가 그대로 green인지 확인한다. 이 태스크는 동작을 바꾸지 않는다 — 값만 존재하게 만들고 `switch` 소비자들이 깨지지 않는지 확인하는 것이 전부다.
+새 enum 값을 넣고 기존 393 테스트가 그대로 green인지 확인한다. 이 태스크는 동작을 바꾸지 않는다 — 값만 존재하게 만들고 `switch` 소비자들이 깨지지 않는지 확인하는 것이 전부다.
 
 **Files:**
 - Modify: `Assets/01_Scripts/CityFlow/Contracts/CityFlowTypes.cs`
@@ -97,7 +97,7 @@ grep -n -A3 "switch.*TileType\|case TileType\." \
 Expected: 에러 0건
 
 `mcp__unityMCP__run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **394/394 PASS** — 이 태스크는 동작 무변경이므로 숫자가 정확히 같아야 한다.
+Expected: **393/393 PASS** — 이 태스크는 동작 무변경이므로 숫자가 정확히 같아야 한다.
 
 - [ ] **Step 4: 커밋**
 
@@ -107,7 +107,7 @@ git add Assets/01_Scripts/CityFlow/Contracts/CityFlowTypes.cs
 git commit -m "[Feat] TileType.UnderConstruction 추가 — 동작 무변경
 
 맨 뒤에 추가해 기존 값 번호를 보존(세이브 하위호환).
-switch 소비자 5개 파일 전수 검토 완료. EditMode 394/394 유지."
+switch 소비자 5개 파일 전수 검토 완료. EditMode 393/393 유지."
 ```
 
 ---
@@ -177,7 +177,7 @@ Expected: 세 줄 모두 `5`
 - [ ] **Step 4: 컴파일 + 회귀 확인**
 
 `refresh_unity` → `read_console`(error 0) → `run_tests`
-Expected: **394/394 PASS** (Default가 0이라 동작 무변경)
+Expected: **393/393 PASS** (Default가 0이라 동작 무변경)
 
 - [ ] **Step 5: 커밋**
 
@@ -305,7 +305,7 @@ Expected: 컴파일 에러 `'CityGrid' does not contain a definition for 'Promot
 Expected: 2/2 PASS
 
 그 다음 전체: `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **396/396 PASS** (394 + 신규 2)
+Expected: **395/395 PASS** (393 + 신규 2)
 
 - [ ] **Step 5: 커밋**
 
@@ -638,7 +638,7 @@ namespace CityFlow.Sim
 - [ ] **Step 8: 통과 확인**
 
 `refresh_unity` → `read_console`(error 0) → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **402/402 PASS** (394 + Task 3의 2 + 본 태스크 6)
+Expected: **401/401 PASS** (393 + Task 3의 2 + 본 태스크 6)
 
 - [ ] **Step 9: 커밋**
 
@@ -705,7 +705,7 @@ Expected: FAIL — 20틱 뒤 타일이 `House`로 되살아남
 - [ ] **Step 4: 통과 확인**
 
 `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **403/403 PASS**
+Expected: **402/402 PASS**
 
 - [ ] **Step 5: 커밋**
 
@@ -873,7 +873,7 @@ namespace CityFlow.Contracts.Save
 - [ ] **Step 7: 통과 확인**
 
 `refresh_unity` → `read_console`(error 0) → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **405/405 PASS**
+Expected: **404/404 PASS**
 
 - [ ] **Step 8: 커밋**
 
@@ -1003,7 +1003,7 @@ grep -rln "IReadOnlyTileData" Assets/01_Scripts --include='*.cs'
 - [ ] **Step 6: 통과 확인**
 
 `refresh_unity` → `read_console`(error 0) → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **406/406 PASS**
+Expected: **405/405 PASS**
 
 - [ ] **Step 7: 커밋**
 
@@ -1090,7 +1090,7 @@ MainCityView 타일 비주얼 수정 포함 — 이진우 소유 구역이라 �
 
 ## 완료 기준
 
-- EditMode `CityFlow.Sim.Tests` **406/406 green** (394 기준선 + 신규 12)
+- EditMode `CityFlow.Sim.Tests` **405/405 green** (393 기준선 + 신규 12)
 - 컴파일 에러 0
 - 통합 씬 파일이 커밋에 **없음**
 - `.asset` 3개에 `ConstructionHours*` 5개씩 전부 기입됨
