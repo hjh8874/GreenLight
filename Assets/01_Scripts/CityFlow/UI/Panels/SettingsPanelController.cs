@@ -99,7 +99,11 @@ namespace CityFlow.UI
             else
             {
                 Debug.Log("[Settings] 게임 상태를 저장하고 타이틀 화면으로 이동합니다.");
-                _services.Save?.Save();
+                if (_services.Save != null && !_services.Save.Save())
+                {
+                    Debug.LogError("[Settings] 게임 상태 저장에 실패했습니다. 진행 손실을 막기 위해 타이틀 화면으로 이동하지 않습니다.");
+                    return;
+                }
             }
             
             UnityEngine.SceneManagement.SceneManager.LoadScene(titleSceneName);
