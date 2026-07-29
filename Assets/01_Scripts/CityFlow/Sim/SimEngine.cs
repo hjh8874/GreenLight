@@ -19,6 +19,8 @@ namespace CityFlow.Sim
         readonly IWorldGridAccess _worldGridAccess;
         readonly RoadNetwork _network;
         readonly DemandMap _demand;
+        private readonly ConstructionSites _construction = new();
+        private readonly List<ConstructionSite> _completedBuffer = new(16);
         readonly RoutePlanner _planner;
         readonly RoadQueueNetwork _roadQueues;
         readonly CarSim _carSim;
@@ -208,6 +210,8 @@ namespace CityFlow.Sim
             StepCount++;
 
             _simTime += _config.TickInterval;
+
+            AdvanceConstruction();   // 공사 완성 → 승격. 채용 램프보다 먼저.
 
             if (_demand.AdvanceCompanyCapacities(
                 _simTime
@@ -512,6 +516,21 @@ namespace CityFlow.Sim
             if (OverlapsRoundaboutFootprint(tile, type, direction)) return false;   // 로터리 풋프린트에 건물 금지
             if (OverlapsBusStopFootprint(tile, type, direction)) return false;
             if (!_grid.Place(tile, type, direction)) return false;
+
+            // 건물은 공사부터 시작한다. 공사시간 0이면 아래 분기를 타지 않고 현행대로 즉시 완성.
+            double constructionSeconds = TileFootprint.IsBuilding(type)
+                ? ConstructionSeconds(type)
+                : 0d;
+            if (constructionSeconds > 0d)
+            {
+                _grid.Promote(tile, TileType.UnderConstruction);
+                _construction.Register(
+                    tile, type, direction, _simTime, _simTime + constructionSeconds);
+                _events.QueuePlaced(
+                    new PlacedEvent(tile, TileType.UnderConstruction, isRemove: false, direction));
+                return true;
+            }
+
             if (type == TileType.Office)
                 _demand.RegisterCompany(tile, type, _simTime);
             if (type == TileType.Office || type == TileType.School)
@@ -522,6 +541,42 @@ namespace CityFlow.Sim
                 _roadTopologyChangePending = true;
             _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false, direction));
             return true;
+        }
+
+        // 게임시간 → 시뮬초. 채용 램프(CompanyCapacityCalculator)의 환산식 역산이다.
+        private double ConstructionSeconds(TileType type)
+        {
+            float hours = type switch
+            {
+                TileType.House           => _config.ConstructionHoursHouse,
+                TileType.Office          => _config.ConstructionHoursOffice,
+                TileType.School          => _config.ConstructionHoursSchool,
+                TileType.Hospital        => _config.ConstructionHoursHospital,
+                TileType.SpecialBuilding => _config.ConstructionHoursSpecial,
+                _ => 0f
+            };
+            if (hours <= 0f || _config.DayLengthSeconds <= 0f) return 0d;
+            return hours * _config.DayLengthSeconds / 24d;
+        }
+
+        // 완성 = 현재 Place 후처리의 발화 시점을 뒤로 민 것. 새 인과관계를 만들지 않는다.
+        private void AdvanceConstruction()
+        {
+            if (_construction.Count == 0) return;
+            _construction.DrainCompleted(_simTime, _completedBuffer);
+            for (int i = 0; i < _completedBuffer.Count; i++)
+            {
+                ConstructionSite site = _completedBuffer[i];
+                if (!_grid.Promote(site.Anchor, site.TargetType)) continue;   // 철거된 사이트 방어
+
+                if (site.TargetType == TileType.Office)
+                    _demand.RegisterCompany(site.Anchor, site.TargetType, _simTime);
+                if (site.TargetType == TileType.Office || site.TargetType == TileType.School)
+                    _demandRebalancePending = true;
+                _buildingAssignmentChangePending = true;
+                _events.QueuePlaced(
+                    new PlacedEvent(site.Anchor, site.TargetType, isRemove: false, site.Direction));
+            }
         }
 
         private bool IsAreaUnlocked(
