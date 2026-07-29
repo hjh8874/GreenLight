@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using CityFlow.Contracts;
 
@@ -10,6 +11,8 @@ namespace CityFlow.Sim
         readonly TileType[] _tiles;   // new 시 전부 0 = TileType.Empty → "빈 도시" 공짜
         readonly Vector2Int[] _footprintAnchors;
         readonly PlacementDirection[] _directions;
+        // Flat indices stay sorted to preserve the previous y-then-x simulation order.
+        readonly List<int> _roadTileIndices = new();
         readonly int _width;
         readonly int _height;
         static readonly Vector2Int InvalidAnchor = new Vector2Int(-1, -1);
@@ -39,27 +42,10 @@ namespace CityFlow.Sim
         // flat 인덱스. 주석님 GridUtil엔 Index가 없어 여기서 직접(index = y*W+x).
         int Index(Vector2Int t) => t.y * _width + t.x;
 
-        int _roadCount = -1;
-        int _roadCountVersion = -1;
-        public int RoadTileCount
-        {
-            get
-            {
-                if (_roadCountVersion == TopologyVersion) return _roadCount;
-                int n = 0;
-                for (int i = 0; i < _tiles.Length; i++)
-                {
-                    if (_tiles[i] == TileType.Road)
-                    {
-                        n++;
-                    }
-                }
+        public int RoadTileCount => _roadTileIndices.Count;
 
-                _roadCount = n;
-                _roadCountVersion = TopologyVersion;
-                return n;
-            }
-        }
+        internal int GetRoadTileIndex(int position) =>
+            _roadTileIndices[position];
 
         // internal(private→승격): SimEngine의 IReadOnlyTileData OOB 가드가 같은 어셈블리에서 재사용(감사 2026-07-12).
         internal bool InBounds(Vector2Int t) =>
@@ -104,6 +90,10 @@ namespace CityFlow.Sim
                     _tiles[index] = type;
                     _footprintAnchors[index] = t;
                     _directions[index] = direction;
+                    if (type == TileType.Road)
+                    {
+                        AddRoadTileIndex(index);
+                    }
                 }
             }
 
@@ -144,6 +134,11 @@ namespace CityFlow.Sim
                     int index = Index(occupied);
                     if (_footprintAnchors[index] != anchor) continue;
 
+                    if (removed == TileType.Road)
+                    {
+                        RemoveRoadTileIndex(index);
+                    }
+
                     _tiles[index] = TileType.Empty;
                     _footprintAnchors[index] = InvalidAnchor;
                     _directions[index] = PlacementDirection.North;
@@ -175,12 +170,31 @@ namespace CityFlow.Sim
         public void Clear()
         {
             System.Array.Clear(_tiles, 0, _tiles.Length);
+            _roadTileIndices.Clear();
             for (int i = 0; i < _footprintAnchors.Length; i++)
             {
                 _footprintAnchors[i] = InvalidAnchor;
                 _directions[i] = PlacementDirection.North;
             }
             MarkDirty();
+        }
+
+        private void AddRoadTileIndex(int index)
+        {
+            int result = _roadTileIndices.BinarySearch(index);
+            if (result < 0)
+            {
+                _roadTileIndices.Insert(~result, index);
+            }
+        }
+
+        private void RemoveRoadTileIndex(int index)
+        {
+            int result = _roadTileIndices.BinarySearch(index);
+            if (result >= 0)
+            {
+                _roadTileIndices.RemoveAt(result);
+            }
         }
 
         // ── 교차로 판정(직각 도로 이웃 ≥3)의 단일 출처 — SignalMap·RoadQueueNetwork가 공유.
