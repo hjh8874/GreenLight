@@ -111,6 +111,12 @@ namespace CityFlow.Sim
             if (_tiles[anchorIndex] == TileType.Empty) return false;
             if (_footprintAnchors[anchorIndex] != anchor) return false;   // 앵커에서만 승격
 
+            // 승격은 건물 전용이다. Road 가 원본이나 대상이면 거부한다 —
+            // Place/TryRemove/Clear 만 _roadTileIndices 를 유지하는데 Promote 는 _tiles 를
+            // 직접 쓰므로, 도로가 끼면 인덱스가 조용히 어긋나 RoadTileCount 가 틀어진다.
+            // (현재 호출자는 AdvanceConstruction 하나이고 대상이 항상 건물이라 도달하지 않는다.)
+            if (_tiles[anchorIndex] == TileType.Road || targetType == TileType.Road) return false;
+
             PlacementDirection direction = _directions[anchorIndex];
             Vector2Int sourceSize = TileFootprint.GetRotatedSize(_tiles[anchorIndex], direction);
             Vector2Int targetSize = TileFootprint.GetRotatedSize(targetType, direction);

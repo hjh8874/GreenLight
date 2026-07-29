@@ -51,6 +51,27 @@ namespace CityFlow.Sim.Tests
             Assert.IsFalse(grid.Promote(V(-1, 0), TileType.House), "격자 밖은 거부");
         }
 
+        // Place/TryRemove/Clear 만 _roadTileIndices 를 유지하는데 Promote 는 _tiles 를 직접 쓴다.
+        // 도로가 승격에 끼면 그 인덱스가 조용히 어긋나 RoadTileCount 가 틀어진다.
+        [Test]
+        public void Promote_RejectsRoad_AndKeepsRoadTileCountIntact()
+        {
+            var grid = new CityGrid(8, 4);
+            Assert.IsTrue(grid.Place(V(3, 3), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.UnderConstruction));
+            int roadsBefore = grid.RoadTileCount;
+
+            Assert.IsFalse(grid.Promote(V(3, 3), TileType.House),
+                "도로를 건물로 승격할 수 없다");
+            Assert.IsFalse(grid.Promote(V(0, 0), TileType.Road),
+                "건물을 도로로 승격할 수 없다");
+
+            Assert.AreEqual(TileType.Road, grid.GetTile(V(3, 3)), "거부되면 원본 불변");
+            Assert.AreEqual(TileType.UnderConstruction, grid.GetTile(V(0, 0)), "거부되면 원본 불변");
+            Assert.AreEqual(roadsBefore, grid.RoadTileCount,
+                "도로 인덱스가 어긋나지 않는다");
+        }
+
         [Test]
         public void Promote_WhenTargetFootprintExceedsSource_ReturnsFalseWithoutPartialWrite()
         {
