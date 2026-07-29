@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Reflection;
 using CityFlow.Bootstrap;
 using CityFlow.Content;
@@ -55,6 +56,52 @@ namespace CityFlow.Tests
             CollectionAssert.AreEqual(
                 new[] { 189, 190, 209, 210 },
                 state.CreateSnapshot().UnlockedChunkIndices);
+        }
+
+        [Test]
+        public void UnlockedScanner_VisitsOnlyUnlockedChunks()
+        {
+            GameObject instance = null;
+
+            try
+            {
+                CreateInitializedSystem(out instance, out WorldGridService worldGrid);
+                var visitedTiles = new HashSet<Vector2Int>();
+
+                int initialCount = UnlockedGridTileScanner.VisitUnlockedTiles(
+                    worldGrid,
+                    GridUtil.DefaultWidth,
+                    GridUtil.DefaultHeight,
+                    tile => visitedTiles.Add(tile));
+
+                Assert.AreEqual(400, initialCount);
+                Assert.AreEqual(400, visitedTiles.Count);
+                Assert.IsTrue(visitedTiles.Contains(new Vector2Int(90, 90)));
+                Assert.IsTrue(visitedTiles.Contains(new Vector2Int(109, 109)));
+                Assert.IsFalse(visitedTiles.Contains(new Vector2Int(89, 90)));
+                Assert.IsFalse(visitedTiles.Contains(new Vector2Int(110, 90)));
+
+                var unlockedChunk = new GridChunkId(11, 10);
+                Assert.IsTrue(worldGrid.TryUnlockChunk(unlockedChunk));
+                visitedTiles.Clear();
+
+                int chunkCount = UnlockedGridTileScanner.VisitChunk(
+                    worldGrid,
+                    unlockedChunk,
+                    tile => visitedTiles.Add(tile));
+
+                Assert.AreEqual(100, chunkCount);
+                Assert.AreEqual(100, visitedTiles.Count);
+                Assert.IsTrue(visitedTiles.Contains(new Vector2Int(110, 100)));
+                Assert.IsTrue(visitedTiles.Contains(new Vector2Int(119, 109)));
+            }
+            finally
+            {
+                if (instance != null)
+                {
+                    Object.DestroyImmediate(instance);
+                }
+            }
         }
 
         [Test]
@@ -523,7 +570,7 @@ namespace CityFlow.Tests
         }
 
         [Test]
-        public void RuntimeConsumers_UseWorldBoundsForCentralContent()
+        public void RuntimeConsumers_UseUnlockedGridCachesForCentralContent()
         {
             GameObject systemInstance = null;
             GameObject consumerObject = null;
@@ -612,16 +659,51 @@ namespace CityFlow.Tests
                 CityQuestSystem quests =
                     consumerObject.AddComponent<CityQuestSystem>();
                 quests.Initialize(services);
-                Assert.AreEqual(200, GetPrivateField<int>(quests, "gridWidth"));
-                Assert.AreEqual(200, GetPrivateField<int>(quests, "gridHeight"));
+                Assert.AreEqual(3, GetPrivateField<int>(quests, "roadCount"));
+                Assert.AreEqual(1, GetPrivateField<int>(quests, "houseCount"));
+                Assert.AreEqual(0, GetPrivateField<int>(quests, "officeCount"));
+                Assert.AreEqual(1, GetPrivateField<int>(quests, "schoolCount"));
+
+                events.Publish(new PlacedEvent(house, TileType.House, true));
+                Assert.AreEqual(0, GetPrivateField<int>(quests, "houseCount"));
+                events.Publish(new PlacedEvent(house, TileType.House, false));
+                Assert.AreEqual(1, GetPrivateField<int>(quests, "houseCount"));
+
+                Vector2Int congestedRoad = new(100, 100);
+                events.Publish(new CongestionEvent(
+                    congestedRoad,
+                    CongestionLevel.Jam));
+                Assert.IsTrue(
+                    GetPrivateField<HashSet<Vector2Int>>(quests, "jamTiles")
+                        .Contains(congestedRoad));
+                events.Publish(new CongestionEvent(
+                    congestedRoad,
+                    CongestionLevel.Free));
+                Assert.IsFalse(
+                    GetPrivateField<HashSet<Vector2Int>>(quests, "jamTiles")
+                        .Contains(congestedRoad));
 
                 statsObject = new GameObject("WorldGridStatsBoundsTest");
                 statsObject.SetActive(false);
                 StatsPanelController stats =
                     statsObject.AddComponent<StatsPanelController>();
                 stats.Initialize(services);
-                Assert.AreEqual(200, GetPrivateField<int>(stats, "_gridWidth"));
-                Assert.AreEqual(200, GetPrivateField<int>(stats, "_gridHeight"));
+                HashSet<Vector2Int> roadTiles =
+                    GetPrivateField<HashSet<Vector2Int>>(
+                        stats,
+                        "_roadTiles");
+                Assert.AreEqual(3, roadTiles.Count);
+                Assert.IsTrue(roadTiles.Contains(congestedRoad));
+                events.Publish(new PlacedEvent(
+                    congestedRoad,
+                    TileType.Road,
+                    true));
+                Assert.IsFalse(roadTiles.Contains(congestedRoad));
+                events.Publish(new PlacedEvent(
+                    congestedRoad,
+                    TileType.Road,
+                    false));
+                Assert.IsTrue(roadTiles.Contains(congestedRoad));
             }
             finally
             {
