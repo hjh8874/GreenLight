@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Reflection;
 using CityFlow.Bootstrap;
 using CityFlow.Buildings;
@@ -59,6 +60,8 @@ namespace CityFlow.Tests
             Assert.NotNull(systemPrefab.GetComponent<SpecialBuildingView>());
             Assert.NotNull(
                 systemPrefab.GetComponent<SpecialBuildingVisitService>());
+            Assert.NotNull(
+                systemPrefab.GetComponent<SpecialBuildingVisitTripSource>());
             Assert.NotNull(fallbackPrefab);
             Assert.NotNull(
                 fallbackPrefab.GetComponent<
@@ -185,6 +188,10 @@ namespace CityFlow.Tests
                 out BuildingDefinitionSO cinema));
 
             GameObject serviceObject = null;
+            string savePath = Path.Combine(
+                Path.GetTempPath(),
+                $"greenlight-special-trip-{Guid.NewGuid():N}.json");
+            string backupPath = savePath + ".bak";
 
             try
             {
@@ -195,7 +202,7 @@ namespace CityFlow.Tests
                 var engine = new SimEngine(config, events);
                 var save = new SaveService(
                     engine,
-                    new JsonSaveRepository(),
+                    new JsonSaveRepository(savePath, backupPath),
                     new SystemSaveClock());
                 var economy = new TestEconomy();
                 var services = new CityFlowServices(
@@ -205,6 +212,7 @@ namespace CityFlow.Tests
                     save,
                     economy,
                     engine);
+                services.RegisterVehicleTrips(engine);
 
                 serviceObject = new GameObject("SpecialBuildingVisitTest");
                 ResearchUnlockService research =
@@ -228,6 +236,9 @@ namespace CityFlow.Tests
                 SpecialBuildingVisitService visitService =
                     serviceObject.AddComponent<SpecialBuildingVisitService>();
                 visitService.Initialize(services);
+                SpecialBuildingVisitTripSource tripSource =
+                    serviceObject.AddComponent<SpecialBuildingVisitTripSource>();
+                tripSource.Initialize(services);
                 calendar.AdvanceDay();
 
                 Assert.IsTrue(visitService.TryGetStatistics(
@@ -236,6 +247,7 @@ namespace CityFlow.Tests
                 Assert.AreEqual(10, statistics.PlannedToday);
                 Assert.AreEqual(10L, statistics.TotalPlannedVisits);
                 Assert.AreEqual(0L, economy.Coins);
+                Assert.AreEqual(10, engine.PendingTripCount);
 
                 GameSaveData snapshot = save.CreateSnapshot();
                 Assert.NotNull(snapshot.SpecialBuildingVisits);
@@ -246,12 +258,31 @@ namespace CityFlow.Tests
                 Assert.AreEqual(
                     1,
                     snapshot.SpecialBuildingVisits.Statistics.Length);
+
+                calendar.SetHour(12);
+                Assert.IsTrue(save.Repository.TrySave(snapshot));
+                Assert.IsTrue(save.TryLoadAndRestore());
+
+                Assert.AreEqual(
+                    5,
+                    engine.PendingTripCount,
+                    "Only visits scheduled after the restored hour should be rebuilt.");
             }
             finally
             {
                 if (serviceObject != null)
                 {
                     UnityEngine.Object.DestroyImmediate(serviceObject);
+                }
+
+                if (File.Exists(savePath))
+                {
+                    File.Delete(savePath);
+                }
+
+                if (File.Exists(backupPath))
+                {
+                    File.Delete(backupPath);
                 }
             }
         }
@@ -325,6 +356,7 @@ namespace CityFlow.Tests
                 {
                     UnityEngine.Object.DestroyImmediate(serviceObject);
                 }
+
             }
         }
 
@@ -690,6 +722,12 @@ namespace CityFlow.Tests
                 Day++;
                 TotalDays++;
                 DayChanged?.Invoke(Day);
+            }
+
+            public void SetHour(int hour)
+            {
+                Hour = Mathf.Clamp(hour, 0, 23);
+                HourChanged?.Invoke(Hour);
             }
         }
 
