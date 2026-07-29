@@ -27,11 +27,11 @@ MonoBehaviour:
     GreenWaveFloor: 0.5
     OfficeCapacity: 6
     CompanyHiringSlotsPerGameHour: 2
-    ConstructionHoursHouse: 2
-    ConstructionHoursOffice: 4
-    ConstructionHoursSchool: 6
-    ConstructionHoursHospital: 8
-    ConstructionHoursSpecial: 6
+    ConstructionHoursHouse: 0
+    ConstructionHoursOffice: 0
+    ConstructionHoursSchool: 0
+    ConstructionHoursHospital: 0
+    ConstructionHoursSpecial: 0
     SchoolCapacity: 10
     DemandChoicePool: 3
     RushAmplitude: 0.6
