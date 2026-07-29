@@ -1221,6 +1221,21 @@ namespace CityFlow.Sim
                     BX = _highwayLinks[i].B.x, BY = _highwayLinks[i].B.y
                 };
 
+            var constructions = new ConstructionSaveData[_construction.Count];
+            for (int i = 0; i < _construction.Sites.Count; i++)
+            {
+                ConstructionSite site = _construction.Sites[i];
+                constructions[i] = new ConstructionSaveData
+                {
+                    X = site.Anchor.x,
+                    Y = site.Anchor.y,
+                    TargetType = site.TargetType,
+                    Direction = site.Direction,
+                    RemainingSimSeconds =
+                        (float)System.Math.Max(0d, site.CompleteAtSimSeconds - _simTime),
+                };
+            }
+
             return new SimSaveData
             {
                 GridWidth = _grid.Width,
@@ -1234,6 +1249,7 @@ namespace CityFlow.Sim
                 PriorityRoads = priorityRoads,
                 Highways = highways,
                 BusStops = busStops,
+                Constructions = constructions,
                 HasCarSimStats = true,
                 CarTripSuccessRate = _stats.TripSuccessRate,
                 CarDayArrivalCount = _stats.DayArrivalCount,
@@ -1259,6 +1275,7 @@ namespace CityFlow.Sim
             _roadQueues.RemoveAllCars();
             Array.Clear(_carCongestion, 0, _carCongestion.Length);
             _carSim.ClearPopulation();
+            _construction.Clear();
             _buildingAssignmentChangePending = false;
             _roadTopologyChangePending = false;
             _stats.RestoreCarSim(
@@ -1276,6 +1293,20 @@ namespace CityFlow.Sim
                         _demand.RegisterRestoredCompany(tile, t.Type);
                 }
             // 참고: PlacedEvent는 안 쏨 — 복원은 '건설'이 아니고, 뷰는 폴링이라 다음 프레임 자동 갱신.
+
+            // 공사 사이트 복원. 구세이브(null)는 공사 0건으로 우아 복원.
+            if (snapshot.Constructions != null)
+                foreach (var c in snapshot.Constructions)
+                {
+                    var anchor = RestoreTile(c.X, c.Y, restoreOffset);
+                    if (_grid.GetTile(anchor) != TileType.UnderConstruction) continue;   // 불일치 방어
+                    double remaining = System.Math.Max(0f, c.RemainingSimSeconds);
+                    double total = ConstructionSeconds(c.TargetType);
+                    // 이미 지난 만큼(total - remaining)을 뒤로 물려 진행도(Task 7)가 이어지게 한다.
+                    double started = _simTime - System.Math.Max(0d, total - remaining);
+                    _construction.Register(
+                        anchor, c.TargetType, c.Direction, started, _simTime + remaining);
+                }
 
             // 조율 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).
             // 배치 모드: 저장된 신호 목록 = 배치 기록(스펙 §3). 구세이브(자동 시절 = 전 교차로 신호)도

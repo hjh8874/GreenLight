@@ -182,5 +182,47 @@ namespace CityFlow.Sim.Tests
                 "철거된 사이트는 완성 시각이 지나도 되살아나지 않는다");
             Assert.AreEqual(0, engine.ConstructionSiteCountForTest, "좀비 사이트가 남지 않는다");
         }
+
+        [Test]
+        public void Construction_SurvivesSaveRoundTrip_WithRemainingTime()
+        {
+            SimConfig cfg = Cfg();
+            cfg.ConstructionHoursHouse = 4f;   // 4초 = 16틱
+            var engine = new SimEngine(cfg, new SimEventHub());
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
+            for (int i = 0; i < 8; i++) engine.Tick(0.25f);   // 절반(2초) 진행
+
+            CityFlow.Contracts.Save.SimSaveData snap = engine.CreateSnapshot();
+            Assert.AreEqual(1, snap.Constructions.Length);
+            Assert.AreEqual(2f, snap.Constructions[0].RemainingSimSeconds, 0.01f,
+                "절대 완료시각이 아니라 잔여시간으로 저장한다");
+
+            var restored = new SimEngine(cfg, new SimEventHub());
+            restored.RestoreSnapshot(snap);
+            Assert.AreEqual(TileType.UnderConstruction, restored.GetTileType(V(0, 0)));
+
+            for (int i = 0; i < 7; i++) restored.Tick(0.25f);
+            Assert.AreEqual(TileType.UnderConstruction, restored.GetTileType(V(0, 0)),
+                "잔여 2초 중 1.75초 경과 — 아직 미완");
+
+            restored.Tick(0.25f);
+            Assert.AreEqual(TileType.House, restored.GetTileType(V(0, 0)),
+                "잔여시간을 이어받아 완성");
+        }
+
+        [Test]
+        public void LegacySave_WithoutConstructions_RestoresWithoutError()
+        {
+            SimConfig cfg = Cfg();
+            var engine = new SimEngine(cfg, new SimEventHub());
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));   // 공사시간 0 = 즉시 완성
+
+            CityFlow.Contracts.Save.SimSaveData snap = engine.CreateSnapshot();
+            snap.Constructions = null;   // 구세이브 모사
+
+            var restored = new SimEngine(cfg, new SimEventHub());
+            Assert.DoesNotThrow(() => restored.RestoreSnapshot(snap));
+            Assert.AreEqual(TileType.House, restored.GetTileType(V(0, 0)));
+        }
     }
 }
