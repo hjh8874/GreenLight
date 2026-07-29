@@ -10,7 +10,10 @@ namespace CityFlow.Contracts
         Office,
         School,
         Hospital,
-        SpecialBuilding
+        SpecialBuilding,
+        // 공사 중. 완성 시 CityGrid.Promote()가 실제 타입으로 교체한다.
+        // IsBuilding()이 true라 2x2 풋프린트 예약이 그대로 유지된다(겹침 방지 공짜).
+        UnderConstruction
     }
 
     /// <summary>

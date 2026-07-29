@@ -16,6 +16,7 @@ namespace CityFlow.Contracts.Save
         public PriorityRoadSaveData[] PriorityRoads;   // 구세이브 = null — 마이그레이션 공짜
         public HighwaySaveData[] Highways;
         public BusStopSaveData[] BusStops;
+        public ConstructionSaveData[] Constructions;   // 구세이브 = null(공사 0건) — 마이그레이션 공짜
         public bool HasCarSimStats;
         public float CarTripSuccessRate;
         public int CarDayArrivalCount;

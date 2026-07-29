@@ -101,6 +101,52 @@ namespace CityFlow.Sim
             return true;
         }
 
+        // 공사 완성 승격. Place()와 달리 CanPlace() 검사를 하지 않는다 —
+        // 이미 UnderConstruction이 점유한 풋프린트의 타입만 제자리에서 교체하기 때문이다.
+        // anchor/direction은 보존한다(재배치가 아니라 타입 변경).
+        internal bool Promote(Vector2Int anchor, TileType targetType)
+        {
+            if (!InBounds(anchor)) return false;
+            int anchorIndex = Index(anchor);
+            if (_tiles[anchorIndex] == TileType.Empty) return false;
+            if (_footprintAnchors[anchorIndex] != anchor) return false;   // 앵커에서만 승격
+
+            // 승격은 건물 전용이다. Road 가 원본이나 대상이면 거부한다 —
+            // Place/TryRemove/Clear 만 _roadTileIndices 를 유지하는데 Promote 는 _tiles 를
+            // 직접 쓰므로, 도로가 끼면 인덱스가 조용히 어긋나 RoadTileCount 가 틀어진다.
+            // (현재 호출자는 AdvanceConstruction 하나이고 대상이 항상 건물이라 도달하지 않는다.)
+            if (_tiles[anchorIndex] == TileType.Road || targetType == TileType.Road) return false;
+
+            PlacementDirection direction = _directions[anchorIndex];
+            Vector2Int sourceSize = TileFootprint.GetRotatedSize(_tiles[anchorIndex], direction);
+            Vector2Int targetSize = TileFootprint.GetRotatedSize(targetType, direction);
+            if (sourceSize != targetSize) return false;
+
+            // 승격은 재배치가 아니므로 원본 풋프린트를 벗어날 수 없다.
+            // 검증과 쓰기를 분리해 실패 시 일부 타일만 바뀌는 비원자 경로를 막는다.
+            for (int y = 0; y < targetSize.y; y++)
+            {
+                for (int x = 0; x < targetSize.x; x++)
+                {
+                    Vector2Int occupied = anchor + new Vector2Int(x, y);
+                    if (!InBounds(occupied)) return false;
+                    if (_footprintAnchors[Index(occupied)] != anchor) return false;
+                }
+            }
+
+            for (int y = 0; y < targetSize.y; y++)
+            {
+                for (int x = 0; x < targetSize.x; x++)
+                {
+                    Vector2Int occupied = anchor + new Vector2Int(x, y);
+                    _tiles[Index(occupied)] = targetType;
+                }
+            }
+
+            MarkDirty();
+            return true;
+        }
+
         public bool Remove(Vector2Int t) => TryRemove(t, out _);
 
         // 범위 검사 + "뭘 지웠나"를 한 곳에서 — 호출자가 GetTile을 따로 부르다 범위 밖에서 터지는 일 방지.

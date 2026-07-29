@@ -63,6 +63,17 @@ namespace CityFlow.Sim
         // 회사 정원은 배정과 주차가 함께 쓰는 단일 값이며 프리팹 주차 자리 수를 넘기지 않는다.
         public int   OfficeCapacity;    // 회사(Office) 6
         public float CompanyHiringSlotsPerGameHour; // 건설 후 게임 시간당 열리는 회사 자리 수 🔓
+
+        // ── 건물 건설시간 (게임시간) ─────────────────────
+        // 배치 후 이 시간이 지나야 실제 건물이 된다. 0 이하 = 즉시 완성.
+        // Default()는 전부 0 — 기존 EditMode 테스트가 "놓으면 바로 돈다"를 전제하기 때문.
+        // 실제 게임 값은 SimConfig*.asset 3개에만 기입한다.
+        public float ConstructionHoursHouse;      // 🔓
+        public float ConstructionHoursOffice;     // 🔓
+        public float ConstructionHoursSchool;     // 🔓
+        public float ConstructionHoursHospital;   // 🔓
+        public float ConstructionHoursSpecial;    // 🔓
+
         public int   SchoolCapacity;    // 학교(School) 10
 
         // ── 수요 배정 다양성 ──
@@ -157,6 +168,11 @@ namespace CityFlow.Sim
             GreenWaveMagnitudeScale = 10f,
             OfficeCapacity = 6,
             CompanyHiringSlotsPerGameHour = 2f,
+            ConstructionHoursHouse    = 0f,
+            ConstructionHoursOffice   = 0f,
+            ConstructionHoursSchool   = 0f,
+            ConstructionHoursHospital = 0f,
+            ConstructionHoursSpecial  = 0f,
             SchoolCapacity = 10,
             DemandChoicePool = 3,
             RushAmplitude = 0f,        // 기본 오프 — SimDebug 씬은 SO 에셋으로 켠다
