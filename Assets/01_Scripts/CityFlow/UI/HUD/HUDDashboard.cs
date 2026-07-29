@@ -301,7 +301,7 @@ namespace CityFlow.UI
                 }
                 else
                 {
-                    timeText.text = "01월 01일 00:00"; // 기본값
+                    timeText.text = "--:--"; // 기본값
                 }
             }
 

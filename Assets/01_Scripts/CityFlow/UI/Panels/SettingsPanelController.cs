@@ -1,3 +1,4 @@
+using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
 using UnityEngine.UI;
@@ -91,8 +92,16 @@ namespace CityFlow.UI
                 return;
             }
 
-            Debug.Log("[Settings] 게임 상태를 저장하고 타이틀 화면으로 이동합니다.");
-            _services?.Save?.Save();
+            if (_services == null)
+            {
+                Debug.LogWarning("[Settings] CityFlowServices가 초기화되지 않아 저장을 건너뜁니다.");
+            }
+            else
+            {
+                Debug.Log("[Settings] 게임 상태를 저장하고 타이틀 화면으로 이동합니다.");
+                _services.Save?.Save();
+            }
+            
             UnityEngine.SceneManagement.SceneManager.LoadScene(titleSceneName);
         }
     }

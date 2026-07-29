@@ -290,7 +290,9 @@ namespace CityFlow.DebugTools
             Toggle muteToggle = CreateToggle(settingsPanel.transform, "Mute", new Vector2(12f, -12f));
             Button quitButton = CreateTmpButton(settingsPanel.transform, "Stop Play", new Vector2(180f, -12f), new Vector2(156f, 32f));
             Button titleButton = CreateTmpButton(settingsPanel.transform, "Title", new Vector2(12f, -56f), new Vector2(324f, 32f));
-            settingsPanel.AddComponent<SettingsPanelController>().Configure(muteToggle, quitButton, titleButton);
+            SettingsPanelController settingsController = settingsPanel.AddComponent<SettingsPanelController>();
+            settingsController.Configure(muteToggle, quitButton, titleButton);
+            settingsController.Initialize(services);
 
             GameObject analysisPanel = CreatePanel(canvas, "AnalysisCard", new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(16f, -60f), new Vector2(260f, 246f));
             TextMeshProUGUI title = CreateTmpText(analysisPanel.transform, "Title", "Tile", new Vector2(12f, -12f), new Vector2(232f, 24f), 18);
