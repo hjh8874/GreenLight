@@ -5,9 +5,11 @@ using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Content.Transit;
 using CityFlow.Contracts;
+using CityFlow.DebugTools;
 using CityFlow.Sim;
 using CityFlow.UI;
 using CityFlow.UI.Controllers;
+using CityFlow.View;
 using CityFlow.UI.Data;
 using NUnit.Framework;
 using UnityEditor;
@@ -253,6 +255,9 @@ namespace Tests.EditMode
                     engine.Place(road, TileType.Road),
                     Is.True);
                 Assert.That(
+                    engine.Place(new Vector2Int(3, 2), TileType.Road),
+                    Is.True);
+                Assert.That(
                     engine.TryPlaceBusStop(stop),
                     Is.True);
 
@@ -301,6 +306,9 @@ namespace Tests.EditMode
                     engine.Place(road, TileType.Road),
                     Is.True);
                 Assert.That(
+                    engine.Place(new Vector2Int(3, 2), TileType.Road),
+                    Is.True);
+                Assert.That(
                     engine.TryPlaceBusStop(stop),
                     Is.True);
 
@@ -338,6 +346,492 @@ namespace Tests.EditMode
             {
                 Object.DestroyImmediate(coordinatorObject);
                 Object.DestroyImmediate(registryObject);
+            }
+        }
+
+        [Test]
+        public void InfrastructureChanged_SynchronizesEveryBusStopRegistry()
+        {
+            GameObject firstObject =
+                new("BusStopRegistry A");
+            GameObject secondObject =
+                new("BusStopRegistry B");
+
+            try
+            {
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                CityFlowServices services =
+                    new(
+                        events,
+                        engine,
+                        engine);
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(2, 2),
+                        TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(3, 2),
+                        TileType.Road),
+                    Is.True);
+
+                BusStopRegistry first =
+                    firstObject.AddComponent<
+                        BusStopRegistry>();
+                BusStopRegistry second =
+                    secondObject.AddComponent<
+                        BusStopRegistry>();
+                first.Initialize(services);
+                second.Initialize(services);
+
+                Vector2Int stop =
+                    new(2, 3);
+                Assert.That(
+                    engine.TryPlaceBusStop(stop),
+                    Is.True);
+                events.Publish(
+                    new InfrastructureChangedEvent(
+                        stop,
+                        false));
+
+                Assert.That(
+                    first.ContainsBusStop(stop),
+                    Is.True);
+                Assert.That(
+                    second.ContainsBusStop(stop),
+                    Is.True,
+                    "The city bus must not depend on which duplicate registry the UI found first.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(
+                    secondObject);
+                Object.DestroyImmediate(
+                    firstObject);
+            }
+        }
+
+        [Test]
+        public void CityBus_StopArrival_GrantsConfiguredRevenueOnlyOnce()
+        {
+            GameObject busObject = new("CityBus");
+
+            try
+            {
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                PlaceBusLoop(engine);
+                RecordingEconomy economy = new();
+                (
+                    CityBusService service,
+                    BusRoute route,
+                    BusStopRegistry registry) =
+                    CreateBusService(
+                        busObject,
+                        events,
+                        engine,
+                        economy);
+                BusDefinitionSO definition =
+                    AssetDatabase.LoadAssetAtPath<
+                        BusDefinitionSO>(
+                        "Assets/05_ScriptableObjects/CityFlow/Transit/CityBusDefinition.asset");
+
+                Assert.That(registry, Is.Not.Null);
+                Assert.That(definition, Is.Not.Null);
+                Assert.That(
+                    definition.StopRevenueCoins,
+                    Is.GreaterThan(0));
+                Assert.That(service.StartService(), Is.True);
+
+                AdvanceToNextStop(route);
+
+                Assert.That(economy.AddCalls, Is.EqualTo(1));
+                Assert.That(
+                    economy.Coins,
+                    Is.EqualTo(
+                        definition.StopRevenueCoins));
+                Assert.That(
+                    economy.LastReason,
+                    Is.EqualTo("city bus stop"));
+
+                InvokePrivate(service, "Update");
+
+                Assert.That(
+                    economy.AddCalls,
+                    Is.EqualTo(1),
+                    "Waiting at the same stop must not grant revenue again.");
+
+                InvokePrivate(
+                    route,
+                    "UpdateWaiting",
+                    100f);
+                InvokePrivate(service, "Update");
+                AdvanceToNextStop(route);
+
+                Assert.That(economy.AddCalls, Is.EqualTo(2));
+                Assert.That(
+                    economy.Coins,
+                    Is.EqualTo(
+                        definition.StopRevenueCoins * 2L));
+            }
+            finally
+            {
+                Object.DestroyImmediate(busObject);
+            }
+        }
+
+        [Test]
+        public void CityBus_OppositeSidePassByStop_IsNotServed()
+        {
+            GameObject busObject = new("CityBus");
+
+            try
+            {
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                PlaceDirectionalBusLoop(engine);
+                (
+                    CityBusService service,
+                    BusRoute route,
+                    BusStopRegistry registry) =
+                    CreateBusService(
+                        busObject,
+                        events,
+                        engine);
+                List<Vector2Int> servedStops = new();
+                service.StopServed +=
+                    (tile, _, _) => servedStops.Add(tile);
+
+                Vector2Int scheduledStop =
+                    new(7, 1);
+                Vector2Int oppositeSideStop =
+                    new(5, 3);
+
+                Assert.That(registry.BusStopCount, Is.EqualTo(3));
+                Assert.That(service.StartService(), Is.True);
+                AdvanceToNextStop(route);
+
+                Assert.That(
+                    route.CurrentStop,
+                    Is.EqualTo(scheduledStop));
+                Assert.That(
+                    ContainsTile(
+                        servedStops,
+                        oppositeSideStop),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(busObject);
+            }
+        }
+
+        [Test]
+        public void CityBus_DisconnectedRoad_StopsAtLastValidRoad()
+        {
+            GameObject busObject = new("CityBus");
+
+            try
+            {
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                PlaceDirectionalBusLoop(engine);
+                (
+                    CityBusService service,
+                    BusRoute route,
+                    BusStopRegistry _) =
+                    CreateBusService(
+                        busObject,
+                        events,
+                        engine);
+
+                Assert.That(service.StartService(), Is.True);
+                MoveUntilTile(
+                    route,
+                    new Vector2Int(3, 2));
+                Vector2Int lastValidRoad =
+                    route.CurrentTile;
+                Vector2Int removedRoad =
+                    new(4, 2);
+
+                Assert.That(
+                    engine.Remove(removedRoad),
+                    Is.True);
+                Assert.That(
+                    engine.Remove(new Vector2Int(4, 6)),
+                    Is.True);
+
+                InvokePrivate(route, "MoveOneTile");
+
+                Assert.That(
+                    route.State,
+                    Is.EqualTo(
+                        BusRouteState.RouteUnavailable));
+                Assert.That(
+                    route.CurrentTile,
+                    Is.EqualTo(lastValidRoad));
+                Assert.That(
+                    route.CurrentTile,
+                    Is.Not.EqualTo(removedRoad));
+            }
+            finally
+            {
+                Object.DestroyImmediate(busObject);
+            }
+        }
+
+        [Test]
+        public void CityBusWorldView_RouteUnavailable_KeepsLastBusVisible()
+        {
+            GameObject busObject = new("CityBus");
+            GameObject visualObject =
+                new("CityBusVisual");
+
+            try
+            {
+                busObject.AddComponent<BusRoute>();
+                CityBusWorldView worldView =
+                    busObject.AddComponent<CityBusWorldView>();
+                visualObject.transform.SetParent(
+                    busObject.transform,
+                    false);
+                visualObject.SetActive(true);
+                SetPrivateField(
+                    worldView,
+                    "visual",
+                    visualObject.transform);
+                SetPrivateField(
+                    worldView,
+                    "hasTarget",
+                    true);
+                SetPrivateField(
+                    worldView,
+                    "hasLastRoadTile",
+                    true);
+
+                InvokePrivate(
+                    worldView,
+                    "HandleRouteUnavailable");
+
+                Assert.That(worldView.HasVisibleBus, Is.True);
+                Assert.That(visualObject.activeSelf, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(busObject);
+            }
+        }
+
+        [Test]
+        public void CityBusWorldView_UsesRouteTravelDuration()
+        {
+            GameObject busObject =
+                new("CityBusSpeedTest");
+
+            try
+            {
+                BusRoute route =
+                    busObject.AddComponent<BusRoute>();
+                route.SecondsPerTile = 0.65f;
+                CityBusWorldView worldView =
+                    busObject.AddComponent<CityBusWorldView>();
+                SetPrivateField(
+                    worldView,
+                    "busRoute",
+                    route);
+                SetPrivateField(
+                    worldView,
+                    "movementDuration",
+                    0.05f);
+
+                MethodInfo getDuration =
+                    typeof(CityBusWorldView).GetMethod(
+                        "GetMovementDuration",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                Assert.That(getDuration, Is.Not.Null);
+                float duration =
+                    (float)getDuration.Invoke(
+                        worldView,
+                        null);
+
+                Assert.That(
+                    duration,
+                    Is.EqualTo(route.SecondsPerTile)
+                        .Within(0.0001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(busObject);
+            }
+        }
+
+        [Test]
+        public void CityBusWorldView_RegistersAndBlocksBusTraffic()
+        {
+            GameObject cityObject =
+                new("CityBusTrafficTest_City");
+            GameObject busObject =
+                new("CityBusTrafficTest_Bus");
+            GameObject visualObject =
+                new("CityBusTrafficTest_Visual");
+            GameObject otherBus =
+                new("CityBusTrafficTest_OtherBus");
+
+            try
+            {
+                MainCityView cityView =
+                    cityObject.AddComponent<MainCityView>();
+                BusRoute route =
+                    busObject.AddComponent<BusRoute>();
+                busObject.AddComponent<BusStopRegistry>();
+                CityBusService service =
+                    busObject.AddComponent<CityBusService>();
+                BusDefinitionSO definition =
+                    AssetDatabase.LoadAssetAtPath<
+                        BusDefinitionSO>(
+                        "Assets/05_ScriptableObjects/CityFlow/Transit/CityBusDefinition.asset");
+                Assert.That(definition, Is.Not.Null);
+                SetPrivateField(
+                    service,
+                    "definition",
+                    definition);
+
+                CityBusWorldView worldView =
+                    busObject.AddComponent<CityBusWorldView>();
+                SetPrivateField(
+                    worldView,
+                    "cityView",
+                    cityView);
+                SetPrivateField(
+                    worldView,
+                    "cityBusService",
+                    service);
+
+                Vector2Int currentTile =
+                    new(2, 2);
+                Vector2Int nextTile =
+                    new(3, 2);
+                Vector3 rightLaneOffset =
+                    Vector3.down *
+                    cityView.LaneOffset *
+                    cityView.TileSize;
+                Vector3 currentPosition =
+                    cityView.GridToLocal(
+                        currentTile,
+                        -0.38f) +
+                    rightLaneOffset;
+                Vector3 nextPosition =
+                    cityView.GridToLocal(
+                        nextTile,
+                        -0.38f) +
+                    rightLaneOffset;
+
+                visualObject.transform.SetParent(
+                    cityView.transform,
+                    false);
+                visualObject.transform.localPosition =
+                    currentPosition;
+                visualObject.SetActive(true);
+                SetPrivateField(
+                    worldView,
+                    "visual",
+                    visualObject.transform);
+                SetPrivateField(
+                    worldView,
+                    "hasTarget",
+                    true);
+                SetPrivateField(
+                    worldView,
+                    "hasLastRoadTile",
+                    true);
+                SetPrivateField(
+                    worldView,
+                    "lastRoadTile",
+                    currentTile);
+                SetPrivateField(
+                    worldView,
+                    "lastTravelDirection",
+                    Vector2.right);
+                SetPrivateField(
+                    worldView,
+                    "currentVisualDirection",
+                    Vector2.right);
+
+                cityView.GetTrafficFootprint(
+                    definition.VehicleLengthTiles,
+                    definition.VehicleWidthTiles,
+                    out float halfLength,
+                    out float halfWidth);
+                cityView.UpdateExternalTrafficVehicle(
+                    otherBus,
+                    nextPosition,
+                    Vector3.right,
+                    0f,
+                    true,
+                    nextTile,
+                    true,
+                    halfLength,
+                    halfWidth);
+
+                Assert.That(route.CanEnterTile, Is.Not.Null);
+                Assert.That(
+                    route.CanEnterTile(
+                        currentTile,
+                        nextTile),
+                    Is.False,
+                    "A city bus must wait when another bus occupies its next tile.");
+
+                cityView.RemoveExternalTrafficVehicle(
+                    otherBus);
+                InvokePrivate(
+                    worldView,
+                    "PublishExternalTraffic");
+
+                Assert.That(
+                    cityView.CanExternalTrafficAdvance(
+                        otherBus,
+                        cityView.GridToLocal(
+                            currentTile - Vector2Int.right,
+                            -0.38f) +
+                        rightLaneOffset,
+                        currentPosition,
+                        Vector3.right,
+                        cityView.VehicleMinHeadway *
+                        cityView.TileSize,
+                        currentTile),
+                    Is.False,
+                    "Other buses must see the city bus as an occupied vehicle.");
+
+                InvokePrivate(
+                    worldView,
+                    "HandleRouteUnavailable");
+                Assert.That(
+                    cityView.CanExternalTrafficAdvance(
+                        otherBus,
+                        cityView.GridToLocal(
+                            currentTile - Vector2Int.right,
+                            -0.38f) +
+                        rightLaneOffset,
+                        currentPosition,
+                        Vector3.right,
+                        cityView.VehicleMinHeadway *
+                        cityView.TileSize,
+                        currentTile),
+                    Is.False,
+                    "A visible stopped city bus must remain an obstacle.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(otherBus);
+                Object.DestroyImmediate(busObject);
+                Object.DestroyImmediate(cityObject);
             }
         }
 
@@ -478,7 +972,8 @@ namespace Tests.EditMode
             CreateBusService(
                 GameObject busObject,
                 SimEventHub events,
-                SimEngine engine)
+                SimEngine engine,
+                IEconomyService economy = null)
         {
             BusRoute route =
                 busObject.AddComponent<BusRoute>();
@@ -512,9 +1007,16 @@ namespace Tests.EditMode
                 new CityFlowServices(
                     events,
                     engine,
-                    engine));
+                    engine,
+                    null,
+                    economy));
             Assert.That(service.IsInitialized, Is.True);
             Assert.That(registry.BusStopCount, Is.EqualTo(3));
+            Assert.That(
+                route.SecondsPerTile,
+                Is.EqualTo(definition.SecondsPerTile)
+                    .Within(0.0001f),
+                "City bus route speed must come from its definition asset.");
             return (service, route, registry);
         }
 
@@ -551,16 +1053,81 @@ namespace Tests.EditMode
 
             Assert.That(
                 engine.TryPlaceBusStop(
-                    new Vector2Int(2, 1)),
+                    new Vector2Int(3, 1)),
                 Is.True);
             Assert.That(
                 engine.TryPlaceBusStop(
-                    new Vector2Int(8, 1)),
+                    new Vector2Int(7, 1)),
                 Is.True);
             Assert.That(
                 engine.TryPlaceBusStop(
-                    new Vector2Int(8, 7)),
+                    new Vector2Int(5, 7)),
                 Is.True);
+        }
+
+        private static void PlaceDirectionalBusLoop(
+            SimEngine engine)
+        {
+            for (int x = 2; x <= 8; x++)
+            {
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(x, 2),
+                        TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(x, 6),
+                        TileType.Road),
+                    Is.True);
+            }
+
+            for (int y = 3; y <= 5; y++)
+            {
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(2, y),
+                        TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(8, y),
+                        TileType.Road),
+                    Is.True);
+            }
+
+            Assert.That(
+                engine.TryPlaceBusStop(
+                    new Vector2Int(3, 1)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(
+                    new Vector2Int(7, 1)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(
+                    new Vector2Int(5, 3)),
+                Is.True);
+        }
+
+        private static void MoveUntilTile(
+            BusRoute route,
+            Vector2Int target)
+        {
+            for (int i = 0;
+                 i < 8 &&
+                 route.CurrentTile != target;
+                 i++)
+            {
+                InvokePrivate(route, "MoveOneTile");
+            }
+
+            Assert.That(
+                route.CurrentTile,
+                Is.EqualTo(target));
+            Assert.That(
+                route.State,
+                Is.EqualTo(BusRouteState.Moving));
         }
 
         private static void AdvanceToNextStop(
@@ -608,6 +1175,38 @@ namespace Tests.EditMode
             }
 
             return false;
+        }
+
+        private sealed class RecordingEconomy :
+            IEconomyService
+        {
+            public long Coins { get; private set; }
+            public int AddCalls { get; private set; }
+            public string LastReason { get; private set; }
+
+            public event Action<long> CoinsChanged;
+
+            public bool TrySpend(long amount)
+            {
+                if (amount <= 0L || Coins < amount)
+                {
+                    return false;
+                }
+
+                Coins -= amount;
+                CoinsChanged?.Invoke(Coins);
+                return true;
+            }
+
+            public void AddCoins(
+                long amount,
+                string reason)
+            {
+                Coins += amount;
+                AddCalls++;
+                LastReason = reason;
+                CoinsChanged?.Invoke(Coins);
+            }
         }
 
         private sealed class RegistryDestroyingEconomy

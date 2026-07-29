@@ -686,7 +686,22 @@ namespace CityFlow.View
                     }
 
                     ResetVehicleForCommute(fresh, car.RouteIndex);
-                    // 리바인드 불변식: 언바운드 차는 Distance≈0(신규/스냅 직후)에서만 발생 — 바인딩 로직 변경 시 재검토.
+                    CarSnapshot snapshot =
+                        simEngine.GetCarSnapshot(i);
+                    bool moving =
+                        snapshot.State == CarState.Outbound ||
+                        snapshot.State == CarState.Inbound;
+                    if (moving)
+                    {
+                        RoutePolyline activePolyline =
+                            snapshot.State == CarState.Inbound
+                                ? pair.Inbound
+                                : pair.Outbound;
+                        car.Distance = ReprojectDistance(
+                            snapshot,
+                            activePolyline,
+                            snapshot.QueueSlot);
+                    }
                     ApplyCarStyle(fresh, car);
                     carVehicles[car] = fresh;
                 }
@@ -985,11 +1000,6 @@ namespace CityFlow.View
                 targetQueueSlot,
                 slotGap,
                 headInset);
-            float queueHeadTargetDistance = poly.DistanceAtQueueSlot(
-                tileIndex,
-                0,
-                slotGap,
-                headInset);
             bool hasIntersectionAuthorization = snapshot.IntersectionProgress01 >= 0f;
             float intersectionAuthorizedSpeed = 0f;
             if (hasIntersectionAuthorization)
@@ -1124,28 +1134,17 @@ namespace CityFlow.View
                     distanceToBoundary / remainingTickSeconds);
             }
 
-            bool usesQueueSlotTarget = targetQueueSlot > 0
-                && !hasIntersectionAuthorization
-                && !hasRoundaboutAuthorization
-                && snapshot.LinkProgress01 <= 0f;
-            float queueHeadCorridor = queueHeadTargetDistance;
-            if (roundaboutEntryLimited)
-                queueHeadCorridor = Mathf.Min(queueHeadCorridor, roundaboutStopDistance);
-            if (signalEntryLimited)
-                queueHeadCorridor = Mathf.Min(queueHeadCorridor, signalStopDistance);
-            if (intersectionEntryLimited)
-                queueHeadCorridor = Mathf.Min(queueHeadCorridor, intersectionStopDistance);
-            bool queueSlotOnlyRegression = usesQueueSlotTarget
-                && targetDistance < queueHeadTargetDistance - 0.0001f
-                && queueHeadCorridor >= car.Distance;
-
-            if (corridor < car.Distance)
+            bool corridorRegressed =
+                corridor < car.Distance;
+            corridor =
+                VehicleSpacingMath
+                    .ClampCorridorToForwardProgress(
+                        car.Distance,
+                        corridor);
+            if (corridorRegressed)
             {
-                // 슬롯 간격만 제거하면 현재 위치를 허용하는 경우에만 제자리에서 기다린다.
-                // 재베이크로 poly.Length 자체가 Distance 뒤로 줄었거나 시작점 클램프 때문에
-                // slot0도 같은 상한이면 기다려도 풀릴 수 없으므로 옛 동작처럼 완만히 수렴한다.
-                if (!queueSlotOnlyRegression)
-                    car.Distance = Mathf.MoveTowards(car.Distance, corridor, nominal * dt);
+                // Sim 상한이 뒤로 이동해도 화면 차량은 후진하거나 다른 곡선 구간으로
+                // 순간 이동하지 않는다. 현재 위치에서 새 권한을 기다린다.
                 vehicle.TravelSpeed = 0f;
             }
             else

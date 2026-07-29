@@ -93,14 +93,26 @@ namespace CityFlow.View
             float minimumHeadway,
             Vector2Int nextTile)
         {
-            return IsExternalTrafficCorridorClear(
+            ResolveExternalTrafficFootprint(
                 owner,
-                currentLocalPosition,
-                nextLocalPosition,
-                localDirection,
-                minimumHeadway,
-                true,
-                nextTile);
+                out float halfLength,
+                out float halfWidth);
+            float proposedAdvance =
+                Vector3.Distance(
+                    currentLocalPosition,
+                    nextLocalPosition);
+            float allowedAdvance =
+                LimitExternalTrafficVisualAdvance(
+                    owner,
+                    currentLocalPosition,
+                    nextLocalPosition,
+                    localDirection,
+                    minimumHeadway,
+                    halfLength,
+                    halfWidth);
+
+            return allowedAdvance >=
+                   proposedAdvance - 0.0001f;
         }
 
         public bool CanExternalTrafficMoveVisual(
@@ -112,50 +124,259 @@ namespace CityFlow.View
             float halfLength,
             float halfWidth)
         {
-            if (!IsExternalTrafficCorridorClear(
+            float proposedAdvance =
+                Vector3.Distance(
+                    currentLocalPosition,
+                    nextLocalPosition);
+            float allowedAdvance =
+                LimitExternalTrafficVisualAdvance(
                     owner,
                     currentLocalPosition,
                     nextLocalPosition,
                     localDirection,
                     minimumHeadway,
-                    false,
-                    default))
-            {
-                return false;
-            }
+                    halfLength,
+                    halfWidth);
 
-            float distance =
+            return allowedAdvance >=
+                   proposedAdvance - 0.0001f;
+        }
+
+        public float LimitExternalTrafficVisualAdvance(
+            Object owner,
+            Vector3 currentLocalPosition,
+            Vector3 nextLocalPosition,
+            Vector3 localDirection,
+            float minimumHeadway,
+            float halfLength,
+            float halfWidth)
+        {
+            float proposedAdvance =
                 Vector3.Distance(
                     currentLocalPosition,
                     nextLocalPosition);
+            if (proposedAdvance <= 0.0001f)
+            {
+                return 0f;
+            }
+
+            Vector3 forward =
+                localDirection.sqrMagnitude > 0.0001f
+                    ? localDirection.normalized
+                    : (nextLocalPosition -
+                       currentLocalPosition).normalized;
+            if (forward.sqrMagnitude <= 0.0001f)
+            {
+                forward = Vector3.right;
+            }
+
+            float safeHalfLength =
+                Mathf.Max(0.05f, halfLength);
+            float safeHalfWidth =
+                Mathf.Max(0.04f, halfWidth);
+            float safeHeadway =
+                Mathf.Max(0.05f, minimumHeadway);
+            float safetyMargin =
+                Mathf.Max(0.005f, tileSize * 0.015f);
+            float maximumAhead =
+                proposedAdvance +
+                Mathf.Max(
+                    safeHeadway,
+                    safeHalfLength +
+                    tileSize * VehicleBodyLengthTiles);
+            float allowedAdvance = proposedAdvance;
+
+            if (TryGetExternalTrafficLeaderHeadway(
+                    owner,
+                    currentLocalPosition,
+                    forward,
+                    maximumAhead,
+                    safeHalfWidth,
+                    out float headway,
+                    out float leaderHalfLength))
+            {
+                float requiredHeadway =
+                    Mathf.Max(
+                        safeHeadway,
+                        safeHalfLength +
+                        leaderHalfLength +
+                        safetyMargin);
+                allowedAdvance =
+                    VehicleSpacingMath.LimitAdvance(
+                        proposedAdvance,
+                        headway,
+                        requiredHeadway);
+            }
+
+            if (allowedAdvance <= 0.0001f)
+            {
+                return 0f;
+            }
+
+            Vector3 travelDirection =
+                (nextLocalPosition -
+                 currentLocalPosition).normalized;
+            float stepDistance =
+                Mathf.Max(
+                    0.01f,
+                    tileSize * 0.025f);
             int steps =
                 Mathf.Max(
                     1,
                     Mathf.CeilToInt(
-                        distance /
-                        Mathf.Max(
-                            0.01f,
-                            tileSize * 0.025f)));
+                        allowedAdvance /
+                        stepDistance));
+            float safeAdvance = 0f;
+
             for (int step = 1; step <= steps; step++)
             {
+                float candidateAdvance =
+                    allowedAdvance *
+                    step /
+                    steps;
                 Vector3 candidate =
-                    Vector3.Lerp(
-                        currentLocalPosition,
-                        nextLocalPosition,
-                        (float)step / steps);
+                    currentLocalPosition +
+                    travelDirection *
+                    candidateAdvance;
                 if (!IsTrafficFootprintClear(
                         null,
                         owner,
                         candidate,
-                        localDirection,
-                        halfLength,
-                        halfWidth))
+                        forward,
+                        safeHalfLength,
+                        safeHalfWidth))
                 {
-                    return false;
+                    break;
                 }
+
+                safeAdvance = candidateAdvance;
             }
 
-            return true;
+            return safeAdvance;
+        }
+
+        private void ResolveExternalTrafficFootprint(
+            Object owner,
+            out float halfLength,
+            out float halfWidth)
+        {
+            ExternalTrafficVehicle state =
+                FindExternalTrafficVehicle(owner);
+            if (state != null)
+            {
+                halfLength = state.HalfLength;
+                halfWidth = state.HalfWidth;
+                return;
+            }
+
+            GetTrafficFootprint(
+                VehicleBodyLengthTiles,
+                VehicleBodyWidthTiles,
+                out halfLength,
+                out halfWidth);
+        }
+
+        private bool TryGetExternalTrafficLeaderHeadway(
+            Object owner,
+            Vector3 currentLocalPosition,
+            Vector3 localDirection,
+            float maximumAhead,
+            float subjectHalfWidth,
+            out float headway,
+            out float leaderHalfLength)
+        {
+            headway = float.PositiveInfinity;
+            leaderHalfLength = 0f;
+            bool found = false;
+            Vector3 forward =
+                localDirection.sqrMagnitude > 0.0001f
+                    ? localDirection.normalized
+                    : Vector3.right;
+            float safetyMargin =
+                Mathf.Max(0.005f, tileSize * 0.015f);
+
+            for (int i = 0; i < vehicles.Count; i++)
+            {
+                RouteVehicle vehicle = vehicles[i];
+                if (!IsTrafficVehicleActive(vehicle))
+                {
+                    continue;
+                }
+
+                Vector3 vehicleDirection =
+                    ResolveVehicleDirection(vehicle);
+                if (!VehicleSpacingMath.IsSameFlowDirection(
+                        forward,
+                        vehicleDirection))
+                {
+                    continue;
+                }
+
+                GetVehicleFootprint(
+                    vehicle,
+                    out float candidateHalfLength,
+                    out float candidateHalfWidth);
+                float lateralLimit =
+                    subjectHalfWidth +
+                    candidateHalfWidth +
+                    safetyMargin;
+                if (!IsInsideForwardCorridor(
+                        vehicle.Pos,
+                        currentLocalPosition,
+                        forward,
+                        maximumAhead,
+                        lateralLimit,
+                        out float candidateHeadway) ||
+                    candidateHeadway >= headway)
+                {
+                    continue;
+                }
+
+                headway = candidateHeadway;
+                leaderHalfLength =
+                    candidateHalfLength;
+                found = true;
+            }
+
+            for (int i = 0;
+                 i < externalTrafficVehicles.Count;
+                 i++)
+            {
+                ExternalTrafficVehicle state =
+                    externalTrafficVehicles[i];
+                if (!state.Active ||
+                    state.Owner == null ||
+                    state.Owner == owner ||
+                    !VehicleSpacingMath.IsSameFlowDirection(
+                        forward,
+                        state.Direction))
+                {
+                    continue;
+                }
+
+                float lateralLimit =
+                    subjectHalfWidth +
+                    state.HalfWidth +
+                    safetyMargin;
+                if (!IsInsideForwardCorridor(
+                        state.Position,
+                        currentLocalPosition,
+                        forward,
+                        maximumAhead,
+                        lateralLimit,
+                        out float candidateHeadway) ||
+                    candidateHeadway >= headway)
+                {
+                    continue;
+                }
+
+                headway = candidateHeadway;
+                leaderHalfLength =
+                    state.HalfLength;
+                found = true;
+            }
+
+            return found;
         }
 
         private float LimitVehicleTravelDistance(
@@ -165,6 +386,14 @@ namespace CityFlow.View
             float desiredDistance)
         {
             if (subject == null || path == null)
+            {
+                return desiredDistance;
+            }
+
+            // Managed cars keep the lane-order headway model. An all-pairs sweep
+            // between them can create cyclic waits at crossings; this gate exists
+            // only while a school bus or another feature vehicle occupies traffic.
+            if (!HasActiveExternalTrafficVehicle())
             {
                 return desiredDistance;
             }
@@ -239,32 +468,37 @@ namespace CityFlow.View
             float safetyMargin =
                 Mathf.Max(0.005f, tileSize * 0.015f);
 
-            for (int i = 0; i < vehicles.Count; i++)
+            // An external feature vehicle must see managed cars. A managed car
+            // intentionally skips this loop and only checks the external list
+            // below, preserving the acyclic lane-order invariant.
+            if (subjectVehicle == null)
             {
-                RouteVehicle other = vehicles[i];
-                if (other == subjectVehicle ||
-                    !IsTrafficVehicleActive(other))
+                for (int i = 0; i < vehicles.Count; i++)
                 {
-                    continue;
-                }
+                    RouteVehicle other = vehicles[i];
+                    if (!IsTrafficVehicleActive(other))
+                    {
+                        continue;
+                    }
 
-                GetVehicleFootprint(
-                    other,
-                    out float otherHalfLength,
-                    out float otherHalfWidth);
-                if (TrafficFootprintsOverlap(
-                        candidatePosition,
-                        candidateDirection,
-                        candidateHalfLength,
-                        candidateHalfWidth,
-                        other.Pos,
-                        ResolveVehicleDirection(other),
-                        otherHalfLength,
-                        otherHalfWidth,
-                        verticalLimit,
-                        safetyMargin))
-                {
-                    return false;
+                    GetVehicleFootprint(
+                        other,
+                        out float otherHalfLength,
+                        out float otherHalfWidth);
+                    if (TrafficFootprintsOverlap(
+                            candidatePosition,
+                            candidateDirection,
+                            candidateHalfLength,
+                            candidateHalfWidth,
+                            other.Pos,
+                            ResolveVehicleDirection(other),
+                            otherHalfLength,
+                            otherHalfWidth,
+                            verticalLimit,
+                            safetyMargin))
+                    {
+                        return false;
+                    }
                 }
             }
 
@@ -314,8 +548,8 @@ namespace CityFlow.View
                     ? vehicle.Style.WidthScale
                     : 1f;
             GetTrafficFootprint(
-                0.38f * lengthScale,
-                0.2f * widthScale,
+                VehicleBodyLengthTiles * lengthScale,
+                VehicleBodyWidthTiles * widthScale,
                 out halfLength,
                 out halfWidth);
         }
@@ -481,92 +715,6 @@ namespace CityFlow.View
                 : Vector2.right;
         }
 
-        private bool IsExternalTrafficCorridorClear(
-            Object owner,
-            Vector3 currentLocalPosition,
-            Vector3 nextLocalPosition,
-            Vector3 localDirection,
-            float minimumHeadway,
-            bool checkNextTile,
-            Vector2Int nextTile)
-        {
-            Vector3 forward =
-                localDirection.sqrMagnitude > 0.0001f
-                    ? localDirection.normalized
-                    : (nextLocalPosition -
-                       currentLocalPosition).normalized;
-            float travelDistance =
-                Vector3.Distance(
-                    currentLocalPosition,
-                    nextLocalPosition);
-            float safeHeadway =
-                Mathf.Max(0.05f, minimumHeadway);
-            float corridorLength =
-                travelDistance + safeHeadway;
-            float lateralLimit =
-                Mathf.Max(0.2f, tileSize * 0.36f);
-
-            for (int i = 0; i < vehicles.Count; i++)
-            {
-                RouteVehicle vehicle = vehicles[i];
-                if (!IsTrafficVehicleActive(vehicle))
-                {
-                    continue;
-                }
-
-                if (checkNextTile &&
-                    vehicle.CurrentTile == nextTile)
-                {
-                    return false;
-                }
-
-                if (IsInsideForwardCorridor(
-                        vehicle.Pos,
-                        currentLocalPosition,
-                        forward,
-                        corridorLength,
-                        lateralLimit,
-                        out _))
-                {
-                    return false;
-                }
-            }
-
-            for (int i = 0;
-                 i < externalTrafficVehicles.Count;
-                 i++)
-            {
-                ExternalTrafficVehicle state =
-                    externalTrafficVehicles[i];
-                if (!state.Active ||
-                    state.Owner == null ||
-                    state.Owner == owner)
-                {
-                    continue;
-                }
-
-                if (checkNextTile &&
-                    state.HasCurrentTile &&
-                    state.CurrentTile == nextTile)
-                {
-                    return false;
-                }
-
-                if (IsInsideForwardCorridor(
-                        state.Position,
-                        currentLocalPosition,
-                        forward,
-                        corridorLength,
-                        lateralLimit,
-                        out _))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
         /// <summary>
         /// 건물 프리팹이 제공하는 실제 주차 슬롯의 CityView 로컬 포즈를 반환합니다.
         /// 기능 차량도 통근 차량과 같은 주차 배치를 재사용할 수 있습니다.
@@ -675,6 +823,21 @@ namespace CityFlow.View
                         out candidateHeadway);
                 }
 
+                Vector3 candidatePathDirection =
+                    followerPath != null &&
+                    !float.IsPositiveInfinity(
+                        candidateHeadway)
+                        ? followerPath.SampleAt(
+                            followerDistance +
+                            candidateHeadway).Dir
+                        : forward;
+                if (!VehicleSpacingMath.IsSameFlowDirection(
+                        candidatePathDirection,
+                        state.Direction))
+                {
+                    continue;
+                }
+
                 if (!isAhead ||
                     candidateHeadway >= headway)
                 {
@@ -683,11 +846,7 @@ namespace CityFlow.View
 
                 headway = candidateHeadway;
                 leaderSpeed =
-                    Vector3.Dot(
-                        forward,
-                        state.Direction) > 0.5f
-                        ? state.Speed
-                        : 0f;
+                    state.Speed;
                 found = true;
             }
 
@@ -782,6 +941,23 @@ namespace CityFlow.View
             }
 
             return found;
+        }
+
+        private bool HasActiveExternalTrafficVehicle()
+        {
+            for (int i = 0;
+                 i < externalTrafficVehicles.Count;
+                 i++)
+            {
+                ExternalTrafficVehicle vehicle =
+                    externalTrafficVehicles[i];
+                if (vehicle.Active && vehicle.Owner != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private ExternalTrafficVehicle

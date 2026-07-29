@@ -36,6 +36,10 @@ namespace CityFlow.Content
         [SerializeField, Min(0.08f)]
         private float vehicleWidthTiles = 0.2f;
 
+        [Header("Economy")]
+        [SerializeField, Min(0)]
+        private int stopRevenueCoins;
+
         [Header("Presentation")]
         [SerializeField] private Color routeColor =
             new(0.1f, 0.75f, 0.85f, 1f);
@@ -60,6 +64,8 @@ namespace CityFlow.Content
             Mathf.Max(0.1f, vehicleLengthTiles);
         public float VehicleWidthTiles =>
             Mathf.Max(0.08f, vehicleWidthTiles);
+        public int StopRevenueCoins =>
+            Mathf.Max(0, stopRevenueCoins);
         public Color RouteColor => routeColor;
         public GameObject VehicleVisualPrefab =>
             vehicleVisualPrefab;
@@ -90,6 +96,9 @@ namespace CityFlow.Content
             vehicleWidthTiles = Mathf.Max(
                 0.08f,
                 vehicleWidthTiles);
+            stopRevenueCoins = Mathf.Max(
+                0,
+                stopRevenueCoins);
             initialStops ??=
                 System.Array.Empty<Vector2Int>();
         }

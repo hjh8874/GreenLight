@@ -57,6 +57,7 @@ namespace CityFlow.View
         private Vector3 previousVisualPosition;
         private float currentVisualSpeed;
         private bool visualBlockedByTraffic;
+        private bool occupiesRoadTraffic;
 
         public bool HasVisibleBus =>
             visual != null &&
@@ -111,6 +112,11 @@ namespace CityFlow.View
 
             if (movementElapsed >= currentMovementDuration)
             {
+                if (targetIsSchoolParking)
+                {
+                    occupiesRoadTraffic = false;
+                }
+
                 visualBlockedByTraffic = false;
                 currentVisualSpeed = 0f;
                 previousVisualPosition = visual.localPosition;
@@ -178,31 +184,72 @@ namespace CityFlow.View
                     lastTravelDirection;
             }
 
+            float allowedMovementFraction = 1f;
             if (cityView != null &&
                 TryGetTrafficFootprint(
                     out float collisionHalfLength,
-                    out float collisionHalfWidth) &&
-                !cityView.CanExternalTrafficMoveVisual(
-                    this,
-                    visual.localPosition,
-                    candidatePosition,
-                    new Vector3(
-                        candidateDirection.x,
-                        candidateDirection.y,
-                        0f),
-                    GetMinimumHeadway(),
-                    collisionHalfLength,
-                    collisionHalfWidth))
+                    out float collisionHalfWidth))
             {
-                visualBlockedByTraffic = true;
-                currentVisualSpeed = 0f;
-                previousVisualPosition =
-                    visual.localPosition;
-                PublishExternalTraffic();
-                return;
+                float proposedAdvance =
+                    Vector3.Distance(
+                        visual.localPosition,
+                        candidatePosition);
+                float allowedAdvance =
+                    cityView
+                        .LimitExternalTrafficVisualAdvance(
+                            this,
+                            visual.localPosition,
+                            candidatePosition,
+                            new Vector3(
+                                candidateDirection.x,
+                                candidateDirection.y,
+                                0f),
+                            GetMinimumHeadway(),
+                            collisionHalfLength,
+                            collisionHalfWidth);
+
+                if (proposedAdvance > 0.0001f)
+                {
+                    allowedMovementFraction =
+                        Mathf.Clamp01(
+                            allowedAdvance /
+                            proposedAdvance);
+                }
+
+                if (allowedMovementFraction <= 0.0001f)
+                {
+                    visualBlockedByTraffic = true;
+                    currentVisualSpeed = 0f;
+                    previousVisualPosition =
+                        visual.localPosition;
+                    PublishExternalTraffic();
+                    return;
+                }
+
+                if (allowedMovementFraction <
+                    1f - 0.0001f)
+                {
+                    nextMovementElapsed =
+                        Mathf.Lerp(
+                            movementElapsed,
+                            nextMovementElapsed,
+                            allowedMovementFraction);
+                    candidatePosition =
+                        Vector3.Lerp(
+                            visual.localPosition,
+                            candidatePosition,
+                            allowedMovementFraction);
+                    candidateRotation =
+                        Quaternion.Slerp(
+                            visual.localRotation,
+                            candidateRotation,
+                            allowedMovementFraction);
+                }
             }
 
-            visualBlockedByTraffic = false;
+            visualBlockedByTraffic =
+                allowedMovementFraction <
+                1f - 0.0001f;
             movementElapsed = nextMovementElapsed;
             visual.localPosition = candidatePosition;
             visual.localRotation = candidateRotation;
@@ -349,6 +396,7 @@ namespace CityFlow.View
                 movementElapsed =
                     currentMovementDuration;
                 useCurvedMovement = false;
+                occupiesRoadTraffic = false;
                 visualBlockedByTraffic = false;
                 schoolParkingForward =
                     travelDirection;
@@ -373,6 +421,7 @@ namespace CityFlow.View
                 targetIsRoad = isRoad;
                 targetIsSchoolParking = isSchoolParking;
                 useCurvedMovement = false;
+                occupiesRoadTraffic = isRoad;
                 visualBlockedByTraffic = false;
                 currentVisualDirection = travelDirection;
                 if (isSchoolParking)
@@ -396,6 +445,8 @@ namespace CityFlow.View
             targetLocalRotation = nextRotation;
             movementElapsed = 0f;
             visualBlockedByTraffic = false;
+            bool wasOnRoad =
+                targetIsRoad;
             bool isLeavingSchoolParking =
                 isRoad && targetIsSchoolParking;
             useCurvedMovement =
@@ -428,6 +479,9 @@ namespace CityFlow.View
                         movementStartPosition,
                         targetLocalPosition);
             targetIsRoad = isRoad;
+            occupiesRoadTraffic =
+                isRoad ||
+                (isSchoolParking && wasOnRoad);
             targetIsSchoolParking = isSchoolParking;
             if (isRoad)
             {
@@ -521,7 +575,8 @@ namespace CityFlow.View
                 currentVisualSpeed,
                 ShouldPublishAsTraffic(
                     hasTarget,
-                    visual.gameObject.activeInHierarchy),
+                    visual.gameObject.activeInHierarchy,
+                    occupiesRoadTraffic),
                 lastRoadTile,
                 hasLastRoadTile,
                 collisionHalfLength,
@@ -530,9 +585,12 @@ namespace CityFlow.View
 
         private static bool ShouldPublishAsTraffic(
             bool hasVisualTarget,
-            bool isVisible)
+            bool isVisible,
+            bool occupiesRoad)
         {
-            return hasVisualTarget && isVisible;
+            return hasVisualTarget &&
+                   isVisible &&
+                   occupiesRoad;
         }
 
         private bool TryGetSchoolParkingPose(
@@ -788,6 +846,7 @@ namespace CityFlow.View
             lastTravelDirection = default;
             currentVisualDirection = default;
             visualBlockedByTraffic = false;
+            occupiesRoadTraffic = false;
 
             if (visual != null)
             {

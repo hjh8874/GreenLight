@@ -614,6 +614,7 @@ namespace CityFlow.Tests
                 Assert.IsTrue(engine.Place(new Vector2Int(100, 100), TileType.Road));
                 Assert.IsTrue(engine.Place(new Vector2Int(100, 101), TileType.Road));
                 Assert.IsTrue(engine.Place(new Vector2Int(100, 102), TileType.Road));
+                Assert.IsTrue(engine.Place(new Vector2Int(100, 103), TileType.Road));
                 Assert.IsTrue(engine.TryPlaceBusStop(firstStop));
                 Assert.IsTrue(engine.TryPlaceBusStop(secondStop));
 

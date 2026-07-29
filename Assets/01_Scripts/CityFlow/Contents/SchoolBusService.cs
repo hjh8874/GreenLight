@@ -173,6 +173,10 @@ namespace CityFlow.Content.Transit
 
             services = cityServices;
             stopRegistry.Initialize(cityServices);
+            busRoute.UseRoadsideStopApproach = true;
+            busRoute.RoadsideStopSetbackTiles = 1;
+            busRoute.RoadsideStopFilter =
+                IsResidentialStop;
             busRoute.Initialize(cityServices);
 
             int capacity = definition != null
@@ -561,6 +565,14 @@ namespace CityFlow.Content.Transit
             return yCompare != 0
                 ? yCompare
                 : left.x.CompareTo(right.x);
+        }
+
+        private bool IsResidentialStop(
+            Vector2Int stopTile)
+        {
+            return stopRegistry != null &&
+                   stopRegistry.ContainsResidentialStop(
+                       stopTile);
         }
 
         private void OnStopArrived(

@@ -15,7 +15,7 @@ MonoBehaviour:
   busId: prototype_city_bus
   displayName: GreenLight City Bus
   busType: 1
-  secondsPerTile: 0.22
+  secondsPerTile: 0.65
   stopWaitSeconds: 0.8
   initialStops:
   - {x: 5, y: 12}
@@ -25,5 +25,6 @@ MonoBehaviour:
   passengerCapacity: 20
   boardingDemandPerStop: 4
   leavingDemandPerStop: 2
+  stopRevenueCoins: 5
   routeColor: {r: 0.3, g: 0.75, b: 0.92, a: 1}
   vehicleVisualPrefab: {fileID: 0}

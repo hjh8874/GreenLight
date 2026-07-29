@@ -1685,7 +1685,7 @@ MonoBehaviour:
   flowBurstAnchorRadius: 3
   gridLineThickness: 0.045
   overridePulseAmp: 0.25
-  laneOffset: 0.18
+  laneOffset: 0.25
   vehicleDriveAccel: 6
   vehicleBrakeAccel: 5
   vehicleCatchUpRange: 0.3

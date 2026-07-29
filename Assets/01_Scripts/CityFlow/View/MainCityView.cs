@@ -113,6 +113,9 @@ namespace CityFlow.View
         private const float OrthographicSizePerDistance = 0.9375f;
         private const float CameraYawStepDegrees = 90f;
         private const int VehicleRenderQueue = (int)RenderQueue.Geometry + 10;
+        private const float VehicleBodyLengthTiles = 0.38f;
+        private const float VehicleBodyWidthTiles = 0.2f;
+        private const float VehicleBodyHeightTiles = 0.28f;
 
         [Header("Colors")]
         [SerializeField] private Color boardColor = new Color(0.78f, 0.82f, 0.78f);
@@ -2489,9 +2492,9 @@ namespace CityFlow.View
             vehicle.Style = style;
 
             vehicle.Object.transform.localScale = new Vector3(
-                tileSize * 0.38f * style.LengthScale,
-                tileSize * 0.2f * style.WidthScale,
-                tileSize * 0.28f);
+                tileSize * VehicleBodyLengthTiles * style.LengthScale,
+                tileSize * VehicleBodyWidthTiles * style.WidthScale,
+                tileSize * VehicleBodyHeightTiles);
 
             Color body = CarStyle.Palette[style.ColorIndex];
             if (vehicle.Renderer != null)

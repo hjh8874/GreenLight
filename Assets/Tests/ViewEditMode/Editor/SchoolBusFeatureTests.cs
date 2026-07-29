@@ -127,6 +127,7 @@ namespace CityFlow.Sim.Tests
                 int legacyRouteViewCount = 0;
                 bool hasPrototypeCalendar = false;
                 bool disablesSaveRestore = false;
+                float sceneLaneOffset = -1f;
                 foreach (GameObject root in
                          openedScene.GetRootGameObjects())
                 {
@@ -160,7 +161,12 @@ namespace CityFlow.Sim.Tests
 
                         SerializedObject serialized =
                             new(behaviour);
-                        if (behaviour.GetType().FullName ==
+                        if (behaviour is MainCityView mainCityView)
+                        {
+                            sceneLaneOffset =
+                                mainCityView.LaneOffset;
+                        }
+                        else if (behaviour.GetType().FullName ==
                             "CityFlow.Gameplay.Progression.GameCalendarService")
                         {
                             hasPrototypeCalendar =
@@ -197,6 +203,10 @@ namespace CityFlow.Sim.Tests
                     disablesSaveRestore,
                     Is.True,
                     "The Debug scene must not replace its prototype clock with a save.");
+                Assert.That(
+                    sceneLaneOffset,
+                    Is.EqualTo(0.25f).Within(0.0001f),
+                    "Residential and bus traffic must use the integrated right-lane offset.");
             }
             finally
             {
@@ -534,7 +544,7 @@ namespace CityFlow.Sim.Tests
                     out float busHalfWidth);
                 view.UpdateExternalTrafficVehicle(
                     blockerOwner,
-                    new Vector3(0.5f, -0.25f, 0f),
+                    new Vector3(0.6f, -0.25f, 0f),
                     Vector3.right,
                     0f,
                     true,
@@ -553,7 +563,18 @@ namespace CityFlow.Sim.Tests
                         busHalfLength,
                         busHalfWidth),
                     Is.False,
-                    "The bus must recheck the lane while its visual is moving.");
+                    "The moving bus must detect every vehicle inside its forward safety distance before the bodies overlap.");
+                Assert.That(
+                    view.LimitExternalTrafficVisualAdvance(
+                        busOwner,
+                        new Vector3(0f, -0.25f, 0f),
+                        new Vector3(0.1f, -0.25f, 0f),
+                        Vector3.right,
+                        0.55f,
+                        busHalfLength,
+                        busHalfWidth),
+                    Is.EqualTo(0.05f).Within(0.0001f),
+                    "The bus must use the shared headway limiter and advance only into the remaining safe distance.");
 
                 view.UpdateExternalTrafficVehicle(
                     blockerOwner,
@@ -581,6 +602,250 @@ namespace CityFlow.Sim.Tests
             {
                 Object.DestroyImmediate(blockerOwner);
                 Object.DestroyImmediate(busOwner);
+                Object.DestroyImmediate(viewObject);
+            }
+        }
+
+        [Test]
+        public void ExternalTrafficVisualAdvance_UsesManagedLaneLeader()
+        {
+            GameObject viewObject =
+                new("Traffic View");
+            viewObject.SetActive(false);
+            GameObject busOwner =
+                new("School Bus Owner");
+            GameObject managedCarObject =
+                new("Managed Car");
+
+            try
+            {
+                MainCityView view =
+                    viewObject.AddComponent<MainCityView>();
+                System.Type routeVehicleType =
+                    typeof(MainCityView).GetNestedType(
+                        "RouteVehicle",
+                        BindingFlags.NonPublic);
+                Assert.That(routeVehicleType, Is.Not.Null);
+                object managedCar =
+                    System.Activator.CreateInstance(
+                        routeVehicleType);
+                routeVehicleType.GetField(
+                        "Object",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedCar,
+                        managedCarObject);
+                routeVehicleType.GetField(
+                        "Pos",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedCar,
+                        new Vector3(
+                            0.6f,
+                            -0.25f,
+                            0f));
+                routeVehicleType.GetField(
+                        "Dir",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedCar,
+                        Vector3.right);
+                routeVehicleType.GetField(
+                        "HasCurrentTile",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedCar,
+                        true);
+
+                FieldInfo vehiclesField =
+                    typeof(MainCityView).GetField(
+                        "vehicles",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                System.Collections.IList managedVehicles =
+                    vehiclesField?.GetValue(view) as
+                        System.Collections.IList;
+                Assert.That(managedVehicles, Is.Not.Null);
+                managedVehicles.Add(managedCar);
+
+                view.GetTrafficFootprint(
+                    0.64f,
+                    0.24f,
+                    out float busHalfLength,
+                    out float busHalfWidth);
+                float allowedAdvance =
+                    view.LimitExternalTrafficVisualAdvance(
+                        busOwner,
+                        new Vector3(0f, -0.25f, 0f),
+                        new Vector3(0.1f, -0.25f, 0f),
+                        Vector3.right,
+                        0.55f,
+                        busHalfLength,
+                        busHalfWidth);
+
+                Assert.That(
+                    allowedAdvance,
+                    Is.EqualTo(0.05f).Within(0.0001f),
+                    "Feature buses must follow managed cars through the same minimum-headway limiter.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(managedCarObject);
+                Object.DestroyImmediate(busOwner);
+                Object.DestroyImmediate(viewObject);
+            }
+        }
+
+        [Test]
+        public void ManagedTrafficSweep_OnlyUsesExternalTrafficObstacles()
+        {
+            GameObject viewObject =
+                new("Traffic View");
+            viewObject.SetActive(false);
+            GameObject managedBlockerObject =
+                new("Managed Car");
+            GameObject externalBlockerOwner =
+                new("School Bus");
+
+            try
+            {
+                MainCityView view =
+                    viewObject.AddComponent<MainCityView>();
+                RoutePolyline path =
+                    RoutePolyline.Bake(
+                        new BakeInput
+                        {
+                            Tiles = new[]
+                            {
+                                new Vector2Int(0, 0),
+                                new Vector2Int(1, 0),
+                                new Vector2Int(2, 0)
+                            },
+                            TileSize = 1f,
+                            LaneOffset = 0.18f,
+                            CornerRadiusFraction = 0.75f,
+                            OrbitRadius = 0.775f,
+                            EntryExitOffsetRad =
+                                45f * Mathf.Deg2Rad,
+                            TransitionLength =
+                                RoutePolyline
+                                    .MinTransitionSpan,
+                            Z = -0.35f,
+                            IsRoundabout = _ => false,
+                            SamplesPerSegment = 8
+                        });
+
+                System.Type routeVehicleType =
+                    typeof(MainCityView).GetNestedType(
+                        "RouteVehicle",
+                        BindingFlags.NonPublic);
+                Assert.That(routeVehicleType, Is.Not.Null);
+                object subject =
+                    System.Activator.CreateInstance(
+                        routeVehicleType);
+                object managedBlocker =
+                    System.Activator.CreateInstance(
+                        routeVehicleType);
+                Sample blockerSample =
+                    path.SampleAt(0.5f);
+                routeVehicleType.GetField(
+                        "Object",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedBlocker,
+                        managedBlockerObject);
+                routeVehicleType.GetField(
+                        "Pos",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedBlocker,
+                        blockerSample.Pos);
+                routeVehicleType.GetField(
+                        "Dir",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedBlocker,
+                        blockerSample.Dir);
+                routeVehicleType.GetField(
+                        "HasCurrentTile",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedBlocker,
+                        true);
+
+                FieldInfo vehiclesField =
+                    typeof(MainCityView).GetField(
+                        "vehicles",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                System.Collections.IList managedVehicles =
+                    vehiclesField?.GetValue(view) as
+                        System.Collections.IList;
+                Assert.That(managedVehicles, Is.Not.Null);
+                managedVehicles.Add(managedBlocker);
+
+                MethodInfo limitTravel =
+                    typeof(MainCityView).GetMethod(
+                        "LimitVehicleTravelDistance",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                Assert.That(limitTravel, Is.Not.Null);
+                float desiredDistance = path.Length;
+                float withoutExternalTraffic =
+                    (float)limitTravel.Invoke(
+                        view,
+                        new[]
+                        {
+                            subject,
+                            path,
+                            (object)0f,
+                            desiredDistance
+                        });
+
+                Assert.That(
+                    withoutExternalTraffic,
+                    Is.EqualTo(desiredDistance)
+                        .Within(0.0001f),
+                    "Managed cars must keep using the lane-order model instead of an all-pairs body sweep.");
+
+                view.UpdateExternalTrafficVehicle(
+                    externalBlockerOwner,
+                    blockerSample.Pos,
+                    blockerSample.Dir,
+                    0f,
+                    true,
+                    Vector2Int.zero,
+                    true,
+                    0.19f,
+                    0.1f);
+                float withExternalTraffic =
+                    (float)limitTravel.Invoke(
+                        view,
+                        new[]
+                        {
+                            subject,
+                            path,
+                            (object)0f,
+                            desiredDistance
+                        });
+
+                Assert.That(
+                    withExternalTraffic,
+                    Is.LessThan(desiredDistance),
+                    "Managed cars must still stop before an active school bus.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(externalBlockerOwner);
+                Object.DestroyImmediate(managedBlockerObject);
                 Object.DestroyImmediate(viewObject);
             }
         }
@@ -644,7 +909,117 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void ParkedSchoolBus_RemainsRegisteredAsTraffic()
+        public void ExternalTraffic_OppositeLaneBusIsNotAForwardLeader()
+        {
+            GameObject viewObject =
+                new("Traffic View");
+            viewObject.SetActive(false);
+            GameObject busOwner =
+                new("Opposite Lane Bus");
+
+            try
+            {
+                MainCityView view =
+                    viewObject.AddComponent<MainCityView>();
+                RoutePolyline path =
+                    RoutePolyline.Bake(
+                        new BakeInput
+                        {
+                            Tiles = new[]
+                            {
+                                new Vector2Int(0, 0),
+                                new Vector2Int(1, 0),
+                                new Vector2Int(2, 0)
+                            },
+                            TileSize = 1f,
+                            LaneOffset = 0.18f,
+                            CornerRadiusFraction = 0.75f,
+                            OrbitRadius = 0.775f,
+                            EntryExitOffsetRad =
+                                45f * Mathf.Deg2Rad,
+                            TransitionLength =
+                                RoutePolyline
+                                    .MinTransitionSpan,
+                            Z = -0.35f,
+                            IsRoundabout = _ => false,
+                            SamplesPerSegment = 8
+                        });
+
+                System.Type routeVehicleType =
+                    typeof(MainCityView).GetNestedType(
+                        "RouteVehicle",
+                        BindingFlags.NonPublic);
+                Assert.That(
+                    routeVehicleType,
+                    Is.Not.Null);
+                object follower =
+                    System.Activator.CreateInstance(
+                        routeVehicleType);
+                Sample followerSample =
+                    path.SampleAt(0f);
+                routeVehicleType.GetField(
+                        "Dir",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        follower,
+                        followerSample.Dir);
+                routeVehicleType.GetField(
+                        "Pos",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        follower,
+                        followerSample.Pos);
+
+                view.UpdateExternalTrafficVehicle(
+                    busOwner,
+                    new Vector3(
+                        1.5f,
+                        0.68f,
+                        -0.35f),
+                    Vector3.left,
+                    0f,
+                    true,
+                    new Vector2Int(1, 0),
+                    true,
+                    0.32f,
+                    0.12f);
+
+                MethodInfo getHeadway =
+                    typeof(MainCityView).GetMethod(
+                        "TryGetExternalTrafficHeadway",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                Assert.That(getHeadway, Is.Not.Null);
+                object[] arguments =
+                {
+                    follower,
+                    path,
+                    0f,
+                    0f,
+                    0f
+                };
+
+                bool found =
+                    (bool)getHeadway.Invoke(
+                        view,
+                        arguments);
+
+                Assert.That(
+                    found,
+                    Is.False,
+                    "Opposite-lane traffic must not stop a car as its forward leader.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(busOwner);
+                Object.DestroyImmediate(viewObject);
+            }
+        }
+
+        [Test]
+        public void SchoolBus_IsTrafficOnlyWhileOccupyingTheRoad()
         {
             GameObject prefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
@@ -659,13 +1034,23 @@ namespace CityFlow.Sim.Tests
                     BindingFlags.NonPublic);
             Assert.That(shouldPublish, Is.Not.Null);
 
-            bool parkedAndVisible =
+            bool operatingOnRoad =
                 (bool)shouldPublish.Invoke(
                     null,
                     new object[]
                     {
                         true,
+                        true,
                         true
+                    });
+            bool parkedOffRoad =
+                (bool)shouldPublish.Invoke(
+                    null,
+                    new object[]
+                    {
+                        true,
+                        true,
+                        false
                     });
             bool unavailable =
                 (bool)shouldPublish.Invoke(
@@ -673,13 +1058,18 @@ namespace CityFlow.Sim.Tests
                     new object[]
                     {
                         false,
+                        true,
                         true
                     });
 
             Assert.That(
-                parkedAndVisible,
+                operatingOnRoad,
                 Is.True,
-                "A visible parked bus must keep blocking vehicles after its parking animation ends.");
+                "An operating school bus must participate in road collision avoidance.");
+            Assert.That(
+                parkedOffRoad,
+                Is.False,
+                "A school bus fully parked in the school lot must not remain a road obstacle.");
             Assert.That(unavailable, Is.False);
         }
 
@@ -777,12 +1167,28 @@ namespace CityFlow.Sim.Tests
                     instance.GetComponent<
                         SchoolBusService>();
                 service.Initialize(services);
+                BusRoute route =
+                    instance.GetComponent<BusRoute>();
 
                 Assert.That(
                     service.State,
                     Is.EqualTo(
                         SchoolBusState.WaitingForSchedule));
                 Assert.That(service.IsOperating, Is.False);
+                Assert.That(
+                    route.UseRoadsideStopApproach,
+                    Is.True);
+                Assert.That(
+                    route.RoadsideStopSetbackTiles,
+                    Is.EqualTo(1));
+                Assert.That(
+                    route.RoadsideStopFilter(
+                        new Vector2Int(2, 2)),
+                    Is.True);
+                Assert.That(
+                    route.RoadsideStopFilter(
+                        new Vector2Int(8, 2)),
+                    Is.False);
 
                 calendar.SetTime(0L, 7);
 
@@ -866,6 +1272,114 @@ namespace CityFlow.Sim.Tests
                     route.State,
                     Is.EqualTo(BusRouteState.Moving));
                 Assert.That(route.CurrentTile, Is.Not.EqualTo(school));
+            }
+            finally
+            {
+                Object.DestroyImmediate(routeObject);
+            }
+        }
+
+        [Test]
+        public void SchoolRoute_StopsBeforeResidentialParkingAccess()
+        {
+            SimConfig config = SimConfig.Default();
+            SimEventHub events = new();
+            SimEngine engine = new(config, events);
+            CityFlowServices services =
+                new(
+                    events,
+                    engine,
+                    engine,
+                    null,
+                    null,
+                    engine);
+            GameObject routeObject =
+                new("School Route", typeof(BusRoute));
+
+            try
+            {
+                PlaceRoadRing(engine);
+                Vector2Int school =
+                    new(8, 2);
+                Vector2Int house =
+                    new(2, 2);
+                Assert.That(
+                    engine.Place(school, TileType.School),
+                    Is.True);
+                Assert.That(
+                    engine.Place(house, TileType.House),
+                    Is.True);
+                engine.Tick(config.TickInterval);
+
+                BusRoute route =
+                    routeObject.GetComponent<BusRoute>();
+                route.UseRoadsideStopApproach = true;
+                route.RoadsideStopFilter =
+                    stop => stop == house;
+                route.Initialize(services);
+
+                route.RoadsideStopSetbackTiles = 0;
+                Assert.That(
+                    route.ConfigureRoute(
+                        new[]
+                        {
+                            school,
+                            house,
+                            school
+                        },
+                        false),
+                    Is.True);
+                Assert.That(route.StartRoute(), Is.True);
+                Assert.That(
+                    route.CurrentRoadPath.Count,
+                    Is.GreaterThan(1));
+
+                Vector2Int residentialAccessRoad =
+                    route.CurrentRoadPath[
+                        route.CurrentRoadPath.Count - 1];
+                Vector2Int safeBoardingRoad =
+                    route.CurrentRoadPath[
+                        route.CurrentRoadPath.Count - 2];
+
+                route.StopRoute();
+                route.RoadsideStopSetbackTiles = 1;
+                Assert.That(
+                    route.ConfigureRoute(
+                        new[]
+                        {
+                            school,
+                            house,
+                            school
+                        },
+                        false),
+                    Is.True);
+                Assert.That(route.StartRoute(), Is.True);
+
+                Assert.That(
+                    route.CurrentRoadPath[
+                        route.CurrentRoadPath.Count - 1],
+                    Is.EqualTo(safeBoardingRoad));
+                Assert.That(
+                    route.CurrentRoadPath,
+                    Does.Not.Contains(
+                        residentialAccessRoad),
+                    "The school bus must leave the residential parking entrance clear.");
+
+                AdvanceSchoolRouteToNextStop(route);
+
+                Assert.That(
+                    route.CurrentStop,
+                    Is.EqualTo(house));
+                Assert.That(
+                    route.CurrentTile,
+                    Is.EqualTo(safeBoardingRoad));
+
+                AdvanceSchoolRouteAfterWait(route);
+                Assert.That(
+                    route.CurrentRoadPath[
+                        route.CurrentRoadPath.Count - 1],
+                    Is.EqualTo(school),
+                    "The residential setback must not prevent the school bus from entering the school parking lot.");
             }
             finally
             {
@@ -1025,6 +1539,40 @@ namespace CityFlow.Sim.Tests
                     new BusRuntime(
                         definition.PassengerCapacity)
                 });
+        }
+
+        private static void AdvanceSchoolRouteToNextStop(
+            BusRoute route)
+        {
+            MethodInfo updateMoving =
+                typeof(BusRoute).GetMethod(
+                    "UpdateMoving",
+                    BindingFlags.Instance |
+                    BindingFlags.NonPublic);
+            Assert.That(updateMoving, Is.Not.Null);
+            updateMoving.Invoke(
+                route,
+                new object[] { 100f });
+            Assert.That(
+                route.State,
+                Is.EqualTo(BusRouteState.WaitingAtStop));
+        }
+
+        private static void AdvanceSchoolRouteAfterWait(
+            BusRoute route)
+        {
+            MethodInfo updateWaiting =
+                typeof(BusRoute).GetMethod(
+                    "UpdateWaiting",
+                    BindingFlags.Instance |
+                    BindingFlags.NonPublic);
+            Assert.That(updateWaiting, Is.Not.Null);
+            updateWaiting.Invoke(
+                route,
+                new object[] { 100f });
+            Assert.That(
+                route.State,
+                Is.EqualTo(BusRouteState.Moving));
         }
 
         private static void SetPrivateField(

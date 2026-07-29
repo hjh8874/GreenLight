@@ -1,4 +1,5 @@
 using CityFlow.Bootstrap;
+using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.Content.Transit;
 using CityFlow.View;
@@ -16,6 +17,7 @@ namespace CityFlow.DebugTools
         ICityFlowServiceConsumer
     {
         [SerializeField] private BusRoute busRoute;
+        [SerializeField] private CityBusService cityBusService;
         [SerializeField] private MainCityView cityView;
         [SerializeField] private GameObject busVisualPrefab;
         [SerializeField] private Material busMaterial;
@@ -26,9 +28,7 @@ namespace CityFlow.DebugTools
         [SerializeField]
         private float visualDepth = -0.38f;
         [SerializeField, Min(0.01f)]
-        private float movementDuration = 0.22f;
-        [SerializeField, Range(0f, 0.5f)]
-        private float laneOffset = 0.18f;
+        private float movementDuration = 0.65f;
 
         private IReadOnlyTileData tileData;
         private Transform visual;
@@ -40,8 +40,12 @@ namespace CityFlow.DebugTools
         private bool hasTarget;
         private Vector2Int lastRoadTile;
         private Vector2 lastTravelDirection;
+        private Vector2 currentVisualDirection;
         private bool hasLastRoadTile;
         private bool subscribed;
+        private Vector3 previousVisualPosition;
+        private float currentVisualSpeed;
+        private bool visualBlockedByTraffic;
 
         public bool HasVisibleBus =>
             visual != null &&
@@ -85,24 +89,124 @@ namespace CityFlow.DebugTools
                 return;
             }
 
-            movementElapsed += Time.deltaTime;
-            float progress = Mathf.Clamp01(
-                movementElapsed /
-                Mathf.Max(0.01f, movementDuration));
+            float activeMovementDuration =
+                GetMovementDuration();
+            if (movementElapsed >= activeMovementDuration)
+            {
+                visualBlockedByTraffic = false;
+                currentVisualSpeed = 0f;
+                previousVisualPosition =
+                    visual.localPosition;
+                PublishExternalTraffic();
+                return;
+            }
 
-            visual.localPosition = Vector3.Lerp(
+            float nextMovementElapsed =
+                Mathf.Min(
+                    movementElapsed + Time.deltaTime,
+                    activeMovementDuration);
+            float progress = Mathf.Clamp01(
+                nextMovementElapsed /
+                activeMovementDuration);
+            Vector3 candidatePosition = Vector3.Lerp(
                 movementStartPosition,
                 targetLocalPosition,
                 progress);
-            visual.localRotation = Quaternion.Slerp(
+            Quaternion candidateRotation = Quaternion.Slerp(
                 movementStartRotation,
                 targetLocalRotation,
                 progress);
+            Vector2 candidateDirection =
+                lastTravelDirection.sqrMagnitude > 0.5f
+                    ? lastTravelDirection
+                    : currentVisualDirection;
+
+            float allowedMovementFraction = 1f;
+            if (cityView != null &&
+                TryGetTrafficFootprint(
+                    out float collisionHalfLength,
+                    out float collisionHalfWidth))
+            {
+                float proposedAdvance =
+                    Vector3.Distance(
+                        visual.localPosition,
+                        candidatePosition);
+                float allowedAdvance =
+                    cityView
+                        .LimitExternalTrafficVisualAdvance(
+                            this,
+                            visual.localPosition,
+                            candidatePosition,
+                            new Vector3(
+                                candidateDirection.x,
+                                candidateDirection.y,
+                                0f),
+                            GetMinimumHeadway(),
+                            collisionHalfLength,
+                            collisionHalfWidth);
+
+                if (proposedAdvance > 0.0001f)
+                {
+                    allowedMovementFraction =
+                        Mathf.Clamp01(
+                            allowedAdvance /
+                            proposedAdvance);
+                }
+
+                if (allowedMovementFraction <= 0.0001f)
+                {
+                    visualBlockedByTraffic = true;
+                    currentVisualSpeed = 0f;
+                    previousVisualPosition =
+                        visual.localPosition;
+                    PublishExternalTraffic();
+                    return;
+                }
+
+                if (allowedMovementFraction <
+                    1f - 0.0001f)
+                {
+                    nextMovementElapsed =
+                        Mathf.Lerp(
+                            movementElapsed,
+                            nextMovementElapsed,
+                            allowedMovementFraction);
+                    candidatePosition =
+                        Vector3.Lerp(
+                            visual.localPosition,
+                            candidatePosition,
+                            allowedMovementFraction);
+                    candidateRotation =
+                        Quaternion.Slerp(
+                            visual.localRotation,
+                            candidateRotation,
+                            allowedMovementFraction);
+                }
+            }
+
+            visualBlockedByTraffic =
+                allowedMovementFraction <
+                1f - 0.0001f;
+            movementElapsed = nextMovementElapsed;
+            visual.localPosition = candidatePosition;
+            visual.localRotation = candidateRotation;
+            currentVisualDirection = candidateDirection;
+            float deltaTime = Mathf.Max(
+                Time.deltaTime,
+                0.0001f);
+            currentVisualSpeed =
+                Vector3.Distance(
+                    previousVisualPosition,
+                    visual.localPosition) /
+                deltaTime;
+            previousVisualPosition = visual.localPosition;
+            PublishExternalTraffic();
         }
 
         private void ResolveReferences()
         {
             busRoute ??= GetComponent<BusRoute>();
+            cityBusService ??= GetComponent<CityBusService>();
             cityView ??= FindFirstObjectByType<MainCityView>();
         }
 
@@ -115,6 +219,7 @@ namespace CityFlow.DebugTools
 
             busRoute.TileChanged += HandleTileChanged;
             busRoute.RouteUnavailable += HandleRouteUnavailable;
+            busRoute.CanEnterTile = CanEnterTile;
             subscribed = true;
         }
 
@@ -127,6 +232,8 @@ namespace CityFlow.DebugTools
 
             busRoute.TileChanged -= HandleTileChanged;
             busRoute.RouteUnavailable -= HandleRouteUnavailable;
+            busRoute.CanEnterTile = null;
+            cityView?.RemoveExternalTrafficVehicle(this);
             subscribed = false;
         }
 
@@ -147,6 +254,7 @@ namespace CityFlow.DebugTools
             visual.localScale = Vector3.one * visualScale;
             ApplyFeatureMaterial(instance);
             instance.SetActive(false);
+            previousVisualPosition = visual.localPosition;
         }
 
         private void ApplyFeatureMaterial(GameObject instance)
@@ -183,18 +291,12 @@ namespace CityFlow.DebugTools
             }
 
             Vector2 travelDirection = ResolveTravelDirection(tile);
-            Vector3 laneRight = new(
-                travelDirection.y,
-                -travelDirection.x,
-                0f);
-            Vector2Int localTile = tile - cityView.GridOrigin;
-            Vector3 nextPosition = new(
-                localTile.x + 0.5f,
-                localTile.y + 0.5f,
-                visualDepth);
-            nextPosition += laneRight * laneOffset;
-
-            Quaternion nextRotation = CreateRotation(travelDirection);
+            Vector3 nextPosition =
+                CreateLanePosition(
+                    tile,
+                    travelDirection);
+            Quaternion nextRotation =
+                CreateRotation(travelDirection);
 
             if (!hasTarget)
             {
@@ -205,9 +307,15 @@ namespace CityFlow.DebugTools
                 targetLocalPosition = nextPosition;
                 movementStartRotation = nextRotation;
                 targetLocalRotation = nextRotation;
-                movementElapsed = movementDuration;
+                movementElapsed = GetMovementDuration();
                 hasTarget = true;
+                visualBlockedByTraffic = false;
+                currentVisualDirection = travelDirection;
                 RememberRoadTile(tile, travelDirection);
+                previousVisualPosition =
+                    visual.localPosition;
+                currentVisualSpeed = 0f;
+                PublishExternalTraffic();
                 return;
             }
 
@@ -216,8 +324,138 @@ namespace CityFlow.DebugTools
             targetLocalPosition = nextPosition;
             targetLocalRotation = nextRotation;
             movementElapsed = 0f;
+            visualBlockedByTraffic = false;
             RememberRoadTile(tile, travelDirection);
             visual.gameObject.SetActive(true);
+            PublishExternalTraffic();
+        }
+
+        private bool CanEnterTile(
+            Vector2Int currentTile,
+            Vector2Int nextTile)
+        {
+            if (visualBlockedByTraffic)
+            {
+                return false;
+            }
+
+            if (cityView == null || !IsRoad(nextTile))
+            {
+                return true;
+            }
+
+            Vector2 direction =
+                TryGetCardinalDirection(
+                    nextTile - currentTile,
+                    out Vector2 cardinal)
+                    ? cardinal
+                    : ResolveTravelDirection(nextTile);
+            if (direction.sqrMagnitude < 0.5f)
+            {
+                direction = Vector2.right;
+            }
+
+            Vector3 currentPosition =
+                visual != null
+                    ? visual.localPosition
+                    : CreateLanePosition(
+                        currentTile,
+                        direction);
+            Vector3 nextPosition =
+                CreateLanePosition(
+                    nextTile,
+                    direction);
+            Vector3 forward =
+                new(
+                    direction.x,
+                    direction.y,
+                    0f);
+
+            return cityView.CanExternalTrafficAdvance(
+                this,
+                currentPosition,
+                nextPosition,
+                forward,
+                GetMinimumHeadway(),
+                nextTile);
+        }
+
+        private float GetMovementDuration()
+        {
+            return Mathf.Max(
+                0.01f,
+                busRoute != null
+                    ? busRoute.SecondsPerTile
+                    : movementDuration);
+        }
+
+        private Vector3 CreateLanePosition(
+            Vector2Int tile,
+            Vector2 travelDirection)
+        {
+            Vector3 position =
+                cityView.GridToLocal(
+                    tile,
+                    visualDepth);
+            return position +
+                   GetRightLaneOffset(
+                       travelDirection,
+                       cityView.LaneOffset *
+                       cityView.TileSize);
+        }
+
+        private void PublishExternalTraffic()
+        {
+            if (cityView == null ||
+                visual == null ||
+                !TryGetTrafficFootprint(
+                    out float collisionHalfLength,
+                    out float collisionHalfWidth))
+            {
+                return;
+            }
+
+            cityView.UpdateExternalTrafficVehicle(
+                this,
+                visual.localPosition,
+                new Vector3(
+                    currentVisualDirection.x,
+                    currentVisualDirection.y,
+                    0f),
+                currentVisualSpeed,
+                hasLastRoadTile &&
+                visual.gameObject.activeInHierarchy,
+                lastRoadTile,
+                hasLastRoadTile,
+                collisionHalfLength,
+                collisionHalfWidth);
+        }
+
+        private float GetMinimumHeadway()
+        {
+            return cityView.VehicleMinHeadway *
+                   cityView.TileSize;
+        }
+
+        private bool TryGetTrafficFootprint(
+            out float halfLength,
+            out float halfWidth)
+        {
+            halfLength = 0f;
+            halfWidth = 0f;
+            BusDefinitionSO definition =
+                cityBusService?.Definition;
+            if (cityView == null || definition == null)
+            {
+                return false;
+            }
+
+            cityView.GetTrafficFootprint(
+                definition.VehicleLengthTiles,
+                definition.VehicleWidthTiles,
+                out halfLength,
+                out halfWidth);
+            return true;
         }
 
         private bool IsRoad(Vector2Int tile)
@@ -294,6 +532,16 @@ namespace CityFlow.DebugTools
                    Quaternion.Euler(90f, 0f, 0f);
         }
 
+        private static Vector3 GetRightLaneOffset(
+            Vector2 travelDirection,
+            float offset)
+        {
+            return new Vector3(
+                travelDirection.y,
+                -travelDirection.x,
+                0f) * Mathf.Max(0f, offset);
+        }
+
         private void RememberRoadTile(
             Vector2Int tile,
             Vector2 direction)
@@ -306,13 +554,17 @@ namespace CityFlow.DebugTools
         private void HandleRouteUnavailable()
         {
             hasTarget = false;
-            hasLastRoadTile = false;
-            lastTravelDirection = default;
+            visualBlockedByTraffic = false;
+            currentVisualSpeed = 0f;
 
-            if (visual != null)
+            if (visual != null && hasLastRoadTile)
             {
-                visual.gameObject.SetActive(false);
+                visual.gameObject.SetActive(true);
+                previousVisualPosition =
+                    visual.localPosition;
             }
+
+            PublishExternalTraffic();
         }
     }
 }

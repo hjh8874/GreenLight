@@ -167,6 +167,8 @@ namespace CityFlow.Content.Transit
             }
 
             services.Events.Placed += OnPlaced;
+            services.Events.InfrastructureChanged +=
+                OnInfrastructureChanged;
             isSubscribed = true;
         }
 
@@ -178,6 +180,8 @@ namespace CityFlow.Content.Transit
             }
 
             services.Events.Placed -= OnPlaced;
+            services.Events.InfrastructureChanged -=
+                OnInfrastructureChanged;
             isSubscribed = false;
         }
 
@@ -299,6 +303,12 @@ namespace CityFlow.Content.Transit
             SortAll();
 
             RegistryChanged?.Invoke();
+        }
+
+        private void OnInfrastructureChanged(
+            InfrastructureChangedEvent _)
+        {
+            RebuildFromTileData();
         }
 
         private void RegisterTypedTile(
