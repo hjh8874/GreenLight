@@ -114,10 +114,26 @@ namespace CityFlow.Content.Transit
             set => loopRoute = value;
         }
 
+        public float SecondsPerTile
+        {
+            get => secondsPerTile;
+            set => secondsPerTile = Mathf.Max(0.01f, value);
+        }
+
         public float StopWaitSeconds
         {
             get => stopWaitSeconds;
             set => stopWaitSeconds = Mathf.Max(0f, value);
+        }
+
+        /// <summary>
+        /// 외부 교통 표시가 다음 타일 진입 가능 여부를 판단할 때 사용합니다.
+        /// 등록되지 않으면 기존과 동일하게 즉시 진입합니다.
+        /// </summary>
+        public Func<Vector2Int, Vector2Int, bool> CanEnterTile
+        {
+            get;
+            set;
         }
 
         public event Action<Vector2Int> TileChanged;
@@ -415,6 +431,14 @@ namespace CityFlow.Content.Transit
                 return;
             }
 
+            Vector2Int nextTile =
+                currentRoadPath[currentRoadPathIndex + 1];
+            if (CanEnterTile != null &&
+                !CanEnterTile(CurrentTile, nextTile))
+            {
+                return;
+            }
+
             currentRoadPathIndex++;
             CurrentTile =
                 currentRoadPath[currentRoadPathIndex];
@@ -531,7 +555,28 @@ namespace CityFlow.Content.Transit
                 GetNextStopIndex(),
                 roadTile);
 
-            return stopIndex >= 0;
+            if (stopIndex < 0)
+            {
+                return false;
+            }
+
+            /*
+             * A loop may contain the same physical stop twice
+             * (for example School -> Houses -> School).
+             * While leaving the first occurrence, its shared access road
+             * must not be mistaken for the final occurrence.
+             */
+            int scheduledStopIndex = GetNextStopIndex();
+            if (stopIndex != scheduledStopIndex &&
+                currentStopIndex >= 0 &&
+                currentStopIndex < stops.Count &&
+                stops[stopIndex] == stops[currentStopIndex])
+            {
+                stopIndex = -1;
+                return false;
+            }
+
+            return true;
         }
 
         private void RefreshStopAccessRoads()

@@ -1,0 +1,98 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1992869644887255421
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7491311111299783233}
+  - component: {fileID: 91657992659517729}
+  - component: {fileID: 4158941390222681485}
+  - component: {fileID: 7034095190917756821}
+  m_Layer: 0
+  m_Name: SchoolBusContent
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7491311111299783233
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1992869644887255421}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &91657992659517729
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1992869644887255421}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c4d02a002001664a850814f1611aa1b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.Transit.BusRoute
+  gridWidth: 20
+  gridHeight: 20
+  secondsPerTile: 0.2
+  stopWaitSeconds: 2
+  loopRoute: 0
+  autoStart: 0
+  avoidImmediateUTurn: 1
+--- !u!114 &4158941390222681485
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1992869644887255421}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 68d9f346490aaff42a920b511bf4aed5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.Transit.SchoolBusService
+  definition: {fileID: 11400000, guid: c14bab61267254549b64ce068f4afc1a, type: 2}
+  schedule: {fileID: 11400000, guid: d30e936842af4ad7968eb65c87f94a8b, type: 2}
+  stopRegistry: {fileID: 0}
+  busRoute: {fileID: 91657992659517729}
+  maxResidentialStopsPerTrip: 4
+  schoolWaitSeconds: 3
+  sortResidentialStopsByDistance: 1
+  autoStart: 1
+--- !u!114 &7034095190917756821
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1992869644887255421}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73be27da31f7d054bbe082f5e5f89118, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.SchoolBusWorldView
+  definition: {fileID: 11400000, guid: c14bab61267254549b64ce068f4afc1a, type: 2}
+  busRoute: {fileID: 91657992659517729}
+  cityView: {fileID: 0}
+  busMaterial: {fileID: 2100000, guid: 94a1370b83b9174428b9bd8cc98a686f, type: 2}
+  visualScale: 0.085
+  visualDepth: -0.38
+  movementDuration: 0.22
+  laneOffset: 0.25
+  minimumHeadway: 0.55
+  schoolParkingSlot: 1
+  parkingApproachDistance: 0.7

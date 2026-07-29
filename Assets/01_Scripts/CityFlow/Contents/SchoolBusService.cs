@@ -1,6 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
+using CityFlow.Content;
+using CityFlow.Contracts;
 using UnityEngine;
 
 namespace CityFlow.Content.Transit
@@ -12,15 +14,14 @@ namespace CityFlow.Content.Transit
         WaitingAtResidentialArea = 2,
         ReturningToSchool = 3,
         WaitingAtSchool = 4,
-        RouteUnavailable = 5
+        RouteUnavailable = 5,
+        WaitingForSchedule = 6
     }
 
     /// <summary>
-    /// 학교에서 출발해 주거지역을 순서대로 방문한 후
-    /// 다시 학교로 돌아오는 스쿨버스 운행을 관리합니다.
-    ///
-    /// 운행 순서:
-    /// 학교 → 주거지역 1 → 주거지역 2 → ... → 학교
+    /// 학교와 주거지역을 연결하는 등교·하교 스쿨버스 운행을 관리합니다.
+    /// 등교편은 주거지역에서 학생을 태워 학교로 이동하고,
+    /// 하교편은 학교에서 학생을 태워 주거지역에 내려줍니다.
     /// </summary>
     [RequireComponent(typeof(BusRoute))]
     public sealed class SchoolBusService :
@@ -29,6 +30,13 @@ namespace CityFlow.Content.Transit
     {
         [Header("필수 참조")]
         [SerializeField]
+        private BusDefinitionSO definition;
+
+        [Tooltip("한국 학교 기준 평일 등하교 운행 시간 설정입니다.")]
+        [SerializeField]
+        private SchoolBusScheduleSO schedule;
+
+        [SerializeField]
         private BusStopRegistry stopRegistry;
 
         [SerializeField]
@@ -36,41 +44,50 @@ namespace CityFlow.Content.Transit
 
         [Header("운행 설정")]
         [Min(1)]
-        [Tooltip("한 번 운행에서 방문할 최대 주거지역 수입니다.")]
         [SerializeField]
         private int maxResidentialStopsPerTrip = 5;
 
         [Min(0f)]
-        [Tooltip("학교로 복귀한 후 다음 운행까지 기다리는 시간입니다.")]
+        [Tooltip("시간표가 없는 기존 씬에서만 사용하는 반복 대기 시간입니다.")]
         [SerializeField]
         private float schoolWaitSeconds = 5f;
 
-        [Tooltip(
-            "학교에서 가까운 주거지역부터 방문합니다. " +
-            "현재는 맨해튼 거리 기준입니다."
-        )]
         [SerializeField]
         private bool sortResidentialStopsByDistance = true;
 
-        [Tooltip("시작 시 자동으로 운행을 시도합니다.")]
         [SerializeField]
         private bool autoStart = true;
 
         private readonly List<Vector2Int> schoolRouteStops = new();
         private readonly List<Vector2Int> residentialBuffer = new();
 
+        private CityFlowServices services;
+        private IGameCalendarService calendar;
         private float schoolWaitTimer;
-        private bool isSubscribed;
+        private bool routeSubscribed;
+        private bool registrySubscribed;
+        private bool servicesSubscribed;
+        private bool calendarSubscribed;
         private bool wantsToOperate;
         private bool isInitialized;
+        private bool unavailableReported;
+        private long lastMorningTripDay = -1L;
+        private long lastAfternoonTripDay = -1L;
+        private int studentsServedThisTrip;
 
         public SchoolBusState State { get; private set; } =
             SchoolBusState.Idle;
-
+        public SchoolBusTripKind CurrentTrip { get; private set; } =
+            SchoolBusTripKind.None;
         public Vector2Int SchoolTile { get; private set; }
-
         public int VisitedResidentialCount { get; private set; }
-        public int CurrentPassengers { get; private set; }
+        public int CurrentPassengers =>
+            Runtime?.CurrentPassengers ?? 0;
+        public BusRuntime Runtime { get; private set; }
+        public IReadOnlyList<Vector2Int> RouteStops =>
+            schoolRouteStops;
+        public bool IsInitialized => isInitialized;
+        public bool IsScheduled => schedule != null;
 
         public bool IsOperating =>
             busRoute != null &&
@@ -78,6 +95,7 @@ namespace CityFlow.Content.Transit
              busRoute.State == BusRouteState.WaitingAtStop);
 
         public event Action RouteStarted;
+        public event Action<SchoolBusTripKind> ScheduledTripStarted;
         public event Action<Vector2Int, int> ResidentialStopVisited;
         public event Action<Vector2Int, int> ReturnedToSchool;
         public event Action RouteUnavailable;
@@ -110,16 +128,15 @@ namespace CityFlow.Content.Transit
 
             CityBootstrap bootstrap =
                 FindAnyObjectByType<CityBootstrap>();
-
             if (bootstrap?.Services != null)
             {
                 Initialize(bootstrap.Services);
             }
         }
 
-        public void Initialize(CityFlowServices services)
+        public void Initialize(CityFlowServices cityServices)
         {
-            if (isInitialized || services == null)
+            if (isInitialized || cityServices == null)
             {
                 return;
             }
@@ -135,22 +152,67 @@ namespace CityFlow.Content.Transit
                 busRoute = GetComponent<BusRoute>();
             }
 
-            stopRegistry?.Initialize(services);
-            busRoute?.Initialize(services);
+            if (cityServices.TileData == null ||
+                stopRegistry == null ||
+                busRoute == null)
+            {
+                Debug.LogError(
+                    "[SchoolBusService] CityFlowServices, BusRoute, BusStopRegistry가 필요합니다.",
+                    this);
+                return;
+            }
+
+            if (definition != null &&
+                definition.BusType != BusType.SchoolBus)
+            {
+                Debug.LogError(
+                    "[SchoolBusService] SchoolBus 타입 BusDefinitionSO가 필요합니다.",
+                    this);
+                return;
+            }
+
+            services = cityServices;
+            stopRegistry.Initialize(cityServices);
+            busRoute.Initialize(cityServices);
+
+            int capacity = definition != null
+                ? definition.PassengerCapacity
+                : Mathf.Max(1, maxResidentialStopsPerTrip);
+            Runtime = new BusRuntime(capacity);
+
+            if (definition != null)
+            {
+                busRoute.SecondsPerTile =
+                    definition.SecondsPerTile;
+                busRoute.StopWaitSeconds =
+                    definition.StopWaitSeconds;
+            }
 
             isInitialized = true;
             Subscribe();
+            BindCalendar(cityServices.GameCalendar);
 
             wantsToOperate = autoStart;
-            if (wantsToOperate)
+            if (!wantsToOperate)
             {
-                TryStartSchoolRoute();
+                State = SchoolBusState.Idle;
+                return;
+            }
+
+            if (IsScheduled)
+            {
+                RefreshScheduledOperation();
+            }
+            else
+            {
+                TryStartRoute(SchoolBusTripKind.MorningCommute);
             }
         }
 
         private void OnEnable()
         {
             Subscribe();
+            BindCalendar(services?.GameCalendar);
         }
 
         private void OnDisable()
@@ -165,239 +227,337 @@ namespace CityFlow.Content.Transit
 
         private void Update()
         {
-            if (State != SchoolBusState.WaitingAtSchool ||
+            if (!isInitialized)
+            {
+                return;
+            }
+
+            if (busRoute.State == BusRouteState.Moving)
+            {
+                int finalResidentialIndex =
+                    schoolRouteStops.Count - 2;
+                State = busRoute.CurrentStopIndex >=
+                        finalResidentialIndex
+                    ? SchoolBusState.ReturningToSchool
+                    : SchoolBusState.DrivingToResidentialArea;
+                Runtime?.SetState(BusOperatingState.Moving);
+            }
+
+            if (IsScheduled ||
+                State != SchoolBusState.WaitingAtSchool ||
                 !wantsToOperate)
             {
                 return;
             }
 
             schoolWaitTimer -= Time.deltaTime;
-
             if (schoolWaitTimer <= 0f)
             {
-                TryStartSchoolRoute();
+                TryStartRoute(SchoolBusTripKind.MorningCommute);
             }
         }
 
         private void Subscribe()
         {
-            if (isSubscribed || busRoute == null)
+            if (!routeSubscribed && busRoute != null)
             {
-                return;
+                busRoute.StopArrived += OnStopArrived;
+                busRoute.TileChanged += OnTileChanged;
+                busRoute.RouteUnavailable += OnRouteUnavailable;
+                busRoute.RouteCompleted += OnRouteCompleted;
+                routeSubscribed = true;
             }
 
-            busRoute.StopArrived += OnStopArrived;
-            busRoute.RouteUnavailable += OnRouteUnavailable;
-            busRoute.RouteCompleted += OnRouteCompleted;
-
-            if (stopRegistry != null)
+            if (!registrySubscribed && stopRegistry != null)
             {
-                stopRegistry.RegistryChanged +=
-                    OnRegistryChanged;
+                stopRegistry.RegistryChanged += OnRegistryChanged;
+                registrySubscribed = true;
             }
 
-            isSubscribed = true;
+            if (!servicesSubscribed && services != null)
+            {
+                services.GameCalendarRegistered +=
+                    OnGameCalendarRegistered;
+                servicesSubscribed = true;
+            }
         }
 
         private void Unsubscribe()
         {
-            if (!isSubscribed)
-            {
-                return;
-            }
-
-            if (busRoute != null)
+            if (routeSubscribed && busRoute != null)
             {
                 busRoute.StopArrived -= OnStopArrived;
+                busRoute.TileChanged -= OnTileChanged;
                 busRoute.RouteUnavailable -= OnRouteUnavailable;
                 busRoute.RouteCompleted -= OnRouteCompleted;
             }
 
-            if (stopRegistry != null)
+            if (registrySubscribed && stopRegistry != null)
             {
-                stopRegistry.RegistryChanged -=
-                    OnRegistryChanged;
+                stopRegistry.RegistryChanged -= OnRegistryChanged;
             }
 
-            isSubscribed = false;
+            if (servicesSubscribed && services != null)
+            {
+                services.GameCalendarRegistered -=
+                    OnGameCalendarRegistered;
+            }
+
+            if (calendarSubscribed && calendar != null)
+            {
+                calendar.HourChanged -= OnHourChanged;
+            }
+
+            routeSubscribed = false;
+            registrySubscribed = false;
+            servicesSubscribed = false;
+            calendarSubscribed = false;
+        }
+
+        private void BindCalendar(IGameCalendarService gameCalendar)
+        {
+            if (ReferenceEquals(calendar, gameCalendar) &&
+                calendarSubscribed)
+            {
+                return;
+            }
+
+            if (calendarSubscribed && calendar != null)
+            {
+                calendar.HourChanged -= OnHourChanged;
+            }
+
+            calendar = gameCalendar;
+            calendarSubscribed = false;
+
+            if (calendar != null)
+            {
+                calendar.HourChanged += OnHourChanged;
+                calendarSubscribed = true;
+            }
         }
 
         public bool StartService()
         {
             wantsToOperate = true;
-            return TryStartSchoolRoute();
+            return IsScheduled
+                ? RefreshScheduledOperation()
+                : TryStartRoute(
+                    SchoolBusTripKind.MorningCommute);
         }
 
         public void StopService()
         {
             wantsToOperate = false;
-
             busRoute?.StopRoute();
-
             State = SchoolBusState.Idle;
+            CurrentTrip = SchoolBusTripKind.None;
             schoolWaitTimer = 0f;
-            CurrentPassengers = 0;
             VisitedResidentialCount = 0;
+            studentsServedThisTrip = 0;
+            Runtime?.ResetPassengers();
+            Runtime?.SetState(BusOperatingState.OutOfService);
         }
 
         public bool TryStartSchoolRoute()
         {
-            if (stopRegistry == null || busRoute == null)
+            return IsScheduled
+                ? RefreshScheduledOperation()
+                : TryStartRoute(
+                    SchoolBusTripKind.MorningCommute);
+        }
+
+        private bool RefreshScheduledOperation()
+        {
+            if (!wantsToOperate || IsOperating)
             {
-                Debug.LogWarning(
-                    "[SchoolBusService] 필수 참조가 없습니다.",
-                    this
-                );
                 return false;
             }
 
-            if (!stopRegistry.TryGetFirstSchool(
-                    out Vector2Int schoolTile
-                ))
+            if (!HasRequiredBuildings())
             {
-                Debug.LogWarning(
-                    "[SchoolBusService] 배치된 학교가 없습니다.",
-                    this
-                );
+                return SetUnavailable();
+            }
+
+            if (calendar == null)
+            {
+                SetWaitingForSchedule();
                 return false;
             }
 
-            if (stopRegistry.ResidentialStopCount == 0)
+            SchoolBusTripKind trip =
+                schedule.GetEligibleTrip(
+                    calendar.TotalDays,
+                    calendar.Hour,
+                    lastMorningTripDay,
+                    lastAfternoonTripDay);
+
+            if (trip == SchoolBusTripKind.None)
             {
-                Debug.LogWarning(
-                    "[SchoolBusService] 방문할 주거지역이 없습니다.",
-                    this
-                );
+                SetWaitingForSchedule();
                 return false;
             }
 
+            return TryStartRoute(trip);
+        }
+
+        private bool TryStartRoute(SchoolBusTripKind trip)
+        {
+            if (!HasRequiredBuildings())
+            {
+                return SetUnavailable();
+            }
+
+            stopRegistry.TryGetFirstSchool(out Vector2Int schoolTile);
             SchoolTile = schoolTile;
-
             BuildSchoolRoute();
 
             if (schoolRouteStops.Count < 3)
             {
-                Debug.LogWarning(
-                    "[SchoolBusService] 유효한 스쿨버스 노선을 만들 수 없습니다.",
-                    this
-                );
-                return false;
+                return SetUnavailable();
             }
 
-            /*
-             * 노선 마지막에 학교를 직접 넣었으므로
-             * BusRoute 자체 반복은 사용하지 않습니다.
-             */
-            bool configured =
-                busRoute.ConfigureRoute(
+            if (!busRoute.ConfigureRoute(
                     schoolRouteStops,
-                    false
-                );
-
-            if (!configured)
+                    false))
             {
-                return false;
+                return SetUnavailable();
             }
 
             VisitedResidentialCount = 0;
-            CurrentPassengers = 0;
+            studentsServedThisTrip = 0;
+            Runtime?.ResetPassengers();
             schoolWaitTimer = 0f;
+            unavailableReported = false;
+            CurrentTrip = trip;
 
-            State =
-                SchoolBusState.DrivingToResidentialArea;
+            if (trip == SchoolBusTripKind.AfternoonDismissal)
+            {
+                int demandPerStop = GetDemandPerStop();
+                int studentDemand =
+                    demandPerStop *
+                    (schoolRouteStops.Count - 2);
+                Runtime?.Board(studentDemand);
+            }
 
+            State = SchoolBusState.DrivingToResidentialArea;
             if (!busRoute.StartRoute())
             {
-                State = SchoolBusState.RouteUnavailable;
+                CurrentTrip = SchoolBusTripKind.None;
+                Runtime?.ResetPassengers();
+                return SetUnavailable();
+            }
+
+            if (IsScheduled && calendar != null)
+            {
+                if (trip == SchoolBusTripKind.MorningCommute)
+                {
+                    lastMorningTripDay = calendar.TotalDays;
+                }
+                else if (trip ==
+                         SchoolBusTripKind.AfternoonDismissal)
+                {
+                    lastAfternoonTripDay = calendar.TotalDays;
+                }
+            }
+
+            Runtime?.SetState(BusOperatingState.Moving);
+            RouteStarted?.Invoke();
+            ScheduledTripStarted?.Invoke(trip);
+
+            string tripLabel = trip ==
+                SchoolBusTripKind.AfternoonDismissal
+                ? "하교"
+                : "등교";
+            Debug.Log(
+                $"[SchoolBusService] {tripLabel} 스쿨버스 출발. " +
+                $"학교: {SchoolTile}, " +
+                $"방문 주거지역: {schoolRouteStops.Count - 2}",
+                this);
+            return true;
+        }
+
+        private bool HasRequiredBuildings()
+        {
+            if (stopRegistry == null || busRoute == null)
+            {
                 return false;
             }
 
-            RouteStarted?.Invoke();
-
-            Debug.Log(
-                $"[SchoolBusService] 스쿨버스 출발. " +
-                $"학교: {SchoolTile}, " +
-                $"방문 주거지역: {schoolRouteStops.Count - 2}",
-                this
-            );
-
-            return true;
+            return
+                stopRegistry.TryGetFirstSchool(out _) &&
+                stopRegistry.ResidentialStopCount > 0;
         }
 
         private void BuildSchoolRoute()
         {
             schoolRouteStops.Clear();
             residentialBuffer.Clear();
-
             schoolRouteStops.Add(SchoolTile);
 
             IReadOnlyList<Vector2Int> residentialStops =
                 stopRegistry.ResidentialStops;
-
-            for (int i = 0;
-                 i < residentialStops.Count;
-                 i++)
+            for (int i = 0; i < residentialStops.Count; i++)
             {
                 Vector2Int residentialTile =
                     residentialStops[i];
-
                 if (residentialTile != SchoolTile)
                 {
-                    residentialBuffer.Add(
-                        residentialTile
-                    );
+                    residentialBuffer.Add(residentialTile);
                 }
             }
 
             if (sortResidentialStopsByDistance)
             {
                 residentialBuffer.Sort(
-                    CompareResidentialDistance
-                );
+                    CompareResidentialDistance);
             }
 
+            int demandPerStop = GetDemandPerStop();
+            int capacityStopLimit = demandPerStop > 0
+                ? Mathf.CeilToInt(
+                    (float)(Runtime?.PassengerCapacity ??
+                            maxResidentialStopsPerTrip) /
+                    demandPerStop)
+                : maxResidentialStopsPerTrip;
             int visitCount =
                 Mathf.Min(
-                    maxResidentialStopsPerTrip,
-                    residentialBuffer.Count
-                );
+                    Mathf.Min(
+                        maxResidentialStopsPerTrip,
+                        Mathf.Max(1, capacityStopLimit)),
+                    residentialBuffer.Count);
 
             for (int i = 0; i < visitCount; i++)
             {
-                schoolRouteStops.Add(
-                    residentialBuffer[i]
-                );
+                schoolRouteStops.Add(residentialBuffer[i]);
             }
 
-            /*
-             * 마지막 정류장을 학교로 지정하여
-             * 반드시 학교로 복귀하도록 합니다.
-             */
             schoolRouteStops.Add(SchoolTile);
+        }
+
+        private int GetDemandPerStop()
+        {
+            return definition != null
+                ? definition.BoardingDemandPerStop
+                : 1;
         }
 
         private int CompareResidentialDistance(
             Vector2Int left,
-            Vector2Int right
-        )
+            Vector2Int right)
         {
             int leftDistance =
                 ManhattanDistance(SchoolTile, left);
-
             int rightDistance =
                 ManhattanDistance(SchoolTile, right);
-
             int distanceCompare =
                 leftDistance.CompareTo(rightDistance);
-
             if (distanceCompare != 0)
             {
                 return distanceCompare;
             }
 
-            int yCompare =
-                left.y.CompareTo(right.y);
-
+            int yCompare = left.y.CompareTo(right.y);
             return yCompare != 0
                 ? yCompare
                 : left.x.CompareTo(right.x);
@@ -405,12 +565,9 @@ namespace CityFlow.Content.Transit
 
         private void OnStopArrived(
             Vector2Int stopTile,
-            int stopIndex
-        )
+            int stopIndex)
         {
-            int finalIndex =
-                schoolRouteStops.Count - 1;
-
+            int finalIndex = schoolRouteStops.Count - 1;
             if (stopIndex == finalIndex &&
                 stopTile == SchoolTile)
             {
@@ -418,124 +575,190 @@ namespace CityFlow.Content.Transit
                 return;
             }
 
-            if (stopIndex <= 0 ||
-                stopIndex >= finalIndex)
+            if (stopIndex <= 0 || stopIndex >= finalIndex)
             {
                 return;
             }
 
-            State =
-                SchoolBusState.WaitingAtResidentialArea;
-
+            State = SchoolBusState.WaitingAtResidentialArea;
             VisitedResidentialCount++;
 
-            /*
-             * 현재 데이터 구조에 주거지역별 학생 수가 따로 없으므로
-             * 우선 주거지역 한 곳당 학생 1명을 탑승 처리합니다.
-             *
-             * 이후 PopulationSystem.GetPopulationAt(tile)을
-             * 공개 계약으로 연결하면 실제 인구 기준으로 교체할 수 있습니다.
-             */
-            CurrentPassengers++;
+            int changedStudents;
+            if (CurrentTrip ==
+                SchoolBusTripKind.AfternoonDismissal)
+            {
+                changedStudents =
+                    Runtime?.Leave(GetDemandPerStop()) ?? 0;
+            }
+            else
+            {
+                changedStudents =
+                    Runtime?.Board(GetDemandPerStop()) ?? 0;
+            }
 
+            studentsServedThisTrip += changedStudents;
+            Runtime?.CompleteStop();
+            Runtime?.SetState(BusOperatingState.WaitingAtStop);
             ResidentialStopVisited?.Invoke(
                 stopTile,
-                CurrentPassengers
-            );
+                CurrentPassengers);
 
+            string actionLabel = CurrentTrip ==
+                SchoolBusTripKind.AfternoonDismissal
+                ? "하차"
+                : "탑승";
             Debug.Log(
                 $"[SchoolBusService] 주거지역 정차. " +
-                $"Tile: {stopTile}, " +
-                $"누적 탑승 학생: {CurrentPassengers}",
-                this
-            );
+                $"Tile: {stopTile}, 학생 {actionLabel}: " +
+                $"{changedStudents}, 현재 탑승: {CurrentPassengers}",
+                this);
 
-            State =
-                SchoolBusState.DrivingToResidentialArea;
+            State = SchoolBusState.DrivingToResidentialArea;
         }
 
         private void HandleSchoolReturn()
         {
+            SchoolBusTripKind completedTrip = CurrentTrip;
             State = SchoolBusState.WaitingAtSchool;
 
-            int deliveredStudents =
-                CurrentPassengers;
+            if (completedTrip ==
+                SchoolBusTripKind.MorningCommute)
+            {
+                Runtime?.Leave(CurrentPassengers);
+            }
+            else
+            {
+                Runtime?.Leave(CurrentPassengers);
+            }
 
+            Runtime?.CompleteStop();
+            Runtime?.SetState(BusOperatingState.WaitingAtStop);
             ReturnedToSchool?.Invoke(
                 SchoolTile,
-                deliveredStudents
-            );
+                studentsServedThisTrip);
 
+            string tripLabel = completedTrip ==
+                SchoolBusTripKind.AfternoonDismissal
+                ? "하교"
+                : "등교";
             Debug.Log(
-                $"[SchoolBusService] 학교 복귀. " +
+                $"[SchoolBusService] {tripLabel} 운행 완료. " +
                 $"방문 주거지역: {VisitedResidentialCount}, " +
-                $"등교 학생: {deliveredStudents}",
-                this
-            );
+                $"수송 학생: {studentsServedThisTrip}",
+                this);
 
-            /*
-             * BuildingEffectService와 실제 인구 상한 변경 API는
-             * 현재 develop 소스에서 확인되지 않으므로 직접 호출하지 않습니다.
-             *
-             * 해당 서비스가 복구되면 ReturnedToSchool 이벤트를 구독하거나
-             * 이 위치에서 학생 수를 전달하면 됩니다.
-             */
-
-            CurrentPassengers = 0;
             VisitedResidentialCount = 0;
+            studentsServedThisTrip = 0;
+            CurrentTrip = SchoolBusTripKind.None;
+
+            if (IsScheduled)
+            {
+                SetWaitingForSchedule();
+                return;
+            }
 
             schoolWaitTimer =
                 Mathf.Max(0f, schoolWaitSeconds);
-
-            if (schoolWaitTimer <= 0f &&
-                wantsToOperate)
+            if (schoolWaitTimer <= 0f && wantsToOperate)
             {
-                TryStartSchoolRoute();
+                TryStartRoute(
+                    SchoolBusTripKind.MorningCommute);
             }
         }
 
         private void OnRouteCompleted()
         {
-            /*
-             * 정상적인 스쿨버스 노선은 마지막 학교 정류장에서
-             * HandleSchoolReturn이 먼저 호출됩니다.
-             */
-            if (State != SchoolBusState.WaitingAtSchool)
+            if (State == SchoolBusState.WaitingAtSchool ||
+                State == SchoolBusState.WaitingForSchedule)
             {
-                State = SchoolBusState.Idle;
+                return;
             }
+
+            State = IsScheduled
+                ? SchoolBusState.WaitingForSchedule
+                : SchoolBusState.Idle;
+            CurrentTrip = SchoolBusTripKind.None;
+            Runtime?.SetState(BusOperatingState.Idle);
         }
 
         private void OnRouteUnavailable()
         {
+            SetUnavailable();
+        }
+
+        private bool SetUnavailable()
+        {
             State = SchoolBusState.RouteUnavailable;
+            CurrentTrip = SchoolBusTripKind.None;
+            Runtime?.SetState(
+                BusOperatingState.RouteUnavailable);
 
-            RouteUnavailable?.Invoke();
+            if (!unavailableReported)
+            {
+                unavailableReported = true;
+                RouteUnavailable?.Invoke();
+            }
 
-            Debug.LogWarning(
-                "[SchoolBusService] 도로가 연결되지 않아 운행을 중단했습니다.",
-                this
-            );
+            return false;
+        }
+
+        private void SetWaitingForSchedule()
+        {
+            State = SchoolBusState.WaitingForSchedule;
+            CurrentTrip = SchoolBusTripKind.None;
+            unavailableReported = false;
+            Runtime?.SetState(BusOperatingState.Idle);
+        }
+
+        private void OnTileChanged(Vector2Int tile)
+        {
+            Runtime?.SetRoutePosition(
+                tile,
+                busRoute != null
+                    ? busRoute.NextStop
+                    : default);
         }
 
         private void OnRegistryChanged()
         {
-            /*
-             * 운행 중에는 기존 노선을 즉시 바꾸지 않습니다.
-             * 학교로 돌아온 뒤 다음 운행에서 최신 건물 목록을 사용합니다.
-             */
-            if (!IsOperating &&
-                wantsToOperate &&
-                State != SchoolBusState.WaitingAtSchool)
+            if (IsOperating || !wantsToOperate)
             {
-                TryStartSchoolRoute();
+                return;
+            }
+
+            if (IsScheduled)
+            {
+                RefreshScheduledOperation();
+            }
+            else if (State == SchoolBusState.RouteUnavailable ||
+                     State == SchoolBusState.Idle)
+            {
+                TryStartRoute(
+                    SchoolBusTripKind.MorningCommute);
+            }
+        }
+
+        private void OnGameCalendarRegistered(
+            IGameCalendarService gameCalendar)
+        {
+            BindCalendar(gameCalendar);
+            if (IsScheduled)
+            {
+                RefreshScheduledOperation();
+            }
+        }
+
+        private void OnHourChanged(int hour)
+        {
+            if (IsScheduled)
+            {
+                RefreshScheduledOperation();
             }
         }
 
         private static int ManhattanDistance(
             Vector2Int first,
-            Vector2Int second
-        )
+            Vector2Int second)
         {
             return
                 Mathf.Abs(first.x - second.x) +
@@ -546,16 +769,9 @@ namespace CityFlow.Content.Transit
         private void OnValidate()
         {
             maxResidentialStopsPerTrip =
-                Mathf.Max(
-                    1,
-                    maxResidentialStopsPerTrip
-                );
-
+                Mathf.Max(1, maxResidentialStopsPerTrip);
             schoolWaitSeconds =
-                Mathf.Max(
-                    0f,
-                    schoolWaitSeconds
-                );
+                Mathf.Max(0f, schoolWaitSeconds);
         }
 #endif
     }
