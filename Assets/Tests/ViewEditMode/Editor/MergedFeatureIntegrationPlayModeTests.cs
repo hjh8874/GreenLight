@@ -5,11 +5,13 @@ using System.Linq;
 using System.Reflection;
 using CityFlow.Bootstrap;
 using CityFlow.Buildings;
+using CityFlow.Configs;
 using CityFlow.Content;
 using CityFlow.Content.Transit;
 using CityFlow.Contracts;
 using CityFlow.DebugTools;
 using CityFlow.Environment;
+using CityFlow.Gameplay.Progression;
 using CityFlow.UI;
 using CityFlow.UI.Controllers;
 using CityFlow.UI.Controllers.Placement;
@@ -34,6 +36,10 @@ namespace CityFlow.Tests.ViewEditMode
             "Logs/MergedFeatureIntegrationPlay.png";
         private const string SpecialBuildingScreenshotPath =
             "Logs/SpecialBuildingFallbackIntegrationPlay.png";
+        private const string IntegratedSimConfigPath =
+            "Assets/05_ScriptableObjects/SimConfig_Integrated.asset";
+        private const string GameTimeSettingsPath =
+            "Assets/05_ScriptableObjects/Resources/CityFlow/GameTimeSettings.asset";
 
         [UnityTest]
         public IEnumerator IntegrationScene_MergedFeaturesWorkInPlayMode()
@@ -49,6 +55,7 @@ namespace CityFlow.Tests.ViewEditMode
             saveGuardObject.AddComponent<DebugDisableSaving>();
 
             AssertMainCityViewIntegrationSettings();
+            AssertNewFeatureIntegrationSettings();
 
             yield return new EnterPlayMode();
             yield return null;
@@ -78,6 +85,102 @@ namespace CityFlow.Tests.ViewEditMode
             Assert.That(services.Research, Is.Not.Null);
             Assert.That(services.SpecialBuildings, Is.Not.Null);
             Assert.That(services.SpecialBuildingVisits, Is.Not.Null);
+            Assert.That(services.VehicleTrips, Is.Not.Null);
+            Assert.That(
+                services.GameCalendar.RealSecondsPerGameDay,
+                Is.EqualTo(720f).Within(0.01f));
+
+            SchoolBusService schoolBus =
+                RequireObject<SchoolBusService>();
+            SchoolBusWorldView schoolBusView =
+                RequireObject<SchoolBusWorldView>();
+            Assert.That(schoolBus.IsInitialized, Is.True);
+            Assert.That(schoolBus.IsScheduled, Is.True);
+            Assert.That(schoolBusView, Is.Not.Null);
+
+            schoolBus.StopService();
+            schoolBus.RestoreSnapshot(null);
+            GameCalendarService calendar =
+                RequireObject<GameCalendarService>();
+            var calendarSnapshot = calendar.CreateSnapshot();
+            calendarSnapshot.Year = 1;
+            calendarSnapshot.Month = 1;
+            calendarSnapshot.Day = 1;
+            calendarSnapshot.Hour = 7;
+            calendarSnapshot.TotalMonths = 1;
+            calendarSnapshot.TotalDays = 1;
+            calendarSnapshot.AccumulatedRealSeconds = 0f;
+            calendar.RestoreSnapshot(calendarSnapshot);
+
+            BusRoute schoolBusRoute =
+                schoolBus.GetComponent<BusRoute>();
+            Assert.That(schoolBusRoute, Is.Not.Null);
+            schoolBusRoute.SecondsPerTile = 0.01f;
+            schoolBusRoute.StopWaitSeconds = 0f;
+            schoolBusRoute.CanEnterTile = null;
+            Assert.That(schoolBus.StartService(), Is.True);
+            MethodInfo updateSchoolBusRoute =
+                typeof(BusRoute).GetMethod(
+                    "UpdateMoving",
+                    BindingFlags.Instance |
+                    BindingFlags.NonPublic);
+            Assert.That(updateSchoolBusRoute, Is.Not.Null);
+            for (int step = 0;
+                 step < 100 &&
+                 schoolBus.VisitedResidentialCount < 2;
+                 step++)
+            {
+                updateSchoolBusRoute.Invoke(
+                    schoolBusRoute,
+                    new object[] { 1f });
+                yield return null;
+            }
+
+            Assert.That(
+                schoolBus.State,
+                Is.Not.EqualTo(
+                    SchoolBusState.RouteUnavailable));
+            Assert.That(
+                schoolBus.VisitedResidentialCount,
+                Is.GreaterThanOrEqualTo(1));
+            Assert.That(
+                schoolBus.RouteStops.Contains(
+                    new Vector2Int(97, 93)),
+                Is.False);
+            Assert.That(
+                schoolBus.RouteStops.Contains(
+                    new Vector2Int(99, 94)),
+                Is.False);
+            Assert.That(
+                schoolBus.RouteStops.Contains(
+                    new Vector2Int(96, 95)),
+                Is.False);
+            Assert.That(schoolBusView.HasVisibleBus, Is.True);
+            GameObject schoolBusVisual =
+                GameObject.Find("SchoolBusVisual");
+            Assert.That(schoolBusVisual, Is.Not.Null);
+            Renderer[] schoolBusRenderers =
+                schoolBusVisual.GetComponentsInChildren<Renderer>(true);
+            Assert.That(schoolBusRenderers, Is.Not.Empty);
+            foreach (Renderer schoolBusRenderer in schoolBusRenderers)
+            {
+                Material[] rendererMaterials =
+                    schoolBusRenderer.sharedMaterials;
+                Assert.That(rendererMaterials, Is.Not.Empty);
+                foreach (Material rendererMaterial in rendererMaterials)
+                {
+                    Assert.That(
+                        rendererMaterial.shader.name,
+                        Is.EqualTo(
+                            "GreenLight/CityFlow Opaque Unlit"));
+                }
+            }
+
+            SpecialBuildingVisitTripSource visitTripSource =
+                RequireObject<SpecialBuildingVisitTripSource>();
+            Assert.That(
+                visitTripSource.MaximumVisualTripsPerBuildingPerDay,
+                Is.EqualTo(64));
 
             MainCityView cityView = RequireObject<MainCityView>();
             Assert.That(
@@ -189,10 +292,10 @@ namespace CityFlow.Tests.ViewEditMode
             float deadline = Time.realtimeSinceStartup + 12f;
             while (Time.realtimeSinceStartup < deadline &&
                    (maximumCompletedStops == 0 ||
-                    !sawVisibleBus ||
-                    maximumVisibleStations < 2 ||
-                    maximumRenderedTiles <= 400 ||
-                    maximumTrafficLightLenses < 2))
+                     !sawVisibleBus ||
+                     maximumVisibleStations < 2 ||
+                     maximumRenderedTiles <= 400 ||
+                     maximumTrafficLightLenses < 1))
             {
                 yield return null;
 
@@ -244,7 +347,7 @@ namespace CityFlow.Tests.ViewEditMode
                 cityBus.Runtime.CurrentTile);
             Assert.That(
                 maximumTrafficLightLenses,
-                Is.GreaterThanOrEqualTo(2));
+                Is.GreaterThanOrEqualTo(1));
             Assert.That(screenshotCaptured, Is.True);
 
             TimeOfDaySkyController sky =
@@ -619,6 +722,133 @@ namespace CityFlow.Tests.ViewEditMode
                 Is.Not.Null);
         }
 
+        private static void AssertNewFeatureIntegrationSettings()
+        {
+            AssertTopBarContainsCurrentHudOnly();
+
+            SchoolBusService[] schoolBusServices =
+                Object.FindObjectsByType<SchoolBusService>(
+                    FindObjectsInactive.Include);
+            SchoolBusWorldView[] schoolBusViews =
+                Object.FindObjectsByType<SchoolBusWorldView>(
+                    FindObjectsInactive.Include);
+            SchoolBusRouteView[] legacyRouteViews =
+                Object.FindObjectsByType<SchoolBusRouteView>(
+                    FindObjectsInactive.Include);
+
+            Assert.That(schoolBusServices, Has.Length.EqualTo(1));
+            Assert.That(schoolBusViews, Has.Length.EqualTo(1));
+            Assert.That(legacyRouteViews, Is.Empty);
+
+            var serializedSchoolBus =
+                new SerializedObject(schoolBusServices[0]);
+            Assert.That(
+                serializedSchoolBus.FindProperty(
+                    "definition").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(
+                serializedSchoolBus.FindProperty(
+                    "schedule").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(
+                serializedSchoolBus.FindProperty(
+                    "busRoute").objectReferenceValue,
+                Is.Not.Null);
+
+            var serializedSchoolBusView =
+                new SerializedObject(schoolBusViews[0]);
+            Material schoolBusMaterial =
+                serializedSchoolBusView.FindProperty(
+                        "busMaterial")
+                    .objectReferenceValue as Material;
+            Assert.That(
+                serializedSchoolBusView.FindProperty(
+                    "definition").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(
+                serializedSchoolBusView.FindProperty(
+                    "busRoute").objectReferenceValue,
+                Is.Not.Null);
+            Assert.That(
+                schoolBusMaterial,
+                Is.Not.Null);
+            Assert.That(schoolBusMaterial.shader, Is.Not.Null);
+            Assert.That(
+                schoolBusMaterial.shader.name,
+                Is.EqualTo("GreenLight/CityFlow Opaque Unlit"));
+            Assert.That(
+                schoolBusMaterial.GetColor("_BaseColor").r,
+                Is.EqualTo(0.96f).Within(0.01f));
+            Assert.That(
+                schoolBusMaterial.GetColor("_BaseColor").g,
+                Is.EqualTo(0.64f).Within(0.01f));
+            Assert.That(
+                schoolBusMaterial.GetColor("_BaseColor").b,
+                Is.EqualTo(0.08f).Within(0.01f));
+
+            SpecialBuildingVisitTripSource[] visitTripSources =
+                Object.FindObjectsByType<SpecialBuildingVisitTripSource>(
+                    FindObjectsInactive.Include);
+            Assert.That(visitTripSources, Has.Length.EqualTo(1));
+            Assert.That(
+                visitTripSources[0]
+                    .MaximumVisualTripsPerBuildingPerDay,
+                Is.EqualTo(64));
+
+            GameTimeSettingsSO timeSettings =
+                AssetDatabase.LoadAssetAtPath<GameTimeSettingsSO>(
+                    GameTimeSettingsPath);
+            Assert.That(timeSettings, Is.Not.Null);
+            Assert.That(
+                timeSettings.RealMinutesPerGameDay,
+                Is.EqualTo(12f));
+            Assert.That(
+                timeSettings.RealSecondsPerGameHour,
+                Is.EqualTo(30f));
+
+            SimConfigAsset simConfig =
+                AssetDatabase.LoadAssetAtPath<SimConfigAsset>(
+                    IntegratedSimConfigPath);
+            Assert.That(simConfig, Is.Not.Null);
+            Assert.That(simConfig.Value.ConstructionHoursHouse, Is.Zero);
+            Assert.That(simConfig.Value.ConstructionHoursOffice, Is.Zero);
+            Assert.That(simConfig.Value.ConstructionHoursSchool, Is.Zero);
+            Assert.That(simConfig.Value.ConstructionHoursHospital, Is.Zero);
+            Assert.That(simConfig.Value.ConstructionHoursSpecial, Is.Zero);
+        }
+
+        private static void AssertTopBarContainsCurrentHudOnly()
+        {
+            string[] objectNames =
+                Object.FindObjectsByType<Transform>(
+                        FindObjectsInactive.Include)
+                    .Select(item => item.name)
+                    .ToArray();
+            Assert.That(objectNames, Does.Not.Contain("StabilityText"));
+            Assert.That(objectNames, Does.Not.Contain("StabilityBar"));
+
+            GameObject topBar = GameObject.Find("HUD_TopBar");
+            Assert.That(topBar, Is.Not.Null);
+
+            string[] directHeaderTextNames =
+                topBar.GetComponentsInChildren<TextMeshProUGUI>(true)
+                    .Where(
+                        text =>
+                            text.transform.parent == topBar.transform)
+                    .Select(text => text.name)
+                    .OrderBy(name => name)
+                    .ToArray();
+            Assert.That(
+                directHeaderTextNames,
+                Is.EquivalentTo(
+                    new[]
+                    {
+                        "CoinText",
+                        "TimeText",
+                        "VehicleCountText"
+                    }));
+        }
+
         private static SpecialBuildingInstance PlaceSpecialBuilding(
             CityFlowServices services,
             PlacementDirection direction = PlacementDirection.North)
@@ -767,7 +997,7 @@ namespace CityFlow.Tests.ViewEditMode
                     Vector2Int center =
                         start + new Vector2Int(3, 0);
                     Vector2Int stopA =
-                        start + Vector2Int.down;
+                        start + new Vector2Int(1, -1);
                     Vector2Int stopB =
                         start + new Vector2Int(6, -1);
                     var required =

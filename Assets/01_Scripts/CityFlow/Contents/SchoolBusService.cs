@@ -179,6 +179,7 @@ namespace CityFlow.Content.Transit
             stopRegistry.Initialize(cityServices);
             busRoute.UseRoadsideStopApproach = true;
             busRoute.RoadsideStopSetbackTiles = 1;
+            busRoute.AllowUnscheduledStopArrival = false;
             busRoute.RoadsideStopFilter =
                 IsResidentialStop;
             busRoute.Initialize(cityServices);
@@ -546,16 +547,52 @@ namespace CityFlow.Content.Transit
                             maxResidentialStopsPerTrip) /
                     demandPerStop)
                 : maxResidentialStopsPerTrip;
-            int visitCount =
+            int visitLimit =
                 Mathf.Min(
                     Mathf.Min(
                         maxResidentialStopsPerTrip,
                         Mathf.Max(1, capacityStopLimit)),
                     residentialBuffer.Count);
 
-            for (int i = 0; i < visitCount; i++)
+            if (!busRoute.TryGetAccessRoadForStop(
+                    SchoolTile,
+                    out Vector2Int currentRoad))
             {
-                schoolRouteStops.Add(residentialBuffer[i]);
+                return;
+            }
+
+            int selectedStopCount = 0;
+            bool preventImmediateReverse = false;
+            Vector2Int forbiddenFirstStep = default;
+            for (int i = 0;
+                 i < residentialBuffer.Count &&
+                 selectedStopCount < visitLimit;
+                 i++)
+            {
+                Vector2Int residentialTile =
+                    residentialBuffer[i];
+                if (!busRoute.TryFindReachableRoadsideStop(
+                        currentRoad,
+                        residentialTile,
+                        preventImmediateReverse,
+                        forbiddenFirstStep,
+                        out Vector2Int arrivalRoad,
+                        out Vector2Int arrivalPreviousRoad) ||
+                    !busRoute.CanReachStopFromRoad(
+                        arrivalRoad,
+                        SchoolTile,
+                        true,
+                        arrivalPreviousRoad))
+                {
+                    continue;
+                }
+
+                schoolRouteStops.Add(residentialTile);
+                currentRoad = arrivalRoad;
+                forbiddenFirstStep =
+                    arrivalPreviousRoad;
+                preventImmediateReverse = true;
+                selectedStopCount++;
             }
 
             schoolRouteStops.Add(SchoolTile);
