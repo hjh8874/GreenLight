@@ -46,7 +46,8 @@ namespace CityFlow.Sim
         private readonly CommuteScheduler _scheduler = new();
         private readonly CommuteTripSource _commuteTripSource = new();
         private readonly TripScheduler _tripScheduler;
-        private readonly int _reservedSpecialVehicleSlots;
+        private readonly int _specialTransientCapacity;
+        private readonly int _runtimeVehicleCapacity;
         private readonly List<Vector2Int> _sources = new(96);
         private readonly List<Vector2Int> _sinks = new(96);
         private readonly List<VehicleTripPurpose> _routinePurposes = new(96);
@@ -176,28 +177,34 @@ namespace CityFlow.Sim
         public CarSim(in SimConfig cfg)
         {
             _cfg = cfg;
-            int specialVehicleLimit = cfg.MaxConcurrentSpecialTrips > 0
-                ? cfg.MaxConcurrentSpecialTrips
-                : 8;
+            int maxCars = Math.Max(1, cfg.MaxSimCars);
+            int requestedSpecialVehicleLimit =
+                cfg.MaxConcurrentSpecialTrips > 0
+                    ? cfg.MaxConcurrentSpecialTrips
+                    : 8;
+            _specialTransientCapacity = Math.Min(
+                requestedSpecialVehicleLimit,
+                maxCars);
+            _runtimeVehicleCapacity =
+                maxCars + _specialTransientCapacity;
             _tripScheduler = new TripScheduler(
                 cfg.MaxPendingVehicleTrips > 0
                     ? cfg.MaxPendingVehicleTrips
                     : 256,
-                specialVehicleLimit);
-            int maxCars = Math.Max(1, cfg.MaxSimCars);
-            _reservedSpecialVehicleSlots = Math.Min(
-                specialVehicleLimit,
-                Math.Max(0, maxCars - 1));
-            _enqueued = new bool[maxCars];
-            _tileIndices = new int[maxCars];
-            _queueSlots = new int[maxCars];
-            _intersectionProgress = new float[maxCars];
-            _linkProgress = new float[maxCars];
-            _roundaboutProgress = new float[maxCars];
-            _rescueRoutes = new List<Vector2Int>[maxCars];
-            _rescueViewRouteIndices = new int[maxCars];
-            _rescueStages = new byte[maxCars];
-            _offNetworkBlockedTicks = new int[maxCars];
+                _specialTransientCapacity);
+            _enqueued = new bool[_runtimeVehicleCapacity];
+            _tileIndices = new int[_runtimeVehicleCapacity];
+            _queueSlots = new int[_runtimeVehicleCapacity];
+            _intersectionProgress = new float[_runtimeVehicleCapacity];
+            _linkProgress = new float[_runtimeVehicleCapacity];
+            _roundaboutProgress = new float[_runtimeVehicleCapacity];
+            _rescueRoutes =
+                new List<Vector2Int>[_runtimeVehicleCapacity];
+            _rescueViewRouteIndices =
+                new int[_runtimeVehicleCapacity];
+            _rescueStages = new byte[_runtimeVehicleCapacity];
+            _offNetworkBlockedTicks =
+                new int[_runtimeVehicleCapacity];
             Array.Fill(_queueSlots, -1);
             Array.Fill(_intersectionProgress, -1f);
             Array.Clear(_linkProgress, 0, _linkProgress.Length);
@@ -446,7 +453,7 @@ namespace CityFlow.Sim
                 _cfg.EveningEndHour,
                 deferNewAssignments: _populationInitialized,
                 purposes: _routinePurposes,
-                reservedTransientSlots: _reservedSpecialVehicleSlots);
+                transientStorageCapacity: _specialTransientCapacity);
             _populationInitialized = true;
             _commuteTripSource.Prune(_scheduler.Cars);
             _tripScheduler.AllowImmediateRetry();
@@ -1296,6 +1303,14 @@ namespace CityFlow.Sim
             out SpecialTripStartFailure failure)
         {
             failure = SpecialTripStartFailure.None;
+            int activeVehicleLimit = Math.Max(1, _cfg.MaxSimCars);
+            if (routineOwner == null &&
+                _scheduler.ActiveCount >= activeVehicleLimit)
+            {
+                failure = SpecialTripStartFailure.VehicleCapacity;
+                return false;
+            }
+
             if (!TryPlanBuildingRoute(
                     origin,
                     request.Destination,
@@ -1318,7 +1333,7 @@ namespace CityFlow.Sim
 
             CommuteCar vehicle = _scheduler.AcquireTransient(
                 origin,
-                Math.Max(1, _cfg.MaxSimCars));
+                _runtimeVehicleCapacity);
             if (vehicle == null)
             {
                 failure = SpecialTripStartFailure.VehicleCapacity;
