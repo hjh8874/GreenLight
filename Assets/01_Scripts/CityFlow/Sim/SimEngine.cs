@@ -506,13 +506,15 @@ namespace CityFlow.Sim
 
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
         public bool CanPlace(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North) =>
-            IsAreaUnlocked(tile, type, direction)
+            type != TileType.UnderConstruction
+            && IsAreaUnlocked(tile, type, direction)
             && !OverlapsRoundaboutFootprint(tile, type, direction)
             && !OverlapsBusStopFootprint(tile, type, direction)
             && _grid.CanPlace(tile, type, direction);
 
         public bool Place(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
+            if (type == TileType.UnderConstruction) return false;
             if (!IsAreaUnlocked(tile, type, direction)) return false;
             if (OverlapsRoundaboutFootprint(tile, type, direction)) return false;   // 로터리 풋프린트에 건물 금지
             if (OverlapsBusStopFootprint(tile, type, direction)) return false;

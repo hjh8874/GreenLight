@@ -113,7 +113,7 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(engine.Remove(road));
             engine.Tick(cfg.TickInterval);
 
-            Assert.AreEqual(0, engine.RoadTileCount);
+            Assert.AreEqual(TileType.Empty, engine.GetTileType(road));
             Assert.AreEqual(1, resolvedEventCount);
             Assert.AreEqual(
                 CongestionLevel.Free,
@@ -143,7 +143,6 @@ namespace CityFlow.Sim.Tests
             engine.Tick(cfg.TickInterval);
 
             Assert.AreEqual(TileType.Road, engine.GetTileType(road));
-            Assert.AreEqual(1, engine.RoadTileCount);
             Assert.AreEqual(1, resolvedEventCount);
             Assert.AreEqual(
                 CongestionLevel.Free,

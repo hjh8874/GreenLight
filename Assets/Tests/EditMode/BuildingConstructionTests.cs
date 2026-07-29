@@ -146,6 +146,24 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void PublicPlacement_RejectsDirectUnderConstructionWithoutOrphanSaveData()
+        {
+            SimConfig cfg = Cfg();
+            var engine = new SimEngine(cfg, new SimEventHub());
+            Vector2Int tile = V(0, 0);
+
+            Assert.IsFalse(engine.CanPlace(tile, TileType.UnderConstruction));
+            Assert.IsFalse(engine.Place(tile, TileType.UnderConstruction));
+            Assert.AreEqual(TileType.Empty, engine.GetTileType(tile));
+            Assert.AreEqual(0, engine.ConstructionSiteCountForTest);
+
+            CityFlow.Contracts.Save.SimSaveData snapshot =
+                engine.CreateSnapshot();
+            Assert.That(snapshot.PlacedTiles, Is.Empty);
+            Assert.That(snapshot.Constructions, Is.Empty);
+        }
+
+        [Test]
         public void OfficeHiringRamp_StartsAtCompletion_NotPlacement()
         {
             SimConfig cfg = Cfg();
