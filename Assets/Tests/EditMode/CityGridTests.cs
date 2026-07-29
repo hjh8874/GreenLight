@@ -182,5 +182,28 @@ namespace CityFlow.Sim.Tests
 
             Assert.AreEqual(1, g.RoadTileCount);
         }
+
+        [Test]
+        public void RoadTileIndices_StaySortedAcrossGridChanges()
+        {
+            var g = new CityGrid(5, 4);
+
+            Assert.IsTrue(g.Place(new Vector2Int(4, 3), TileType.Road));
+            Assert.IsTrue(g.Place(new Vector2Int(0, 0), TileType.Road));
+            Assert.IsTrue(g.Place(new Vector2Int(2, 1), TileType.Road));
+
+            Assert.AreEqual(3, g.RoadTileCount);
+            Assert.AreEqual(0, g.GetRoadTileIndex(0));
+            Assert.AreEqual(7, g.GetRoadTileIndex(1));
+            Assert.AreEqual(19, g.GetRoadTileIndex(2));
+
+            Assert.IsTrue(g.Remove(new Vector2Int(2, 1)));
+            Assert.AreEqual(2, g.RoadTileCount);
+            Assert.AreEqual(0, g.GetRoadTileIndex(0));
+            Assert.AreEqual(19, g.GetRoadTileIndex(1));
+
+            g.Clear();
+            Assert.AreEqual(0, g.RoadTileCount);
+        }
     }
 }
