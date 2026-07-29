@@ -112,13 +112,27 @@ namespace CityFlow.Sim
             if (_footprintAnchors[anchorIndex] != anchor) return false;   // 앵커에서만 승격
 
             PlacementDirection direction = _directions[anchorIndex];
-            Vector2Int size = TileFootprint.GetRotatedSize(targetType, direction);
-            for (int y = 0; y < size.y; y++)
+            Vector2Int sourceSize = TileFootprint.GetRotatedSize(_tiles[anchorIndex], direction);
+            Vector2Int targetSize = TileFootprint.GetRotatedSize(targetType, direction);
+            if (sourceSize != targetSize) return false;
+
+            // 승격은 재배치가 아니므로 원본 풋프린트를 벗어날 수 없다.
+            // 검증과 쓰기를 분리해 실패 시 일부 타일만 바뀌는 비원자 경로를 막는다.
+            for (int y = 0; y < targetSize.y; y++)
             {
-                for (int x = 0; x < size.x; x++)
+                for (int x = 0; x < targetSize.x; x++)
                 {
                     Vector2Int occupied = anchor + new Vector2Int(x, y);
                     if (!InBounds(occupied)) return false;
+                    if (_footprintAnchors[Index(occupied)] != anchor) return false;
+                }
+            }
+
+            for (int y = 0; y < targetSize.y; y++)
+            {
+                for (int x = 0; x < targetSize.x; x++)
+                {
+                    Vector2Int occupied = anchor + new Vector2Int(x, y);
                     _tiles[Index(occupied)] = targetType;
                 }
             }

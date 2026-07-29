@@ -50,5 +50,16 @@ namespace CityFlow.Sim.Tests
             Assert.IsFalse(grid.Promote(V(5, 3), TileType.House), "빈 타일은 거부");
             Assert.IsFalse(grid.Promote(V(-1, 0), TileType.House), "격자 밖은 거부");
         }
+
+        [Test]
+        public void Promote_WhenTargetFootprintExceedsSource_ReturnsFalseWithoutPartialWrite()
+        {
+            var grid = new CityGrid(8, 4);
+            Vector2Int edge = V(7, 3);
+            Assert.IsTrue(grid.Place(edge, TileType.Road));
+
+            Assert.IsFalse(grid.Promote(edge, TileType.House));
+            Assert.AreEqual(TileType.Road, grid.GetTile(edge), "실패한 승격은 원래 타일을 변경하지 않아야 한다");
+        }
     }
 }
