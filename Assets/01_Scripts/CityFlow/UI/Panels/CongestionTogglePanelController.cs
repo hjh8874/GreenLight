@@ -1,4 +1,4 @@
-using CityFlow.Bootstrap;
+﻿using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
 using UnityEngine.UI;
@@ -25,7 +25,7 @@ namespace CityFlow.UI
             if (tglCongestionView != null && _services?.Events != null && !_subscribed)
             {
                 tglCongestionView.SetIsOnWithoutNotify(_services.Events.IsCongestionViewEnabled);
-                
+
                 // Subscribe to external changes
                 _services.Events.CongestionViewToggled += OnExternalToggleChanged;
                 _subscribed = true;

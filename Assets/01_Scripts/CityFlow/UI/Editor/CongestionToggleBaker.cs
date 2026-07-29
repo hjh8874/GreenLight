@@ -1,4 +1,4 @@
-using UnityEditor;
+﻿using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 using CityFlow.UI;
@@ -21,21 +21,21 @@ namespace CityFlow.UI.Editor
             GameObject root = new GameObject("UI_CongestionToggle", typeof(RectTransform));
             RectTransform rootRect = root.GetComponent<RectTransform>();
             rootRect.sizeDelta = new Vector2(200f, 40f);
-            
+
             Toggle toggle = root.AddComponent<Toggle>();
-            
+
             GameObject bg = new GameObject("Background", typeof(RectTransform));
             bg.transform.SetParent(root.transform, false);
             Image bgImage = bg.AddComponent<Image>();
             bgImage.color = new Color(0.2f, 0.2f, 0.2f, 1f);
             toggle.targetGraphic = bgImage;
-            
+
             GameObject checkmark = new GameObject("Checkmark", typeof(RectTransform));
             checkmark.transform.SetParent(bg.transform, false);
             Image checkImage = checkmark.AddComponent<Image>();
             checkImage.color = Color.green;
             toggle.graphic = checkImage;
-            
+
             GameObject label = new GameObject("Label", typeof(RectTransform));
             label.transform.SetParent(root.transform, false);
             TextMeshProUGUI text = label.AddComponent<TextMeshProUGUI>();
@@ -43,7 +43,7 @@ namespace CityFlow.UI.Editor
             text.color = Color.white;
             text.fontSize = 16;
             text.alignment = TextAlignmentOptions.Center;
-            
+
             CongestionTogglePanelController controller = root.AddComponent<CongestionTogglePanelController>();
             controller.Configure(toggle);
 

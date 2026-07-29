@@ -1,4 +1,4 @@
-using CityFlow.Bootstrap;
+﻿using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
 using UnityEngine.UI;
@@ -60,7 +60,7 @@ namespace CityFlow.UI
             {
                 btnTitleScene.onClick.AddListener(OnTitleSceneClicked);
             }
-            
+
             _isBound = true;
         }
 
@@ -74,7 +74,7 @@ namespace CityFlow.UI
         private void OnQuitClicked()
         {
             Debug.Log("[Settings] 게임 종료 버튼 클릭됨.");
-            
+
 #if UNITY_EDITOR
             // 에디터에서는 플레이 모드를 종료합니다.
             UnityEditor.EditorApplication.isPlaying = false;
@@ -105,7 +105,7 @@ namespace CityFlow.UI
                     return;
                 }
             }
-            
+
             UnityEngine.SceneManagement.SceneManager.LoadScene(titleSceneName);
         }
 

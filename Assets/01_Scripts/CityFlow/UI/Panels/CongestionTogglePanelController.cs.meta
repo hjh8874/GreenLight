@@ -1,4 +1,4 @@
-fileFormatVersion: 2
+﻿fileFormatVersion: 2
 guid: d4762ba9372e4cc5905662b55067c2eb
 MonoImporter:
   externalObjects: {}
@@ -6,7 +6,6 @@ MonoImporter:
   iconMap: {}
   executionOrder: 0
   icon: {instanceID: 0}
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
-
+  userData:
+  assetBundleName:
+  assetBundleVariant:

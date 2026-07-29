@@ -1,4 +1,4 @@
-using CityFlow.Bootstrap;
+﻿using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
 
@@ -52,9 +52,9 @@ namespace CityFlow.View
             tileData = services.TileData;
             services.Events.CongestionChanged += OnCongestionChanged;
             services.Events.CongestionViewToggled += OnCongestionViewToggled;
-            
+
             isOverlayEnabled = services.Events.IsCongestionViewEnabled;
-            
+
             subscribed = true;
             Refresh();
         }

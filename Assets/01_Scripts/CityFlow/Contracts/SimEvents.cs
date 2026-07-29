@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 namespace CityFlow.Contracts
@@ -103,7 +103,7 @@ namespace CityFlow.Contracts
         public void Publish(PlacedEvent e) => Placed?.Invoke(e);
 
         public void Publish(InfrastructureChangedEvent e) => InfrastructureChanged?.Invoke(e);
-        
+
         public void PublishCongestionViewToggled(bool isOn)
         {
             if (IsCongestionViewEnabled != isOn)
