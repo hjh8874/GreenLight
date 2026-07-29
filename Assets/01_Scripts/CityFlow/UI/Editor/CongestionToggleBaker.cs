@@ -2,6 +2,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 using CityFlow.UI;
+using TMPro;
 
 namespace CityFlow.UI.Editor
 {
@@ -32,11 +33,11 @@ namespace CityFlow.UI.Editor
             
             GameObject label = new GameObject("Label", typeof(RectTransform));
             label.transform.SetParent(root.transform, false);
-            Text text = label.AddComponent<Text>();
+            TextMeshProUGUI text = label.AddComponent<TextMeshProUGUI>();
             text.text = "Traffic View";
             text.color = Color.white;
-            text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-            text.alignment = TextAnchor.MiddleCenter;
+            text.fontSize = 16;
+            text.alignment = TextAlignmentOptions.Center;
             
             CongestionTogglePanelController controller = root.AddComponent<CongestionTogglePanelController>();
             controller.Configure(toggle);
