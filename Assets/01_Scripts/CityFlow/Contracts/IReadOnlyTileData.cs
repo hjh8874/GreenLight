@@ -4,7 +4,6 @@ namespace CityFlow.Contracts
 {
     public interface IReadOnlyTileData
     {
-        float Stability01 { get; }
 
         CongestionLevel GetCongestion(Vector2Int tile);
 

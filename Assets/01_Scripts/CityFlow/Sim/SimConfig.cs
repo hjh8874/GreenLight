@@ -49,7 +49,6 @@ namespace CityFlow.Sim
         public float EfficiencyMinRatio; // E가 바닥에 닿는 ratio = 2.0 (Free 1.0 → 2.0서 0.2)
 
         // ── 안정도 국지 감점 ─────────────────────
-        public float StabilityJamWeight;  // jam 타일 비율이 안정도에 주는 가중치 🔓
 
         // ── 신호 그린웨이브 ─────────────────────
         public float GreenWaveFloor;     // 오프셋 최악(반주기 어긋남) 시 효율 바닥 🔓
@@ -114,12 +113,7 @@ namespace CityFlow.Sim
         // ── 도로 카운터코스트: 예산제(스펙 2026-07-17, 기획 결정 환) ──
         // 유지비(러닝코스트) → 도로 타일 스톡 상한. 도배 방어를 "손해"→"물리적 불가"로 전환.
         // 기존 RoadMaintPerSec 유지비 체인은 삭제됨(MaintenanceEvent dead chain 포함).
-        public int MaxRoadTiles;        // 기본 도로 타일 상한(확장권 제외) 🔓 (환 라이브 밸런스)
 
-        // ── 도로 확장권(스펙 §2단계): "+10칸"을 코인으로 구매, 가격 = 기본가 × 성장률^구매횟수 ──
-        // 에스컬레이션이 도배의 수학적 소프트 캡(맵 도배 총비용 >> 현실 지평) 🔓
-        public int   RoadExpandBaseCost;     // 첫 확장권 가격(코인, 반올림 정수 산출의 기저)
-        public float RoadExpandCostGrowth;   // 구매마다 곱해지는 성장률(1.5 = +50%)
 
         // ── Burst 감지 (히스테리시스 + 쿨다운) ──
         public float BurstJamEnterRatio;    // Jam 진입 1.0
@@ -152,7 +146,6 @@ namespace CityFlow.Sim
             JamRatio = 1.0f,
             EfficiencyMin = 0.2f,
             EfficiencyMinRatio = 2.0f,
-            StabilityJamWeight = 0.5f,
             GreenWaveFloor = 0.5f,
             GreenWaveScanInterval = 50,
             GreenWaveThreshold = 0.85f,
@@ -176,9 +169,6 @@ namespace CityFlow.Sim
             RoutingCongestionWeight = 2f,
             AutoDetectSignals = true,
             CoinBase = 1f,
-            MaxRoadTiles = 60,   // 임시 — "필요 연결을 다 못 하는 빠듯함"이 목표(20×20=400칸의 15%)
-            RoadExpandBaseCost = 100,
-            RoadExpandCostGrowth = 1.5f,
             BurstJamEnterRatio = 1.0f,
             BurstFreeReturnRatio = 0.6f,
             BurstCooldownSeconds = 10f,

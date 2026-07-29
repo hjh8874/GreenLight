@@ -112,10 +112,7 @@ namespace CityFlow.Feed
                     return FormatCongestion(context.CurrentCongestion);
                 case "SignalChange":
                     return FormatSignalChange(context);
-                case "PreviousStabilityPercent":
-                    return $"{context.PreviousStability01 * 100f:0}%";
-                case "StabilityPercent":
-                    return $"{context.CurrentStability01 * 100f:0}%";
+
                 case "RouteDistance":
                     return $"{context.RouteDistanceTiles:0.#}타일";
                 case "VehicleCount":

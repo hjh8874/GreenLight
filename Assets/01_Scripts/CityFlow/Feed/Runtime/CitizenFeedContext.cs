@@ -14,8 +14,6 @@ namespace CityFlow.Feed
         public int CurrentGreenSlots { get; }
         public int PreviousOffsetSlots { get; }
         public int CurrentOffsetSlots { get; }
-        public float PreviousStability01 { get; }
-        public float CurrentStability01 { get; }
         public float RouteDistanceTiles { get; }
         public int ActiveVehicleCount { get; }
         public CitizenFeedInfrastructureType InfrastructureType { get; }
@@ -32,8 +30,6 @@ namespace CityFlow.Feed
             int currentGreenSlots,
             int previousOffsetSlots,
             int currentOffsetSlots,
-            float previousStability01,
-            float currentStability01,
             float routeDistanceTiles,
             int activeVehicleCount,
             CitizenFeedInfrastructureType infrastructureType,
@@ -49,8 +45,6 @@ namespace CityFlow.Feed
             CurrentGreenSlots = currentGreenSlots;
             PreviousOffsetSlots = previousOffsetSlots;
             CurrentOffsetSlots = currentOffsetSlots;
-            PreviousStability01 = Mathf.Clamp01(previousStability01);
-            CurrentStability01 = Mathf.Clamp01(currentStability01);
             RouteDistanceTiles = Mathf.Max(0f, routeDistanceTiles);
             ActiveVehicleCount = Mathf.Max(0, activeVehicleCount);
             InfrastructureType = infrastructureType;
@@ -77,8 +71,6 @@ namespace CityFlow.Feed
                 0,
                 0,
                 0f,
-                0f,
-                0f,
                 0,
                 CitizenFeedInfrastructureType.None,
                 false,
@@ -104,35 +96,8 @@ namespace CityFlow.Feed
                 previousOffsetSlots,
                 currentOffsetSlots,
                 0f,
-                0f,
-                0f,
                 0,
                 CitizenFeedInfrastructureType.Signal,
-                false,
-                gameHour);
-        }
-
-        public static CitizenFeedContext ForStability(
-            CitizenFeedEventType eventType,
-            float previousStability01,
-            float currentStability01,
-            int gameHour)
-        {
-            return new CitizenFeedContext(
-                eventType,
-                Vector2Int.zero,
-                0f,
-                CongestionLevel.Free,
-                CongestionLevel.Free,
-                0,
-                0,
-                0,
-                0,
-                previousStability01,
-                currentStability01,
-                0f,
-                0,
-                CitizenFeedInfrastructureType.None,
                 false,
                 gameHour);
         }
@@ -155,8 +120,6 @@ namespace CityFlow.Feed
                 0,
                 0,
                 0f,
-                0f,
-                0f,
                 0,
                 infrastructureType,
                 isRemoval,
@@ -178,8 +141,6 @@ namespace CityFlow.Feed
                 0,
                 0,
                 0,
-                0f,
-                0f,
                 routeDistanceTiles,
                 0,
                 CitizenFeedInfrastructureType.None,
@@ -199,8 +160,6 @@ namespace CityFlow.Feed
                 0,
                 0,
                 0,
-                0f,
-                0f,
                 0f,
                 activeVehicleCount,
                 CitizenFeedInfrastructureType.None,

@@ -583,15 +583,7 @@ namespace CityFlow.Tests
 
                 HospitalSystem hospitalSystem =
                     consumerObject.AddComponent<HospitalSystem>();
-                SetPrivateField(
-                    hospitalSystem,
-                    "hospitalDefinition",
-                    AssetDatabase.LoadAssetAtPath<BuildingDefinitionSO>(
-                        "Assets/05_ScriptableObjects/CityFlow/TileData/HospitalTileData.asset"));
                 hospitalSystem.Initialize(services);
-                Assert.Greater(
-                    hospitalSystem.CurrentHospitalStabilityBonus,
-                    0);
 
                 BusStopRegistry registry =
                     consumerObject.AddComponent<BusStopRegistry>();

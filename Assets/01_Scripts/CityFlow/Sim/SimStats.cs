@@ -12,7 +12,6 @@ namespace CityFlow.Sim
         private bool _skipCurrentDay;
         private int _dayArrivals;
 
-        public float Stability01 { get; private set; } = 1f;
         internal float TripSuccessRate { get; private set; } = 1f;
         internal int DayArrivalCount => _dayArrivals;
         internal bool SkipCurrentDay => _skipCurrentDay;
@@ -48,8 +47,6 @@ namespace CityFlow.Sim
             _dayArrivals += arrivals;
             _lastHour = gameHour;
             _hasLastHour = true;
-            Stability01 = Mathf.Clamp01(
-                TripSuccessRate * (1f - jamRatio * cfg.StabilityJamWeight));
         }
 
         internal void RestoreCarSim(float successRate, int dayArrivals, bool skipCurrentDay, bool hasData)
@@ -58,7 +55,6 @@ namespace CityFlow.Sim
             _dayArrivals = hasData ? Mathf.Max(0, dayArrivals) : 0;
             _skipCurrentDay = hasData && skipCurrentDay;
             _hasLastHour = false;
-            Stability01 = TripSuccessRate;
         }
     }
 }

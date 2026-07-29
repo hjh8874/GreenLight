@@ -40,11 +40,9 @@ namespace CityFlow.DebugTools
         private PlacementController placementController;
         private Text statusText;
         private Text walletText;
-        private Text efficiencyText;
         private TextMeshProUGUI signalInfoText;
         private readonly List<RouteVehicle> movingVehicles = new List<RouteVehicle>();
         private long coins;
-        private float stability01 = 1f;
         private float hudRefreshTimer;
         private int selectedSignalIndex;
         private string currentMode = "Road";
@@ -82,7 +80,6 @@ namespace CityFlow.DebugTools
             services.Events.CongestionChanged += OnCongestionChanged;
             services.Events.Arrival += OnArrival;
             services.Events.FlowBurst += OnFlowBurst;
-            services.Events.StabilityChanged += OnStabilityChanged;
 
             RefreshHud();
             Debug.Log("[INTEGRATED] CityFlowIntegrated_cmt ?곌껐 ?꾨즺 - UI 諛곗튂 ?낅젰?쇰줈 SimEngine/?붾㈃ ?쇰뱶諛깆쓣 ?뺤씤?섏꽭??");
@@ -99,7 +96,6 @@ namespace CityFlow.DebugTools
             services.Events.CongestionChanged -= OnCongestionChanged;
             services.Events.Arrival -= OnArrival;
             services.Events.FlowBurst -= OnFlowBurst;
-            services.Events.StabilityChanged -= OnStabilityChanged;
         }
 
         private void Update()
@@ -108,8 +104,6 @@ namespace CityFlow.DebugTools
             {
                 return;
             }
-
-            stability01 = services.TileData.Stability01;
 
             foreach (KeyValuePair<Vector2Int, TileVisual> pair in visuals)
             {
@@ -232,7 +226,6 @@ namespace CityFlow.DebugTools
 
             statusText = CreateText(canvasObject.transform, "StatusText", new Vector2(16f, -16f), new Vector2(560f, 84f), 18);
             walletText = CreateText(canvasObject.transform, "WalletText", new Vector2(16f, -104f), new Vector2(260f, 34f), 18);
-            efficiencyText = CreateText(canvasObject.transform, "EfficiencyText", new Vector2(16f, -142f), new Vector2(260f, 34f), 18);
 
             CreateButton(canvasObject.transform, "Road", new Vector2(16f, 16f), () => SetMode(TileType.Road, "Road"));
             CreateButton(canvasObject.transform, "House", new Vector2(116f, 16f), () => SetMode(TileType.House, "House"));
@@ -249,13 +242,12 @@ namespace CityFlow.DebugTools
             TextMeshProUGUI timeText = CreateTmpText(hudPanel.transform, "TimeText", "00:00", new Vector2(12f, -10f), new Vector2(112f, 24f), 18);
             TextMeshProUGUI vehicleText = CreateTmpText(hudPanel.transform, "VehicleCountText", "0", new Vector2(132f, -10f), new Vector2(112f, 24f), 18);
             TextMeshProUGUI coinText = CreateTmpText(hudPanel.transform, "CoinText", "0", new Vector2(12f, -42f), new Vector2(112f, 24f), 18);
-            TextMeshProUGUI efficiency = CreateTmpText(hudPanel.transform, "EfficiencyText", "100%", new Vector2(132f, -42f), new Vector2(112f, 24f), 18);
             GameObject burstEffect = CreatePanel(hudPanel.transform, "FlowBurstEffect", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 16f), new Vector2(184f, 26f), new Color(1f, 0.7f, 0.12f, 0.9f));
             CreateTmpText(burstEffect.transform, "Label", "FLOW BURST", Vector2.zero, new Vector2(184f, 26f), 16, TextAlignmentOptions.Center);
             burstEffect.SetActive(false);
 
             HUDDashboard dashboard = hudPanel.AddComponent<HUDDashboard>();
-            dashboard.Configure(timeText, vehicleText, coinText, efficiency, burstEffect);
+            dashboard.Configure(timeText, vehicleText, coinText, burstEffect);
             dashboard.Initialize(services);
 
             GameObject dock = CreatePanel(canvas, "Geon_UIDock", new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-16f, 0f), new Vector2(132f, 188f));
@@ -443,12 +435,6 @@ namespace CityFlow.DebugTools
             RefreshHud();
         }
 
-        private void OnStabilityChanged(StabilityEvent e)
-        {
-            stability01 = e.Stability01;
-            RefreshHud();
-        }
-
         private void RefreshHud()
         {
             if (statusText != null)
@@ -460,11 +446,6 @@ namespace CityFlow.DebugTools
             if (walletText != null)
             {
                 walletText.text = $"Coins: {coins}";
-            }
-
-            if (efficiencyText != null)
-            {
-                efficiencyText.text = $"Stability: {Mathf.RoundToInt(stability01 * 100f)}%";
             }
         }
 

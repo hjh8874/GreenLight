@@ -13,9 +13,8 @@ namespace CityFlow.Fakes
         private readonly int height;
         private readonly int queueCapacityPerTile;
         private float lastBurstTime;
-        private float lastStabilityTime;
 
-        public float Stability01 { get; private set; } = 0.75f;
+
 
         public FakeFlowReader(
             int width,
@@ -118,12 +117,6 @@ namespace CityFlow.Fakes
                 return;
             }
 
-            if (time - lastStabilityTime >= 1f)
-            {
-                lastStabilityTime = time;
-                Stability01 = Mathf.Clamp01(0.65f + Mathf.Sin(time * 0.4f) * 0.2f);
-                events.Publish(new StabilityEvent(Stability01));
-            }
 
             if (time - lastBurstTime >= 3f)
             {

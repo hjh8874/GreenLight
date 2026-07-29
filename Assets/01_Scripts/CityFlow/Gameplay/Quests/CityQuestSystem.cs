@@ -249,8 +249,6 @@ namespace CityFlow.Gameplay.Quests
                 }
             }
 
-            int usedRoadTiles = services.Stats?.RoadTileCount ?? roadCount;
-            int maxRoadTiles = services.Stats?.MaxRoadTiles ?? 0;
             long deliveredTotal = deliveredProgress?.LifetimeDeliveredTotal ?? totalArrivals;
 
             return new CityQuestSnapshot(
@@ -261,10 +259,7 @@ namespace CityFlow.Gameplay.Quests
                 Math.Max(totalArrivals, deliveredTotal),
                 pendingCoins,
                 hasHarvested,
-                jamTiles.Count,
-                services.TileData.Stability01,
-                usedRoadTiles,
-                maxRoadTiles);
+                jamTiles.Count);
         }
 
         private void RefreshJamTiles()

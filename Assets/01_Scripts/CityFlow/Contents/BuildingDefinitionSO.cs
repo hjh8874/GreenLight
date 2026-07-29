@@ -193,14 +193,6 @@ namespace CityFlow.Content
         [Tooltip("병원 한 채가 담당할 수 있는 최대 주거 건물 수")]
         private int hospitalPatientCapacity;
 
-        [SerializeField]
-        [Min(0)]
-        [Tooltip(
-            "병원 혜택을 받는 주거 건물 한 채당 " +
-            "추가되는 안정도 수치"
-        )]
-        private int hospitalStabilityBonus;
-
         /// <summary>
         /// 학교가 한 번에 혜택을 제공할 수 있는 최대 주거 건물 수입니다.
         /// </summary>
@@ -225,11 +217,6 @@ namespace CityFlow.Content
         public int HospitalPatientCapacity =>
             Mathf.Max(0, hospitalPatientCapacity);
 
-        /// <summary>
-        /// 병원 혜택을 받는 주거 건물 한 채당 추가되는 안정도입니다.
-        /// </summary>
-        public int HospitalStabilityBonus =>
-            Mathf.Max(0, hospitalStabilityBonus);
 
         /// <summary>
         /// 이 건물 데이터가 학교인지 확인합니다.
@@ -291,9 +278,6 @@ namespace CityFlow.Content
 
             hospitalPatientCapacity =
                 Mathf.Max(0, hospitalPatientCapacity);
-
-            hospitalStabilityBonus =
-                Mathf.Max(0, hospitalStabilityBonus);
         }
 #endif
     }

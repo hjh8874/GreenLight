@@ -2,17 +2,16 @@ namespace CityFlow.Feed
 {
     public enum CitizenFeedEventType
     {
-        CongestionStarted,
-        CongestionResolved,
-        SignalChanged,
-        CongestionSlowed,
-        CongestionSustained,
-        StabilityDeclined,
-        StabilityImproved,
-        InfrastructurePlaced,
-        InfrastructureRemoved,
-        NotableArrival,
-        VehicleSurge
+        CongestionStarted = 0,
+        CongestionResolved = 1,
+        SignalChanged = 2,
+        CongestionSlowed = 3,
+        CongestionSustained = 4,
+
+        InfrastructurePlaced = 7,
+        InfrastructureRemoved = 8,
+        NotableArrival = 9,
+        VehicleSurge = 10
     }
 
     public enum CitizenFeedRole

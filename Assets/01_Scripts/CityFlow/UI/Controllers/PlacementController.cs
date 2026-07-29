@@ -43,14 +43,6 @@ namespace CityFlow.UI
 
         [Header("UI References")]
         [SerializeField] private ConfirmPopupController confirmPopup;
-        [Tooltip("도로 예산제(스펙 2026-07-17): 도로 배치 모드에서 \"도로 N/M\" 카운터. 미할당 시 표시 생략.")]
-        [SerializeField] private TextMeshProUGUI roadBudgetText;
-        [Tooltip("도로 확장권(스펙 §2단계): \"+10칸\" 구매 버튼. 미할당 시 표시 생략.")]
-        [SerializeField] private UnityEngine.UI.Button roadExpandButton;
-        [Tooltip("확장권 가격 라벨. 코인 부족 시 빨강. 미할당 시 표시 생략.")]
-        [SerializeField] private TextMeshProUGUI roadExpandCostText;
-        [SerializeField] private Color expandAffordableColor = Color.white;
-        [SerializeField] private Color expandUnaffordableColor = new Color(1f, 0.35f, 0.35f);
 
         [Header("Config")]
         [SerializeField] private CityFlow.Content.PopulationConfigSO populationConfig;
@@ -69,7 +61,7 @@ namespace CityFlow.UI
         private PlacementInputHandler _inputHandler;
         private PlacementVisualManager _visualManager;
         private PlacementCostLabelManager _costLabelManager;
-        private PlacementBudgetUI _budgetUI;
+
         private PlacementActionDispatcher _actionDispatcher;
 
         private bool _managersInitialized = false;
@@ -95,9 +87,6 @@ namespace CityFlow.UI
 
             _costLabelManager = new PlacementCostLabelManager(showCostLabel, costAffordableColor, costUnaffordableColor);
 
-            _budgetUI = new PlacementBudgetUI(
-                roadBudgetText, roadExpandButton, roadExpandCostText,
-                expandAffordableColor, expandUnaffordableColor);
 
             _actionDispatcher = new PlacementActionDispatcher(availableTiles, useFakeMode);
 
@@ -117,7 +106,6 @@ namespace CityFlow.UI
             _costLabelManager.Initialize();
             UpdateBuildingModelPreview();
 
-            _budgetUI.Initialize(() => _actionDispatcher.HandleRoadExpandClicked(_services));
         }
 
         public void SetBuildType(TileType type)
@@ -266,7 +254,6 @@ namespace CityFlow.UI
 
         private void Update()
         {
-            _budgetUI.UpdateUI(_isBuildingMode, _currentType, _services);
 
             IWorldCoordinateSpace coordinateSpace =
                 _services?.WorldCoordinates;

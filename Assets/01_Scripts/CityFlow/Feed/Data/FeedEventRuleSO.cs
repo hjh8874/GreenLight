@@ -16,7 +16,6 @@ namespace CityFlow.Feed
         [Header("Score")]
         [SerializeField, Range(0f, 100f)] private float baseScore = 40f;
         [SerializeField, Min(0f)] private float densityScoreMultiplier = 50f;
-        [SerializeField, Min(0f)] private float stabilityDeltaScoreMultiplier = 0f;
         [SerializeField, Min(0f)] private float routeDistanceScoreMultiplier = 0f;
         [SerializeField, Min(0f)] private float vehicleCountScoreMultiplier = 0f;
 
@@ -30,10 +29,8 @@ namespace CityFlow.Feed
 
         public float CalculateScore(in CitizenFeedContext context)
         {
-            float stabilityDelta = Mathf.Abs(context.CurrentStability01 - context.PreviousStability01);
             return baseScore +
                    Mathf.Clamp01(context.Density01) * densityScoreMultiplier +
-                   stabilityDelta * stabilityDeltaScoreMultiplier +
                    Mathf.Max(0f, context.RouteDistanceTiles) * routeDistanceScoreMultiplier +
                    Mathf.Max(0, context.ActiveVehicleCount) * vehicleCountScoreMultiplier;
         }
@@ -56,7 +53,6 @@ namespace CityFlow.Feed
             float targetBaseScore,
             float targetDensityMultiplier,
             CitizenFeedRole[] targetAllowedRoles,
-            float targetStabilityDeltaMultiplier = 0f,
             float targetRouteDistanceMultiplier = 0f,
             float targetVehicleCountMultiplier = 0f)
         {
@@ -66,7 +62,6 @@ namespace CityFlow.Feed
             cooldownGameHours = Mathf.Max(0f, targetCooldownHours);
             baseScore = Mathf.Clamp(targetBaseScore, 0f, 100f);
             densityScoreMultiplier = Mathf.Max(0f, targetDensityMultiplier);
-            stabilityDeltaScoreMultiplier = Mathf.Max(0f, targetStabilityDeltaMultiplier);
             routeDistanceScoreMultiplier = Mathf.Max(0f, targetRouteDistanceMultiplier);
             vehicleCountScoreMultiplier = Mathf.Max(0f, targetVehicleCountMultiplier);
             allowedRoles = targetAllowedRoles ?? Array.Empty<CitizenFeedRole>();

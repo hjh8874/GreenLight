@@ -15,7 +15,6 @@ namespace CityFlow.UI
         [SerializeField] private TextMeshProUGUI timeText;
         [SerializeField] private TextMeshProUGUI vehicleCountText;
         [SerializeField] private TextMeshProUGUI coinText;
-        [SerializeField] private TextMeshProUGUI efficiencyText;
 
         [Header("Settings")]
         [SerializeField] private float updateInterval = 0.2f;
@@ -32,7 +31,6 @@ namespace CityFlow.UI
         // Cached state from events
         private long _currentCoins;
         private long _pendingCoins;
-        private float _currentStability01 = 1f;
 
         // Cache for target values to avoid redundant string allocations
         private int _lastTargetVehicles = -1;
@@ -43,13 +41,11 @@ namespace CityFlow.UI
             TextMeshProUGUI time,
             TextMeshProUGUI vehicleCount,
             TextMeshProUGUI coin,
-            TextMeshProUGUI efficiency,
             GameObject _)
         {
             timeText = time;
             vehicleCountText = vehicleCount;
             coinText = coin;
-            efficiencyText = efficiency;
         }
 
         public void Initialize(CityFlowServices services)
@@ -71,7 +67,6 @@ namespace CityFlow.UI
             }
 
             // 이벤트 구독 (구독해야 코어 엔진에서 데이터가 날아옵니다)
-            _services.Events.StabilityChanged += OnStabilityChanged;
             _services.EconomyRegistered += OnEconomyRegistered;
             _services.GameCalendarRegistered += OnGameCalendarRegistered;
             _services.WeeklyEconomyRegistered += OnWeeklyEconomyRegistered;
@@ -104,7 +99,6 @@ namespace CityFlow.UI
             if (_services != null && _services.Events != null)
             {
                 // 메모리 누수 방지 이벤트 해제
-                _services.Events.StabilityChanged -= OnStabilityChanged;
                 _services.Events.Arrival -= OnArrival;
                 _services.EconomyRegistered -= OnEconomyRegistered;
                 _services.GameCalendarRegistered -= OnGameCalendarRegistered;
@@ -135,10 +129,6 @@ namespace CityFlow.UI
             }
         }
 
-        private void OnStabilityChanged(StabilityEvent e)
-        {
-            _currentStability01 = e.Stability01;
-        }
 
         private void OnArrival(ArrivalEvent e)
         {
@@ -254,7 +244,6 @@ namespace CityFlow.UI
             ConfigureHeaderText(timeText, new Vector2(16f, -14f), new Vector2(210f, 30f));
             ConfigureHeaderText(vehicleCountText, new Vector2(240f, -14f), new Vector2(220f, 30f));
             ConfigureHeaderText(coinText, new Vector2(480f, -14f), new Vector2(280f, 30f));
-            ConfigureHeaderText(efficiencyText, new Vector2(780f, -14f), new Vector2(150f, 30f));
         }
 
         private static void ConfigureHeaderText(TextMeshProUGUI text, Vector2 anchoredPosition, Vector2 sizeDelta)
@@ -331,13 +320,6 @@ namespace CityFlow.UI
                     _lastTargetCoins = _currentCoins;
                     RefreshCoinText();
                 }
-            }
-
-            // 4. 효율 (%)
-            if (efficiencyText != null)
-            {
-                int efficiencyPercent = Mathf.RoundToInt(_currentStability01 * 100f);
-                efficiencyText.text = $"안정도: {efficiencyPercent}%";
             }
         }
 

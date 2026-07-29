@@ -82,7 +82,7 @@ namespace CityFlow.DebugTools
             if (_engine == null || _data == null) return;
             var style = new GUIStyle(GUI.skin.label) { fontSize = 20, normal = { textColor = Color.white } };
 
-            GUI.Label(new Rect(12, 10, 700, 30), $"처리량: {_engine.DeliveredTotal:F2} 대/초   안정도: {_data.Stability01:P0}", style);
+            GUI.Label(new Rect(12, 10, 700, 30), $"처리량: {_engine.DeliveredTotal:F2} 대/초", style);
 
             var tiles = _engine.SignalTiles;
             if (tiles.Count > 0)
