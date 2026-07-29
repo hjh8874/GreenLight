@@ -124,7 +124,7 @@ namespace CityFlow.Sim
             float morningStart, float morningEnd, float eveningStart, float eveningEnd,
             bool deferNewAssignments = false,
             IReadOnlyList<VehicleTripPurpose> purposes = null,
-            int reservedTransientSlots = 0)
+            int transientStorageCapacity = 0)
         {
             if (workCapacityFor == null)
                 throw new ArgumentNullException(nameof(workCapacityFor));
@@ -132,6 +132,7 @@ namespace CityFlow.Sim
             _morningEnd = morningEnd; _eveningStart = eveningStart; _eveningEnd = eveningEnd;
 
             var activeTransients = new List<CommuteCar>();
+            int reservedRoutineCount = 0;
             var survivors = new Dictionary<(Vector2Int, Vector2Int), Queue<CommuteCar>>(_cars.Count);
             for (int i = 0; i < _cars.Count; i++)
             {
@@ -143,6 +144,11 @@ namespace CityFlow.Sim
                     }
 
                     continue;
+                }
+
+                if (_cars[i].SpecialTripReserved)
+                {
+                    reservedRoutineCount++;
                 }
 
                 var key = (_cars[i].Home, _cars[i].Work);
@@ -175,13 +181,15 @@ namespace CityFlow.Sim
 
             // 2차: route 순서로 확정. 생존 차는 슬롯 유지(정원 축소로 밀려나면 재배정, 빈 칸 없으면
             // 그날 통근 제외), 신규 짝은 빈 칸 배정(ParkedHome — 스냅은 SnapNewToHour가 신규만).
-            int reservedSlots = Mathf.Clamp(
-                reservedTransientSlots,
+            // A transient backed by a hidden routine owner does not consume
+            // an additional active slot. Only ownerless transients reduce the
+            // routine limit; transient objects use the separate storage budget.
+            int unbackedTransientCount = Math.Max(
                 0,
-                Math.Max(0, maxCars - 1));
+                activeTransients.Count - reservedRoutineCount);
             int routineLimit = Math.Max(
                 0,
-                maxCars - Math.Max(activeTransients.Count, reservedSlots));
+                maxCars - unbackedTransientCount);
             for (int i = 0; i < count && _cars.Count < routineLimit; i++)
             {
                 CommuteCar car = matched[i];
@@ -229,8 +237,15 @@ namespace CityFlow.Sim
                 _newCars.Add(fresh);
             }
 
+            int safeTransientCapacity = Math.Max(
+                0,
+                transientStorageCapacity);
+            int storageLimit = maxCars > int.MaxValue - safeTransientCapacity
+                ? int.MaxValue
+                : maxCars + safeTransientCapacity;
             for (int index = 0;
-                 index < activeTransients.Count && _cars.Count < maxCars;
+                 index < activeTransients.Count &&
+                 _cars.Count < storageLimit;
                  index++)
             {
                 _cars.Add(activeTransients[index]);
