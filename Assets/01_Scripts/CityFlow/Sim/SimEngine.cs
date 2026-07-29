@@ -1166,6 +1166,7 @@ namespace CityFlow.Sim
             _placedBusStops.Clear();
             _busStopSet.Clear();
             _roadQueues.RemoveAllCars();
+            Array.Clear(_carCongestion, 0, _carCongestion.Length);
             _carSim.ClearPopulation();
             _buildingAssignmentChangePending = false;
             _roadTopologyChangePending = false;

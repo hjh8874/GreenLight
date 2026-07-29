@@ -151,6 +151,35 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void RestoreSnapshot_ClearsTransientCongestionState()
+        {
+            SimConfig cfg = Cfg();
+            var engine = new SimEngine(cfg, new SimEventHub());
+            Vector2Int road = V(2, 1);
+            Assert.IsTrue(engine.Place(road, TileType.Road));
+
+            FieldInfo congestionField = typeof(SimEngine).GetField(
+                "_carCongestion",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(congestionField);
+            var congestion =
+                (CongestionLevel[])congestionField.GetValue(engine);
+            congestion[road.y * cfg.GridWidth + road.x] =
+                CongestionLevel.Jam;
+            Assert.AreEqual(
+                CongestionLevel.Jam,
+                engine.GetCongestion(road));
+
+            SimSaveData snapshot = engine.CreateSnapshot();
+            engine.RestoreSnapshot(snapshot);
+
+            Assert.AreEqual(TileType.Road, engine.GetTileType(road));
+            Assert.AreEqual(
+                CongestionLevel.Free,
+                engine.GetCongestion(road));
+        }
+
+        [Test]
         public void MiniCityArrivesAndPaysPerCar()
         {
             var hub = new SimEventHub();
