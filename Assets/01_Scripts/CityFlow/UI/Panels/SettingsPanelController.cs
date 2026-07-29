@@ -1,4 +1,4 @@
-using CityFlow.Bootstrap;
+﻿using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
 using UnityEngine.UI;
@@ -16,17 +16,17 @@ namespace CityFlow.UI
         private CityFlowServices _services;
         private bool _isBound;
 
-        public void Initialize(CityFlowServices services)
-        {
-            _services = services;
-        }
-
         public void Configure(Toggle muteAudio, Button quitGame, Button titleScene = null)
         {
             tglMuteAudio = muteAudio;
             btnQuitGame = quitGame;
             btnTitleScene = titleScene;
             BindButtons();
+        }
+
+        public void Initialize(CityFlowServices services)
+        {
+            _services = services;
         }
 
         private void Start()
@@ -74,7 +74,7 @@ namespace CityFlow.UI
         private void OnQuitClicked()
         {
             Debug.Log("[Settings] 게임 종료 버튼 클릭됨.");
-            
+
 #if UNITY_EDITOR
             // 에디터에서는 플레이 모드를 종료합니다.
             UnityEditor.EditorApplication.isPlaying = false;
@@ -105,8 +105,18 @@ namespace CityFlow.UI
                     return;
                 }
             }
-            
+
             UnityEngine.SceneManagement.SceneManager.LoadScene(titleSceneName);
+        }
+
+        private void OnDestroy()
+        {
+            if (tglMuteAudio != null)
+                tglMuteAudio.onValueChanged.RemoveListener(OnMuteToggleChanged);
+            if (btnQuitGame != null)
+                btnQuitGame.onClick.RemoveListener(OnQuitClicked);
+            if (btnTitleScene != null)
+                btnTitleScene.onClick.RemoveListener(OnTitleSceneClicked);
         }
     }
 }
