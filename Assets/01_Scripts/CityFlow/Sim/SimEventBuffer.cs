@@ -9,6 +9,7 @@ namespace CityFlow.Sim
     internal sealed class SimEventBuffer
     {
         readonly SimEventHub _hub;
+        readonly List<VehicleTripArrivedEvent> _tripArrivals = new(64);
         readonly List<ArrivalEvent> _arrivals = new(64);   // 선할당(GC 회피)
         readonly List<FlowBurstEvent> _bursts = new(16);
         readonly List<PlacedEvent> _placed = new(16);
@@ -21,6 +22,8 @@ namespace CityFlow.Sim
 
         // 계산 중: 발행하지 않고 큐에만.
         internal void QueueArrival(in ArrivalEvent e) => _arrivals.Add(e);
+        internal void QueueTripArrival(in VehicleTripArrivedEvent e) =>
+            _tripArrivals.Add(e);
         internal void QueueBurst(in FlowBurstEvent e) => _bursts.Add(e);
         internal void QueuePlaced(in PlacedEvent e) => _placed.Add(e);
         internal void QueueCongestion(in CongestionEvent e) => _congestion.Add(e);
@@ -50,6 +53,13 @@ namespace CityFlow.Sim
                 catch (System.Exception ex) { UnityEngine.Debug.LogException(ex); }
             }
             _arrivals.Clear();
+
+            for (int i = 0; i < _tripArrivals.Count; i++)
+            {
+                try { _hub.Publish(_tripArrivals[i]); }
+                catch (System.Exception ex) { UnityEngine.Debug.LogException(ex); }
+            }
+            _tripArrivals.Clear();
 
             for (int i = 0; i < _bursts.Count; i++)
             {
