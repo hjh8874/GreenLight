@@ -1027,6 +1027,61 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void SpecialVisit_SharedAccessRoad_CompletesBothLegs()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 8;
+            config.MaxPendingVehicleTrips = 8;
+            config.MaxConcurrentSpecialTrips = 2;
+            var grid = new CityGrid(6, 3);
+            Assert.IsTrue(grid.Place(V(2, 0), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(
+                grid.Place(V(3, 0), TileType.SpecialBuilding));
+            var roads = new RoadNetwork(grid);
+            var demands = new DemandMap(config);
+            demands.Reassign(grid, roads);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, roads, grid, config);
+            var queues = new RoadQueueNetwork(
+                grid.Width,
+                grid.Height,
+                config);
+            queues.RebuildTopology(grid);
+            var sim = new CarSim(config);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+            var hub = new SimEventHub();
+            var events = new SimEventBuffer(hub);
+            var completed = new List<VehicleTripSnapshot>();
+            hub.VehicleTripArrived += message => completed.Add(message.Trip);
+
+            Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                new SpecialBuildingVisitTripRequest(
+                    "coffee-shop",
+                    V(3, 0),
+                    1L,
+                    0,
+                    1f)));
+
+            for (int tick = 0; tick < 8; tick++)
+            {
+                sim.Step(1L, 1f, queues, events, null, tick);
+                events.Drain();
+            }
+
+            Assert.AreEqual(2, completed.Count);
+            Assert.AreEqual(V(3, 0), completed[0].Destination);
+            Assert.AreEqual(V(0, 0), completed[1].Destination);
+            Assert.AreEqual(0, sim.PendingTripCount);
+            Assert.AreEqual(0, sim.ActiveTripCount);
+        }
+
+        [Test]
         public void SpecialVisit_NoRoute_RemainsPendingUntilTopologyRebuild()
         {
             SimConfig config = Cfg();

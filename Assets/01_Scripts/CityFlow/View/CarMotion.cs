@@ -328,7 +328,7 @@ namespace CityFlow.View
 
         private void SyncCarSimMirrors()
         {
-            int count = simEngine.ActiveVehicleCount;
+            int count = simEngine.CarSimVehicleStorageCount;
             while (carSimMirrors.Count < count) carSimMirrors.Add(new CommuteCar());
             while (carSimMirrors.Count > count) carSimMirrors.RemoveAt(carSimMirrors.Count - 1);
             for (int i = 0; i < count; i++)

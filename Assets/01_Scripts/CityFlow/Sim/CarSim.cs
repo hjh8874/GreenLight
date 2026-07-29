@@ -1444,7 +1444,7 @@ namespace CityFlow.Sim
 
                     List<Vector2Int> candidate =
                         _planner.PlanVehicleTrip(from, to);
-                    if (candidate == null || candidate.Count <= 1)
+                    if (candidate == null || candidate.Count == 0)
                     {
                         continue;
                     }
@@ -1483,7 +1483,7 @@ namespace CityFlow.Sim
 
                 List<Vector2Int> candidate =
                     _planner.PlanVehicleTrip(originRoad, destinationRoad);
-                if (candidate == null || candidate.Count <= 1)
+                if (candidate == null || candidate.Count == 0)
                 {
                     continue;
                 }

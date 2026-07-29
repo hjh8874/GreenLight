@@ -197,6 +197,58 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void CompletedSpecialTrip_DoesNotInflateActiveVehicleCount()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 14;
+            cfg.GridHeight = 4;
+            cfg.MaxSimCars = 16;
+            cfg.MaxPendingVehicleTrips = 16;
+            cfg.MaxConcurrentSpecialTrips = 2;
+            var engine = new SimEngine(cfg, new SimEventHub());
+
+            for (int x = 0; x < cfg.GridWidth; x++)
+            {
+                Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
+            }
+
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(
+                engine.Place(V(6, 0), TileType.SpecialBuilding));
+            Assert.IsTrue(engine.Place(V(10, 0), TileType.Office));
+
+            engine.SetGameTime(1L, 0f);
+            engine.Tick(cfg.TickInterval);
+            Assert.AreEqual(1, engine.ActiveVehicleCount);
+            Assert.AreEqual(1, engine.CarSimVehicleStorageCount);
+
+            Assert.IsTrue(engine.TryScheduleSpecialBuildingVisit(
+                new SpecialBuildingVisitTripRequest(
+                    "coffee-shop",
+                    V(6, 0),
+                    1L,
+                    0,
+                    1f)));
+            engine.SetGameTime(1L, 1f);
+
+            for (int tick = 0; tick < 120; tick++)
+            {
+                engine.Tick(cfg.TickInterval);
+            }
+
+            Assert.AreEqual(0, engine.PendingTripCount);
+            Assert.AreEqual(0, engine.ActiveTripCount);
+            Assert.AreEqual(
+                1,
+                engine.ActiveVehicleCount,
+                "Released transient storage must not inflate city statistics.");
+            Assert.AreEqual(
+                2,
+                engine.CarSimVehicleStorageCount,
+                "The inactive transient remains available for reuse.");
+        }
+
+        [Test]
         public void StraightSingleCommute_SnapshotIndicesMatchActiveRouteTable()
         {
             SimConfig cfg = Cfg();
