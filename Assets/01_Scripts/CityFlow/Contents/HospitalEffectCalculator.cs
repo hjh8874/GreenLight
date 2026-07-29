@@ -40,44 +40,5 @@ namespace CityFlow.Content
                 coverageRadius;
         }
 
-        /// <summary>
-        /// 병원 한 채가 담당할 수 있는 주거 타일을 계산합니다.
-        /// 입력 목록 순서가 우선순위가 됩니다.
-        /// </summary>
-        public static int CalculateCoveredHouseCount(
-            Vector2Int hospitalTile,
-            int coverageRadius,
-            int patientCapacity,
-            IReadOnlyList<Vector2Int> houseTiles)
-        {
-            if (patientCapacity <= 0 ||
-                coverageRadius < 0 ||
-                houseTiles == null)
-            {
-                return 0;
-            }
-
-            int coveredCount = 0;
-
-            for (int i = 0; i < houseTiles.Count; i++)
-            {
-                if (!IsWithinHospitalCoverage(
-                    houseTiles[i],
-                    hospitalTile,
-                    coverageRadius))
-                {
-                    continue;
-                }
-
-                coveredCount++;
-
-                if (coveredCount >= patientCapacity)
-                {
-                    break;
-                }
-            }
-
-            return coveredCount;
-        }
     }
 }
