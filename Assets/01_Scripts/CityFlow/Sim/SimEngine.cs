@@ -262,14 +262,14 @@ namespace CityFlow.Sim
         {
             int jammed = 0;
             int roads = _grid.RoadTileCount;
-            for (int y = 0; y < _grid.Height; y++)
-            for (int x = 0; x < _grid.Width; x++)
+            for (int i = 0; i < roads; i++)
             {
-                var tile = new Vector2Int(x, y);
-                if (_grid.GetTile(tile) != TileType.Road) continue;
+                int index = _grid.GetRoadTileIndex(i);
+                var tile = new Vector2Int(
+                    index % _grid.Width,
+                    index / _grid.Width);
                 float occupancy = _roadQueues.MaxOccupancy01(tile);
                 CongestionLevel level = CongestionForOccupancy(occupancy, _config);
-                int index = y * _grid.Width + x;
                 if (_carCongestion[index] != level)
                 {
                     _carCongestion[index] = level;
@@ -520,6 +520,14 @@ namespace CityFlow.Sim
             else if (removed == TileType.Road)
             {
                 _roadTopologyChangePending = true;
+                int index = anchor.y * _grid.Width + anchor.x;
+                if (_carCongestion[index] != CongestionLevel.Free)
+                {
+                    _carCongestion[index] = CongestionLevel.Free;
+                    _events.QueueCongestion(new CongestionEvent(
+                        anchor,
+                        CongestionLevel.Free));
+                }
             }
             // 철거 = 조용: 그 타일의 연출 원료(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
             _events.QueuePlaced(new PlacedEvent(anchor, removed, isRemove: true, removedDir));
@@ -1135,6 +1143,7 @@ namespace CityFlow.Sim
             _placedBusStops.Clear();
             _busStopSet.Clear();
             _roadQueues.RemoveAllCars();
+            Array.Clear(_carCongestion, 0, _carCongestion.Length);
             _carSim.ClearPopulation();
             _buildingAssignmentChangePending = false;
             _roadTopologyChangePending = false;
