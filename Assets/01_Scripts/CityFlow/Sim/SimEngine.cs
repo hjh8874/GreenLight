@@ -1495,6 +1495,20 @@ namespace CityFlow.Sim
 
         public bool IsFootprintAnchor(Vector2Int tile) => _grid.IsFootprintAnchor(tile);
 
+        public bool TryGetConstructionProgress01(Vector2Int tile, out float progress01)
+        {
+            progress01 = 0f;
+            if (!_grid.TryGetFootprintAnchor(tile, out Vector2Int anchor)) return false;
+            if (!_construction.TryGet(anchor, out ConstructionSite site)) return false;
+
+            double total = site.CompleteAtSimSeconds - site.StartedAtSimSeconds;
+            if (total <= 0d) { progress01 = 1f; return true; }
+
+            double elapsed = _simTime - site.StartedAtSimSeconds;
+            progress01 = Mathf.Clamp01((float)(elapsed / total));
+            return true;
+        }
+
         public IReadOnlyList<Vector2Int> BusStopTiles => _placedBusStops;
 
         public bool CanPlaceBusStop(Vector2Int tile) =>

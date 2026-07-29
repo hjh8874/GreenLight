@@ -110,6 +110,12 @@ namespace CityFlow.Fakes
 
         public bool IsFootprintAnchor(Vector2Int tile) => GetTileType(tile) != TileType.Empty;
 
+        public bool TryGetConstructionProgress01(Vector2Int tile, out float progress01)
+        {
+            progress01 = 0f;
+            return false;
+        }
+
         public void Tick(float time, SimEventHub events)
         {
             if (events == null)

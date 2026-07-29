@@ -224,5 +224,31 @@ namespace CityFlow.Sim.Tests
             Assert.DoesNotThrow(() => restored.RestoreSnapshot(snap));
             Assert.AreEqual(TileType.House, restored.GetTileType(V(0, 0)));
         }
+
+        [Test]
+        public void ConstructionProgress_ReportsFraction_AndFalseWhenNotUnderConstruction()
+        {
+            SimConfig cfg = Cfg();
+            cfg.ConstructionHoursHouse = 4f;   // 4초 = 16틱
+            var engine = new SimEngine(cfg, new SimEventHub());
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
+
+            Assert.IsTrue(engine.TryGetConstructionProgress01(V(0, 0), out float start));
+            Assert.AreEqual(0f, start, 0.01f);
+
+            for (int i = 0; i < 8; i++) engine.Tick(0.25f);
+            Assert.IsTrue(engine.TryGetConstructionProgress01(V(0, 0), out float half));
+            Assert.AreEqual(0.5f, half, 0.01f);
+
+            // 풋프린트 비앵커 타일로 물어도 같은 값
+            Assert.IsTrue(engine.TryGetConstructionProgress01(V(1, 1), out float halfAtNonAnchor));
+            Assert.AreEqual(0.5f, halfAtNonAnchor, 0.01f);
+
+            for (int i = 0; i < 8; i++) engine.Tick(0.25f);
+            Assert.IsFalse(engine.TryGetConstructionProgress01(V(0, 0), out _),
+                "완성 후엔 false");
+            Assert.IsFalse(engine.TryGetConstructionProgress01(V(6, 3), out _),
+                "빈 타일도 false");
+        }
     }
 }
