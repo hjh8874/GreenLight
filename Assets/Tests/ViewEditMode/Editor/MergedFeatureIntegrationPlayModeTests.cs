@@ -102,6 +102,8 @@ namespace CityFlow.Tests.ViewEditMode
             schoolBus.RestoreSnapshot(null);
             GameCalendarService calendar =
                 RequireObject<GameCalendarService>();
+            var originalCalendarSnapshot =
+                calendar.CreateSnapshot();
             var calendarSnapshot = calendar.CreateSnapshot();
             calendarSnapshot.Year = 1;
             calendarSnapshot.Month = 1;
@@ -115,6 +117,12 @@ namespace CityFlow.Tests.ViewEditMode
             BusRoute schoolBusRoute =
                 schoolBus.GetComponent<BusRoute>();
             Assert.That(schoolBusRoute, Is.Not.Null);
+            float originalSchoolBusSecondsPerTile =
+                schoolBusRoute.SecondsPerTile;
+            float originalSchoolBusStopWaitSeconds =
+                schoolBusRoute.StopWaitSeconds;
+            var originalSchoolBusCanEnterTile =
+                schoolBusRoute.CanEnterTile;
             schoolBusRoute.SecondsPerTile = 0.01f;
             schoolBusRoute.StopWaitSeconds = 0f;
             schoolBusRoute.CanEnterTile = null;
@@ -135,6 +143,12 @@ namespace CityFlow.Tests.ViewEditMode
                     new object[] { 1f });
                 yield return null;
             }
+            schoolBusRoute.SecondsPerTile =
+                originalSchoolBusSecondsPerTile;
+            schoolBusRoute.StopWaitSeconds =
+                originalSchoolBusStopWaitSeconds;
+            schoolBusRoute.CanEnterTile =
+                originalSchoolBusCanEnterTile;
 
             Assert.That(
                 schoolBus.State,
@@ -175,6 +189,9 @@ namespace CityFlow.Tests.ViewEditMode
                             "GreenLight/CityFlow Opaque Unlit"));
                 }
             }
+            schoolBus.StopService();
+            calendar.RestoreSnapshot(
+                originalCalendarSnapshot);
 
             SpecialBuildingVisitTripSource visitTripSource =
                 RequireObject<SpecialBuildingVisitTripSource>();
