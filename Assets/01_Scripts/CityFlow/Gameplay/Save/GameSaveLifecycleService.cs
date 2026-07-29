@@ -152,7 +152,7 @@ namespace CityFlow.Gameplay.Save
 
         private void BindFloatingWindowSaveTrigger()
         {
-            floatingWindowService = FindAnyObjectByType<FloatingWindowService>();
+            floatingWindowService = FindFirstObjectByType<FloatingWindowService>();
 
             if (floatingWindowService == null)
             {

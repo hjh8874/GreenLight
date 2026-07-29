@@ -32,8 +32,8 @@ namespace CityFlow.UI.Controllers
         private void Start()
         {
             // 에디터 씬에 있는 코디네이터를 자동으로 찾아서 연결합니다.
-            _coordinator = FindAnyObjectByType<InfrastructurePlacementCoordinator>();
-            _tooltipController = FindAnyObjectByType<TooltipController>(FindObjectsInactive.Include);
+            _coordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>();
+            _tooltipController = FindFirstObjectByType<TooltipController>(FindObjectsInactive.Include);
 
             ResolveReferences();
             NormalizeLayout();

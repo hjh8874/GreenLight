@@ -103,7 +103,7 @@ namespace CityFlow.DebugTools
         private void ResolveReferences()
         {
             busRoute ??= GetComponent<BusRoute>();
-            cityView ??= FindAnyObjectByType<MainCityView>();
+            cityView ??= FindFirstObjectByType<MainCityView>();
         }
 
         private void Subscribe()

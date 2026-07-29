@@ -59,7 +59,7 @@ namespace CityFlow.DebugTools
         private void ResolveReferences()
         {
             stopRegistry ??= GetComponent<BusStopRegistry>();
-            cityView ??= FindAnyObjectByType<MainCityView>();
+            cityView ??= FindFirstObjectByType<MainCityView>();
         }
 
         private void Subscribe()

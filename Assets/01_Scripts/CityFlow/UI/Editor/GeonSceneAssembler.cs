@@ -18,7 +18,7 @@ namespace CityFlow.UI.Editor
                 return;
             }
 
-            var uidock = Object.FindAnyObjectByType<UIDockController>();
+            var uidock = Object.FindFirstObjectByType<UIDockController>();
             if (uidock == null)
             {
                 Debug.LogError("Error: UIDockController not found.");

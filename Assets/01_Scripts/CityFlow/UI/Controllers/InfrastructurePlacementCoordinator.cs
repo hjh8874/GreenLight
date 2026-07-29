@@ -51,7 +51,7 @@ namespace CityFlow.UI.Controllers
             _trafficRuleService = services.Placement as ITrafficRuleService;
             _highwayService = services.Placement as IHighwayService;
             _busStopService = services.Placement as IBusStopInfrastructureService;
-            _busStopRegistry = FindAnyObjectByType<BusStopRegistry>();
+            _busStopRegistry = FindFirstObjectByType<BusStopRegistry>();
             
             if (_economy == null)
             {
@@ -59,7 +59,7 @@ namespace CityFlow.UI.Controllers
             }
 
             // Find the original PlacementController in the scene to cross-cancel modes
-            _originalPlacementController = FindAnyObjectByType<PlacementController>();
+            _originalPlacementController = FindFirstObjectByType<PlacementController>();
         }
 
         private bool _isDemolishMode = false;

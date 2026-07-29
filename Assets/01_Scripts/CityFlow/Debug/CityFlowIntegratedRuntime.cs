@@ -313,7 +313,7 @@ namespace CityFlow.DebugTools
             highlight.GetComponent<Renderer>().material.color = new Color(1f, 1f, 1f, 0.55f);
 
             TileSelectionController selection = gameObject.AddComponent<TileSelectionController>();
-            selection.Configure(analysis, null, placementController, highlight);
+            selection.Configure(analysis, placementController, highlight);
 
             GameObject signalPanel = CreatePanel(canvas, "SignalPanel", new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(16f, -188f), new Vector2(360f, 126f));
             signalInfoText = CreateTmpText(signalPanel.transform, "SignalInfo", "Signal: none", new Vector2(12f, -12f), new Vector2(336f, 42f), 15);
