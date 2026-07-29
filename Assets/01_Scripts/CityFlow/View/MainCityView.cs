@@ -1111,6 +1111,12 @@ namespace CityFlow.View
                     includeRoadNetworkDetails: true);
                 tileVisuals.Add(tile, visual);
             }
+            else if (visual.Type != type)
+            {
+                RemoveTileVisual(tile);
+                visual = CreateTileVisual(tile, type);
+                tileVisuals.Add(tile, visual);
+            }
 
             visual.Type = type;
             Vector3 tileScale = GetTileScale(type);
