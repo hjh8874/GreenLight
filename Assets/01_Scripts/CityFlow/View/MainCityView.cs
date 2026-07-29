@@ -1114,7 +1114,11 @@ namespace CityFlow.View
             else if (visual.Type != type)
             {
                 RemoveTileVisual(tile);
-                visual = CreateTileVisual(tile, type);
+                visual = CreateTileVisual(
+                    tile,
+                    type,
+                    tileRoot,
+                    includeRoadNetworkDetails: true);
                 tileVisuals.Add(tile, visual);
             }
 
