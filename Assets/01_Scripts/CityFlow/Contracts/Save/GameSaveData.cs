@@ -15,6 +15,7 @@ namespace CityFlow.Contracts.Save
         public ResearchSaveData Research;
         public ProgressionSaveData Progression;
         public GameCalendarSaveData Calendar;
+        public SchoolBusSaveData SchoolBus;
         public RadioSaveData Radio;
         public TerrainDecorationSaveData TerrainDecorations;
         public WorldGridSaveData WorldGrid;

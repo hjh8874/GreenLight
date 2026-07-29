@@ -141,6 +141,8 @@ namespace CityFlow.EditorTools
                 4;
             serialized.FindProperty("leavingDemandPerStop").intValue =
                 2;
+            serialized.FindProperty("stopRevenueCoins").intValue =
+                5;
             serialized.FindProperty("routeColor").colorValue =
                 CyanColor;
 
@@ -317,8 +319,6 @@ namespace CityFlow.EditorTools
                         "movementDuration")
                     .floatValue =
                     busDefinition.SecondsPerTile;
-                busWorldSerialized.FindProperty("laneOffset")
-                    .floatValue = 0.18f;
                 busWorldSerialized
                     .ApplyModifiedPropertiesWithoutUndo();
 

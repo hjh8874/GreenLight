@@ -29,5 +29,46 @@ namespace CityFlow.ViewKit
             float availableDistance = Mathf.Max(0f, headway - Mathf.Max(0f, minimumHeadway));
             return Mathf.Min(Mathf.Max(0f, proposedAdvance), availableDistance);
         }
+
+        public static bool IsSameFlowDirection(
+            Vector3 firstDirection,
+            Vector3 secondDirection,
+            float minimumDot = 0.5f)
+        {
+            if (firstDirection.sqrMagnitude <= 0.0001f ||
+                secondDirection.sqrMagnitude <= 0.0001f)
+            {
+                return false;
+            }
+
+            return Vector3.Dot(
+                       firstDirection.normalized,
+                       secondDirection.normalized) >
+                   Mathf.Clamp(minimumDot, -1f, 1f);
+        }
+
+        public static bool HasTrafficConflictPriority(
+            bool subjectOccupiesIntersection,
+            EntityId subjectStableId,
+            bool otherOccupiesIntersection,
+            EntityId otherStableId)
+        {
+            if (subjectOccupiesIntersection !=
+                otherOccupiesIntersection)
+            {
+                return subjectOccupiesIntersection;
+            }
+
+            return subjectStableId < otherStableId;
+        }
+
+        public static float ClampCorridorToForwardProgress(
+            float currentDistance,
+            float authorizedDistance)
+        {
+            return Mathf.Max(
+                Mathf.Max(0f, currentDistance),
+                Mathf.Max(0f, authorizedDistance));
+        }
     }
 }

@@ -944,6 +944,7 @@ namespace CityFlow.Sim.Tests
                 new TestWorldGridAccess());
 
             Assert.IsTrue(engine.Place(V(90, 90), TileType.Road));
+            Assert.IsTrue(engine.Place(V(91, 90), TileType.Road));
             Assert.IsTrue(engine.CanPlaceBusStop(V(90, 91)));
             Assert.IsFalse(engine.CanPlaceBusStop(V(89, 90)));
             Assert.IsFalse(engine.TryPlaceBusStop(V(89, 90)));
@@ -962,6 +963,7 @@ namespace CityFlow.Sim.Tests
             Vector2Int stop = V(110, 101);
 
             Assert.IsTrue(source.Place(road, TileType.Road));
+            Assert.IsTrue(source.Place(V(111, 100), TileType.Road));
             Assert.IsTrue(source.TryPlaceBusStop(stop));
             SimSaveData snapshot = source.CreateSnapshot();
 

@@ -13,6 +13,9 @@ namespace CityFlow.Content
         MonoBehaviour,
         ICityFlowServiceConsumer
     {
+        private const string StopRevenueReason =
+            "city bus stop";
+
         [Header("Configuration")]
         [SerializeField] private BusDefinitionSO definition;
 
@@ -35,6 +38,7 @@ namespace CityFlow.Content
         public IReadOnlyList<Vector2Int> RouteStops =>
             routeStops;
         public bool IsInitialized => initialized;
+        public BusDefinitionSO Definition => definition;
 
         public event Action ServiceStarted;
         public event Action<Vector2Int, int, int> StopServed;
@@ -66,7 +70,10 @@ namespace CityFlow.Content
 
             services = cityServices;
             stopRegistry.Initialize(services);
+            busRoute.UseRoadsideStopApproach = true;
             busRoute.Initialize(services);
+            busRoute.SecondsPerTile =
+                definition.SecondsPerTile;
             busRoute.StopWaitSeconds =
                 definition.StopWaitSeconds;
             Runtime = new BusRuntime(
@@ -267,6 +274,7 @@ namespace CityFlow.Content
         {
             routeRefreshPending = false;
             Vector2Int currentStop = busRoute.CurrentStop;
+            Vector2Int currentPosition = busRoute.CurrentTile;
             bool currentStopIsRegistered =
                 BuildRouteStopsFrom(currentStop);
             bool routeConfigured =
@@ -274,7 +282,7 @@ namespace CityFlow.Content
                     ? busRoute.ReconfigureLoopAtCurrentStop(
                         routeStops)
                     : busRoute.ReconfigureLoopFromCurrentPosition(
-                        currentStop,
+                        currentPosition,
                         routeStops);
 
             if (stopRegistry.BusStopCount < 1 ||
@@ -353,6 +361,7 @@ namespace CityFlow.Content
             int boarded = Runtime.Board(
                 definition.BoardingDemandPerStop);
             Runtime.CompleteStop();
+            GrantStopRevenue(tile);
             Runtime.SetRoutePosition(
                 tile,
                 busRoute.NextStop);
@@ -361,6 +370,29 @@ namespace CityFlow.Content
                 tile,
                 boarded,
                 left);
+        }
+
+        private void GrantStopRevenue(Vector2Int tile)
+        {
+            int revenue = definition.StopRevenueCoins;
+
+            if (revenue <= 0 ||
+                services?.Economy == null ||
+                services.Save?.IsRestoring == true)
+            {
+                return;
+            }
+
+            services.Economy.AddCoins(
+                revenue,
+                StopRevenueReason);
+
+            if (verboseLogging)
+            {
+                Debug.Log(
+                    $"[CityBusService] Earned {revenue} coins at stop {tile}.",
+                    this);
+            }
         }
 
         private void OnRouteUnavailable()

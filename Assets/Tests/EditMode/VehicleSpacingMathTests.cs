@@ -1,5 +1,6 @@
 using CityFlow.ViewKit;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace CityFlow.Sim.Tests
 {
@@ -64,6 +65,93 @@ namespace CityFlow.Sim.Tests
                 minimumHeadway: 0.55f);
 
             Assert.AreEqual(0f, result, 1e-4f);
+        }
+
+        [Test]
+        public void IsSameFlowDirection_OppositeLaneIsNotLeader()
+        {
+            Assert.IsFalse(
+                VehicleSpacingMath.IsSameFlowDirection(
+                    Vector3.right,
+                    Vector3.left));
+        }
+
+        [Test]
+        public void IsSameFlowDirection_FollowsTurnDirection()
+        {
+            Assert.IsTrue(
+                VehicleSpacingMath.IsSameFlowDirection(
+                    Vector3.up,
+                    new Vector3(0.1f, 1f, 0f)));
+        }
+
+        [Test]
+        public void TrafficConflictPriority_IntersectionOccupantAlwaysWins()
+        {
+            Assert.IsTrue(
+                VehicleSpacingMath.HasTrafficConflictPriority(
+                    subjectOccupiesIntersection: true,
+                    subjectStableId:
+                        EntityId.FromULong(20),
+                    otherOccupiesIntersection: false,
+                    otherStableId:
+                        EntityId.FromULong(10)));
+            Assert.IsFalse(
+                VehicleSpacingMath.HasTrafficConflictPriority(
+                    subjectOccupiesIntersection: false,
+                    subjectStableId:
+                        EntityId.FromULong(10),
+                    otherOccupiesIntersection: true,
+                    otherStableId:
+                        EntityId.FromULong(20)));
+        }
+
+        [Test]
+        public void TrafficConflictPriority_StableIdBreaksTieSymmetrically()
+        {
+            bool firstHasPriority =
+                VehicleSpacingMath.HasTrafficConflictPriority(
+                    subjectOccupiesIntersection: false,
+                    subjectStableId:
+                        EntityId.FromULong(10),
+                    otherOccupiesIntersection: false,
+                    otherStableId:
+                        EntityId.FromULong(20));
+            bool secondHasPriority =
+                VehicleSpacingMath.HasTrafficConflictPriority(
+                    subjectOccupiesIntersection: false,
+                    subjectStableId:
+                        EntityId.FromULong(20),
+                    otherOccupiesIntersection: false,
+                    otherStableId:
+                        EntityId.FromULong(10));
+
+            Assert.IsTrue(firstHasPriority);
+            Assert.IsFalse(secondHasPriority);
+        }
+
+        [Test]
+        public void ClampCorridorToForwardProgress_DoesNotMoveVehicleBackward()
+        {
+            float result =
+                VehicleSpacingMath
+                    .ClampCorridorToForwardProgress(
+                        currentDistance: 4f,
+                        authorizedDistance: 2f);
+
+            Assert.AreEqual(4f, result, 1e-4f);
+        }
+
+        [Test]
+        public void ClampCorridorToForwardProgress_AllowsForwardAuthority()
+        {
+            float result =
+                VehicleSpacingMath
+                    .ClampCorridorToForwardProgress(
+                        currentDistance: 2f,
+                        authorizedDistance: 4f);
+
+            Assert.AreEqual(4f, result, 1e-4f);
         }
     }
 }

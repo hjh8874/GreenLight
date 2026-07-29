@@ -51,7 +51,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.Transit.BusRoute
   gridWidth: 20
   gridHeight: 20
-  secondsPerTile: 0.22
+  secondsPerTile: 0.65
   stopWaitSeconds: 0.8
   loopRoute: 1
   autoStart: 0
@@ -123,8 +123,7 @@ MonoBehaviour:
   busMaterial: {fileID: 2100000, guid: 27df31b99e4d03c4d85000f0c27dc500, type: 2}
   visualScale: 0.085
   visualDepth: -0.38
-  movementDuration: 0.22
-  laneOffset: 0.18
+  movementDuration: 0.65
 --- !u!114 &1183233741817494639
 MonoBehaviour:
   m_ObjectHideFlags: 0

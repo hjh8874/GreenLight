@@ -10,21 +10,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2dc7f33793dfe6d48935897bfa5decf9, type: 3}
-  m_Name: CityBusDefinition
+  m_Name: SchoolBusDefinition
   m_EditorClassIdentifier: CityFlow.Content::CityFlow.Content.BusDefinitionSO
-  busId: prototype_city_bus
-  displayName: GreenLight City Bus
-  busType: 1
-  secondsPerTile: 0.65
-  stopWaitSeconds: 0.8
-  initialStops:
-  - {x: 5, y: 12}
-  - {x: 13, y: 11}
-  - {x: 8, y: 16}
-  - {x: 9, y: 8}
-  passengerCapacity: 20
-  boardingDemandPerStop: 4
-  leavingDemandPerStop: 2
-  stopRevenueCoins: 5
-  routeColor: {r: 0.3, g: 0.75, b: 0.92, a: 1}
-  vehicleVisualPrefab: {fileID: 0}
+  busId: school_bus
+  displayName: School Bus
+  busType: 2
+  secondsPerTile: 0.24
+  stopWaitSeconds: 1.2
+  initialStops: []
+  passengerCapacity: 12
+  boardingDemandPerStop: 3
+  leavingDemandPerStop: 12
+  vehicleLengthTiles: 0.64
+  vehicleWidthTiles: 0.24
+  routeColor: {r: 0.96, g: 0.64, b: 0.08, a: 1}
+  vehicleVisualPrefab: {fileID: 100000, guid: aeccb9afd2c5d0a49806a3a543b169d2, type: 3}

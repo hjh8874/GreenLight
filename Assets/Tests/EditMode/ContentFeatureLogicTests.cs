@@ -147,10 +147,19 @@ namespace CityFlow.Sim.Tests
             SimConfig config = SimConfig.Default();
             var source = new SimEngine(config, new SimEventHub());
             Vector2Int road = new(2, 2);
+            Vector2Int approachRoad = new(3, 2);
             Vector2Int stop = new(2, 3);
+            Vector2Int invalidEndpointStop = new(1, 2);
 
             Assert.That(source.Place(road, TileType.Road), Is.True);
+            Assert.That(
+                source.Place(approachRoad, TileType.Road),
+                Is.True);
             Assert.That(source.CanPlaceBusStop(stop), Is.True);
+            Assert.That(
+                source.CanPlaceBusStop(invalidEndpointStop),
+                Is.False,
+                "A stop without a right-lane arrival approach must be rejected.");
             Assert.That(source.TryPlaceBusStop(stop), Is.True);
             Assert.That(source.TryPlaceBusStop(stop), Is.False);
             Assert.That(
@@ -179,12 +188,17 @@ namespace CityFlow.Sim.Tests
             SimConfig config = SimConfig.Default();
             var source = new SimEngine(config, new SimEventHub());
             Vector2Int primaryRoad = new(2, 2);
+            Vector2Int primaryApproach = new(3, 2);
             Vector2Int alternativeRoad = new(3, 3);
+            Vector2Int alternativeApproach = new(3, 4);
             Vector2Int stop = new(2, 3);
             Vector2Int buildingAnchor = new(1, 3);
 
             Assert.That(
                 source.Place(primaryRoad, TileType.Road),
+                Is.True);
+            Assert.That(
+                source.Place(primaryApproach, TileType.Road),
                 Is.True);
             Assert.That(source.TryPlaceBusStop(stop), Is.True);
 
@@ -210,7 +224,14 @@ namespace CityFlow.Sim.Tests
                 Is.False,
                 "The last access road must remain while the stop is installed.");
             Assert.That(
+                source.Remove(primaryApproach),
+                Is.False,
+                "The required approach road must remain while the stop is installed.");
+            Assert.That(
                 source.Place(alternativeRoad, TileType.Road),
+                Is.True);
+            Assert.That(
+                source.Place(alternativeApproach, TileType.Road),
                 Is.True);
             Assert.That(source.Remove(primaryRoad), Is.True);
             Assert.That(source.BusStopTiles, Does.Contain(stop));
@@ -263,6 +284,58 @@ namespace CityFlow.Sim.Tests
             restored.RestoreSnapshot(snapshot);
 
             Assert.That(restored.BusStopTiles, Is.Empty);
+        }
+
+        [Test]
+        public void BusStopInfrastructure_RestoresLegacySingleRoadStopOnly()
+        {
+            SimConfig config = SimConfig.Default();
+            var source =
+                new SimEngine(config, new SimEventHub());
+            Vector2Int accessRoad = new(2, 2);
+            Vector2Int unrelatedRoad = new(8, 8);
+            Vector2Int legacyStop = new(2, 3);
+
+            Assert.That(
+                source.Place(accessRoad, TileType.Road),
+                Is.True);
+            Assert.That(
+                source.Place(unrelatedRoad, TileType.Road),
+                Is.True);
+            Assert.That(
+                source.CanPlaceBusStop(legacyStop),
+                Is.False,
+                "New stops must still require a valid right-lane approach.");
+
+            SimSaveData snapshot = source.CreateSnapshot();
+            snapshot.BusStops = new[]
+            {
+                new BusStopSaveData
+                {
+                    X = legacyStop.x,
+                    Y = legacyStop.y
+                }
+            };
+
+            var restored =
+                new SimEngine(config, new SimEventHub());
+            restored.RestoreSnapshot(snapshot);
+
+            Assert.That(
+                restored.BusStopTiles,
+                Does.Contain(legacyStop),
+                "A legacy stop with one adjacent road must survive restore.");
+            Assert.That(
+                restored.CanPlaceBusStop(legacyStop),
+                Is.False);
+            Assert.That(
+                restored.Remove(unrelatedRoad),
+                Is.True,
+                "A legacy stop must not block unrelated road removal.");
+            Assert.That(
+                restored.Remove(accessRoad),
+                Is.False,
+                "The legacy stop's last access road must remain.");
         }
 
         [Test]
