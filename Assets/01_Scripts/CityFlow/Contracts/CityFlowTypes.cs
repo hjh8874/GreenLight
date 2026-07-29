@@ -57,6 +57,20 @@ namespace CityFlow.Contracts
         /// </summary>
         public static float ToAngle(PlacementDirection direction) =>
             (int)direction * 90f;
+
+        /// <summary>
+        /// 기본 모델에서 주차장·출입구가 놓인 로컬 앞면 방향을 반환합니다.
+        /// North(0°) 모델의 앞면은 그리드 -Y이며 회전 방향과 함께 시계 방향으로 돕니다.
+        /// </summary>
+        public static Vector2Int GetFrontOffset(
+            PlacementDirection direction) =>
+            direction switch
+            {
+                PlacementDirection.East => Vector2Int.right,
+                PlacementDirection.South => Vector2Int.up,
+                PlacementDirection.West => Vector2Int.left,
+                _ => Vector2Int.down
+            };
     }
 
     public enum CongestionLevel

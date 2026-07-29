@@ -166,6 +166,37 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void RotatedBuildings_UseParkingSideRoadsForCommute()
+        {
+            var g = new CityGrid(11, 8);
+            Assert.IsTrue(
+                g.Place(
+                    V(1, 3),
+                    TileType.House,
+                    PlacementDirection.East));
+            Assert.IsTrue(
+                g.Place(
+                    V(7, 3),
+                    TileType.Office,
+                    PlacementDirection.West));
+
+            for (int x = 3; x <= 6; x++)
+            {
+                Assert.IsTrue(g.Place(V(x, 3), TileType.Road));
+            }
+
+            Assert.IsTrue(g.Place(V(1, 5), TileType.Road));
+            Assert.IsTrue(g.Place(V(9, 3), TileType.Road));
+
+            var dm = new DemandMap(NearestCfg());
+            dm.Reassign(g, new RoadNetwork(g));
+
+            Assert.That(dm.Demands.Count, Is.EqualTo(1));
+            Assert.That(dm.Demands[0].SourceRoad, Is.EqualTo(V(3, 3)));
+            Assert.That(dm.Demands[0].SinkRoad, Is.EqualTo(V(6, 3)));
+        }
+
+        [Test]
         public void ChoicePool_SpreadsAssignments_Deterministically()
         {
             // 기본 풀(3): 가까운 3곳 중 좌표 해시로 택1 — 전부 최근접으로 쏠리지 않고,

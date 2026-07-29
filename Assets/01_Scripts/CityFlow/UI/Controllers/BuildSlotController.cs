@@ -247,11 +247,13 @@ namespace CityFlow.UI
                     return;
                 }
 
-                _placementController.SetSpecialBuilding(
-                    _specialBuilding.BuildingId);
-                Debug.Log(
-                    $"[BuildSlot] {_specialBuilding.DisplayName} 건설 모드 활성화",
-                    this);
+                if (_placementController.SetSpecialBuilding(
+                        _specialBuilding.BuildingId))
+                {
+                    Debug.Log(
+                        $"[BuildSlot] {_specialBuilding.DisplayName} 건설 모드 활성화",
+                        this);
+                }
             }
             else if (_placementController != null && tileData != null)
             {

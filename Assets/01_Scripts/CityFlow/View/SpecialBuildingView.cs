@@ -28,6 +28,37 @@ namespace CityFlow.View
 
         public int VisualCount => visuals.Count;
 
+        public bool TryCreatePlacementPreview(
+            string buildingId,
+            out GameObject preview)
+        {
+            preview = null;
+            if (catalog == null ||
+                !catalog.TryGet(
+                    buildingId,
+                    out BuildingDefinitionSO definition))
+            {
+                return false;
+            }
+
+            if (definition.VisualPrefab == null &&
+                fallbackPrefab == null)
+            {
+                return false;
+            }
+
+            var root =
+                new GameObject(
+                    $"PlacementPreview_{definition.buildingId}");
+            CreateConfiguredVisual(
+                definition,
+                root.transform,
+                "BuildingVisual");
+
+            preview = root;
+            return true;
+        }
+
         public void Initialize(CityFlowServices cityServices)
         {
             if (!isActiveAndEnabled || initialized)
@@ -145,14 +176,6 @@ namespace CityFlow.View
             RemoveVisual(building.Anchor);
             EnsureVisualRoot();
 
-            bool usesFallback = definition.VisualPrefab == null;
-            GameObject sourcePrefab = usesFallback
-                ? fallbackPrefab
-                : definition.VisualPrefab;
-            GameObject instance = Instantiate(sourcePrefab, visualRoot);
-            instance.name = $"{building.BuildingId}_" +
-                            $"{building.Anchor.x}_{building.Anchor.y}";
-
             IWorldCoordinateSpace coordinates = services.WorldCoordinates;
             Vector2Int footprint = definition.Footprint;
             Vector2 center = new Vector2(
@@ -162,26 +185,66 @@ namespace CityFlow.View
                 0f,
                 0f,
                 TileFootprint.ToAngle(building.Direction));
-            Quaternion worldRotation =
+            Quaternion rootRotation =
                 coordinates.CoordinateRotation *
-                directionRotation *
-                Quaternion.Euler(definition.VisualEulerAngles);
+                directionRotation;
 
-            instance.transform.SetPositionAndRotation(
-                coordinates.GridPointToWorld(center, surfaceOffset) +
-                worldRotation * definition.VisualOffset,
-                worldRotation);
-            instance.transform.localScale = definition.VisualScale;
+            var root = new GameObject(
+                $"{building.BuildingId}_" +
+                $"{building.Anchor.x}_{building.Anchor.y}");
+            root.transform.SetParent(visualRoot, false);
+            root.transform.SetPositionAndRotation(
+                coordinates.GridPointToWorld(
+                    center,
+                    surfaceOffset),
+                rootRotation);
+            CreateConfiguredVisual(
+                definition,
+                root.transform,
+                "BuildingVisual");
+
+            visuals.Add(building.Anchor, root);
+        }
+
+        private GameObject CreateConfiguredVisual(
+            BuildingDefinitionSO definition,
+            Transform parent,
+            string visualName)
+        {
+            bool usesFallback =
+                definition.VisualPrefab == null;
+            GameObject sourcePrefab = usesFallback
+                ? fallbackPrefab
+                : definition.VisualPrefab;
+            GameObject instance =
+                Instantiate(sourcePrefab, parent);
+            instance.name = visualName;
+
+            Quaternion visualRotation =
+                Quaternion.Euler(
+                    definition.VisualEulerAngles);
+            instance.transform.localPosition =
+                visualRotation *
+                definition.VisualOffset;
+            instance.transform.localRotation =
+                visualRotation;
+            instance.transform.localScale =
+                definition.VisualScale;
             DisableColliders(instance);
 
             if (usesFallback &&
                 instance.TryGetComponent(
                     out SpecialBuildingFallbackPresenter presenter))
             {
-                presenter.Configure(definition, coordinates.TileSize);
+                float tileSize =
+                    services?.WorldCoordinates?.TileSize ??
+                    1f;
+                presenter.Configure(
+                    definition,
+                    tileSize);
             }
 
-            visuals.Add(building.Anchor, instance);
+            return instance;
         }
 
         private void EnsureVisualRoot()

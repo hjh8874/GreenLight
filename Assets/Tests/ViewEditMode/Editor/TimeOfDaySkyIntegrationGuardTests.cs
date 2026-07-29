@@ -15,6 +15,14 @@ namespace CityFlow.Tests.ViewEditMode
             "Assets/05_ScriptableObjects/Environment/TimeOfDaySkyProfile.asset";
         private const string PrefabPath =
             "Assets/02_Prefabs/Environment/TimeOfDaySkySystem.prefab";
+        private const string WorldCoordinatePrefabPath =
+            "Assets/02_Prefabs/WorldCoordinates/WorldCoordinateSystem.prefab";
+        private const string WorldGridPrefabPath =
+            "Assets/02_Prefabs/WorldGrid/WorldGridSystem.prefab";
+        private const string CityBusPrefabPath =
+            "Assets/02_Prefabs/Vehicles/CityBusContent.prefab";
+        private const string SpecialBuildingPrefabPath =
+            "Assets/02_Prefabs/Buildings/SpecialBuildingSystem.prefab";
         private const string IntegrationScenePath =
             "Assets/00_Scenes/CityFlowIntegrated_cmt.unity";
 
@@ -163,6 +171,28 @@ namespace CityFlow.Tests.ViewEditMode
             Assert.That(
                 dependencies,
                 Does.Contain(PrefabPath));
+        }
+
+        [Test]
+        public void IntegrationScene_ContainsMergedFeaturePrefabs()
+        {
+            string[] dependencies =
+                AssetDatabase.GetDependencies(
+                    IntegrationScenePath,
+                    true);
+
+            Assert.That(
+                dependencies,
+                Does.Contain(WorldCoordinatePrefabPath));
+            Assert.That(
+                dependencies,
+                Does.Contain(WorldGridPrefabPath));
+            Assert.That(
+                dependencies,
+                Does.Contain(CityBusPrefabPath));
+            Assert.That(
+                dependencies,
+                Does.Contain(SpecialBuildingPrefabPath));
         }
 
         [Test]

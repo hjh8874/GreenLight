@@ -78,12 +78,28 @@ namespace CityFlow.Sim
             }
         }
 
-        // 건물(집·회사)의 접점 = 인접 8방 중 첫 도로 타일(직각 먼저, 그다음 대각).
-        // RoutePlanner와 같은 스캔 순서 → 어느 도로가 접점인지 결정론적. 대각 접점도 연결.
-        // ⚠ 스캔 순서(상 우선)는 테스트 기하(AxisFlowTests 등)가 접점 위치로 의존 — 바꾸면 테스트 기하 재검증.
+        // 건물(집·회사)의 접점은 배치 방향의 앞면 도로를 사용한다.
+        // R로 회전한 비기본 방향은 앞면 도로가 없으면 접근 불가로 두어 건물 관통을 막는다.
+        // 구버전 저장의 기본 North만 기존 자동 정렬과 8방 스캔 폴백을 유지한다.
         public bool TryGetAccessRoad(Vector2Int building, out Vector2Int road)
         {
             Vector2Int size = GetBuildingFootprintSize(building);
+            if (TryGetPreferredFrontRoad(building, size, out road))
+            {
+                return true;
+            }
+
+            if (HasExplicitPlacementDirection(building))
+            {
+                road = default;
+                return false;
+            }
+
+            if (TryGetFallbackFacingRoad(building, size, out road))
+            {
+                return true;
+            }
+
             for (int y = 0; y < size.y; y++)
             {
                 for (int x = 0; x < size.x; x++)
@@ -100,15 +116,24 @@ namespace CityFlow.Sim
             return false;
         }
 
-        // 건물의 모든 도로 프론티지(같은 8방 스캔 순서)를 buffer에 누적. 할당 없음 — 호출자가
-        // buffer 소유(재사용 패턴, Reassign/Plan 같은 재구축 경로에서만 호출). Clear는 호출자 책임
+        // 건물의 선택 앞면 프론티지를 먼저 buffer에 누적한다. 비기본 회전 방향은 앞면만 허용한다.
+        // 구버전 저장의 기본 North는 자동 정렬 폴백과 다른 Region 접근성 보존을 위해 나머지
+        // 8방 프론티지도 누적한다. 호출자가 buffer 소유(재사용 패턴, Reassign/Plan 같은 재구축
+        // 경로에서만 호출). Clear는 호출자 책임
         // (DemandMap.Collect와 동일 관례).
         // 감사 픽스 2: 건물이 서로 다른 Region에 프론티지를 여러 개 가질 때(막다른 스텁 + 간선)
         // TryGetAccessRoad 하나만 보면 도달 가능한 프론티지를 놓칠 수 있음 → 전수 수집으로 대응.
         public void CollectAccessRoads(Vector2Int building, List<Vector2Int> buffer)
         {
-            var seen = new HashSet<Vector2Int>(buffer);
             Vector2Int size = GetBuildingFootprintSize(building);
+            CollectPreferredFrontRoads(building, size, buffer);
+            if (HasExplicitPlacementDirection(building))
+            {
+                return;
+            }
+
+            CollectFallbackFacingRoads(building, size, buffer);
+
             for (int y = 0; y < size.y; y++)
             {
                 for (int x = 0; x < size.x; x++)
@@ -117,7 +142,7 @@ namespace CityFlow.Sim
                     for (int d = 0; d < DX.Length; d++)
                     {
                         var v = new Vector2Int(occupied.x + DX[d], occupied.y + DY[d]);
-                        if (IsRoad(v) && seen.Add(v)) buffer.Add(v);
+                        AddRoadIfPresent(v, buffer);
                     }
                 }
             }
@@ -126,7 +151,248 @@ namespace CityFlow.Sim
         private Vector2Int GetBuildingFootprintSize(Vector2Int building)
         {
             TileType type = _grid.GetTile(building);
-            return TileFootprint.GetSize(type);
+            return TileFootprint.GetRotatedSize(
+                type,
+                _grid.GetDirection(building));
+        }
+
+        private bool HasExplicitPlacementDirection(
+            Vector2Int building) =>
+            TileFootprint.IsBuilding(_grid.GetTile(building)) &&
+            _grid.GetDirection(building) != PlacementDirection.North;
+
+        private bool TryGetPreferredFrontRoad(
+            Vector2Int building,
+            Vector2Int size,
+            out Vector2Int road)
+        {
+            TileType type = _grid.GetTile(building);
+            if (!TileFootprint.IsBuilding(type))
+            {
+                road = default;
+                return false;
+            }
+
+            return TryGetRoadAlongFront(
+                building,
+                size,
+                _grid.GetDirection(building),
+                out road);
+        }
+
+        private bool TryGetFallbackFacingRoad(
+            Vector2Int building,
+            Vector2Int size,
+            out Vector2Int road)
+        {
+            if (!TileFootprint.IsBuilding(_grid.GetTile(building)) ||
+                !TryGetFallbackFacingDirection(
+                    building,
+                    size,
+                    out PlacementDirection direction))
+            {
+                road = default;
+                return false;
+            }
+
+            return TryGetRoadAlongFront(
+                building,
+                size,
+                direction,
+                out road);
+        }
+
+        private void CollectPreferredFrontRoads(
+            Vector2Int building,
+            Vector2Int size,
+            List<Vector2Int> buffer)
+        {
+            TileType type = _grid.GetTile(building);
+            if (!TileFootprint.IsBuilding(type))
+            {
+                return;
+            }
+
+            CollectRoadsAlongFront(
+                building,
+                size,
+                _grid.GetDirection(building),
+                buffer);
+        }
+
+        private void CollectFallbackFacingRoads(
+            Vector2Int building,
+            Vector2Int size,
+            List<Vector2Int> buffer)
+        {
+            if (TileFootprint.IsBuilding(_grid.GetTile(building)) &&
+                TryGetFallbackFacingDirection(
+                    building,
+                    size,
+                    out PlacementDirection direction))
+            {
+                CollectRoadsAlongFront(
+                    building,
+                    size,
+                    direction,
+                    buffer);
+            }
+        }
+
+        private bool TryGetFallbackFacingDirection(
+            Vector2Int building,
+            Vector2Int size,
+            out PlacementDirection direction)
+        {
+            int south = CountRoadsAlongFront(
+                building,
+                size,
+                PlacementDirection.North);
+            int east = CountRoadsAlongFront(
+                building,
+                size,
+                PlacementDirection.East);
+            int north = CountRoadsAlongFront(
+                building,
+                size,
+                PlacementDirection.South);
+            int west = CountRoadsAlongFront(
+                building,
+                size,
+                PlacementDirection.West);
+
+            int best = Mathf.Max(south, east, north, west);
+            if (best <= 0)
+            {
+                direction = default;
+                return false;
+            }
+
+            direction = best == south
+                ? PlacementDirection.North
+                : best == east
+                    ? PlacementDirection.East
+                    : best == north
+                        ? PlacementDirection.South
+                        : PlacementDirection.West;
+            return true;
+        }
+
+        private bool TryGetRoadAlongFront(
+            Vector2Int building,
+            Vector2Int size,
+            PlacementDirection direction,
+            out Vector2Int road)
+        {
+            Vector2Int front = TileFootprint.GetFrontOffset(direction);
+            if (front.x != 0)
+            {
+                int x = front.x > 0
+                    ? building.x + size.x
+                    : building.x - 1;
+                for (int y = 0; y < size.y; y++)
+                {
+                    road = new Vector2Int(x, building.y + y);
+                    if (IsRoad(road))
+                    {
+                        return true;
+                    }
+                }
+            }
+            else
+            {
+                int y = front.y > 0
+                    ? building.y + size.y
+                    : building.y - 1;
+                for (int x = 0; x < size.x; x++)
+                {
+                    road = new Vector2Int(building.x + x, y);
+                    if (IsRoad(road))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            road = default;
+            return false;
+        }
+
+        private void CollectRoadsAlongFront(
+            Vector2Int building,
+            Vector2Int size,
+            PlacementDirection direction,
+            List<Vector2Int> buffer)
+        {
+            Vector2Int front = TileFootprint.GetFrontOffset(direction);
+            if (front.x != 0)
+            {
+                int x = front.x > 0
+                    ? building.x + size.x
+                    : building.x - 1;
+                for (int y = 0; y < size.y; y++)
+                {
+                    AddRoadIfPresent(
+                        new Vector2Int(x, building.y + y),
+                        buffer);
+                }
+                return;
+            }
+
+            int frontageY = front.y > 0
+                ? building.y + size.y
+                : building.y - 1;
+            for (int x = 0; x < size.x; x++)
+            {
+                AddRoadIfPresent(
+                    new Vector2Int(building.x + x, frontageY),
+                    buffer);
+            }
+        }
+
+        private int CountRoadsAlongFront(
+            Vector2Int building,
+            Vector2Int size,
+            PlacementDirection direction)
+        {
+            Vector2Int front = TileFootprint.GetFrontOffset(direction);
+            int count = 0;
+            if (front.x != 0)
+            {
+                int x = front.x > 0
+                    ? building.x + size.x
+                    : building.x - 1;
+                for (int y = 0; y < size.y; y++)
+                {
+                    if (IsRoad(new Vector2Int(x, building.y + y)))
+                    {
+                        count++;
+                    }
+                }
+                return count;
+            }
+
+            int frontageY = front.y > 0
+                ? building.y + size.y
+                : building.y - 1;
+            for (int x = 0; x < size.x; x++)
+            {
+                if (IsRoad(new Vector2Int(building.x + x, frontageY)))
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        private void AddRoadIfPresent(
+            Vector2Int tile,
+            List<Vector2Int> buffer)
+        {
+            if (IsRoad(tile) && !buffer.Contains(tile))
+            {
+                buffer.Add(tile);
+            }
         }
 
         bool InBounds(Vector2Int v) => v.x >= 0 && v.x < _w && v.y >= 0 && v.y < _h;
