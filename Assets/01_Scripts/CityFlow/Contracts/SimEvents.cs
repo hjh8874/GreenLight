@@ -15,6 +15,16 @@ namespace CityFlow.Contracts
         }
     }
 
+    public readonly struct VehicleTripArrivedEvent
+    {
+        public VehicleTripArrivedEvent(VehicleTripSnapshot trip)
+        {
+            Trip = trip;
+        }
+
+        public VehicleTripSnapshot Trip { get; }
+    }
+
     public readonly struct FlowBurstEvent
     {
         public readonly Vector2Int Tile;
@@ -72,12 +82,16 @@ namespace CityFlow.Contracts
     public sealed class SimEventHub
     {
         public event Action<ArrivalEvent> Arrival;
+        public event Action<VehicleTripArrivedEvent> VehicleTripArrived;
         public event Action<FlowBurstEvent> FlowBurst;
         public event Action<CongestionEvent> CongestionChanged;
         public event Action<PlacedEvent> Placed;
         public event Action<InfrastructureChangedEvent> InfrastructureChanged;
 
         public void Publish(ArrivalEvent e) => Arrival?.Invoke(e);
+
+        public void Publish(VehicleTripArrivedEvent e) =>
+            VehicleTripArrived?.Invoke(e);
 
         public void Publish(FlowBurstEvent e) => FlowBurst?.Invoke(e);
 
