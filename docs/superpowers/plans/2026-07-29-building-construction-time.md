@@ -305,7 +305,7 @@ Expected: 컴파일 에러 `'CityGrid' does not contain a definition for 'Promot
 Expected: 2/2 PASS
 
 그 다음 전체: `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **395/395 PASS** (393 + 신규 2)
+Expected: **396/396 PASS** (393 + 신규 2 + 리뷰 회귀 1)
 
 - [ ] **Step 5: 커밋**
 
@@ -638,7 +638,7 @@ namespace CityFlow.Sim
 - [ ] **Step 8: 통과 확인**
 
 `refresh_unity` → `read_console`(error 0) → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **401/401 PASS** (393 + Task 3의 2 + 본 태스크 6)
+Expected: **402/402 PASS** (396 + 본 태스크 6)
 
 - [ ] **Step 9: 커밋**
 
@@ -705,7 +705,7 @@ Expected: FAIL — 20틱 뒤 타일이 `House`로 되살아남
 - [ ] **Step 4: 통과 확인**
 
 `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **402/402 PASS**
+Expected: **403/403 PASS**
 
 - [ ] **Step 5: 커밋**
 
@@ -873,7 +873,7 @@ namespace CityFlow.Contracts.Save
 - [ ] **Step 7: 통과 확인**
 
 `refresh_unity` → `read_console`(error 0) → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **404/404 PASS**
+Expected: **405/405 PASS**
 
 - [ ] **Step 8: 커밋**
 
@@ -1003,7 +1003,7 @@ grep -rln "IReadOnlyTileData" Assets/01_Scripts --include='*.cs'
 - [ ] **Step 6: 통과 확인**
 
 `refresh_unity` → `read_console`(error 0) → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **405/405 PASS**
+Expected: **406/406 PASS**
 
 - [ ] **Step 7: 커밋**
 
@@ -1090,7 +1090,7 @@ MainCityView 타일 비주얼 수정 포함 — 이진우 소유 구역이라 �
 
 ## 완료 기준
 
-- EditMode `CityFlow.Sim.Tests` **405/405 green** (393 기준선 + 신규 12)
+- EditMode `CityFlow.Sim.Tests` **406/406 green** (393 기준선 + 신규 13)
 - 컴파일 에러 0
 - 통합 씬 파일이 커밋에 **없음**
 - `.asset` 3개에 `ConstructionHours*` 5개씩 전부 기입됨
