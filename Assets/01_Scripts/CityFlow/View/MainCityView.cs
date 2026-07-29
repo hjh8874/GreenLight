@@ -216,6 +216,9 @@ namespace CityFlow.View
         public int GridHeight => height;
         public Vector2Int GridOrigin => gridOrigin;
         public float TileSize => tileSize;
+        public float LaneOffset => Mathf.Max(0f, laneOffset);
+        public float VehicleMinHeadway =>
+            Mathf.Max(0.05f, vehicleMinHeadway);
         public float FieldTileZ => fieldTileZ;
         public GameObject FieldTilePrefab => fieldTilePrefab;
         public float GridLineThickness => gridLineThickness;
@@ -2912,7 +2915,7 @@ namespace CityFlow.View
                 : tileCenter + groundUp * (tileSize * 0.35f);
         }
 
-        private Vector3 GridToLocal(Vector2Int tile, float z)
+        public Vector3 GridToLocal(Vector2Int tile, float z)
         {
             Vector2Int localTile = tile - gridOrigin;
             return new Vector3(

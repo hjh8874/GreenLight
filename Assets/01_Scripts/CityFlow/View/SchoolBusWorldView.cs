@@ -3,10 +3,9 @@ using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Content.Transit;
 using CityFlow.Contracts;
-using CityFlow.View;
 using UnityEngine;
 
-namespace CityFlow.DebugTools
+namespace CityFlow.View
 {
     /// <summary>
     /// 스쿨버스 운행 상태를 Debug 씬의 3D 차량으로 표시합니다.
@@ -17,9 +16,6 @@ namespace CityFlow.DebugTools
         MonoBehaviour,
         ICityFlowServiceConsumer
     {
-        private const float CollisionHalfLength = 0.32f;
-        private const float CollisionHalfWidth = 0.12f;
-
         [SerializeField] private BusDefinitionSO definition;
         [SerializeField] private BusRoute busRoute;
         [SerializeField] private MainCityView cityView;
@@ -32,10 +28,6 @@ namespace CityFlow.DebugTools
         private float visualDepth = -0.38f;
         [SerializeField, Min(0.01f)]
         private float movementDuration = 0.22f;
-        [SerializeField, Range(0f, 0.5f)]
-        private float laneOffset = 0.25f;
-        [SerializeField, Min(0.05f)]
-        private float minimumHeadway = 0.55f;
         [SerializeField, Min(0)]
         [Tooltip("학교 지상 주차장의 중앙 슬롯을 사용합니다.")]
         private int schoolParkingSlot = 1;
@@ -187,6 +179,9 @@ namespace CityFlow.DebugTools
             }
 
             if (cityView != null &&
+                TryGetTrafficFootprint(
+                    out float collisionHalfLength,
+                    out float collisionHalfWidth) &&
                 !cityView.CanExternalTrafficMoveVisual(
                     this,
                     visual.localPosition,
@@ -195,9 +190,9 @@ namespace CityFlow.DebugTools
                         candidateDirection.x,
                         candidateDirection.y,
                         0f),
-                    minimumHeadway,
-                    CollisionHalfLength,
-                    CollisionHalfWidth))
+                    GetMinimumHeadway(),
+                    collisionHalfLength,
+                    collisionHalfWidth))
             {
                 visualBlockedByTraffic = true;
                 currentVisualSpeed = 0f;
@@ -413,14 +408,14 @@ namespace CityFlow.DebugTools
                 movementControlPoint =
                     targetLocalPosition -
                     ToVector3(schoolParkingForward) *
-                    parkingApproachDistance;
+                    GetParkingApproachDistance();
             }
             else if (isLeavingSchoolParking)
             {
                 movementControlPoint =
                     movementStartPosition -
                     ToVector3(schoolParkingForward) *
-                    parkingApproachDistance;
+                    GetParkingApproachDistance();
             }
 
             currentMovementDuration =
@@ -483,7 +478,7 @@ namespace CityFlow.DebugTools
                 currentPosition,
                 nextPosition,
                 forward,
-                minimumHeadway,
+                GetMinimumHeadway(),
                 nextTile);
         }
 
@@ -491,19 +486,27 @@ namespace CityFlow.DebugTools
             Vector2Int tile,
             Vector2 travelDirection)
         {
-            Vector3 position = new(
-                tile.x + 0.5f,
-                tile.y + 0.5f,
-                visualDepth);
+            Vector3 position =
+                cityView.GridToLocal(
+                    tile,
+                    visualDepth);
             return position +
                    GetRightLaneOffset(
                        travelDirection,
-                       laneOffset);
+                       cityView.LaneOffset *
+                       cityView.TileSize);
         }
 
         private void PublishExternalTraffic()
         {
             if (cityView == null || visual == null)
+            {
+                return;
+            }
+
+            if (!TryGetTrafficFootprint(
+                    out float collisionHalfLength,
+                    out float collisionHalfWidth))
             {
                 return;
             }
@@ -521,8 +524,8 @@ namespace CityFlow.DebugTools
                     visual.gameObject.activeInHierarchy),
                 lastRoadTile,
                 hasLastRoadTile,
-                CollisionHalfLength,
-                CollisionHalfWidth);
+                collisionHalfLength,
+                collisionHalfWidth);
         }
 
         private static bool ShouldPublishAsTraffic(
@@ -576,7 +579,9 @@ namespace CityFlow.DebugTools
                 new Vector2(to.x, to.y));
             return Mathf.Max(
                 0.01f,
-                distance * GetSecondsPerTile());
+                distance /
+                Mathf.Max(0.01f, cityView.TileSize) *
+                GetSecondsPerTile());
         }
 
         private float CalculateCurvedMovementDuration(
@@ -593,8 +598,40 @@ namespace CityFlow.DebugTools
                     new Vector2(to.x, to.y));
             return Mathf.Max(
                 0.01f,
-                controlPolygonLength *
+                controlPolygonLength /
+                Mathf.Max(0.01f, cityView.TileSize) *
                 GetSecondsPerTile());
+        }
+
+        private float GetMinimumHeadway()
+        {
+            return cityView.VehicleMinHeadway *
+                   cityView.TileSize;
+        }
+
+        private float GetParkingApproachDistance()
+        {
+            return parkingApproachDistance *
+                   cityView.TileSize;
+        }
+
+        private bool TryGetTrafficFootprint(
+            out float halfLength,
+            out float halfWidth)
+        {
+            halfLength = 0f;
+            halfWidth = 0f;
+            if (cityView == null || definition == null)
+            {
+                return false;
+            }
+
+            cityView.GetTrafficFootprint(
+                definition.VehicleLengthTiles,
+                definition.VehicleWidthTiles,
+                out halfLength,
+                out halfWidth);
+            return true;
         }
 
         private float GetSecondsPerTile()

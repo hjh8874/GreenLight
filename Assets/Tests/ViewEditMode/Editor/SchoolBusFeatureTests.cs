@@ -58,6 +58,12 @@ namespace CityFlow.Sim.Tests
                 definition.VehicleVisualPrefab,
                 Is.Not.Null);
             Assert.That(
+                definition.VehicleLengthTiles,
+                Is.EqualTo(0.64f).Within(0.0001f));
+            Assert.That(
+                definition.VehicleWidthTiles,
+                Is.EqualTo(0.24f).Within(0.0001f));
+            Assert.That(
                 schedule.MorningStartHour,
                 Is.EqualTo(7));
             Assert.That(
@@ -82,15 +88,14 @@ namespace CityFlow.Sim.Tests
                 new(worldView);
             Assert.That(
                 worldViewSerialized
-                    .FindProperty("laneOffset")
-                    .floatValue,
-                Is.EqualTo(0.25f).Within(0.0001f),
-                "The school bus must use the Geon scene's right-hand lane center.");
+                    .FindProperty("laneOffset"),
+                Is.Null,
+                "The school bus must use MainCityView's lane setting.");
             Assert.That(
                 worldViewSerialized
-                    .FindProperty("minimumHeadway")
-                    .floatValue,
-                Is.EqualTo(0.55f).Within(0.0001f));
+                    .FindProperty("minimumHeadway"),
+                Is.Null,
+                "The school bus must use MainCityView's headway setting.");
             Assert.That(
                 worldViewSerialized
                     .FindProperty("schoolParkingSlot")
@@ -269,6 +274,97 @@ namespace CityFlow.Sim.Tests
                 Is.EqualTo(expectedY).Within(0.0001f));
         }
 
+        [Test]
+        public void SchoolBusWorldView_UsesWorldGridCoordinateSpaceAndViewTrafficSettings()
+        {
+            GameObject cityRoot =
+                new("SchoolBusCoordinateTest_City");
+            GameObject busRoot =
+                new("SchoolBusCoordinateTest_Bus");
+
+            try
+            {
+                MainCityView cityView =
+                    cityRoot.AddComponent<MainCityView>();
+                SchoolBusWorldView worldView =
+                    busRoot.AddComponent<SchoolBusWorldView>();
+                BusDefinitionSO definition =
+                    AssetDatabase.LoadAssetAtPath<
+                        BusDefinitionSO>(DefinitionPath);
+
+                SetPrivateField(
+                    cityView,
+                    "gridOrigin",
+                    new Vector2Int(90, 90));
+                SetPrivateField(cityView, "tileSize", 2f);
+                SetPrivateField(cityView, "laneOffset", 0.18f);
+                SetPrivateField(
+                    cityView,
+                    "vehicleMinHeadway",
+                    0.72f);
+                SetPrivateField(
+                    worldView,
+                    "cityView",
+                    cityView);
+                SetPrivateField(
+                    worldView,
+                    "definition",
+                    definition);
+
+                MethodInfo createLanePosition =
+                    typeof(SchoolBusWorldView).GetMethod(
+                        "CreateLanePosition",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                MethodInfo getMinimumHeadway =
+                    typeof(SchoolBusWorldView).GetMethod(
+                        "GetMinimumHeadway",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                Assert.That(createLanePosition, Is.Not.Null);
+                Assert.That(getMinimumHeadway, Is.Not.Null);
+
+                Vector3 position =
+                    (Vector3)createLanePosition.Invoke(
+                        worldView,
+                        new object[]
+                        {
+                            new Vector2Int(92, 93),
+                            Vector2.right
+                        });
+                float headway =
+                    (float)getMinimumHeadway.Invoke(
+                        worldView,
+                        null);
+                cityView.GetTrafficFootprint(
+                    definition.VehicleLengthTiles,
+                    definition.VehicleWidthTiles,
+                    out float halfLength,
+                    out float halfWidth);
+
+                Assert.That(
+                    position.x,
+                    Is.EqualTo(5f).Within(0.0001f));
+                Assert.That(
+                    position.y,
+                    Is.EqualTo(6.64f).Within(0.0001f));
+                Assert.That(
+                    headway,
+                    Is.EqualTo(1.44f).Within(0.0001f));
+                Assert.That(
+                    halfLength,
+                    Is.EqualTo(0.64f).Within(0.0001f));
+                Assert.That(
+                    halfWidth,
+                    Is.EqualTo(0.24f).Within(0.0001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(busRoot);
+                Object.DestroyImmediate(cityRoot);
+            }
+        }
+
         [TestCase(0.05f, 0.2f, 0.25f)]
         [TestCase(0.1f, 0.2f, 0.5f)]
         [TestCase(0.2f, 0.2f, 1f)]
@@ -356,6 +452,11 @@ namespace CityFlow.Sim.Tests
             {
                 MainCityView view =
                     viewObject.AddComponent<MainCityView>();
+                view.GetTrafficFootprint(
+                    0.38f,
+                    0.2f,
+                    out float carHalfLength,
+                    out float carHalfWidth);
                 view.UpdateExternalTrafficVehicle(
                     blockerOwner,
                     new Vector3(0.8f, -0.25f, 0f),
@@ -363,7 +464,9 @@ namespace CityFlow.Sim.Tests
                     0f,
                     true,
                     Vector2Int.zero,
-                    true);
+                    true,
+                    carHalfLength,
+                    carHalfWidth);
 
                 Assert.That(
                     view.CanExternalTrafficAdvance(
@@ -382,7 +485,9 @@ namespace CityFlow.Sim.Tests
                     0f,
                     true,
                     new Vector2Int(5, 0),
-                    true);
+                    true,
+                    carHalfLength,
+                    carHalfWidth);
 
                 Assert.That(
                     view.CanExternalTrafficAdvance(
@@ -417,6 +522,16 @@ namespace CityFlow.Sim.Tests
             {
                 MainCityView view =
                     viewObject.AddComponent<MainCityView>();
+                view.GetTrafficFootprint(
+                    0.38f,
+                    0.2f,
+                    out float carHalfLength,
+                    out float carHalfWidth);
+                view.GetTrafficFootprint(
+                    0.64f,
+                    0.24f,
+                    out float busHalfLength,
+                    out float busHalfWidth);
                 view.UpdateExternalTrafficVehicle(
                     blockerOwner,
                     new Vector3(0.5f, -0.25f, 0f),
@@ -424,7 +539,9 @@ namespace CityFlow.Sim.Tests
                     0f,
                     true,
                     Vector2Int.zero,
-                    true);
+                    true,
+                    carHalfLength,
+                    carHalfWidth);
 
                 Assert.That(
                     view.CanExternalTrafficMoveVisual(
@@ -432,7 +549,9 @@ namespace CityFlow.Sim.Tests
                         new Vector3(0f, -0.25f, 0f),
                         new Vector3(0.1f, -0.25f, 0f),
                         Vector3.right,
-                        0.55f),
+                        0.55f,
+                        busHalfLength,
+                        busHalfWidth),
                     Is.False,
                     "The bus must recheck the lane while its visual is moving.");
 
@@ -443,7 +562,9 @@ namespace CityFlow.Sim.Tests
                     0f,
                     true,
                     new Vector2Int(5, 0),
-                    true);
+                    true,
+                    carHalfLength,
+                    carHalfWidth);
 
                 Assert.That(
                     view.CanExternalTrafficMoveVisual(
@@ -451,7 +572,9 @@ namespace CityFlow.Sim.Tests
                         new Vector3(0f, -0.25f, 0f),
                         new Vector3(0.1f, -0.25f, 0f),
                         Vector3.right,
-                        0.55f),
+                        0.55f,
+                        busHalfLength,
+                        busHalfWidth),
                     Is.True);
             }
             finally
@@ -902,6 +1025,23 @@ namespace CityFlow.Sim.Tests
                     new BusRuntime(
                         definition.PassengerCapacity)
                 });
+        }
+
+        private static void SetPrivateField(
+            object target,
+            string fieldName,
+            object value)
+        {
+            FieldInfo field =
+                target.GetType().GetField(
+                    fieldName,
+                    BindingFlags.Instance |
+                    BindingFlags.NonPublic);
+            Assert.That(
+                field,
+                Is.Not.Null,
+                $"Missing private field: {fieldName}");
+            field.SetValue(target, value);
         }
 
         private static bool InvokeTrafficOverlap(

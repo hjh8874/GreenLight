@@ -30,6 +30,12 @@ namespace CityFlow.Content
         [SerializeField, Min(0)]
         private int leavingDemandPerStop = 2;
 
+        [Header("Vehicle Footprint")]
+        [SerializeField, Min(0.1f)]
+        private float vehicleLengthTiles = 0.6f;
+        [SerializeField, Min(0.08f)]
+        private float vehicleWidthTiles = 0.2f;
+
         [Header("Presentation")]
         [SerializeField] private Color routeColor =
             new(0.1f, 0.75f, 0.85f, 1f);
@@ -50,6 +56,10 @@ namespace CityFlow.Content
             Mathf.Max(0, boardingDemandPerStop);
         public int LeavingDemandPerStop =>
             Mathf.Max(0, leavingDemandPerStop);
+        public float VehicleLengthTiles =>
+            Mathf.Max(0.1f, vehicleLengthTiles);
+        public float VehicleWidthTiles =>
+            Mathf.Max(0.08f, vehicleWidthTiles);
         public Color RouteColor => routeColor;
         public GameObject VehicleVisualPrefab =>
             vehicleVisualPrefab;
@@ -74,6 +84,12 @@ namespace CityFlow.Content
             leavingDemandPerStop = Mathf.Max(
                 0,
                 leavingDemandPerStop);
+            vehicleLengthTiles = Mathf.Max(
+                0.1f,
+                vehicleLengthTiles);
+            vehicleWidthTiles = Mathf.Max(
+                0.08f,
+                vehicleWidthTiles);
             initialStops ??=
                 System.Array.Empty<Vector2Int>();
         }

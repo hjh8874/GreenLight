@@ -1,6 +1,6 @@
 using CityFlow.Content;
 using CityFlow.Content.Transit;
-using CityFlow.DebugTools;
+using CityFlow.View;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -142,6 +142,10 @@ namespace CityFlow.EditorTools
                 3;
             serialized.FindProperty("leavingDemandPerStop").intValue =
                 12;
+            serialized.FindProperty("vehicleLengthTiles").floatValue =
+                0.64f;
+            serialized.FindProperty("vehicleWidthTiles").floatValue =
+                0.24f;
             serialized.FindProperty("routeColor").colorValue =
                 SchoolBusYellow;
             serialized.FindProperty("vehicleVisualPrefab")
@@ -213,14 +217,6 @@ namespace CityFlow.EditorTools
                     worldView,
                     "busMaterial",
                     material);
-                SetValue(
-                    worldView,
-                    "laneOffset",
-                    0.25f);
-                SetValue(
-                    worldView,
-                    "minimumHeadway",
-                    0.55f);
                 SetValue(
                     worldView,
                     "schoolParkingSlot",

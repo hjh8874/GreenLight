@@ -84,7 +84,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 73be27da31f7d054bbe082f5e5f89118, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.SchoolBusWorldView
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.SchoolBusWorldView
   definition: {fileID: 11400000, guid: c14bab61267254549b64ce068f4afc1a, type: 2}
   busRoute: {fileID: 91657992659517729}
   cityView: {fileID: 0}
@@ -92,7 +92,5 @@ MonoBehaviour:
   visualScale: 0.085
   visualDepth: -0.38
   movementDuration: 0.22
-  laneOffset: 0.25
-  minimumHeadway: 0.55
   schoolParkingSlot: 1
   parkingApproachDistance: 0.7

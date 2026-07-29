@@ -34,8 +34,8 @@ namespace CityFlow.View
             bool active,
             Vector2Int currentTile,
             bool hasCurrentTile,
-            float halfLength = 0.3f,
-            float halfWidth = 0.12f)
+            float halfLength,
+            float halfWidth)
         {
             if (owner == null)
             {
@@ -109,8 +109,8 @@ namespace CityFlow.View
             Vector3 nextLocalPosition,
             Vector3 localDirection,
             float minimumHeadway,
-            float halfLength = 0.3f,
-            float halfWidth = 0.12f)
+            float halfLength,
+            float halfWidth)
         {
             if (!IsExternalTrafficCorridorClear(
                     owner,
@@ -313,10 +313,27 @@ namespace CityFlow.View
                 vehicle.Style.WidthScale > 0f
                     ? vehicle.Style.WidthScale
                     : 1f;
+            GetTrafficFootprint(
+                0.38f * lengthScale,
+                0.2f * widthScale,
+                out halfLength,
+                out halfWidth);
+        }
+
+        public void GetTrafficFootprint(
+            float lengthTiles,
+            float widthTiles,
+            out float halfLength,
+            out float halfWidth)
+        {
             halfLength =
-                tileSize * 0.19f * lengthScale;
+                tileSize *
+                Mathf.Max(0.1f, lengthTiles) *
+                0.5f;
             halfWidth =
-                tileSize * 0.1f * widthScale;
+                tileSize *
+                Mathf.Max(0.08f, widthTiles) *
+                0.5f;
         }
 
         private static Vector3 ResolveVehicleDirection(
