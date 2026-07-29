@@ -2064,6 +2064,9 @@ namespace CityFlow.Sim.Tests
             public int TotalMonths => 0;
             public long TotalDays { get; private set; }
             public float RealSecondsPerGameHour => 1f;
+            public float RealSecondsPerGameDay => 24f;
+            public int HoursPerDay => 24;
+            public float TimeOfDay01 => Hour / 24f;
 
             public event System.Action<int> HourChanged;
             public event System.Action<int> DayChanged;
