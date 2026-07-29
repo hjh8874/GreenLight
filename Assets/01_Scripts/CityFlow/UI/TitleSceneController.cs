@@ -47,8 +47,8 @@ namespace CityFlow.UI
                 }
                 else
                 {
-                    Debug.LogError("[TitleScene] confirmPopup이 연결되어 있지 않아 기존 저장을 안전하게 삭제할 수 없습니다. 팝업이 연결될 때까지 새 게임을 시작할 수 없습니다.");
-                    return;
+                    Debug.LogWarning("[TitleScene] confirmPopup이 연결되어 있지 않습니다. 기존 저장을 덮어쓰고 새 게임을 즉시 시작합니다.");
+                    ExecuteStartNewGame();
                 }
             }
             else
