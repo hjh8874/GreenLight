@@ -4,7 +4,6 @@ using UnityEngine.InputSystem;
 using CityFlow.Contracts;
 using CityFlow.UI.Controllers;
 using CityFlow.Bootstrap;
-using System.Linq;
 
 namespace CityFlow.UI
 {
@@ -18,7 +17,6 @@ namespace CityFlow.UI
         }
         [Header("References")]
         [SerializeField] private AnalysisCardController analysisCard;
-        [SerializeField] private SignalControlPanelController signalControlPanel;
         [SerializeField] private BuildingInfoCardController buildingInfoCard;
         [SerializeField] private PlacementController placementController;
         private InfrastructurePlacementCoordinator _infraCoordinator;
@@ -35,12 +33,10 @@ namespace CityFlow.UI
 
         public void Configure(
             AnalysisCardController analysis,
-            SignalControlPanelController signalControlPanel,
             PlacementController placement,
             GameObject highlight)
         {
             analysisCard = analysis;
-            this.signalControlPanel = signalControlPanel;
             placementController = placement;
             highlightBox = highlight;
             _highlightScaleInitialized = false;
@@ -298,21 +294,9 @@ namespace CityFlow.UI
             }
 
             // 상세 분석 카드 열기
-            bool isSignal = false;
-            if (_services?.Placement is ISignalControl signalControl && signalControl.SignalTiles.Contains(coord))
+            if (analysisCard != null)
             {
-                isSignal = true;
-            }
-
-            if (isSignal)
-            {
-                if (analysisCard != null) analysisCard.CloseCard();
-                if (signalControlPanel != null) signalControlPanel.Show(coord);
-            }
-            else
-            {
-                if (signalControlPanel != null) signalControlPanel.Hide();
-                if (analysisCard != null) analysisCard.OpenCard(coord);
+                analysisCard.OpenCard(coord);
             }
             
             Debug.Log($"[TileSelection] 타일 선택됨: {coord}");
@@ -322,7 +306,6 @@ namespace CityFlow.UI
         {
             if (highlightBox != null) highlightBox.SetActive(false);
             if (analysisCard != null) analysisCard.CloseCard();
-            if (signalControlPanel != null) signalControlPanel.Hide();
         }
 
         private void CacheHighlightScale()
