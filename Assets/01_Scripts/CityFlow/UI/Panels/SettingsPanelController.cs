@@ -10,6 +10,7 @@ namespace CityFlow.UI
         [SerializeField] private Toggle tglMuteAudio;
         [SerializeField] private Button btnQuitGame;
         [SerializeField] private Button btnTitleScene;
+        [SerializeField] private string titleSceneName = "TitleScene";
 
         private CityFlowServices _services;
         private bool _isBound;
@@ -84,9 +85,15 @@ namespace CityFlow.UI
 
         private void OnTitleSceneClicked()
         {
+            if (!Application.CanStreamedLevelBeLoaded(titleSceneName))
+            {
+                Debug.LogError($"[Settings] '{titleSceneName}' 씬을 로드할 수 없습니다. Build Settings에 추가되어 있는지 확인하세요.");
+                return;
+            }
+
             Debug.Log("[Settings] 게임 상태를 저장하고 타이틀 화면으로 이동합니다.");
             _services?.Save?.Save();
-            UnityEngine.SceneManagement.SceneManager.LoadScene("TitleScene");
+            UnityEngine.SceneManagement.SceneManager.LoadScene(titleSceneName);
         }
     }
 }
