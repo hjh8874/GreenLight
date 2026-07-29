@@ -40,7 +40,6 @@ namespace CityFlow.DebugTools
         private PlacementController placementController;
         private Text statusText;
         private Text walletText;
-        private Text efficiencyText;
         private TextMeshProUGUI signalInfoText;
         private readonly List<RouteVehicle> movingVehicles = new List<RouteVehicle>();
         private long coins;
@@ -227,7 +226,6 @@ namespace CityFlow.DebugTools
 
             statusText = CreateText(canvasObject.transform, "StatusText", new Vector2(16f, -16f), new Vector2(560f, 84f), 18);
             walletText = CreateText(canvasObject.transform, "WalletText", new Vector2(16f, -104f), new Vector2(260f, 34f), 18);
-            efficiencyText = CreateText(canvasObject.transform, "EfficiencyText", new Vector2(16f, -142f), new Vector2(260f, 34f), 18);
 
             CreateButton(canvasObject.transform, "Road", new Vector2(16f, 16f), () => SetMode(TileType.Road, "Road"));
             CreateButton(canvasObject.transform, "House", new Vector2(116f, 16f), () => SetMode(TileType.House, "House"));
@@ -244,7 +242,6 @@ namespace CityFlow.DebugTools
             TextMeshProUGUI timeText = CreateTmpText(hudPanel.transform, "TimeText", "00:00", new Vector2(12f, -10f), new Vector2(112f, 24f), 18);
             TextMeshProUGUI vehicleText = CreateTmpText(hudPanel.transform, "VehicleCountText", "0", new Vector2(132f, -10f), new Vector2(112f, 24f), 18);
             TextMeshProUGUI coinText = CreateTmpText(hudPanel.transform, "CoinText", "0", new Vector2(12f, -42f), new Vector2(112f, 24f), 18);
-            TextMeshProUGUI efficiency = CreateTmpText(hudPanel.transform, "EfficiencyText", "100%", new Vector2(132f, -42f), new Vector2(112f, 24f), 18);
             GameObject burstEffect = CreatePanel(hudPanel.transform, "FlowBurstEffect", new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 16f), new Vector2(184f, 26f), new Color(1f, 0.7f, 0.12f, 0.9f));
             CreateTmpText(burstEffect.transform, "Label", "FLOW BURST", Vector2.zero, new Vector2(184f, 26f), 16, TextAlignmentOptions.Center);
             burstEffect.SetActive(false);
