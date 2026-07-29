@@ -96,14 +96,25 @@ namespace CityFlow.Sim.Tests
         public void RemoveRoad_ClearsCachedCongestion()
         {
             SimConfig cfg = Cfg();
-            var engine = new SimEngine(cfg, new SimEventHub());
+            var hub = new SimEventHub();
+            var engine = new SimEngine(cfg, hub);
             Vector2Int road = V(2, 1);
             Assert.IsTrue(engine.Place(road, TileType.Road));
             SetCongestion(engine, road, cfg.GridWidth, CongestionLevel.Jam);
+            int resolvedEventCount = 0;
+            hub.CongestionChanged += e =>
+            {
+                if (e.Tile == road && e.Level == CongestionLevel.Free)
+                {
+                    resolvedEventCount++;
+                }
+            };
 
             Assert.IsTrue(engine.Remove(road));
+            engine.Tick(cfg.TickInterval);
 
             Assert.AreEqual(0, engine.RoadTileCount);
+            Assert.AreEqual(1, resolvedEventCount);
             Assert.AreEqual(
                 CongestionLevel.Free,
                 engine.GetCongestion(road));
@@ -113,16 +124,27 @@ namespace CityFlow.Sim.Tests
         public void RestoreSnapshot_ClearsCachedCongestion()
         {
             SimConfig cfg = Cfg();
-            var engine = new SimEngine(cfg, new SimEventHub());
+            var hub = new SimEventHub();
+            var engine = new SimEngine(cfg, hub);
             Vector2Int road = V(2, 1);
             Assert.IsTrue(engine.Place(road, TileType.Road));
             SetCongestion(engine, road, cfg.GridWidth, CongestionLevel.Jam);
+            int resolvedEventCount = 0;
+            hub.CongestionChanged += e =>
+            {
+                if (e.Tile == road && e.Level == CongestionLevel.Free)
+                {
+                    resolvedEventCount++;
+                }
+            };
 
             SimSaveData snapshot = engine.CreateSnapshot();
             engine.RestoreSnapshot(snapshot);
+            engine.Tick(cfg.TickInterval);
 
             Assert.AreEqual(TileType.Road, engine.GetTileType(road));
             Assert.AreEqual(1, engine.RoadTileCount);
+            Assert.AreEqual(1, resolvedEventCount);
             Assert.AreEqual(
                 CongestionLevel.Free,
                 engine.GetCongestion(road));

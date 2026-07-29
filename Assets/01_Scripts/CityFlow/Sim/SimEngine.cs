@@ -280,6 +280,28 @@ namespace CityFlow.Sim
             return roads <= 0 ? 0f : (float)jammed / roads;
         }
 
+        private void ResetCarCongestion()
+        {
+            int roads = _grid.RoadTileCount;
+            for (int i = 0; i < roads; i++)
+            {
+                int index = _grid.GetRoadTileIndex(i);
+                if (_carCongestion[index] == CongestionLevel.Free)
+                {
+                    continue;
+                }
+
+                var tile = new Vector2Int(
+                    index % _grid.Width,
+                    index / _grid.Width);
+                _events.QueueCongestion(new CongestionEvent(
+                    tile,
+                    CongestionLevel.Free));
+            }
+
+            Array.Clear(_carCongestion, 0, _carCongestion.Length);
+        }
+
         private struct GreenWaveSegment : System.IEquatable<GreenWaveSegment>
         {
             public readonly Vector2Int A;
@@ -1136,6 +1158,7 @@ namespace CityFlow.Sim
             Vector2Int restoreOffset = GetRestoreOffset(snapshot);
 
             // 복원 = 전체 교체: 비우고 → 재배치 → 교차로 재감지 → 조율 복원 (PR#8 합의 흐름)
+            ResetCarCongestion();
             _grid.Clear();
             _demand.ClearCompanies();
             _highwayLinks.Clear();
@@ -1143,7 +1166,6 @@ namespace CityFlow.Sim
             _placedBusStops.Clear();
             _busStopSet.Clear();
             _roadQueues.RemoveAllCars();
-            Array.Clear(_carCongestion, 0, _carCongestion.Length);
             _carSim.ClearPopulation();
             _buildingAssignmentChangePending = false;
             _roadTopologyChangePending = false;
