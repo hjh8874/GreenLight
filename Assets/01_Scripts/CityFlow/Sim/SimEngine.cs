@@ -1511,6 +1511,25 @@ namespace CityFlow.Sim
             return true;
         }
 
+        public bool TryGetConstructionTargetType(
+            Vector2Int tile,
+            out TileType targetType)
+        {
+            targetType = TileType.Empty;
+            if (!_grid.TryGetFootprintAnchor(
+                    tile,
+                    out Vector2Int anchor) ||
+                !_construction.TryGet(
+                    anchor,
+                    out ConstructionSite site))
+            {
+                return false;
+            }
+
+            targetType = site.TargetType;
+            return true;
+        }
+
         public IReadOnlyList<Vector2Int> BusStopTiles => _placedBusStops;
 
         public bool CanPlaceBusStop(Vector2Int tile) =>

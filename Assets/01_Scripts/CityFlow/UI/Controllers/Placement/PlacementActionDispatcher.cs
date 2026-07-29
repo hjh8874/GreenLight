@@ -226,19 +226,29 @@ namespace CityFlow.UI.Controllers.Placement
             TileType previousType,
             CityFlowServices services)
         {
-            if (previousType == TileType.SpecialBuilding &&
+            TileType refundType = previousType;
+            if (previousType == TileType.UnderConstruction &&
+                services?.TileData != null &&
+                services.TileData.TryGetConstructionTargetType(
+                    anchor,
+                    out TileType targetType))
+            {
+                refundType = targetType;
+            }
+
+            if (refundType == TileType.SpecialBuilding &&
                 services?.SpecialBuildings != null &&
                 services.SpecialBuildings.TryGetBuilding(
                     anchor,
                     out SpecialBuildingInstance building))
             {
                 return GetTileCost(
-                    previousType,
+                    refundType,
                     building.BuildingId,
                     services);
             }
 
-            return GetTileCost(previousType);
+            return GetTileCost(refundType);
         }
     }
 }

@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using CityFlow.Bootstrap;
 using CityFlow.Buildings;
+using CityFlow.Configs;
 using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
@@ -559,6 +560,65 @@ namespace CityFlow.Tests
                 {
                     UnityEngine.Object.DestroyImmediate(serviceObject);
                 }
+            }
+        }
+
+        [Test]
+        public void Dispatcher_DemolishingConstruction_RefundsTargetTypeCost()
+        {
+            TileDataSO hospitalData =
+                ScriptableObject.CreateInstance<TileDataSO>();
+
+            try
+            {
+                const int hospitalCost = 800;
+                hospitalData.Initialize(
+                    "hospital",
+                    "병원",
+                    TileType.Hospital,
+                    hospitalCost,
+                    0,
+                    0,
+                    string.Empty);
+
+                SimConfig config = SimConfig.Default();
+                config.GridWidth = 20;
+                config.GridHeight = 20;
+                config.DayLengthSeconds = 24f;
+                config.ConstructionHoursHospital = 4f;
+                var events = new SimEventHub();
+                var engine = new SimEngine(config, events);
+                var economy = new TestEconomy();
+                var services = new CityFlowServices(
+                    events,
+                    engine,
+                    engine,
+                    economy: economy,
+                    stats: engine);
+                var dispatcher = new PlacementActionDispatcher(
+                    new[] { hospitalData },
+                    useFakeMode: false);
+                Vector2Int anchor = new Vector2Int(2, 3);
+                Assert.IsTrue(engine.Place(anchor, TileType.Hospital));
+                Assert.AreEqual(
+                    TileType.UnderConstruction,
+                    engine.GetTileType(anchor));
+
+                dispatcher.PlaceInfrastructure(
+                    new Vector2Int(3, 4),
+                    TileType.Empty,
+                    PlacementDirection.North,
+                    services);
+
+                Assert.AreEqual(
+                    hospitalCost,
+                    economy.Coins,
+                    "공사 중 비앵커 철거도 목표 타입 Hospital 단가로 환불해야 한다");
+                Assert.AreEqual(TileType.Empty, engine.GetTileType(anchor));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(hospitalData);
             }
         }
 
