@@ -57,6 +57,13 @@ namespace CityFlow.UI
         private PopulationSystem _populationSystem;
         private PlacementController _placementController;
 
+        [Header("Signal Cycle Gauge UI")]
+        [SerializeField] private RectTransform cycleGaugeCursor;
+        [SerializeField] private UnityEngine.UI.LayoutElement leHG, leHY, leHC, leVG, leVY, leVC;
+
+        [Header("Waiting Vehicles UI")]
+        [SerializeField] private TMP_Text txtWaitN, txtWaitS, txtWaitE, txtWaitW;
+
         public void Configure(
             TMP_Text title,
             TMP_Text tileCoord,
@@ -605,7 +612,7 @@ namespace CityFlow.UI
         // ─── 신호 제어 쿨다운 애니메이션 ───────────────────────────
         private IEnumerator UpdateSignalCooldownRoutine()
         {
-            WaitForSeconds wait = new WaitForSeconds(0.2f); // 200ms 주기 스로틀링
+            WaitForSeconds wait = new WaitForSeconds(0.05f); // 20fps for smooth gauge animation
 
             while (true)
             {
@@ -613,9 +620,66 @@ namespace CityFlow.UI
                 if (signalControl != null)
                 {
                     ApplyCooldownVisuals(signalControl);
+                    UpdateRealtimeGauge(signalControl);
+                    UpdateRealtimeWaitCounts();
                 }
                 yield return wait;
             }
+        }
+
+        private void UpdateRealtimeGauge(ISignalControl signalControl)
+        {
+            if (cycleGaugeCursor == null) return;
+            var engine = _services?.Placement as CityFlow.Sim.SimEngine;
+            if (engine == null) return;
+
+            int cycleSlots = signalControl.GetSignalCycleSlots(_currentTile);
+            if (cycleSlots <= 0) return;
+
+            float cycle = cycleSlots * 0.5f;
+            int offsetSlots = signalControl.GetSignalOffsetSlots(_currentTile);
+            int greenSlots = signalControl.GetSignalGreenSlots(_currentTile);
+            
+            double openTime = (offsetSlots * 0.5f) % cycle;
+            double localTime = (engine.SimTime - openTime) % cycle;
+            if (localTime < 0) localTime += cycle;
+
+            // 커서 위치 업데이트
+            float fillRatio = (float)(localTime / cycle);
+            cycleGaugeCursor.anchorMin = new Vector2(fillRatio, 0f);
+            cycleGaugeCursor.anchorMax = new Vector2(fillRatio, 1f);
+
+            // 게이지 세그먼트 폭 비율(FlexibleWidth) 업데이트
+            if (leHG != null && leHY != null && leHC != null &&
+                leVG != null && leVY != null && leVC != null)
+            {
+                float hSpan = greenSlots * 0.5f;
+                float vSpan = cycle - hSpan;
+                
+                float hGreen = hSpan * 0.65f;
+                float hYellow = hSpan * 0.2f;
+                float hClear = hSpan * 0.15f;
+                
+                float vGreen = vSpan * 0.65f;
+                float vYellow = vSpan * 0.2f;
+                float vClear = vSpan * 0.15f;
+
+                leHG.flexibleWidth = hGreen;
+                leHY.flexibleWidth = hYellow;
+                leHC.flexibleWidth = hClear;
+                leVG.flexibleWidth = vGreen;
+                leVY.flexibleWidth = vYellow;
+                leVC.flexibleWidth = vClear;
+            }
+        }
+
+        private void UpdateRealtimeWaitCounts()
+        {
+            if (_services?.TileData == null) return;
+            if (txtWaitN != null) txtWaitN.text = _services.TileData.GetQueueCount(_currentTile, Dir.N).ToString();
+            if (txtWaitS != null) txtWaitS.text = _services.TileData.GetQueueCount(_currentTile, Dir.S).ToString();
+            if (txtWaitE != null) txtWaitE.text = _services.TileData.GetQueueCount(_currentTile, Dir.E).ToString();
+            if (txtWaitW != null) txtWaitW.text = _services.TileData.GetQueueCount(_currentTile, Dir.W).ToString();
         }
 
         private void ApplyCooldownVisuals(ISignalControl signalControl)

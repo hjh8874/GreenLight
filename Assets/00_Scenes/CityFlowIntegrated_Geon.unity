@@ -610,7 +610,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &10526529
 RectTransform:
   m_ObjectHideFlags: 0
@@ -2516,6 +2516,8 @@ MonoBehaviour:
   vehiclePrefab: {fileID: 0}
   signalPrefab: {fileID: 0}
   burstPrefab: {fileID: 0}
+  fieldTilePrefab: {fileID: 0}
+  fieldTileZ: 0.14
   vehicleSpeed: 2
   vehicleZ: -0.18
   signalZ: -0.45
@@ -2546,6 +2548,9 @@ MonoBehaviour:
   minimumZoomDistance: 5
   zoomDistanceRange: 10
   zoomScrollSensitivity: 1
+  cameraRotationSpeed: 500
+  cameraRotationSmoothTime: 0.15
+  invertCameraRotationDirection: 0
   boardColor: {r: 0.78, g: 0.82, b: 0.78, a: 1}
   gridLineColor: {r: 0.28, g: 0.36, b: 0.38, a: 1}
   roadFreeColor: {r: 0.32, g: 0.36, b: 0.43, a: 1}
@@ -5121,7 +5126,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 37.3
+  m_fontSize: 36
   m_fontSizeBase: 36
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -7408,6 +7413,13 @@ MonoBehaviour:
   ghostRenderer: {fileID: 1153435912}
   colorValid: {r: 0, g: 1, b: 0, a: 0.5}
   colorInvalid: {r: 1, g: 0, b: 0, a: 0.5}
+  use3DGhostVolume: 1
+  ghostVolumeHeight: 1
+  volumeValidColor: {r: 0, g: 1, b: 0, a: 0.18}
+  volumeInvalidColor: {r: 1, g: 0, b: 0, a: 0.18}
+  showCostLabel: 1
+  costAffordableColor: {r: 1, g: 1, b: 1, a: 1}
+  costUnaffordableColor: {r: 1, g: 0.35, b: 0.35, a: 1}
   useFakeMode: 0
   useXYPlane: 1
   availableTiles:
@@ -7485,6 +7497,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Controllers.BenefitHighlightRenderer
   schoolAreaColor: {r: 0, g: 0.7, b: 1, a: 0.15}
   schoolHouseColor: {r: 0, g: 0.7, b: 1, a: 0.6}
+  hospitalAreaColor: {r: 0, g: 1, b: 0.3, a: 0.15}
+  hospitalHouseColor: {r: 0, g: 1, b: 0.3, a: 0.6}
   yOffset: 0.05
 --- !u!114 &492217486
 MonoBehaviour:
@@ -7514,6 +7528,14 @@ PrefabInstance:
       propertyPath: m_fontSize
       value: 24
       objectReference: {fileID: 0}
+    - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_fontAsset
+      value: 
+      objectReference: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+    - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_sharedMaterial
+      value: 
+      objectReference: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
     - target: {fileID: 1933230856837756137, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -7594,6 +7616,14 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2711921389588117394, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_fontAsset
+      value: 
+      objectReference: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+    - target: {fileID: 2711921389588117394, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_sharedMaterial
+      value: 
+      objectReference: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
     - target: {fileID: 5387688105960440297, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: tileData
       value: 
@@ -8509,6 +8539,7 @@ MonoBehaviour:
   stopWaitSeconds: 2
   loopRoute: 1
   autoStart: 0
+  avoidImmediateUTurn: 0
 --- !u!114 &559808199
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9357,7 +9388,7 @@ RectTransform:
   m_Father: {fileID: 459236622}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 20, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -10932,6 +10963,14 @@ PrefabInstance:
       propertyPath: m_fontSize
       value: 24
       objectReference: {fileID: 0}
+    - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_fontAsset
+      value: 
+      objectReference: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+    - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_sharedMaterial
+      value: 
+      objectReference: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
     - target: {fileID: 1933230856837756137, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -11012,6 +11051,14 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2711921389588117394, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_fontAsset
+      value: 
+      objectReference: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+    - target: {fileID: 2711921389588117394, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_sharedMaterial
+      value: 
+      objectReference: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
     - target: {fileID: 5387688105960440297, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: tileData
       value: 
@@ -11099,7 +11146,7 @@ RectTransform:
   m_Father: {fileID: 1043723811}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -15535,7 +15582,7 @@ RectTransform:
   m_Father: {fileID: 1818372}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -19375,6 +19422,14 @@ PrefabInstance:
       propertyPath: m_fontSize
       value: 24
       objectReference: {fileID: 0}
+    - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_fontAsset
+      value: 
+      objectReference: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+    - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_sharedMaterial
+      value: 
+      objectReference: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
     - target: {fileID: 1933230856837756137, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -19455,6 +19510,14 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2711921389588117394, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_fontAsset
+      value: 
+      objectReference: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+    - target: {fileID: 2711921389588117394, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_sharedMaterial
+      value: 
+      objectReference: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
     - target: {fileID: 5387688105960440297, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: tileData
       value: 
@@ -19527,6 +19590,9 @@ MonoBehaviour:
   canvasGroup: {fileID: 1281748611}
   reportCard: {fileID: 1256068581}
   closeButton: {fileID: 2115171978}
+  initialCoinsText: {fileID: 0}
+  earnedCoinsText: {fileID: 0}
+  currentCoinsText: {fileID: 0}
   transitionDuration: 0.18
   hiddenScale: 0.96
 --- !u!225 &1281748611
@@ -20802,6 +20868,7 @@ MonoBehaviour:
   positiveColor: {r: 0.4, g: 0.9, b: 0.4, a: 1}
   minimumScreenWidth: 960
   minimumScreenHeight: 540
+  worldHeightOffset: 1.5
 --- !u!114 &1331164515
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -26027,7 +26094,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &1632095788
 RectTransform:
   m_ObjectHideFlags: 0
@@ -26122,6 +26189,17 @@ MonoBehaviour:
   buildingInfoCard: {fileID: 0}
   useFakeMode: 0
   fakeDensity: 0.8
+  cycleGaugeCursor: {fileID: 0}
+  leHG: {fileID: 0}
+  leHY: {fileID: 0}
+  leHC: {fileID: 0}
+  leVG: {fileID: 0}
+  leVY: {fileID: 0}
+  leVC: {fileID: 0}
+  txtWaitN: {fileID: 0}
+  txtWaitS: {fileID: 0}
+  txtWaitE: {fileID: 0}
+  txtWaitW: {fileID: 0}
 --- !u!1 &1632515314
 GameObject:
   m_ObjectHideFlags: 0
@@ -26644,6 +26722,7 @@ MonoBehaviour:
   - {fileID: 1606631341}
   priorityRoadData: {fileID: 11400000, guid: 6326890673d7b4fefa366098947b09e1, type: 2}
   highwayData: {fileID: 0}
+  busStopData: {fileID: 0}
 --- !u!1 &1673251727
 GameObject:
   m_ObjectHideFlags: 0
@@ -27738,6 +27817,14 @@ PrefabInstance:
       propertyPath: m_fontSize
       value: 24
       objectReference: {fileID: 0}
+    - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_fontAsset
+      value: 
+      objectReference: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+    - target: {fileID: 185745006163039097, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_sharedMaterial
+      value: 
+      objectReference: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
     - target: {fileID: 1933230856837756137, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -27818,6 +27905,14 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2711921389588117394, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_fontAsset
+      value: 
+      objectReference: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
+    - target: {fileID: 2711921389588117394, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
+      propertyPath: m_sharedMaterial
+      value: 
+      objectReference: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
     - target: {fileID: 5387688105960440297, guid: 3f8bfe3171a11be42b4daf442a7ebae0, type: 3}
       propertyPath: tileData
       value: 
@@ -27869,7 +27964,7 @@ RectTransform:
   m_Father: {fileID: 677528719}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 0}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 20, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}

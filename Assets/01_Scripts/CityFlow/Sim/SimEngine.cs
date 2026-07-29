@@ -71,6 +71,7 @@ namespace CityFlow.Sim
             Vector2Int.down
         };
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
+        public double SimTime => _simTime;
         readonly SimStats _stats = new SimStats();
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
