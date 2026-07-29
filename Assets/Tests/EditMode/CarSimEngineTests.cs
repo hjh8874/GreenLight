@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using NUnit.Framework;
@@ -32,6 +33,20 @@ namespace CityFlow.Sim.Tests
             cfg.DayLengthSeconds = 24f;
             cfg.DemandChoicePool = 1;
             return cfg;
+        }
+
+        private static void SetCongestion(
+            SimEngine engine,
+            Vector2Int tile,
+            int gridWidth,
+            CongestionLevel level)
+        {
+            FieldInfo field = typeof(SimEngine).GetField(
+                "_carCongestion",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var congestion = (CongestionLevel[])field.GetValue(engine);
+            congestion[tile.y * gridWidth + tile.x] = level;
         }
 
         private void BuildTestIntersection(SimEngine engine, Vector2Int pos)
@@ -75,6 +90,64 @@ namespace CityFlow.Sim.Tests
 
             Assert.AreEqual(0, engine.GetQueueCount(V(-1, 1), Dir.E));
             Assert.AreEqual(0, engine.GetQueueCount(V(cfg.GridWidth, 1), Dir.E));
+        }
+
+        [Test]
+        public void RemoveRoad_ClearsCachedCongestion()
+        {
+            SimConfig cfg = Cfg();
+            var hub = new SimEventHub();
+            var engine = new SimEngine(cfg, hub);
+            Vector2Int road = V(2, 1);
+            Assert.IsTrue(engine.Place(road, TileType.Road));
+            SetCongestion(engine, road, cfg.GridWidth, CongestionLevel.Jam);
+            int resolvedEventCount = 0;
+            hub.CongestionChanged += e =>
+            {
+                if (e.Tile == road && e.Level == CongestionLevel.Free)
+                {
+                    resolvedEventCount++;
+                }
+            };
+
+            Assert.IsTrue(engine.Remove(road));
+            engine.Tick(cfg.TickInterval);
+
+            Assert.AreEqual(0, engine.RoadTileCount);
+            Assert.AreEqual(1, resolvedEventCount);
+            Assert.AreEqual(
+                CongestionLevel.Free,
+                engine.GetCongestion(road));
+        }
+
+        [Test]
+        public void RestoreSnapshot_ClearsCachedCongestion()
+        {
+            SimConfig cfg = Cfg();
+            var hub = new SimEventHub();
+            var engine = new SimEngine(cfg, hub);
+            Vector2Int road = V(2, 1);
+            Assert.IsTrue(engine.Place(road, TileType.Road));
+            SetCongestion(engine, road, cfg.GridWidth, CongestionLevel.Jam);
+            int resolvedEventCount = 0;
+            hub.CongestionChanged += e =>
+            {
+                if (e.Tile == road && e.Level == CongestionLevel.Free)
+                {
+                    resolvedEventCount++;
+                }
+            };
+
+            SimSaveData snapshot = engine.CreateSnapshot();
+            engine.RestoreSnapshot(snapshot);
+            engine.Tick(cfg.TickInterval);
+
+            Assert.AreEqual(TileType.Road, engine.GetTileType(road));
+            Assert.AreEqual(1, engine.RoadTileCount);
+            Assert.AreEqual(1, resolvedEventCount);
+            Assert.AreEqual(
+                CongestionLevel.Free,
+                engine.GetCongestion(road));
         }
 
         [Test]
