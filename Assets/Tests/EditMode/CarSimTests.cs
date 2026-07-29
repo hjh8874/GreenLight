@@ -855,7 +855,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void CommuteScheduler_ReservesConfiguredTransientVehicleSlots()
+        public void CommuteScheduler_UsesConfiguredTransientStorageCapacity()
         {
             var scheduler = new CommuteScheduler();
             var homes = new List<Vector2Int>();
@@ -876,13 +876,27 @@ namespace CityFlow.Sim.Tests
                 7f,
                 17f,
                 18f,
-                reservedTransientSlots: 2);
+                transientStorageCapacity: 2);
 
-            Assert.AreEqual(8, scheduler.Cars.Count);
-            Assert.NotNull(scheduler.AcquireTransient(V(0, 0), 10));
-            Assert.NotNull(scheduler.AcquireTransient(V(1, 0), 10));
             Assert.AreEqual(10, scheduler.Cars.Count);
-            Assert.IsNull(scheduler.AcquireTransient(V(2, 0), 10));
+
+            CommuteCar firstOwner = scheduler.Cars[0];
+            CommuteCar firstTransient = scheduler.AcquireTransient(
+                firstOwner.Home,
+                maxCars: 12);
+            Assert.NotNull(firstTransient);
+            firstOwner.SetSpecialTripReservation(true);
+
+            CommuteCar secondOwner = scheduler.Cars[1];
+            CommuteCar secondTransient = scheduler.AcquireTransient(
+                secondOwner.Home,
+                maxCars: 12);
+            Assert.NotNull(secondTransient);
+            secondOwner.SetSpecialTripReservation(true);
+
+            Assert.AreEqual(12, scheduler.Cars.Count);
+            Assert.AreEqual(10, scheduler.ActiveCount);
+            Assert.IsNull(scheduler.AcquireTransient(V(2, 0), 12));
         }
 
         [Test]
