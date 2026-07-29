@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using UnityEngine;
 
 namespace CityFlow.Content.Transit
@@ -26,7 +27,8 @@ namespace CityFlow.Content.Transit
     [RequireComponent(typeof(BusRoute))]
     public sealed class SchoolBusService :
         MonoBehaviour,
-        ICityFlowServiceConsumer
+        ICityFlowServiceConsumer,
+        ISchoolBusSaveSource
     {
         [Header("필수 참조")]
         [SerializeField]
@@ -71,6 +73,7 @@ namespace CityFlow.Content.Transit
         private bool wantsToOperate;
         private bool isInitialized;
         private bool unavailableReported;
+        private bool pendingScheduledRefresh;
         private long lastMorningTripDay = -1L;
         private long lastAfternoonTripDay = -1L;
         private int studentsServedThisTrip;
@@ -172,6 +175,7 @@ namespace CityFlow.Content.Transit
             }
 
             services = cityServices;
+            cityServices.RegisterSchoolBusSaveSource(this);
             stopRegistry.Initialize(cityServices);
             busRoute.UseRoadsideStopApproach = true;
             busRoute.RoadsideStopSetbackTiles = 1;
@@ -205,7 +209,15 @@ namespace CityFlow.Content.Transit
 
             if (IsScheduled)
             {
-                RefreshScheduledOperation();
+                if (cityServices.Save != null)
+                {
+                    pendingScheduledRefresh = true;
+                    SetWaitingForSchedule();
+                }
+                else
+                {
+                    RefreshScheduledOperation();
+                }
             }
             else
             {
@@ -234,6 +246,13 @@ namespace CityFlow.Content.Transit
             if (!isInitialized)
             {
                 return;
+            }
+
+            if (pendingScheduledRefresh &&
+                services?.Save?.IsRestoring != true)
+            {
+                pendingScheduledRefresh = false;
+                RefreshScheduledOperation();
             }
 
             if (busRoute.State == BusRouteState.Moving)
@@ -344,6 +363,7 @@ namespace CityFlow.Content.Transit
         public bool StartService()
         {
             wantsToOperate = true;
+            pendingScheduledRefresh = false;
             return IsScheduled
                 ? RefreshScheduledOperation()
                 : TryStartRoute(
@@ -353,6 +373,7 @@ namespace CityFlow.Content.Transit
         public void StopService()
         {
             wantsToOperate = false;
+            pendingScheduledRefresh = false;
             busRoute?.StopRoute();
             State = SchoolBusState.Idle;
             CurrentTrip = SchoolBusTripKind.None;
@@ -365,6 +386,7 @@ namespace CityFlow.Content.Transit
 
         public bool TryStartSchoolRoute()
         {
+            pendingScheduledRefresh = false;
             return IsScheduled
                 ? RefreshScheduledOperation()
                 : TryStartRoute(
@@ -740,6 +762,13 @@ namespace CityFlow.Content.Transit
 
             if (IsScheduled)
             {
+                if (pendingScheduledRefresh ||
+                    services?.Save?.IsRestoring == true)
+                {
+                    pendingScheduledRefresh = true;
+                    return;
+                }
+
                 RefreshScheduledOperation();
             }
             else if (State == SchoolBusState.RouteUnavailable ||
@@ -756,6 +785,13 @@ namespace CityFlow.Content.Transit
             BindCalendar(gameCalendar);
             if (IsScheduled)
             {
+                if (pendingScheduledRefresh ||
+                    services?.Save?.IsRestoring == true)
+                {
+                    pendingScheduledRefresh = true;
+                    return;
+                }
+
                 RefreshScheduledOperation();
             }
         }
@@ -764,8 +800,38 @@ namespace CityFlow.Content.Transit
         {
             if (IsScheduled)
             {
+                if (pendingScheduledRefresh ||
+                    services?.Save?.IsRestoring == true)
+                {
+                    pendingScheduledRefresh = true;
+                    return;
+                }
+
                 RefreshScheduledOperation();
             }
+        }
+
+        public SchoolBusSaveData CreateSnapshot()
+        {
+            return new SchoolBusSaveData
+            {
+                HasTripHistory = true,
+                LastMorningTripDay = lastMorningTripDay,
+                LastAfternoonTripDay = lastAfternoonTripDay
+            };
+        }
+
+        public void RestoreSnapshot(SchoolBusSaveData snapshot)
+        {
+            if (snapshot == null || !snapshot.HasTripHistory)
+            {
+                lastMorningTripDay = -1L;
+                lastAfternoonTripDay = -1L;
+                return;
+            }
+
+            lastMorningTripDay = snapshot.LastMorningTripDay;
+            lastAfternoonTripDay = snapshot.LastAfternoonTripDay;
         }
 
         private static int ManhattanDistance(

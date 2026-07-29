@@ -1543,7 +1543,22 @@ namespace CityFlow.Sim
 
         private bool TryRestoreBusStop(Vector2Int tile)
         {
-            return TryRegisterBusStop(tile, requireUnlockedTile: false);
+            if (!_grid.InBounds(tile) ||
+                _grid.GetTile(tile) != TileType.Empty ||
+                _busStopSet.Contains(tile) ||
+                (!CanPlaceBusStop(
+                     tile,
+                     requireUnlockedTile: false) &&
+                 !BusStopInfrastructurePolicy.HasAdjacentRoad(
+                     tile,
+                     IsRoad)) ||
+                !_busStopSet.Add(tile))
+            {
+                return false;
+            }
+
+            InsertSorted(_placedBusStops, tile);
+            return true;
         }
 
         private bool TryRegisterBusStop(
@@ -1576,12 +1591,26 @@ namespace CityFlow.Sim
         {
             foreach (Vector2Int stopTile in _placedBusStops)
             {
-                if (!BusStopInfrastructurePolicy
+                bool currentlyHasStrictApproach =
+                    BusStopInfrastructurePolicy
                         .HasRoadsideApproach(
                             stopTile,
-                            candidate =>
-                                candidate != roadTile &&
-                                IsRoad(candidate)))
+                            IsRoad);
+                bool remainsReachable =
+                    currentlyHasStrictApproach
+                        ? BusStopInfrastructurePolicy
+                            .HasRoadsideApproach(
+                                stopTile,
+                                candidate =>
+                                    candidate != roadTile &&
+                                    IsRoad(candidate))
+                        : BusStopInfrastructurePolicy
+                            .HasAdjacentRoad(
+                                stopTile,
+                                candidate =>
+                                    candidate != roadTile &&
+                                    IsRoad(candidate));
+                if (!remainsReachable)
                 {
                     return true;
                 }

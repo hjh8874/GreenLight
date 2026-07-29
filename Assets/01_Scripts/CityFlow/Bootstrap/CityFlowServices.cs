@@ -174,6 +174,17 @@ namespace CityFlow.Bootstrap
             Save?.RegisterProgressionSaveSource(progressionSaveSource);
         }
 
+        public void RegisterSchoolBusSaveSource(
+            ISchoolBusSaveSource schoolBusSaveSource)
+        {
+            if (schoolBusSaveSource == null)
+            {
+                return;
+            }
+
+            Save?.RegisterSchoolBusSaveSource(schoolBusSaveSource);
+        }
+
         public void RegisterRadioSaveSource(IRadioSaveSource radioSaveSource)
         {
             if (radioSaveSource == null)

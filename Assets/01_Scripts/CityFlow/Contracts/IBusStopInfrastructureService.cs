@@ -66,5 +66,25 @@ namespace CityFlow.Contracts
 
             return false;
         }
+
+        public static bool HasAdjacentRoad(
+            Vector2Int stopTile,
+            Func<Vector2Int, bool> isRoad)
+        {
+            if (isRoad == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < Directions.Length; i++)
+            {
+                if (isRoad(stopTile + Directions[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

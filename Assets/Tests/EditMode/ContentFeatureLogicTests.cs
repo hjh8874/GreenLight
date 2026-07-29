@@ -287,6 +287,58 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void BusStopInfrastructure_RestoresLegacySingleRoadStopOnly()
+        {
+            SimConfig config = SimConfig.Default();
+            var source =
+                new SimEngine(config, new SimEventHub());
+            Vector2Int accessRoad = new(2, 2);
+            Vector2Int unrelatedRoad = new(8, 8);
+            Vector2Int legacyStop = new(2, 3);
+
+            Assert.That(
+                source.Place(accessRoad, TileType.Road),
+                Is.True);
+            Assert.That(
+                source.Place(unrelatedRoad, TileType.Road),
+                Is.True);
+            Assert.That(
+                source.CanPlaceBusStop(legacyStop),
+                Is.False,
+                "New stops must still require a valid right-lane approach.");
+
+            SimSaveData snapshot = source.CreateSnapshot();
+            snapshot.BusStops = new[]
+            {
+                new BusStopSaveData
+                {
+                    X = legacyStop.x,
+                    Y = legacyStop.y
+                }
+            };
+
+            var restored =
+                new SimEngine(config, new SimEventHub());
+            restored.RestoreSnapshot(snapshot);
+
+            Assert.That(
+                restored.BusStopTiles,
+                Does.Contain(legacyStop),
+                "A legacy stop with one adjacent road must survive restore.");
+            Assert.That(
+                restored.CanPlaceBusStop(legacyStop),
+                Is.False);
+            Assert.That(
+                restored.Remove(unrelatedRoad),
+                Is.True,
+                "A legacy stop must not block unrelated road removal.");
+            Assert.That(
+                restored.Remove(accessRoad),
+                Is.False,
+                "The legacy stop's last access road must remain.");
+        }
+
+        [Test]
         public void IntegrationPrefab_InitializesWithoutChangingExistingTiles()
         {
             const string prefabPath =

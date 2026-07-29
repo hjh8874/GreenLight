@@ -13,6 +13,7 @@ namespace CityFlow.Save
         public IResearchSaveSource ResearchSaveSource { get; private set; }
         public IProgressionSaveSource ProgressionSaveSource { get; private set; }
         public IGameCalendarSaveSource GameCalendarSaveSource { get; private set; }
+        public ISchoolBusSaveSource SchoolBusSaveSource { get; private set; }
         public IRadioSaveSource RadioSaveSource { get; private set; }
         public ITerrainDecorationSaveSource TerrainDecorationSaveSource { get; private set; }
         public IWorldGridSaveSource WorldGridSaveSource { get; private set; }
@@ -38,6 +39,7 @@ namespace CityFlow.Save
         private WeeklySettlementSaveData retainedWeeklySettlement;
         private ResearchSaveData retainedResearch;
         private ProgressionSaveData retainedProgression;
+        private SchoolBusSaveData retainedSchoolBus;
         private RadioSaveData retainedRadio;
         private TerrainDecorationSaveData retainedTerrainDecorations;
         private WorldGridSaveData retainedWorldGrid;
@@ -115,6 +117,18 @@ namespace CityFlow.Save
             GameCalendarSaveSource = gameCalendarSaveSource;
             OfflineCalendarProgressionSource =
                 gameCalendarSaveSource as IOfflineCalendarProgressionSource;
+        }
+
+        public void RegisterSchoolBusSaveSource(
+            ISchoolBusSaveSource schoolBusSaveSource)
+        {
+            SchoolBusSaveSource = schoolBusSaveSource;
+
+            if (hasLoadedSave)
+            {
+                SchoolBusSaveSource?.RestoreSnapshot(
+                    retainedSchoolBus ?? new SchoolBusSaveData());
+            }
         }
 
         public void RegisterRadioSaveSource(IRadioSaveSource radioSaveSource)
@@ -195,6 +209,8 @@ namespace CityFlow.Save
                 Progression = ProgressionSaveSource?.CreateSnapshot()
                     ?? retainedProgression,
                 Calendar = GameCalendarSaveSource?.CreateSnapshot(),
+                SchoolBus = SchoolBusSaveSource?.CreateSnapshot()
+                    ?? retainedSchoolBus,
                 Radio = RadioSaveSource?.CreateSnapshot()
                     ?? retainedRadio,
                 TerrainDecorations =
@@ -267,6 +283,12 @@ namespace CityFlow.Save
             {
                 ProgressionSaveSource.RestoreSnapshot(
                     saveData.Progression ?? new ProgressionSaveData());
+            }
+
+            if (SchoolBusSaveSource != null)
+            {
+                SchoolBusSaveSource.RestoreSnapshot(
+                    saveData.SchoolBus ?? new SchoolBusSaveData());
             }
 
             if (saveData.Calendar != null)
@@ -626,6 +648,7 @@ namespace CityFlow.Save
             retainedWeeklySettlement = saveData?.WeeklySettlement;
             retainedResearch = saveData?.Research;
             retainedProgression = saveData?.Progression;
+            retainedSchoolBus = saveData?.SchoolBus;
             retainedRadio = saveData?.Radio;
             retainedTerrainDecorations = saveData?.TerrainDecorations;
             retainedWorldGrid = saveData?.WorldGrid;

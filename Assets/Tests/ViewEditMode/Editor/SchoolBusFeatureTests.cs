@@ -4,6 +4,8 @@ using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Content.Transit;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
+using CityFlow.Save;
 using CityFlow.View;
 using CityFlow.ViewKit;
 using NUnit.Framework;
@@ -886,7 +888,7 @@ namespace CityFlow.Sim.Tests
                         BindingFlags.Public)
                     ?.SetValue(
                         managedCar,
-                        new Vector3(-0.16f, 0f, 0f));
+                        new Vector3(-0.35f, 0f, 0f));
                 routeVehicleType.GetField(
                         "Dir",
                         BindingFlags.Instance |
@@ -915,7 +917,7 @@ namespace CityFlow.Sim.Tests
 
                 view.UpdateExternalTrafficVehicle(
                     schoolBusOwner,
-                    new Vector3(0f, -0.16f, 0f),
+                    new Vector3(0f, -0.35f, 0f),
                     Vector3.up,
                     0f,
                     true,
@@ -938,7 +940,7 @@ namespace CityFlow.Sim.Tests
                         {
                             managedCar,
                             null,
-                            (object)Vector3.zero,
+                            (object)new Vector3(-0.16f, 0f, 0f),
                             Vector3.right,
                             0.1f,
                             0.05f
@@ -950,7 +952,7 @@ namespace CityFlow.Sim.Tests
                         {
                             null,
                             schoolBusOwner,
-                            Vector3.zero,
+                            new Vector3(0f, -0.16f, 0f),
                             Vector3.up,
                             0.1f,
                             0.05f
@@ -962,7 +964,7 @@ namespace CityFlow.Sim.Tests
                         {
                             null,
                             schoolBusOwner,
-                            Vector3.zero,
+                            new Vector3(0f, -0.16f, 0f),
                             Vector3.up,
                             0.1f,
                             0.05f
@@ -974,7 +976,7 @@ namespace CityFlow.Sim.Tests
                         {
                             managedCar,
                             null,
-                            (object)Vector3.zero,
+                            (object)new Vector3(-0.16f, 0f, 0f),
                             Vector3.right,
                             0.1f,
                             0.05f
@@ -1061,7 +1063,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void SchoolBusAndCityBusCrossing_AllowsBothToClear()
+        public void SchoolBusAndCityBusCrossing_AdvancesContinuouslyWithoutOverlap()
         {
             GameObject viewObject =
                 new("Traffic View");
@@ -1075,17 +1077,23 @@ namespace CityFlow.Sim.Tests
             {
                 MainCityView view =
                     viewObject.AddComponent<MainCityView>();
-                Vector3 schoolStart =
-                    new(-0.16f, 0f, 0f);
-                Vector3 cityStart =
-                    new(0f, -0.16f, 0f);
-                const float proposedAdvance = 0.16f;
+                Vector3 schoolPosition =
+                    new(-0.35f, 0f, 0f);
+                Vector3 cityPosition =
+                    new(0f, -0.35f, 0f);
+                const float frameAdvance = 0.04f;
                 const float halfLength = 0.1f;
                 const float halfWidth = 0.05f;
+                MethodInfo overlaps =
+                    typeof(MainCityView).GetMethod(
+                        "TrafficFootprintsOverlap",
+                        BindingFlags.Static |
+                        BindingFlags.NonPublic);
+                Assert.That(overlaps, Is.Not.Null);
 
                 view.UpdateExternalTrafficVehicle(
                     schoolBusOwner,
-                    schoolStart,
+                    schoolPosition,
                     Vector3.right,
                     0f,
                     true,
@@ -1095,7 +1103,7 @@ namespace CityFlow.Sim.Tests
                     halfWidth);
                 view.UpdateExternalTrafficVehicle(
                     cityBusOwner,
-                    cityStart,
+                    cityPosition,
                     Vector3.up,
                     0f,
                     true,
@@ -1104,52 +1112,6 @@ namespace CityFlow.Sim.Tests
                     halfLength,
                     halfWidth);
 
-                float schoolWhenFirst =
-                    view.LimitExternalTrafficVisualAdvance(
-                        schoolBusOwner,
-                        schoolStart,
-                        Vector3.zero,
-                        Vector3.right,
-                        0.05f,
-                        halfLength,
-                        halfWidth);
-                float cityWhenSecond =
-                    view.LimitExternalTrafficVisualAdvance(
-                        cityBusOwner,
-                        cityStart,
-                        Vector3.zero,
-                        Vector3.up,
-                        0.05f,
-                        halfLength,
-                        halfWidth);
-                float cityWhenFirst =
-                    view.LimitExternalTrafficVisualAdvance(
-                        cityBusOwner,
-                        cityStart,
-                        Vector3.zero,
-                        Vector3.up,
-                        0.05f,
-                        halfLength,
-                        halfWidth);
-                float schoolWhenSecond =
-                    view.LimitExternalTrafficVisualAdvance(
-                        schoolBusOwner,
-                        schoolStart,
-                        Vector3.zero,
-                        Vector3.right,
-                        0.05f,
-                        halfLength,
-                        halfWidth);
-
-                Assert.That(
-                    schoolWhenFirst,
-                    Is.EqualTo(schoolWhenSecond)
-                        .Within(0.0001f));
-                Assert.That(
-                    cityWhenFirst,
-                    Is.EqualTo(cityWhenSecond)
-                        .Within(0.0001f));
-
                 bool schoolHasPriority =
                     VehicleSpacingMath
                         .HasTrafficConflictPriority(
@@ -1157,67 +1119,66 @@ namespace CityFlow.Sim.Tests
                             schoolBusOwner.GetEntityId(),
                             false,
                             cityBusOwner.GetEntityId());
-                Assert.That(
-                    schoolWhenFirst >=
-                    proposedAdvance - 0.0001f,
-                    Is.EqualTo(schoolHasPriority));
-                Assert.That(
-                    cityWhenFirst >=
-                    proposedAdvance - 0.0001f,
-                    Is.EqualTo(!schoolHasPriority));
-
-                if (schoolHasPriority)
+                for (int frame = 0; frame < 48; frame++)
                 {
-                    view.UpdateExternalTrafficVehicle(
-                        schoolBusOwner,
-                        new Vector3(0.3f, 0f, 0f),
-                        Vector3.right,
-                        0f,
-                        true,
-                        Vector2Int.right,
-                        true,
-                        halfLength,
-                        halfWidth);
-                    cityWhenSecond =
-                        view.LimitExternalTrafficVisualAdvance(
-                            cityBusOwner,
-                            cityStart,
-                            Vector3.zero,
-                            Vector3.up,
-                            0.05f,
-                            halfLength,
-                            halfWidth);
-                    Assert.That(
-                        cityWhenSecond,
-                        Is.EqualTo(proposedAdvance)
-                            .Within(0.0001f));
-                }
-                else
-                {
-                    view.UpdateExternalTrafficVehicle(
-                        cityBusOwner,
-                        new Vector3(0f, 0.3f, 0f),
-                        Vector3.up,
-                        0f,
-                        true,
-                        Vector2Int.up,
-                        true,
-                        halfLength,
-                        halfWidth);
-                    schoolWhenSecond =
-                        view.LimitExternalTrafficVisualAdvance(
+                    if (schoolHasPriority)
+                    {
+                        AdvanceExternalTraffic(
+                            view,
                             schoolBusOwner,
-                            schoolStart,
-                            Vector3.zero,
+                            ref schoolPosition,
                             Vector3.right,
-                            0.05f,
+                            frameAdvance,
                             halfLength,
                             halfWidth);
+                        AdvanceExternalTraffic(
+                            view,
+                            cityBusOwner,
+                            ref cityPosition,
+                            Vector3.up,
+                            frameAdvance,
+                            halfLength,
+                            halfWidth);
+                    }
+                    else
+                    {
+                        AdvanceExternalTraffic(
+                            view,
+                            cityBusOwner,
+                            ref cityPosition,
+                            Vector3.up,
+                            frameAdvance,
+                            halfLength,
+                            halfWidth);
+                        AdvanceExternalTraffic(
+                            view,
+                            schoolBusOwner,
+                            ref schoolPosition,
+                            Vector3.right,
+                            frameAdvance,
+                            halfLength,
+                            halfWidth);
+                    }
+
                     Assert.That(
-                        schoolWhenSecond,
-                        Is.EqualTo(proposedAdvance)
-                            .Within(0.0001f));
+                        InvokeTrafficOverlap(
+                            overlaps,
+                            schoolPosition,
+                            Vector3.right,
+                            cityPosition,
+                            Vector3.up,
+                            halfLength,
+                            halfWidth),
+                        Is.False,
+                        $"Vehicle bodies overlapped on frame {frame}.");
                 }
+
+                Assert.That(
+                    schoolPosition.x,
+                    Is.GreaterThanOrEqualTo(0.34f));
+                Assert.That(
+                    cityPosition.y,
+                    Is.GreaterThanOrEqualTo(0.34f));
             }
             finally
             {
@@ -1225,6 +1186,42 @@ namespace CityFlow.Sim.Tests
                 Object.DestroyImmediate(schoolBusOwner);
                 Object.DestroyImmediate(viewObject);
             }
+        }
+
+        private static void AdvanceExternalTraffic(
+            MainCityView view,
+            Object owner,
+            ref Vector3 position,
+            Vector3 direction,
+            float proposedAdvance,
+            float halfLength,
+            float halfWidth)
+        {
+            Vector3 target =
+                position +
+                direction * proposedAdvance;
+            float allowedAdvance =
+                view.LimitExternalTrafficVisualAdvance(
+                    owner,
+                    position,
+                    target,
+                    direction,
+                    0.05f,
+                    halfLength,
+                    halfWidth);
+            position +=
+                direction *
+                Mathf.Min(proposedAdvance, allowedAdvance);
+            view.UpdateExternalTrafficVehicle(
+                owner,
+                position,
+                direction,
+                allowedAdvance,
+                true,
+                Vector2Int.zero,
+                true,
+                halfLength,
+                halfWidth);
         }
 
         [Test]
@@ -1583,6 +1580,185 @@ namespace CityFlow.Sim.Tests
                 }
 
                 Object.DestroyImmediate(registryObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledService_RestoreInSameWindow_DoesNotStartTwice()
+        {
+            string savePath =
+                System.IO.Path.Combine(
+                    System.IO.Path.GetTempPath(),
+                    $"greenlight-school-bus-{System.Guid.NewGuid():N}.json");
+            string backupPath = savePath + ".bak";
+            SimConfig config = SimConfig.Default();
+            SimEventHub firstEvents = new();
+            SimEngine firstEngine =
+                new(config, firstEvents);
+            SaveService firstSave =
+                new(firstEngine, null, null);
+            CityFlowServices firstServices =
+                new(
+                    firstEvents,
+                    firstEngine,
+                    firstEngine,
+                    firstSave,
+                    null,
+                    firstEngine);
+            TestGameCalendar firstCalendar =
+                new(0L, 7);
+            firstServices.RegisterGameCalendar(firstCalendar);
+            GameObject firstRegistryObject =
+                new("First School Bus Registry");
+            GameObject prefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    PrefabPath);
+            GameObject firstInstance = null;
+            GameObject restoredRegistryObject = null;
+            GameObject restoredInstance = null;
+
+            try
+            {
+                PlaceRoadRing(firstEngine);
+                Assert.That(
+                    firstEngine.Place(
+                        new Vector2Int(8, 2),
+                        TileType.School),
+                    Is.True);
+                Assert.That(
+                    firstEngine.Place(
+                        new Vector2Int(2, 2),
+                        TileType.House),
+                    Is.True);
+                firstEngine.Tick(config.TickInterval);
+
+                BusStopRegistry firstRegistry =
+                    firstRegistryObject.AddComponent<
+                        BusStopRegistry>();
+                firstRegistry.Initialize(firstServices);
+                firstInstance = Object.Instantiate(prefab);
+                SchoolBusService firstService =
+                    firstInstance.GetComponent<
+                        SchoolBusService>();
+                firstService.Initialize(firstServices);
+
+                Assert.That(firstService.StartService(), Is.True);
+                Assert.That(firstService.IsOperating, Is.True);
+
+                GameSaveData snapshot =
+                    firstSave.CreateSnapshot();
+                Assert.That(
+                    snapshot.SchoolBus,
+                    Is.Not.Null);
+                Assert.That(
+                    snapshot.SchoolBus.LastMorningTripDay,
+                    Is.EqualTo(0L));
+
+                SimEventHub restoredEvents = new();
+                SimEngine restoredEngine =
+                    new(config, restoredEvents);
+                SaveService restoredSave =
+                    new(
+                        restoredEngine,
+                        new JsonSaveRepository(
+                            savePath,
+                            backupPath),
+                        null);
+                CityFlowServices restoredServices =
+                    new(
+                        restoredEvents,
+                        restoredEngine,
+                        restoredEngine,
+                        restoredSave,
+                        null,
+                        restoredEngine);
+                TestGameCalendar restoredCalendar =
+                    new(0L, 7);
+                restoredServices.RegisterGameCalendar(
+                    restoredCalendar);
+                restoredRegistryObject =
+                    new GameObject(
+                        "Restored School Bus Registry");
+                BusStopRegistry restoredRegistry =
+                    restoredRegistryObject.AddComponent<
+                        BusStopRegistry>();
+                restoredRegistry.Initialize(
+                    restoredServices);
+                restoredInstance =
+                    Object.Instantiate(prefab);
+                SchoolBusService restoredService =
+                    restoredInstance.GetComponent<
+                        SchoolBusService>();
+                restoredService.Initialize(
+                    restoredServices);
+                Assert.That(
+                    restoredService.IsOperating,
+                    Is.False,
+                    "Scheduled dispatch must wait until save restoration has completed.");
+
+                Assert.That(
+                    restoredSave.Repository.TrySave(snapshot),
+                    Is.True);
+                Assert.That(
+                    restoredSave.TryLoadAndRestore(),
+                    Is.True);
+
+                Assert.That(
+                    restoredRegistry.TryGetFirstSchool(out _),
+                    Is.True);
+                Assert.That(
+                    restoredRegistry.ResidentialStopCount,
+                    Is.GreaterThan(0));
+                Assert.That(
+                    restoredService
+                        .CreateSnapshot()
+                        .LastMorningTripDay,
+                    Is.EqualTo(0L));
+                Assert.That(
+                    restoredService.TryStartSchoolRoute(),
+                    Is.False,
+                    "Reloading during the same morning window must not dispatch a duplicate trip.");
+                Assert.That(
+                    restoredService.IsOperating,
+                    Is.False);
+            }
+            finally
+            {
+                if (restoredInstance != null)
+                {
+                    Object.DestroyImmediate(
+                        restoredInstance);
+                }
+
+                if (restoredRegistryObject != null)
+                {
+                    Object.DestroyImmediate(
+                        restoredRegistryObject);
+                }
+
+                if (firstInstance != null)
+                {
+                    Object.DestroyImmediate(firstInstance);
+                }
+
+                Object.DestroyImmediate(
+                    firstRegistryObject);
+
+                if (System.IO.File.Exists(savePath))
+                {
+                    System.IO.File.Delete(savePath);
+                }
+
+                if (System.IO.File.Exists(backupPath))
+                {
+                    System.IO.File.Delete(backupPath);
+                }
+
+                string tempPath = savePath + ".tmp";
+                if (System.IO.File.Exists(tempPath))
+                {
+                    System.IO.File.Delete(tempPath);
+                }
             }
         }
 
@@ -1988,6 +2164,32 @@ namespace CityFlow.Sim.Tests
                     secondDirection,
                     0.19f,
                     0.1f,
+                    0.2f,
+                    0.015f
+                });
+        }
+
+        private static bool InvokeTrafficOverlap(
+            MethodInfo method,
+            Vector3 firstPosition,
+            Vector3 firstDirection,
+            Vector3 secondPosition,
+            Vector3 secondDirection,
+            float halfLength,
+            float halfWidth)
+        {
+            return (bool)method.Invoke(
+                null,
+                new object[]
+                {
+                    firstPosition,
+                    firstDirection,
+                    halfLength,
+                    halfWidth,
+                    secondPosition,
+                    secondDirection,
+                    halfLength,
+                    halfWidth,
                     0.2f,
                     0.015f
                 });

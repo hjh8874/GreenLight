@@ -133,6 +133,86 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void Save_RoundTripsSchoolBusTripHistory()
+        {
+            var repository =
+                new JsonSaveRepository(savePath, backupPath);
+            var source = new FakeSchoolBus
+            {
+                Current = new SchoolBusSaveData
+                {
+                    HasTripHistory = true,
+                    LastMorningTripDay = 12L,
+                    LastAfternoonTripDay = 11L
+                }
+            };
+            var service = new SaveService(
+                new FakeSim(new List<string>()),
+                repository,
+                new FakeClock());
+            service.RegisterSchoolBusSaveSource(source);
+
+            Assert.IsTrue(service.Save());
+            Assert.IsTrue(
+                repository.TryLoad(out GameSaveData loaded));
+            Assert.IsTrue(loaded.SchoolBus.HasTripHistory);
+            Assert.AreEqual(
+                12L,
+                loaded.SchoolBus.LastMorningTripDay);
+            Assert.AreEqual(
+                11L,
+                loaded.SchoolBus.LastAfternoonTripDay);
+
+            source.Current = new SchoolBusSaveData();
+            service.RestoreSnapshot(loaded);
+
+            Assert.AreEqual(
+                12L,
+                source.Current.LastMorningTripDay);
+            Assert.AreEqual(
+                11L,
+                source.Current.LastAfternoonTripDay);
+        }
+
+        [Test]
+        public void RegisterSchoolBusSaveSource_AfterLoad_RestoresTripHistory()
+        {
+            var repository =
+                new JsonSaveRepository(savePath, backupPath);
+            var service = new SaveService(
+                new FakeSim(new List<string>()),
+                repository,
+                new FakeClock());
+
+            Assert.IsTrue(
+                repository.TrySave(
+                    new GameSaveData
+                    {
+                        SaveVersion =
+                            SaveConstants.CurrentSaveVersion,
+                        Simulation = new SimSaveData(),
+                        SchoolBus = new SchoolBusSaveData
+                        {
+                            HasTripHistory = true,
+                            LastMorningTripDay = 7L,
+                            LastAfternoonTripDay = 6L
+                        }
+                    }));
+            Assert.IsTrue(service.TryLoadAndRestore());
+
+            var source = new FakeSchoolBus();
+            service.RegisterSchoolBusSaveSource(source);
+
+            Assert.IsTrue(source.Current.HasTripHistory);
+            Assert.AreEqual(
+                7L,
+                source.Current.LastMorningTripDay);
+            Assert.AreEqual(
+                6L,
+                source.Current.LastAfternoonTripDay);
+        }
+
+        [Test]
         public void Save_RoundTripsClearedTerrainDecorationTiles()
         {
             var calls = new List<string>();
@@ -875,6 +955,20 @@ namespace CityFlow.Sim.Tests
             public ProgressionSaveData Current = new ProgressionSaveData();
             public ProgressionSaveData CreateSnapshot() => Current;
             public void RestoreSnapshot(ProgressionSaveData snapshot) => Current = snapshot;
+        }
+
+        sealed class FakeSchoolBus : ISchoolBusSaveSource
+        {
+            public SchoolBusSaveData Current =
+                new SchoolBusSaveData();
+
+            public SchoolBusSaveData CreateSnapshot() => Current;
+
+            public void RestoreSnapshot(
+                SchoolBusSaveData snapshot)
+            {
+                Current = snapshot;
+            }
         }
 
         sealed class FakeTerrainDecorations :

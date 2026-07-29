@@ -485,24 +485,41 @@ namespace CityFlow.View
                         other,
                         out float otherHalfLength,
                         out float otherHalfWidth);
+                    Vector3 otherDirection =
+                        ResolveVehicleDirection(other);
                     if (TrafficFootprintsOverlap(
                             candidatePosition,
                             candidateDirection,
                             candidateHalfLength,
                             candidateHalfWidth,
                             other.Pos,
-                            ResolveVehicleDirection(other),
+                            otherDirection,
                             otherHalfLength,
                             otherHalfWidth,
                             verticalLimit,
-                            safetyMargin) &&
-                        ShouldYieldTrafficConflict(
+                            safetyMargin))
+                    {
+                        return false;
+                    }
+
+                    if (ShouldYieldTrafficConflict(
                             subjectVehicle,
                             subjectOwner,
                             candidateDirection,
                             other,
                             null,
-                            ResolveVehicleDirection(other)))
+                            otherDirection) &&
+                        IsEnteringReservedTrafficCrossing(
+                            candidatePosition,
+                            candidateDirection,
+                            candidateHalfLength,
+                            candidateHalfWidth,
+                            other.Pos,
+                            otherDirection,
+                            otherHalfLength,
+                            otherHalfWidth,
+                            verticalLimit,
+                            safetyMargin))
                     {
                         return false;
                     }
@@ -532,20 +549,125 @@ namespace CityFlow.View
                         other.HalfLength,
                         other.HalfWidth,
                         verticalLimit,
-                        safetyMargin) &&
-                    ShouldYieldTrafficConflict(
+                        safetyMargin))
+                {
+                    return false;
+                }
+
+                if (ShouldYieldTrafficConflict(
                         subjectVehicle,
                         subjectOwner,
                         candidateDirection,
                         null,
                         other,
-                        other.Direction))
+                        other.Direction) &&
+                    IsEnteringReservedTrafficCrossing(
+                        candidatePosition,
+                        candidateDirection,
+                        candidateHalfLength,
+                        candidateHalfWidth,
+                        other.Position,
+                        other.Direction,
+                        other.HalfLength,
+                        other.HalfWidth,
+                        verticalLimit,
+                        safetyMargin))
                 {
                     return false;
                 }
             }
 
             return true;
+        }
+
+        private bool IsEnteringReservedTrafficCrossing(
+            Vector3 subjectPosition,
+            Vector3 subjectDirection,
+            float subjectHalfLength,
+            float subjectHalfWidth,
+            Vector3 otherPosition,
+            Vector3 otherDirection,
+            float otherHalfLength,
+            float otherHalfWidth,
+            float verticalLimit,
+            float safetyMargin)
+        {
+            if (Mathf.Abs(
+                    subjectPosition.z -
+                    otherPosition.z) > verticalLimit)
+            {
+                return false;
+            }
+
+            Vector2 subjectForward =
+                NormalizeDirection(subjectDirection);
+            Vector2 otherForward =
+                NormalizeDirection(otherDirection);
+            float directionCross =
+                Cross2D(subjectForward, otherForward);
+            if (Mathf.Abs(directionCross) <= 0.25f)
+            {
+                return false;
+            }
+
+            Vector2 separation =
+                new(
+                    otherPosition.x - subjectPosition.x,
+                    otherPosition.y - subjectPosition.y);
+            float subjectDistanceToCrossing =
+                Cross2D(separation, otherForward) /
+                directionCross;
+            float otherDistanceToCrossing =
+                Cross2D(separation, subjectForward) /
+                directionCross;
+            float subjectHoldDistance =
+                Mathf.Max(0.01f, subjectHalfLength) +
+                ProjectFootprintRadius(
+                    otherForward,
+                    otherHalfLength,
+                    otherHalfWidth,
+                    subjectForward) +
+                Mathf.Max(0f, safetyMargin);
+            float otherClearDistance =
+                Mathf.Max(0.01f, otherHalfLength) +
+                ProjectFootprintRadius(
+                    subjectForward,
+                    subjectHalfLength,
+                    subjectHalfWidth,
+                    otherForward) +
+                Mathf.Max(0f, safetyMargin);
+            float reservationLookahead =
+                Mathf.Max(
+                    subjectHoldDistance,
+                    Mathf.Max(0.1f, tileSize * 1.5f));
+
+            return
+                subjectDistanceToCrossing <= subjectHoldDistance &&
+                subjectDistanceToCrossing >= -subjectHoldDistance &&
+                otherDistanceToCrossing <= reservationLookahead &&
+                otherDistanceToCrossing >= -otherClearDistance;
+        }
+
+        private static float ProjectFootprintRadius(
+            Vector2 forward,
+            float halfLength,
+            float halfWidth,
+            Vector2 axis)
+        {
+            Vector2 right = new(-forward.y, forward.x);
+            return
+                Mathf.Max(0.01f, halfLength) *
+                Mathf.Abs(Vector2.Dot(forward, axis)) +
+                Mathf.Max(0.01f, halfWidth) *
+                Mathf.Abs(Vector2.Dot(right, axis));
+        }
+
+        private static float Cross2D(
+            Vector2 first,
+            Vector2 second)
+        {
+            return first.x * second.y -
+                   first.y * second.x;
         }
 
         private bool ShouldYieldTrafficConflict(
