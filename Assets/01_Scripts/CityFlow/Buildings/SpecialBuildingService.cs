@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Contracts;
@@ -24,6 +25,7 @@ namespace CityFlow.Buildings
         private Vector2Int playModeTestAnchor = new Vector2Int(100, 100);
 
         private readonly SpecialBuildingState state = new();
+        private readonly HashSet<Vector2Int> pendingConstruction = new();
         private CityFlowServices services;
         private IResearchUnlockService research;
         private bool initialized;
@@ -123,9 +125,19 @@ namespace CityFlow.Buildings
             }
 
             state.TryGet(anchor, out SpecialBuildingInstance building);
+            bool isPending =
+                services.TileData.GetTileType(anchor) ==
+                TileType.UnderConstruction;
+            if (isPending)
+            {
+                pendingConstruction.Add(anchor);
+            }
             BuildingChanged?.Invoke(
                 new SpecialBuildingChangedEvent(building, isRemove: false));
-            PublishHappinessEffect(building, isActive: true);
+            if (!isPending)
+            {
+                PublishHappinessEffect(building, isActive: true);
+            }
             return true;
         }
 
@@ -138,18 +150,26 @@ namespace CityFlow.Buildings
                 return false;
             }
 
+            bool wasPending = pendingConstruction.Remove(anchor);
             if (!services.Placement.Remove(anchor))
             {
                 state.TryAdd(
                     building.BuildingId,
                     building.Anchor,
                     building.Direction);
+                if (wasPending)
+                {
+                    pendingConstruction.Add(anchor);
+                }
                 return false;
             }
 
             BuildingChanged?.Invoke(
                 new SpecialBuildingChangedEvent(building, isRemove: true));
-            PublishHappinessEffect(building, isActive: false);
+            if (!wasPending)
+            {
+                PublishHappinessEffect(building, isActive: false);
+            }
             return true;
         }
 
@@ -218,6 +238,11 @@ namespace CityFlow.Buildings
 
             for (int index = 0; index < buildings.Length; index++)
             {
+                if (pendingConstruction.Contains(buildings[index].Anchor))
+                {
+                    continue;
+                }
+
                 if (TryCreateHappinessEffect(
                         buildings[index],
                         out HappinessEffectDescriptor effect))
@@ -278,12 +303,17 @@ namespace CityFlow.Buildings
                 state.CreateInstanceSnapshot();
             for (int index = 0; index < previousBuildings.Length; index++)
             {
-                PublishHappinessEffect(
-                    previousBuildings[index],
-                    isActive: false);
+                if (!pendingConstruction.Contains(
+                        previousBuildings[index].Anchor))
+                {
+                    PublishHappinessEffect(
+                        previousBuildings[index],
+                        isActive: false);
+                }
             }
 
             state.Clear();
+            pendingConstruction.Clear();
             SpecialBuildingInstanceSaveData[] entries = snapshot?.Buildings;
 
             if (entries != null)
@@ -298,18 +328,24 @@ namespace CityFlow.Buildings
                     }
 
                     Vector2Int anchor = new Vector2Int(saved.X, saved.Y);
-                    if (services?.TileData == null ||
-                        services.TileData.GetTileType(anchor) !=
-                        TileType.SpecialBuilding ||
+                    TileType restoredType = services?.TileData != null
+                        ? services.TileData.GetTileType(anchor)
+                        : TileType.Empty;
+                    if ((restoredType != TileType.SpecialBuilding &&
+                         restoredType != TileType.UnderConstruction) ||
                         !services.TileData.IsFootprintAnchor(anchor))
                     {
                         continue;
                     }
 
-                    state.TryAdd(
-                        saved.BuildingId,
-                        anchor,
-                        services.TileData.GetDirection(anchor));
+                    if (state.TryAdd(
+                            saved.BuildingId,
+                            anchor,
+                            services.TileData.GetDirection(anchor)) &&
+                        restoredType == TileType.UnderConstruction)
+                    {
+                        pendingConstruction.Add(anchor);
+                    }
                 }
             }
 
@@ -318,38 +354,56 @@ namespace CityFlow.Buildings
                 state.CreateInstanceSnapshot();
             for (int index = 0; index < restoredBuildings.Length; index++)
             {
-                PublishHappinessEffect(
-                    restoredBuildings[index],
-                    isActive: true);
+                if (!pendingConstruction.Contains(
+                        restoredBuildings[index].Anchor))
+                {
+                    PublishHappinessEffect(
+                        restoredBuildings[index],
+                        isActive: true);
+                }
             }
         }
 
         private void OnPlaced(PlacedEvent placed)
         {
-            if (placed.Type != TileType.SpecialBuilding)
-            {
-                return;
-            }
-
             if (placed.IsRemove &&
                 state.TryRemove(
                     placed.Tile,
                     out SpecialBuildingInstance removed))
             {
+                bool wasPending =
+                    pendingConstruction.Remove(placed.Tile);
                 BuildingChanged?.Invoke(
                     new SpecialBuildingChangedEvent(
                         removed,
                         isRemove: true));
-                PublishHappinessEffect(removed, isActive: false);
+                if (!wasPending)
+                {
+                    PublishHappinessEffect(removed, isActive: false);
+                }
                 return;
             }
 
-            if (!placed.IsRemove && !state.TryGet(placed.Tile, out _))
+            if (placed.IsRemove ||
+                placed.Type != TileType.SpecialBuilding)
+            {
+                return;
+            }
+
+            if (!state.TryGet(
+                    placed.Tile,
+                    out SpecialBuildingInstance completed))
             {
                 Debug.LogWarning(
                     "[SpecialBuildingService] A SpecialBuilding tile was placed " +
                     "without a building ID. Use ISpecialBuildingService.TryPlace().",
                     this);
+                return;
+            }
+
+            if (pendingConstruction.Remove(placed.Tile))
+            {
+                PublishHappinessEffect(completed, isActive: true);
             }
         }
 

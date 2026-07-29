@@ -103,7 +103,12 @@ namespace CityFlow.UI.Controllers.Placement
                         previousAnchor,
                         previousType,
                         services);
-                    bool removed = previousType == TileType.SpecialBuilding
+                    bool ownsSpecialBuilding =
+                        previousType == TileType.SpecialBuilding ||
+                        services.SpecialBuildings?.TryGetBuilding(
+                            previousAnchor,
+                            out _) == true;
+                    bool removed = ownsSpecialBuilding
                         ? services.SpecialBuildings?.TryRemove(previousAnchor) == true
                         : services.Placement.Remove(previousAnchor);
                     if (removed)
@@ -183,7 +188,12 @@ namespace CityFlow.UI.Controllers.Placement
                 targetCoord,
                 previousType,
                 services);
-            bool removed = previousType == TileType.SpecialBuilding
+            bool ownsSpecialBuilding =
+                previousType == TileType.SpecialBuilding ||
+                services.SpecialBuildings?.TryGetBuilding(
+                    targetCoord,
+                    out _) == true;
+            bool removed = ownsSpecialBuilding
                 ? services.SpecialBuildings?.TryRemove(targetCoord) == true
                 : services.Placement.Remove(targetCoord);
             if (!removed)
