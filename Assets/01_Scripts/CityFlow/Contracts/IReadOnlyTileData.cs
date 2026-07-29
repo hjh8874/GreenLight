@@ -24,5 +24,9 @@ namespace CityFlow.Contracts
         // 공사 진행도 0..1. 공사 중이 아니면 false.
         // 풋프린트 어느 타일로 물어도 앵커로 환산해 답한다(뷰가 앵커를 몰라도 되게).
         bool TryGetConstructionProgress01(Vector2Int tile, out float progress01);
+
+        bool TryGetConstructionTargetType(
+            Vector2Int tile,
+            out TileType targetType);
     }
 }

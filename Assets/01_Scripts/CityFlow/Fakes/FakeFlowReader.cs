@@ -116,6 +116,14 @@ namespace CityFlow.Fakes
             return false;
         }
 
+        public bool TryGetConstructionTargetType(
+            Vector2Int tile,
+            out TileType targetType)
+        {
+            targetType = TileType.Empty;
+            return false;
+        }
+
         public void Tick(float time, SimEventHub events)
         {
             if (events == null)
