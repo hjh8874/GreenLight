@@ -18,6 +18,7 @@ namespace CityFlow.Sim
         public Vector2Int Sink;
         public Vector2Int SourceRoad;
         public Vector2Int SinkRoad;
+        public TileType SinkType;
     }
 
     // 집(House)을 가장 가까운 수요처에 배정. 맨해튼 최근접 + 용량 캡 + 차순위. topology 변경 시에만.
@@ -57,6 +58,7 @@ namespace CityFlow.Sim
         }
 
         public IReadOnlyList<Demand> Demands => _demands;
+        public IReadOnlyList<Vector2Int> Houses => _houses;
 
         public DemandMap(SimConfig config)
         {
@@ -506,6 +508,7 @@ namespace CityFlow.Sim
                 {
                     Source = house, Sink = sinks[best],
                     SourceRoad = chosenHouseRoad, SinkRoad = chosenSinkRoad,
+                    SinkType = sinkType,
                 });
 
                 Vector2Int assignedSink = sinks[best];

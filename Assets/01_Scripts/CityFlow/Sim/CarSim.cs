@@ -15,6 +15,8 @@ namespace CityFlow.Sim
         public int QueueSlot;
         public int HomeSlot;
         public int WorkSlot;
+        public bool IsVisible;
+        public VehicleTripPurpose Purpose;
         public bool AwaitingNextWave { get; internal set; }
         public float IntersectionProgress01 { get; internal set; }
         public float LinkProgress01;
@@ -29,11 +31,25 @@ namespace CityFlow.Sim
         // SimConfig only if tuning ownership is approved later.
         private const int RescueRerouteMultiplier = 3;
         private const int RescueRestartMultiplier = 6;
+        private const int VehicleRetryDelayTicks = 10;
+        private const int RouteRetryDelayTicks = 30;
+
+        private enum SpecialTripStartFailure
+        {
+            None = 0,
+            NoEligibleOrigin = 1,
+            NoRoute = 2,
+            VehicleCapacity = 3
+        }
 
         private readonly SimConfig _cfg;
         private readonly CommuteScheduler _scheduler = new();
+        private readonly CommuteTripSource _commuteTripSource = new();
+        private readonly TripScheduler _tripScheduler;
+        private readonly int _reservedSpecialVehicleSlots;
         private readonly List<Vector2Int> _sources = new(96);
         private readonly List<Vector2Int> _sinks = new(96);
+        private readonly List<VehicleTripPurpose> _routinePurposes = new(96);
         private readonly List<List<Vector2Int>> _outboundRoutes = new(96);
         private readonly List<List<Vector2Int>> _returnRoutes = new(96);
         private readonly List<List<Vector2Int>> _viewOutboundRoutes = new(96);
@@ -49,8 +65,14 @@ namespace CityFlow.Sim
         private readonly int[] _rescueViewRouteIndices;
         private readonly byte[] _rescueStages;
         private readonly int[] _offNetworkBlockedTicks;
+        private readonly List<Vector2Int> _originAccessRoads = new(8);
+        private readonly List<Vector2Int> _destinationAccessRoads = new(8);
+        private readonly Stack<int> _freeSpecialViewRouteIndices = new();
         private RoadQueueNetwork _net;
         private RoutePlanner _planner;
+        private CityGrid _grid;
+        private DemandMap _demands;
+        private RoadNetwork _roadNetwork;
         private float _lastHour;
         private bool _hasLastHour;
         private bool _needsSnap;
@@ -88,14 +110,34 @@ namespace CityFlow.Sim
         }
 
         public int CarCount => _scheduler.Cars.Count;
+        public int SimulatedVehicleCount => _scheduler.ActiveCount;
+        public int PendingTripCount => _tripScheduler.PendingCount;
+        public int ActiveTripCount =>
+            _commuteTripSource.ActiveCount + _tripScheduler.ActiveCount;
         internal IReadOnlyList<List<Vector2Int>> ActiveRoutes => _viewOutboundRoutes;
         internal IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _viewReturnRoutes;
         public bool AllParkedHome
         {
             get
             {
+                if (_tripScheduler.ActiveCount > 0)
+                {
+                    return false;
+                }
+
                 for (int i = 0; i < _scheduler.Cars.Count; i++)
-                    if (_scheduler.Cars[i].State != CarState.ParkedHome) return false;
+                {
+                    CommuteCar car = _scheduler.Cars[i];
+                    if (car.IsTransient || car.SpecialTripReserved)
+                    {
+                        continue;
+                    }
+
+                    if (car.State != CarState.ParkedHome)
+                    {
+                        return false;
+                    }
+                }
                 return true;
             }
         }
@@ -111,6 +153,11 @@ namespace CityFlow.Sim
                 for (int i = 0; i < _scheduler.Cars.Count; i++)
                 {
                     CommuteCar car = _scheduler.Cars[i];
+                    if (car.IsTransient || car.SpecialTripReserved)
+                    {
+                        continue;
+                    }
+
                     if (car.RetireReason == RetireReason.HomeLost
                         && (car.State == CarState.ParkedHome || car.State == CarState.ParkedWork))
                     {
@@ -129,7 +176,18 @@ namespace CityFlow.Sim
         public CarSim(in SimConfig cfg)
         {
             _cfg = cfg;
+            int specialVehicleLimit = cfg.MaxConcurrentSpecialTrips > 0
+                ? cfg.MaxConcurrentSpecialTrips
+                : 8;
+            _tripScheduler = new TripScheduler(
+                cfg.MaxPendingVehicleTrips > 0
+                    ? cfg.MaxPendingVehicleTrips
+                    : 256,
+                specialVehicleLimit);
             int maxCars = Math.Max(1, cfg.MaxSimCars);
+            _reservedSpecialVehicleSlots = Math.Min(
+                specialVehicleLimit,
+                Math.Max(0, maxCars - 1));
             _enqueued = new bool[maxCars];
             _tileIndices = new int[maxCars];
             _queueSlots = new int[maxCars];
@@ -149,7 +207,10 @@ namespace CityFlow.Sim
 
         internal void ClearPopulation()
         {
+            ReleaseAllSpecialJourneys();
             _scheduler.Clear();
+            _commuteTripSource.Clear();
+            _tripScheduler.Clear();
             Array.Clear(_enqueued, 0, _enqueued.Length);
             Array.Clear(_tileIndices, 0, _tileIndices.Length);
             Array.Fill(_queueSlots, -1);
@@ -163,18 +224,30 @@ namespace CityFlow.Sim
             _hasLastHour = false;
             _needsSnap = false;
             _populationInitialized = false;
+            _freeSpecialViewRouteIndices.Clear();
+        }
+
+        internal bool TryScheduleSpecialBuildingVisit(
+            SpecialBuildingVisitTripRequest request)
+        {
+            return _tripScheduler.TryEnqueue(request);
         }
 
         public void Rebuild(
             DemandMap demands,
             RoutePlanner planner,
             RoadQueueNetwork net,
-            bool preserveExistingAssignments = false)
+            bool preserveExistingAssignments = false,
+            CityGrid grid = null,
+            RoadNetwork roadNetwork = null)
         {
             if (demands == null) throw new ArgumentNullException(nameof(demands));
             if (planner == null) throw new ArgumentNullException(nameof(planner));
             _net = net ?? throw new ArgumentNullException(nameof(net));
             _planner = planner;
+            _grid = grid ?? _grid;
+            _demands = demands;
+            _roadNetwork = roadNetwork ?? _roadNetwork;
             var previousAssignments = new List<PreviousAssignment>(CarCount);
             // 클리어 전에 생존 차의 현재 월드 타일을 차 객체에 실어둔다. 이게 없으면
             // 재큐잉이 route[0](집)에서 일어나 건설할 때마다 주행 차가 순간이동한다
@@ -197,6 +270,11 @@ namespace CityFlow.Sim
             for (int i = 0; i < CarCount; i++)
             {
                 CommuteCar car = _scheduler.Cars[i];
+                if (car.IsTransient)
+                {
+                    continue;
+                }
+
                 if (car.RouteIndex < 0
                     || car.RouteIndex >= _outboundRoutes.Count
                     || car.RouteIndex >= _returnRoutes.Count
@@ -223,6 +301,7 @@ namespace CityFlow.Sim
                 : null;
             _sources.Clear();
             _sinks.Clear();
+            _routinePurposes.Clear();
             _outboundRoutes.Clear();
             _returnRoutes.Clear();
             _viewOutboundRoutes.Clear();
@@ -365,8 +444,12 @@ namespace CityFlow.Sim
                 _cfg.MorningEndHour,
                 _cfg.EveningStartHour,
                 _cfg.EveningEndHour,
-                deferNewAssignments: _populationInitialized);
+                deferNewAssignments: _populationInitialized,
+                purposes: _routinePurposes,
+                reservedTransientSlots: _reservedSpecialVehicleSlots);
             _populationInitialized = true;
+            _commuteTripSource.Prune(_scheduler.Cars);
+            _tripScheduler.AllowImmediateRetry();
             Array.Clear(_enqueued, 0, _enqueued.Length);
             if (!preserveExistingAssignments)
                 Array.Clear(_tileIndices, 0, _tileIndices.Length);
@@ -389,6 +472,7 @@ namespace CityFlow.Sim
                 _rescueViewRouteIndices[index] = src.RescueViewIndex;
                 _rescueStages[index] = src.RescueStage;
             }
+            RebuildActiveSpecialRoutes(preserveExistingAssignments);
             _needsSnap = true;
         }
 
@@ -469,6 +553,10 @@ namespace CityFlow.Sim
             if (reason != RetireReason.WorkLost || car.State != CarState.Outbound)
                 return inboundRoute;
             // 회사 철거 시 출근 보상을 만들지 않고, 즉시 "포기 귀가"로 전환한다.
+            Vector2Int returnOrigin = car.HasResume
+                ? car.ResumeTile
+                : car.Home;
+            _commuteTripSource.ReplaceWithReturnTrip(car, returnOrigin);
             car.State = CarState.Inbound;
             car.Distance = 0f;
             if (!car.HasResume) return inboundRoute;
@@ -522,6 +610,7 @@ namespace CityFlow.Sim
             }
             _sources.Add(previous.Car.Home);
             _sinks.Add(previous.Car.Work);
+            _routinePurposes.Add(previous.Car.RoutinePurpose);
             _outboundRoutes.Add(previous.Outbound);
             _returnRoutes.Add(previous.Inbound);
             _plannerRouteIndices.Add(viewRouteIndex);
@@ -546,6 +635,9 @@ namespace CityFlow.Sim
             }
             _sources.Add(pair.Source);
             _sinks.Add(pair.Sink);
+            _routinePurposes.Add(pair.SinkType == TileType.School
+                ? VehicleTripPurpose.School
+                : VehicleTripPurpose.Commute);
             _outboundRoutes.Add(planner.CarRoutes[plannerIndex]);
             _returnRoutes.Add(planner.ReturnRoutes[plannerIndex]);
             _plannerRouteIndices.Add(viewRouteIndex);
@@ -555,6 +647,15 @@ namespace CityFlow.Sim
             => Step(gameHour, net, events, null, 0);
 
         internal StepResult Step(
+            float gameHour,
+            RoadQueueNetwork net,
+            SimEventBuffer events,
+            ISignalGate signalGate,
+            int tick)
+            => Step(0L, gameHour, net, events, signalGate, tick);
+
+        internal StepResult Step(
+            long gameDay,
             float gameHour,
             RoadQueueNetwork net,
             SimEventBuffer events,
@@ -573,6 +674,8 @@ namespace CityFlow.Sim
                 net.RemoveAllCars();
                 if (jumped)
                 {
+                    CancelAllSpecialJourneys();
+                    _commuteTripSource.CancelActiveTrips();
                     // 로드·배속 점프: 이동 연출을 복원하지 않는다 — 전 차 주차로 조대 수렴.
                     _scheduler.SnapToHour(gameHour);
                     for (int i = 0; i < CarCount; i++) _scheduler.Cars[i].HasResume = false;
@@ -597,7 +700,11 @@ namespace CityFlow.Sim
             _lastHour = gameHour;
             _hasLastHour = true;
 
+            TryStartPendingSpecialTrip(gameDay, gameHour, tick);
             _scheduler.UpdateDepartures(gameHour);
+            _commuteTripSource.SyncDepartures(
+                _scheduler.Cars,
+                _cfg.CoinPerTrip);
             TryEnqueueDepartures(net);
             StepResult result = net.Step(this, signalGate, tick);
             for (int i = 0; i < net.ArrivalCount; i++)
@@ -605,17 +712,27 @@ namespace CityFlow.Sim
                 ArrivalRecord arrival = net.GetArrival(i);
                 if (arrival.CarId < 0 || arrival.CarId >= CarCount) continue;
                 CommuteCar car = _scheduler.Cars[arrival.CarId];
+                if (_tripScheduler.TryGetActive(
+                        car,
+                        out SpecialTripJourney specialJourney))
+                {
+                    HandleSpecialTripArrival(
+                        arrival.CarId,
+                        specialJourney,
+                        events);
+                    continue;
+                }
+
                 bool paidArrival = car.State == CarState.Outbound;
+                if (_commuteTripSource.TryComplete(
+                        car,
+                        out VehicleTripSnapshot completedTrip))
+                {
+                    events.QueueTripArrival(
+                        new VehicleTripArrivedEvent(completedTrip));
+                }
                 _scheduler.NotifyArrived(car);
-                _enqueued[arrival.CarId] = false;
-                _queueSlots[arrival.CarId] = -1;
-                _intersectionProgress[arrival.CarId] = -1f;
-                _linkProgress[arrival.CarId] = 0f;
-                _roundaboutProgress[arrival.CarId] = -1f;
-                _rescueRoutes[arrival.CarId] = null;
-                _rescueViewRouteIndices[arrival.CarId] = -1;
-                _rescueStages[arrival.CarId] = 0;
-                _offNetworkBlockedTicks[arrival.CarId] = 0;
+                ResetCarRuntimeState(arrival.CarId);
                 if (paidArrival)
                     events.QueueArrival(new ArrivalEvent(car.Work, _cfg.CoinPerTrip));
             }
@@ -628,18 +745,54 @@ namespace CityFlow.Sim
         {
             if (index < 0 || index >= CarCount) throw new ArgumentOutOfRangeException(nameof(index));
             CommuteCar car = _scheduler.Cars[index];
+            if (_tripScheduler.TryGetActive(
+                    car,
+                    out SpecialTripJourney specialJourney))
+            {
+                VehicleTrip trip = specialJourney.CurrentTrip;
+                return new CarSnapshot
+                {
+                    Home = trip.Origin,
+                    Work = trip.Destination,
+                    State = CarState.Outbound,
+                    RouteIndex = _rescueViewRouteIndices[index] >= 0
+                        ? _rescueViewRouteIndices[index]
+                        : specialJourney.ViewRouteIndex,
+                    TileIndex = _tileIndices[index],
+                    QueueSlot = _queueSlots[index],
+                    HomeSlot = 0,
+                    WorkSlot = 0,
+                    IsVisible = true,
+                    Purpose = VehicleTripPurpose.SpecialBuildingVisit,
+                    AwaitingNextWave = false,
+                    IntersectionProgress01 = _intersectionProgress[index],
+                    LinkProgress01 = _linkProgress[index],
+                    RoundaboutProgress01 = _roundaboutProgress[index]
+                };
+            }
+
+            int viewRouteIndex = -1;
+            if (car.RouteIndex >= 0 &&
+                car.RouteIndex < _plannerRouteIndices.Count)
+            {
+                viewRouteIndex = _rescueViewRouteIndices[index] >= 0
+                    ? _rescueViewRouteIndices[index]
+                    : _plannerRouteIndices[car.RouteIndex];
+            }
+
             return new CarSnapshot
             {
                 Home = car.Home,
                 Work = car.Work,
                 State = car.State,
-                RouteIndex = _rescueViewRouteIndices[index] >= 0
-                    ? _rescueViewRouteIndices[index]
-                    : _plannerRouteIndices[car.RouteIndex],
+                RouteIndex = viewRouteIndex,
                 TileIndex = _tileIndices[index],
                 QueueSlot = _queueSlots[index],
                 HomeSlot = car.HomeSlot,
                 WorkSlot = car.WorkSlot,
+                IsVisible = car.State != CarState.Inactive &&
+                    !car.SpecialTripReserved,
+                Purpose = car.RoutinePurpose,
                 AwaitingNextWave = car.AwaitingNextWave,
                 IntersectionProgress01 = _intersectionProgress[index],
                 LinkProgress01 = _linkProgress[index],
@@ -811,6 +964,25 @@ namespace CityFlow.Sim
         private void RegisterRescueViewRoute(int carId, List<Vector2Int> rerouted)
         {
             CommuteCar car = _scheduler.Cars[carId];
+            if (_tripScheduler.TryGetActive(
+                    car,
+                    out SpecialTripJourney specialJourney))
+            {
+                int specialExisting = _rescueViewRouteIndices[carId];
+                if (specialExisting < 0)
+                {
+                    specialExisting = _viewOutboundRoutes.Count;
+                    _rescueViewRouteIndices[carId] = specialExisting;
+                    _viewOutboundRoutes.Add(rerouted);
+                    _viewReturnRoutes.Add(ReverseCopy(rerouted));
+                    return;
+                }
+
+                _viewOutboundRoutes[specialExisting] = rerouted;
+                _viewReturnRoutes[specialExisting] = ReverseCopy(rerouted);
+                return;
+            }
+
             int plannerIndex = _plannerRouteIndices[car.RouteIndex];
             List<Vector2Int> outbound = car.State == CarState.Outbound
                 ? rerouted
@@ -984,17 +1156,589 @@ namespace CityFlow.Sim
             return RoundaboutTrafficState.Progress01(entry, exitCell, (Dir)roundaboutCell);
         }
 
+        private void TryStartPendingSpecialTrip(
+            long gameDay,
+            float gameHour,
+            int tick)
+        {
+            if (_grid == null || _demands == null ||
+                _roadNetwork == null || _planner == null ||
+                !_tripScheduler.TryTakeDue(
+                    gameDay,
+                    gameHour,
+                    tick,
+                    out SpecialBuildingVisitTripRequest request))
+            {
+                return;
+            }
+
+            if (_grid.GetTile(request.Destination) != TileType.SpecialBuilding)
+            {
+                _tripScheduler.Forget(request);
+                return;
+            }
+
+            if (!TryCreateSpecialJourney(
+                    request,
+                    gameHour,
+                    out SpecialTripStartFailure failure))
+            {
+                int delay = failure == SpecialTripStartFailure.NoRoute
+                    ? RouteRetryDelayTicks
+                    : VehicleRetryDelayTicks;
+                _tripScheduler.Requeue(request, tick, delay);
+            }
+        }
+
+        private bool TryCreateSpecialJourney(
+            SpecialBuildingVisitTripRequest request,
+            float gameHour,
+            out SpecialTripStartFailure failure)
+        {
+            failure = SpecialTripStartFailure.NoEligibleOrigin;
+            bool foundRouteFailure = false;
+            int seed = StableHash(TripScheduler.CreateJourneyId(request));
+            IReadOnlyList<CommuteCar> cars = _scheduler.Cars;
+            if (cars.Count > 0)
+            {
+                int start = PositiveModulo(seed, cars.Count);
+                for (int offset = 0; offset < cars.Count; offset++)
+                {
+                    CommuteCar owner = cars[(start + offset) % cars.Count];
+                    if (owner == null || owner.IsTransient ||
+                        owner.SpecialTripReserved ||
+                        (owner.State != CarState.ParkedHome &&
+                         owner.State != CarState.ParkedWork))
+                    {
+                        continue;
+                    }
+
+                    if (!TryResolveVisitContext(
+                            owner,
+                            gameHour,
+                            out Vector2Int origin,
+                            out Vector2Int finalDestination,
+                            out CarState finalState))
+                    {
+                        continue;
+                    }
+
+                    if (TryLaunchSpecialJourney(
+                            request,
+                            owner,
+                            origin,
+                            finalDestination,
+                            finalState,
+                            out SpecialTripStartFailure launchFailure))
+                    {
+                        failure = SpecialTripStartFailure.None;
+                        return true;
+                    }
+
+                    if (launchFailure == SpecialTripStartFailure.VehicleCapacity)
+                    {
+                        failure = launchFailure;
+                        return false;
+                    }
+
+                    foundRouteFailure |=
+                        launchFailure == SpecialTripStartFailure.NoRoute;
+                }
+            }
+
+            IReadOnlyList<Vector2Int> houses = _demands.Houses;
+            if (houses.Count <= 0)
+            {
+                failure = foundRouteFailure
+                    ? SpecialTripStartFailure.NoRoute
+                    : SpecialTripStartFailure.NoEligibleOrigin;
+                return false;
+            }
+
+            int houseStart = PositiveModulo(seed, houses.Count);
+            for (int offset = 0; offset < houses.Count; offset++)
+            {
+                Vector2Int home = houses[(houseStart + offset) % houses.Count];
+                if (TryLaunchSpecialJourney(
+                        request,
+                        null,
+                        home,
+                        home,
+                        CarState.ParkedHome,
+                        out SpecialTripStartFailure launchFailure))
+                {
+                    failure = SpecialTripStartFailure.None;
+                    return true;
+                }
+
+                if (launchFailure == SpecialTripStartFailure.VehicleCapacity)
+                {
+                    failure = launchFailure;
+                    return false;
+                }
+
+                foundRouteFailure |=
+                    launchFailure == SpecialTripStartFailure.NoRoute;
+            }
+
+            failure = foundRouteFailure
+                ? SpecialTripStartFailure.NoRoute
+                : SpecialTripStartFailure.NoEligibleOrigin;
+            return false;
+        }
+
+        private bool TryLaunchSpecialJourney(
+            SpecialBuildingVisitTripRequest request,
+            CommuteCar routineOwner,
+            Vector2Int origin,
+            Vector2Int finalDestination,
+            CarState finalRoutineState,
+            out SpecialTripStartFailure failure)
+        {
+            failure = SpecialTripStartFailure.None;
+            if (!TryPlanBuildingRoute(
+                    origin,
+                    request.Destination,
+                    out List<Vector2Int> firstRoute))
+            {
+                failure = SpecialTripStartFailure.NoRoute;
+                return false;
+            }
+
+            List<Vector2Int> secondRoute = null;
+            if (finalDestination != request.Destination &&
+                !TryPlanBuildingRoute(
+                    request.Destination,
+                    finalDestination,
+                    out secondRoute))
+            {
+                failure = SpecialTripStartFailure.NoRoute;
+                return false;
+            }
+
+            CommuteCar vehicle = _scheduler.AcquireTransient(
+                origin,
+                Math.Max(1, _cfg.MaxSimCars));
+            if (vehicle == null)
+            {
+                failure = SpecialTripStartFailure.VehicleCapacity;
+                return false;
+            }
+
+            var journey = new SpecialTripJourney(
+                request,
+                vehicle,
+                routineOwner,
+                origin,
+                finalDestination,
+                finalRoutineState,
+                firstRoute,
+                secondRoute);
+            if (!_tripScheduler.TryActivate(journey))
+            {
+                _scheduler.ReleaseTransient(vehicle);
+                failure = SpecialTripStartFailure.VehicleCapacity;
+                return false;
+            }
+
+            if (routineOwner != null)
+            {
+                routineOwner.SetSpecialTripReservation(true);
+            }
+
+            RegisterSpecialViewRoute(journey);
+            int carIndex = FindCarIndex(vehicle);
+            if (carIndex >= 0)
+            {
+                ResetCarRuntimeState(carIndex);
+            }
+
+            return true;
+        }
+
+        private static bool TryResolveVisitContext(
+            CommuteCar owner,
+            float gameHour,
+            out Vector2Int origin,
+            out Vector2Int finalDestination,
+            out CarState finalState)
+        {
+            if (owner.State == CarState.ParkedWork)
+            {
+                if (gameHour < owner.DepartWorkHour)
+                {
+                    origin = default;
+                    finalDestination = default;
+                    finalState = CarState.ParkedWork;
+                    return false;
+                }
+
+                origin = owner.Work;
+                finalDestination = owner.Home;
+                finalState = CarState.ParkedHome;
+                return true;
+            }
+
+            bool workWindow = gameHour >= owner.DepartHomeHour &&
+                gameHour < owner.DepartWorkHour;
+            if (workWindow)
+            {
+                origin = default;
+                finalDestination = default;
+                finalState = CarState.ParkedHome;
+                return false;
+            }
+
+            origin = owner.Home;
+            finalDestination = owner.Home;
+            finalState = CarState.ParkedHome;
+            return true;
+        }
+
+        private bool TryPlanBuildingRoute(
+            Vector2Int origin,
+            Vector2Int destination,
+            out List<Vector2Int> route)
+        {
+            route = null;
+            _originAccessRoads.Clear();
+            _destinationAccessRoads.Clear();
+            _roadNetwork.CollectAccessRoads(origin, _originAccessRoads);
+            _roadNetwork.CollectAccessRoads(destination, _destinationAccessRoads);
+
+            for (int fromIndex = 0;
+                 fromIndex < _originAccessRoads.Count;
+                 fromIndex++)
+            {
+                Vector2Int from = _originAccessRoads[fromIndex];
+                int region = _roadNetwork.RegionOf(from);
+                if (region < 0)
+                {
+                    continue;
+                }
+
+                for (int toIndex = 0;
+                     toIndex < _destinationAccessRoads.Count;
+                     toIndex++)
+                {
+                    Vector2Int to = _destinationAccessRoads[toIndex];
+                    if (_roadNetwork.RegionOf(to) != region)
+                    {
+                        continue;
+                    }
+
+                    List<Vector2Int> candidate =
+                        _planner.PlanVehicleTrip(from, to);
+                    if (candidate == null || candidate.Count <= 1)
+                    {
+                        continue;
+                    }
+
+                    route = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryPlanRoadToBuilding(
+            Vector2Int originRoad,
+            Vector2Int destination,
+            out List<Vector2Int> route)
+        {
+            route = null;
+            int region = _roadNetwork.RegionOf(originRoad);
+            if (region < 0)
+            {
+                return false;
+            }
+
+            _destinationAccessRoads.Clear();
+            _roadNetwork.CollectAccessRoads(destination, _destinationAccessRoads);
+            for (int index = 0;
+                 index < _destinationAccessRoads.Count;
+                 index++)
+            {
+                Vector2Int destinationRoad = _destinationAccessRoads[index];
+                if (_roadNetwork.RegionOf(destinationRoad) != region)
+                {
+                    continue;
+                }
+
+                List<Vector2Int> candidate =
+                    _planner.PlanVehicleTrip(originRoad, destinationRoad);
+                if (candidate == null || candidate.Count <= 1)
+                {
+                    continue;
+                }
+
+                route = candidate;
+                return true;
+            }
+
+            return false;
+        }
+
+        private void HandleSpecialTripArrival(
+            int carId,
+            SpecialTripJourney journey,
+            SimEventBuffer events)
+        {
+            VehicleTripSnapshot completed = journey.CompleteCurrentLeg();
+            events.QueueTripArrival(new VehicleTripArrivedEvent(completed));
+            ResetCarRuntimeState(carId);
+
+            if (journey.TryBeginContinuation())
+            {
+                journey.Vehicle.ConfigureTransient(
+                    journey.CurrentTrip.Origin);
+                RegisterSpecialViewRoute(journey);
+                return;
+            }
+
+            CommuteCar owner = journey.RoutineOwner;
+            if (owner != null)
+            {
+                owner.State = journey.FinalRoutineState;
+                owner.Distance = 0f;
+                if (journey.FinalRoutineState == CarState.ParkedHome)
+                {
+                    owner.AwaitingNextWave = true;
+                }
+                owner.SetSpecialTripReservation(false);
+            }
+
+            ReleaseSpecialViewRoute(journey);
+            _tripScheduler.RemoveActive(journey.Vehicle);
+            _scheduler.ReleaseTransient(journey.Vehicle);
+        }
+
+        private void RegisterSpecialViewRoute(SpecialTripJourney journey)
+        {
+            List<Vector2Int> route = journey.CurrentRoute;
+            List<Vector2Int> reverse = ReverseCopy(route);
+            int index = journey.ViewRouteIndex;
+            if (index >= 0 &&
+                index < _viewOutboundRoutes.Count &&
+                index < _viewReturnRoutes.Count)
+            {
+                _viewOutboundRoutes[index] = route;
+                _viewReturnRoutes[index] = reverse;
+                return;
+            }
+
+            while (_freeSpecialViewRouteIndices.Count > 0)
+            {
+                int free = _freeSpecialViewRouteIndices.Pop();
+                if (free < 0 || free >= _viewOutboundRoutes.Count ||
+                    free >= _viewReturnRoutes.Count)
+                {
+                    continue;
+                }
+
+                journey.ViewRouteIndex = free;
+                _viewOutboundRoutes[free] = route;
+                _viewReturnRoutes[free] = reverse;
+                return;
+            }
+
+            journey.ViewRouteIndex = _viewOutboundRoutes.Count;
+            _viewOutboundRoutes.Add(route);
+            _viewReturnRoutes.Add(reverse);
+        }
+
+        private void ReleaseSpecialViewRoute(SpecialTripJourney journey)
+        {
+            int index = journey.ViewRouteIndex;
+            if (index < 0 || index >= _viewOutboundRoutes.Count ||
+                index >= _viewReturnRoutes.Count)
+            {
+                journey.ViewRouteIndex = -1;
+                return;
+            }
+
+            _viewOutboundRoutes[index] = null;
+            _viewReturnRoutes[index] = null;
+            _freeSpecialViewRouteIndices.Push(index);
+            journey.ViewRouteIndex = -1;
+        }
+
+        private void RebuildActiveSpecialRoutes(bool preserveViewIndices)
+        {
+            var active = new List<SpecialTripJourney>(
+                _tripScheduler.ActiveJourneys);
+            if (!preserveViewIndices)
+            {
+                _freeSpecialViewRouteIndices.Clear();
+                for (int index = 0; index < active.Count; index++)
+                {
+                    active[index].ViewRouteIndex = -1;
+                }
+            }
+
+            for (int index = active.Count - 1; index >= 0; index--)
+            {
+                SpecialTripJourney journey = active[index];
+                List<Vector2Int> currentRoute;
+                bool planned = journey.Vehicle.HasResume
+                    ? TryPlanRoadToBuilding(
+                        journey.Vehicle.ResumeTile,
+                        journey.CurrentTrip.Destination,
+                        out currentRoute)
+                    : TryPlanBuildingRoute(
+                        journey.CurrentTrip.Origin,
+                        journey.CurrentTrip.Destination,
+                        out currentRoute);
+                if (!planned)
+                {
+                    CancelSpecialJourney(journey);
+                    continue;
+                }
+
+                List<Vector2Int> continuation = null;
+                if (journey.CurrentLegIndex == 0 &&
+                    journey.FinalDestination != journey.Request.Destination &&
+                    !TryPlanBuildingRoute(
+                        journey.Request.Destination,
+                        journey.FinalDestination,
+                        out continuation))
+                {
+                    CancelSpecialJourney(journey);
+                    continue;
+                }
+
+                journey.ReplaceRoutes(currentRoute, continuation);
+                RegisterSpecialViewRoute(journey);
+            }
+        }
+
+        private void CancelAllSpecialJourneys()
+        {
+            var active = new List<SpecialTripJourney>(
+                _tripScheduler.ActiveJourneys);
+            for (int index = 0; index < active.Count; index++)
+            {
+                CancelSpecialJourney(active[index]);
+            }
+        }
+
+        private void ReleaseAllSpecialJourneys()
+        {
+            CancelAllSpecialJourneys();
+        }
+
+        private void CancelSpecialJourney(SpecialTripJourney journey)
+        {
+            if (journey == null)
+            {
+                return;
+            }
+
+            journey.CurrentTrip.TryCancel();
+            if (journey.RoutineOwner != null)
+            {
+                journey.RoutineOwner.SetSpecialTripReservation(false);
+            }
+
+            int carIndex = FindCarIndex(journey.Vehicle);
+            if (carIndex >= 0)
+            {
+                ResetCarRuntimeState(carIndex);
+            }
+
+            ReleaseSpecialViewRoute(journey);
+            _tripScheduler.RemoveActive(journey.Vehicle);
+            _scheduler.ReleaseTransient(journey.Vehicle);
+        }
+
+        private void ResetCarRuntimeState(int carId)
+        {
+            if (carId < 0 || carId >= _enqueued.Length)
+            {
+                return;
+            }
+
+            _enqueued[carId] = false;
+            _tileIndices[carId] = 0;
+            _queueSlots[carId] = -1;
+            _intersectionProgress[carId] = -1f;
+            _linkProgress[carId] = 0f;
+            _roundaboutProgress[carId] = -1f;
+            _rescueRoutes[carId] = null;
+            _rescueViewRouteIndices[carId] = -1;
+            _rescueStages[carId] = 0;
+            _offNetworkBlockedTicks[carId] = 0;
+        }
+
+        private int FindCarIndex(CommuteCar target)
+        {
+            for (int index = 0; index < _scheduler.Cars.Count; index++)
+            {
+                if (ReferenceEquals(_scheduler.Cars[index], target))
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        private static List<Vector2Int> ReverseCopy(
+            IReadOnlyList<Vector2Int> route)
+        {
+            var reverse = route == null
+                ? new List<Vector2Int>()
+                : new List<Vector2Int>(route);
+            reverse.Reverse();
+            return reverse;
+        }
+
+        private static int StableHash(string value)
+        {
+            unchecked
+            {
+                uint hash = 2166136261u;
+                string safe = value ?? string.Empty;
+                for (int index = 0; index < safe.Length; index++)
+                {
+                    hash ^= safe[index];
+                    hash *= 16777619u;
+                }
+
+                return (int)(hash & 0x7fffffff);
+            }
+        }
+
+        private static int PositiveModulo(int value, int count)
+        {
+            if (count <= 0)
+            {
+                return 0;
+            }
+
+            int result = value % count;
+            return result < 0 ? result + count : result;
+        }
+
         private bool TryRoute(int carId, out List<Vector2Int> route)
         {
             route = null;
             if (carId < 0 || carId >= CarCount) return false;
             CommuteCar car = _scheduler.Cars[carId];
-            if (car.RouteIndex < 0 || car.RouteIndex >= _outboundRoutes.Count) return false;
             if (_rescueRoutes[carId] != null)
             {
                 route = _rescueRoutes[carId];
                 return true;
             }
+            if (_tripScheduler.TryGetActive(
+                    car,
+                    out SpecialTripJourney specialJourney))
+            {
+                route = specialJourney.CurrentRoute;
+                return route != null;
+            }
+            if (car.RouteIndex < 0 || car.RouteIndex >= _outboundRoutes.Count) return false;
             route = car.State == CarState.Inbound
                 ? _returnRoutes[car.RouteIndex]
                 : _outboundRoutes[car.RouteIndex];

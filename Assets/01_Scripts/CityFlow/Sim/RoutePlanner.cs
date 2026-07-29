@@ -133,6 +133,13 @@ namespace CityFlow.Sim
                     _latestTurnSigns);
         }
 
+        internal List<Vector2Int> PlanVehicleTrip(
+            Vector2Int from,
+            Vector2Int to)
+        {
+            return ReplanFrom(from, to);
+        }
+
         // 현재 _load 기준 최소 비용 경로(내부 + 테스트 seam). 미연결/비도로 끝점 = null.
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg)
             => Search(grid, from, to, cfg, (IReadOnlyDictionary<Vector2Int, Vector2Int>)null);

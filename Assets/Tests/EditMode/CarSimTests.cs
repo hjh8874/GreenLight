@@ -615,6 +615,11 @@ namespace CityFlow.Sim.Tests
                 out RoadQueueNetwork net,
                 out CarSim sim,
                 out SimEventBuffer events);
+            var hub = new SimEventHub();
+            events = new SimEventBuffer(hub);
+            var completedTrips = new List<VehicleTripSnapshot>();
+            hub.VehicleTripArrived += message =>
+                completedTrips.Add(message.Trip);
 
             sim.Step(7f, net, events);
             Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
@@ -634,6 +639,10 @@ namespace CityFlow.Sim.Tests
                 sim.Step(7f, net, events);
             }
             Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State);
+            events.Drain();
+            Assert.AreEqual(1, completedTrips.Count);
+            Assert.AreEqual(V(0, 0), completedTrips[0].Destination);
+            Assert.AreEqual(0, completedTrips[0].RewardCoins);
         }
 
         [Test]
@@ -721,6 +730,313 @@ namespace CityFlow.Sim.Tests
                 CarState.Outbound,
                 sim.GetCar(0).State,
                 "다음 날 출근 전 구간을 관측한 뒤에만 신규 배정이 출근해야 한다");
+        }
+
+        [Test]
+        public void VehicleTrip_TransitionsThroughDrivingAndArrival()
+        {
+            var trip = new VehicleTrip(
+                "trip-1",
+                "journey-1",
+                0,
+                V(1, 2),
+                V(7, 2),
+                VehicleTripPurpose.SpecialBuildingVisit,
+                "coffee-shop",
+                0);
+
+            Assert.AreEqual(VehicleTripState.Queued, trip.State);
+            Assert.IsTrue(trip.TryBeginRouting());
+            Assert.IsTrue(trip.TryBeginDriving());
+            Assert.IsTrue(trip.TryArrive());
+            Assert.IsFalse(trip.TryCancel());
+            Assert.AreEqual(VehicleTripState.Arrived, trip.State);
+        }
+
+        [Test]
+        public void TripScheduler_DeduplicatesAndTakesRequestsInStableOrder()
+        {
+            var scheduler = new TripScheduler(8, 2);
+            var later = new SpecialBuildingVisitTripRequest(
+                "mall",
+                V(8, 1),
+                3L,
+                1,
+                14f);
+            var earlier = new SpecialBuildingVisitTripRequest(
+                "coffee-shop",
+                V(4, 1),
+                3L,
+                0,
+                9f);
+
+            Assert.IsTrue(scheduler.TryEnqueue(later));
+            Assert.IsTrue(scheduler.TryEnqueue(earlier));
+            Assert.IsFalse(scheduler.TryEnqueue(earlier));
+            Assert.IsTrue(scheduler.TryTakeDue(3L, 10f, out var taken));
+            Assert.AreEqual(earlier.BuildingId, taken.BuildingId);
+            Assert.AreEqual(1, scheduler.PendingCount);
+
+            scheduler.Requeue(taken, 100, 10);
+            Assert.IsFalse(scheduler.TryTakeDue(3L, 10f, 109, out _));
+            scheduler.AllowImmediateRetry();
+            Assert.IsTrue(scheduler.TryTakeDue(3L, 10f, 109, out taken));
+            Assert.AreEqual(earlier.BuildingId, taken.BuildingId);
+        }
+
+        [Test]
+        public void CommuteScheduler_ReservesConfiguredTransientVehicleSlots()
+        {
+            var scheduler = new CommuteScheduler();
+            var homes = new List<Vector2Int>();
+            var works = new List<Vector2Int>();
+            for (int index = 0; index < 10; index++)
+            {
+                homes.Add(V(index, 0));
+                works.Add(V(index, 2));
+            }
+
+            scheduler.Rebuild(
+                homes,
+                works,
+                _ => 1,
+                1,
+                10,
+                6f,
+                7f,
+                17f,
+                18f,
+                reservedTransientSlots: 2);
+
+            Assert.AreEqual(8, scheduler.Cars.Count);
+            Assert.NotNull(scheduler.AcquireTransient(V(0, 0), 10));
+            Assert.NotNull(scheduler.AcquireTransient(V(1, 0), 10));
+            Assert.AreEqual(10, scheduler.Cars.Count);
+            Assert.IsNull(scheduler.AcquireTransient(V(2, 0), 10));
+        }
+
+        [Test]
+        public void SpecialVisit_DuringWorkWindow_DoesNotDelayDirectCommute()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 16;
+            config.MaxPendingVehicleTrips = 16;
+            config.MaxConcurrentSpecialTrips = 2;
+            BuildSpecialVisitCity(
+                config,
+                out CityGrid grid,
+                out RoadNetwork roads,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork queues);
+            var sim = new CarSim(config);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+            var hub = new SimEventHub();
+            var events = new SimEventBuffer(hub);
+            var completed = new List<VehicleTripSnapshot>();
+            int paidArrivals = 0;
+            int paidCoins = 0;
+            hub.VehicleTripArrived += message => completed.Add(message.Trip);
+            hub.Arrival += message =>
+            {
+                paidArrivals++;
+                paidCoins += message.Coins;
+            };
+
+            Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                new SpecialBuildingVisitTripRequest(
+                    "coffee-shop",
+                    V(6, 0),
+                    1L,
+                    0,
+                    7f)));
+
+            sim.Step(1L, 7f, queues, events, null, 0);
+            events.Drain();
+            Assert.IsFalse(sim.AllParkedHome);
+
+            for (int tick = 1; tick < 80; tick++)
+            {
+                sim.Step(1L, 7f, queues, events, null, tick);
+                events.Drain();
+            }
+
+            List<VehicleTripSnapshot> specialTrips = completed.FindAll(trip =>
+                trip.Purpose == VehicleTripPurpose.SpecialBuildingVisit);
+            List<VehicleTripSnapshot> commuteTrips = completed.FindAll(trip =>
+                trip.Purpose == VehicleTripPurpose.Commute);
+            Assert.AreEqual(2, specialTrips.Count);
+            Assert.AreEqual(0, specialTrips[0].LegIndex);
+            Assert.AreEqual(V(6, 0), specialTrips[0].Destination);
+            Assert.AreEqual(1, specialTrips[1].LegIndex);
+            Assert.AreEqual(V(0, 0), specialTrips[1].Destination);
+            Assert.AreEqual(0, specialTrips[0].RewardCoins);
+            Assert.AreEqual(1, commuteTrips.Count);
+            Assert.AreEqual(V(10, 0), commuteTrips[0].Destination);
+            Assert.AreEqual(1, paidArrivals);
+            Assert.AreEqual(config.CoinPerTrip, paidCoins);
+            Assert.AreEqual(0, sim.PendingTripCount);
+            Assert.AreEqual(0, sim.ActiveTripCount);
+        }
+
+        [Test]
+        public void SpecialVisit_AfterWork_RoutesFromWorkThroughVisitToHome()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 16;
+            config.MaxPendingVehicleTrips = 16;
+            config.MaxConcurrentSpecialTrips = 2;
+            BuildSpecialVisitCity(
+                config,
+                out CityGrid grid,
+                out RoadNetwork roads,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork queues);
+            var sim = new CarSim(config);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+            var hub = new SimEventHub();
+            var events = new SimEventBuffer(hub);
+            var completed = new List<VehicleTripSnapshot>();
+            hub.VehicleTripArrived += message => completed.Add(message.Trip);
+
+            for (int tick = 0; tick < 40; tick++)
+            {
+                sim.Step(1L, 7f, queues, events, null, tick);
+                events.Drain();
+            }
+
+            Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
+            completed.Clear();
+            Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                new SpecialBuildingVisitTripRequest(
+                    "coffee-shop",
+                    V(6, 0),
+                    1L,
+                    0,
+                    17.5f)));
+
+            for (int tick = 40; tick < 120; tick++)
+            {
+                sim.Step(1L, 17.5f, queues, events, null, tick);
+                events.Drain();
+            }
+
+            List<VehicleTripSnapshot> specialTrips = completed.FindAll(trip =>
+                trip.Purpose == VehicleTripPurpose.SpecialBuildingVisit);
+            Assert.AreEqual(2, specialTrips.Count);
+            Assert.AreEqual(V(10, 0), specialTrips[0].Origin);
+            Assert.AreEqual(V(6, 0), specialTrips[0].Destination);
+            Assert.AreEqual(V(6, 0), specialTrips[1].Origin);
+            Assert.AreEqual(V(0, 0), specialTrips[1].Destination);
+            Assert.IsTrue(sim.AllParkedHome);
+        }
+
+        [Test]
+        public void SpecialVisit_NoRoute_RemainsPendingUntilTopologyRebuild()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 8;
+            config.MaxPendingVehicleTrips = 8;
+            config.MaxConcurrentSpecialTrips = 2;
+            var grid = new CityGrid(14, 4);
+            for (int x = 0; x < grid.Width; x++)
+            {
+                if (x != 6)
+                {
+                    Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+                }
+            }
+
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(10, 0), TileType.SpecialBuilding));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            var roads = new RoadNetwork(grid);
+            var demands = new DemandMap(config);
+            demands.Reassign(grid, roads);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, roads, grid, config);
+            var queues = new RoadQueueNetwork(
+                grid.Width,
+                grid.Height,
+                config);
+            queues.RebuildTopology(grid);
+            var sim = new CarSim(config);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+            var events = new SimEventBuffer(new SimEventHub());
+
+            Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                new SpecialBuildingVisitTripRequest(
+                    "cinema",
+                    V(10, 0),
+                    1L,
+                    0,
+                    1f)));
+            sim.Step(1L, 1f, queues, events, null, 0);
+            Assert.AreEqual(1, sim.PendingTripCount);
+            Assert.AreEqual(0, sim.ActiveTripCount);
+
+            Assert.IsTrue(grid.Place(V(6, 2), TileType.Road));
+            demands.Reassign(grid, roads);
+            planner.Plan(demands, roads, grid, config);
+            queues.RebuildTopology(grid);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+            sim.Step(1L, 1f, queues, events, null, 1);
+
+            Assert.AreEqual(0, sim.PendingTripCount);
+            Assert.AreEqual(1, sim.ActiveTripCount);
+        }
+
+        private static void BuildSpecialVisitCity(
+            SimConfig config,
+            out CityGrid grid,
+            out RoadNetwork roads,
+            out DemandMap demands,
+            out RoutePlanner planner,
+            out RoadQueueNetwork queues)
+        {
+            grid = new CityGrid(14, 4);
+            for (int x = 0; x < grid.Width; x++)
+            {
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            }
+
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(6, 0), TileType.SpecialBuilding));
+            Assert.IsTrue(grid.Place(V(10, 0), TileType.Office));
+
+            roads = new RoadNetwork(grid);
+            demands = new DemandMap(config);
+            demands.Reassign(grid, roads);
+            planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, roads, grid, config);
+            queues = new RoadQueueNetwork(
+                grid.Width,
+                grid.Height,
+                config);
+            queues.RebuildTopology(grid);
+
+            Assert.AreEqual(1, demands.Demands.Count);
         }
 
         private static void BuildRetirementCity(

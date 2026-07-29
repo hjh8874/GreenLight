@@ -8,7 +8,11 @@ namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IRouteDistanceProvider, IHighwayService, IBusStopInfrastructureService
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData,
+        IReadOnlyCityStats, ISimSaveSource, ISignalControl,
+        IIntersectionFacilityService, ITrafficRuleService,
+        IRouteDistanceProvider, IHighwayService,
+        IBusStopInfrastructureService, IVehicleTripService
     {
         SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
@@ -62,6 +66,7 @@ namespace CityFlow.Sim
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
         float _gameHour;
+        long _gameDay;
         int _lastStepArrivals;
         bool _demandRebalancePending;
         bool _buildingAssignmentChangePending;
@@ -188,7 +193,14 @@ namespace CityFlow.Sim
             : 1f;
         public float TickInterval => _config.TickInterval;
 
-        public void SetGameHour(float gameHour) => _gameHour = Mathf.Repeat(gameHour, 24f);
+        public void SetGameHour(float gameHour) =>
+            _gameHour = Mathf.Repeat(gameHour, 24f);
+
+        public void SetGameTime(long gameDay, float gameHour)
+        {
+            _gameDay = Math.Max(0L, gameDay);
+            SetGameHour(gameHour);
+        }
 
         // 고정 0.1s 시뮬 한 칸. 순서가 곧 파이프라인(blueprint §2 Step).
         void Step()
@@ -229,12 +241,20 @@ namespace CityFlow.Sim
                     _demand,
                     _planner,
                     _roadQueues,
-                    PreserveExistingAssignmentsForRebuild());
+                    PreserveExistingAssignmentsForRebuild(),
+                    _grid,
+                    _network);
                 ClearRebuildChangeKinds();
                 _grid.ClearTopologyDirty();
             }
 
-            StepResult carResult = _carSim.Step(_gameHour, _roadQueues, _events, _signalGate, StepCount);
+            StepResult carResult = _carSim.Step(
+                _gameDay,
+                _gameHour,
+                _roadQueues,
+                _events,
+                _signalGate,
+                StepCount);
             if (_carSim.HasCompletedRetirements)
             {
                 _buildingAssignmentChangePending = true;
@@ -245,7 +265,7 @@ namespace CityFlow.Sim
             _stats.UpdateCarSim(
                 _gameHour,
                 carResult.Arrivals,
-                _carSim.CarCount,
+                _carSim.SimulatedVehicleCount,
                 _carSim.LastStepJumped,
                 jamRatio,
                 _config);
@@ -612,7 +632,13 @@ namespace CityFlow.Sim
         public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _carSim.ActiveRoutes;
         public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _carSim.ActiveReturnRoutes;
         public int ActiveVehicleCount => _carSim.CarCount;
+        public int PendingTripCount => _carSim.PendingTripCount;
+        public int ActiveTripCount => _carSim.ActiveTripCount;
         public CarSnapshot GetCarSnapshot(int index) => _carSim.GetCar(index);
+
+        public bool TryScheduleSpecialBuildingVisit(
+            SpecialBuildingVisitTripRequest request) =>
+            _carSim.TryScheduleSpecialBuildingVisit(request);
 
         public bool TrySetCompanyCapacity(
             Vector2Int tile,
