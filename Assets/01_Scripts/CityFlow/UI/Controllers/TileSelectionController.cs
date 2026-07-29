@@ -4,6 +4,7 @@ using UnityEngine.InputSystem;
 using CityFlow.Contracts;
 using CityFlow.UI.Controllers;
 using CityFlow.Bootstrap;
+using System.Linq;
 
 namespace CityFlow.UI
 {
@@ -17,10 +18,12 @@ namespace CityFlow.UI
         }
         [Header("References")]
         [SerializeField] private AnalysisCardController analysisCard;
+        [SerializeField] private SignalControlPanelController signalControlPanel;
         [SerializeField] private BuildingInfoCardController buildingInfoCard;
         [SerializeField] private PlacementController placementController;
         private InfrastructurePlacementCoordinator _infraCoordinator;
 
+        private float _searchTimer = 0f;
         private Vector2Int? _lastHoveredBuildingCoord;
 
         [Header("Visuals")]
@@ -32,10 +35,12 @@ namespace CityFlow.UI
 
         public void Configure(
             AnalysisCardController analysis,
+            SignalControlPanelController signalControlPanel,
             PlacementController placement,
             GameObject highlight)
         {
             analysisCard = analysis;
+            this.signalControlPanel = signalControlPanel;
             placementController = placement;
             highlightBox = highlight;
             _highlightScaleInitialized = false;
@@ -51,15 +56,15 @@ namespace CityFlow.UI
         {
             if (placementController == null)
             {
-                placementController = FindFirstObjectByType<PlacementController>(FindObjectsInactive.Include);
+                placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
             }
             if (_infraCoordinator == null)
             {
-                _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+                _infraCoordinator = FindAnyObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
             }
             if (buildingInfoCard == null)
             {
-                buildingInfoCard = FindFirstObjectByType<BuildingInfoCardController>(FindObjectsInactive.Include);
+                buildingInfoCard = FindAnyObjectByType<BuildingInfoCardController>(FindObjectsInactive.Include);
             }
             // 시작 시 상세 카드와 하이라이트 박스는 숨겨둡니다.
             CacheHighlightScale();
@@ -73,14 +78,22 @@ namespace CityFlow.UI
                 return;
             }
 
-            // 동적 생성되는 컨트롤러들을 위해 Update에서 지연 검색 지원
-            if (placementController == null)
+            // 동적 생성되는 컨트롤러들을 위해 Update에서 지연 검색 지원 (최적화: 0.5초 스로틀링)
+            if (placementController == null || _infraCoordinator == null)
             {
-                placementController = FindFirstObjectByType<PlacementController>(FindObjectsInactive.Include);
-            }
-            if (_infraCoordinator == null)
-            {
-                _infraCoordinator = FindFirstObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+                _searchTimer += Time.deltaTime;
+                if (_searchTimer >= 0.5f)
+                {
+                    _searchTimer = 0f;
+                    if (placementController == null)
+                    {
+                        placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
+                    }
+                    if (_infraCoordinator == null)
+                    {
+                        _infraCoordinator = FindAnyObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+                    }
+                }
             }
 
             bool isBuilding = (placementController != null && placementController.IsBuildingMode) || 
@@ -285,9 +298,21 @@ namespace CityFlow.UI
             }
 
             // 상세 분석 카드 열기
-            if (analysisCard != null)
+            bool isSignal = false;
+            if (_services?.Placement is ISignalControl signalControl && signalControl.SignalTiles.Contains(coord))
             {
-                analysisCard.OpenCard(coord);
+                isSignal = true;
+            }
+
+            if (isSignal)
+            {
+                if (analysisCard != null) analysisCard.CloseCard();
+                if (signalControlPanel != null) signalControlPanel.Show(coord);
+            }
+            else
+            {
+                if (signalControlPanel != null) signalControlPanel.Hide();
+                if (analysisCard != null) analysisCard.OpenCard(coord);
             }
             
             Debug.Log($"[TileSelection] 타일 선택됨: {coord}");
@@ -297,6 +322,7 @@ namespace CityFlow.UI
         {
             if (highlightBox != null) highlightBox.SetActive(false);
             if (analysisCard != null) analysisCard.CloseCard();
+            if (signalControlPanel != null) signalControlPanel.Hide();
         }
 
         private void CacheHighlightScale()

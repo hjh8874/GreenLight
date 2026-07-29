@@ -59,7 +59,7 @@ namespace CityFlow.Content
             if (economyService == null)
             {
                 economyService =
-                    FindFirstObjectByType<EconomyService>();
+                    FindAnyObjectByType<EconomyService>();
             }
 
             if (economyService == null)

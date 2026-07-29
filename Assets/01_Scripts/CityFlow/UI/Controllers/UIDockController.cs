@@ -218,7 +218,7 @@ namespace CityFlow.UI
             if (panelFloating != null) panelFloating.SetActive(_currentMenu == MenuType.Floating);
             if (_currentMenu != MenuType.Build)
             {
-                var infraCoord = UnityEngine.Object.FindFirstObjectByType<CityFlow.UI.Controllers.InfrastructurePlacementCoordinator>();
+                var infraCoord = UnityEngine.Object.FindAnyObjectByType<CityFlow.UI.Controllers.InfrastructurePlacementCoordinator>();
                 if (infraCoord != null)
                 {
                     infraCoord.CancelPlacement();
