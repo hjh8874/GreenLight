@@ -9,7 +9,6 @@ namespace CityFlow.UI
     {
         [Header("Settings UI")]
         [SerializeField] private Toggle tglMuteAudio;
-        [SerializeField] private Toggle tglCongestionView;
         [SerializeField] private Button btnQuitGame;
         [SerializeField] private Button btnTitleScene;
         [SerializeField] private string titleSceneName = "TitleScene";
@@ -17,11 +16,10 @@ namespace CityFlow.UI
         private CityFlowServices _services;
         private bool _isBound;
 
-        public void Configure(Toggle muteAudio, Button quitGame, Toggle congestionView = null, Button titleScene = null)
+        public void Configure(Toggle muteAudio, Button quitGame, Button titleScene = null)
         {
             tglMuteAudio = muteAudio;
             btnQuitGame = quitGame;
-            tglCongestionView = congestionView;
             btnTitleScene = titleScene;
             BindButtons();
         }
@@ -29,10 +27,6 @@ namespace CityFlow.UI
         public void Initialize(CityFlowServices services)
         {
             _services = services;
-            if (tglCongestionView != null && _services?.Events != null)
-            {
-                tglCongestionView.SetIsOnWithoutNotify(_services.Events.IsCongestionViewEnabled);
-            }
         }
 
         private void Start()
@@ -59,30 +53,12 @@ namespace CityFlow.UI
             if (btnQuitGame != null)
             {
                 btnQuitGame.onClick.AddListener(OnQuitClicked);
-            }
-
             // 타이틀 이동 버튼 이벤트 바인딩
             if (btnTitleScene != null)
             {
                 btnTitleScene.onClick.AddListener(OnTitleSceneClicked);
             }
-
-            // 혼잡도 오버레이 토글 이벤트 바인딩
-            if (tglCongestionView != null)
-            {
-                tglCongestionView.onValueChanged.AddListener(OnCongestionToggleChanged);
-            }
-
             _isBound = true;
-        }
-
-        private void OnCongestionToggleChanged(bool isOn)
-        {
-            if (_services != null && _services.Events != null)
-            {
-                _services.Events.PublishCongestionViewToggled(isOn);
-                Debug.Log($"[Settings] 혼잡도 뷰 토글: {isOn}");
-            }
         }
 
         private void OnMuteToggleChanged(bool isMuted)
@@ -136,11 +112,8 @@ namespace CityFlow.UI
                 tglMuteAudio.onValueChanged.RemoveListener(OnMuteToggleChanged);
             if (btnQuitGame != null)
                 btnQuitGame.onClick.RemoveListener(OnQuitClicked);
-            if (tglCongestionView != null)
-                tglCongestionView.onValueChanged.RemoveListener(OnCongestionToggleChanged);
             if (btnTitleScene != null)
                 btnTitleScene.onClick.RemoveListener(OnTitleSceneClicked);
-        }
         }
     }
 }

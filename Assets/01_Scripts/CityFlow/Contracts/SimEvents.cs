@@ -89,7 +89,7 @@ namespace CityFlow.Contracts
         public event Action<InfrastructureChangedEvent> InfrastructureChanged;
         public event Action<bool> CongestionViewToggled;
 
-        public bool IsCongestionViewEnabled { get; private set; } = true;
+        public bool IsCongestionViewEnabled { get; private set; } = false;
 
         public void Publish(ArrivalEvent e) => Arrival?.Invoke(e);
 

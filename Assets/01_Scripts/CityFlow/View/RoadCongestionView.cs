@@ -16,7 +16,7 @@ namespace CityFlow.View
         private MaterialPropertyBlock propertyBlock;
         private CityFlowServices services;
         private bool subscribed;
-        private bool isOverlayEnabled = true;
+        private bool isOverlayEnabled = false;
 
         public void Configure(
             Vector2Int tile,
