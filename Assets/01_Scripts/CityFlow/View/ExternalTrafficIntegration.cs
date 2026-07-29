@@ -495,7 +495,14 @@ namespace CityFlow.View
                             otherHalfLength,
                             otherHalfWidth,
                             verticalLimit,
-                            safetyMargin))
+                            safetyMargin) &&
+                        ShouldYieldTrafficConflict(
+                            subjectVehicle,
+                            subjectOwner,
+                            candidateDirection,
+                            other,
+                            null,
+                            ResolveVehicleDirection(other)))
                     {
                         return false;
                     }
@@ -525,13 +532,111 @@ namespace CityFlow.View
                         other.HalfLength,
                         other.HalfWidth,
                         verticalLimit,
-                        safetyMargin))
+                        safetyMargin) &&
+                    ShouldYieldTrafficConflict(
+                        subjectVehicle,
+                        subjectOwner,
+                        candidateDirection,
+                        null,
+                        other,
+                        other.Direction))
                 {
                     return false;
                 }
             }
 
             return true;
+        }
+
+        private bool ShouldYieldTrafficConflict(
+            RouteVehicle subjectVehicle,
+            Object subjectOwner,
+            Vector3 subjectDirection,
+            RouteVehicle otherVehicle,
+            ExternalTrafficVehicle otherExternal,
+            Vector3 otherDirection)
+        {
+            if (VehicleSpacingMath.IsSameFlowDirection(
+                    subjectDirection,
+                    otherDirection))
+            {
+                return true;
+            }
+
+            ResolveTrafficPriorityState(
+                subjectVehicle,
+                subjectOwner,
+                out EntityId subjectStableId,
+                out bool subjectOccupiesIntersection);
+            ResolveTrafficPriorityState(
+                otherVehicle,
+                otherExternal?.Owner,
+                out EntityId otherStableId,
+                out bool otherOccupiesIntersection);
+
+            return !VehicleSpacingMath
+                .HasTrafficConflictPriority(
+                    subjectOccupiesIntersection,
+                    subjectStableId,
+                    otherOccupiesIntersection,
+                    otherStableId);
+        }
+
+        private void ResolveTrafficPriorityState(
+            RouteVehicle managedVehicle,
+            Object externalOwner,
+            out EntityId stableId,
+            out bool occupiesIntersection)
+        {
+            if (managedVehicle != null)
+            {
+                stableId =
+                    managedVehicle.Object != null
+                        ? managedVehicle.Object.GetEntityId()
+                        : EntityId.None;
+                occupiesIntersection =
+                    IsInsideSharedIntersection(
+                        managedVehicle.Pos,
+                        managedVehicle.CurrentTile,
+                        managedVehicle.HasCurrentTile);
+                return;
+            }
+
+            stableId =
+                externalOwner != null
+                    ? externalOwner.GetEntityId()
+                    : EntityId.None;
+            ExternalTrafficVehicle external =
+                FindExternalTrafficVehicle(externalOwner);
+            occupiesIntersection =
+                external != null &&
+                IsInsideSharedIntersection(
+                    external.Position,
+                    external.CurrentTile,
+                    external.HasCurrentTile);
+        }
+
+        private bool IsInsideSharedIntersection(
+            Vector3 position,
+            Vector2Int tile,
+            bool hasCurrentTile)
+        {
+            if (!hasCurrentTile ||
+                simEngine == null ||
+                !simEngine.IsSharedCarIntersection(tile))
+            {
+                return false;
+            }
+
+            Vector3 center =
+                GridToLocal(tile, position.z);
+            float halfExtent =
+                Mathf.Max(0.01f, tileSize * 0.5f);
+            return
+                Mathf.Abs(position.x - center.x) <=
+                halfExtent &&
+                Mathf.Abs(position.y - center.y) <=
+                halfExtent;
         }
 
         private void GetVehicleFootprint(

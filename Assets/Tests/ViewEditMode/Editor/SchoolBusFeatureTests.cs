@@ -851,6 +851,383 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void SchoolBusAndManagedCarCrossing_UsesSingleStablePriority()
+        {
+            GameObject viewObject =
+                new("Traffic View");
+            viewObject.SetActive(false);
+            GameObject managedCarObject =
+                new("Managed Car");
+            GameObject schoolBusOwner =
+                new("School Bus");
+
+            try
+            {
+                MainCityView view =
+                    viewObject.AddComponent<MainCityView>();
+                System.Type routeVehicleType =
+                    typeof(MainCityView).GetNestedType(
+                        "RouteVehicle",
+                        BindingFlags.NonPublic);
+                Assert.That(routeVehicleType, Is.Not.Null);
+                object managedCar =
+                    System.Activator.CreateInstance(
+                        routeVehicleType);
+                routeVehicleType.GetField(
+                        "Object",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedCar,
+                        managedCarObject);
+                routeVehicleType.GetField(
+                        "Pos",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedCar,
+                        new Vector3(-0.16f, 0f, 0f));
+                routeVehicleType.GetField(
+                        "Dir",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedCar,
+                        Vector3.right);
+                routeVehicleType.GetField(
+                        "HasCurrentTile",
+                        BindingFlags.Instance |
+                        BindingFlags.Public)
+                    ?.SetValue(
+                        managedCar,
+                        true);
+
+                FieldInfo vehiclesField =
+                    typeof(MainCityView).GetField(
+                        "vehicles",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                System.Collections.IList managedVehicles =
+                    vehiclesField?.GetValue(view) as
+                        System.Collections.IList;
+                Assert.That(managedVehicles, Is.Not.Null);
+                managedVehicles.Add(managedCar);
+
+                view.UpdateExternalTrafficVehicle(
+                    schoolBusOwner,
+                    new Vector3(0f, -0.16f, 0f),
+                    Vector3.up,
+                    0f,
+                    true,
+                    Vector2Int.zero,
+                    true,
+                    0.1f,
+                    0.05f);
+
+                MethodInfo isFootprintClear =
+                    typeof(MainCityView).GetMethod(
+                        "IsTrafficFootprintClear",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                Assert.That(isFootprintClear, Is.Not.Null);
+
+                bool managedWhenFirst =
+                    (bool)isFootprintClear.Invoke(
+                        view,
+                        new[]
+                        {
+                            managedCar,
+                            null,
+                            (object)Vector3.zero,
+                            Vector3.right,
+                            0.1f,
+                            0.05f
+                        });
+                bool schoolWhenSecond =
+                    (bool)isFootprintClear.Invoke(
+                        view,
+                        new object[]
+                        {
+                            null,
+                            schoolBusOwner,
+                            Vector3.zero,
+                            Vector3.up,
+                            0.1f,
+                            0.05f
+                        });
+                bool schoolWhenFirst =
+                    (bool)isFootprintClear.Invoke(
+                        view,
+                        new object[]
+                        {
+                            null,
+                            schoolBusOwner,
+                            Vector3.zero,
+                            Vector3.up,
+                            0.1f,
+                            0.05f
+                        });
+                bool managedWhenSecond =
+                    (bool)isFootprintClear.Invoke(
+                        view,
+                        new[]
+                        {
+                            managedCar,
+                            null,
+                            (object)Vector3.zero,
+                            Vector3.right,
+                            0.1f,
+                            0.05f
+                        });
+
+                Assert.That(
+                    managedWhenFirst,
+                    Is.EqualTo(managedWhenSecond));
+                Assert.That(
+                    schoolWhenFirst,
+                    Is.EqualTo(schoolWhenSecond));
+                Assert.That(
+                    managedWhenFirst,
+                    Is.Not.EqualTo(schoolWhenFirst),
+                    "Exactly one crossing vehicle must receive right of way.");
+
+                bool managedHasPriority =
+                    VehicleSpacingMath
+                        .HasTrafficConflictPriority(
+                            false,
+                            managedCarObject.GetEntityId(),
+                            false,
+                            schoolBusOwner.GetEntityId());
+                Assert.That(
+                    managedWhenFirst,
+                    Is.EqualTo(managedHasPriority));
+
+                if (managedHasPriority)
+                {
+                    routeVehicleType.GetField(
+                            "Pos",
+                            BindingFlags.Instance |
+                            BindingFlags.Public)
+                        ?.SetValue(
+                            managedCar,
+                            new Vector3(0.3f, 0f, 0f));
+                    schoolWhenSecond =
+                        (bool)isFootprintClear.Invoke(
+                            view,
+                            new object[]
+                            {
+                                null,
+                                schoolBusOwner,
+                                Vector3.zero,
+                                Vector3.up,
+                                0.1f,
+                                0.05f
+                            });
+                    Assert.That(schoolWhenSecond, Is.True);
+                }
+                else
+                {
+                    view.UpdateExternalTrafficVehicle(
+                        schoolBusOwner,
+                        new Vector3(0f, 0.3f, 0f),
+                        Vector3.up,
+                        0f,
+                        true,
+                        Vector2Int.zero,
+                        true,
+                        0.1f,
+                        0.05f);
+                    managedWhenSecond =
+                        (bool)isFootprintClear.Invoke(
+                            view,
+                            new[]
+                            {
+                                managedCar,
+                                null,
+                                (object)Vector3.zero,
+                                Vector3.right,
+                                0.1f,
+                                0.05f
+                            });
+                    Assert.That(managedWhenSecond, Is.True);
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(schoolBusOwner);
+                Object.DestroyImmediate(managedCarObject);
+                Object.DestroyImmediate(viewObject);
+            }
+        }
+
+        [Test]
+        public void SchoolBusAndCityBusCrossing_AllowsBothToClear()
+        {
+            GameObject viewObject =
+                new("Traffic View");
+            viewObject.SetActive(false);
+            GameObject schoolBusOwner =
+                new("School Bus");
+            GameObject cityBusOwner =
+                new("City Bus");
+
+            try
+            {
+                MainCityView view =
+                    viewObject.AddComponent<MainCityView>();
+                Vector3 schoolStart =
+                    new(-0.16f, 0f, 0f);
+                Vector3 cityStart =
+                    new(0f, -0.16f, 0f);
+                const float proposedAdvance = 0.16f;
+                const float halfLength = 0.1f;
+                const float halfWidth = 0.05f;
+
+                view.UpdateExternalTrafficVehicle(
+                    schoolBusOwner,
+                    schoolStart,
+                    Vector3.right,
+                    0f,
+                    true,
+                    Vector2Int.left,
+                    true,
+                    halfLength,
+                    halfWidth);
+                view.UpdateExternalTrafficVehicle(
+                    cityBusOwner,
+                    cityStart,
+                    Vector3.up,
+                    0f,
+                    true,
+                    Vector2Int.down,
+                    true,
+                    halfLength,
+                    halfWidth);
+
+                float schoolWhenFirst =
+                    view.LimitExternalTrafficVisualAdvance(
+                        schoolBusOwner,
+                        schoolStart,
+                        Vector3.zero,
+                        Vector3.right,
+                        0.05f,
+                        halfLength,
+                        halfWidth);
+                float cityWhenSecond =
+                    view.LimitExternalTrafficVisualAdvance(
+                        cityBusOwner,
+                        cityStart,
+                        Vector3.zero,
+                        Vector3.up,
+                        0.05f,
+                        halfLength,
+                        halfWidth);
+                float cityWhenFirst =
+                    view.LimitExternalTrafficVisualAdvance(
+                        cityBusOwner,
+                        cityStart,
+                        Vector3.zero,
+                        Vector3.up,
+                        0.05f,
+                        halfLength,
+                        halfWidth);
+                float schoolWhenSecond =
+                    view.LimitExternalTrafficVisualAdvance(
+                        schoolBusOwner,
+                        schoolStart,
+                        Vector3.zero,
+                        Vector3.right,
+                        0.05f,
+                        halfLength,
+                        halfWidth);
+
+                Assert.That(
+                    schoolWhenFirst,
+                    Is.EqualTo(schoolWhenSecond)
+                        .Within(0.0001f));
+                Assert.That(
+                    cityWhenFirst,
+                    Is.EqualTo(cityWhenSecond)
+                        .Within(0.0001f));
+
+                bool schoolHasPriority =
+                    VehicleSpacingMath
+                        .HasTrafficConflictPriority(
+                            false,
+                            schoolBusOwner.GetEntityId(),
+                            false,
+                            cityBusOwner.GetEntityId());
+                Assert.That(
+                    schoolWhenFirst >=
+                    proposedAdvance - 0.0001f,
+                    Is.EqualTo(schoolHasPriority));
+                Assert.That(
+                    cityWhenFirst >=
+                    proposedAdvance - 0.0001f,
+                    Is.EqualTo(!schoolHasPriority));
+
+                if (schoolHasPriority)
+                {
+                    view.UpdateExternalTrafficVehicle(
+                        schoolBusOwner,
+                        new Vector3(0.3f, 0f, 0f),
+                        Vector3.right,
+                        0f,
+                        true,
+                        Vector2Int.right,
+                        true,
+                        halfLength,
+                        halfWidth);
+                    cityWhenSecond =
+                        view.LimitExternalTrafficVisualAdvance(
+                            cityBusOwner,
+                            cityStart,
+                            Vector3.zero,
+                            Vector3.up,
+                            0.05f,
+                            halfLength,
+                            halfWidth);
+                    Assert.That(
+                        cityWhenSecond,
+                        Is.EqualTo(proposedAdvance)
+                            .Within(0.0001f));
+                }
+                else
+                {
+                    view.UpdateExternalTrafficVehicle(
+                        cityBusOwner,
+                        new Vector3(0f, 0.3f, 0f),
+                        Vector3.up,
+                        0f,
+                        true,
+                        Vector2Int.up,
+                        true,
+                        halfLength,
+                        halfWidth);
+                    schoolWhenSecond =
+                        view.LimitExternalTrafficVisualAdvance(
+                            schoolBusOwner,
+                            schoolStart,
+                            Vector3.zero,
+                            Vector3.right,
+                            0.05f,
+                            halfLength,
+                            halfWidth);
+                    Assert.That(
+                        schoolWhenSecond,
+                        Is.EqualTo(proposedAdvance)
+                            .Within(0.0001f));
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(cityBusOwner);
+                Object.DestroyImmediate(schoolBusOwner);
+                Object.DestroyImmediate(viewObject);
+            }
+        }
+
+        [Test]
         public void ExternalTraffic_PathHeadwayFindsStoppedBusAfterCorner()
         {
             RoutePolyline path =

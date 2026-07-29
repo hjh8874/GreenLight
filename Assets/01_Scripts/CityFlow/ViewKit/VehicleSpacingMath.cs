@@ -47,6 +47,21 @@ namespace CityFlow.ViewKit
                    Mathf.Clamp(minimumDot, -1f, 1f);
         }
 
+        public static bool HasTrafficConflictPriority(
+            bool subjectOccupiesIntersection,
+            EntityId subjectStableId,
+            bool otherOccupiesIntersection,
+            EntityId otherStableId)
+        {
+            if (subjectOccupiesIntersection !=
+                otherOccupiesIntersection)
+            {
+                return subjectOccupiesIntersection;
+            }
+
+            return subjectStableId < otherStableId;
+        }
+
         public static float ClampCorridorToForwardProgress(
             float currentDistance,
             float authorizedDistance)

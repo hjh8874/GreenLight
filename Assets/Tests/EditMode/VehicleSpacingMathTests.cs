@@ -86,6 +86,51 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void TrafficConflictPriority_IntersectionOccupantAlwaysWins()
+        {
+            Assert.IsTrue(
+                VehicleSpacingMath.HasTrafficConflictPriority(
+                    subjectOccupiesIntersection: true,
+                    subjectStableId:
+                        EntityId.FromULong(20),
+                    otherOccupiesIntersection: false,
+                    otherStableId:
+                        EntityId.FromULong(10)));
+            Assert.IsFalse(
+                VehicleSpacingMath.HasTrafficConflictPriority(
+                    subjectOccupiesIntersection: false,
+                    subjectStableId:
+                        EntityId.FromULong(10),
+                    otherOccupiesIntersection: true,
+                    otherStableId:
+                        EntityId.FromULong(20)));
+        }
+
+        [Test]
+        public void TrafficConflictPriority_StableIdBreaksTieSymmetrically()
+        {
+            bool firstHasPriority =
+                VehicleSpacingMath.HasTrafficConflictPriority(
+                    subjectOccupiesIntersection: false,
+                    subjectStableId:
+                        EntityId.FromULong(10),
+                    otherOccupiesIntersection: false,
+                    otherStableId:
+                        EntityId.FromULong(20));
+            bool secondHasPriority =
+                VehicleSpacingMath.HasTrafficConflictPriority(
+                    subjectOccupiesIntersection: false,
+                    subjectStableId:
+                        EntityId.FromULong(20),
+                    otherOccupiesIntersection: false,
+                    otherStableId:
+                        EntityId.FromULong(10));
+
+            Assert.IsTrue(firstHasPriority);
+            Assert.IsFalse(secondHasPriority);
+        }
+
+        [Test]
         public void ClampCorridorToForwardProgress_DoesNotMoveVehicleBackward()
         {
             float result =
