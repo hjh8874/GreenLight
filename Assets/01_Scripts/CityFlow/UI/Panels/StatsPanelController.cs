@@ -2,6 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
+using CityFlow.WorldGrid;
 using TMPro;
 using UnityEngine;
 
@@ -9,16 +11,19 @@ namespace CityFlow.UI
 {
     public class StatsPanelController : MonoBehaviour, ICityFlowServiceConsumer
     {
+        private const float CongestionDensityThreshold = 0.7f;
+
         [Header("UI Elements")]
         [SerializeField] private TMP_Text txtJamCount;
         [SerializeField] private TMP_Text txtCoinsPerMinute;
 
         private CityFlowServices _services;
+        private IWorldGridService _worldGrid;
         private Coroutine _updateRoutine;
         private readonly Queue<ArrivalCoinSample> _arrivalCoinSamples = new();
+        private readonly HashSet<Vector2Int> _roadTiles = new();
         private long _arrivalCoinsInLastMinute;
-        private int _gridWidth = GridUtil.DefaultWidth;
-        private int _gridHeight = GridUtil.DefaultHeight;
+        private bool _roadCacheRebuildPending;
 
         private readonly struct ArrivalCoinSample
         {
@@ -45,18 +50,27 @@ namespace CityFlow.UI
 
         public void Initialize(CityFlowServices services)
         {
-            if (_services != null)
+            UnbindServices();
+            _services = services;
+            _roadTiles.Clear();
+            _roadCacheRebuildPending = false;
+
+            if (_services == null)
             {
-                _services.Events.Arrival -= OnArrival;
+                return;
             }
 
-            _services = services;
-            if (_services?.WorldGrid != null)
-            {
-                _gridWidth = Mathf.Max(1, _services.WorldGrid.WorldWidth);
-                _gridHeight = Mathf.Max(1, _services.WorldGrid.WorldHeight);
-            }
             _services.Events.Arrival += OnArrival;
+            _services.Events.Placed += OnPlaced;
+            _services.WorldGridRegistered += OnWorldGridRegistered;
+            BindWorldGrid(_services.WorldGrid);
+
+            if (_services.Save != null)
+            {
+                _services.Save.RestoreCompleted += OnRestoreCompleted;
+            }
+
+            RebuildRoadCache();
         }
 
         private void OnEnable()
@@ -73,10 +87,7 @@ namespace CityFlow.UI
 
         private void OnDestroy()
         {
-            if (_services != null)
-            {
-                _services.Events.Arrival -= OnArrival;
-            }
+            UnbindServices();
         }
 
         private IEnumerator UpdateStatsRoutine()
@@ -87,18 +98,12 @@ namespace CityFlow.UI
             {
                 if (_services != null && _services.TileData != null)
                 {
-                    // 1. 정체 구역 카운터: 전체 맵을 돌며 밀도(Density)가 0.7 이상인 구역을 카운트
-                    int jamCount = 0;
-                    for (int y = 0; y < _gridHeight; y++)
+                    if (_roadCacheRebuildPending)
                     {
-                        for (int x = 0; x < _gridWidth; x++)
-                        {
-                            if (_services.TileData.GetDensity01(new Vector2Int(x, y)) > 0.7f)
-                            {
-                                jamCount++;
-                            }
-                        }
+                        RebuildRoadCache();
                     }
+
+                    int jamCount = CountCongestedRoads();
 
                     if (txtJamCount != null) txtJamCount.text = $"정체 구역: {jamCount}곳";
 
@@ -122,6 +127,135 @@ namespace CityFlow.UI
             _arrivalCoinSamples.Enqueue(new ArrivalCoinSample(Time.unscaledTime, arrival.Coins));
             _arrivalCoinsInLastMinute += arrival.Coins;
             RemoveExpiredArrivalSamples();
+        }
+
+        private void OnPlaced(PlacedEvent placed)
+        {
+            if (placed.IsRemove)
+            {
+                _roadTiles.Remove(placed.Tile);
+                return;
+            }
+
+            if (placed.Type == TileType.Road)
+            {
+                _roadTiles.Add(placed.Tile);
+            }
+        }
+
+        private void OnChunkUnlocked(GridChunkId chunk)
+        {
+            if (_services?.TileData == null || _worldGrid == null)
+            {
+                return;
+            }
+
+            UnlockedGridTileScanner.VisitChunk(
+                _worldGrid,
+                chunk,
+                ScanRoadTile);
+        }
+
+        private void OnWorldGridRegistered(IWorldGridService service)
+        {
+            BindWorldGrid(service);
+            RebuildRoadCache();
+        }
+
+        private void BindWorldGrid(IWorldGridService service)
+        {
+            if (ReferenceEquals(_worldGrid, service))
+            {
+                return;
+            }
+
+            if (_worldGrid != null)
+            {
+                _worldGrid.ChunkUnlocked -= OnChunkUnlocked;
+                _worldGrid.AccessRestored -= OnWorldGridAccessRestored;
+            }
+
+            _worldGrid = service;
+            if (_worldGrid != null)
+            {
+                _worldGrid.ChunkUnlocked += OnChunkUnlocked;
+                _worldGrid.AccessRestored += OnWorldGridAccessRestored;
+            }
+        }
+
+        private void OnWorldGridAccessRestored()
+        {
+            _roadCacheRebuildPending = true;
+        }
+
+        private void OnRestoreCompleted(RestoreCompletedEvent _)
+        {
+            _roadCacheRebuildPending = true;
+        }
+
+        private void RebuildRoadCache()
+        {
+            _roadTiles.Clear();
+            _roadCacheRebuildPending = false;
+
+            if (_services?.TileData == null)
+            {
+                return;
+            }
+
+            int scannedTileCount = UnlockedGridTileScanner.VisitUnlockedTiles(
+                _worldGrid,
+                GridUtil.DefaultWidth,
+                GridUtil.DefaultHeight,
+                ScanRoadTile);
+
+            Debug.Log(
+                $"[StatsPanelController] Rebuilt road cache from " +
+                $"{scannedTileCount} unlocked tiles.",
+                this);
+        }
+
+        private void ScanRoadTile(Vector2Int tile)
+        {
+            if (_services.TileData.GetTileType(tile) == TileType.Road)
+            {
+                _roadTiles.Add(tile);
+            }
+        }
+
+        private int CountCongestedRoads()
+        {
+            int congestedRoadCount = 0;
+            foreach (Vector2Int tile in _roadTiles)
+            {
+                if (_services.TileData.GetDensity01(tile) >
+                    CongestionDensityThreshold)
+                {
+                    congestedRoadCount++;
+                }
+            }
+
+            return congestedRoadCount;
+        }
+
+        private void UnbindServices()
+        {
+            if (_services == null)
+            {
+                return;
+            }
+
+            _services.Events.Arrival -= OnArrival;
+            _services.Events.Placed -= OnPlaced;
+            _services.WorldGridRegistered -= OnWorldGridRegistered;
+
+            if (_services.Save != null)
+            {
+                _services.Save.RestoreCompleted -= OnRestoreCompleted;
+            }
+
+            BindWorldGrid(null);
+            _services = null;
         }
 
         private void RemoveExpiredArrivalSamples()
