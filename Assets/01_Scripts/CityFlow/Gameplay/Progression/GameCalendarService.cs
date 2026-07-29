@@ -13,10 +13,11 @@ namespace CityFlow.Gameplay.Progression
         IGameCalendarSaveSource,
         IOfflineCalendarProgressionSource
     {
-        [Header("Prototype Time Scale")]
-        [Tooltip("Prototype default: 1 real second equals 1 game hour.")]
-        [SerializeField] private float realSecondsPerGameHour = 1f;
-        [SerializeField] private int hoursPerDay = 24;
+        [Header("Time Balance")]
+        [Tooltip("Optional scene override. When empty, the default Resources game time settings are used.")]
+        [SerializeField] private GameTimeSettingsSO timeSettings;
+
+        [Header("Calendar Structure")]
         [SerializeField] private int daysPerMonth = 30;
         [SerializeField] private int monthsPerYear = 12;
 
@@ -28,6 +29,9 @@ namespace CityFlow.Gameplay.Progression
 
         private bool initialized;
         private float accumulatedRealSeconds;
+        private float realSecondsPerGameHour =
+            GameTimeSettingsSO.DefaultRealMinutesPerGameDay * 60f /
+            GameTimeSettingsSO.HoursPerDay;
 
         public int Year { get; private set; }
         public int Month { get; private set; }
@@ -36,6 +40,11 @@ namespace CityFlow.Gameplay.Progression
         public int TotalMonths { get; private set; }
         public long TotalDays { get; private set; }
         public float RealSecondsPerGameHour => realSecondsPerGameHour;
+        public float RealSecondsPerGameDay =>
+            realSecondsPerGameHour * HoursPerDay;
+        public int HoursPerDay => GameTimeSettingsSO.HoursPerDay;
+        public float TimeOfDay01 =>
+            Mathf.Repeat(Hour, HoursPerDay) / HoursPerDay;
 
         public event Action<int> HourChanged;
         public event Action<int> DayChanged;
@@ -43,11 +52,27 @@ namespace CityFlow.Gameplay.Progression
 
         public void Initialize(CityFlowServices services)
         {
+            ApplyTimeSettings();
             ApplyInitialDate();
             services.RegisterGameCalendar(this);
             initialized = true;
 
-            Debug.Log($"[GameCalendarService] Calendar started at Y{Year} M{Month} D{Day} {Hour:00}:00. 1 game hour = {realSecondsPerGameHour:0.##} real seconds.");
+            Debug.Log(
+                $"[GameCalendarService] Calendar started at Y{Year} " +
+                $"M{Month} D{Day} {Hour:00}:00. One game day = " +
+                $"{RealSecondsPerGameDay / 60f:0.##} real minutes " +
+                $"({realSecondsPerGameHour:0.##} seconds per hour).");
+        }
+
+        private void ApplyTimeSettings()
+        {
+            GameTimeSettingsSO resolved =
+                GameTimeSettingsResolver.Resolve(timeSettings, this);
+
+            realSecondsPerGameHour = resolved != null
+                ? resolved.RealSecondsPerGameHour
+                : GameTimeSettingsSO.DefaultRealMinutesPerGameDay *
+                  60f / GameTimeSettingsSO.HoursPerDay;
         }
 
         private void Update()
@@ -72,7 +97,7 @@ namespace CityFlow.Gameplay.Progression
             Year = Mathf.Max(1, startYear);
             Month = Mathf.Clamp(startMonth, 1, Mathf.Max(1, monthsPerYear));
             Day = Mathf.Clamp(startDay, 1, Mathf.Max(1, daysPerMonth));
-            Hour = Mathf.Clamp(startHour, 0, Mathf.Max(1, hoursPerDay) - 1);
+            Hour = Mathf.Clamp(startHour, 0, HoursPerDay - 1);
             TotalMonths = ((Year - 1) * Mathf.Max(1, monthsPerYear)) + Month;
             TotalDays = CalculateTotalDays(Year, Month, Day);
         }
@@ -98,7 +123,7 @@ namespace CityFlow.Gameplay.Progression
                 return;
             }
 
-            int validHoursPerDay = Mathf.Max(1, hoursPerDay);
+            int validHoursPerDay = HoursPerDay;
             int validDaysPerMonth = Mathf.Max(1, daysPerMonth);
             int validMonthsPerYear = Mathf.Max(1, monthsPerYear);
             float secondsPerHour = Mathf.Max(0.01f, realSecondsPerGameHour);
@@ -141,7 +166,7 @@ namespace CityFlow.Gameplay.Progression
 
         private void AdvanceHoursWithoutIntermediateEvents(long gameHours)
         {
-            int validHoursPerDay = Mathf.Max(1, hoursPerDay);
+            int validHoursPerDay = HoursPerDay;
             int validDaysPerMonth = Mathf.Max(1, daysPerMonth);
             int validMonthsPerYear = Mathf.Max(1, monthsPerYear);
 
@@ -188,7 +213,7 @@ namespace CityFlow.Gameplay.Progression
         private void AdvanceHour()
         {
             Hour++;
-            if (Hour >= Mathf.Max(1, hoursPerDay))
+            if (Hour >= HoursPerDay)
             {
                 Hour = 0;
                 AdvanceDay();
@@ -237,6 +262,6 @@ namespace CityFlow.Gameplay.Progression
                    validDaysPerMonth + validDay;
         }
 
-        // Attach this component to a scene object. CityBootstrap initializes it through ICityFlowServiceConsumer.
+        // Unity setup: Attach this component once. It loads the default Resources GameTimeSettings asset automatically.
     }
 }

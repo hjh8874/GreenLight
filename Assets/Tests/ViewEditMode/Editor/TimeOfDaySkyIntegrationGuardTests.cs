@@ -368,6 +368,9 @@ namespace CityFlow.Tests.ViewEditMode
             public int TotalMonths => 1;
             public long TotalDays => 0L;
             public float RealSecondsPerGameHour => 1f;
+            public float RealSecondsPerGameDay => 24f;
+            public int HoursPerDay => 24;
+            public float TimeOfDay01 => Hour / 24f;
 
             public event Action<int> HourChanged;
             public event Action<int> DayChanged
