@@ -110,6 +110,7 @@ namespace CityFlow.View
                 CommuteCar car = carSimMirrors[i];
                 CarSnapshot snapshot = simEngine.GetCarSnapshot(i);
                 car.State = snapshot.State;
+                car.ApplyViewVisibility(snapshot.IsVisible);
                 if (carVehicles.TryGetValue(car, out RouteVehicle vehicle)
                     && vehicle != null
                     && vehicle.Object.activeSelf)
@@ -327,7 +328,7 @@ namespace CityFlow.View
 
         private void SyncCarSimMirrors()
         {
-            int count = simEngine.ActiveVehicleCount;
+            int count = simEngine.CarSimVehicleStorageCount;
             while (carSimMirrors.Count < count) carSimMirrors.Add(new CommuteCar());
             while (carSimMirrors.Count > count) carSimMirrors.RemoveAt(carSimMirrors.Count - 1);
             for (int i = 0; i < count; i++)
@@ -340,6 +341,7 @@ namespace CityFlow.View
                 car.HomeSlot = snapshot.HomeSlot;
                 car.WorkSlot = snapshot.WorkSlot;
                 car.State = snapshot.State;
+                car.ApplyViewVisibility(snapshot.IsVisible);
             }
         }
 
@@ -351,6 +353,7 @@ namespace CityFlow.View
                 for (int i = 0; i < carSimMirrors.Count; i++)
                 {
                     CommuteCar car = carSimMirrors[i];
+                    hash = hash * 31 + (car.IsVisible ? 1 : 0);
                     hash = hash * 31 + car.RouteIndex;
                     hash = hash * 31 + car.Home.GetHashCode();
                     hash = hash * 31 + car.Work.GetHashCode();
@@ -424,6 +427,11 @@ namespace CityFlow.View
             for (int i = 0; i < cars.Count; i++)
             {
                 CommuteCar car = cars[i];
+                if (!car.IsVisible)
+                {
+                    continue;
+                }
+
                 if (car.RouteIndex < 0 || car.RouteIndex >= routes.Count)
                 {
                     continue;
@@ -558,7 +566,10 @@ namespace CityFlow.View
             var alive = new HashSet<CommuteCar>();
             for (int i = 0; i < cars.Count; i++)
             {
-                alive.Add(cars[i]);
+                if (cars[i].IsVisible)
+                {
+                    alive.Add(cars[i]);
+                }
             }
 
             List<CommuteCar> stale = null;
@@ -582,6 +593,10 @@ namespace CityFlow.View
             for (int i = 0; i < cars.Count; i++)
             {
                 CommuteCar car = cars[i];
+                if (!car.IsVisible)
+                {
+                    continue;
+                }
                 bool hasBake = bakedRoutes.TryGetValue(car.RouteIndex, out BakedRoutePair pair);
                 if (carVehicles.TryGetValue(car, out RouteVehicle vehicle))
                 {

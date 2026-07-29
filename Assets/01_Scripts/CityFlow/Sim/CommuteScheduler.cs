@@ -1,10 +1,18 @@
 using System;
 using System.Collections.Generic;
+using CityFlow.Contracts;
 using UnityEngine;
 
 namespace CityFlow.Sim
 {
-    public enum CarState { ParkedHome, Outbound, ParkedWork, Inbound }
+    public enum CarState
+    {
+        ParkedHome,
+        Outbound,
+        ParkedWork,
+        Inbound,
+        Inactive
+    }
     public enum RetireReason { None, HomeLost, WorkLost }
 
     public sealed class CommuteCar
@@ -24,6 +32,57 @@ namespace CityFlow.Sim
         // 리빌드로 새로 생긴 배정은 생성 시각이 이미 지난 출근 창을 소급하지 않는다.
         // 다음 날 출발 시각 이전 구간을 관측한 뒤에만 정상 출발 전이를 허용한다.
         public bool AwaitingNextWave;
+        public VehicleTripPurpose RoutinePurpose { get; private set; } =
+            VehicleTripPurpose.Commute;
+        public bool IsTransient { get; private set; }
+        public bool SpecialTripReserved { get; private set; }
+        public bool IsVisible { get; private set; } = true;
+
+        internal void ConfigureTransient(Vector2Int origin)
+        {
+            Home = origin;
+            Work = origin;
+            RouteIndex = -1;
+            WorkSlot = 0;
+            HomeSlot = 0;
+            State = CarState.Outbound;
+            Distance = 0f;
+            ResumeTile = default;
+            HasResume = false;
+            RetireReason = RetireReason.None;
+            AwaitingNextWave = false;
+            RoutinePurpose = VehicleTripPurpose.SpecialBuildingVisit;
+            IsTransient = true;
+            SpecialTripReserved = false;
+            IsVisible = true;
+        }
+
+        internal void ReleaseTransient()
+        {
+            State = CarState.Inactive;
+            Distance = 0f;
+            RouteIndex = -1;
+            ResumeTile = default;
+            HasResume = false;
+            SpecialTripReserved = false;
+            IsVisible = false;
+        }
+
+        public void ApplyViewVisibility(bool isVisible)
+        {
+            IsVisible = isVisible;
+        }
+
+        internal void SetRoutinePurpose(VehicleTripPurpose purpose)
+        {
+            RoutinePurpose = purpose;
+        }
+
+        internal void SetSpecialTripReservation(bool isReserved)
+        {
+            SpecialTripReserved = isReserved;
+            IsVisible = !isReserved;
+        }
     }
 
     // 하루 주기 통근 안무. 세이브 불필요 — 로드/큰 시각 점프 시 SnapToHour로 주차 상태에
@@ -37,6 +96,24 @@ namespace CityFlow.Sim
         float _morningEnd, _eveningStart, _eveningEnd;
 
         public IReadOnlyList<CommuteCar> Cars => _cars;
+        public int ActiveCount
+        {
+            get
+            {
+                int count = 0;
+                for (int index = 0; index < _cars.Count; index++)
+                {
+                    CommuteCar car = _cars[index];
+                    if (car.State != CarState.Inactive &&
+                        !car.SpecialTripReserved)
+                    {
+                        count++;
+                    }
+                }
+
+                return count;
+            }
+        }
 
         // sticky 리빌드(라이브 QA A — Sim PR#92 sticky 배정과 같은 철학): (Home, Work) 짝이
         // 새 목록에도 있으면 차 객체를 보존한다(State·Distance·DepartHour 유지, RouteIndex만 갱신).
@@ -45,16 +122,35 @@ namespace CityFlow.Sim
         public void Rebuild(IReadOnlyList<Vector2Int> sources, IReadOnlyList<Vector2Int> sinks,
             Func<Vector2Int, int> workCapacityFor, int homeSlots, int maxCars,
             float morningStart, float morningEnd, float eveningStart, float eveningEnd,
-            bool deferNewAssignments = false)
+            bool deferNewAssignments = false,
+            IReadOnlyList<VehicleTripPurpose> purposes = null,
+            int transientStorageCapacity = 0)
         {
             if (workCapacityFor == null)
                 throw new ArgumentNullException(nameof(workCapacityFor));
 
             _morningEnd = morningEnd; _eveningStart = eveningStart; _eveningEnd = eveningEnd;
 
+            var activeTransients = new List<CommuteCar>();
+            int reservedRoutineCount = 0;
             var survivors = new Dictionary<(Vector2Int, Vector2Int), Queue<CommuteCar>>(_cars.Count);
             for (int i = 0; i < _cars.Count; i++)
             {
+                if (_cars[i].IsTransient)
+                {
+                    if (_cars[i].State != CarState.Inactive)
+                    {
+                        activeTransients.Add(_cars[i]);
+                    }
+
+                    continue;
+                }
+
+                if (_cars[i].SpecialTripReserved)
+                {
+                    reservedRoutineCount++;
+                }
+
                 var key = (_cars[i].Home, _cars[i].Work);
                 if (!survivors.TryGetValue(key, out Queue<CommuteCar> q)) survivors[key] = q = new Queue<CommuteCar>();
                 q.Enqueue(_cars[i]);
@@ -85,7 +181,16 @@ namespace CityFlow.Sim
 
             // 2차: route 순서로 확정. 생존 차는 슬롯 유지(정원 축소로 밀려나면 재배정, 빈 칸 없으면
             // 그날 통근 제외), 신규 짝은 빈 칸 배정(ParkedHome — 스냅은 SnapNewToHour가 신규만).
-            for (int i = 0; i < count && _cars.Count < maxCars; i++)
+            // A transient backed by a hidden routine owner does not consume
+            // an additional active slot. Only ownerless transients reduce the
+            // routine limit; transient objects use the separate storage budget.
+            int unbackedTransientCount = Math.Max(
+                0,
+                activeTransients.Count - reservedRoutineCount);
+            int routineLimit = Math.Max(
+                0,
+                maxCars - unbackedTransientCount);
+            for (int i = 0; i < count && _cars.Count < routineLimit; i++)
             {
                 CommuteCar car = matched[i];
                 int workCapacity = SafeCapacity(
@@ -105,6 +210,8 @@ namespace CityFlow.Sim
                         car.HomeSlot = hs;
                     }
                     car.RouteIndex = i;
+                    car.SetRoutinePurpose(PurposeAt(purposes, i));
+                    car.ApplyViewVisibility(!car.SpecialTripReserved);
                     _cars.Add(car);
                     continue;
                 }
@@ -125,9 +232,33 @@ namespace CityFlow.Sim
                     State = CarState.ParkedHome,
                     AwaitingNextWave = deferNewAssignments,
                 };
+                fresh.SetRoutinePurpose(PurposeAt(purposes, i));
                 _cars.Add(fresh);
                 _newCars.Add(fresh);
             }
+
+            int safeTransientCapacity = Math.Max(
+                0,
+                transientStorageCapacity);
+            int storageLimit = maxCars > int.MaxValue - safeTransientCapacity
+                ? int.MaxValue
+                : maxCars + safeTransientCapacity;
+            for (int index = 0;
+                 index < activeTransients.Count &&
+                 _cars.Count < storageLimit;
+                 index++)
+            {
+                _cars.Add(activeTransients[index]);
+            }
+        }
+
+        private static VehicleTripPurpose PurposeAt(
+            IReadOnlyList<VehicleTripPurpose> purposes,
+            int index)
+        {
+            return purposes != null && index >= 0 && index < purposes.Count
+                ? purposes[index]
+                : VehicleTripPurpose.Commute;
         }
 
         static int SafeCapacity(
@@ -161,6 +292,10 @@ namespace CityFlow.Sim
             for (int i = 0; i < _cars.Count; i++)
             {
                 CommuteCar car = _cars[i];
+                if (car.IsTransient || car.SpecialTripReserved)
+                {
+                    continue;
+                }
                 if (car.State == CarState.ParkedHome && car.AwaitingNextWave)
                 {
                     if (hour < car.DepartHomeHour)
@@ -189,6 +324,11 @@ namespace CityFlow.Sim
         {
             for (int i = 0; i < _cars.Count; i++)
             {
+                if (_cars[i].IsTransient || _cars[i].SpecialTripReserved)
+                {
+                    continue;
+                }
+
                 SnapCar(_cars[i], hour);
             }
         }
@@ -198,6 +338,11 @@ namespace CityFlow.Sim
         {
             for (int i = 0; i < _newCars.Count; i++)
             {
+                if (_newCars[i].IsTransient || _newCars[i].SpecialTripReserved)
+                {
+                    continue;
+                }
+
                 SnapCar(_newCars[i], hour);
             }
             _newCars.Clear();
@@ -226,6 +371,44 @@ namespace CityFlow.Sim
         {
             _cars.Clear();
             _newCars.Clear();
+        }
+
+        internal CommuteCar AcquireTransient(
+            Vector2Int origin,
+            int maxCars)
+        {
+            for (int index = 0; index < _cars.Count; index++)
+            {
+                CommuteCar candidate = _cars[index];
+                if (!candidate.IsTransient ||
+                    candidate.State != CarState.Inactive)
+                {
+                    continue;
+                }
+
+                candidate.ConfigureTransient(origin);
+                return candidate;
+            }
+
+            if (_cars.Count >= Math.Max(1, maxCars))
+            {
+                return null;
+            }
+
+            var created = new CommuteCar();
+            created.ConfigureTransient(origin);
+            _cars.Add(created);
+            return created;
+        }
+
+        internal void ReleaseTransient(CommuteCar car)
+        {
+            if (car == null || !car.IsTransient)
+            {
+                return;
+            }
+
+            car.ReleaseTransient();
         }
 
         public static float StaggerHour(Vector2Int home, float windowStart, float windowEnd)

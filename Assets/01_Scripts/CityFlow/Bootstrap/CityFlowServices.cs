@@ -34,6 +34,7 @@ namespace CityFlow.Bootstrap
             get;
             private set;
         }
+        public IVehicleTripService VehicleTrips { get; private set; }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
@@ -50,6 +51,7 @@ namespace CityFlow.Bootstrap
         public event Action<IReadOnlyPopulationData> PopulationRegistered;
         public event Action<ISpecialBuildingVisitService>
             SpecialBuildingVisitsRegistered;
+        public event Action<IVehicleTripService> VehicleTripsRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -330,6 +332,23 @@ namespace CityFlow.Bootstrap
             }
 
             SpecialBuildingVisitsRegistered?.Invoke(specialBuildingVisits);
+            return true;
+        }
+
+        public bool RegisterVehicleTrips(IVehicleTripService vehicleTrips)
+        {
+            if (vehicleTrips == null)
+            {
+                return false;
+            }
+
+            if (VehicleTrips != null)
+            {
+                return ReferenceEquals(VehicleTrips, vehicleTrips);
+            }
+
+            VehicleTrips = vehicleTrips;
+            VehicleTripsRegistered?.Invoke(vehicleTrips);
             return true;
         }
 

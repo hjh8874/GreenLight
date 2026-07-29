@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using NUnit.Framework;
@@ -32,6 +33,20 @@ namespace CityFlow.Sim.Tests
             cfg.DayLengthSeconds = 24f;
             cfg.DemandChoicePool = 1;
             return cfg;
+        }
+
+        private static void SetCongestion(
+            SimEngine engine,
+            Vector2Int tile,
+            int gridWidth,
+            CongestionLevel level)
+        {
+            FieldInfo field = typeof(SimEngine).GetField(
+                "_carCongestion",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            var congestion = (CongestionLevel[])field.GetValue(engine);
+            congestion[tile.y * gridWidth + tile.x] = level;
         }
 
         private void BuildTestIntersection(SimEngine engine, Vector2Int pos)
@@ -78,6 +93,93 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void RemoveRoad_ClearsCachedCongestion()
+        {
+            SimConfig cfg = Cfg();
+            var hub = new SimEventHub();
+            var engine = new SimEngine(cfg, hub);
+            Vector2Int road = V(2, 1);
+            Assert.IsTrue(engine.Place(road, TileType.Road));
+            SetCongestion(engine, road, cfg.GridWidth, CongestionLevel.Jam);
+            int resolvedEventCount = 0;
+            hub.CongestionChanged += e =>
+            {
+                if (e.Tile == road && e.Level == CongestionLevel.Free)
+                {
+                    resolvedEventCount++;
+                }
+            };
+
+            Assert.IsTrue(engine.Remove(road));
+            engine.Tick(cfg.TickInterval);
+
+            Assert.AreEqual(0, engine.RoadTileCount);
+            Assert.AreEqual(1, resolvedEventCount);
+            Assert.AreEqual(
+                CongestionLevel.Free,
+                engine.GetCongestion(road));
+        }
+
+        [Test]
+        public void RestoreSnapshot_ClearsCachedCongestion()
+        {
+            SimConfig cfg = Cfg();
+            var hub = new SimEventHub();
+            var engine = new SimEngine(cfg, hub);
+            Vector2Int road = V(2, 1);
+            Assert.IsTrue(engine.Place(road, TileType.Road));
+            SetCongestion(engine, road, cfg.GridWidth, CongestionLevel.Jam);
+            int resolvedEventCount = 0;
+            hub.CongestionChanged += e =>
+            {
+                if (e.Tile == road && e.Level == CongestionLevel.Free)
+                {
+                    resolvedEventCount++;
+                }
+            };
+
+            SimSaveData snapshot = engine.CreateSnapshot();
+            engine.RestoreSnapshot(snapshot);
+            engine.Tick(cfg.TickInterval);
+
+            Assert.AreEqual(TileType.Road, engine.GetTileType(road));
+            Assert.AreEqual(1, engine.RoadTileCount);
+            Assert.AreEqual(1, resolvedEventCount);
+            Assert.AreEqual(
+                CongestionLevel.Free,
+                engine.GetCongestion(road));
+        }
+
+        [Test]
+        public void RestoreSnapshot_ClearsTransientCongestionState()
+        {
+            SimConfig cfg = Cfg();
+            var engine = new SimEngine(cfg, new SimEventHub());
+            Vector2Int road = V(2, 1);
+            Assert.IsTrue(engine.Place(road, TileType.Road));
+
+            FieldInfo congestionField = typeof(SimEngine).GetField(
+                "_carCongestion",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(congestionField);
+            var congestion =
+                (CongestionLevel[])congestionField.GetValue(engine);
+            congestion[road.y * cfg.GridWidth + road.x] =
+                CongestionLevel.Jam;
+            Assert.AreEqual(
+                CongestionLevel.Jam,
+                engine.GetCongestion(road));
+
+            SimSaveData snapshot = engine.CreateSnapshot();
+            engine.RestoreSnapshot(snapshot);
+
+            Assert.AreEqual(TileType.Road, engine.GetTileType(road));
+            Assert.AreEqual(
+                CongestionLevel.Free,
+                engine.GetCongestion(road));
+        }
+
+        [Test]
         public void MiniCityArrivesAndPaysPerCar()
         {
             var hub = new SimEventHub();
@@ -92,6 +194,58 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(2, arrivals);
             Assert.AreEqual(20, coins);
             Assert.AreEqual(CarState.ParkedWork, engine.GetCarSnapshot(0).State);
+        }
+
+        [Test]
+        public void CompletedSpecialTrip_DoesNotInflateActiveVehicleCount()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 14;
+            cfg.GridHeight = 4;
+            cfg.MaxSimCars = 16;
+            cfg.MaxPendingVehicleTrips = 16;
+            cfg.MaxConcurrentSpecialTrips = 2;
+            var engine = new SimEngine(cfg, new SimEventHub());
+
+            for (int x = 0; x < cfg.GridWidth; x++)
+            {
+                Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
+            }
+
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(
+                engine.Place(V(6, 0), TileType.SpecialBuilding));
+            Assert.IsTrue(engine.Place(V(10, 0), TileType.Office));
+
+            engine.SetGameTime(1L, 0f);
+            engine.Tick(cfg.TickInterval);
+            Assert.AreEqual(1, engine.ActiveVehicleCount);
+            Assert.AreEqual(1, engine.CarSimVehicleStorageCount);
+
+            Assert.IsTrue(engine.TryScheduleSpecialBuildingVisit(
+                new SpecialBuildingVisitTripRequest(
+                    "coffee-shop",
+                    V(6, 0),
+                    1L,
+                    0,
+                    1f)));
+            engine.SetGameTime(1L, 1f);
+
+            for (int tick = 0; tick < 120; tick++)
+            {
+                engine.Tick(cfg.TickInterval);
+            }
+
+            Assert.AreEqual(0, engine.PendingTripCount);
+            Assert.AreEqual(0, engine.ActiveTripCount);
+            Assert.AreEqual(
+                1,
+                engine.ActiveVehicleCount,
+                "Released transient storage must not inflate city statistics.");
+            Assert.AreEqual(
+                2,
+                engine.CarSimVehicleStorageCount,
+                "The inactive transient remains available for reuse.");
         }
 
         [Test]

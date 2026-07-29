@@ -5,6 +5,7 @@ using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using CityFlow.Sim.Quests;
+using CityFlow.WorldGrid;
 using UnityEngine;
 
 namespace CityFlow.Gameplay.Quests
@@ -36,9 +37,12 @@ namespace CityFlow.Gameplay.Quests
         };
 
         private readonly HashSet<Vector2Int> jamTiles = new();
+        private readonly Dictionary<Vector2Int, TileType> trackedQuestTiles =
+            new();
 
         private CityQuestDirector director = new();
         private CityFlowServices services;
+        private IWorldGridService worldGrid;
         private IWeeklyEconomyService weeklyEconomy;
         private IReadOnlyDeliveredProgress deliveredProgress;
         private float evaluationElapsed;
@@ -49,8 +53,11 @@ namespace CityFlow.Gameplay.Quests
         private bool needsLegacyProgressionMigration;
         private bool hasRestoredLifetimeDeliveredTotal;
         private long restoredLifetimeDeliveredTotal;
-        private int gridWidth = GridUtil.DefaultWidth;
-        private int gridHeight = GridUtil.DefaultHeight;
+        private int roadCount;
+        private int houseCount;
+        private int officeCount;
+        private int schoolCount;
+        private bool gridStateRebuildPending;
 
         public event Action<CityQuestViewState> ViewStateChanged;
 
@@ -77,6 +84,9 @@ namespace CityFlow.Gameplay.Quests
             hasRestoredLifetimeDeliveredTotal = false;
             restoredLifetimeDeliveredTotal = 0L;
             jamTiles.Clear();
+            trackedQuestTiles.Clear();
+            ResetGridCounts();
+            gridStateRebuildPending = false;
 
             if (services == null)
             {
@@ -84,15 +94,17 @@ namespace CityFlow.Gameplay.Quests
                 return;
             }
 
-            if (services.WorldGrid != null)
-            {
-                gridWidth = Math.Max(1, services.WorldGrid.WorldWidth);
-                gridHeight = Math.Max(1, services.WorldGrid.WorldHeight);
-            }
-
             services.Events.Arrival += OnArrival;
             services.Events.CongestionChanged += OnCongestionChanged;
+            services.Events.Placed += OnPlaced;
             services.WeeklyEconomyRegistered += OnWeeklyEconomyRegistered;
+            services.WorldGridRegistered += OnWorldGridRegistered;
+            BindWorldGrid(services.WorldGrid);
+
+            if (services.Save != null)
+            {
+                services.Save.RestoreCompleted += OnRestoreCompleted;
+            }
 
             if (services.WeeklyEconomy != null)
             {
@@ -102,7 +114,7 @@ namespace CityFlow.Gameplay.Quests
             BindDeliveredProgress();
             services.RegisterProgressionSaveSource(this);
             TryMigrateLegacyProgression();
-            RefreshJamTiles();
+            RebuildGridState();
             Evaluate(EvaluationInterval);
         }
 
@@ -190,6 +202,11 @@ namespace CityFlow.Gameplay.Quests
             }
 
             TryMigrateLegacyProgression();
+            if (gridStateRebuildPending)
+            {
+                RebuildGridState();
+            }
+
             evaluationElapsed += Time.unscaledDeltaTime;
 
             if (evaluationElapsed < EvaluationInterval)
@@ -199,7 +216,6 @@ namespace CityFlow.Gameplay.Quests
 
             float elapsed = evaluationElapsed;
             evaluationElapsed = 0f;
-            RefreshJamTiles();
             Evaluate(elapsed);
         }
 
@@ -220,35 +236,6 @@ namespace CityFlow.Gameplay.Quests
 
         private CityQuestSnapshot CaptureSnapshot()
         {
-            int roadCount = 0;
-            int houseCount = 0;
-            int officeCount = 0;
-            int schoolCount = 0;
-
-            for (int y = 0; y < gridHeight; y++)
-            {
-                for (int x = 0; x < gridWidth; x++)
-                {
-                    TileType type = services.TileData.GetTileType(new Vector2Int(x, y));
-
-                    switch (type)
-                    {
-                        case TileType.Road:
-                            roadCount++;
-                            break;
-                        case TileType.House:
-                            houseCount++;
-                            break;
-                        case TileType.Office:
-                            officeCount++;
-                            break;
-                        case TileType.School:
-                            schoolCount++;
-                            break;
-                    }
-                }
-            }
-
             long deliveredTotal = deliveredProgress?.LifetimeDeliveredTotal ?? totalArrivals;
 
             return new CityQuestSnapshot(
@@ -262,22 +249,166 @@ namespace CityFlow.Gameplay.Quests
                 jamTiles.Count);
         }
 
-        private void RefreshJamTiles()
+        private void RebuildGridState()
         {
+            trackedQuestTiles.Clear();
             jamTiles.Clear();
+            ResetGridCounts();
+            gridStateRebuildPending = false;
 
-            for (int y = 0; y < gridHeight; y++)
+            if (services?.TileData == null)
             {
-                for (int x = 0; x < gridWidth; x++)
-                {
-                    Vector2Int tile = new Vector2Int(x, y);
+                return;
+            }
 
-                    if (services.TileData.GetCongestion(tile) == CongestionLevel.Jam)
-                    {
-                        jamTiles.Add(tile);
-                    }
+            int scannedTileCount = UnlockedGridTileScanner.VisitUnlockedTiles(
+                worldGrid,
+                GridUtil.DefaultWidth,
+                GridUtil.DefaultHeight,
+                ScanGridTile);
+
+            Debug.Log(
+                $"[CityQuestSystem] Rebuilt grid cache from " +
+                $"{scannedTileCount} unlocked tiles.",
+                this);
+        }
+
+        private void ScanGridTile(Vector2Int tile)
+        {
+            TileType type = services.TileData.GetTileType(tile);
+            if (type == TileType.Road)
+            {
+                TrackQuestTile(tile, type);
+                if (services.TileData.GetCongestion(tile) ==
+                    CongestionLevel.Jam)
+                {
+                    jamTiles.Add(tile);
                 }
             }
+            else if (IsTrackedBuilding(type) &&
+                     services.TileData.IsFootprintAnchor(tile))
+            {
+                TrackQuestTile(tile, type);
+            }
+        }
+
+        private void TrackQuestTile(Vector2Int tile, TileType type)
+        {
+            if (!IsTrackedType(type) || trackedQuestTiles.ContainsKey(tile))
+            {
+                return;
+            }
+
+            trackedQuestTiles.Add(tile, type);
+            ApplyCountDelta(type, 1);
+        }
+
+        private void UntrackQuestTile(Vector2Int tile)
+        {
+            if (!trackedQuestTiles.TryGetValue(tile, out TileType type))
+            {
+                return;
+            }
+
+            trackedQuestTiles.Remove(tile);
+            ApplyCountDelta(type, -1);
+        }
+
+        private void ApplyCountDelta(TileType type, int delta)
+        {
+            switch (type)
+            {
+                case TileType.Road:
+                    roadCount = Math.Max(0, roadCount + delta);
+                    break;
+                case TileType.House:
+                    houseCount = Math.Max(0, houseCount + delta);
+                    break;
+                case TileType.Office:
+                    officeCount = Math.Max(0, officeCount + delta);
+                    break;
+                case TileType.School:
+                    schoolCount = Math.Max(0, schoolCount + delta);
+                    break;
+            }
+        }
+
+        private void ResetGridCounts()
+        {
+            roadCount = 0;
+            houseCount = 0;
+            officeCount = 0;
+            schoolCount = 0;
+        }
+
+        private static bool IsTrackedType(TileType type) =>
+            type == TileType.Road || IsTrackedBuilding(type);
+
+        private static bool IsTrackedBuilding(TileType type) =>
+            type == TileType.House ||
+            type == TileType.Office ||
+            type == TileType.School;
+
+        private void OnPlaced(PlacedEvent placed)
+        {
+            if (placed.IsRemove)
+            {
+                UntrackQuestTile(placed.Tile);
+                jamTiles.Remove(placed.Tile);
+                return;
+            }
+
+            TrackQuestTile(placed.Tile, placed.Type);
+        }
+
+        private void OnChunkUnlocked(GridChunkId chunk)
+        {
+            if (worldGrid == null || services?.TileData == null)
+            {
+                return;
+            }
+
+            UnlockedGridTileScanner.VisitChunk(
+                worldGrid,
+                chunk,
+                ScanGridTile);
+        }
+
+        private void OnWorldGridRegistered(IWorldGridService service)
+        {
+            BindWorldGrid(service);
+            RebuildGridState();
+        }
+
+        private void BindWorldGrid(IWorldGridService service)
+        {
+            if (ReferenceEquals(worldGrid, service))
+            {
+                return;
+            }
+
+            if (worldGrid != null)
+            {
+                worldGrid.ChunkUnlocked -= OnChunkUnlocked;
+                worldGrid.AccessRestored -= OnWorldGridAccessRestored;
+            }
+
+            worldGrid = service;
+            if (worldGrid != null)
+            {
+                worldGrid.ChunkUnlocked += OnChunkUnlocked;
+                worldGrid.AccessRestored += OnWorldGridAccessRestored;
+            }
+        }
+
+        private void OnWorldGridAccessRestored()
+        {
+            gridStateRebuildPending = true;
+        }
+
+        private void OnRestoreCompleted(RestoreCompletedEvent _)
+        {
+            gridStateRebuildPending = true;
         }
 
         private void OnArrival(ArrivalEvent arrival)
@@ -436,8 +567,17 @@ namespace CityFlow.Gameplay.Quests
             {
                 services.Events.Arrival -= OnArrival;
                 services.Events.CongestionChanged -= OnCongestionChanged;
+                services.Events.Placed -= OnPlaced;
                 services.WeeklyEconomyRegistered -= OnWeeklyEconomyRegistered;
+                services.WorldGridRegistered -= OnWorldGridRegistered;
+
+                if (services.Save != null)
+                {
+                    services.Save.RestoreCompleted -= OnRestoreCompleted;
+                }
             }
+
+            BindWorldGrid(null);
 
             if (weeklyEconomy != null)
             {

@@ -8,7 +8,11 @@ namespace CityFlow.Sim
 {
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
-    public sealed class SimEngine : IPlacementService, IReadOnlyTileData, IReadOnlyCityStats, ISimSaveSource, ISignalControl, IIntersectionFacilityService, ITrafficRuleService, IRouteDistanceProvider, IHighwayService, IBusStopInfrastructureService
+    public sealed class SimEngine : IPlacementService, IReadOnlyTileData,
+        IReadOnlyCityStats, ISimSaveSource, ISignalControl,
+        IIntersectionFacilityService, ITrafficRuleService,
+        IRouteDistanceProvider, IHighwayService,
+        IBusStopInfrastructureService, IVehicleTripService
     {
         SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
@@ -62,6 +66,7 @@ namespace CityFlow.Sim
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
         float _gameHour;
+        long _gameDay;
         int _lastStepArrivals;
         bool _demandRebalancePending;
         bool _buildingAssignmentChangePending;
@@ -188,7 +193,14 @@ namespace CityFlow.Sim
             : 1f;
         public float TickInterval => _config.TickInterval;
 
-        public void SetGameHour(float gameHour) => _gameHour = Mathf.Repeat(gameHour, 24f);
+        public void SetGameHour(float gameHour) =>
+            _gameHour = Mathf.Repeat(gameHour, 24f);
+
+        public void SetGameTime(long gameDay, float gameHour)
+        {
+            _gameDay = Math.Max(0L, gameDay);
+            SetGameHour(gameHour);
+        }
 
         // 고정 0.1s 시뮬 한 칸. 순서가 곧 파이프라인(blueprint §2 Step).
         void Step()
@@ -229,12 +241,20 @@ namespace CityFlow.Sim
                     _demand,
                     _planner,
                     _roadQueues,
-                    PreserveExistingAssignmentsForRebuild());
+                    PreserveExistingAssignmentsForRebuild(),
+                    _grid,
+                    _network);
                 ClearRebuildChangeKinds();
                 _grid.ClearTopologyDirty();
             }
 
-            StepResult carResult = _carSim.Step(_gameHour, _roadQueues, _events, _signalGate, StepCount);
+            StepResult carResult = _carSim.Step(
+                _gameDay,
+                _gameHour,
+                _roadQueues,
+                _events,
+                _signalGate,
+                StepCount);
             if (_carSim.HasCompletedRetirements)
             {
                 _buildingAssignmentChangePending = true;
@@ -245,7 +265,7 @@ namespace CityFlow.Sim
             _stats.UpdateCarSim(
                 _gameHour,
                 carResult.Arrivals,
-                _carSim.CarCount,
+                _carSim.SimulatedVehicleCount,
                 _carSim.LastStepJumped,
                 jamRatio,
                 _config);
@@ -262,14 +282,14 @@ namespace CityFlow.Sim
         {
             int jammed = 0;
             int roads = _grid.RoadTileCount;
-            for (int y = 0; y < _grid.Height; y++)
-            for (int x = 0; x < _grid.Width; x++)
+            for (int i = 0; i < roads; i++)
             {
-                var tile = new Vector2Int(x, y);
-                if (_grid.GetTile(tile) != TileType.Road) continue;
+                int index = _grid.GetRoadTileIndex(i);
+                var tile = new Vector2Int(
+                    index % _grid.Width,
+                    index / _grid.Width);
                 float occupancy = _roadQueues.MaxOccupancy01(tile);
                 CongestionLevel level = CongestionForOccupancy(occupancy, _config);
-                int index = y * _grid.Width + x;
                 if (_carCongestion[index] != level)
                 {
                     _carCongestion[index] = level;
@@ -278,6 +298,28 @@ namespace CityFlow.Sim
                 if (level == CongestionLevel.Jam) jammed++;
             }
             return roads <= 0 ? 0f : (float)jammed / roads;
+        }
+
+        private void ResetCarCongestion()
+        {
+            int roads = _grid.RoadTileCount;
+            for (int i = 0; i < roads; i++)
+            {
+                int index = _grid.GetRoadTileIndex(i);
+                if (_carCongestion[index] == CongestionLevel.Free)
+                {
+                    continue;
+                }
+
+                var tile = new Vector2Int(
+                    index % _grid.Width,
+                    index / _grid.Width);
+                _events.QueueCongestion(new CongestionEvent(
+                    tile,
+                    CongestionLevel.Free));
+            }
+
+            Array.Clear(_carCongestion, 0, _carCongestion.Length);
         }
 
         private struct GreenWaveSegment : System.IEquatable<GreenWaveSegment>
@@ -520,6 +562,14 @@ namespace CityFlow.Sim
             else if (removed == TileType.Road)
             {
                 _roadTopologyChangePending = true;
+                int index = anchor.y * _grid.Width + anchor.x;
+                if (_carCongestion[index] != CongestionLevel.Free)
+                {
+                    _carCongestion[index] = CongestionLevel.Free;
+                    _events.QueueCongestion(new CongestionEvent(
+                        anchor,
+                        CongestionLevel.Free));
+                }
             }
             // 철거 = 조용: 그 타일의 연출 원료(pending)도 소각 — "부수면 폭죽" 방지(리뷰 2026-07-11).
             _events.QueuePlaced(new PlacedEvent(anchor, removed, isRemove: true, removedDir));
@@ -573,6 +623,7 @@ namespace CityFlow.Sim
         public int CarSimOfficeParkingSlots => Math.Max(1, _config.OfficeCapacity);
         public int CarSimHomeParkingSlots => Math.Max(1, _config.CarsPerHouse);
         public int CarSimMaxCars => Math.Max(1, _config.MaxSimCars);
+        public int CarSimVehicleStorageCount => _carSim.CarCount;
         // 뷰가 큐 표시 간격을 타일 안에 담기 위해 필요(한 타일에 몇 대까지 서는가).
         public int CarSimQueueCapacity => Math.Max(1, _config.QueueCapacityPerTile);
         public int RescueRerouteCount => _carSim.RescueRerouteCount;
@@ -581,8 +632,14 @@ namespace CityFlow.Sim
         public Vector2Int LastRescueTile => _carSim.LastRescueTile;
         public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _carSim.ActiveRoutes;
         public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _carSim.ActiveReturnRoutes;
-        public int ActiveVehicleCount => _carSim.CarCount;
+        public int ActiveVehicleCount => _carSim.SimulatedVehicleCount;
+        public int PendingTripCount => _carSim.PendingTripCount;
+        public int ActiveTripCount => _carSim.ActiveTripCount;
         public CarSnapshot GetCarSnapshot(int index) => _carSim.GetCar(index);
+
+        public bool TryScheduleSpecialBuildingVisit(
+            SpecialBuildingVisitTripRequest request) =>
+            _carSim.TryScheduleSpecialBuildingVisit(request);
 
         public bool TrySetCompanyCapacity(
             Vector2Int tile,
@@ -1128,6 +1185,7 @@ namespace CityFlow.Sim
             Vector2Int restoreOffset = GetRestoreOffset(snapshot);
 
             // 복원 = 전체 교체: 비우고 → 재배치 → 교차로 재감지 → 조율 복원 (PR#8 합의 흐름)
+            ResetCarCongestion();
             _grid.Clear();
             _demand.ClearCompanies();
             _highwayLinks.Clear();
@@ -1135,6 +1193,7 @@ namespace CityFlow.Sim
             _placedBusStops.Clear();
             _busStopSet.Clear();
             _roadQueues.RemoveAllCars();
+            Array.Clear(_carCongestion, 0, _carCongestion.Length);
             _carSim.ClearPopulation();
             _buildingAssignmentChangePending = false;
             _roadTopologyChangePending = false;
