@@ -796,6 +796,35 @@ namespace CityFlow.Sim.Tests
             Assert.IsFalse(engine.TryPlaceBusStop(V(89, 90)));
         }
 
+        [Test]
+        public void RestoreSnapshot_PreservesBusStopInLockedExpansion()
+        {
+            var sourceWorld = new TestWorldGridAccess();
+            sourceWorld.UnlockEastExpansion();
+            var source = new SimEngine(
+                Cfg(),
+                new SimEventHub(),
+                sourceWorld);
+            Vector2Int road = V(110, 100);
+            Vector2Int stop = V(110, 101);
+
+            Assert.IsTrue(source.Place(road, TileType.Road));
+            Assert.IsTrue(source.TryPlaceBusStop(stop));
+            SimSaveData snapshot = source.CreateSnapshot();
+
+            var restoredWorld = new TestWorldGridAccess();
+            var restored = new SimEngine(
+                Cfg(),
+                new SimEventHub(),
+                restoredWorld);
+            Assert.IsFalse(restoredWorld.IsTileUnlocked(stop));
+
+            restored.RestoreSnapshot(snapshot);
+
+            CollectionAssert.Contains(restored.BusStopTiles, stop);
+            Assert.IsFalse(restored.CanPlaceBusStop(V(110, 99)));
+        }
+
         private sealed class TestWorldGridAccess : IWorldGridAccess
         {
             public int WorldWidth => 200;
@@ -805,6 +834,7 @@ namespace CityFlow.Sim.Tests
             public int ChunkRows => 20;
             public Vector2Int InitialPlayableOrigin => V(90, 90);
             public Vector2Int InitialPlayableSize => V(20, 20);
+            public bool IsEastExpansionUnlocked { get; private set; }
 
             public event System.Action<GridChunkId> ChunkUnlocked;
             public event System.Action AccessRestored;
@@ -817,16 +847,29 @@ namespace CityFlow.Sim.Tests
                 IsAreaUnlocked(tile, Vector2Int.one);
 
             public bool IsChunkUnlocked(GridChunkId chunk) =>
-                chunk.X >= 9 && chunk.X <= 10 &&
-                chunk.Y >= 9 && chunk.Y <= 10;
+                (chunk.X >= 9 && chunk.X <= 10 &&
+                 chunk.Y >= 9 && chunk.Y <= 10) ||
+                (IsEastExpansionUnlocked && chunk.X == 11 &&
+                 chunk.Y >= 9 && chunk.Y <= 10);
 
             public bool IsAreaUnlocked(
                 Vector2Int anchor,
                 Vector2Int footprint)
             {
                 Vector2Int max = anchor + footprint;
-                return anchor.x >= 90 && anchor.y >= 90 &&
-                       max.x <= 110 && max.y <= 110;
+                bool isInitialArea =
+                    anchor.x >= 90 && anchor.y >= 90 &&
+                    max.x <= 110 && max.y <= 110;
+                bool isEastExpansion =
+                    IsEastExpansionUnlocked &&
+                    anchor.x >= 110 && anchor.y >= 90 &&
+                    max.x <= 120 && max.y <= 110;
+                return isInitialArea || isEastExpansion;
+            }
+
+            public void UnlockEastExpansion()
+            {
+                IsEastExpansionUnlocked = true;
             }
 
             public bool TryGetChunkId(

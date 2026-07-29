@@ -1304,7 +1304,7 @@ namespace CityFlow.Sim
                 foreach (var stop in snapshot.BusStops)
                 {
                     var tile = RestoreTile(stop.X, stop.Y, restoreOffset);
-                    if (!TryPlaceBusStop(tile))
+                    if (!TryRestoreBusStop(tile))
                     {
                         Debug.LogWarning(
                             $"[SimEngine] 저장된 버스 정류장 {tile}을(를) " +
@@ -1392,10 +1392,16 @@ namespace CityFlow.Sim
 
         public IReadOnlyList<Vector2Int> BusStopTiles => _placedBusStops;
 
-        public bool CanPlaceBusStop(Vector2Int tile)
+        public bool CanPlaceBusStop(Vector2Int tile) =>
+            CanPlaceBusStop(tile, requireUnlockedTile: true);
+
+        private bool CanPlaceBusStop(
+            Vector2Int tile,
+            bool requireUnlockedTile)
         {
             if (!_grid.InBounds(tile) ||
-                (_worldGridAccess != null &&
+                (requireUnlockedTile &&
+                 _worldGridAccess != null &&
                  !_worldGridAccess.IsTileUnlocked(tile)) ||
                 _grid.GetTile(tile) != TileType.Empty ||
                 _busStopSet.Contains(tile))
@@ -1411,7 +1417,20 @@ namespace CityFlow.Sim
 
         public bool TryPlaceBusStop(Vector2Int tile)
         {
-            if (!CanPlaceBusStop(tile) || !_busStopSet.Add(tile))
+            return TryRegisterBusStop(tile, requireUnlockedTile: true);
+        }
+
+        private bool TryRestoreBusStop(Vector2Int tile)
+        {
+            return TryRegisterBusStop(tile, requireUnlockedTile: false);
+        }
+
+        private bool TryRegisterBusStop(
+            Vector2Int tile,
+            bool requireUnlockedTile)
+        {
+            if (!CanPlaceBusStop(tile, requireUnlockedTile) ||
+                !_busStopSet.Add(tile))
             {
                 return false;
             }
