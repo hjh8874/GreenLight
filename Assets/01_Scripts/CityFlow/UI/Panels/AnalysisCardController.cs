@@ -510,24 +510,16 @@ namespace CityFlow.UI
         private void UpdateRealtimeGauge(ISignalControl signalControl)
         {
             if (cycleGaugeCursor == null) return;
-            var engine = _services?.Placement as CityFlow.Sim.SimEngine;
-            if (engine == null) return;
+
+            // 1. 커서 위치 (진행도) 업데이트 (SimEngine 의존성 제거 완수)
+            float fillRatio = signalControl.GetCurrentCycleProgress(_currentTile);
+            cycleGaugeCursor.anchorMin = new Vector2(fillRatio, 0f);
+            cycleGaugeCursor.anchorMax = new Vector2(fillRatio, 1f);
 
             int cycleSlots = signalControl.GetSignalCycleSlots(_currentTile);
             if (cycleSlots <= 0) return;
-
             float cycle = cycleSlots * 0.5f;
-            int offsetSlots = signalControl.GetSignalOffsetSlots(_currentTile);
             int greenSlots = signalControl.GetSignalGreenSlots(_currentTile);
-            
-            double openTime = (offsetSlots * 0.5f) % cycle;
-            double localTime = (engine.SimTime - openTime) % cycle;
-            if (localTime < 0) localTime += cycle;
-
-            // 커서 위치 업데이트
-            float fillRatio = (float)(localTime / cycle);
-            cycleGaugeCursor.anchorMin = new Vector2(fillRatio, 0f);
-            cycleGaugeCursor.anchorMax = new Vector2(fillRatio, 1f);
 
             // 게이지 세그먼트 폭 비율(FlexibleWidth) 업데이트
             if (leHG != null && leHY != null && leHC != null &&

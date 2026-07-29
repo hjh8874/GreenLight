@@ -903,6 +903,16 @@ namespace CityFlow.Sim
         public int GetSignalCycleSlots(Vector2Int tile) =>
             _signals.TryGet(tile, out var s) ? s.CycleSlots : 0;
 
+        public float GetCurrentCycleProgress(Vector2Int tile)
+        {
+            if (!_signals.TryGet(tile, out var s) || s.CycleSlots <= 0) return 0f;
+            float cycle = s.CycleSlots * 0.5f;
+            double openTime = (s.OffsetSlots * 0.5f) % cycle;
+            double localTime = (SimTime - openTime) % cycle;
+            if (localTime < 0) localTime += cycle;
+            return (float)(localTime / cycle);
+        }
+
         public int GetSignalOffsetSlots(Vector2Int tile) =>
             _signals.TryGet(tile, out var s) ? s.OffsetSlots : 0;
 
