@@ -37,6 +37,8 @@ namespace CityFlow.Sim
         public float EveningStartHour;
         public float EveningEndHour;
         public int MaxSimCars;
+        public int MaxPendingVehicleTrips;
+        public int MaxConcurrentSpecialTrips;
         public float QueueSlowRatio;
         public float QueueJamRatio;
 
@@ -140,6 +142,8 @@ namespace CityFlow.Sim
             EveningStartHour = 17f,
             EveningEndHour = 21f,
             MaxSimCars = 96,
+            MaxPendingVehicleTrips = 256,
+            MaxConcurrentSpecialTrips = 8,
             QueueSlowRatio = 0.5f,
             QueueJamRatio = 0.99f,
             SlowRatio = 0.7f,
