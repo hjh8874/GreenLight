@@ -660,7 +660,7 @@ namespace CityFlow.Tests
                 CityQuestSystem quests =
                     consumerObject.AddComponent<CityQuestSystem>();
                 quests.Initialize(services);
-                Assert.AreEqual(3, GetPrivateField<int>(quests, "roadCount"));
+                Assert.AreEqual(4, GetPrivateField<int>(quests, "roadCount"));
                 Assert.AreEqual(1, GetPrivateField<int>(quests, "houseCount"));
                 Assert.AreEqual(0, GetPrivateField<int>(quests, "officeCount"));
                 Assert.AreEqual(1, GetPrivateField<int>(quests, "schoolCount"));
@@ -693,7 +693,7 @@ namespace CityFlow.Tests
                     GetPrivateField<HashSet<Vector2Int>>(
                         stats,
                         "_roadTiles");
-                Assert.AreEqual(3, roadTiles.Count);
+                Assert.AreEqual(4, roadTiles.Count);
                 Assert.IsTrue(roadTiles.Contains(congestedRoad));
                 events.Publish(new PlacedEvent(
                     congestedRoad,

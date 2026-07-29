@@ -1,5 +1,6 @@
 using CityFlow.Content;
 using CityFlow.Content.Transit;
+using CityFlow.Gameplay.Progression;
 using CityFlow.View;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -20,6 +21,8 @@ namespace CityFlow.EditorTools
             "Assets/05_ScriptableObjects/CityFlow/Transit/SchoolBusDefinition.asset";
         private const string SchedulePath =
             "Assets/05_ScriptableObjects/CityFlow/Transit/KoreanSchoolBusSchedule.asset";
+        private const string DebugTimeSettingsPath =
+            "Assets/05_ScriptableObjects/CityFlow/Transit/SchoolBusDebugGameTimeSettings.asset";
         private const string VisualPrefabPath =
             "Assets/99_Download/SimpleTown/Prefabs/Vehicles/bus_brown.prefab";
         private const string MaterialPath =
@@ -51,12 +54,14 @@ namespace CityFlow.EditorTools
                 CreateOrUpdateDefinition(vehicle);
             SchoolBusScheduleSO schedule =
                 CreateOrUpdateSchedule();
+            GameTimeSettingsSO debugTimeSettings =
+                CreateOrUpdateDebugTimeSettings();
 
             CreateOrUpdatePrefab(
                 definition,
                 schedule,
                 material);
-            CreateOrUpdateDebugScene();
+            CreateOrUpdateDebugScene(debugTimeSettings);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -270,7 +275,34 @@ namespace CityFlow.EditorTools
             return schedule;
         }
 
-        private static void CreateOrUpdateDebugScene()
+        private static GameTimeSettingsSO
+            CreateOrUpdateDebugTimeSettings()
+        {
+            GameTimeSettingsSO settings =
+                AssetDatabase.LoadAssetAtPath<GameTimeSettingsSO>(
+                    DebugTimeSettingsPath);
+
+            if (settings == null)
+            {
+                settings =
+                    ScriptableObject.CreateInstance<
+                        GameTimeSettingsSO>();
+                AssetDatabase.CreateAsset(
+                    settings,
+                    DebugTimeSettingsPath);
+            }
+
+            SerializedObject serialized =
+                new(settings);
+            serialized.FindProperty("realMinutesPerGameDay")
+                .floatValue = 0.4f;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(settings);
+            return settings;
+        }
+
+        private static void CreateOrUpdateDebugScene(
+            GameTimeSettingsSO debugTimeSettings)
         {
             if (AssetDatabase.LoadAssetAtPath<SceneAsset>(
                     TargetScene) == null)
@@ -302,7 +334,7 @@ namespace CityFlow.EditorTools
                 instance.name = "SchoolBusContent";
             }
 
-            ConfigurePrototypeClock();
+            ConfigurePrototypeClock(debugTimeSettings);
             EnsureCamera(scene);
             EnsureDirectionalLight(scene);
             EditorSceneManager.MarkSceneDirty(scene);
@@ -311,7 +343,8 @@ namespace CityFlow.EditorTools
                 TargetScene);
         }
 
-        private static void ConfigurePrototypeClock()
+        private static void ConfigurePrototypeClock(
+            GameTimeSettingsSO debugTimeSettings)
         {
             MonoBehaviour[] behaviours =
                 Object.FindObjectsByType<MonoBehaviour>(
@@ -332,15 +365,16 @@ namespace CityFlow.EditorTools
                 if (typeName ==
                     "CityFlow.Gameplay.Progression.GameCalendarService")
                 {
-                    SerializedProperty secondsPerHour =
+                    SerializedProperty timeSettings =
                         serialized.FindProperty(
-                            "realSecondsPerGameHour");
+                            "timeSettings");
                     SerializedProperty startHour =
                         serialized.FindProperty("startHour");
 
-                    if (secondsPerHour != null)
+                    if (timeSettings != null)
                     {
-                        secondsPerHour.floatValue = 1f;
+                        timeSettings.objectReferenceValue =
+                            debugTimeSettings;
                     }
 
                     if (startHour != null)

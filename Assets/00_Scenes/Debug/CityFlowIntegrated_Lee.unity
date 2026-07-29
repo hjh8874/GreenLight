@@ -7473,8 +7473,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 45dc4430a8524de099b363f274075387, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Gameplay.Progression.GameCalendarService
-  realSecondsPerGameHour: 1
-  hoursPerDay: 24
+  timeSettings: {fileID: 11400000, guid: c565865ffba34ec7bdf923ca36a7c939, type: 2}
   daysPerMonth: 30
   monthsPerYear: 12
   startYear: 1

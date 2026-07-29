@@ -686,6 +686,25 @@ namespace Tests.EditMode
 
             try
             {
+                Vector2Int currentTile =
+                    new(2, 2);
+                Vector2Int nextTile =
+                    new(3, 2);
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                Assert.That(
+                    engine.Place(currentTile, TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(nextTile, TileType.Road),
+                    Is.True);
+                CityFlowServices services =
+                    new(
+                        events,
+                        engine,
+                        engine);
+
                 MainCityView cityView =
                     cityObject.AddComponent<MainCityView>();
                 BusRoute route =
@@ -713,11 +732,8 @@ namespace Tests.EditMode
                     worldView,
                     "cityBusService",
                     service);
+                worldView.Initialize(services);
 
-                Vector2Int currentTile =
-                    new(2, 2);
-                Vector2Int nextTile =
-                    new(3, 2);
                 Vector3 rightLaneOffset =
                     Vector3.down *
                     cityView.LaneOffset *

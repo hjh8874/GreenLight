@@ -5,6 +5,7 @@ using CityFlow.Content;
 using CityFlow.Content.Transit;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
+using CityFlow.Gameplay.Progression;
 using CityFlow.Save;
 using CityFlow.View;
 using CityFlow.ViewKit;
@@ -24,6 +25,8 @@ namespace CityFlow.Sim.Tests
             "Assets/05_ScriptableObjects/CityFlow/Transit/SchoolBusDefinition.asset";
         private const string SchedulePath =
             "Assets/05_ScriptableObjects/CityFlow/Transit/KoreanSchoolBusSchedule.asset";
+        private const string DebugTimeSettingsPath =
+            "Assets/05_ScriptableObjects/CityFlow/Transit/SchoolBusDebugGameTimeSettings.asset";
         private const string MaterialPath =
             "Assets/03_Art/Materials/Vehicles/SchoolBus_URP.mat";
         private const string ScenePath =
@@ -41,6 +44,10 @@ namespace CityFlow.Sim.Tests
             SchoolBusScheduleSO schedule =
                 AssetDatabase.LoadAssetAtPath<
                     SchoolBusScheduleSO>(SchedulePath);
+            GameTimeSettingsSO debugTimeSettings =
+                AssetDatabase.LoadAssetAtPath<
+                    GameTimeSettingsSO>(
+                    DebugTimeSettingsPath);
             Material material =
                 AssetDatabase.LoadAssetAtPath<Material>(
                     MaterialPath);
@@ -51,6 +58,7 @@ namespace CityFlow.Sim.Tests
             Assert.That(prefab, Is.Not.Null);
             Assert.That(definition, Is.Not.Null);
             Assert.That(schedule, Is.Not.Null);
+            Assert.That(debugTimeSettings, Is.Not.Null);
             Assert.That(material, Is.Not.Null);
             Assert.That(scene, Is.Not.Null);
             Assert.That(
@@ -168,15 +176,20 @@ namespace CityFlow.Sim.Tests
                             sceneLaneOffset =
                                 mainCityView.LaneOffset;
                         }
-                        else if (behaviour.GetType().FullName ==
-                            "CityFlow.Gameplay.Progression.GameCalendarService")
+                        else if (behaviour is GameCalendarService)
                         {
+                            SerializedProperty sceneTimeSettings =
+                                serialized.FindProperty(
+                                    "timeSettings");
                             hasPrototypeCalendar =
                                 serialized.FindProperty(
                                     "startHour").intValue == 7 &&
-                                serialized.FindProperty(
-                                    "realSecondsPerGameHour")
-                                    .floatValue <= 1f;
+                                sceneTimeSettings != null &&
+                                sceneTimeSettings
+                                    .objectReferenceValue ==
+                                debugTimeSettings &&
+                                debugTimeSettings
+                                    .RealSecondsPerGameHour <= 1f;
                         }
                         else if (
                             behaviour.GetType().FullName ==
