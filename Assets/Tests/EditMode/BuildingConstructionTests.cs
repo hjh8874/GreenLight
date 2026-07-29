@@ -162,5 +162,25 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(TileType.House, engine.GetTileType(V(0, 0)),
                 "틱이 재개되면 남은 만큼만 진행해 완성");
         }
+
+        [Test]
+        public void RemovingUnderConstruction_ClearsSiteAndDoesNotResurrect()
+        {
+            SimConfig cfg = Cfg();
+            cfg.ConstructionHoursHouse = 2f;   // 8틱
+            var engine = new SimEngine(cfg, new SimEventHub());
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
+            Assert.AreEqual(1, engine.ConstructionSiteCountForTest, "배치 직후 공사 사이트 1건");
+
+            Assert.IsTrue(engine.Remove(V(1, 1)), "풋프린트 비앵커 타일 철거도 앵커 사이트를 지워야 한다");
+            Assert.AreEqual(0, engine.ConstructionSiteCountForTest, "철거 시 사이트가 즉시 제거된다");
+            Assert.AreEqual(TileType.Empty, engine.GetTileType(V(0, 0)));
+
+            for (int i = 0; i < 20; i++) engine.Tick(0.25f);
+
+            Assert.AreEqual(TileType.Empty, engine.GetTileType(V(0, 0)),
+                "철거된 사이트는 완성 시각이 지나도 되살아나지 않는다");
+            Assert.AreEqual(0, engine.ConstructionSiteCountForTest, "좀비 사이트가 남지 않는다");
+        }
     }
 }
