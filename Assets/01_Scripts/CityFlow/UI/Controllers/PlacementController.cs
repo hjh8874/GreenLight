@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using CityFlow.UI.Controllers;
 using CityFlow.UI.Controllers.Placement;
+using CityFlow.View;
 
 namespace CityFlow.UI
 {
@@ -114,6 +115,7 @@ namespace CityFlow.UI
             EnsureManagers();
             _visualManager.Initialize();
             _costLabelManager.Initialize();
+            UpdateBuildingModelPreview();
 
             _budgetUI.Initialize(() => _actionDispatcher.HandleRoadExpandClicked(_services));
         }
@@ -128,6 +130,7 @@ namespace CityFlow.UI
             _visualManager.HideBenefitHighlights();
             _visualManager.UpdateGhostSprite(_currentType, availableTiles);
             _visualManager.UpdateGhostFootprint(_currentType, _currentDirection);
+            UpdateBuildingModelPreview();
 
             var infraCoord = UnityEngine.Object.FindAnyObjectByType<InfrastructurePlacementCoordinator>();
             if (infraCoord != null && infraCoord.IsBuildingMode)
@@ -139,23 +142,25 @@ namespace CityFlow.UI
             ToggleBuildMode(true);
         }
 
-        public void SetSpecialBuilding(string buildingId)
+        public bool SetSpecialBuilding(string buildingId)
         {
             string normalizedId = buildingId?.Trim() ?? string.Empty;
+            _currentType = TileType.SpecialBuilding;
+            _currentSpecialBuildingId = normalizedId;
+            _currentDirection = PlacementDirection.North;
+            _visualManager.SetBuildingPreview(null);
+
             if (normalizedId.Length == 0 ||
                 _services?.SpecialBuildings == null ||
                 !_services.SpecialBuildings.IsBuildingUnlocked(normalizedId))
             {
+                ToggleBuildMode(false);
                 Debug.LogWarning(
                     "[PlacementController] The selected special building " +
-                    "is invalid or locked.",
+                    "is invalid or locked. The previous build selection was cancelled.",
                     this);
-                return;
+                return false;
             }
-
-            _currentType = TileType.SpecialBuilding;
-            _currentSpecialBuildingId = normalizedId;
-            _currentDirection = PlacementDirection.North;
 
             _costLabelManager.ResetState();
             _visualManager.HideBenefitHighlights();
@@ -163,6 +168,7 @@ namespace CityFlow.UI
             _visualManager.UpdateGhostFootprint(
                 _currentType,
                 _currentDirection);
+            UpdateBuildingModelPreview();
 
             var infraCoord = UnityEngine.Object.FindAnyObjectByType<
                 InfrastructurePlacementCoordinator>();
@@ -173,6 +179,7 @@ namespace CityFlow.UI
 
             enabled = true;
             ToggleBuildMode(true);
+            return true;
         }
 
         public void ToggleBuildMode(bool isOn)
@@ -213,6 +220,7 @@ namespace CityFlow.UI
 
             _visualManager.Initialize();
             _visualManager.SetGhostActive(_isBuildingMode);
+            UpdateBuildingModelPreview();
         }
 
         public void SetFakeMode(bool isOn)
@@ -293,8 +301,6 @@ namespace CityFlow.UI
                 return;
             }
 
-            if (ghostRenderer == null) return;
-
             _inputHandler.UpdatePlacementInput(canPlace, gridCoord);
 
             _visualManager.SetGhostActive(true);
@@ -303,12 +309,17 @@ namespace CityFlow.UI
             float surfaceZ = GetSurfaceMarkerZ(gridCoord);
 
             Vector3 ghostPos = GetGhostPosition(gridCoord, rotatedSize, surfaceZ);
+            Vector3 buildingPreviewPos =
+                GetBuildingPreviewPosition(
+                    gridCoord,
+                    rotatedSize);
 
             _visualManager.SyncGhostPosition(
                 ghostPos,
                 TileFootprint.ToAngle(_currentDirection),
                 useXYPlane,
-                coordinateSpace);
+                coordinateSpace,
+                buildingPreviewPos);
             _visualManager.UpdateColors(canPlace);
             _visualManager.UpdateBenefitPreview(gridCoord, _currentType, useXYPlane, _services);
 
@@ -328,8 +339,17 @@ namespace CityFlow.UI
 
         private void HandleRotate()
         {
+            if (!TileFootprint.IsBuilding(_currentType))
+            {
+                return;
+            }
+
             _currentDirection = TileFootprint.RotateClockwise(_currentDirection);
             _visualManager.UpdateGhostFootprint(_currentType, _currentDirection);
+            _visualManager.SyncPlacementRotation(
+                TileFootprint.ToAngle(_currentDirection),
+                useXYPlane,
+                _services?.WorldCoordinates);
             _costLabelManager.ResetState();
         }
 
@@ -406,6 +426,39 @@ namespace CityFlow.UI
                 overrideSprite);
         }
 
+        private void UpdateBuildingModelPreview()
+        {
+            if (_visualManager == null ||
+                (!TileFootprint.IsBuilding(_currentType) &&
+                 _currentType != TileType.Road))
+            {
+                _visualManager?.SetBuildingPreview(null);
+                return;
+            }
+
+            GameObject preview = null;
+            if (_currentType == TileType.SpecialBuilding)
+            {
+                SpecialBuildingView specialView =
+                    FindAnyObjectByType<SpecialBuildingView>(
+                        FindObjectsInactive.Include);
+                specialView?.TryCreatePlacementPreview(
+                    _currentSpecialBuildingId,
+                    out preview);
+            }
+            else
+            {
+                MainCityView cityView =
+                    FindAnyObjectByType<MainCityView>(
+                        FindObjectsInactive.Include);
+                cityView?.TryCreatePlacementPreview(
+                    _currentType,
+                    out preview);
+            }
+
+            _visualManager.SetBuildingPreview(preview);
+        }
+
         public const float EmptyGroundMarkerZ = 0.12f;
         public const float RoadSurfaceMarkerZ = -0.05f;
 
@@ -447,6 +500,32 @@ namespace CityFlow.UI
             return useXYPlane
                 ? new Vector3(gridCoord.x + 0.5f + offsetX, gridCoord.y + 0.5f + offsetY, surfaceZ)
                 : new Vector3(gridCoord.x + offsetX, 0, gridCoord.y + offsetY);
+        }
+
+        private Vector3 GetBuildingPreviewPosition(
+            Vector2Int gridCoord,
+            Vector2Int footprintSize)
+        {
+            Vector2Int size = new Vector2Int(
+                Mathf.Max(1, footprintSize.x),
+                Mathf.Max(1, footprintSize.y));
+            float centerX =
+                gridCoord.x + size.x * 0.5f;
+            float centerY =
+                gridCoord.y + size.y * 0.5f;
+
+            IWorldCoordinateSpace coordinateSpace =
+                _services?.WorldCoordinates;
+            if (coordinateSpace != null)
+            {
+                return coordinateSpace.GridPointToWorld(
+                    new Vector2(centerX, centerY),
+                    0.02f);
+            }
+
+            return useXYPlane
+                ? new Vector3(centerX, centerY, -0.02f)
+                : new Vector3(centerX, 0.02f, centerY);
         }
     }
 }

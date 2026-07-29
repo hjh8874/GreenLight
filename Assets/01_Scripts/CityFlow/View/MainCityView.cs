@@ -6,6 +6,7 @@ using CityFlow.Sim;
 using CityFlow.ViewKit;
 using CityFlow.UI;
 using CityFlow.UI.Controllers;
+using CityFlow.UI.Data;
 using CityFlow.UI.Feed;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -1097,7 +1098,11 @@ namespace CityFlow.View
 
             if (!tileVisuals.TryGetValue(tile, out TileVisual visual))
             {
-                visual = CreateTileVisual(tile, type);
+                visual = CreateTileVisual(
+                    tile,
+                    type,
+                    tileRoot,
+                    includeRoadNetworkDetails: true);
                 tileVisuals.Add(tile, visual);
             }
 
@@ -1111,7 +1116,8 @@ namespace CityFlow.View
             if (TileFootprint.IsBuilding(type))
             {
                 visual.Object.transform.localPosition = FootprintToLocal(tile, type);
-                visual.Object.transform.localRotation = GetRoadFacingRotation(tile, type);
+                visual.Object.transform.localRotation =
+                    GetBuildingRotation(tile, type);
                 visual.Object.transform.localScale = Vector3.one;
             }
             else
@@ -1146,20 +1152,25 @@ namespace CityFlow.View
             congestionView.Initialize(services);
         }
 
-        private TileVisual CreateTileVisual(Vector2Int tile, TileType type)
+        private TileVisual CreateTileVisual(
+            Vector2Int tile,
+            TileType type,
+            Transform parent,
+            bool includeRoadNetworkDetails)
         {
             if (TileFootprint.IsBuilding(type))
             {
-                return CreateBuildingVisual(tile, type);
+                return CreateBuildingVisual(tile, type, parent);
             }
 
             GameObject prefab = GetPrefab(type);
             GameObject instance = InstantiatePrefabOrPrimitive(prefab, PrimitiveType.Cube);
             instance.name = $"{type}_{tile.x}_{tile.y}";
-            instance.transform.SetParent(tileRoot, false);
+            instance.transform.SetParent(parent, false);
 
             Renderer renderer = PrepareRenderer(instance.GetComponentInChildren<Renderer>());
-            if (type == TileType.Road)
+            if (type == TileType.Road &&
+                includeRoadNetworkDetails)
             {
                 AddRoadCenterLines(instance.transform, tile);
             }
@@ -1177,10 +1188,145 @@ namespace CityFlow.View
             };
         }
 
-        private TileVisual CreateBuildingVisual(Vector2Int tile, TileType type)
+        public bool TryCreatePlacementPreview(
+            TileType type,
+            out GameObject preview)
+        {
+            preview = null;
+            if (type == TileType.Empty ||
+                type == TileType.SpecialBuilding)
+            {
+                return false;
+            }
+
+            TileVisual visual =
+                CreateTileVisual(
+                    Vector2Int.zero,
+                    type,
+                    null,
+                    includeRoadNetworkDetails: false);
+            preview = visual.Object;
+            preview.name = $"PlacementPreview_{type}";
+            if (!TileFootprint.IsBuilding(type))
+            {
+                preview.transform.localPosition = Vector3.zero;
+                preview.transform.localRotation = Quaternion.identity;
+                preview.transform.localScale = GetTileScale(type);
+            }
+            return true;
+        }
+
+        public bool TryCreateInfrastructurePlacementPreview(
+            InfrastructureDataSO data,
+            Vector2Int? highwayStart,
+            Vector2Int cursor,
+            out GameObject preview)
+        {
+            preview = null;
+            if (data == null ||
+                data.Kind == InfrastructureKind.BusStop)
+            {
+                return false;
+            }
+
+            GameObject visual;
+            switch (data.Kind)
+            {
+                case InfrastructureKind.Signal:
+                    visual =
+                        CreateSignalVisual(Vector2Int.zero).Root;
+                    break;
+                case InfrastructureKind.Roundabout:
+                    visual =
+                        CreateRoundaboutVisual(Vector2Int.zero);
+                    break;
+                case InfrastructureKind.Overpass:
+                    visual =
+                        CreateOverpassVisual(Vector2Int.zero);
+                    break;
+                case InfrastructureKind.Oneway:
+                    visual =
+                        CreateOnewayVisual(Vector2Int.zero);
+                    visual.transform.localRotation =
+                        Quaternion.Euler(
+                            0f,
+                            0f,
+                            Mathf.Atan2(
+                                data.OnewayDir.y,
+                                data.OnewayDir.x) *
+                            Mathf.Rad2Deg);
+                    break;
+                case InfrastructureKind.TurnRestriction:
+                    TurnSignVisual turnVisual =
+                        CreateTurnSignVisual(Vector2Int.zero);
+                    ApplyTurnSignPreviewState(
+                        turnVisual,
+                        data.TurnMode);
+                    visual = turnVisual.Root;
+                    break;
+                case InfrastructureKind.PriorityRoad:
+                    visual =
+                        CreatePriorityRoadVisual(Vector2Int.zero);
+                    visual.transform.localRotation =
+                        Quaternion.Euler(
+                            0f,
+                            0f,
+                            data.PriorityAxis == Axis.Vertical
+                                ? 90f
+                                : 0f);
+                    break;
+                case InfrastructureKind.Highway:
+                    Vector2Int start =
+                        highwayStart ?? Vector2Int.zero;
+                    Vector2Int end =
+                        highwayStart.HasValue
+                            ? cursor
+                            : Vector2Int.right;
+                    if (end == start)
+                    {
+                        end = start +
+                              Vector2Int.right;
+                    }
+                    visual = CreateHighwayVisual(
+                        new HighwayLink(start, end));
+                    break;
+                default:
+                    return false;
+            }
+
+            preview = WrapInfrastructurePlacementPreview(
+                visual,
+                data.Kind);
+            return preview != null;
+        }
+
+        private static GameObject
+            WrapInfrastructurePlacementPreview(
+                GameObject visual,
+                InfrastructureKind kind)
+        {
+            if (visual == null)
+            {
+                return null;
+            }
+
+            var preview =
+                new GameObject(
+                    $"PlacementPreview_{kind}");
+            visual.transform.SetParent(
+                preview.transform,
+                false);
+            visual.transform.localPosition = Vector3.zero;
+            return preview;
+        }
+
+        private TileVisual CreateBuildingVisual(
+            Vector2Int tile,
+            TileType type,
+            Transform parent)
         {
             GameObject root = new GameObject($"{type}_{tile.x}_{tile.y}");
-            root.transform.SetParent(tileRoot, false);
+            root.transform.SetParent(parent, false);
 
             GameObject prefab = GetPrefab(type);
             GameObject body = InstantiatePrefabOrPrimitive(prefab, PrimitiveType.Cube);
@@ -1473,6 +1619,52 @@ namespace CityFlow.View
             return Quaternion.identity;
         }
 
+        private Quaternion GetBuildingRotation(
+            Vector2Int tile,
+            TileType type)
+        {
+            PlacementDirection direction = tileData.GetDirection(tile);
+            Vector2Int size = TileFootprint.GetRotatedSize(type, direction);
+            if (direction != PlacementDirection.North ||
+                CountRoadsAlongFront(tile, size, direction) > 0)
+            {
+                return Quaternion.Euler(
+                    0f,
+                    0f,
+                    TileFootprint.ToAngle(direction));
+            }
+
+            // 구버전 저장에는 방향 선택 전에 배치한 건물이 많습니다.
+            // 기본 North이며 선택 앞면에 도로가 없을 때만 기존 자동 정렬을 유지합니다.
+            return GetRoadFacingRotation(tile, type);
+        }
+
+        private int CountRoadsAlongFront(
+            Vector2Int tile,
+            Vector2Int size,
+            PlacementDirection direction)
+        {
+            Vector2Int front = TileFootprint.GetFrontOffset(direction);
+            if (front.x != 0)
+            {
+                int x = front.x > 0
+                    ? tile.x + size.x
+                    : tile.x - 1;
+                return CountRoadsAlongVertical(
+                    tile.y,
+                    tile.y + size.y,
+                    x);
+            }
+
+            int y = front.y > 0
+                ? tile.y + size.y
+                : tile.y - 1;
+            return CountRoadsAlongHorizontal(
+                tile.x,
+                tile.x + size.x,
+                y);
+        }
+
         private Quaternion GetHouseParkingRotation(
             Vector2Int anchor,
             Vector2Int footprintSize,
@@ -1539,7 +1731,8 @@ namespace CityFlow.View
             foreach (KeyValuePair<Vector2Int, TileVisual> pair in tileVisuals)
             {
                 if (!TileFootprint.IsBuilding(pair.Value.Type)) continue;
-                pair.Value.Object.transform.localRotation = GetRoadFacingRotation(pair.Key, pair.Value.Type);
+                pair.Value.Object.transform.localRotation =
+                    GetBuildingRotation(pair.Key, pair.Value.Type);
             }
         }
 
@@ -2011,6 +2204,13 @@ namespace CityFlow.View
             visual.Root.transform.localPosition = GridToLocal(tile, turnSignZ);
 
             TurnMode mode = trafficRule.GetTurnMode(tile) ?? TurnMode.LeftOnly;
+            ApplyTurnSignPreviewState(visual, mode);
+        }
+
+        private void ApplyTurnSignPreviewState(
+            TurnSignVisual visual,
+            TurnMode mode)
+        {
             bool leftOnly = mode == TurnMode.LeftOnly;
             float bendX = leftOnly ? -tileSize * 0.1f : tileSize * 0.1f;
             float bendAngle = leftOnly ? 45f : -45f;
@@ -2409,7 +2609,9 @@ namespace CityFlow.View
                 AddSelectedSignalGreen(1);
             }
 
-            if (keyboard.rKey.wasPressedThisFrame)
+            if (keyboard.rKey.wasPressedThisFrame &&
+                (placementController == null ||
+                 !placementController.IsBuildingMode))
             {
                 ResetSignalOffsets();
             }

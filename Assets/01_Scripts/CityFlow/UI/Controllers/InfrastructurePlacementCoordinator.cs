@@ -6,6 +6,9 @@ using UnityEngine.InputSystem;
 using System.Linq;
 using CityFlow.Content.Transit;
 using CityFlow.Bootstrap;
+using CityFlow.DebugTools;
+using CityFlow.UI.Controllers.Placement;
+using CityFlow.View;
 
 namespace CityFlow.UI.Controllers
 {
@@ -24,6 +27,8 @@ namespace CityFlow.UI.Controllers
         private IBusStopInfrastructureService _busStopService;
         private BusStopRegistry _busStopRegistry;
         private IPlacementService _placement;
+        private MainCityView _cityView;
+        private CityBusStopWorldView _busStopWorldView;
 
         private bool _isBuildingMode = false;
         private InfrastructureDataSO _currentData;
@@ -34,6 +39,11 @@ namespace CityFlow.UI.Controllers
         private Vector2Int? _lastRemovedCoord;
         private Vector2Int? _rightClickStartCoord;
         private Vector2Int? _pendingHighwayStart;
+        private Vector2Int? _lastPreviewCursor;
+        private GameObject _placementPreview;
+        private Material _placementPreviewMaterial;
+        private Renderer[] _placementPreviewRenderers =
+            Array.Empty<Renderer>();
         private readonly UIRaycastBlocker _uiRaycastBlocker = new UIRaycastBlocker();
         
         // Configuration Constants (Balancing Defaults)
@@ -52,6 +62,7 @@ namespace CityFlow.UI.Controllers
             _highwayService = services.Placement as IHighwayService;
             _busStopService = services.Placement as IBusStopInfrastructureService;
             _busStopRegistry = FindFirstObjectByType<BusStopRegistry>();
+            ResolvePreviewSources();
             
             if (_economy == null)
             {
@@ -93,8 +104,15 @@ namespace CityFlow.UI.Controllers
 
             if (ghostRenderer != null)
             {
-                ghostRenderer.gameObject.SetActive(true);
+                ghostRenderer.gameObject.SetActive(false);
                 if (data.Icon != null) ghostRenderer.sprite = data.Icon;
+            }
+            RebuildPlacementPreview(Vector2Int.zero);
+            SetPlacementPreviewActive(true);
+            if (ghostRenderer != null)
+            {
+                ghostRenderer.gameObject.SetActive(
+                    _placementPreview == null);
             }
             BuildModeCursorFeedback.SetBuilding(this, true);
             Debug.Log($"[InfrastructurePlacementCoordinator] Started placement mode for: {data.InfrastructureName}");
@@ -107,6 +125,7 @@ namespace CityFlow.UI.Controllers
             _isDemolishMode = true;
             _currentData = null;
             _pendingHighwayStart = null;
+            ClearPlacementPreview();
             _frameStarted = Time.frameCount;
 
             if (_originalPlacementController != null)
@@ -134,7 +153,12 @@ namespace CityFlow.UI.Controllers
             _isBuildingMode = false;
             _isDemolishMode = false;
             _currentData = null;
-            if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(false);
+            _pendingHighwayStart = null;
+            ClearPlacementPreview();
+            if (ghostRenderer != null)
+            {
+                ghostRenderer.gameObject.SetActive(false);
+            }
             BuildModeCursorFeedback.SetBuilding(this, false);
 
             // 원래 PlacementController를 다시 활성화하여 도로/건물 건설이 가능하도록 복원
@@ -148,7 +172,15 @@ namespace CityFlow.UI.Controllers
 
         private void OnDisable()
         {
+            SetPlacementPreviewActive(false);
             BuildModeCursorFeedback.SetBuilding(this, false);
+        }
+
+        private void OnDestroy()
+        {
+            ClearPlacementPreview();
+            SafeDestroy(_placementPreviewMaterial);
+            _placementPreviewMaterial = null;
         }
 
         private void Update()
@@ -167,6 +199,7 @@ namespace CityFlow.UI.Controllers
             if (isPointerOverBlockingUI)
             {
                 if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(false);
+                SetPlacementPreviewActive(false);
                 return;
             }
 
@@ -175,26 +208,51 @@ namespace CityFlow.UI.Controllers
                 return;
             }
 
-            if (ghostRenderer != null) ghostRenderer.gameObject.SetActive(true);
-
             Vector2Int gridCoord = GetMouseGridCoordinate();
+            if (_currentData != null &&
+                _currentData.Kind == InfrastructureKind.Highway &&
+                _pendingHighwayStart.HasValue &&
+                (!_lastPreviewCursor.HasValue ||
+                 _lastPreviewCursor.Value != gridCoord))
+            {
+                RebuildPlacementPreview(gridCoord);
+            }
 
+            SetPlacementPreviewActive(
+                !_isDemolishMode);
             if (ghostRenderer != null)
             {
-                UpdateGhostPosition(gridCoord);
-                
-                if (_isDemolishMode)
+                ghostRenderer.gameObject.SetActive(
+                    _isDemolishMode ||
+                    _placementPreview == null);
+            }
+
+            UpdateGhostPosition(gridCoord);
+
+            if (_isDemolishMode)
+            {
+                if (ghostRenderer != null)
                 {
                     ghostRenderer.color = Color.red; // Always red for demolish
                 }
-                else
+            }
+            else
+            {
+                bool canPlace =
+                    CheckCanPlace(
+                        gridCoord,
+                        _currentData);
+                Color ghostColor =
+                    canPlace
+                        ? colorValid
+                        : colorInvalid;
+                ghostColor.a = 1f;
+                if (ghostRenderer != null)
                 {
-                    bool canPlace = CheckCanPlace(gridCoord, _currentData);
-                    Color ghostColor = canPlace ? colorValid : colorInvalid;
-                    ghostRenderer.color = _originalPlacementController != null
-                        ? _originalPlacementController.GetVisibleGhostColor(ghostColor)
-                        : ghostColor;
+                    ghostRenderer.color = ghostColor;
                 }
+                UpdatePlacementPreviewColor(
+                    ghostColor);
             }
 
             if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
@@ -253,22 +311,169 @@ namespace CityFlow.UI.Controllers
 
         private void UpdateGhostPosition(Vector2Int gridCoord)
         {
-            if (ghostRenderer == null)
-            {
-                return;
-            }
-
-            ghostRenderer.gameObject.SetActive(true);
-            ghostRenderer.transform.position = _originalPlacementController != null
+            Vector3 position =
+                _originalPlacementController != null
                 ? _originalPlacementController.GetGhostPosition(gridCoord, Vector2Int.one)
                 : _services?.WorldCoordinates != null
                     ? _services.WorldCoordinates.GridToWorld(gridCoord)
                     : new Vector3(gridCoord.x, 0f, gridCoord.y);
 
-            if (_services?.WorldCoordinates != null)
+            Quaternion rotation =
+                _services?.WorldCoordinates != null
+                    ? _services.WorldCoordinates
+                        .CoordinateRotation
+                    : Quaternion.identity;
+
+            if (ghostRenderer != null)
             {
-                ghostRenderer.transform.rotation =
-                    _services.WorldCoordinates.CoordinateRotation;
+                ghostRenderer.transform.SetPositionAndRotation(
+                    position,
+                    rotation);
+            }
+
+            if (_placementPreview == null)
+            {
+                return;
+            }
+
+            if (_currentData != null &&
+                _currentData.Kind == InfrastructureKind.Highway &&
+                _pendingHighwayStart.HasValue)
+            {
+                Vector2 midpoint = new Vector2(
+                    (_pendingHighwayStart.Value.x +
+                     gridCoord.x) * 0.5f + 0.5f,
+                    (_pendingHighwayStart.Value.y +
+                     gridCoord.y) * 0.5f + 0.5f);
+                position =
+                    _services?.WorldCoordinates != null
+                        ? _services.WorldCoordinates
+                            .GridPointToWorld(
+                                midpoint,
+                                0.02f)
+                        : new Vector3(
+                            midpoint.x,
+                            0.02f,
+                            midpoint.y);
+            }
+
+            _placementPreview.transform
+                .SetPositionAndRotation(
+                    position,
+                    rotation);
+        }
+
+        private void ResolvePreviewSources()
+        {
+            _cityView ??=
+                FindAnyObjectByType<MainCityView>(
+                    FindObjectsInactive.Include);
+            _busStopWorldView ??=
+                FindAnyObjectByType<
+                    CityBusStopWorldView>(
+                    FindObjectsInactive.Include);
+        }
+
+        private void RebuildPlacementPreview(
+            Vector2Int cursor)
+        {
+            ClearPlacementPreview();
+            _lastPreviewCursor = cursor;
+            if (_currentData == null)
+            {
+                return;
+            }
+
+            ResolvePreviewSources();
+            GameObject preview = null;
+            if (_currentData.Kind ==
+                InfrastructureKind.BusStop)
+            {
+                _busStopWorldView
+                    ?.TryCreatePlacementPreview(
+                        out preview);
+            }
+            else
+            {
+                _cityView
+                    ?.TryCreateInfrastructurePlacementPreview(
+                        _currentData,
+                        _pendingHighwayStart,
+                        cursor,
+                        out preview);
+            }
+
+            if (preview == null)
+            {
+                return;
+            }
+
+            _placementPreview = preview;
+            _placementPreviewMaterial ??=
+                PlacementVisualManager
+                    .CreateLightingIndependentPreviewMaterial(
+                        "InfrastructurePlacementPreviewMaterial");
+            _placementPreviewRenderers =
+                PlacementVisualManager
+                    .ConfigurePreviewObject(
+                        _placementPreview,
+                        _placementPreviewMaterial);
+            UpdatePlacementPreviewColor(colorValid);
+        }
+
+        private void SetPlacementPreviewActive(
+            bool active)
+        {
+            if (_placementPreview != null &&
+                _placementPreview.activeSelf != active)
+            {
+                _placementPreview.SetActive(active);
+            }
+        }
+
+        private void UpdatePlacementPreviewColor(
+            Color color)
+        {
+            if (_placementPreviewMaterial == null)
+            {
+                return;
+            }
+
+            PlacementVisualManager.ApplyPreviewColor(
+                _placementPreviewMaterial,
+                _placementPreviewRenderers,
+                color);
+        }
+
+        private void ClearPlacementPreview()
+        {
+            if (_placementPreview != null)
+            {
+                _placementPreview.SetActive(false);
+                SafeDestroy(_placementPreview);
+            }
+
+            _placementPreview = null;
+            _placementPreviewRenderers =
+                Array.Empty<Renderer>();
+            _lastPreviewCursor = null;
+        }
+
+        private static void SafeDestroy(
+            UnityEngine.Object target)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(target);
+            }
+            else
+            {
+                DestroyImmediate(target);
             }
         }
 
@@ -348,6 +553,8 @@ namespace CityFlow.UI.Controllers
             if (_currentData.Kind == InfrastructureKind.Highway && !_pendingHighwayStart.HasValue)
             {
                 _pendingHighwayStart = coord;
+                RebuildPlacementPreview(coord);
+                UpdateGhostPosition(coord);
                 Debug.Log($"[InfrastructurePlacementCoordinator] 고속도로 시작 램프 선택: {coord}. 끝 램프를 선택하세요.");
                 return;
             }
@@ -403,6 +610,7 @@ namespace CityFlow.UI.Controllers
             if (_currentData.Kind == InfrastructureKind.Highway)
             {
                 _pendingHighwayStart = null;
+                RebuildPlacementPreview(coord);
             }
             if (_currentData.Kind == InfrastructureKind.BusStop)
             {

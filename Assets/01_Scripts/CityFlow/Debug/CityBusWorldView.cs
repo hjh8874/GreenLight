@@ -187,9 +187,10 @@ namespace CityFlow.DebugTools
                 travelDirection.y,
                 -travelDirection.x,
                 0f);
+            Vector2Int localTile = tile - cityView.GridOrigin;
             Vector3 nextPosition = new(
-                tile.x + 0.5f,
-                tile.y + 0.5f,
+                localTile.x + 0.5f,
+                localTile.y + 0.5f,
                 visualDepth);
             nextPosition += laneRight * laneOffset;
 

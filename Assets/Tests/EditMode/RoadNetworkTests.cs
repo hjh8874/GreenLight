@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using CityFlow.Contracts;
@@ -43,6 +44,74 @@ namespace CityFlow.Sim.Tests
             var net = new RoadNetwork(g);
 
             Assert.IsFalse(net.TryGetAccessRoad(V(3, 3), out _));
+        }
+
+        [Test]
+        public void AccessRoad_RotatedBuilding_PrefersSelectedFrontage()
+        {
+            var g = new CityGrid(8, 8);
+            Vector2Int building = V(3, 3);
+            Assert.IsTrue(g.Place(
+                building,
+                TileType.Office,
+                PlacementDirection.East));
+
+            Assert.IsTrue(g.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(g.Place(V(5, 3), TileType.Road));
+            Assert.IsTrue(g.Place(V(3, 5), TileType.Road));
+            Assert.IsTrue(g.Place(V(2, 3), TileType.Road));
+
+            var net = new RoadNetwork(g);
+
+            Assert.IsTrue(net.TryGetAccessRoad(building, out var road));
+            Assert.AreEqual(
+                V(5, 3),
+                road,
+                "East 방향 건물은 동쪽 주차장 앞 도로를 우선 접점으로 사용해야 한다.");
+
+            var frontages = new List<Vector2Int>();
+            net.CollectAccessRoads(building, frontages);
+            Assert.AreEqual(V(5, 3), frontages[0]);
+        }
+
+        [Test]
+        public void AccessRoad_LegacyNorthWithoutSelectedFrontage_FallsBack()
+        {
+            var g = new CityGrid(8, 8);
+            Vector2Int building = V(3, 3);
+            Assert.IsTrue(g.Place(
+                building,
+                TileType.House,
+                PlacementDirection.North));
+            Assert.IsTrue(g.Place(V(3, 5), TileType.Road));
+
+            var net = new RoadNetwork(g);
+
+            Assert.IsTrue(net.TryGetAccessRoad(building, out var road));
+            Assert.AreEqual(
+                V(3, 5),
+                road,
+                "선택한 앞면에 도로가 없더라도 구버전 도시의 기존 접근 도로는 유지해야 한다.");
+        }
+
+        [Test]
+        public void AccessRoad_RotatedBuildingWithoutFrontRoad_IsUnreachable()
+        {
+            var g = new CityGrid(8, 8);
+            Vector2Int building = V(3, 3);
+            Assert.IsTrue(g.Place(
+                building,
+                TileType.House,
+                PlacementDirection.East));
+            Assert.IsTrue(g.Place(V(3, 5), TileType.Road));
+
+            var net = new RoadNetwork(g);
+
+            Assert.IsFalse(net.TryGetAccessRoad(building, out _));
+
+            var frontages = new List<Vector2Int>();
+            net.CollectAccessRoads(building, frontages);
+            Assert.That(frontages, Is.Empty);
         }
     }
 }

@@ -10,6 +10,7 @@ namespace CityFlow.UI.Controllers.Placement
     {
         public const int GhostSortingOrder = 100;
         public const float MinimumGhostAlpha = 0.75f;
+        public const float RoadPreviewThickness = 0.08f;
 
         private readonly SpriteRenderer _ghostRenderer;
         private readonly Color _colorValid;
@@ -17,11 +18,17 @@ namespace CityFlow.UI.Controllers.Placement
 
         private readonly bool _use3DGhostVolume;
         private readonly float _ghostVolumeHeight;
+        private float _currentGhostVolumeHeight;
         private readonly Color _volumeValidColor;
         private readonly Color _volumeInvalidColor;
 
         private GameObject _ghostVolumeObj;
         private Material _ghostVolumeMaterial;
+        private GameObject _buildingPreviewObject;
+        private Material _buildingPreviewMaterial;
+        private Renderer[] _buildingPreviewRenderers =
+            System.Array.Empty<Renderer>();
+        private bool _ghostActive;
 
         private Texture2D _footprintGhostTexture;
         private Sprite _footprintGhostSprite;
@@ -49,6 +56,7 @@ namespace CityFlow.UI.Controllers.Placement
             _colorInvalid = colorInvalid;
             _use3DGhostVolume = use3DGhostVolume;
             _ghostVolumeHeight = ghostVolumeHeight;
+            _currentGhostVolumeHeight = ghostVolumeHeight;
             _volumeValidColor = volumeValidColor;
             _volumeInvalidColor = volumeInvalidColor;
             _benefitRenderer = benefitRenderer;
@@ -72,8 +80,10 @@ namespace CityFlow.UI.Controllers.Placement
 
         public void Cleanup()
         {
+            ClearBuildingPreview();
             SafeDestroy(_footprintGhostSprite);
             SafeDestroy(_footprintGhostTexture);
+            SafeDestroy(_buildingPreviewMaterial);
             SafeDestroy(_ghostVolumeMaterial);
             SafeDestroy(_ghostVolumeObj);
         }
@@ -87,9 +97,51 @@ namespace CityFlow.UI.Controllers.Placement
 
         public void SetGhostActive(bool active)
         {
+            _ghostActive = active;
             if (_ghostRenderer != null) _ghostRenderer.gameObject.SetActive(active);
-            if (_ghostVolumeObj != null && _ghostVolumeObj.activeSelf != active)
-                _ghostVolumeObj.SetActive(active);
+            bool volumeActive =
+                active &&
+                _buildingPreviewObject == null;
+            if (_ghostVolumeObj != null &&
+                _ghostVolumeObj.activeSelf != volumeActive)
+            {
+                _ghostVolumeObj.SetActive(volumeActive);
+            }
+            if (_buildingPreviewObject != null &&
+                _buildingPreviewObject.activeSelf != active)
+            {
+                _buildingPreviewObject.SetActive(active);
+            }
+        }
+
+        public void SetBuildingPreview(GameObject preview)
+        {
+            ClearBuildingPreview();
+            _buildingPreviewObject = preview;
+            if (_buildingPreviewObject == null)
+            {
+                if (_ghostVolumeObj != null)
+                {
+                    _ghostVolumeObj.SetActive(_ghostActive);
+                }
+                return;
+            }
+
+            _buildingPreviewObject.hideFlags =
+                HideFlags.HideAndDontSave;
+            Material previewMaterial =
+                GetOrCreateBuildingPreviewMaterial();
+            _buildingPreviewRenderers =
+                ConfigurePreviewObject(
+                    _buildingPreviewObject,
+                    previewMaterial);
+
+            UpdateBuildingPreviewColor(canPlace: true);
+            _buildingPreviewObject.SetActive(_ghostActive);
+            if (_ghostVolumeObj != null)
+            {
+                _ghostVolumeObj.SetActive(false);
+            }
         }
 
         public void HideBenefitHighlights()
@@ -138,6 +190,10 @@ namespace CityFlow.UI.Controllers.Placement
                 Mathf.Max(1, footprintSize.x),
                 Mathf.Max(1, footprintSize.y)
             );
+            _currentGhostVolumeHeight =
+                currentType == TileType.Road
+                    ? RoadPreviewThickness
+                    : _ghostVolumeHeight;
             _ghostRenderer.transform.localScale = new Vector3(
                 _ghostBaseScale.x * size.x,
                 _ghostBaseScale.y * size.y,
@@ -162,46 +218,100 @@ namespace CityFlow.UI.Controllers.Placement
             Vector3 position,
             float angle,
             bool useXYPlane,
-            IWorldCoordinateSpace coordinateSpace = null)
+            IWorldCoordinateSpace coordinateSpace = null,
+            Vector3? buildingPreviewPosition = null)
         {
-            if (_ghostRenderer == null) return;
-            _ghostRenderer.transform.position = position;
-
-            if (coordinateSpace != null)
+            if (_ghostRenderer != null)
             {
-                _ghostRenderer.transform.rotation =
-                    coordinateSpace.CoordinateRotation;
+                _ghostRenderer.transform.position = position;
             }
 
             if (_ghostVolumeObj != null)
             {
                 if (coordinateSpace != null)
                 {
-                    Quaternion surfaceRotation = Quaternion.LookRotation(
-                        coordinateSpace.GridYAxis,
-                        coordinateSpace.GroundNormal);
                     _ghostVolumeObj.transform.position =
                         position +
                         coordinateSpace.GroundNormal *
-                        (_ghostVolumeHeight * 0.5f);
-                    _ghostVolumeObj.transform.rotation =
-                        Quaternion.AngleAxis(
-                            angle,
-                            coordinateSpace.GroundNormal) *
-                        surfaceRotation;
+                        (_currentGhostVolumeHeight * 0.5f);
                 }
                 else if (useXYPlane)
                 {
                     _ghostVolumeObj.transform.position = new Vector3(
-                        position.x, position.y, position.z - _ghostVolumeHeight * 0.5f);
-                    _ghostVolumeObj.transform.rotation = Quaternion.Euler(0f, 0f, -angle);
+                        position.x,
+                        position.y,
+                        position.z -
+                        _currentGhostVolumeHeight * 0.5f);
                 }
                 else
                 {
                     _ghostVolumeObj.transform.position = new Vector3(
-                        position.x, _ghostVolumeHeight * 0.5f, position.z);
-                    _ghostVolumeObj.transform.rotation = Quaternion.Euler(0f, angle, 0f);
+                        position.x,
+                        _currentGhostVolumeHeight * 0.5f,
+                        position.z);
                 }
+            }
+
+            if (_buildingPreviewObject != null)
+            {
+                _buildingPreviewObject.transform.position =
+                    buildingPreviewPosition ?? position;
+            }
+
+            SyncPlacementRotation(
+                angle,
+                useXYPlane,
+                coordinateSpace);
+        }
+
+        public void SyncPlacementRotation(
+            float angle,
+            bool useXYPlane,
+            IWorldCoordinateSpace coordinateSpace = null)
+        {
+            Quaternion placementRotation =
+                GetPlacementRotation(
+                    angle,
+                    useXYPlane,
+                    coordinateSpace);
+            if (_ghostRenderer != null)
+            {
+                _ghostRenderer.transform.rotation =
+                    placementRotation;
+            }
+
+            if (_buildingPreviewObject != null)
+            {
+                _buildingPreviewObject.transform.rotation =
+                    placementRotation;
+            }
+
+            if (_ghostVolumeObj == null)
+            {
+                return;
+            }
+
+            if (coordinateSpace != null)
+            {
+                Quaternion surfaceRotation =
+                    Quaternion.LookRotation(
+                        coordinateSpace.GridYAxis,
+                        coordinateSpace.GroundNormal);
+                _ghostVolumeObj.transform.rotation =
+                    Quaternion.AngleAxis(
+                        angle,
+                        coordinateSpace.GroundNormal) *
+                    surfaceRotation;
+            }
+            else if (useXYPlane)
+            {
+                _ghostVolumeObj.transform.rotation =
+                    Quaternion.Euler(0f, 0f, -angle);
+            }
+            else
+            {
+                _ghostVolumeObj.transform.rotation =
+                    Quaternion.Euler(0f, angle, 0f);
             }
         }
 
@@ -210,14 +320,21 @@ namespace CityFlow.UI.Controllers.Placement
             if (_ghostRenderer != null)
             {
                 Color ghostColor = canPlace ? _colorValid : _colorInvalid;
-                ghostColor.a = Mathf.Max(ghostColor.a, MinimumGhostAlpha);
+                ghostColor.a = 1f;
                 _ghostRenderer.color = ghostColor;
             }
 
             if (_ghostVolumeMaterial != null)
             {
-                _ghostVolumeMaterial.color = canPlace ? _volumeValidColor : _volumeInvalidColor;
+                Color volumeColor =
+                    canPlace ? _volumeValidColor : _volumeInvalidColor;
+                volumeColor.a = 1f;
+                SetPreviewMaterialColor(
+                    _ghostVolumeMaterial,
+                    volumeColor);
             }
+
+            UpdateBuildingPreviewColor(canPlace);
         }
 
         public void UpdateBenefitPreview(Vector2Int gridCoord, TileType currentType, bool useXYPlane, CityFlowServices services)
@@ -297,24 +414,14 @@ namespace CityFlow.UI.Controllers.Placement
             var collider = _ghostVolumeObj.GetComponent<Collider>();
             SafeDestroy(collider);
 
-            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
-            _ghostVolumeMaterial = new Material(shader)
-            {
-                name = "GhostVolumeMaterial",
-                hideFlags = HideFlags.HideAndDontSave
-            };
-
-            _ghostVolumeMaterial.SetFloat("_Surface", 1f);
-            _ghostVolumeMaterial.SetFloat("_Blend", 0f);
-            _ghostVolumeMaterial.SetFloat("_AlphaClip", 0f);
-            _ghostVolumeMaterial.SetOverrideTag("RenderType", "Transparent");
-            _ghostVolumeMaterial.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-            _ghostVolumeMaterial.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-            _ghostVolumeMaterial.SetInt("_ZWrite", 0);
-            _ghostVolumeMaterial.renderQueue = (int)RenderQueue.Transparent;
-            _ghostVolumeMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            _ghostVolumeMaterial.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-            _ghostVolumeMaterial.color = _volumeValidColor;
+            _ghostVolumeMaterial =
+                CreateLightingIndependentPreviewMaterial(
+                    "GhostVolumeMaterial");
+            Color volumeColor = _volumeValidColor;
+            volumeColor.a = 1f;
+            SetPreviewMaterialColor(
+                _ghostVolumeMaterial,
+                volumeColor);
 
             var meshRenderer = _ghostVolumeObj.GetComponent<MeshRenderer>();
             meshRenderer.material = _ghostVolumeMaterial;
@@ -329,10 +436,204 @@ namespace CityFlow.UI.Controllers.Placement
             if (_ghostVolumeObj == null) return;
             _ghostVolumeObj.transform.localScale = new Vector3(
                 Mathf.Max(1, size.x),
-                _ghostVolumeHeight,
+                _currentGhostVolumeHeight,
                 Mathf.Max(1, size.y)
             );
         }
+
+        private void UpdateBuildingPreviewColor(bool canPlace)
+        {
+            Color color =
+                canPlace ? _colorValid : _colorInvalid;
+            color.a = 1f;
+
+            if (_buildingPreviewMaterial != null)
+            {
+                ApplyPreviewColor(
+                    _buildingPreviewMaterial,
+                    _buildingPreviewRenderers,
+                    color);
+                return;
+            }
+
+            var properties = new MaterialPropertyBlock();
+            properties.SetColor("_BaseColor", color);
+            properties.SetColor("_Color", color);
+            for (int index = 0;
+                 index < _buildingPreviewRenderers.Length;
+                 index++)
+            {
+                _buildingPreviewRenderers[index]
+                    .SetPropertyBlock(properties);
+            }
+        }
+
+        private static Quaternion GetPlacementRotation(
+            float angle,
+            bool useXYPlane,
+            IWorldCoordinateSpace coordinateSpace)
+        {
+            if (coordinateSpace != null)
+            {
+                return coordinateSpace.CoordinateRotation *
+                       Quaternion.Euler(0f, 0f, angle);
+            }
+
+            return useXYPlane
+                ? Quaternion.Euler(0f, 0f, -angle)
+                : Quaternion.Euler(90f, 0f, 0f) *
+                  Quaternion.Euler(0f, 0f, angle);
+        }
+
+        private Material GetOrCreateBuildingPreviewMaterial()
+        {
+            if (_buildingPreviewMaterial != null)
+            {
+                return _buildingPreviewMaterial;
+            }
+
+            _buildingPreviewMaterial =
+                CreateLightingIndependentPreviewMaterial(
+                    "BuildingPlacementPreviewMaterial");
+            return _buildingPreviewMaterial;
+        }
+
+        internal static Renderer[] ConfigurePreviewObject(
+            GameObject preview,
+            Material previewMaterial)
+        {
+            if (preview == null)
+            {
+                return System.Array.Empty<Renderer>();
+            }
+
+            preview.hideFlags =
+                HideFlags.HideAndDontSave;
+            Collider[] colliders =
+                preview.GetComponentsInChildren<
+                    Collider>(true);
+            for (int index = 0;
+                 index < colliders.Length;
+                 index++)
+            {
+                colliders[index].enabled = false;
+            }
+
+            MonoBehaviour[] behaviours =
+                preview.GetComponentsInChildren<
+                    MonoBehaviour>(true);
+            for (int index = 0;
+                 index < behaviours.Length;
+                 index++)
+            {
+                behaviours[index].enabled = false;
+            }
+
+            Renderer[] renderers =
+                preview.GetComponentsInChildren<
+                    Renderer>(true);
+            for (int index = 0;
+                 index < renderers.Length;
+                 index++)
+            {
+                Renderer renderer = renderers[index];
+                renderer.enabled = true;
+                renderer.forceRenderingOff = false;
+                renderer.allowOcclusionWhenDynamic =
+                    false;
+                renderer.shadowCastingMode =
+                    ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+
+                Material[] materials =
+                    renderer.sharedMaterials;
+                if (materials.Length == 0)
+                {
+                    materials =
+                        new[] { previewMaterial };
+                }
+                else
+                {
+                    for (int materialIndex = 0;
+                         materialIndex < materials.Length;
+                         materialIndex++)
+                    {
+                        materials[materialIndex] =
+                            previewMaterial;
+                    }
+                }
+                renderer.sharedMaterials = materials;
+            }
+
+            return renderers;
+        }
+
+        internal static void ApplyPreviewColor(
+            Material material,
+            Renderer[] renderers,
+            Color color)
+        {
+            color.a = 1f;
+            SetPreviewMaterialColor(material, color);
+
+            var properties =
+                new MaterialPropertyBlock();
+            properties.SetColor("_BaseColor", color);
+            properties.SetColor("_Color", color);
+            for (int index = 0;
+                 index < renderers.Length;
+                 index++)
+            {
+                renderers[index].SetPropertyBlock(
+                    properties);
+            }
+        }
+
+        internal static Material
+            CreateLightingIndependentPreviewMaterial(
+                string materialName)
+        {
+            Shader shader =
+                Shader.Find("Universal Render Pipeline/Unlit") ??
+                Shader.Find("Unlit/Color") ??
+                Shader.Find("Sprites/Default");
+            var material = new Material(shader)
+            {
+                name = materialName,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            material.SetFloat("_Surface", 0f);
+            material.SetFloat("_Blend", 0f);
+            material.SetFloat("_AlphaClip", 0f);
+            material.SetOverrideTag("RenderType", "Opaque");
+            material.SetInt("_SrcBlend", (int)BlendMode.One);
+            material.SetInt("_DstBlend", (int)BlendMode.Zero);
+            material.SetInt("_ZWrite", 1);
+            material.renderQueue = (int)RenderQueue.Geometry;
+            material.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            return material;
+        }
+
+        internal static void SetPreviewMaterialColor(
+            Material material,
+            Color color)
+        {
+            material.color = color;
+            material.SetColor("_BaseColor", color);
+            material.SetColor("_Color", color);
+        }
+
+        private void ClearBuildingPreview()
+        {
+            SafeDestroy(_buildingPreviewObject);
+            _buildingPreviewObject = null;
+            _buildingPreviewRenderers =
+                System.Array.Empty<Renderer>();
+        }
+
+        internal GameObject BuildingPreviewObject =>
+            _buildingPreviewObject;
 
         private Sprite GetOrCreateFootprintGhostSprite()
         {

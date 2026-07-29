@@ -16,6 +16,7 @@ namespace CityFlow.DebugTools
     {
         [SerializeField] private BusStopRegistry stopRegistry;
         [SerializeField] private MainCityView cityView;
+        [SerializeField] private GameObject stationPrefab;
         [SerializeField] private Material stationMaterial;
         [SerializeField] private float visualDepth = -0.24f;
 
@@ -118,14 +119,46 @@ namespace CityFlow.DebugTools
 
         private void CreateMarker(Vector2Int tile, int number)
         {
-            var station = new GameObject(
+            GameObject station = CreateStationVisual(
+                markerRoot,
                 $"BusStop_{number:00}_{tile.x}_{tile.y}");
             Transform stationTransform = station.transform;
-            stationTransform.SetParent(markerRoot, false);
+            Vector2Int localTile = tile - cityView.GridOrigin;
             stationTransform.localPosition = new Vector3(
-                tile.x + 0.5f,
-                tile.y + 0.5f,
+                localTile.x + 0.5f,
+                localTile.y + 0.5f,
                 visualDepth);
+        }
+
+        public bool TryCreatePlacementPreview(
+            out GameObject preview)
+        {
+            preview = CreateStationVisual(
+                null,
+                "PlacementPreview_BusStop");
+            preview.transform.localPosition =
+                Vector3.zero;
+            preview.transform.localRotation =
+                Quaternion.identity;
+            return true;
+        }
+
+        private GameObject CreateStationVisual(
+            Transform parent,
+            string objectName)
+        {
+            if (stationPrefab != null)
+            {
+                GameObject instance =
+                    Instantiate(stationPrefab, parent);
+                instance.name = objectName;
+                return instance;
+            }
+
+            var station = new GameObject(objectName);
+            Transform stationTransform =
+                station.transform;
+            stationTransform.SetParent(parent, false);
 
             CreatePart(
                 stationTransform,
@@ -142,6 +175,7 @@ namespace CityFlow.DebugTools
                 "WaitingPad",
                 new Vector3(0f, 0f, 0.02f),
                 new Vector3(0.52f, 0.34f, 0.04f));
+            return station;
         }
 
         private void CreatePart(
