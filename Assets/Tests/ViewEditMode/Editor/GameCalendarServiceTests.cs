@@ -55,6 +55,31 @@ namespace CityFlow.Tests
         }
 
         [Test]
+        public void TimeOfDay01_IncludesProgressWithinCurrentHour()
+        {
+            GameObject owner = new GameObject("GameCalendarProgressTest");
+
+            try
+            {
+                GameCalendarService calendar =
+                    owner.AddComponent<GameCalendarService>();
+                calendar.Initialize(CreateServices());
+
+                calendar.AdvanceOffline(15d);
+
+                Assert.That(calendar.Hour, Is.EqualTo(0));
+                Assert.That(
+                    calendar.TimeOfDay01,
+                    Is.EqualTo(0.5f / calendar.HoursPerDay)
+                        .Within(0.000001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+            }
+        }
+
+        [Test]
         public void InspectorOverride_ControlsHourDurationAndSkyApi()
         {
             GameObject owner = new GameObject("GameCalendarOverrideTest");

@@ -43,8 +43,20 @@ namespace CityFlow.Gameplay.Progression
         public float RealSecondsPerGameDay =>
             realSecondsPerGameHour * HoursPerDay;
         public int HoursPerDay => GameTimeSettingsSO.HoursPerDay;
-        public float TimeOfDay01 =>
-            Mathf.Repeat(Hour, HoursPerDay) / HoursPerDay;
+        public float TimeOfDay01
+        {
+            get
+            {
+                float secondsPerHour =
+                    Mathf.Max(0.01f, realSecondsPerGameHour);
+                float currentHourProgress = Mathf.Clamp01(
+                    accumulatedRealSeconds / secondsPerHour);
+
+                return Mathf.Repeat(
+                    Hour + currentHourProgress,
+                    HoursPerDay) / HoursPerDay;
+            }
+        }
 
         public event Action<int> HourChanged;
         public event Action<int> DayChanged;
