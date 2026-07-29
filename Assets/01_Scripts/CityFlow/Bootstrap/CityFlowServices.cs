@@ -20,6 +20,12 @@ namespace CityFlow.Bootstrap
         public IWorldGridExpansionService WorldGridExpansion { get; private set; }
         public IWorldCoordinateSpace WorldCoordinates { get; private set; }
         public IWorldCoordinateRoot WorldCoordinateRoot { get; private set; }
+        public ITerrainDecorationSaveSource TerrainDecorations
+        {
+            get;
+            private set;
+        }
+
         public IResearchUnlockService Research { get; private set; }
         public ISpecialBuildingService SpecialBuildings { get; private set; }
         public IReadOnlyPopulationData Population { get; private set; }
@@ -37,6 +43,8 @@ namespace CityFlow.Bootstrap
             WorldGridExpansionRegistered;
         public event Action<IWorldCoordinateSpace> WorldCoordinatesRegistered;
         public event Action<IWorldCoordinateRoot> WorldCoordinateRootRegistered;
+        public event Action<ITerrainDecorationSaveSource>
+            TerrainDecorationsRegistered;
         public event Action<IResearchUnlockService> ResearchRegistered;
         public event Action<ISpecialBuildingService> SpecialBuildingsRegistered;
         public event Action<IReadOnlyPopulationData> PopulationRegistered;
@@ -174,16 +182,27 @@ namespace CityFlow.Bootstrap
             Save?.RegisterRadioSaveSource(radioSaveSource);
         }
 
-        public void RegisterTerrainDecorationSaveSource(
+        public bool RegisterTerrainDecorationSaveSource(
             ITerrainDecorationSaveSource terrainDecorationSaveSource)
         {
             if (terrainDecorationSaveSource == null)
             {
-                return;
+                return false;
             }
 
+            if (TerrainDecorations != null)
+            {
+                return ReferenceEquals(
+                    TerrainDecorations,
+                    terrainDecorationSaveSource);
+            }
+
+            TerrainDecorations = terrainDecorationSaveSource;
             Save?.RegisterTerrainDecorationSaveSource(
                 terrainDecorationSaveSource);
+            TerrainDecorationsRegistered?.Invoke(
+                terrainDecorationSaveSource);
+            return true;
         }
 
         public bool RegisterWorldGrid(IWorldGridService worldGrid)

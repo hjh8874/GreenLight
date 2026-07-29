@@ -254,7 +254,10 @@ namespace CityFlow.UI.Controllers.Placement
                     for (int dy = -radius; dy <= radius; dy++)
                     {
                         Vector2Int targetTile = new Vector2Int(gridCoord.x + dx, gridCoord.y + dy);
-                        if (!GridUtil.IsInside(targetTile)) continue;
+                        bool isAccessible = services?.WorldGrid != null
+                            ? services.WorldGrid.IsTileUnlocked(targetTile)
+                            : GridUtil.IsInside(targetTile);
+                        if (!isAccessible) continue;
 
                         bool isCovered = isSchool
                             ? CityFlow.Content.PopulationCalculator.IsWithinSchoolCoverage(targetTile, gridCoord, radius)

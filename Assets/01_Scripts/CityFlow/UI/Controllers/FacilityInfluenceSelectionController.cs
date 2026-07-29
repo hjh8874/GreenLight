@@ -80,7 +80,7 @@ namespace CityFlow.UI.Controllers
             }
 
             Vector2Int clicked = placementController.GetMouseGridCoordinate();
-            if (!GridUtil.IsInside(clicked))
+            if (!IsAccessible(clicked))
             {
                 ClearSelection();
                 return;
@@ -216,7 +216,7 @@ namespace CityFlow.UI.Controllers
                 for (int dy = -radius; dy <= radius; dy++)
                 {
                     Vector2Int tile = facility + new Vector2Int(dx, dy);
-                    if (!GridUtil.IsInside(tile))
+                    if (!IsAccessible(tile))
                     {
                         continue;
                     }
@@ -236,6 +236,13 @@ namespace CityFlow.UI.Controllers
                     }
                 }
             }
+        }
+
+        private bool IsAccessible(Vector2Int tile)
+        {
+            return services?.WorldGrid != null
+                ? services.WorldGrid.IsTileUnlocked(tile)
+                : GridUtil.IsInside(tile);
         }
     }
 }

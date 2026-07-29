@@ -10,6 +10,8 @@ namespace CityFlow.Contracts
         int ChunkSize { get; }
         int ChunkColumns { get; }
         int ChunkRows { get; }
+        Vector2Int InitialPlayableOrigin { get; }
+        Vector2Int InitialPlayableSize { get; }
 
         event Action<GridChunkId> ChunkUnlocked;
         event Action AccessRestored;

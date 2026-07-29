@@ -91,6 +91,7 @@ namespace CityFlow.Content.Transit
 
             this.services = services;
             tileData = services.TileData;
+            ApplyWorldGridBounds(services.WorldGrid);
             busStopInfrastructure =
                 services.Placement as IBusStopInfrastructureService;
             isInitialized = true;
@@ -102,6 +103,17 @@ namespace CityFlow.Content.Transit
 
             SubscribeEvents();
             SubscribeRestore();
+        }
+
+        private void ApplyWorldGridBounds(IWorldGridAccess worldGrid)
+        {
+            if (worldGrid == null)
+            {
+                return;
+            }
+
+            gridWidth = Mathf.Max(1, worldGrid.WorldWidth);
+            gridHeight = Mathf.Max(1, worldGrid.WorldHeight);
         }
 
         private void Start()

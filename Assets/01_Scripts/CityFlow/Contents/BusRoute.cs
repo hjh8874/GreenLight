@@ -80,6 +80,7 @@ namespace CityFlow.Content.Transit
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
+        private IWorldGridAccess worldGridAccess;
 
         private int currentStopIndex;
         private int currentRoadPathIndex;
@@ -147,6 +148,12 @@ namespace CityFlow.Content.Transit
 
             this.services = services;
             tileData = services.TileData;
+            worldGridAccess = services.WorldGrid;
+            if (worldGridAccess != null)
+            {
+                gridWidth = Mathf.Max(1, worldGridAccess.WorldWidth);
+                gridHeight = Mathf.Max(1, worldGridAccess.WorldHeight);
+            }
             isInitialized = true;
 
             if (autoStart && stops.Count >= 2)
@@ -885,6 +892,11 @@ namespace CityFlow.Content.Transit
 
         private bool IsInsideGrid(Vector2Int tile)
         {
+            if (worldGridAccess != null)
+            {
+                return worldGridAccess.IsInsideWorld(tile);
+            }
+
             return
                 tile.x >= 0 &&
                 tile.y >= 0 &&

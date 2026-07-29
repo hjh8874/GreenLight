@@ -511,6 +511,7 @@ namespace CityFlow.View
             return RoutePolyline.Bake(new BakeInput
             {
                 Tiles = tiles,
+                GridOrigin = gridOrigin,
                 TileSize = tileSize,
                 LaneOffset = laneOffset,
                 CornerRadiusFraction = GetCornerTurnRadiusFraction(),   // 베이커는 클램프 안 함 — 여기서 해석해 전달(리뷰 #2)

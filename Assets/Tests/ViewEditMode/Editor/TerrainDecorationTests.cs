@@ -87,6 +87,65 @@ namespace CityFlow.Tests
         }
 
         [Test]
+        public void CenteredOrigin_KeepsSaveIndicesLocalToInitialBoard()
+        {
+            var state = new TerrainDecorationState(
+                20,
+                20,
+                new Vector2Int(90, 90));
+
+            state.ApplyPlacement(
+                new Vector2Int(90, 90),
+                Vector2Int.one,
+                isRemove: false);
+
+            Assert.IsTrue(state.IsCleared(new Vector2Int(90, 90)));
+            Assert.IsFalse(state.IsCleared(new Vector2Int(0, 0)));
+            CollectionAssert.AreEqual(
+                new[] { 0 },
+                state.CreateSnapshot().ClearedTileIndices);
+        }
+
+        [Test]
+        public void WorldState_PersistsClearedExpandedTile()
+        {
+            var source = new TerrainDecorationState(200, 200);
+            Vector2Int expandedTile = new Vector2Int(75, 85);
+            source.ApplyPlacement(
+                expandedTile,
+                Vector2Int.one,
+                isRemove: false);
+
+            TerrainDecorationSaveData snapshot = source.CreateSnapshot();
+            var restored = new TerrainDecorationState(200, 200);
+            restored.RestoreSnapshot(snapshot);
+
+            Assert.AreEqual(200, snapshot.GridWidth);
+            Assert.AreEqual(200, snapshot.GridHeight);
+            Assert.IsTrue(restored.IsCleared(expandedTile));
+        }
+
+        [Test]
+        public void LegacyInitialBoardSnapshot_MigratesToWorldCenter()
+        {
+            var state = new TerrainDecorationState(200, 200);
+            var legacySnapshot = new TerrainDecorationSaveData
+            {
+                ClearedTileIndices = new[] { 0, 399 }
+            };
+
+            state.RestoreSnapshot(
+                legacySnapshot,
+                legacyWidth: 20,
+                legacyHeight: 20,
+                legacyOrigin: new Vector2Int(90, 90));
+
+            Assert.IsTrue(state.IsCleared(new Vector2Int(90, 90)));
+            Assert.IsTrue(state.IsCleared(new Vector2Int(109, 109)));
+            Assert.IsFalse(state.IsCleared(Vector2Int.zero));
+        }
+
+        [Test]
         public void RestoreSnapshot_IgnoresIndicesOutsideGrid()
         {
             var state = new TerrainDecorationState(2, 2);

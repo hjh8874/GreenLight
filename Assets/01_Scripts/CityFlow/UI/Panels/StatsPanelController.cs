@@ -17,6 +17,8 @@ namespace CityFlow.UI
         private Coroutine _updateRoutine;
         private readonly Queue<ArrivalCoinSample> _arrivalCoinSamples = new();
         private long _arrivalCoinsInLastMinute;
+        private int _gridWidth = GridUtil.DefaultWidth;
+        private int _gridHeight = GridUtil.DefaultHeight;
 
         private readonly struct ArrivalCoinSample
         {
@@ -49,6 +51,11 @@ namespace CityFlow.UI
             }
 
             _services = services;
+            if (_services?.WorldGrid != null)
+            {
+                _gridWidth = Mathf.Max(1, _services.WorldGrid.WorldWidth);
+                _gridHeight = Mathf.Max(1, _services.WorldGrid.WorldHeight);
+            }
             _services.Events.Arrival += OnArrival;
         }
 
@@ -82,10 +89,9 @@ namespace CityFlow.UI
                 {
                     // 1. 정체 구역 카운터: 전체 맵을 돌며 밀도(Density)가 0.7 이상인 구역을 카운트
                     int jamCount = 0;
-                    // (맵이 20x20 이라는 전제 하에 단순 무식하게 순회)
-                    for (int y = 0; y < 20; y++)
+                    for (int y = 0; y < _gridHeight; y++)
                     {
-                        for (int x = 0; x < 20; x++)
+                        for (int x = 0; x < _gridWidth; x++)
                         {
                             if (_services.TileData.GetDensity01(new Vector2Int(x, y)) > 0.7f)
                             {

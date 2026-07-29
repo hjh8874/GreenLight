@@ -109,7 +109,7 @@ namespace CityFlow.UI
 
                 Vector2Int? gridCoord = TryGetGridCoordinate();
                 
-                if (gridCoord.HasValue && GridUtil.IsInside(gridCoord.Value))
+                if (gridCoord.HasValue && IsAccessible(gridCoord.Value))
                 {
                     bool isEmpty = false;
                     if (_services != null && _services.TileData != null)
@@ -151,7 +151,7 @@ namespace CityFlow.UI
             }
 
             Vector2Int? gridCoord = TryGetGridCoordinate();
-            if (gridCoord.HasValue && GridUtil.IsInside(gridCoord.Value))
+            if (gridCoord.HasValue && IsAccessible(gridCoord.Value))
             {
                 Vector2Int coord = gridCoord.Value;
                 if (_services != null && _services.TileData != null)
@@ -223,6 +223,13 @@ namespace CityFlow.UI
                 return new Vector2Int(Mathf.RoundToInt(hitPoint.x), Mathf.RoundToInt(hitPoint.z));
             }
             return null;
+        }
+
+        private bool IsAccessible(Vector2Int tile)
+        {
+            return _services?.WorldGrid != null
+                ? _services.WorldGrid.IsTileUnlocked(tile)
+                : GridUtil.IsInside(tile);
         }
 
         private void SelectTile(Vector2Int coord)

@@ -8,6 +8,7 @@ namespace CityFlow.ViewKit
     public struct BakeInput
     {
         public IReadOnlyList<Vector2Int> Tiles;
+        public Vector2Int GridOrigin;
         public float TileSize;
         public float LaneOffset;
         public float CornerRadiusFraction;
@@ -87,7 +88,11 @@ namespace CityFlow.ViewKit
             {
                 vertices.Add(new Vertex
                 {
-                    Pos = TileToLocal(tiles.Count > 0 ? tiles[0] : Vector2Int.zero, input.TileSize, input.Z),
+                    Pos = TileToLocal(
+                        tiles.Count > 0 ? tiles[0] : input.GridOrigin,
+                        input.GridOrigin,
+                        input.TileSize,
+                        input.Z),
                     Dir = Vector3.right,
                     Seg = 0,
                     SegT = 0f,
@@ -316,8 +321,16 @@ namespace CityFlow.ViewKit
             int segmentIndex = Mathf.Clamp(Mathf.FloorToInt(folded), 0, segmentCount - 1);
             float segmentT = folded - segmentIndex;
 
-            Vector3 a = TileToLocal(tiles[segmentIndex], input.TileSize, input.Z);
-            Vector3 b = TileToLocal(tiles[segmentIndex + 1], input.TileSize, input.Z);
+            Vector3 a = TileToLocal(
+                tiles[segmentIndex],
+                input.GridOrigin,
+                input.TileSize,
+                input.Z);
+            Vector3 b = TileToLocal(
+                tiles[segmentIndex + 1],
+                input.GridOrigin,
+                input.TileSize,
+                input.Z);
             Vector3 centerline = Vector3.Lerp(a, b, segmentT);
             Vector3 routeTangent = (b - a).normalized;
 
@@ -368,6 +381,7 @@ namespace CityFlow.ViewKit
         private static bool TryGetTurnDirections(
             IReadOnlyList<Vector2Int> tiles,
             Func<Vector2Int, bool> isRoundabout,
+            Vector2Int gridOrigin,
             float tileSize,
             float z,
             int cornerIndex,
@@ -382,9 +396,12 @@ namespace CityFlow.ViewKit
                 return false;
             }
 
-            Vector3 previous = TileToLocal(tiles[cornerIndex - 1], tileSize, z);
-            Vector3 corner = TileToLocal(tiles[cornerIndex], tileSize, z);
-            Vector3 next = TileToLocal(tiles[cornerIndex + 1], tileSize, z);
+            Vector3 previous = TileToLocal(
+                tiles[cornerIndex - 1], gridOrigin, tileSize, z);
+            Vector3 corner = TileToLocal(
+                tiles[cornerIndex], gridOrigin, tileSize, z);
+            Vector3 next = TileToLocal(
+                tiles[cornerIndex + 1], gridOrigin, tileSize, z);
             incoming = corner - previous;
             outgoing = next - corner;
 
@@ -410,12 +427,24 @@ namespace CityFlow.ViewKit
             position = default;
             tangent = default;
 
-            if (!TryGetTurnDirections(tiles, input.IsRoundabout, input.TileSize, input.Z, cornerIndex, out Vector3 incoming, out Vector3 outgoing))
+            if (!TryGetTurnDirections(
+                    tiles,
+                    input.IsRoundabout,
+                    input.GridOrigin,
+                    input.TileSize,
+                    input.Z,
+                    cornerIndex,
+                    out Vector3 incoming,
+                    out Vector3 outgoing))
             {
                 return false;
             }
 
-            Vector3 corner = TileToLocal(tiles[cornerIndex], input.TileSize, input.Z);
+            Vector3 corner = TileToLocal(
+                tiles[cornerIndex],
+                input.GridOrigin,
+                input.TileSize,
+                input.Z);
             float radius = input.TileSize * radiusFraction;
             Vector3 entry = corner - incoming * radius;
             Vector3 exit = corner + outgoing * radius;
@@ -477,7 +506,11 @@ namespace CityFlow.ViewKit
                 float endPhase = ci + transitionSpan;
                 PoseAt(input, tiles, segmentCount, startPhase, out Vector3 entryPos, out Vector3 entryDir);
                 PoseAt(input, tiles, segmentCount, endPhase, out Vector3 exitPos, out Vector3 exitDir);
-                Vector3 center = TileToLocal(tiles[ci], input.TileSize, input.Z);
+                Vector3 center = TileToLocal(
+                    tiles[ci],
+                    input.GridOrigin,
+                    input.TileSize,
+                    input.Z);
 
                 var built = new List<Vertex>(32);
 
@@ -746,9 +779,17 @@ namespace CityFlow.ViewKit
             }
         }
 
-        private static Vector3 TileToLocal(Vector2Int tile, float tileSize, float z)
+        private static Vector3 TileToLocal(
+            Vector2Int tile,
+            Vector2Int gridOrigin,
+            float tileSize,
+            float z)
         {
-            return new Vector3((tile.x + 0.5f) * tileSize, (tile.y + 0.5f) * tileSize, z);
+            Vector2Int localTile = tile - gridOrigin;
+            return new Vector3(
+                (localTile.x + 0.5f) * tileSize,
+                (localTile.y + 0.5f) * tileSize,
+                z);
         }
     }
 }

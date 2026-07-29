@@ -12,6 +12,7 @@ namespace CityFlow.Sim
     {
         SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
+        readonly IWorldGridAccess _worldGridAccess;
         readonly RoadNetwork _network;
         readonly DemandMap _demand;
         readonly RoutePlanner _planner;
@@ -77,8 +78,18 @@ namespace CityFlow.Sim
         internal float TripSuccessRateForTest => _stats.TripSuccessRate;
         internal RoadQueueNetwork RoadQueuesForTest => _roadQueues;
 
-        public SimEngine(SimConfig config, SimEventHub hub)
+        public SimEngine(
+            SimConfig config,
+            SimEventHub hub,
+            IWorldGridAccess worldGridAccess = null)
         {
+            _worldGridAccess = worldGridAccess;
+            if (_worldGridAccess != null)
+            {
+                config.GridWidth = _worldGridAccess.WorldWidth;
+                config.GridHeight = _worldGridAccess.WorldHeight;
+            }
+
             _config = config;
             _grid = new CityGrid(config.GridWidth, config.GridHeight);
             _network = new RoadNetwork(_grid);
@@ -483,13 +494,15 @@ namespace CityFlow.Sim
 
         // ── IPlacementService: CityGrid에 위임. 성공 시 PlacedEvent 큐잉(발행은 틱 끝 Drain) ──
         public bool CanPlace(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North) =>
-            WithinRoadBudget(type)
+            IsAreaUnlocked(tile, type, direction)
+            && WithinRoadBudget(type)
             && !OverlapsRoundaboutFootprint(tile, type, direction)
             && !OverlapsBusStopFootprint(tile, type, direction)
             && _grid.CanPlace(tile, type, direction);
 
         public bool Place(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
         {
+            if (!IsAreaUnlocked(tile, type, direction)) return false;
             if (!WithinRoadBudget(type)) return false;   // 예산 초과 도로는 Place도 거부(CanPlace 우회 방지)
             if (OverlapsRoundaboutFootprint(tile, type, direction)) return false;   // 로터리 풋프린트에 건물 금지
             if (OverlapsBusStopFootprint(tile, type, direction)) return false;
@@ -504,6 +517,24 @@ namespace CityFlow.Sim
                 _roadTopologyChangePending = true;
             _events.QueuePlaced(new PlacedEvent(tile, type, isRemove: false, direction));
             return true;
+        }
+
+        private bool IsAreaUnlocked(
+            Vector2Int tile,
+            TileType type,
+            PlacementDirection direction)
+        {
+            if (_worldGridAccess == null)
+            {
+                return true;
+            }
+
+            Vector2Int footprint = TileFootprint.GetRotatedSize(
+                type,
+                direction);
+            footprint.x = Mathf.Max(1, footprint.x);
+            footprint.y = Mathf.Max(1, footprint.y);
+            return _worldGridAccess.IsAreaUnlocked(tile, footprint);
         }
 
         public bool Remove(Vector2Int tile)
@@ -1116,6 +1147,8 @@ namespace CityFlow.Sim
 
             return new SimSaveData
             {
+                GridWidth = _grid.Width,
+                GridHeight = _grid.Height,
                 PlacedTiles = tiles.ToArray(),
                 SignalOffsets = signals.ToArray(),
                 Roundabouts = roundabouts,
@@ -1137,7 +1170,8 @@ namespace CityFlow.Sim
         // _simTime도 리셋하지 않으므로 잔여 쿨다운은 자연 만료로 수렴(무한 잠금 없음).
         public void RestoreSnapshot(SimSaveData snapshot)
         {
-            if (snapshot == null) return;                        // SaveService도 거르지만 방어 한 겹
+            if (snapshot == null) return;
+            Vector2Int restoreOffset = GetRestoreOffset(snapshot);
 
             // 복원 = 전체 교체: 비우고 → 재배치 → 교차로 재감지 → 조율 복원 (PR#8 합의 흐름)
             _grid.Clear();
@@ -1161,7 +1195,7 @@ namespace CityFlow.Sim
             if (snapshot.PlacedTiles != null)
                 foreach (var t in snapshot.PlacedTiles)
                 {
-                    var tile = new Vector2Int(t.X, t.Y);
+                    var tile = RestoreTile(t.X, t.Y, restoreOffset);
                     if (!_grid.Place(tile, t.Type, t.Direction)) continue;   // OOB·중복은 Place가 거름(무사고)
                     if (t.Type == TileType.Office)
                         _demand.RegisterRestoredCompany(tile, t.Type);
@@ -1178,7 +1212,7 @@ namespace CityFlow.Sim
                 if (snapshot.SignalOffsets != null)
                     foreach (var s in snapshot.SignalOffsets)
                     {
-                        var tile = new Vector2Int(s.X, s.Y);
+                        var tile = RestoreTile(s.X, s.Y, restoreOffset);
                         if (_placedSet.Add(tile)) _placedSignals.Add(tile);
                     }
                 _placedSignals.Sort((a, b) =>
@@ -1189,7 +1223,7 @@ namespace CityFlow.Sim
                 if (snapshot.Roundabouts != null)
                     foreach (var r in snapshot.Roundabouts)
                     {
-                        var tile = new Vector2Int(r.X, r.Y);
+                        var tile = RestoreTile(r.X, r.Y, restoreOffset);
                         // 손상 세이브 방어: 같은 타일에 신호가 있으면 신호 우선(한 타일 한 장치)
                         if (!_placedSet.Contains(tile) && _roundaboutSet.Add(tile)) _placedRoundabouts.Add(tile);
                     }
@@ -1201,7 +1235,7 @@ namespace CityFlow.Sim
                 if (snapshot.Overpasses != null)
                     foreach (var o in snapshot.Overpasses)
                     {
-                        var tile = new Vector2Int(o.X, o.Y);
+                        var tile = RestoreTile(o.X, o.Y, restoreOffset);
                         // 손상 세이브 방어: 신호·로터리가 선점한 타일이면 입체는 양보(한 타일 한 장치)
                         if (!_placedSet.Contains(tile) && !_roundaboutSet.Contains(tile)
                             && _overpassSet.Add(tile)) _placedOverpasses.Add(tile);
@@ -1215,7 +1249,7 @@ namespace CityFlow.Sim
                 if (snapshot.Oneways != null)
                     foreach (var o in snapshot.Oneways)
                     {
-                        var tile = new Vector2Int(o.X, o.Y);
+                        var tile = RestoreTile(o.X, o.Y, restoreOffset);
                         var dir = new Vector2Int(o.DirX, o.DirY);
                         // 손상 세이브 방어: 배치 조건 재검증(교차로·비도로면 버림) + dir 검증(대각·zero면 버림).
                         // CanPlaceOneway가 _onewayDirs.ContainsKey도 함께 봐서 중복 엔트리도 자연히 거른다.
@@ -1233,7 +1267,7 @@ namespace CityFlow.Sim
                 if (snapshot.TurnSigns != null)
                     foreach (var s in snapshot.TurnSigns)
                     {
-                        var tile = new Vector2Int(s.X, s.Y);
+                        var tile = RestoreTile(s.X, s.Y, restoreOffset);
                         var mode = (TurnMode)s.Mode;
                         // 손상 세이브 방어: 배치 조건 재검증(교차로·로터리/입체 선점 좌표는 버림) + 모드값 검증.
                         // CanPlaceTurnSign이 _turnSigns.ContainsKey도 함께 봐서 중복 엔트리도 자연히 거른다.
@@ -1254,7 +1288,7 @@ namespace CityFlow.Sim
                 if (snapshot.PriorityRoads != null)
                     foreach (var p in snapshot.PriorityRoads)
                     {
-                        var tile = new Vector2Int(p.X, p.Y);
+                        var tile = RestoreTile(p.X, p.Y, restoreOffset);
                         // 손상 세이브 방어: 배치 조건 재검증(4자 배타·교차로) + Axis 값 범위 검증.
                         if (CanPlacePriorityRoad(tile) && (p.Axis == 0 || p.Axis == 1))
                         {
@@ -1269,8 +1303,8 @@ namespace CityFlow.Sim
             {
                 foreach (var stop in snapshot.BusStops)
                 {
-                    var tile = new Vector2Int(stop.X, stop.Y);
-                    if (!TryPlaceBusStop(tile))
+                    var tile = RestoreTile(stop.X, stop.Y, restoreOffset);
+                    if (!TryRestoreBusStop(tile))
                     {
                         Debug.LogWarning(
                             $"[SimEngine] 저장된 버스 정류장 {tile}을(를) " +
@@ -1282,8 +1316,8 @@ namespace CityFlow.Sim
             if (snapshot.Highways != null)
                 foreach (var h in snapshot.Highways)
                 {
-                    var a = new Vector2Int(h.AX, h.AY);
-                    var b = new Vector2Int(h.BX, h.BY);
+                    var a = RestoreTile(h.AX, h.AY, restoreOffset);
+                    var b = RestoreTile(h.BX, h.BY, restoreOffset);
                     // 복원은 신규 건설이 아니다. 구세이브가 새 예산을 넘더라도 시설은 보존하고,
                     // 좌표에서 사용량을 재계산해 이후 신규 도로/고속도로만 차단한다.
                     if (!CanPlaceHighwayGeometry(a, b)) continue;
@@ -1297,7 +1331,7 @@ namespace CityFlow.Sim
             if (snapshot.SignalOffsets != null)
                 foreach (var s in snapshot.SignalOffsets)
                 {
-                    var tile = new Vector2Int(s.X, s.Y);
+                    var tile = RestoreTile(s.X, s.Y, restoreOffset);
                     TrySetSignalOffsetSlots(tile, s.OffsetSlots);
                     // 구세이브 호환: GreenSlots 필드 없던 세이브는 0으로 옴 → 기본 초록 유지(안 덮음).
                     if (s.GreenSlots > 0) TrySetSignalGreenSlots(tile, s.GreenSlots);
@@ -1308,6 +1342,33 @@ namespace CityFlow.Sim
         // ── IReadOnlyTileData: 차 큐/grid에 위임 ──
         public float Stability01 => _stats.Stability01;
         // OOB는 예외가 아니라 중립값 — 뷰의 화면 밖 클릭/스캔이 트러스트 경계(감사 2026-07-12).
+        private Vector2Int GetRestoreOffset(SimSaveData snapshot)
+        {
+            if (_worldGridAccess == null ||
+                snapshot.GridWidth <= 0 ||
+                snapshot.GridHeight <= 0 ||
+                (snapshot.GridWidth == _grid.Width &&
+                 snapshot.GridHeight == _grid.Height))
+            {
+                return Vector2Int.zero;
+            }
+
+            return snapshot.GridWidth ==
+                       _worldGridAccess.InitialPlayableSize.x &&
+                   snapshot.GridHeight ==
+                       _worldGridAccess.InitialPlayableSize.y
+                ? _worldGridAccess.InitialPlayableOrigin
+                : Vector2Int.zero;
+        }
+
+        private static Vector2Int RestoreTile(
+            int x,
+            int y,
+            Vector2Int offset)
+        {
+            return new Vector2Int(x + offset.x, y + offset.y);
+        }
+
         public CongestionLevel GetCongestion(Vector2Int tile) =>
             _grid.InBounds(tile)
                 ? _carCongestion[tile.y * _grid.Width + tile.x]
@@ -1331,9 +1392,17 @@ namespace CityFlow.Sim
 
         public IReadOnlyList<Vector2Int> BusStopTiles => _placedBusStops;
 
-        public bool CanPlaceBusStop(Vector2Int tile)
+        public bool CanPlaceBusStop(Vector2Int tile) =>
+            CanPlaceBusStop(tile, requireUnlockedTile: true);
+
+        private bool CanPlaceBusStop(
+            Vector2Int tile,
+            bool requireUnlockedTile)
         {
             if (!_grid.InBounds(tile) ||
+                (requireUnlockedTile &&
+                 _worldGridAccess != null &&
+                 !_worldGridAccess.IsTileUnlocked(tile)) ||
                 _grid.GetTile(tile) != TileType.Empty ||
                 _busStopSet.Contains(tile))
             {
@@ -1348,7 +1417,20 @@ namespace CityFlow.Sim
 
         public bool TryPlaceBusStop(Vector2Int tile)
         {
-            if (!CanPlaceBusStop(tile) || !_busStopSet.Add(tile))
+            return TryRegisterBusStop(tile, requireUnlockedTile: true);
+        }
+
+        private bool TryRestoreBusStop(Vector2Int tile)
+        {
+            return TryRegisterBusStop(tile, requireUnlockedTile: false);
+        }
+
+        private bool TryRegisterBusStop(
+            Vector2Int tile,
+            bool requireUnlockedTile)
+        {
+            if (!CanPlaceBusStop(tile, requireUnlockedTile) ||
+                !_busStopSet.Add(tile))
             {
                 return false;
             }

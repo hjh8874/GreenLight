@@ -23,19 +23,27 @@ namespace CityFlow.Bootstrap
         private FakePlacementService fakePlacementService;
         private SimEngine simEngine;
         private SaveService saveService;
+        private IWorldGridAccess worldGridAccess;
+        private ICityFlowServiceConsumer worldGridConsumer;
         private bool servicesInstalled;
 
         private void Awake()
         {
+            FindWorldGridService();
+
             if (useFakeServices)
             {
                 // 페이크 큐 상한을 실 설정과 같은 값으로 — 페이크 UI와 실 게임의 눈금을 맞춘다.
                 var fakeCfg = simConfig != null ? simConfig.Value : SimConfig.Default();
+                int fakeWidth = worldGridAccess?.WorldWidth ?? mapWidth;
+                int fakeHeight = worldGridAccess?.WorldHeight ?? mapHeight;
                 fakeFlowReader = new FakeFlowReader(
-                    mapWidth,
-                    mapHeight,
+                    fakeWidth,
+                    fakeHeight,
                     fakeCfg.QueueCapacityPerTile);
-                fakePlacementService = new FakePlacementService(mapWidth, mapHeight);
+                fakePlacementService = new FakePlacementService(
+                    fakeWidth,
+                    fakeHeight);
 
                 Services = new CityFlowServices(
                     new SimEventHub(),
@@ -49,13 +57,13 @@ namespace CityFlow.Bootstrap
             {
                 // 진짜 엔진: SimEngine이 TileData·Placement를 동시에 구현.
                 // 밸런스는 SO 에셋(인스펙터 튜닝) 우선, 비어 있으면 Default() 폴백.
-                // 그리드 크기는 부트스트랩 필드가 계속 오너(이중 오너 충돌 방지).
+                // WorldGrid가 있으면 월드 크기를 단일 원본으로 사용한다.
                 var config = simConfig != null ? simConfig.Value : SimConfig.Default();
-                config.GridWidth = mapWidth;
-                config.GridHeight = mapHeight;
+                config.GridWidth = worldGridAccess?.WorldWidth ?? mapWidth;
+                config.GridHeight = worldGridAccess?.WorldHeight ?? mapHeight;
 
                 var hub = new SimEventHub();
-                simEngine = new SimEngine(config, hub);
+                simEngine = new SimEngine(config, hub, worldGridAccess);
                 Services = new CityFlowServices(
                     hub,
                     simEngine,
@@ -63,6 +71,8 @@ namespace CityFlow.Bootstrap
                     CreateSaveService(simEngine),
                     stats: simEngine);
             }
+
+            worldGridConsumer?.Initialize(Services);
         }
 
         private void Start()
@@ -116,9 +126,40 @@ namespace CityFlow.Bootstrap
             saveService = new SaveService(
                 simSaveSource,
                 new JsonSaveRepository(),
-                new SystemSaveClock());
+                new SystemSaveClock(),
+                worldGridAccess: worldGridAccess);
 
             return saveService;
+        }
+
+        private void FindWorldGridService()
+        {
+            MonoBehaviour[] behaviours = FindObjectsByType<MonoBehaviour>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+
+            for (int index = 0; index < behaviours.Length; index++)
+            {
+                MonoBehaviour behaviour = behaviours[index];
+                if (behaviour == this ||
+                    !behaviour.isActiveAndEnabled ||
+                    behaviour is not IWorldGridAccess access)
+                {
+                    continue;
+                }
+
+                if (worldGridAccess != null)
+                {
+                    Debug.LogWarning(
+                        "[CityBootstrap] Multiple world grid services were " +
+                        "found. The first active service will be used.",
+                        this);
+                    continue;
+                }
+
+                worldGridAccess = access;
+                worldGridConsumer = behaviour as ICityFlowServiceConsumer;
+            }
         }
     }
 }

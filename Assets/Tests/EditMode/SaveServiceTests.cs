@@ -5,6 +5,7 @@ using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using CityFlow.Save;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace CityFlow.Sim.Tests
 {
@@ -332,6 +333,80 @@ namespace CityFlow.Sim.Tests
                 18,
                 loaded.SpecialBuildingVisits.Statistics[0]
                     .TotalPlannedVisits);
+        }
+
+        [Test]
+        public void LegacySpecialBuildingState_MigratesForLateRegisteredSources()
+        {
+            var repository = new JsonSaveRepository(savePath, backupPath);
+            var service = new SaveService(
+                new FakeSim(new List<string>()),
+                repository,
+                new FakeClock(),
+                worldGridAccess: new FakeWorldGridAccess());
+
+            Assert.IsTrue(repository.TrySave(new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                GridWidth = 20,
+                GridHeight = 20,
+                Simulation = new SimSaveData
+                {
+                    GridWidth = 20,
+                    GridHeight = 20
+                },
+                SpecialBuildings = new SpecialBuildingSaveData
+                {
+                    Buildings = new[]
+                    {
+                        new SpecialBuildingInstanceSaveData
+                        {
+                            BuildingId = "cinema",
+                            X = 2,
+                            Y = 3,
+                            Direction = PlacementDirection.East
+                        }
+                    }
+                },
+                SpecialBuildingVisits = new SpecialBuildingVisitSaveData
+                {
+                    HasState = true,
+                    LastProcessedTotalDay = 12L,
+                    Statistics = new[]
+                    {
+                        new SpecialBuildingVisitStatisticsSaveData
+                        {
+                            BuildingId = "cinema",
+                            X = 2,
+                            Y = 3,
+                            Day = 12L,
+                            PlannedToday = 4,
+                            TotalPlannedVisits = 27L
+                        }
+                    }
+                }
+            }));
+            Assert.IsTrue(service.TryLoadAndRestore());
+
+            var buildings = new FakeSpecialBuildings();
+            var visits = new FakeSpecialBuildingVisits();
+            service.RegisterSpecialBuildingSaveSource(buildings);
+            service.RegisterSpecialBuildingVisitSaveSource(visits);
+
+            SpecialBuildingInstanceSaveData building =
+                buildings.Current.Buildings[0];
+            Assert.AreEqual("cinema", building.BuildingId);
+            Assert.AreEqual(92, building.X);
+            Assert.AreEqual(93, building.Y);
+            Assert.AreEqual(PlacementDirection.East, building.Direction);
+
+            SpecialBuildingVisitStatisticsSaveData statistics =
+                visits.Current.Statistics[0];
+            Assert.AreEqual(92, statistics.X);
+            Assert.AreEqual(93, statistics.Y);
+            Assert.AreEqual(12L, statistics.Day);
+            Assert.AreEqual(4, statistics.PlannedToday);
+            Assert.AreEqual(27L, statistics.TotalPlannedVisits);
         }
 
         [Test]
@@ -807,6 +882,13 @@ namespace CityFlow.Sim.Tests
         {
             public TerrainDecorationSaveData Current =
                 new TerrainDecorationSaveData();
+            public event Action StateChanged
+            {
+                add { }
+                remove { }
+            }
+
+            public bool IsCleared(UnityEngine.Vector2Int tile) => false;
 
             public TerrainDecorationSaveData CreateSnapshot() =>
                 Current;
@@ -847,6 +929,64 @@ namespace CityFlow.Sim.Tests
                 SpecialBuildingVisitSaveData snapshot)
             {
                 Current = snapshot;
+            }
+        }
+
+        sealed class FakeWorldGridAccess : IWorldGridAccess
+        {
+            public int WorldWidth => 200;
+            public int WorldHeight => 200;
+            public int ChunkSize => 10;
+            public int ChunkColumns => 20;
+            public int ChunkRows => 20;
+            public Vector2Int InitialPlayableOrigin => new(90, 90);
+            public Vector2Int InitialPlayableSize => new(20, 20);
+
+            public event Action<GridChunkId> ChunkUnlocked
+            {
+                add { }
+                remove { }
+            }
+
+            public event Action AccessRestored
+            {
+                add { }
+                remove { }
+            }
+
+            public bool IsInsideWorld(Vector2Int tile) =>
+                tile.x >= 0 && tile.x < WorldWidth &&
+                tile.y >= 0 && tile.y < WorldHeight;
+
+            public bool IsTileUnlocked(Vector2Int tile) =>
+                IsAreaUnlocked(tile, Vector2Int.one);
+
+            public bool IsChunkUnlocked(GridChunkId chunk) =>
+                chunk.X is 9 or 10 && chunk.Y is 9 or 10;
+
+            public bool IsAreaUnlocked(
+                Vector2Int anchor,
+                Vector2Int footprint)
+            {
+                Vector2Int max = anchor + footprint;
+                return anchor.x >= 90 && anchor.y >= 90 &&
+                       max.x <= 110 && max.y <= 110;
+            }
+
+            public bool TryGetChunkId(
+                Vector2Int tile,
+                out GridChunkId chunk)
+            {
+                if (!IsInsideWorld(tile))
+                {
+                    chunk = default;
+                    return false;
+                }
+
+                chunk = new GridChunkId(
+                    tile.x / ChunkSize,
+                    tile.y / ChunkSize);
+                return true;
             }
         }
     }

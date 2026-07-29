@@ -94,6 +94,7 @@ namespace CityFlow.Content
 
             this.services = services;
             tileData = services.TileData;
+            ApplyWorldGridBounds(services.WorldGrid);
 
             if (tileData == null)
             {
@@ -109,6 +110,17 @@ namespace CityFlow.Content
 
             services.Events.Placed += OnPlaced;
             SubscribeRestore();
+        }
+
+        private void ApplyWorldGridBounds(IWorldGridAccess worldGrid)
+        {
+            if (worldGrid == null)
+            {
+                return;
+            }
+
+            gridWidth = Mathf.Max(1, worldGrid.WorldWidth);
+            gridHeight = Mathf.Max(1, worldGrid.WorldHeight);
         }
 
         private void OnDestroy()

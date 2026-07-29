@@ -185,6 +185,7 @@ namespace CityFlow.View
         private bool isIsometricView;
         private int visualGridWidth;
         private int visualGridHeight;
+        private Vector2Int gridOrigin;
 
         // 도착 코인 팝(항목 A): 풀 고정 크기 — 전부 사용 중이면 가장 오래된 슬롯을 라운드로빈으로 재사용.
         private const int CoinPopPoolSize = 12;
@@ -212,6 +213,7 @@ namespace CityFlow.View
         public Transform EffectRoot => effectRoot;
         public int GridWidth => width;
         public int GridHeight => height;
+        public Vector2Int GridOrigin => gridOrigin;
         public float TileSize => tileSize;
         public float FieldTileZ => fieldTileZ;
         public GameObject FieldTilePrefab => fieldTilePrefab;
@@ -387,6 +389,8 @@ namespace CityFlow.View
             }
 
             this.services = services;
+            gridOrigin = services.WorldGrid?.InitialPlayableOrigin
+                ?? Vector2Int.zero;
             if (!services.RegisterWorldCoordinateRoot(this))
             {
                 Debug.LogWarning(
@@ -912,7 +916,8 @@ namespace CityFlow.View
                 for (int x = 0; x < width; x++)
                 {
                     GameObject fieldTile = Instantiate(fieldTilePrefab, fieldTileRoot, false);
-                    Vector2Int coordinate = new Vector2Int(x, y);
+                    Vector2Int coordinate =
+                        gridOrigin + new Vector2Int(x, y);
                     GridCellView gridCell = fieldTile.GetComponent<GridCellView>();
 
                     if (gridCell == null)
@@ -1014,11 +1019,22 @@ namespace CityFlow.View
 
         private void RefreshAllTiles()
         {
-            for (int y = 0; y < height; y++)
+            int minX = services?.WorldGrid != null ? 0 : gridOrigin.x;
+            int minY = services?.WorldGrid != null ? 0 : gridOrigin.y;
+            int maxX = services?.WorldGrid?.WorldWidth ?? gridOrigin.x + width;
+            int maxY = services?.WorldGrid?.WorldHeight ?? gridOrigin.y + height;
+
+            for (int y = minY; y < maxY; y++)
             {
-                for (int x = 0; x < width; x++)
+                for (int x = minX; x < maxX; x++)
                 {
                     Vector2Int tile = new Vector2Int(x, y);
+                    if (services?.WorldGrid != null &&
+                        !services.WorldGrid.IsTileUnlocked(tile))
+                    {
+                        continue;
+                    }
+
                     TileType type = tileData.GetTileType(tile);
                     if (TileFootprint.IsBuilding(type) &&
                         !tileData.IsFootprintAnchor(tile))
@@ -1425,9 +1441,10 @@ namespace CityFlow.View
         private Vector3 FootprintToLocal(Vector2Int tile, TileType type)
         {
             Vector2Int size = TileFootprint.GetSize(type);
+            Vector2Int localTile = tile - gridOrigin;
             return new Vector3(
-                (tile.x + size.x * 0.5f) * tileSize,
-                (tile.y + size.y * 0.5f) * tileSize,
+                (localTile.x + size.x * 0.5f) * tileSize,
+                (localTile.y + size.y * 0.5f) * tileSize,
                 0f);
         }
 
@@ -2227,8 +2244,11 @@ namespace CityFlow.View
         private bool IsRoadTile(Vector2Int tile)
         {
             return tileData != null
-                && tile.x >= 0 && tile.x < width
-                && tile.y >= 0 && tile.y < height
+                && (services?.WorldGrid?.IsInsideWorld(tile) ??
+                    (tile.x >= gridOrigin.x &&
+                     tile.x < gridOrigin.x + width &&
+                     tile.y >= gridOrigin.y &&
+                     tile.y < gridOrigin.y + height))
                 && tileData.GetTileType(tile) == TileType.Road;
         }
 
@@ -2692,13 +2712,19 @@ namespace CityFlow.View
 
         private Vector3 GridToLocal(Vector2Int tile, float z)
         {
-            return new Vector3((tile.x + 0.5f) * tileSize, (tile.y + 0.5f) * tileSize, z);
+            Vector2Int localTile = tile - gridOrigin;
+            return new Vector3(
+                (localTile.x + 0.5f) * tileSize,
+                (localTile.y + 0.5f) * tileSize,
+                z);
         }
 
         private Vector2Int WorldToGrid(Vector3 world)
         {
             Vector3 local = transform.InverseTransformPoint(world);
-            return new Vector2Int(Mathf.FloorToInt(local.x / tileSize), Mathf.FloorToInt(local.y / tileSize));
+            return gridOrigin + new Vector2Int(
+                Mathf.FloorToInt(local.x / tileSize),
+                Mathf.FloorToInt(local.y / tileSize));
         }
 
         private static GameObject InstantiatePrefabOrPrimitive(GameObject prefab, PrimitiveType primitive)
