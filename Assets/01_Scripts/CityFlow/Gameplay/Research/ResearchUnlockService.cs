@@ -172,11 +172,17 @@ namespace CityFlow.Gameplay.Research
         private int CountBuildings(TileType type)
         {
             IReadOnlyTileData tiles = cityServices?.TileData;
+            if (tiles == null) return 0;
+            // WorldGridSystem 이 씬에 없으면 services.WorldGrid 는 null 이다 — 메인 씬 포함
+            // 대부분의 씬이 그렇다(#169 미배선). null 이면 시설 조건이 영원히 0 이 되므로,
+            // CityBootstrap 이 같은 상황에서 쓰는 기본 크기(GridUtil.Default*)로 폴백한다.
+            // 라이브 스모크에서 실측한 결함(2026-07-30): 학교를 놓아도 약국이 안 열렸다.
             IWorldGridAccess grid = cityServices?.WorldGrid;
-            if (tiles == null || grid == null) return 0;
+            int width = grid?.WorldWidth ?? GridUtil.DefaultWidth;
+            int height = grid?.WorldHeight ?? GridUtil.DefaultHeight;
             int count = 0;
-            for (int y = 0; y < grid.WorldHeight; y++)
-                for (int x = 0; x < grid.WorldWidth; x++)
+            for (int y = 0; y < height; y++)
+                for (int x = 0; x < width; x++)
                 {
                     var tile = new Vector2Int(x, y);
                     if (tiles.GetTileType(tile) == type && tiles.IsFootprintAnchor(tile)) count++;
