@@ -37,23 +37,23 @@
 
 ### Task 1: 컨트롤러 + 테스트
 
-- [ ] **Step 1 (RED):** `HiringStatusOverlayTests.cs` 작성 — `BuildingConstructionOverlayTests` 구조 복제 + `FakeStats : IReadOnlyCityStats`(딕셔너리로 anchor→(filled, capacity)). 단정 4건:
+- [x] **Step 1 (RED):** `HiringStatusOverlayTests.cs` 작성 — `BuildingConstructionOverlayTests` 구조 복제 + `FakeStats : IReadOnlyCityStats`(딕셔너리로 anchor→(filled, capacity)). 단정 4건:
   1. `Initialize` 시 정원 미달 회사 앵커에 라벨 1개(이벤트 없이 — 복원·씬 진입 대비)
   2. 풋프린트당 1개(앵커 필터 — 2x2 에 4개 금지)
   3. 만석 회사(filled==capacity)는 라벨 없음
   4. staffing 조회 실패(철거)는 Update 뒤 라벨 제거 — Update 는 리플렉션 호출 또는 internal seam
   `refresh_unity` → `read_console` 에서 CS0246 확인.
-- [ ] **Step 2 (구현):** `HiringStatusOverlay.cs` — `BuildingConstructionOverlay` 를 열고 구조를 그대로 옮긴 뒤 데이터 소스만 교체:
+- [x] **Step 2 (구현):** `HiringStatusOverlay.cs` — `BuildingConstructionOverlay` 를 열고 구조를 그대로 옮긴 뒤 데이터 소스만 교체:
   - 등록 조건: `stats.TryGetCompanyStaffing(anchor, out s)` 성공 && `s.Filled < s.Capacity` && `tiles.IsFootprintAnchor(anchor)` && 타일 타입 Office
   - 라벨 텍스트: `$"채용중 {s.Filled}/{s.Capacity}"` — Update 마다 갱신
   - 만석 도달·조회 실패 → 라벨 Destroy + 딕셔너리 제거 (만석은 제거 후 재등장 없음 — 정원 축소로 다시 미달이 되면 다음 Placed/Restore 수집에서 재등록되는 것으로 충분, 상시 재스캔은 하지 않는다: ponytail)
   - `Placed`: `e.Type == TileType.Office && !e.IsRemove` 만 등록 시도
-- [ ] **Step 3 (GREEN):** 이름 필터 4/4 → `run_tests`(assembly_names=["CityFlow.Sim.Tests"]) 423/423 회귀 0 → `read_console` 0.
-- [ ] **Step 4 (커밋):** `[Feat] 채용 오버레이 — 정원 미달 회사에 '채용중 n/m' 라벨` (신규 4파일 + meta 명시 목록으로 add)
+- [x] **Step 3 (GREEN):** 이름 필터 4/4 → `run_tests`(assembly_names=["CityFlow.Sim.Tests"]) 423/423 회귀 0 → `read_console` 0.
+- [x] **Step 4 (커밋):** `[Feat] 채용 오버레이 — 정원 미달 회사에 '채용중 n/m' 라벨` (신규 4파일 + meta 명시 목록으로 add)
 
 ### Task 2: 프리팹 + 최종 게이트
 
-- [ ] **Step 1:** `manage_prefabs`/`execute_code` 로 `HiringStatusSystem.prefab` 조립 — 루트(`HiringStatusOverlay`) + 자식 `HiringLabelTemplate`(TextMeshPro, 비활성). `BuildingConstructionSystem.prefab` 과 같은 구조. 직렬화 필드(labelTemplate) 배선 확인. **씬 인스턴스는 저장 후 삭제**.
-- [ ] **Step 2:** 게이트 전부 재실행(이름 필터 + Sim.Tests + read_console). `git status` 에 `.unity` 없음 확인.
-- [ ] **Step 3 (커밋):** `[Feat] 채용 오버레이 프리팹 — 끌어다 놓으면 배선 끝`
-- [ ] **Step 4:** worker_done — RED 증거·게이트 수치·커밋 해시·계획과 달랐던 점.
+- [x] **Step 1:** `manage_prefabs`/`execute_code` 로 `HiringStatusSystem.prefab` 조립 — 루트(`HiringStatusOverlay`) + 자식 `HiringLabelTemplate`(TextMeshPro, 비활성). `BuildingConstructionSystem.prefab` 과 같은 구조. 직렬화 필드(labelTemplate) 배선 확인. **씬 인스턴스는 저장 후 삭제**.
+- [x] **Step 2:** 게이트 전부 재실행(이름 필터 + Sim.Tests + read_console). `git status` 에 `.unity` 없음 확인.
+- [x] **Step 3 (커밋):** `[Feat] 채용 오버레이 프리팹 — 끌어다 놓으면 배선 끝`
+- [x] **Step 4:** worker_done — RED 증거·게이트 수치·커밋 해시·계획과 달랐던 점.
