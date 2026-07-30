@@ -528,190 +528,108 @@ git commit -m "[Feat] Sim 쪽 회사 유형 표 — CompanyTypeInfo + SetCompany
 
 SO 대신 평범한 구조체를 주입받는다(CityFlow.Sim 은 Assembly-CSharp 를 참조할 수 없다)."
 ```
+### Task 4: 유형 보관 + 배치 시 유형 전달 + 유형별 정원
 
-
-### Task 4: 유형 보관 + 배치 시 유형 지정·거부
+> **결정 갱신 (환, 2026-07-30).** 설계 §0.1 ⑥은 "유형 미지정 Office 배치 = 거부"였다. 실제 코드에서
+> 그 대가를 측정해 보니 기존 EditMode 테스트 **57곳(18파일)**이 깨지고, 진우 UI 경로
+> (`PlacementActionDispatcher` → `Placement.Place`)가 유형을 넘기지 않으므로 **게임에서 사무실 배치가 막힌다.**
+> 환의 판단: **"UI 상점 쪽에서 회사를 3종으로 나누면 미지정 경로 자체가 없으니 거부할 것도 없다."**
+> → `Place`는 유형 미지정을 **거부하지 않고 폴백 창으로 배치**한다. 대신 **등록되지 않은 id는 경고**를 남긴다
+> (오타가 조용히 묻히는 것만 막는다 — ⑥의 의도는 여기서 지켜진다).
+> **인계 사항:** 건설 패널이 사무실/공장/물류창고 3종으로 갈려야 기능이 실제로 켜진다(진우 영역).
+>
+> **정원 차등은 이번 PR에 포함한다(환 결정).** 단순히 `capacityOverride`로 넘기면 안 된다 —
+> `RegisterCompany`가 `SimConfig.OfficeCapacity`(6)로 clamp하고 `ApplyConfig`가 다시 `Min`을 걸어
+> **공장 10이 조용히 6으로 깎인다.** 상한 규칙 자체를 유형 정원 기준으로 고친다.
 
 **Files:**
-- Modify: `Assets/01_Scripts/CityFlow/Sim/DemandMap.cs` (`CompanyCapacityState` `:50`, `RegisterCompany` `:87`)
-- Modify: `Assets/01_Scripts/CityFlow/Sim/SimEngine.cs` (`Place` `:~520`, `RegisterCompany` 호출 `:536`)
+- Modify: `Assets/01_Scripts/CityFlow/Sim/DemandMap.cs` (`CompanyCapacityState`, `RegisterCompany`, `RegisterRestoredCompany`, `ApplyConfig`, `SetCompanyCapacity`)
+- Modify: `Assets/01_Scripts/CityFlow/Sim/SimEngine.cs` (`Place` 오버로드 · 유형 표 구역)
 - Test: `Assets/Tests/EditMode/CompanyTypeTests.cs` (추가)
 
 **Interfaces:**
 - Consumes: `SimEngine.TryGetCompanyType` (Task 3)
 - Produces:
-  - `SimEngine.Place(tile, type, direction, string companyTypeId = null)`
-  - `DemandMap.TryGetCompanyTypeId(Vector2Int anchor, out string id)`
-  - Task 5가 쓴다.
+  - `SimEngine.Place(tile, type, direction, string companyTypeId)` — **3인자 계약은 그대로 두고 오버로드로 추가**
+  - `DemandMap.TryGetCompanyTypeId(tile, out string id)` · `internal SimEngine.TryGetCompanyTypeIdForTest`
+  - `RegisterCompany(..., string companyTypeId = null, int companyTypeCapacity = 0)`
+  - Task 5·6이 쓴다.
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [ ] **Step 1: 실패하는 테스트 작성** — `CompanyTypeTests.cs`에 4건 추가
+
+1. `PlaceOffice_StoresCompanyTypeId_AndTolerantOfMissingType` — 유형을 넘기면 저장, 미지정도 배치 성공
+2. `PlaceOffice_UnknownTypeId_WarnsAndFallsBack` — `LogAssert.Expect(Warning)` + 유형 미저장
+3. `CompanyCapacity_FollowsTypeDefinition` — 공장 10 / 물류창고 4 / 유형 없음 = `SimConfig.OfficeCapacity`
+4. `ApplyConfig_KeepsTypeCapacity` — 재적용 후에도 공장 10 (조용한 축소 방지)
+
+- [ ] **Step 2: 실패 확인** — `CS1501: No overload for method 'Place' takes 4 arguments` · `TryGetCompanyTypeIdForTest` 미정의
+
+- [ ] **Step 3: `DemandMap`에 유형·유형정원 보관**
+
+`CompanyCapacityState`에 `CompanyTypeId`·`CompanyTypeCapacity`를 더하고, 정원 상한을 한 곳으로 모은다.
 
 ```csharp
-        [Test]
-        public void PlaceOffice_WithoutCompanyType_IsRejected()
-        {
-            SimConfig cfg = SimConfig.Default();
-            cfg.GridWidth = 8; cfg.GridHeight = 4;
-            var engine = new SimEngine(cfg, new SimEventHub());
-            engine.SetCompanyTypes(new[] { NewType("office", 6f, 17f) });
-
-            Assert.IsFalse(engine.Place(V(4, 0), TileType.Office),
-                "유형 미지정 Office 배치는 거부된다 — 조용한 폴백을 만들지 않는다");
-            Assert.AreEqual(TileType.Empty, engine.GetTileType(V(4, 0)),
-                "거부되면 아무것도 놓이지 않는다");
-
-            Assert.IsFalse(engine.Place(V(4, 0), TileType.Office, PlacementDirection.North, "nope"),
-                "카탈로그에 없는 id도 거부");
-
-            Assert.IsTrue(engine.Place(V(4, 0), TileType.Office, PlacementDirection.North, "office"),
-                "유형을 넘기면 배치된다");
-            Assert.IsTrue(engine.TryGetCompanyTypeIdForTest(V(4, 0), out string id));
-            Assert.AreEqual("office", id);
-        }
-
-        [Test]
-        public void PlaceNonOffice_IgnoresCompanyType()
-        {
-            SimConfig cfg = SimConfig.Default();
-            cfg.GridWidth = 8; cfg.GridHeight = 4;
-            var engine = new SimEngine(cfg, new SimEventHub());
-
-            // 카탈로그가 없어도 도로·집은 그대로 놓인다 (기존 호출자 무영향)
-            Assert.IsTrue(engine.Place(V(0, 2), TileType.Road));
-            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
-        }
+        // 회사 하나의 정원 상한. 유형 정원이 있으면 그것이 상한, 없으면 SimConfig 값.
+        // SetCompanyCapacity·ApplyConfig 도 이 상한을 쓴다 — 유형 정원이 조용히 깎이지 않게.
+        int CapacityCeilingFor(CompanyCapacityState company) =>
+            company.CompanyTypeCapacity > 0
+                ? company.CompanyTypeCapacity
+                : CapacityForType(company.Type);
 ```
 
-관찰 seam이 필요하다. `SimEngine.cs:79-82`의 `*ForTest` 패턴을 따라 추가한다:
+`RegisterCompany`·`RegisterRestoredCompany`에 `companyTypeId`·`companyTypeCapacity`(둘 다 기본값)를 더하고,
+`ApplyConfig`(`:77`)와 `SetCompanyCapacity`(`:160`)의 `CapacityForType(...)`을 `CapacityCeilingFor(company)`로 바꾼다.
+`TryGetCompanyTypeId(tile, out id)`를 추가한다.
+
+- [ ] **Step 4: `SimEngine.Place` 오버로드**
+
+**계약(`IPlacementService.Place`)에 인자를 더하지 않는다.** 옵셔널 인자를 더하면 시그니처가 달라져
+`CS0535`(인터페이스 미구현)가 난다 — 실제로 겪었다. 3인자는 그대로 두고 4인자 오버로드로 위임한다.
 
 ```csharp
-        internal bool TryGetCompanyTypeIdForTest(Vector2Int anchor, out string id) =>
-            _demand.TryGetCompanyTypeId(anchor, out id);
-```
-
-- [ ] **Step 2: 실패 확인**
-
-Expected: 컴파일 에러 — `TryGetCompanyTypeIdForTest` 미정의 · `Place`가 유형 인자를 안 받음
-
-- [ ] **Step 3: `DemandMap`에 유형 보관**
-
-`CompanyCapacityState`(`:50`)에 필드를 더한다.
-
-```csharp
-        sealed class CompanyCapacityState
-        {
-            public TileType Type;
-            public string CompanyTypeId;      // 신규
-            public int TotalCapacity;
-            public double BuiltAtSimSeconds;
-            public bool IsFullyOpen;
-            public bool UsesTypeDefault;
-        }
-```
-
-`RegisterCompany`(`:87`)에 파라미터를 더하고(기본값 `null`) 상태에 싣는다. 조회를 추가한다.
-
-```csharp
-        public bool TryGetCompanyTypeId(Vector2Int anchor, out string id)
-        {
-            id = null;
-            if (!_companies.TryGetValue(anchor, out CompanyCapacityState state)) return false;
-            id = state.CompanyTypeId;
-            return !string.IsNullOrEmpty(id);
-        }
-```
-
-> `_companies` 딕셔너리의 실제 이름은 파일을 읽고 맞춘다.
-
-- [ ] **Step 4: `SimEngine.Place`에 유형 인자와 거부**
-
-```csharp
-        // 유형 표는 Task 3에서 이미 SimEngine 안에 있다(_companyTypes + TryGetCompanyType).
+        public bool Place(Vector2Int tile, TileType type,
+                         PlacementDirection direction = PlacementDirection.North)
+            => Place(tile, type, direction, null);
 
         public bool Place(Vector2Int tile, TileType type,
-                          PlacementDirection direction = PlacementDirection.North,
-                          string companyTypeId = null)
+                         PlacementDirection direction, string companyTypeId)
+        { /* 기존 본문 + RegisterCompanyOfType(tile, type, companyTypeId) */ }
+```
+
+유형 표 구역에 등록 헬퍼를 둔다 — 미지정은 종전대로, 미등록 id는 경고 후 폴백.
+
+```csharp
+        void RegisterCompanyOfType(Vector2Int tile, TileType type, string companyTypeId)
         {
-            // Office 는 유형 지정이 필수다. 조용히 사무실로 폴백하지 않는다 —
-            // 유형을 빠뜨린 실수가 에러 없이 묻히는 것을 막는다.
-            if (type == TileType.Office)
+            if (string.IsNullOrWhiteSpace(companyTypeId)) { _demand.RegisterCompany(tile, type, _simTime); return; }
+            if (!TryGetCompanyType(companyTypeId, out CompanyTypeInfo info))
             {
-                if (_companyTypes == null) return false;
-                if (!_companyTypes.TryGet(companyTypeId, out _)) return false;
+                Debug.LogWarning($"[SimEngine] 등록되지 않은 회사 유형 id '{companyTypeId}' — 폴백 창으로 배치한다.");
+                _demand.RegisterCompany(tile, type, _simTime);
+                return;
             }
-            // ... 기존 본문 ...
-```
-
-`RegisterCompany` 호출(`:536`)에 id를 넘긴다.
-
-```csharp
-            if (type == TileType.Office)
-                _demand.RegisterCompany(tile, type, _simTime, companyTypeId);
-```
-
-> **주의**: 기존 EditMode 테스트 상당수가 `engine.Place(tile, TileType.Office)`를 유형 없이 호출한다. 이 변경으로 전부 실패한다. **해결책: 카탈로그가 주입되지 않은 경우(`_companyTypes == null`)에도 거부**하면 테스트가 전부 깨진다. 그러므로 **기존 테스트를 카탈로그 주입 + 유형 지정으로 갱신한다.** 실패를 덮는 완화(예: null이면 통과)를 만들지 마라 — ⑥ 결정이 무의미해진다.
-> 갱신 대상은 `run_tests` 실패 목록으로 확인한다. 대개 `CarSimEngineTests`·`DemandMapTests`·`CommuteEconomyProbeTests`의 헬퍼 한두 곳에 카탈로그 주입을 넣으면 일괄 해결된다.
-
-- [ ] **Step 5: 유형별 정원 배선**
-
-지금 정원은 `SimConfig.OfficeCapacity`(6) 공통이다. 유형이 있으면 그 값을 쓰고 없으면 폴백한다.
-
-`DemandMap`이 회사 정원을 정하는 지점(`RegisterCompany` 또는 `EffectiveCapacity` 계산부)에서:
-
-```csharp
-        // 유형이 지정돼 있으면 유형 정원, 아니면 SimConfig 폴백.
-        int totalCapacity = typeCapacity > 0 ? typeCapacity : _config.OfficeCapacity;
-```
-
-`typeCapacity`는 `SimEngine`이 `RegisterCompany` 호출 시 카탈로그에서 뽑아 넘긴다 — `DemandMap`이 SO를 직접 참조하지 않게 한다(어셈블리 방향: `Sim`은 `Content`를 몰라도 되게).
-
-```csharp
-        // SimEngine.Place 안
-        int capacity = 0;
-        if (TryGetCompanyType(companyTypeId, out CompanyTypeInfo info))
-            capacity = def.capacity;
-        _demand.RegisterCompany(tile, type, _simTime, companyTypeId, capacity);
-```
-
-테스트를 하나 더 추가한다:
-
-```csharp
-        [Test]
-        public void CompanyCapacity_FollowsTypeDefinition()
-        {
-            SimConfig cfg = SimConfig.Default();
-            cfg.GridWidth = 8; cfg.GridHeight = 4;
-            var engine = new SimEngine(cfg, new SimEventHub());
-            engine.SetCompanyTypes(new[] {
-                NewType("factory",   20f, 5f,  capacity: 10),
-                NewType("warehouse",  4f, 13f, capacity: 4),
-            });
-
-            Assert.IsTrue(engine.Place(V(0, 0), TileType.Office, PlacementDirection.North, "factory"));
-            Assert.IsTrue(engine.Place(V(4, 0), TileType.Office, PlacementDirection.North, "warehouse"));
-
-            Assert.IsTrue(engine.TryGetCompanyStaffing(V(0, 0), out CompanyStaffing f));
-            Assert.IsTrue(engine.TryGetCompanyStaffing(V(4, 0), out CompanyStaffing w));
-            Assert.AreEqual(10, f.Capacity, "공장은 유형 정원 10");
-            Assert.AreEqual(4, w.Capacity, "물류창고는 유형 정원 4");
+            _demand.RegisterCompany(tile, type, _simTime,
+                capacityOverride: null,
+                companyTypeId: info.Window.CompanyTypeId,
+                companyTypeCapacity: info.Capacity);
         }
 ```
 
-- [ ] **Step 6: 통과 확인**
+- [ ] **Step 5: 통과 확인**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **434/434 PASS** (431 + 신규 3). 기존 테스트 갱신분이 있으면 숫자는 같고 내용만 바뀐다.
+Expected: **435/435 PASS** (431 + 신규 4). **기존 테스트는 한 줄도 고치지 않는다** — 거부를 없앴으므로 회귀가 없다.
 
-- [ ] **Step 7: 커밋**
+- [ ] **Step 6: 커밋**
 
 ```bash
 git add Assets/01_Scripts/CityFlow/Sim/DemandMap.cs \
         Assets/01_Scripts/CityFlow/Sim/SimEngine.cs \
-        Assets/Tests/EditMode/
-git commit -m "[Feat] 회사 유형 보관 + 배치 시 유형 필수 + 유형별 정원
+        Assets/Tests/EditMode/CompanyTypeTests.cs
+git commit -m "[Feat] 회사 유형 보관 + 유형별 정원
 
-Office 배치에 companyTypeId 를 요구하고 미지정·미등록 id 는 거부한다.
-조용한 사무실 폴백을 만들지 않는다(설계 결정 6)."
+Place 오버로드로 companyTypeId 를 받아 DemandMap 에 싣는다. 미지정은 폴백,
+미등록 id 는 경고. 정원 상한을 CapacityCeilingFor 로 모아 유형 정원이 깎이지 않게 한다."
 ```
 
 ---
@@ -828,7 +746,7 @@ Expected: 컴파일 에러 — `DepartHomeHourForTest` 미정의
 - [ ] **Step 6: 통과 확인**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **435/435 PASS** (434 + 신규 1)
+Expected: **436/436 PASS** (435 + 신규 1)
 
 기존 `CommuteSchedulerTests`가 옛 시그니처로 `Rebuild`를 부르면 컴파일이 깨진다. **콜백을 넘기도록 갱신한다** — 폴백 창을 돌려주는 람다 한 줄이면 기존 동작이 그대로 재현된다.
 
@@ -904,7 +822,7 @@ git commit -m "[Feat] Rebuild 시각 인자 4개를 창 콜백으로 대체 — 
 
 `ConstructionSaveData`에 `public string CompanyTypeId;`를 더하고 `CreateSnapshot`/`RestoreSnapshot` 양쪽에 배선한다. **구세이브는 이 필드가 null이므로 폴백 경로가 살아 있어야 한다.**
 
-- [ ] **Step 5: 통과 확인** — `run_tests` **436/436 PASS**
+- [ ] **Step 5: 통과 확인** — `run_tests` **437/437 PASS**
 
 - [ ] **Step 6: 커밋**
 
@@ -984,7 +902,7 @@ Unity 메뉴 `Assets > Create > CityFlow > Content > Company Type` 으로 3개, 
 - [ ] **Step 5: 검증 — 에셋만 바뀌므로 테스트는 무변경**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **436/436 PASS** (테스트는 유형 표를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
+Expected: **437/437 PASS** (테스트는 유형 표를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
 
 라이브 확인은 하루 12분 전환 이후다 — 지금은 창 4시간이 실시간 4초라 세 유형이 갈리는 게 눈에 안 보인다.
 
@@ -1003,7 +921,7 @@ git commit -m "[Feat] 회사 유형 3종 에셋 — 사무실/물류창고/공�
 
 ## 완료 기준
 
-- EditMode `CityFlow.Sim.Tests` **436/436 green** (기준선 423 + 신규 13)
+- EditMode `CityFlow.Sim.Tests` **437/437 green** (기준선 423 + 신규 14)
 - 컴파일 `error CS` 0
 - 통합 씬 파일이 커밋에 **없음**
 - 신규 `.cs`의 `.cs.meta` 전부 커밋됨

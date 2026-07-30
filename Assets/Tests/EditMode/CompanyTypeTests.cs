@@ -1,5 +1,7 @@
+using System.Text.RegularExpressions;
 using CityFlow.Contracts;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace CityFlow.Sim.Tests
 {
@@ -52,6 +54,85 @@ namespace CityFlow.Sim.Tests
 
             engine.SetCompanyTypes(null);
             Assert.AreEqual(0, engine.CompanyTypeCountForTest, "null 은 표를 비운다");
+        }
+
+        static SimEngine NewEngineWithTypes()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.GridWidth = 8;
+            cfg.GridHeight = 4;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            engine.SetCompanyTypes(new[] {
+                NewType("factory",   20f, 5f,  capacity: 10),
+                NewType("warehouse",  4f, 13f, capacity: 4),
+            });
+            return engine;
+        }
+
+        // 유형 미지정은 거부하지 않는다(환 결정 2026-07-30 — UI 상점이 3종으로 갈리므로
+        // 미지정 경로 자체가 없어진다). 대신 등록되지 않은 id 는 경고를 남기고 폴백한다.
+        [Test]
+        public void PlaceOffice_StoresCompanyTypeId_AndTolerantOfMissingType()
+        {
+            SimEngine engine = NewEngineWithTypes();
+
+            Assert.IsTrue(engine.Place(new Vector2Int(0, 0), TileType.Office,
+                PlacementDirection.North, "factory"));
+            Assert.IsTrue(engine.TryGetCompanyTypeIdForTest(new Vector2Int(0, 0), out string id));
+            Assert.AreEqual("factory", id);
+
+            Assert.IsTrue(engine.Place(new Vector2Int(4, 0), TileType.Office),
+                "유형 미지정도 배치된다 — 종전 호출자가 깨지지 않는다");
+            Assert.IsFalse(engine.TryGetCompanyTypeIdForTest(new Vector2Int(4, 0), out _),
+                "유형 없는 회사는 폴백 창을 쓴다");
+        }
+
+        [Test]
+        public void PlaceOffice_UnknownTypeId_WarnsAndFallsBack()
+        {
+            SimEngine engine = NewEngineWithTypes();
+
+            UnityEngine.TestTools.LogAssert.Expect(LogType.Warning, new Regex("nope"));
+            Assert.IsTrue(engine.Place(new Vector2Int(0, 0), TileType.Office,
+                PlacementDirection.North, "nope"));
+            Assert.IsFalse(engine.TryGetCompanyTypeIdForTest(new Vector2Int(0, 0), out _),
+                "등록되지 않은 id 는 싣지 않는다");
+        }
+
+        [Test]
+        public void CompanyCapacity_FollowsTypeDefinition()
+        {
+            SimEngine engine = NewEngineWithTypes();
+
+            Assert.IsTrue(engine.Place(new Vector2Int(0, 0), TileType.Office,
+                PlacementDirection.North, "factory"));
+            Assert.IsTrue(engine.Place(new Vector2Int(4, 0), TileType.Office,
+                PlacementDirection.North, "warehouse"));
+            Assert.IsTrue(engine.Place(new Vector2Int(0, 2), TileType.Office));
+
+            Assert.IsTrue(engine.TryGetCompanyStaffing(new Vector2Int(0, 0), out CompanyStaffing f));
+            Assert.IsTrue(engine.TryGetCompanyStaffing(new Vector2Int(4, 0), out CompanyStaffing w));
+            Assert.IsTrue(engine.TryGetCompanyStaffing(new Vector2Int(0, 2), out CompanyStaffing plain));
+            Assert.AreEqual(10, f.Capacity, "공장은 유형 정원 10 — SimConfig.OfficeCapacity(6)에 깎이지 않는다");
+            Assert.AreEqual(4, w.Capacity, "물류창고는 유형 정원 4");
+            Assert.AreEqual(SimConfig.Default().OfficeCapacity, plain.Capacity, "유형 없으면 SimConfig 폴백");
+        }
+
+        // ApplyConfig 재적용이 유형 정원을 SimConfig 상한으로 깎지 않는다(조용한 축소 방지).
+        [Test]
+        public void ApplyConfig_KeepsTypeCapacity()
+        {
+            SimEngine engine = NewEngineWithTypes();
+            Assert.IsTrue(engine.Place(new Vector2Int(0, 0), TileType.Office,
+                PlacementDirection.North, "factory"));
+
+            SimConfig next = SimConfig.Default();
+            next.GridWidth = 8;
+            next.GridHeight = 4;
+            Assert.IsTrue(engine.ApplyConfig(next));
+
+            Assert.IsTrue(engine.TryGetCompanyStaffing(new Vector2Int(0, 0), out CompanyStaffing f));
+            Assert.AreEqual(10, f.Capacity, "재적용 후에도 공장 정원 10");
         }
     }
 }

@@ -512,7 +512,17 @@ namespace CityFlow.Sim
             && !OverlapsBusStopFootprint(tile, type, direction)
             && _grid.CanPlace(tile, type, direction);
 
-        public bool Place(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
+        // IPlacementService 계약 그대로(3인자). 유형은 아래 오버로드로 넘긴다 —
+        // 계약에 인자를 더하면 FakePlacementService·UI 구현체가 함께 깨진다.
+        public bool Place(Vector2Int tile, TileType type,
+                         PlacementDirection direction = PlacementDirection.North)
+            => Place(tile, type, direction, null);
+
+        // companyTypeId: Office 의 회사 유형(사무실·공장·물류창고). 미지정은 거부하지 않고 폴백 창을 쓴다
+        // (환 결정 2026-07-30 — UI 상점이 3종으로 갈리면 미지정 경로 자체가 없어진다).
+        // 등록되지 않은 id 는 오타이므로 경고를 남긴다 — 조용히 묻히지 않게.
+        public bool Place(Vector2Int tile, TileType type,
+                         PlacementDirection direction, string companyTypeId)
         {
             if (type == TileType.UnderConstruction) return false;
             if (!IsAreaUnlocked(tile, type, direction)) return false;
@@ -540,7 +550,7 @@ namespace CityFlow.Sim
             }
 
             if (type == TileType.Office)
-                _demand.RegisterCompany(tile, type, _simTime);
+                RegisterCompanyOfType(tile, type, companyTypeId);
             if (type == TileType.Office || type == TileType.School)
                 _demandRebalancePending = true;
             if (TileFootprint.IsBuilding(type))
@@ -1690,5 +1700,32 @@ namespace CityFlow.Sim
             _config.EveningStartHour, _config.EveningEndHour - _config.EveningStartHour);
 
         internal int CompanyTypeCountForTest => _companyTypes.Count;
+
+        // 유형 id 를 정원과 함께 DemandMap 에 싣는다. 미등록 id 는 경고 후 유형 없이 등록한다.
+        void RegisterCompanyOfType(Vector2Int tile, TileType type, string companyTypeId)
+        {
+            if (string.IsNullOrWhiteSpace(companyTypeId))
+            {
+                _demand.RegisterCompany(tile, type, _simTime);
+                return;
+            }
+
+            if (!TryGetCompanyType(companyTypeId, out CompanyTypeInfo info))
+            {
+                Debug.LogWarning(
+                    $"[SimEngine] 등록되지 않은 회사 유형 id '{companyTypeId}' — 폴백 창으로 배치한다.");
+                _demand.RegisterCompany(tile, type, _simTime);
+                return;
+            }
+
+            _demand.RegisterCompany(
+                tile, type, _simTime,
+                capacityOverride: null,
+                companyTypeId: info.Window.CompanyTypeId,
+                companyTypeCapacity: info.Capacity);
+        }
+
+        internal bool TryGetCompanyTypeIdForTest(Vector2Int tile, out string companyTypeId) =>
+            _demand.TryGetCompanyTypeId(tile, out companyTypeId);
     }
 }
