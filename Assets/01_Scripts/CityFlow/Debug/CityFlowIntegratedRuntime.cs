@@ -265,11 +265,9 @@ namespace CityFlow.DebugTools
             BuildPanelController buildController = buildPanel.AddComponent<BuildPanelController>();
             buildController.Configure(placementController, buildRoad, buildHouse, buildOffice, buildRemove, buildSchool);
 
+            // 연구 스텁(업그레이드 버튼 2개+로그 컨트롤러)은 제거 — 실물은 ResearchPanel.prefab.
+            // UIDockController 의 Research 토글 배선을 유지하려고 빈 패널 컨테이너만 남긴다.
             GameObject researchPanel = CreatePanel(canvas, "ResearchPanel", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 212f), new Vector2(360f, 96f));
-            Button upgradeSpeed = CreateTmpButton(researchPanel.transform, "Speed Up", new Vector2(12f, -12f), new Vector2(156f, 32f));
-            Button reduceCooldown = CreateTmpButton(researchPanel.transform, "Cooldown", new Vector2(180f, -12f), new Vector2(156f, 32f));
-            researchPanel.AddComponent<ResearchPanelController>().Configure(upgradeSpeed, reduceCooldown);
-            CreateTmpText(researchPanel.transform, "Note", "Button log test only", new Vector2(12f, -56f), new Vector2(320f, 24f), 14);
 
             GameObject statsPanel = CreatePanel(canvas, "StatsPanel", new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-16f, 212f), new Vector2(360f, 96f));
             TextMeshProUGUI jamCount = CreateTmpText(statsPanel.transform, "JamCount", "Jam Zones: 0", new Vector2(12f, -12f), new Vector2(320f, 24f), 16);
