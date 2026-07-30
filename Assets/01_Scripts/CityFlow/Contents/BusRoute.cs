@@ -73,8 +73,11 @@ namespace CityFlow.Content.Transit
         private readonly List<Vector2Int> stops = new();
         private readonly List<Vector2Int> stopAccessRoads = new();
         private readonly List<Vector2Int> currentRoadPath = new();
+        private readonly List<Vector2Int> roadTrafficPath = new();
         private readonly List<Vector2Int> candidateRoadPath = new();
         private readonly List<Vector2Int> validationRoadPath = new();
+        private readonly List<Vector2Int> validationLoopRoadPath = new();
+        private readonly List<Vector2Int> validationStartRoads = new();
 
         private readonly Queue<Vector2Int> searchQueue = new();
         private readonly Dictionary<Vector2Int, Vector2Int> cameFrom = new();
@@ -83,6 +86,9 @@ namespace CityFlow.Content.Transit
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
         private IWorldGridAccess worldGridAccess;
+        private IRoadTrafficService roadTraffic;
+        private RoadTrafficAgentRegistration roadTrafficRegistration;
+        private RoadTrafficAgentId roadTrafficAgentId;
 
         private int currentStopIndex;
         private int currentRoadPathIndex;
@@ -99,8 +105,16 @@ namespace CityFlow.Content.Transit
         private Vector2Int currentStopAccessRoad;
         private bool hasCurrentStopAccessRoad;
         private bool useRoadsideStopApproach;
+        private bool roadsideStopsUsePairedPlatforms;
+        private bool useOppositePairedPlatformDirection;
         private bool currentSegmentUsesRoadsideStop;
+        private bool roadTrafficConfigured;
+        private bool holdRoadTrafficAtDestination;
+        private bool roadTrafficArrivalHandled;
+        private int roadTrafficPathOffset;
         private int roadsideStopSetbackTiles;
+        private Vector2Int preferredInitialAccessRoad;
+        private bool hasPreferredInitialAccessRoad;
 
         public IReadOnlyList<Vector2Int> Stops => stops;
         public IReadOnlyList<Vector2Int> CurrentRoadPath => currentRoadPath;
@@ -114,6 +128,9 @@ namespace CityFlow.Content.Transit
 
         public int CurrentStopIndex => currentStopIndex;
         public int CurrentRoadPathIndex => currentRoadPathIndex;
+        public int RoadSegmentVersion { get; private set; }
+        public bool UsesRoadTraffic =>
+            roadTraffic != null && roadTrafficAgentId.IsValid;
 
         public bool LoopRoute
         {
@@ -146,11 +163,29 @@ namespace CityFlow.Content.Transit
                 Mathf.Max(0, value);
         }
 
+        public bool RoadsideStopsUsePairedPlatforms
+        {
+            get => roadsideStopsUsePairedPlatforms;
+            set => roadsideStopsUsePairedPlatforms = value;
+        }
+
+        public bool UseOppositePairedPlatformDirection
+        {
+            get => useOppositePairedPlatformDirection;
+            set => useOppositePairedPlatformDirection = value;
+        }
+
         public bool AllowUnscheduledStopArrival
         {
             get;
             set;
         } = true;
+
+        public bool AvoidImmediateUTurn
+        {
+            get => avoidImmediateUTurn;
+            set => avoidImmediateUTurn = value;
+        }
 
         public Func<Vector2Int, bool> RoadsideStopFilter
         {
@@ -172,6 +207,53 @@ namespace CityFlow.Content.Transit
         public event Action<Vector2Int, int> StopArrived;
         public event Action RouteCompleted;
         public event Action RouteUnavailable;
+
+        public bool TryGetRoadTrafficSnapshot(
+            out RoadTrafficSnapshot snapshot)
+        {
+            if (roadTraffic == null || !roadTrafficAgentId.IsValid)
+            {
+                snapshot = default;
+                return false;
+            }
+
+            return roadTraffic.TryGetSnapshot(
+                roadTrafficAgentId,
+                out snapshot);
+        }
+
+        public void ConfigureRoadTrafficAgent(
+            RoadTrafficAgentKind kind,
+            VehicleFootprint footprint,
+            bool holdAtDestination = false)
+        {
+            if (roadTrafficAgentId.IsValid)
+            {
+                ReleaseRoadTrafficAgent();
+            }
+
+            roadTrafficRegistration =
+                new RoadTrafficAgentRegistration(kind, footprint);
+            roadTrafficConfigured = true;
+            holdRoadTrafficAtDestination = holdAtDestination;
+            TryRegisterRoadTrafficAgent();
+        }
+
+        public void ConfigureRoadTrafficAgent(
+            RoadTrafficAgentKind kind,
+            float lengthTiles,
+            float widthTiles,
+            bool holdAtDestination = false)
+        {
+            ConfigureRoadTrafficAgent(
+                kind,
+                new VehicleFootprint(
+                    VehicleSizeClass.Standard,
+                    lengthTiles,
+                    widthTiles,
+                    0f),
+                holdAtDestination);
+        }
 
         public void Initialize(CityFlowServices services)
         {
@@ -196,6 +278,7 @@ namespace CityFlow.Content.Transit
 
             this.services = services;
             tileData = services.TileData;
+            roadTraffic = services.RoadTraffic;
             worldGridAccess = services.WorldGrid;
             if (worldGridAccess != null)
             {
@@ -203,6 +286,7 @@ namespace CityFlow.Content.Transit
                 gridHeight = Mathf.Max(1, worldGridAccess.WorldHeight);
             }
             isInitialized = true;
+            TryRegisterRoadTrafficAgent();
 
             if (autoStart && stops.Count >= 2)
             {
@@ -373,9 +457,235 @@ namespace CityFlow.Content.Transit
                     forbiddenFirstStep);
         }
 
+        public bool CanTraverseLoop(
+            IReadOnlyList<Vector2Int> candidateStops) =>
+            TryBuildLoopRoadRoute(
+                candidateStops,
+                false,
+                out _);
+
+        public bool TryBuildLoopRoadRoute(
+            IReadOnlyList<Vector2Int> candidateStops,
+            out RoadRoutePlan loopRoutePlan) =>
+            TryBuildLoopRoadRoute(
+                candidateStops,
+                false,
+                out loopRoutePlan);
+
+        public bool TryBuildLoopRoadRoute(
+            IReadOnlyList<Vector2Int> candidateStops,
+            bool reverseAccessPreference,
+            out RoadRoutePlan loopRoutePlan)
+        {
+            return TryBuildLoopRoadRoute(
+                candidateStops,
+                reverseAccessPreference,
+                out loopRoutePlan,
+                out _);
+        }
+
+        public bool TryBuildLoopRoadRoute(
+            IReadOnlyList<Vector2Int> candidateStops,
+            bool reverseAccessPreference,
+            out RoadRoutePlan loopRoutePlan,
+            out RoadRoutePlan firstSegmentPlan)
+        {
+            loopRoutePlan = default;
+            firstSegmentPlan = default;
+            if (!isInitialized ||
+                candidateStops == null ||
+                candidateStops.Count < 2)
+            {
+                return false;
+            }
+
+            CollectAccessRoads(
+                candidateStops[0],
+                validationStartRoads);
+            for (int offset = 0;
+                 offset < validationStartRoads.Count;
+                 offset++)
+            {
+                int index = reverseAccessPreference
+                    ? validationStartRoads.Count - 1 - offset
+                    : offset;
+                Vector2Int startRoad =
+                    validationStartRoads[index];
+
+                if (TryBuildLoopFromStartRoad(
+                        candidateStops,
+                        startRoad,
+                        out loopRoutePlan,
+                        out firstSegmentPlan))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public void SetInitialAccessRoad(Vector2Int accessRoad)
+        {
+            preferredInitialAccessRoad = accessRoad;
+            hasPreferredInitialAccessRoad = IsRoad(accessRoad);
+        }
+
+        private bool TryBuildLoopFromStartRoad(
+            IReadOnlyList<Vector2Int> candidateStops,
+            Vector2Int startRoad,
+            out RoadRoutePlan loopRoutePlan,
+            out RoadRoutePlan firstSegmentPlan)
+        {
+            loopRoutePlan = default;
+            firstSegmentPlan = default;
+            Vector2Int currentRoad = startRoad;
+
+            bool preventImmediateReverse = false;
+            Vector2Int forbiddenFirstStep = default;
+            int segmentCount = candidateStops.Count * 2;
+            validationLoopRoadPath.Clear();
+
+            for (int segment = 0;
+                 segment < segmentCount;
+                 segment++)
+            {
+                int destinationIndex =
+                    (segment + 1) % candidateStops.Count;
+                Vector2Int destinationStop =
+                    candidateStops[destinationIndex];
+
+                bool foundPath;
+                Vector2Int endRoad;
+                if (ShouldUseRoadsideStop(destinationStop))
+                {
+                    foundPath = TryFindRoadsidePath(
+                        currentRoad,
+                        destinationStop,
+                        validationRoadPath,
+                        preventImmediateReverse,
+                        forbiddenFirstStep,
+                        out endRoad);
+                }
+                else if (TryFindAccessRoad(
+                             destinationStop,
+                             out endRoad))
+                {
+                    foundPath = TryBuildRoadPath(
+                        currentRoad,
+                        endRoad,
+                        validationRoadPath,
+                        preventImmediateReverse,
+                        forbiddenFirstStep);
+                }
+                else
+                {
+                    foundPath = false;
+                }
+
+                if (!foundPath || validationRoadPath.Count < 2)
+                {
+                    return false;
+                }
+
+                if (segment < candidateStops.Count)
+                {
+                    AppendSegment(
+                        validationLoopRoadPath,
+                        validationRoadPath);
+                }
+
+                if (segment == 0)
+                {
+                    firstSegmentPlan = new RoadRoutePlan(
+                        validationRoadPath);
+                }
+
+                forbiddenFirstStep =
+                    validationRoadPath[
+                        validationRoadPath.Count - 2];
+                preventImmediateReverse = avoidImmediateUTurn;
+                currentRoad = endRoad;
+            }
+
+            loopRoutePlan = new RoadRoutePlan(
+                validationLoopRoadPath);
+            return loopRoutePlan.TileCount > 1 &&
+                firstSegmentPlan.TileCount > 1;
+        }
+
+        private void CollectAccessRoads(
+            Vector2Int stopTile,
+            List<Vector2Int> result)
+        {
+            result.Clear();
+            if (IsRoad(stopTile))
+            {
+                result.Add(stopTile);
+                return;
+            }
+
+            if (roadsideStopsUsePairedPlatforms &&
+                BusStopInfrastructurePolicy.TryGetPlatformPair(
+                    stopTile,
+                    IsRoad,
+                    out Vector2Int pairedAccessRoad,
+                    out _))
+            {
+                result.Add(pairedAccessRoad);
+                return;
+            }
+
+            TileType stopType = tileData.GetTileType(stopTile);
+            Vector2Int footprint = TileFootprint.IsBuilding(stopType)
+                ? tileData.GetFootprintSize(stopType)
+                : Vector2Int.one;
+
+            for (int y = 0; y < footprint.y; y++)
+            {
+                for (int x = 0; x < footprint.x; x++)
+                {
+                    Vector2Int footprintTile =
+                        stopTile + new Vector2Int(x, y);
+                    for (int directionIndex = 0;
+                         directionIndex < Directions.Length;
+                         directionIndex++)
+                    {
+                        Vector2Int candidate =
+                            footprintTile +
+                            Directions[directionIndex];
+                        if (IsRoad(candidate) &&
+                            !result.Contains(candidate))
+                        {
+                            result.Add(candidate);
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void AppendSegment(
+            List<Vector2Int> destination,
+            IReadOnlyList<Vector2Int> segment)
+        {
+            int startIndex = destination.Count > 0 &&
+                segment.Count > 0 &&
+                destination[destination.Count - 1] == segment[0]
+                    ? 1
+                    : 0;
+
+            for (int index = startIndex;
+                 index < segment.Count;
+                 index++)
+            {
+                destination.Add(segment[index]);
+            }
+        }
+
         public bool ReconfigureLoopAtCurrentStop(
             IReadOnlyList<Vector2Int> newStops)
         {
+            Vector2Int currentStop = CurrentStop;
             Vector2Int preservedForbiddenTile =
                 forbiddenDepartureTile;
             bool preservedForbidden =
@@ -384,7 +694,14 @@ namespace CityFlow.Content.Transit
                 currentStopAccessRoad;
             bool preservedAccess = hasCurrentStopAccessRoad;
 
-            bool configured = ConfigureRoute(newStops, true);
+            PrepareHeldRouteReconfiguration();
+            bool configured = ReplaceStops(newStops);
+
+            if (configured)
+            {
+                currentStopIndex = stops.IndexOf(currentStop);
+                configured = currentStopIndex >= 0;
+            }
 
             if (configured && avoidImmediateUTurn)
             {
@@ -401,6 +718,15 @@ namespace CityFlow.Content.Transit
                 hasCurrentStopAccessRoad = true;
                 CurrentTile = preservedAccessRoad;
             }
+            else if (configured)
+            {
+                CurrentTile = currentStop;
+            }
+
+            if (configured)
+            {
+                TileChanged?.Invoke(CurrentTile);
+            }
 
             return configured;
         }
@@ -414,34 +740,12 @@ namespace CityFlow.Content.Transit
             bool preservedForbidden =
                 hasForbiddenDepartureTile;
 
-            StopRoute();
-            stops.Clear();
-            stopAccessRoads.Clear();
-
-            if (newStops == null)
+            PrepareHeldRouteReconfiguration();
+            if (!ReplaceStops(newStops))
             {
                 return false;
             }
 
-            for (int i = 0; i < newStops.Count; i++)
-            {
-                Vector2Int stop = newStops[i];
-
-                if (stops.Count > 0 &&
-                    stops[stops.Count - 1] == stop)
-                {
-                    continue;
-                }
-
-                stops.Add(stop);
-            }
-
-            if (stops.Count == 0)
-            {
-                return false;
-            }
-
-            loopRoute = true;
             departureStop = currentPosition;
             hasDepartureStop = true;
             currentStopIndex = -1;
@@ -503,11 +807,15 @@ namespace CityFlow.Content.Transit
             waitTimer = 0f;
 
             currentRoadPath.Clear();
+            roadTrafficPath.Clear();
             currentRoadPathIndex = 0;
             hasDepartureStop = false;
             hasForbiddenDepartureTile = false;
             hasCurrentStopAccessRoad = false;
             currentSegmentUsesRoadsideStop = false;
+            hasPreferredInitialAccessRoad = false;
+
+            ReleaseRoadTrafficAgent();
 
             State = BusRouteState.Idle;
         }
@@ -538,6 +846,12 @@ namespace CityFlow.Content.Transit
 
         private void UpdateMoving(float deltaTime)
         {
+            if (roadTrafficAgentId.IsValid)
+            {
+                UpdateRoadTrafficMovement();
+                return;
+            }
+
             moveTimer += Mathf.Max(0f, deltaTime);
 
             float safeSecondsPerTile =
@@ -548,6 +862,52 @@ namespace CityFlow.Content.Transit
             {
                 moveTimer -= safeSecondsPerTile;
                 MoveOneTile();
+            }
+        }
+
+        private void UpdateRoadTrafficMovement()
+        {
+            if (roadTraffic == null ||
+                !roadTraffic.TryGetSnapshot(
+                    roadTrafficAgentId,
+                    out RoadTrafficSnapshot snapshot))
+            {
+                SetRouteUnavailable();
+                return;
+            }
+
+            if (snapshot.State ==
+                RoadTrafficAgentState.RouteUnavailable)
+            {
+                SetRouteUnavailable();
+                return;
+            }
+
+            int pathIndex = Mathf.Clamp(
+                roadTrafficPathOffset + snapshot.RouteTileIndex,
+                0,
+                Mathf.Max(0, currentRoadPath.Count - 1));
+            if (currentRoadPath.Count > 0 &&
+                (CurrentTile != snapshot.CurrentTile ||
+                 currentRoadPathIndex != pathIndex))
+            {
+                currentRoadPathIndex = pathIndex;
+                CurrentTile = snapshot.CurrentTile;
+                TileChanged?.Invoke(CurrentTile);
+            }
+
+            if (snapshot.State == RoadTrafficAgentState.Arrived &&
+                !roadTrafficArrivalHandled)
+            {
+                roadTrafficArrivalHandled = true;
+                ArriveAtNextStop();
+            }
+            else if (snapshot.State ==
+                         RoadTrafficAgentState.HoldingAtDestination &&
+                     !roadTrafficArrivalHandled)
+            {
+                roadTrafficArrivalHandled = true;
+                ArriveAtNextStop();
             }
         }
 
@@ -832,11 +1192,6 @@ namespace CityFlow.Content.Transit
                 return false;
             }
 
-            Vector2Int rightSide = new(
-                travelDirection.y,
-                -travelDirection.x);
-            Vector2Int roadsideTile =
-                roadTile + rightSide;
             Vector2Int stop = stops[stopIndex];
             TileType stopType = tileData.GetTileType(stop);
             Vector2Int footprint =
@@ -844,12 +1199,92 @@ namespace CityFlow.Content.Transit
                     ? tileData.GetFootprintSize(stopType)
                     : Vector2Int.one;
 
+            if (roadsideStopsUsePairedPlatforms)
+            {
+                if (!TryGetPairedStopApproach(
+                        stop,
+                        out Vector2Int pairedAccessRoad,
+                        out Vector2Int physicalPlatform,
+                        out _) ||
+                    roadTile != pairedAccessRoad)
+                {
+                    return false;
+                }
+
+                Vector2Int pairedRightSide = new(
+                    travelDirection.y,
+                    -travelDirection.x);
+                return roadTile + pairedRightSide == physicalPlatform;
+            }
+
+            Vector2Int rightSide = new(
+                travelDirection.y,
+                -travelDirection.x);
+            Vector2Int roadsideTile =
+                roadTile + rightSide;
+
             for (int y = 0; y < footprint.y; y++)
             {
                 for (int x = 0; x < footprint.x; x++)
                 {
                     if (stop + new Vector2Int(x, y) ==
                         roadsideTile)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryGetPairedStopApproach(
+            Vector2Int logicalStop,
+            out Vector2Int accessRoad,
+            out Vector2Int physicalPlatform,
+            out Vector2Int arrivalDirection)
+        {
+            accessRoad = default;
+            physicalPlatform = default;
+            arrivalDirection = default;
+
+            if (!BusStopInfrastructurePolicy.TryGetPlatformPair(
+                    logicalStop,
+                    IsRoad,
+                    out accessRoad,
+                    out Vector2Int oppositePlatform))
+            {
+                return false;
+            }
+
+            physicalPlatform = useOppositePairedPlatformDirection
+                ? oppositePlatform
+                : logicalStop;
+            Vector2Int platformSide = physicalPlatform - accessRoad;
+            if (!IsCardinalDirection(platformSide))
+            {
+                return false;
+            }
+
+            arrivalDirection = new(
+                -platformSide.y,
+                platformSide.x);
+            return true;
+        }
+
+        private static bool IsRoadAdjacentToFootprint(
+            Vector2Int roadTile,
+            Vector2Int footprintOrigin,
+            Vector2Int footprintSize)
+        {
+            for (int y = 0; y < footprintSize.y; y++)
+            {
+                for (int x = 0; x < footprintSize.x; x++)
+                {
+                    Vector2Int footprintTile =
+                        footprintOrigin + new Vector2Int(x, y);
+                    Vector2Int delta = roadTile - footprintTile;
+                    if (Mathf.Abs(delta.x) + Mathf.Abs(delta.y) == 1)
                     {
                         return true;
                     }
@@ -925,6 +1360,13 @@ namespace CityFlow.Content.Transit
             {
                 startRoad = currentStopAccessRoad;
             }
+            else if (useRoadsideStopApproach &&
+                     hasPreferredInitialAccessRoad &&
+                     IsRoad(preferredInitialAccessRoad))
+            {
+                startRoad = preferredInitialAccessRoad;
+                hasPreferredInitialAccessRoad = false;
+            }
             else if (!TryFindAccessRoad(
                          startStop,
                          out startRoad))
@@ -986,10 +1428,32 @@ namespace CityFlow.Content.Transit
                         forbiddenFirstStep);
             }
 
+            if (foundPath &&
+                !currentSegmentUsesRoadsideStop &&
+                startRoad != endRoad &&
+                services?.RoadRoutePlanning != null)
+            {
+                foundPath = services.RoadRoutePlanning.TryPlanRoadRoute(
+                    startRoad,
+                    endRoad,
+                    out RoadRoutePlan plannedRoute);
+                if (foundPath)
+                {
+                    currentRoadPath.Clear();
+                    for (int index = 0;
+                         index < plannedRoute.TileCount;
+                         index++)
+                    {
+                        currentRoadPath.Add(plannedRoute.Tiles[index]);
+                    }
+                }
+            }
+
             if (!foundPath)
             {
                 Debug.LogWarning(
                     $"[BusRoute] 연결된 합법 경로를 찾지 못했습니다. " +
+                    $"DestinationStop: {destinationStop}, " +
                     $"StartRoad: {startRoad}, EndRoad: {endRoad}",
                     this
                 );
@@ -1029,8 +1493,136 @@ namespace CityFlow.Content.Transit
             moveTimer = 0f;
             State = BusRouteState.Moving;
 
+            if (roadTrafficConfigured &&
+                !TryStartRoadTrafficSegment())
+            {
+                SetRouteUnavailable();
+                return false;
+            }
+
             TileChanged?.Invoke(CurrentTile);
             return true;
+        }
+
+        private bool TryStartRoadTrafficSegment()
+        {
+            if (roadTraffic == null)
+            {
+                return true;
+            }
+
+            if (!TryRegisterRoadTrafficAgent())
+            {
+                return false;
+            }
+
+            roadTrafficPath.Clear();
+            roadTrafficPathOffset = -1;
+            for (int index = 0; index < currentRoadPath.Count; index++)
+            {
+                if (!IsRoad(currentRoadPath[index]))
+                {
+                    if (roadTrafficPath.Count > 0)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (roadTrafficPathOffset < 0)
+                {
+                    roadTrafficPathOffset = index;
+                }
+
+                roadTrafficPath.Add(currentRoadPath[index]);
+            }
+
+            if (roadTrafficPath.Count == 0)
+            {
+                return false;
+            }
+
+            roadTrafficArrivalHandled = false;
+            var route = new RoadRoutePlan(roadTrafficPath);
+            RoadSegmentVersion++;
+            return roadTraffic.TryAssignRoute(
+                       new RoadTrafficRouteRequest(
+                           roadTrafficAgentId,
+                           route,
+                           false,
+                           holdRoadTrafficAtDestination
+                               ? RoadTrafficArrivalPolicy
+                                   .HoldAtDestination
+                               : RoadTrafficArrivalPolicy
+                                   .ReleaseAtDestination))
+                && roadTraffic.TryStartAgent(roadTrafficAgentId);
+        }
+
+        private void PrepareHeldRouteReconfiguration()
+        {
+            routeRequested = false;
+            moveTimer = 0f;
+            waitTimer = 0f;
+            currentRoadPath.Clear();
+            roadTrafficPath.Clear();
+            stopAccessRoads.Clear();
+            currentRoadPathIndex = 0;
+            hasDepartureStop = false;
+            hasCurrentStopAccessRoad = false;
+            currentSegmentUsesRoadsideStop = false;
+            State = BusRouteState.Idle;
+        }
+
+        private bool ReplaceStops(
+            IReadOnlyList<Vector2Int> newStops)
+        {
+            stops.Clear();
+            loopRoute = true;
+
+            if (newStops == null)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < newStops.Count; index++)
+            {
+                Vector2Int stop = newStops[index];
+                if (stops.Count == 0 ||
+                    stops[stops.Count - 1] != stop)
+                {
+                    stops.Add(stop);
+                }
+            }
+
+            return stops.Count > 0;
+        }
+
+        private bool TryRegisterRoadTrafficAgent()
+        {
+            if (roadTrafficAgentId.IsValid)
+            {
+                return true;
+            }
+
+            return roadTrafficConfigured &&
+                roadTraffic != null &&
+                roadTraffic.TryRegisterAgent(
+                    roadTrafficRegistration,
+                    out roadTrafficAgentId);
+        }
+
+        private void ReleaseRoadTrafficAgent()
+        {
+            if (roadTraffic != null && roadTrafficAgentId.IsValid)
+            {
+                roadTraffic.TryRemoveAgent(roadTrafficAgentId);
+            }
+
+            roadTrafficAgentId = RoadTrafficAgentId.Invalid;
+            roadTrafficPath.Clear();
+            roadTrafficPathOffset = 0;
+            roadTrafficArrivalHandled = false;
         }
 
         private bool TryFindRoadsidePath(
@@ -1043,6 +1635,32 @@ namespace CityFlow.Content.Transit
         {
             result.Clear();
             selectedAccessRoad = default;
+
+            if (roadsideStopsUsePairedPlatforms &&
+                TryGetPairedStopApproach(
+                    destinationStop,
+                    out Vector2Int pairedAccessRoad,
+                    out _,
+                    out Vector2Int pairedArrivalDirection))
+            {
+                if (!TryBuildRoadsideApproachPath(
+                        startRoad,
+                        pairedAccessRoad,
+                        pairedArrivalDirection,
+                        candidateRoadPath,
+                        preventImmediateReverse,
+                        forbiddenFirstStep))
+                {
+                    return false;
+                }
+
+                CopyRoadsidePathWithSetback(
+                    candidateRoadPath,
+                    result,
+                    out selectedAccessRoad);
+                return result.Count > 0;
+            }
+
             bool found = false;
             TileType stopType =
                 tileData.GetTileType(destinationStop);
@@ -1076,7 +1694,7 @@ namespace CityFlow.Content.Transit
                             -stopSide.y,
                             stopSide.x);
 
-                        if (!TryFindRoadPathToApproach(
+                        if (!TryBuildRoadsideApproachPath(
                                 startRoad,
                                 accessRoad,
                                 arrivalDirection,
@@ -1096,17 +1714,10 @@ namespace CityFlow.Content.Transit
                         if (!found ||
                             candidateCount < result.Count)
                         {
-                            result.Clear();
-                            for (int pathIndex = 0;
-                                 pathIndex < candidateCount;
-                                 pathIndex++)
-                            {
-                                result.Add(
-                                    candidateRoadPath[pathIndex]);
-                            }
-
-                            selectedAccessRoad =
-                                result[result.Count - 1];
+                            CopyRoadsidePathWithSetback(
+                                candidateRoadPath,
+                                result,
+                                out selectedAccessRoad);
                             found = true;
                         }
                     }
@@ -1114,6 +1725,124 @@ namespace CityFlow.Content.Transit
             }
 
             return found;
+        }
+
+        private void CopyRoadsidePathWithSetback(
+            IReadOnlyList<Vector2Int> source,
+            List<Vector2Int> destination,
+            out Vector2Int selectedAccessRoad)
+        {
+            destination.Clear();
+            int setback = Mathf.Min(
+                roadsideStopSetbackTiles,
+                source.Count - 1);
+            int count = source.Count - setback;
+
+            for (int index = 0; index < count; index++)
+            {
+                destination.Add(source[index]);
+            }
+
+            selectedAccessRoad = destination.Count > 0
+                ? destination[destination.Count - 1]
+                : default;
+        }
+
+        private bool TryBuildRoadsideApproachPath(
+            Vector2Int startRoad,
+            Vector2Int accessRoad,
+            Vector2Int arrivalDirection,
+            List<Vector2Int> result,
+            bool preventImmediateReverse,
+            Vector2Int forbiddenFirstStep)
+        {
+            if (services?.RoadRoutePlanning == null ||
+                startRoad == accessRoad)
+            {
+                return TryFindRoadPathToApproach(
+                    startRoad,
+                    accessRoad,
+                    arrivalDirection,
+                    result,
+                    preventImmediateReverse,
+                    forbiddenFirstStep);
+            }
+
+            bool planned = services.RoadRoutePlanning.TryPlanRoadRoute(
+                startRoad,
+                accessRoad,
+                out RoadRoutePlan route);
+            bool satisfiesApproach = planned &&
+                route.TileCount >= 2 &&
+                route.Tiles[route.TileCount - 2] ==
+                    accessRoad - arrivalDirection &&
+                (!preventImmediateReverse ||
+                 route.Tiles[1] != forbiddenFirstStep);
+
+            if (!satisfiesApproach)
+            {
+                return TryFindRoadPathToApproach(
+                    startRoad,
+                    accessRoad,
+                    arrivalDirection,
+                    result,
+                    preventImmediateReverse,
+                    forbiddenFirstStep);
+            }
+
+            result.Clear();
+            for (int index = 0; index < route.TileCount; index++)
+            {
+                result.Add(route.Tiles[index]);
+            }
+
+            return true;
+        }
+
+        private bool TryBuildRoadPath(
+            Vector2Int startRoad,
+            Vector2Int destinationRoad,
+            List<Vector2Int> result,
+            bool preventImmediateReverse,
+            Vector2Int forbiddenFirstStep)
+        {
+            if (startRoad == destinationRoad)
+            {
+                return TryFindRoadCycle(
+                    startRoad,
+                    result,
+                    preventImmediateReverse,
+                    forbiddenFirstStep);
+            }
+
+            if (services?.RoadRoutePlanning == null)
+            {
+                return TryFindRoadPath(
+                    startRoad,
+                    destinationRoad,
+                    result,
+                    preventImmediateReverse,
+                    forbiddenFirstStep);
+            }
+
+            if (!services.RoadRoutePlanning.TryPlanRoadRoute(
+                    startRoad,
+                    destinationRoad,
+                    out RoadRoutePlan route) ||
+                route.TileCount < 2 ||
+                (preventImmediateReverse &&
+                 route.Tiles[1] == forbiddenFirstStep))
+            {
+                return false;
+            }
+
+            result.Clear();
+            for (int index = 0; index < route.TileCount; index++)
+            {
+                result.Add(route.Tiles[index]);
+            }
+
+            return true;
         }
 
         private bool ShouldUseRoadsideStop(
@@ -1605,6 +2334,7 @@ namespace CityFlow.Content.Transit
         {
             routeRequested = false;
             currentSegmentUsesRoadsideStop = false;
+            ReleaseRoadTrafficAgent();
             State = BusRouteState.Completed;
 
             RouteCompleted?.Invoke();
@@ -1614,9 +2344,15 @@ namespace CityFlow.Content.Transit
         {
             routeRequested = false;
             currentSegmentUsesRoadsideStop = false;
+            ReleaseRoadTrafficAgent();
             State = BusRouteState.RouteUnavailable;
 
             RouteUnavailable?.Invoke();
+        }
+
+        private void OnDestroy()
+        {
+            ReleaseRoadTrafficAgent();
         }
 
 #if UNITY_EDITOR

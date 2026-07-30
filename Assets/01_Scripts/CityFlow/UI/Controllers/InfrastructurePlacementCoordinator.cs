@@ -391,6 +391,7 @@ namespace CityFlow.UI.Controllers
             {
                 _busStopWorldView
                     ?.TryCreatePlacementPreview(
+                        cursor,
                         out preview);
             }
             else

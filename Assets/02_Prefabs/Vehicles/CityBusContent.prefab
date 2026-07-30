@@ -84,6 +84,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.CityBusService
   definition: {fileID: 11400000, guid: 1389367586db78444a80782f0611acfd, type: 2}
+  schedule: {fileID: 11400000, guid: ab5e1dc46a9d4c1a9147d21f4b71ae91, type: 2}
   busRoute: {fileID: 6527074732818209294}
   stopRegistry: {fileID: 5161138187899254478}
   autoStart: 1
@@ -114,12 +115,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 3007267175668421125}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e15a9c6d7deb0f247889367b3afd84c7, type: 3}
+  m_Script: {fileID: 11500000, guid: 4a3c3f30ca374f83a8f90eb465b4ea3f, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.CityBusWorldView
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.BusWorldView
+  definition: {fileID: 11400000, guid: 1389367586db78444a80782f0611acfd, type: 2}
   busRoute: {fileID: 6527074732818209294}
+  cityBusService: {fileID: 4217619027936533916}
   cityView: {fileID: 0}
-  busVisualPrefab: {fileID: 100000, guid: 81de690e0bb3130439ed3ffedbd27be2, type: 3}
+  busVisualPrefab: {fileID: 0}
   busMaterial: {fileID: 2100000, guid: 27df31b99e4d03c4d85000f0c27dc500, type: 2}
   visualScale: 0.085
   visualDepth: -0.38

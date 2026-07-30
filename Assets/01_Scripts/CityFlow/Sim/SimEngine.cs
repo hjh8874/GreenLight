@@ -12,7 +12,8 @@ namespace CityFlow.Sim
         IReadOnlyCityStats, ISimSaveSource, ISignalControl,
         IIntersectionFacilityService, ITrafficRuleService,
         IRouteDistanceProvider, IHighwayService,
-        IBusStopInfrastructureService, IVehicleTripService
+        IBusStopInfrastructureService, IVehicleTripService,
+        IRoadRoutePlanningService
     {
         SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
@@ -23,7 +24,9 @@ namespace CityFlow.Sim
         private readonly List<ConstructionSite> _completedBuffer = new(16);
         readonly RoutePlanner _planner;
         readonly RoadQueueNetwork _roadQueues;
+        readonly RoadTrafficCoordinator _roadTraffic;
         readonly CarSim _carSim;
+        readonly VehicleFootprint _standardVehicleFootprint;
         readonly DeviceStateAdapter _deviceState;
         readonly SignalGateAdapter _signalGate;
         readonly CongestionLevel[] _carCongestion;
@@ -56,6 +59,7 @@ namespace CityFlow.Sim
         readonly Dictionary<Vector2Int, Vector2Int> _highwayPartners = new();
         readonly List<Vector2Int> _placedBusStops = new();
         readonly HashSet<Vector2Int> _busStopSet = new();
+        readonly HashSet<Vector2Int> _busStopPlatformSet = new();
         static readonly Vector2Int[] BusStopNeighborDirections =
         {
             Vector2Int.right,
@@ -82,12 +86,16 @@ namespace CityFlow.Sim
         internal bool TopologyDirtyForTest => _grid.TopologyDirty;
         internal float TripSuccessRateForTest => _stats.TripSuccessRate;
         internal RoadQueueNetwork RoadQueuesForTest => _roadQueues;
+        public IRoadTrafficService RoadTraffic => _roadTraffic;
+        public VehicleFootprint StandardVehicleFootprint =>
+            _standardVehicleFootprint;
         internal int ConstructionSiteCountForTest => _construction.Count;
 
         public SimEngine(
             SimConfig config,
             SimEventHub hub,
-            IWorldGridAccess worldGridAccess = null)
+            IWorldGridAccess worldGridAccess = null,
+            VehicleFootprint? standardVehicleFootprint = null)
         {
             _worldGridAccess = worldGridAccess;
             if (_worldGridAccess != null)
@@ -97,11 +105,21 @@ namespace CityFlow.Sim
             }
 
             _config = config;
+            _standardVehicleFootprint = standardVehicleFootprint ??
+                VehicleFootprint.StandardDefault;
             _grid = new CityGrid(config.GridWidth, config.GridHeight);
             _network = new RoadNetwork(_grid);
             _demand = new DemandMap(config);
             _planner = new RoutePlanner(config.GridWidth, config.GridHeight);
-            _roadQueues = new RoadQueueNetwork(config.GridWidth, config.GridHeight, config);
+            _roadQueues = new RoadQueueNetwork(
+                config.GridWidth,
+                config.GridHeight,
+                config,
+                _standardVehicleFootprint);
+            _roadTraffic = new RoadTrafficCoordinator(
+                _roadQueues,
+                () => TickInterval,
+                () => TickProgress01);
             _carSim = new CarSim(config);
             _deviceState = new DeviceStateAdapter(this);
             _signalGate = new SignalGateAdapter(this);
@@ -259,7 +277,8 @@ namespace CityFlow.Sim
                 _roadQueues,
                 _events,
                 _signalGate,
-                StepCount);
+                StepCount,
+                _roadTraffic);
             if (_carSim.HasCompletedRetirements)
             {
                 _buildingAssignmentChangePending = true;
@@ -673,7 +692,7 @@ namespace CityFlow.Sim
             {
                 for (int x = 0; x < size.x; x++)
                 {
-                    if (_busStopSet.Contains(
+                    if (_busStopPlatformSet.Contains(
                             tile + new Vector2Int(x, y)))
                     {
                         return true;
@@ -762,6 +781,26 @@ namespace CityFlow.Sim
 
         public bool TryGetCityAverageRouteDistance(out float distanceTiles) =>
             _planner.TryGetCityAverageRouteDistance(out distanceTiles);
+
+        public bool TryPlanRoadRoute(
+            Vector2Int originRoad,
+            Vector2Int destinationRoad,
+            out RoadRoutePlan route)
+        {
+            route = default;
+            EnsureCarTopologyCurrent();
+
+            List<Vector2Int> routeTiles = _planner.PlanVehicleTrip(
+                originRoad,
+                destinationRoad);
+            if (routeTiles == null || routeTiles.Count == 0)
+            {
+                return false;
+            }
+
+            route = new RoadRoutePlan(routeTiles);
+            return true;
+        }
 
         // ── ISignalControl(신호 조작 창구): 유저가 교차로를 조율하는 두 레버 — 오프셋·초록 길이 ──
         // 제안 단계: 계약으로 승격(설계 §5), 최종 확정은 주석·김건 합의. 김건 Game뷰 UI가 이 계약에 붙음.
@@ -1275,7 +1314,9 @@ namespace CityFlow.Sim
             _highwayPartners.Clear();
             _placedBusStops.Clear();
             _busStopSet.Clear();
+            _busStopPlatformSet.Clear();
             _roadQueues.RemoveAllCars();
+            _roadTraffic.ResetNetworkOccupancy();
             Array.Clear(_carCongestion, 0, _carCongestion.Length);
             _carSim.ClearPopulation();
             _construction.Clear();
@@ -1545,15 +1586,32 @@ namespace CityFlow.Sim
                  _worldGridAccess != null &&
                  !_worldGridAccess.IsTileUnlocked(tile)) ||
                 _grid.GetTile(tile) != TileType.Empty ||
-                _busStopSet.Contains(tile))
+                _busStopPlatformSet.Contains(tile) ||
+                !BusStopInfrastructurePolicy.TryGetPlatformPair(
+                    tile,
+                    IsRoad,
+                    out _,
+                    out Vector2Int oppositePlatform) ||
+                !CanUseBusStopPlatform(
+                    oppositePlatform,
+                    requireUnlockedTile))
             {
                 return false;
             }
 
-            return BusStopInfrastructurePolicy
-                .HasRoadsideApproach(
-                    tile,
-                    IsRoad);
+            return true;
+        }
+
+        private bool CanUseBusStopPlatform(
+            Vector2Int tile,
+            bool requireUnlockedTile)
+        {
+            return _grid.InBounds(tile) &&
+                (!requireUnlockedTile ||
+                 _worldGridAccess == null ||
+                 _worldGridAccess.IsTileUnlocked(tile)) &&
+                _grid.GetTile(tile) == TileType.Empty &&
+                !_busStopPlatformSet.Contains(tile);
         }
 
         public bool TryPlaceBusStop(Vector2Int tile)
@@ -1565,7 +1623,7 @@ namespace CityFlow.Sim
         {
             if (!_grid.InBounds(tile) ||
                 _grid.GetTile(tile) != TileType.Empty ||
-                _busStopSet.Contains(tile) ||
+                _busStopPlatformSet.Contains(tile) ||
                 (!CanPlaceBusStop(
                      tile,
                      requireUnlockedTile: false) &&
@@ -1577,6 +1635,7 @@ namespace CityFlow.Sim
                 return false;
             }
 
+            RegisterBusStopPlatforms(tile);
             InsertSorted(_placedBusStops, tile);
             return true;
         }
@@ -1591,8 +1650,24 @@ namespace CityFlow.Sim
                 return false;
             }
 
+            RegisterBusStopPlatforms(tile);
             InsertSorted(_placedBusStops, tile);
             return true;
+        }
+
+        private void RegisterBusStopPlatforms(Vector2Int stopTile)
+        {
+            _busStopPlatformSet.Add(stopTile);
+            if (BusStopInfrastructurePolicy.TryGetPlatformPair(
+                    stopTile,
+                    IsRoad,
+                    out _,
+                    out Vector2Int oppositePlatform) &&
+                _grid.InBounds(oppositePlatform) &&
+                _grid.GetTile(oppositePlatform) == TileType.Empty)
+            {
+                _busStopPlatformSet.Add(oppositePlatform);
+            }
         }
 
         public bool TryRemoveBusStop(Vector2Int tile)
@@ -1600,6 +1675,16 @@ namespace CityFlow.Sim
             if (!_busStopSet.Remove(tile))
             {
                 return false;
+            }
+
+            _busStopPlatformSet.Remove(tile);
+            if (BusStopInfrastructurePolicy.TryGetPlatformPair(
+                    tile,
+                    IsRoad,
+                    out _,
+                    out Vector2Int oppositePlatform))
+            {
+                _busStopPlatformSet.Remove(oppositePlatform);
             }
 
             _placedBusStops.Remove(tile);
@@ -1611,6 +1696,30 @@ namespace CityFlow.Sim
         {
             foreach (Vector2Int stopTile in _placedBusStops)
             {
+                if (BusStopInfrastructurePolicy.TryGetPlatformPair(
+                        stopTile,
+                        IsRoad,
+                        out Vector2Int accessRoad,
+                        out Vector2Int oppositePlatform))
+                {
+                    bool keepsSamePlatformPair =
+                        BusStopInfrastructurePolicy.TryGetPlatformPair(
+                            stopTile,
+                            candidate =>
+                                candidate != roadTile &&
+                                IsRoad(candidate),
+                            out Vector2Int remainingAccessRoad,
+                            out Vector2Int remainingOppositePlatform) &&
+                        remainingAccessRoad == accessRoad &&
+                        remainingOppositePlatform == oppositePlatform;
+                    if (!keepsSamePlatformPair)
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
                 bool currentlyHasStrictApproach =
                     BusStopInfrastructurePolicy
                         .HasRoadsideApproach(

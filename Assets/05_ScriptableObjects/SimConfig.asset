@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0ae4186fef9fe4af786f8adbe8343e23, type: 3}
   m_Name: SimConfig
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.SimConfigAsset
+  standardVehicleFootprint: {fileID: 11400000, guid: 3b090c7283c648fc88a9333d9a8ee8f4, type: 2}
   Value:
     TickInterval: 0.1
     MaxStepsPerFrame: 5

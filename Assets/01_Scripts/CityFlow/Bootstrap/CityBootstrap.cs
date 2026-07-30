@@ -64,8 +64,15 @@ namespace CityFlow.Bootstrap
                 config.GridHeight = worldGridAccess?.WorldHeight ?? mapHeight;
 
                 var hub = new SimEventHub();
-                engineConfig = config;   // 하루 길이 동기화에 재사용(Sim 의 config 는 internal 이라 못 읽는다)
-                simEngine = new SimEngine(config, hub, worldGridAccess);
+                engineConfig = config;
+                VehicleFootprint standardVehicleFootprint = simConfig != null
+                    ? simConfig.StandardVehicleFootprint
+                    : VehicleFootprint.StandardDefault;
+                simEngine = new SimEngine(
+                    config,
+                    hub,
+                    worldGridAccess,
+                    standardVehicleFootprint);
                 Services = new CityFlowServices(
                     hub,
                     simEngine,
@@ -73,6 +80,8 @@ namespace CityFlow.Bootstrap
                     CreateSaveService(simEngine),
                     stats: simEngine);
                 Services.RegisterVehicleTrips(simEngine);
+                Services.RegisterRoadTraffic(simEngine.RoadTraffic);
+                Services.RegisterRoadRoutePlanning(simEngine);
             }
 
             worldGridConsumer?.Initialize(Services);

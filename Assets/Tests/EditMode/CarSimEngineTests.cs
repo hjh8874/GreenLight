@@ -946,7 +946,9 @@ namespace CityFlow.Sim.Tests
 
             Assert.IsTrue(engine.Place(V(90, 90), TileType.Road));
             Assert.IsTrue(engine.Place(V(91, 90), TileType.Road));
-            Assert.IsTrue(engine.CanPlaceBusStop(V(90, 91)));
+            Assert.IsFalse(
+                engine.CanPlaceBusStop(V(90, 91)),
+                "Both platforms must be inside the unlocked world area.");
             Assert.IsFalse(engine.CanPlaceBusStop(V(89, 90)));
             Assert.IsFalse(engine.TryPlaceBusStop(V(89, 90)));
         }

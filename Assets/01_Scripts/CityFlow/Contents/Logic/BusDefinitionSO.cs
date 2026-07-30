@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CityFlow.Contracts;
 using UnityEngine;
 
 namespace CityFlow.Content
@@ -8,6 +9,8 @@ namespace CityFlow.Content
         menuName = "CityFlow/Transit/Bus Definition")]
     public sealed class BusDefinitionSO : ScriptableObject
     {
+        private const float LegacyMinimumGapTiles = 0.11f;
+
         [Header("Identity")]
         [SerializeField] private string busId = "city_bus";
         [SerializeField] private string displayName = "City Bus";
@@ -31,10 +34,12 @@ namespace CityFlow.Content
         private int leavingDemandPerStop = 2;
 
         [Header("Vehicle Footprint")]
+        [SerializeField]
+        private VehicleFootprintProfileSO vehicleFootprintProfile;
         [SerializeField, Min(0.1f)]
-        private float vehicleLengthTiles = 0.6f;
+        private float vehicleLengthTiles = 0.8f;
         [SerializeField, Min(0.08f)]
-        private float vehicleWidthTiles = 0.2f;
+        private float vehicleWidthTiles = 0.24f;
 
         [Header("Economy")]
         [SerializeField, Min(0)]
@@ -60,10 +65,22 @@ namespace CityFlow.Content
             Mathf.Max(0, boardingDemandPerStop);
         public int LeavingDemandPerStop =>
             Mathf.Max(0, leavingDemandPerStop);
+        public VehicleFootprintProfileSO VehicleFootprintProfile =>
+            vehicleFootprintProfile;
+        public VehicleFootprint VehicleFootprint =>
+            vehicleFootprintProfile != null
+                ? vehicleFootprintProfile.Footprint
+                : new VehicleFootprint(
+                    VehicleSizeClass.Large,
+                    vehicleLengthTiles,
+                    vehicleWidthTiles,
+                    LegacyMinimumGapTiles);
         public float VehicleLengthTiles =>
-            Mathf.Max(0.1f, vehicleLengthTiles);
+            VehicleFootprint.LengthTiles;
         public float VehicleWidthTiles =>
-            Mathf.Max(0.08f, vehicleWidthTiles);
+            VehicleFootprint.WidthTiles;
+        public float VehicleMinimumGapTiles =>
+            VehicleFootprint.MinimumGapTiles;
         public int StopRevenueCoins =>
             Mathf.Max(0, stopRevenueCoins);
         public Color RouteColor => routeColor;

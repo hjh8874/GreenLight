@@ -258,13 +258,67 @@ namespace CityFlow.ViewKit
             int queueSlot,
             float slotGap,
             float headInset = 0f)
+            => DistanceAtQueueOffset(
+                tileIndex,
+                Mathf.Max(0, queueSlot) * Mathf.Max(0f, slotGap),
+                headInset);
+
+        public float DistanceAtQueueOffset(
+            int tileIndex,
+            float queueOffset,
+            float headInset = 0f)
         {
             float distance = DistanceAtTile(tileIndex)
                 - Mathf.Max(0f, headInset)
-                - Mathf.Max(0, queueSlot) * Mathf.Max(0f, slotGap);
+                - Mathf.Max(0f, queueOffset);
             // 큰 슬롯은 타일 시작을 넘어갈 수 있다(capacity 4 × gap 0.55 등). Phase A에서는
             // 폴리라인 시작에 조용히 모으고, 타일 경계를 잇는 연속 대기열은 Phase B에 맡긴다.
             return Mathf.Clamp(distance, 0f, Length);
+        }
+
+        public float ReprojectDistance(
+            int tileIndex,
+            float queueOffset,
+            float headInset,
+            float intersectionProgress01,
+            float linkProgress01,
+            float roundaboutProgress01,
+            float roundaboutTransitionSpan)
+        {
+            int current = Mathf.Clamp(
+                tileIndex,
+                0,
+                Mathf.Max(0, TileCount - 1));
+            if (roundaboutProgress01 >= 0f)
+            {
+                float span = ClampTransitionSpan(roundaboutTransitionSpan);
+                return DistanceAtPhase(Mathf.Lerp(
+                    current - span,
+                    current + span,
+                    Mathf.Clamp01(roundaboutProgress01)));
+            }
+
+            if (intersectionProgress01 >= 0f)
+            {
+                return Mathf.Clamp(
+                    DistanceAtTile(current) +
+                    (intersectionProgress01 - 0.5f) * _tileSize,
+                    0f,
+                    Length);
+            }
+
+            if (linkProgress01 > 0f && current + 1 < TileCount)
+            {
+                return Mathf.Lerp(
+                    DistanceAtTile(current),
+                    DistanceAtTile(current + 1),
+                    Mathf.Clamp01(linkProgress01));
+            }
+
+            return DistanceAtQueueOffset(
+                current,
+                queueOffset,
+                headInset);
         }
 
         // Rebuild-safe mapping from Sim's logical position to this bake's arc-length axis.
@@ -278,35 +332,14 @@ namespace CityFlow.ViewKit
             float linkProgress01,
             float roundaboutProgress01,
             float roundaboutTransitionSpan)
-        {
-            int current = Mathf.Clamp(tileIndex, 0, Mathf.Max(0, TileCount - 1));
-            if (roundaboutProgress01 >= 0f)
-            {
-                float span = ClampTransitionSpan(roundaboutTransitionSpan);
-                return DistanceAtPhase(Mathf.Lerp(
-                    current - span,
-                    current + span,
-                    Mathf.Clamp01(roundaboutProgress01)));
-            }
-
-            if (intersectionProgress01 >= 0f)
-            {
-                return Mathf.Clamp(
-                    DistanceAtTile(current) + (intersectionProgress01 - 0.5f) * _tileSize,
-                    0f,
-                    Length);
-            }
-
-            if (linkProgress01 > 0f && current + 1 < TileCount)
-            {
-                return Mathf.Lerp(
-                    DistanceAtTile(current),
-                    DistanceAtTile(current + 1),
-                    Mathf.Clamp01(linkProgress01));
-            }
-
-            return DistanceAtQueueSlot(current, queueSlot, slotGap, headInset);
-        }
+            => ReprojectDistance(
+                tileIndex,
+                Mathf.Max(0, queueSlot) * Mathf.Max(0f, slotGap),
+                headInset,
+                intersectionProgress01,
+                linkProgress01,
+                roundaboutProgress01,
+                roundaboutTransitionSpan);
         // MainCityView.EvaluateVehiclePose(L1646-1689) + 로터리 궤도 오버라이드(L1419-1439,
         // TryRoundaboutOrbit L1794-1817)의 순수 재현.
         private static void PoseAt(

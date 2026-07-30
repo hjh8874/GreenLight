@@ -104,6 +104,15 @@ namespace CityFlow.Sim.Tests
             Assert.That(prefab, Is.Not.Null);
             Assert.That(scene, Is.Not.Null);
             Assert.That(busConfig, Is.Not.Null);
+            Assert.That(
+                busConfig.VehicleFootprintProfile,
+                Is.Not.Null);
+            Assert.That(
+                busConfig.VehicleFootprint.SizeClass,
+                Is.EqualTo(VehicleSizeClass.Large));
+            Assert.That(
+                busConfig.VehicleLengthTiles,
+                Is.EqualTo(0.8f).Within(0.0001f));
             Assert.That(emergencyConfig, Is.Not.Null);
             Assert.That(busStopData, Is.Not.Null);
             Assert.That(
@@ -233,7 +242,10 @@ namespace CityFlow.Sim.Tests
             Assert.That(
                 source.Place(alternativeApproach, TileType.Road),
                 Is.True);
-            Assert.That(source.Remove(primaryRoad), Is.True);
+            Assert.That(
+                source.Remove(primaryRoad),
+                Is.False,
+                "The road between paired platforms must remain installed.");
             Assert.That(source.BusStopTiles, Does.Contain(stop));
 
             SimSaveData snapshot = source.CreateSnapshot();
@@ -253,7 +265,7 @@ namespace CityFlow.Sim.Tests
                     TileType.House),
                 Is.False);
             Assert.That(
-                restored.Remove(alternativeRoad),
+                restored.Remove(primaryRoad),
                 Is.False);
         }
 
