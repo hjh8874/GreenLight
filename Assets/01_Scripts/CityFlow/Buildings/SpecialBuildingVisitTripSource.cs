@@ -164,6 +164,14 @@ namespace CityFlow.Buildings
                 return;
             }
 
+            int rewardCoins = 0;
+            if (buildings != null &&
+                buildings.TryGetBuildOption(statistics.BuildingId,
+                    out SpecialBuildingBuildOption option))
+            {
+                rewardCoins = option.CoinPerVisit;
+            }
+
             int tripCount = maximumVisualTripsPerBuildingPerDay <= 0
                 ? statistics.PlannedToday
                 : Mathf.Min(
@@ -187,7 +195,8 @@ namespace CityFlow.Buildings
                             statistics.Anchor,
                             statistics.Day,
                             visitIndex,
-                            scheduledHour)))
+                            scheduledHour,
+                            rewardCoins)))
                 {
                     scheduledCount++;
                 }
