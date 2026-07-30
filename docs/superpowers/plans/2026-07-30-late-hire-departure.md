@@ -40,7 +40,7 @@ if (car.AwaitingNextWave && CommuteWindow.InWindow(hour, car.DepartHomeHour, car
   **출근 시각이 이미 지난 시각에 채용되면 다음 날 아침까지 잠긴다** (실시간 최대 ~10분 무반응)
 - `SnapCar`(`:357`): `AwaitingNextWave`면 무조건 `ParkedHome`
 
-- [ ] **Step 1 (RED): 테스트 3건 추가** — 기존 `Build` 헬퍼 스타일을 따르되 `deferNewAssignments: true`로 리빌드하는 로컬 구성을 쓴다:
+- [x] **Step 1 (RED): 테스트 3건 추가** — 기존 `Build` 헬퍼 스타일을 따르되 `deferNewAssignments: true`로 리빌드하는 로컬 구성을 쓴다:
 
 ```csharp
         // 지각 출근(2026-07-30 환 결정): 출근 시각이 지난 낮 시간대에 채용된 신규 차는
@@ -92,8 +92,8 @@ if (car.AwaitingNextWave && CommuteWindow.InWindow(hour, car.DepartHomeHour, car
 > `Rebuild` 실제 시그니처(인자명·순서)는 파일을 열어 맞춘다. RED 기대: 1번 테스트가
 > `AwaitingNextWave == true`로 **단정 실패** (컴파일은 된다 — 신규 API 없음).
 
-- [ ] **Step 2 (RED 확인):** `refresh_unity` → `read_console` 0 → `run_tests` — 1번 실패·2/3번 통과 확인.
-- [ ] **Step 3 (구현):** `SnapNewToHour` 루프에서 `SnapCar` 호출 **직전**에 추가:
+- [x] **Step 2 (RED 확인):** `refresh_unity` → `read_console` 0 → `run_tests` — 1번 실패·2/3번 통과 확인.
+- [x] **Step 3 (구현):** `SnapNewToHour` 루프에서 `SnapCar` 호출 **직전**에 추가:
 
 ```csharp
                 // 지각 출근(2026-07-30 환 결정): 채용 시각이 [개인 출근 시각, 퇴근창 시작) 안이면
@@ -107,8 +107,8 @@ if (car.AwaitingNextWave && CommuteWindow.InWindow(hour, car.DepartHomeHour, car
                 }
 ```
 
-- [ ] **Step 4 (GREEN):** 게이트 3단 — 기준선 423 + 신규 3 = **426/426**.
-- [ ] **Step 5 (커밋):**
+- [x] **Step 4 (GREEN):** 게이트 3단 — 기준선 423 + 신규 3 = **426/426**.
+- [x] **Step 5 (커밋):**
 
 ```bash
 git add Assets/01_Scripts/CityFlow/Sim/CommuteScheduler.cs Assets/Tests/EditMode/CommuteSchedulerTests.cs
@@ -117,4 +117,4 @@ git commit  # [Feat] 신규 채용 지각 출근 — 낮 채용은 그날 출발
 
 커밋 본문에 #182 리베이스 해결법(위 코드 블록)을 그대로 실어라.
 
-- [ ] **Step 6:** worker_done — RED 증거(단정 실패 메시지), 최종 426/426, 커밋 해시.
+- [x] **Step 6:** worker_done — RED 증거(단정 실패 메시지), 최종 426/426, 커밋 해시.
