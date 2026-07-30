@@ -74,6 +74,7 @@ namespace CityFlow.Content.Transit
         private readonly List<Vector2Int> stopAccessRoads = new();
         private readonly List<Vector2Int> currentRoadPath = new();
         private readonly List<Vector2Int> candidateRoadPath = new();
+        private readonly List<Vector2Int> validationRoadPath = new();
 
         private readonly Queue<Vector2Int> searchQueue = new();
         private readonly Dictionary<Vector2Int, Vector2Int> cameFrom = new();
@@ -144,6 +145,12 @@ namespace CityFlow.Content.Transit
             set => roadsideStopSetbackTiles =
                 Mathf.Max(0, value);
         }
+
+        public bool AllowUnscheduledStopArrival
+        {
+            get;
+            set;
+        } = true;
 
         public Func<Vector2Int, bool> RoadsideStopFilter
         {
@@ -288,6 +295,82 @@ namespace CityFlow.Content.Transit
 
             return stops.Count >= 2 ||
                    (stops.Count == 1 && loopRoute);
+        }
+
+        public bool TryGetAccessRoadForStop(
+            Vector2Int stop,
+            out Vector2Int accessRoad)
+        {
+            if (!isInitialized)
+            {
+                accessRoad = default;
+                return false;
+            }
+
+            return TryFindAccessRoad(stop, out accessRoad);
+        }
+
+        public bool TryFindReachableRoadsideStop(
+            Vector2Int startRoad,
+            Vector2Int destinationStop,
+            bool preventImmediateReverse,
+            Vector2Int forbiddenFirstStep,
+            out Vector2Int arrivalRoad,
+            out Vector2Int arrivalPreviousRoad)
+        {
+            arrivalRoad = default;
+            arrivalPreviousRoad = default;
+            if (!isInitialized || !IsRoad(startRoad))
+            {
+                return false;
+            }
+
+            bool found =
+                TryFindRoadsidePath(
+                    startRoad,
+                    destinationStop,
+                    validationRoadPath,
+                    preventImmediateReverse,
+                    forbiddenFirstStep,
+                    out arrivalRoad) &&
+                validationRoadPath.Count > 1;
+            if (found)
+            {
+                arrivalPreviousRoad =
+                    validationRoadPath[
+                        validationRoadPath.Count - 2];
+            }
+
+            return found;
+        }
+
+        public bool CanReachStopFromRoad(
+            Vector2Int startRoad,
+            Vector2Int destinationStop,
+            bool preventImmediateReverse,
+            Vector2Int forbiddenFirstStep)
+        {
+            if (!isInitialized ||
+                !IsRoad(startRoad) ||
+                !TryFindAccessRoad(
+                    destinationStop,
+                    out Vector2Int destinationRoad))
+            {
+                return false;
+            }
+
+            return startRoad == destinationRoad
+                ? TryFindRoadCycle(
+                    startRoad,
+                    validationRoadPath,
+                    preventImmediateReverse,
+                    forbiddenFirstStep)
+                : TryFindRoadPath(
+                    startRoad,
+                    destinationRoad,
+                    validationRoadPath,
+                    preventImmediateReverse,
+                    forbiddenFirstStep);
         }
 
         public bool ReconfigureLoopAtCurrentStop(
@@ -639,6 +722,14 @@ namespace CityFlow.Content.Transit
                 GetNextStopIndex(),
                 roadTile);
 
+            int scheduledStopIndex = GetNextStopIndex();
+            if (!AllowUnscheduledStopArrival &&
+                stopIndex != scheduledStopIndex)
+            {
+                stopIndex = -1;
+                return false;
+            }
+
             if (stopIndex < 0)
             {
                 return false;
@@ -650,7 +741,6 @@ namespace CityFlow.Content.Transit
              * While leaving the first occurrence, its shared access road
              * must not be mistaken for the final occurrence.
              */
-            int scheduledStopIndex = GetNextStopIndex();
             if (stopIndex != scheduledStopIndex &&
                 currentStopIndex >= 0 &&
                 currentStopIndex < stops.Count &&
@@ -698,9 +788,21 @@ namespace CityFlow.Content.Transit
                 return true;
             }
 
+            if (!AllowUnscheduledStopArrival)
+            {
+                return false;
+            }
+
             for (int i = 0; i < stops.Count; i++)
             {
                 if (i == scheduledStopIndex)
+                {
+                    continue;
+                }
+
+                if (currentStopIndex >= 0 &&
+                    currentStopIndex < stops.Count &&
+                    stops[i] == stops[currentStopIndex])
                 {
                     continue;
                 }
