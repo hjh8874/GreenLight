@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.Gameplay.Research;
@@ -79,4 +80,70 @@ public class ResearchConditionTests
         p.FindPropertyRelative("displayName").stringValue = id;
         p.FindPropertyRelative("threshold").intValue = 1;
     }
+
+    [Test]
+    public void EvaluatePendingResearch_UnlocksSatisfied_SkipsLocked_NeverRelocks()
+    {
+        var owner = new GameObject("research");
+        try
+        {
+            var service = owner.AddComponent<ResearchUnlockService>();
+            var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+            ConfigureCatalog(catalog,
+                ("research_pop20", ResearchConditionKind.Population, 20),
+                ("research_arr60", ResearchConditionKind.DailyArrivals, 60));
+            SetPrivateField(service, "catalog", catalog);
+
+            var services = new CityFlowServices(new SimEventHub(), null, null);
+            service.Initialize(services);
+
+            var unlocked = new List<string>();
+            service.ResearchUnlocked += id => unlocked.Add(id);
+
+            // 인구만 충족하는 입력을 주입해 평가
+            SetTestInputs(service, population: 25, arrivals: 10);
+            service.EvaluatePendingResearch();
+            CollectionAssert.AreEquivalent(new[] { "research_pop20" }, unlocked);
+            Assert.IsTrue(service.IsUnlocked("research_pop20"));
+            Assert.IsFalse(service.IsUnlocked("research_arr60"), "미달 조건은 잠긴 채");
+
+            // 재평가 — 이미 열린 것은 다시 이벤트가 나가지 않는다
+            service.EvaluatePendingResearch();
+            Assert.AreEqual(1, unlocked.Count, "이중 발화 금지");
+
+            // 통행량 충족 → 남은 것 해금
+            SetTestInputs(service, population: 25, arrivals: 60);
+            service.EvaluatePendingResearch();
+            CollectionAssert.AreEquivalent(
+                new[] { "research_pop20", "research_arr60" }, unlocked);
+        }
+        finally { Object.DestroyImmediate(owner); }
+    }
+
+    static void ConfigureCatalog(ResearchCatalogSO catalog,
+        params (string id, ResearchConditionKind kind, int threshold)[] rows)
+    {
+        var so = new UnityEditor.SerializedObject(catalog);
+        var list = so.FindProperty("entries");
+        list.arraySize = rows.Length;
+        for (int i = 0; i < rows.Length; i++)
+        {
+            var p = list.GetArrayElementAtIndex(i);
+            p.FindPropertyRelative("researchId").stringValue = rows[i].id;
+            p.FindPropertyRelative("displayName").stringValue = rows[i].id;
+            p.FindPropertyRelative("conditionKind").enumValueIndex = (int)rows[i].kind;
+            p.FindPropertyRelative("threshold").intValue = rows[i].threshold;
+        }
+        so.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    static void SetPrivateField(object target, string field, object value) =>
+        target.GetType().GetField(field,
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Instance)
+            .SetValue(target, value);
+
+    static void SetTestInputs(ResearchUnlockService service, int population, int arrivals) =>
+        service.inputsOverrideForTest = () =>
+            new ResearchConditionInputs(arrivals, population, null);
 }
