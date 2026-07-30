@@ -331,7 +331,8 @@ namespace CityFlow.Sim
                 to,
                 VehicleTripPurpose.SpecialBuildingVisit,
                 Request.BuildingId,
-                0);
+                // 보상은 방문 leg(0: 집→건물)에만 싣는다. 귀가는 0 — 통근 outbound 규칙과 동일.
+                legIndex == 0 ? Request.RewardCoins : 0);
         }
     }
 }

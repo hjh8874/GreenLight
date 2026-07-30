@@ -227,7 +227,8 @@ namespace CityFlow.Sim.Tests
                     V(6, 0),
                     1L,
                     0,
-                    1f)));
+                    1f,
+                    rewardCoins: 0)));
             engine.SetGameTime(1L, 1f);
 
             for (int tick = 0; tick < 120; tick++)

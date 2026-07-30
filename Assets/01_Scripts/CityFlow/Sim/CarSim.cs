@@ -1502,6 +1502,9 @@ namespace CityFlow.Sim
         {
             VehicleTripSnapshot completed = journey.CompleteCurrentLeg();
             events.QueueTripArrival(new VehicleTripArrivedEvent(completed));
+            // 방문 도착 보상. ArrivalEvent 를 타면 주간 적립·HUD·피드·퀘스트가 기존 구독으로 따라온다.
+            if (completed.RewardCoins > 0)
+                events.QueueArrival(new ArrivalEvent(completed.Destination, completed.RewardCoins));
             ResetCarRuntimeState(carId);
 
             if (journey.TryBeginContinuation())
