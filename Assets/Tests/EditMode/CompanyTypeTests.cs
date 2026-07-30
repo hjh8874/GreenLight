@@ -118,6 +118,27 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(SimConfig.Default().OfficeCapacity, plain.Capacity, "유형 없으면 SimConfig 폴백");
         }
 
+        // 배치 → DemandMap → 창 조회 사슬. CarSim 은 이 조회를 스케줄러에 콜백으로 넘긴다.
+        [Test]
+        public void CommuteWindowAt_UsesTypeWindow_AndFallsBackWithoutType()
+        {
+            SimEngine engine = NewEngineWithTypes();
+            Assert.IsTrue(engine.Place(new Vector2Int(0, 0), TileType.Office,
+                PlacementDirection.North, "factory"));
+            Assert.IsTrue(engine.Place(new Vector2Int(4, 0), TileType.Office));
+
+            CommuteWindow f = engine.CommuteWindowAtForTest(new Vector2Int(0, 0));
+            Assert.AreEqual("factory", f.CompanyTypeId);
+            Assert.AreEqual(20f, f.StartHour, "공장 출근 20시");
+            Assert.AreEqual(5f, f.EndHour, "공장 퇴근 5시 — 자정 넘김");
+
+            SimConfig cfg = SimConfig.Default();
+            CommuteWindow plain = engine.CommuteWindowAtForTest(new Vector2Int(4, 0));
+            Assert.AreEqual(string.Empty, plain.CompanyTypeId, "유형 없으면 폴백 창");
+            Assert.AreEqual(cfg.MorningStartHour, plain.StartHour);
+            Assert.AreEqual(cfg.EveningStartHour, plain.EndHour);
+        }
+
         // ApplyConfig 재적용이 유형 정원을 SimConfig 상한으로 깎지 않는다(조용한 축소 방지).
         [Test]
         public void ApplyConfig_KeepsTypeCapacity()

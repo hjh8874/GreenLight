@@ -22,6 +22,13 @@ namespace CityFlow.Sim
             EndWindow = endWindow;
         }
 
+        // 유형이 없는 목적지(School 등)·유형 표 미주입 상황의 폴백 창. 정의를 한 곳에 둔다 —
+        // SimEngine 과 DemandMap 이 각자 만들면 두 값이 갈린다.
+        public static CommuteWindow FromConfig(in SimConfig config) => new CommuteWindow(
+            string.Empty,
+            config.MorningStartHour, config.MorningEndHour - config.MorningStartHour,
+            config.EveningStartHour, config.EveningEndHour - config.EveningStartHour);
+
         // 반개 구간 [start, end) 판정. start > end 면 자정을 넘는 구간으로 해석한다.
         // 순수 함수 — 결정론적이고 테스트하기 쉽다.
         public static bool InWindow(float hour, float start, float end) =>

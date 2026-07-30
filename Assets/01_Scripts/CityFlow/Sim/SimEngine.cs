@@ -1694,10 +1694,7 @@ namespace CityFlow.Sim
         }
 
         // 유형 없는 목적지(School 등)·표 미주입 상황의 폴백 — 종전 전역 창 그대로.
-        internal CommuteWindow FallbackCommuteWindow() => new CommuteWindow(
-            string.Empty,
-            _config.MorningStartHour, _config.MorningEndHour - _config.MorningStartHour,
-            _config.EveningStartHour, _config.EveningEndHour - _config.EveningStartHour);
+        internal CommuteWindow FallbackCommuteWindow() => CommuteWindow.FromConfig(_config);
 
         internal int CompanyTypeCountForTest => _companyTypes.Count;
 
@@ -1721,11 +1718,13 @@ namespace CityFlow.Sim
             _demand.RegisterCompany(
                 tile, type, _simTime,
                 capacityOverride: null,
-                companyTypeId: info.Window.CompanyTypeId,
-                companyTypeCapacity: info.Capacity);
+                companyType: info);
         }
 
         internal bool TryGetCompanyTypeIdForTest(Vector2Int tile, out string companyTypeId) =>
             _demand.TryGetCompanyTypeId(tile, out companyTypeId);
+
+        internal CommuteWindow CommuteWindowAtForTest(Vector2Int tile) =>
+            _demand.CommuteWindowAt(tile);
     }
 }

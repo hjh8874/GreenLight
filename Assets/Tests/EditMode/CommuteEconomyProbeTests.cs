@@ -15,12 +15,12 @@ namespace CityFlow.Sim.Tests
         static void Rebuild(CommuteScheduler sched, List<Vector2Int> homes, List<Vector2Int> works, in SimConfig cfg)
         {
             int capacity = cfg.OfficeCapacity;
+            CommuteWindow window = CommuteWindow.FromConfig(cfg);
             sched.Rebuild(homes, works,
                 workCapacityFor: _ => capacity,
+                windowFor: _ => window,
                 homeSlots: cfg.CarsPerHouse,
-                maxCars: cfg.MaxSimCars,
-                morningStart: cfg.MorningStartHour, morningEnd: cfg.MorningEndHour,
-                eveningStart: cfg.EveningStartHour, eveningEnd: cfg.EveningEndHour);
+                maxCars: cfg.MaxSimCars);
         }
 
         // 한 사무실로 30집이 몰려도 단일 회사 정원(6)으로 캡.
@@ -109,8 +109,9 @@ namespace CityFlow.Sim.Tests
             foreach (var d in dm.Demands) { homes.Add(d.Source); works.Add(d.Sink); }
 
             var sched = new CommuteScheduler();
-            sched.Rebuild(homes, works, _ => companyCapacity, cfg.CarsPerHouse, cfg.MaxSimCars,
-                cfg.MorningStartHour, cfg.MorningEndHour, cfg.EveningStartHour, cfg.EveningEndHour);
+            CommuteWindow window = CommuteWindow.FromConfig(cfg);
+            sched.Rebuild(homes, works, _ => companyCapacity, _ => window,
+                cfg.CarsPerHouse, cfg.MaxSimCars);
 
             long sum = 0;
             int max = 0;

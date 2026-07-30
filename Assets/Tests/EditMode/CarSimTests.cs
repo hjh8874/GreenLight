@@ -9,6 +9,14 @@ namespace CityFlow.Sim.Tests
     {
         static Vector2Int V(int x, int y) => new Vector2Int(x, y);
 
+        // 종전 전역 창(morningStart/End·eveningStart/End)을 콜백 하나로 재현한다.
+        static CommuteWindow Window(
+            float morningStart, float morningEnd, float eveningStart, float eveningEnd) =>
+            new CommuteWindow(
+                string.Empty,
+                morningStart, morningEnd - morningStart,
+                eveningStart, eveningEnd - eveningStart);
+
         static SimConfig Cfg()
         {
             SimConfig cfg = SimConfig.Default();
@@ -39,12 +47,9 @@ namespace CityFlow.Sim.Tests
                 homes,
                 works,
                 workCapacityFor: _ => 6,
+                windowFor: _ => Window(6f, 7f, 17f, 18f),
                 homeSlots: 2,
-                maxCars: 96,
-                morningStart: 6f,
-                morningEnd: 7f,
-                eveningStart: 17f,
-                eveningEnd: 18f);
+                maxCars: 96);
 
             Assert.AreEqual(2, scheduler.Cars.Count);
             Assert.AreEqual(0, scheduler.Cars[0].HomeSlot);
@@ -755,12 +760,9 @@ namespace CityFlow.Sim.Tests
                 sources,
                 sinks,
                 _ => 1,
+                _ => Window(6f, 7f, 17f, 18f),
                 homeSlots: 1,
                 maxCars: 4,
-                morningStart: 6f,
-                morningEnd: 7f,
-                eveningStart: 17f,
-                eveningEnd: 18f,
                 transientStorageCapacity: 2);
 
             Assert.AreEqual(
@@ -780,12 +782,9 @@ namespace CityFlow.Sim.Tests
                 sources,
                 sinks,
                 _ => 1,
+                _ => Window(6f, 7f, 17f, 18f),
                 homeSlots: 1,
                 maxCars: 4,
-                morningStart: 6f,
-                morningEnd: 7f,
-                eveningStart: 17f,
-                eveningEnd: 18f,
                 transientStorageCapacity: 2);
 
             Assert.AreEqual(
@@ -870,12 +869,9 @@ namespace CityFlow.Sim.Tests
                 homes,
                 works,
                 _ => 1,
+                _ => Window(6f, 7f, 17f, 18f),
                 1,
                 10,
-                6f,
-                7f,
-                17f,
-                18f,
                 transientStorageCapacity: 2);
 
             Assert.AreEqual(10, scheduler.Cars.Count);

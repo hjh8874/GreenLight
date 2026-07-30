@@ -445,12 +445,9 @@ namespace CityFlow.Sim
                 _sources,
                 _sinks,
                 demands.WorkCapacityAt,
+                demands.CommuteWindowAt,   // 시각 인자 4개 대체 — 창의 출처를 목적지 하나로 모은다
                 Math.Max(1, _cfg.CarsPerHouse),
                 Math.Min(_enqueued.Length, Math.Max(1, _cfg.MaxSimCars)),
-                _cfg.MorningStartHour,
-                _cfg.MorningEndHour,
-                _cfg.EveningStartHour,
-                _cfg.EveningEndHour,
                 deferNewAssignments: _populationInitialized,
                 purposes: _routinePurposes,
                 transientStorageCapacity: _specialTransientCapacity);

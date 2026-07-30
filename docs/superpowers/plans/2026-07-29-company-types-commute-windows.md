@@ -746,7 +746,7 @@ Expected: 컴파일 에러 — `DepartHomeHourForTest` 미정의
 - [ ] **Step 6: 통과 확인**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **436/436 PASS** (435 + 신규 1)
+Expected: **438/438 PASS** (435 + 신규 3 — 유형별 창·자정 넘김 랩어라운드·창 조회 사슬)
 
 기존 `CommuteSchedulerTests`가 옛 시그니처로 `Rebuild`를 부르면 컴파일이 깨진다. **콜백을 넘기도록 갱신한다** — 폴백 창을 돌려주는 람다 한 줄이면 기존 동작이 그대로 재현된다.
 
@@ -822,7 +822,7 @@ git commit -m "[Feat] Rebuild 시각 인자 4개를 창 콜백으로 대체 — 
 
 `ConstructionSaveData`에 `public string CompanyTypeId;`를 더하고 `CreateSnapshot`/`RestoreSnapshot` 양쪽에 배선한다. **구세이브는 이 필드가 null이므로 폴백 경로가 살아 있어야 한다.**
 
-- [ ] **Step 5: 통과 확인** — `run_tests` **437/437 PASS**
+- [ ] **Step 5: 통과 확인** — `run_tests` **439/439 PASS**
 
 - [ ] **Step 6: 커밋**
 
@@ -902,7 +902,7 @@ Unity 메뉴 `Assets > Create > CityFlow > Content > Company Type` 으로 3개, 
 - [ ] **Step 5: 검증 — 에셋만 바뀌므로 테스트는 무변경**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **437/437 PASS** (테스트는 유형 표를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
+Expected: **439/439 PASS** (테스트는 유형 표를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
 
 라이브 확인은 하루 12분 전환 이후다 — 지금은 창 4시간이 실시간 4초라 세 유형이 갈리는 게 눈에 안 보인다.
 
@@ -921,7 +921,7 @@ git commit -m "[Feat] 회사 유형 3종 에셋 — 사무실/물류창고/공�
 
 ## 완료 기준
 
-- EditMode `CityFlow.Sim.Tests` **437/437 green** (기준선 423 + 신규 14)
+- EditMode `CityFlow.Sim.Tests` **439/439 green** (기준선 423 + 신규 16)
 - 컴파일 `error CS` 0
 - 통합 씬 파일이 커밋에 **없음**
 - 신규 `.cs`의 `.cs.meta` 전부 커밋됨

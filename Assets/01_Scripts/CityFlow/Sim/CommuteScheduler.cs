@@ -19,6 +19,9 @@ namespace CityFlow.Sim
     {
         public Vector2Int Home, Work;
         public int RouteIndex, WorkSlot, HomeSlot;
+        // 근무지의 회사 유형 id. 창의 출처는 Rebuild 콜백이고 이 필드는 차 생애 동안의 캐시다
+        // (설계 결정 ① — 디버깅·추적용. 판정에는 아래 시각 필드만 쓴다).
+        public string CompanyTypeId;
         public float DepartHomeHour, DepartWorkHour;
         // 이 차의 퇴근창 [EveningStartHour, EveningEndHour). Start > End 면 자정을 넘는다.
         // 판정 기준을 전역 창이 아니라 차 개별 값으로 두는 이유 = 유형별 근무시간(야간조) 대비.
@@ -121,15 +124,20 @@ namespace CityFlow.Sim
         // 새 목록에도 있으면 차 객체를 보존한다(State·Distance·DepartHour 유지, RouteIndex만 갱신).
         // 무관한 건물 건설/해체가 이동·주차 중인 차를 리셋하지 않게 하는 핵심.
         // 슬롯 유일성 불변식: (Work, WorkSlot)/(Home, HomeSlot)은 점유 셋이 절대 보장.
+        // windowFor: 목적지 타일 → 그 회사 유형의 출퇴근 창. 시각 인자 4개를 대체한다 —
+        // 창의 출처를 하나로 모아 이중 권한을 없앤다(설계 결정 ②).
         public void Rebuild(IReadOnlyList<Vector2Int> sources, IReadOnlyList<Vector2Int> sinks,
-            Func<Vector2Int, int> workCapacityFor, int homeSlots, int maxCars,
-            float morningStart, float morningEnd, float eveningStart, float eveningEnd,
+            Func<Vector2Int, int> workCapacityFor,
+            Func<Vector2Int, CommuteWindow> windowFor,
+            int homeSlots, int maxCars,
             bool deferNewAssignments = false,
             IReadOnlyList<VehicleTripPurpose> purposes = null,
             int transientStorageCapacity = 0)
         {
             if (workCapacityFor == null)
                 throw new ArgumentNullException(nameof(workCapacityFor));
+            if (windowFor == null)
+                throw new ArgumentNullException(nameof(windowFor));
 
             var activeTransients = new List<CommuteCar>();
             int reservedRoutineCount = 0;
@@ -223,14 +231,20 @@ namespace CityFlow.Sim
                     continue;
                 }
 
+                CommuteWindow window = windowFor(sinks[i]);
                 var fresh = new CommuteCar
                 {
                     Home = sources[i], Work = sinks[i], RouteIndex = i,
                     WorkSlot = workSlot, HomeSlot = homeSlot,
-                    DepartHomeHour = StaggerHour(sources[i], morningStart, morningEnd),
-                    DepartWorkHour = StaggerHour(sources[i], eveningStart, eveningEnd),
-                    EveningStartHour = eveningStart,
-                    EveningEndHour = eveningEnd,
+                    CompanyTypeId = window.CompanyTypeId,
+                    // 창이 자정을 넘으면 끝 시각이 24를 넘는다(예: [23, 27)). 시각은 [0,24) 이므로
+                    // 감싸 넣지 않으면 게임시간과 절대 일치하지 않아 차가 조용히 안 움직인다.
+                    DepartHomeHour = Wrap24(StaggerHour(
+                        sources[i], window.StartHour, window.StartHour + window.StartWindow)),
+                    DepartWorkHour = Wrap24(StaggerHour(
+                        sources[i], window.EndHour, window.EndHour + window.EndWindow)),
+                    EveningStartHour = Wrap24(window.EndHour),
+                    EveningEndHour = Wrap24(window.EndHour + window.EndWindow),
                     State = CarState.ParkedHome,
                     AwaitingNextWave = deferNewAssignments,
                 };
@@ -416,6 +430,13 @@ namespace CityFlow.Sim
             }
 
             car.ReleaseTransient();
+        }
+
+        // 시각을 [0,24)로 감싼다. 자정을 넘는 창은 끝 시각이 24 이상으로 계산된다.
+        public static float Wrap24(float hour)
+        {
+            float wrapped = hour % 24f;
+            return wrapped < 0f ? wrapped + 24f : wrapped;
         }
 
         public static float StaggerHour(Vector2Int home, float windowStart, float windowEnd)
