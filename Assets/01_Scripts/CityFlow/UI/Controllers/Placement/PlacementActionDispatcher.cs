@@ -88,7 +88,8 @@ namespace CityFlow.UI.Controllers.Placement
             TileType currentType,
             PlacementDirection direction,
             CityFlowServices services,
-            string specialBuildingId = null)
+            string specialBuildingId = null,
+            string companyTypeId = null)
         {
             if (_useFakeMode)
             {
@@ -152,7 +153,9 @@ namespace CityFlow.UI.Controllers.Placement
                             currentType,
                             direction,
                             currentType == TileType.Office
-                                ? DefaultCompanyTypeId
+                                ? (string.IsNullOrWhiteSpace(companyTypeId)
+                                    ? DefaultCompanyTypeId
+                                    : companyTypeId.Trim())
                                 : null);
                     if (placed)
                     {
