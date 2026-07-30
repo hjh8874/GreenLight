@@ -699,6 +699,7 @@ namespace CityFlow.Sim
         public IReadOnlyList<List<Vector2Int>> ActiveRoutes => _carSim.ActiveRoutes;
         public IReadOnlyList<List<Vector2Int>> ActiveReturnRoutes => _carSim.ActiveReturnRoutes;
         public int ActiveVehicleCount => _carSim.SimulatedVehicleCount;
+        public int LastDayArrivalCount => _stats.LastDayArrivalCount;
         public int PendingTripCount => _carSim.PendingTripCount;
         public int ActiveTripCount => _carSim.ActiveTripCount;
         public CarSnapshot GetCarSnapshot(int index) => _carSim.GetCar(index);
