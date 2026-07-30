@@ -33,8 +33,10 @@
 |---|---|---|
 | `Assets/01_Scripts/CityFlow/Sim/CommuteWindow.cs` | 출퇴근 창 값 + 자정 순환 판정 순수 함수 | **신규** |
 | `Assets/01_Scripts/CityFlow/Sim/CommuteScheduler.cs` | 통근 상태기 | 수정 — 판정을 차 개별 값으로, `Rebuild` 시그니처 |
-| `Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeSO.cs` | 회사 유형 1종 정의 | **신규** |
-| `Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeCatalogSO.cs` | 유형 카탈로그(id 조회) | **신규** |
+| `Assets/01_Scripts/CityFlow/Sim/CommuteWindow.cs` | `CompanyTypeInfo` — Sim 쪽 유형 표현 | 수정 (Task 3) |
+| `Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeSO.cs` | 회사 유형 1종 정의(오서링, `Assembly-CSharp`) | **신규** (Task 7) |
+| `Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeCatalogSO.cs` | 유형 카탈로그(id 조회, 오서링) | **신규** (Task 7) |
+| `Assets/01_Scripts/CityFlow/Bootstrap/CityBootstrap.cs` | SO → `CompanyTypeInfo` 배선 | 수정 (Task 7) |
 | `Assets/01_Scripts/CityFlow/Sim/DemandMap.cs` | 회사 인스턴스 상태 | 수정 — `CompanyTypeId` 보관 |
 | `Assets/01_Scripts/CityFlow/Sim/SimEngine.cs` | 파사드 | 수정 — `Place` 유형 인자·거부, 창 조회 제공 |
 | `Assets/01_Scripts/CityFlow/Sim/CarSim.cs` | `Rebuild` 호출부 | 수정 — 콜백 전달 |
@@ -355,17 +357,34 @@ git commit -m "[Feat] 출퇴근 판정을 차 개별 퇴근창 기준으로 — 
 
 ---
 
-### Task 3: `CompanyTypeSO` + 카탈로그
+### Task 3: Sim 쪽 유형 표 — `CompanyTypeInfo` + `SimEngine.SetCompanyTypes`
+
+> **계획 정정 (2026-07-30, 어셈블리 그래프 확인 후).** 초안은 `SimEngine`이 `CompanyTypeCatalogSO`를 직접
+> 들고 `SetCompanyTypeCatalog(catalog)`로 주입받게 했다. **컴파일이 불가능하다.**
+> `CityFlow.Sim.asmdef`의 `references`는 `["CityFlow.Contracts"]` 하나뿐이다. SO를 둘 후보 둘 다 막힌다 —
+> `Configs/Buildings/`(`BuildingCatalogSO`가 사는 곳)는 **asmdef 밖 = `Assembly-CSharp`**이고 asmdef
+> 어셈블리는 `Assembly-CSharp`를 참조할 수 없다. `Contents/Logic/` = `CityFlow.Content`는 Sim이 참조하지
+> 않으며 **진우 소유 영역**(`Contents/` 전체)이다.
+> 선례도 같은 방향이다 — `SimEngine`은 SO를 하나도 받지 않고 `SimConfig`(평범한 struct)만 받으며,
+> SO를 쓰는 기능(`SchoolBusService`·`SpecialBuildingService`·`EmergencyIncidentSystem`)은 전부 Sim **밖**에 있다.
+>
+> **정정안:** Sim은 평범한 구조체 표만 받는다(`CompanyTypeInfo`). SO 정의·3종 에셋·SO→구조체 변환 배선은
+> **Task 7로 이동**한다(배선 계층 = `Bootstrap/CityBootstrap.cs`, `Assembly-CSharp`).
+> 부수 효과로 Task 3~5가 전부 `CityFlow.Sim.Tests`에서 검증 가능해진다 — 초안 배치에서는 SO가
+> `Assembly-CSharp`에 있어 테스트 어셈블리가 볼 수 없었다(테스트 자체가 불가능했다).
 
 **Files:**
-- Create: `Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeSO.cs`
-- Create: `Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeCatalogSO.cs`
+- Modify: `Assets/01_Scripts/CityFlow/Sim/CommuteWindow.cs` (`CompanyTypeInfo` 추가)
+- Modify: `Assets/01_Scripts/CityFlow/Sim/SimEngine.cs` (유형 표 — **새 구역만 추가**, 남의 메서드는 손대지 않는다)
 - Test: `Assets/Tests/EditMode/CompanyTypeTests.cs` (신규)
 
 **Interfaces:**
 - Produces:
-  - `CompanyTypeSO` — public 필드 `companyTypeId`, `displayName`, `capacity`, `workStartHour`, `workStartWindow`, `workEndHour`, `workEndWindow`
-  - `CompanyTypeCatalogSO.TryGet(string id, out CompanyTypeSO definition)` / `IReadOnlyList<CompanyTypeSO> Types` / `int Count`
+  - `CompanyTypeInfo { CommuteWindow Window; int Capacity; }` — 정원 `<= 0`이면 유형 정원 미지정(기존 정원 규칙)
+  - `SimEngine.SetCompanyTypes(IReadOnlyList<CompanyTypeInfo> types)` — 배선 계층이 주입, 재주입은 표 교체
+  - `internal bool SimEngine.TryGetCompanyType(string id, out CompanyTypeInfo info)`
+  - `internal CommuteWindow SimEngine.FallbackCommuteWindow()` — 유형 없는 목적지(School 등)·미배선 상황
+  - `internal int SimEngine.CompanyTypeCountForTest`
   - Task 4·5가 쓴다.
 
 - [ ] **Step 1: 실패하는 테스트 작성**
@@ -373,43 +392,59 @@ git commit -m "[Feat] 출퇴근 판정을 차 개별 퇴근창 기준으로 — 
 `Assets/Tests/EditMode/CompanyTypeTests.cs`:
 
 ```csharp
-using CityFlow.Content;
 using NUnit.Framework;
-using UnityEngine;
 
 namespace CityFlow.Sim.Tests
 {
     public class CompanyTypeTests
     {
-        static CompanyTypeSO NewType(string id, float start, float end)
+        static CompanyTypeInfo NewType(string id, float start, float end, int capacity = 6) =>
+            new CompanyTypeInfo(new CommuteWindow(id, start, 4f, end, 4f), capacity);
+
+        [Test]
+        public void CompanyTypes_LookUpById_AndRejectUnknown()
         {
-            var so = ScriptableObject.CreateInstance<CompanyTypeSO>();
-            so.companyTypeId = id;
-            so.displayName = id;
-            so.capacity = 6;
-            so.workStartHour = start;
-            so.workStartWindow = 4f;
-            so.workEndHour = end;
-            so.workEndWindow = 4f;
-            return so;
+            var engine = new SimEngine(SimConfig.Default(), new SimEventHub());
+            engine.SetCompanyTypes(new[] { NewType("office", 6f, 17f), NewType("factory", 20f, 5f) });
+
+            Assert.IsTrue(engine.TryGetCompanyType("office", out CompanyTypeInfo office));
+            Assert.AreEqual(6f, office.Window.StartHour);
+            Assert.IsTrue(engine.TryGetCompanyType("factory", out CompanyTypeInfo factory));
+            Assert.AreEqual(20f, factory.Window.StartHour, "공장은 야간 출근");
+            Assert.AreEqual(5f, factory.Window.EndHour, "퇴근이 출근보다 이르다 = 자정을 넘는다");
+
+            Assert.IsFalse(engine.TryGetCompanyType("warehouse", out _), "없는 id는 false");
+            Assert.IsFalse(engine.TryGetCompanyType(null, out _), "null도 false");
+            Assert.IsFalse(engine.TryGetCompanyType("", out _), "빈 문자열도 false");
         }
 
         [Test]
-        public void Catalog_LooksUpById_AndRejectsUnknown()
+        public void FallbackWindow_ComesFromSimConfig()
         {
-            var catalog = ScriptableObject.CreateInstance<CompanyTypeCatalogSO>();
-            catalog.SetTypesForTest(new[] { NewType("office", 6f, 15f), NewType("factory", 20f, 5f) });
+            SimConfig cfg = SimConfig.Default();
+            var engine = new SimEngine(cfg, new SimEventHub());
 
-            Assert.AreEqual(2, catalog.Count);
-            Assert.IsTrue(catalog.TryGet("office", out CompanyTypeSO office));
-            Assert.AreEqual(6f, office.workStartHour);
-            Assert.IsTrue(catalog.TryGet("factory", out CompanyTypeSO factory));
-            Assert.AreEqual(20f, factory.workStartHour, "공장은 야간 출근");
-            Assert.AreEqual(5f, factory.workEndHour, "퇴근이 출근보다 이르다 = 자정을 넘는다");
+            CommuteWindow w = engine.FallbackCommuteWindow();
+            Assert.AreEqual(string.Empty, w.CompanyTypeId, "폴백은 무명 유형");
+            Assert.AreEqual(cfg.MorningStartHour, w.StartHour);
+            Assert.AreEqual(cfg.MorningEndHour - cfg.MorningStartHour, w.StartWindow);
+            Assert.AreEqual(cfg.EveningStartHour, w.EndHour);
+            Assert.AreEqual(cfg.EveningEndHour - cfg.EveningStartHour, w.EndWindow);
+        }
 
-            Assert.IsFalse(catalog.TryGet("warehouse", out _), "없는 id는 false");
-            Assert.IsFalse(catalog.TryGet(null, out _), "null도 false");
-            Assert.IsFalse(catalog.TryGet("", out _), "빈 문자열도 false");
+        [Test]
+        public void SetCompanyTypes_ReplacesTable_AndSkipsNamelessEntries()
+        {
+            var engine = new SimEngine(SimConfig.Default(), new SimEventHub());
+            engine.SetCompanyTypes(new[] { NewType("office", 6f, 17f), NewType("  ", 6f, 17f) });
+            Assert.AreEqual(1, engine.CompanyTypeCountForTest, "무명 유형은 표에 들어가지 않는다");
+
+            engine.SetCompanyTypes(new[] { NewType("factory", 20f, 5f) });
+            Assert.IsFalse(engine.TryGetCompanyType("office", out _), "재주입은 표를 교체한다");
+            Assert.IsTrue(engine.TryGetCompanyType("factory", out _));
+
+            engine.SetCompanyTypes(null);
+            Assert.AreEqual(0, engine.CompanyTypeCountForTest, "null 은 표를 비운다");
         }
     }
 }
@@ -417,125 +452,83 @@ namespace CityFlow.Sim.Tests
 
 - [ ] **Step 2: 실패 확인**
 
-Expected: 컴파일 에러 — `CompanyTypeSO` / `CompanyTypeCatalogSO` 미정의
+Expected: 컴파일 에러 — `CompanyTypeInfo` / `SetCompanyTypes` 미정의
 
-- [ ] **Step 3: SO 구현**
+- [ ] **Step 3: `CompanyTypeInfo` 추가**
 
-`CompanyTypeSO.cs`:
+`CommuteWindow.cs`에 함께 둔다(같은 개념 쌍 — `CommuteScheduler.cs`가 `CarState`·`CommuteCar`를 함께 두는 선례).
 
 ```csharp
-using UnityEngine;
-
-namespace CityFlow.Content
-{
-    // 회사 유형 1종. 시각은 게임시간 [0,24) 단위 — 하루 길이와 무관하다.
-    // workStartHour > workEndHour 면 자정을 넘는 근무다(예: 공장 20시 출근 5시 퇴근).
-    [CreateAssetMenu(
-        fileName = "CompanyType",
-        menuName = "CityFlow/Content/Company Type")]
-    public sealed class CompanyTypeSO : ScriptableObject
+    // 회사 유형 1종의 Sim 쪽 표현. SO(CompanyTypeSO)는 Assembly-CSharp 소속이고 CityFlow.Sim은
+    // 그 어셈블리를 참조할 수 없다 — 배선 계층이 이 구조체로 옮겨 넣는다(Task 7).
+    public readonly struct CompanyTypeInfo
     {
-        public string companyTypeId;
-        public string displayName;
-        public int    capacity;
+        public readonly CommuteWindow Window;
+        public readonly int Capacity;   // 유형별 정원. <= 0 이면 유형 정원 미지정(기존 규칙을 쓴다)
 
-        public float  workStartHour;
-        public float  workStartWindow;   // 출근 창 길이(시간). StaggerHour가 이 안에 흩뿌린다
-        public float  workEndHour;
-        public float  workEndWindow;
+        public CompanyTypeInfo(CommuteWindow window, int capacity)
+        {
+            Window = window;
+            Capacity = capacity;
+        }
     }
-}
 ```
 
-`CompanyTypeCatalogSO.cs` — **`BuildingCatalogSO.cs`를 먼저 읽고 그 형태를 따른다**(id 인덱스, 중복·누락 경고, `OnValidate`에서 재색인).
+- [ ] **Step 4: `SimEngine`에 유형 표 구역 추가**
+
+기존 메서드를 고치지 않는다. 파일 끝의 자기 구역에 붙인다(소유권 규칙 — `SimEngine.cs`는 공유 파일이다).
 
 ```csharp
-using System;
-using System.Collections.Generic;
-using UnityEngine;
+        // ── 회사 유형 표 (환) ─────────────────────────────────────────────
+        // SO 카탈로그는 Assembly-CSharp 에 있고 CityFlow.Sim 은 그 어셈블리를 참조할 수 없다.
+        // 배선 계층(CityBootstrap)이 SO → CompanyTypeInfo 로 옮겨 여기에 주입한다.
+        readonly Dictionary<string, CompanyTypeInfo> _companyTypes = new(StringComparer.Ordinal);
 
-namespace CityFlow.Content
-{
-    [CreateAssetMenu(
-        fileName = "CompanyTypeCatalog",
-        menuName = "CityFlow/Content/Company Type Catalog")]
-    public sealed class CompanyTypeCatalogSO : ScriptableObject
-    {
-        [SerializeField]
-        private List<CompanyTypeSO> types = new();
-
-        private readonly Dictionary<string, CompanyTypeSO> byId =
-            new(StringComparer.Ordinal);
-        private bool indexDirty = true;
-
-        public IReadOnlyList<CompanyTypeSO> Types => types;
-        public int Count => types?.Count ?? 0;
-
-        public bool TryGet(string companyTypeId, out CompanyTypeSO definition)
+        public void SetCompanyTypes(IReadOnlyList<CompanyTypeInfo> types)
         {
-            EnsureIndex();
-            definition = null;
-            if (string.IsNullOrWhiteSpace(companyTypeId)) return false;
-            return byId.TryGetValue(companyTypeId.Trim(), out definition);
-        }
-
-        // 테스트 전용 주입 — 에셋 없이 카탈로그를 구성한다.
-        internal void SetTypesForTest(IReadOnlyList<CompanyTypeSO> list)
-        {
-            types = new List<CompanyTypeSO>(list);
-            indexDirty = true;
-        }
-
-        private void OnEnable() => indexDirty = true;
-        private void OnValidate() { indexDirty = true; EnsureIndex(logWarnings: true); }
-
-        private void EnsureIndex(bool logWarnings = false)
-        {
-            if (!indexDirty) return;
-            byId.Clear();
-            indexDirty = false;
+            _companyTypes.Clear();
             if (types == null) return;
-
             for (int i = 0; i < types.Count; i++)
             {
-                CompanyTypeSO definition = types[i];
-                string id = definition?.companyTypeId?.Trim();
-                if (definition == null || string.IsNullOrEmpty(id))
-                {
-                    if (logWarnings)
-                        Debug.LogWarning($"[CompanyTypeCatalogSO] Entry {i} has no company type ID.", this);
-                    continue;
-                }
-                if (!byId.TryAdd(id, definition) && logWarnings)
-                    Debug.LogWarning($"[CompanyTypeCatalogSO] Duplicate company type ID: {id}", this);
+                string id = types[i].Window.CompanyTypeId;
+                if (string.IsNullOrWhiteSpace(id)) continue;   // 무명 유형은 조회할 수 없다
+                _companyTypes[id.Trim()] = types[i];
             }
         }
-    }
-}
+
+        internal bool TryGetCompanyType(string companyTypeId, out CompanyTypeInfo info)
+        {
+            info = default;
+            if (string.IsNullOrWhiteSpace(companyTypeId)) return false;
+            return _companyTypes.TryGetValue(companyTypeId.Trim(), out info);
+        }
+
+        // 유형이 없는 목적지(School 등)와 표 미주입 상황의 폴백 — 종전 전역 창 그대로.
+        internal CommuteWindow FallbackCommuteWindow() => new CommuteWindow(
+            string.Empty,
+            _config.MorningStartHour, _config.MorningEndHour - _config.MorningStartHour,
+            _config.EveningStartHour, _config.EveningEndHour - _config.EveningStartHour);
+
+        internal int CompanyTypeCountForTest => _companyTypes.Count;
 ```
 
-> `SetTypesForTest`가 `internal`이므로 `CityFlow.Content` 어셈블리에 `[assembly: InternalsVisibleTo("CityFlow.Sim.Tests")]`가 필요하다. `Assets/01_Scripts/CityFlow/Contents/Logic/` 아래 asmdef가 `CityFlow.Content`이니 그 어셈블리에 `AssemblyInfo.cs`가 있는지 확인하고, 없으면 만든다. **`CompanyTypeSO`/`CompanyTypeCatalogSO`가 어느 어셈블리에 들어가는지 먼저 확인하라** — `Configs/Buildings/`가 asmdef 밖이면 `Assembly-CSharp`이고 그 경우 테스트에서 접근이 안 될 수 있다. 접근이 안 되면 `SetTypesForTest`를 `public`으로 바꾸고 주석으로 테스트 전용임을 밝힌다.
-
-- [ ] **Step 4: 통과 확인**
+- [ ] **Step 5: 통과 확인**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **429/429 PASS** (428 + 신규 1)
+Expected: **431/431 PASS** (428 + 신규 3)
 
-- [ ] **Step 5: 커밋**
+- [ ] **Step 6: 커밋**
 
 ```bash
-git add Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeSO.cs \
-        Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeSO.cs.meta \
-        Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeCatalogSO.cs \
-        Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeCatalogSO.cs.meta \
+git add Assets/01_Scripts/CityFlow/Sim/CommuteWindow.cs \
+        Assets/01_Scripts/CityFlow/Sim/SimEngine.cs \
         Assets/Tests/EditMode/CompanyTypeTests.cs \
         Assets/Tests/EditMode/CompanyTypeTests.cs.meta
-git commit -m "[Feat] CompanyTypeSO + 카탈로그 — 유형별 정원·출퇴근 창
+git commit -m "[Feat] Sim 쪽 회사 유형 표 — CompanyTypeInfo + SetCompanyTypes
 
-유형 추가가 에셋 편집만으로 끝나도록 카탈로그 형태로 만든다."
+SO 대신 평범한 구조체를 주입받는다(CityFlow.Sim 은 Assembly-CSharp 를 참조할 수 없다)."
 ```
 
----
 
 ### Task 4: 유형 보관 + 배치 시 유형 지정·거부
 
@@ -545,10 +538,9 @@ git commit -m "[Feat] CompanyTypeSO + 카탈로그 — 유형별 정원·출퇴�
 - Test: `Assets/Tests/EditMode/CompanyTypeTests.cs` (추가)
 
 **Interfaces:**
-- Consumes: `CompanyTypeCatalogSO.TryGet` (Task 3)
+- Consumes: `SimEngine.TryGetCompanyType` (Task 3)
 - Produces:
   - `SimEngine.Place(tile, type, direction, string companyTypeId = null)`
-  - `SimEngine.SetCompanyTypeCatalog(CompanyTypeCatalogSO catalog)` — 부트스트랩이 주입
   - `DemandMap.TryGetCompanyTypeId(Vector2Int anchor, out string id)`
   - Task 5가 쓴다.
 
@@ -561,9 +553,7 @@ git commit -m "[Feat] CompanyTypeSO + 카탈로그 — 유형별 정원·출퇴�
             SimConfig cfg = SimConfig.Default();
             cfg.GridWidth = 8; cfg.GridHeight = 4;
             var engine = new SimEngine(cfg, new SimEventHub());
-            var catalog = ScriptableObject.CreateInstance<CompanyTypeCatalogSO>();
-            catalog.SetTypesForTest(new[] { NewType("office", 6f, 15f) });
-            engine.SetCompanyTypeCatalog(catalog);
+            engine.SetCompanyTypes(new[] { NewType("office", 6f, 17f) });
 
             Assert.IsFalse(engine.Place(V(4, 0), TileType.Office),
                 "유형 미지정 Office 배치는 거부된다 — 조용한 폴백을 만들지 않는다");
@@ -601,7 +591,7 @@ git commit -m "[Feat] CompanyTypeSO + 카탈로그 — 유형별 정원·출퇴�
 
 - [ ] **Step 2: 실패 확인**
 
-Expected: 컴파일 에러 — `SetCompanyTypeCatalog` / `TryGetCompanyTypeIdForTest` 미정의
+Expected: 컴파일 에러 — `TryGetCompanyTypeIdForTest` 미정의 · `Place`가 유형 인자를 안 받음
 
 - [ ] **Step 3: `DemandMap`에 유형 보관**
 
@@ -636,8 +626,7 @@ Expected: 컴파일 에러 — `SetCompanyTypeCatalog` / `TryGetCompanyTypeIdFor
 - [ ] **Step 4: `SimEngine.Place`에 유형 인자와 거부**
 
 ```csharp
-        private CompanyTypeCatalogSO _companyTypes;
-        public void SetCompanyTypeCatalog(CompanyTypeCatalogSO catalog) => _companyTypes = catalog;
+        // 유형 표는 Task 3에서 이미 SimEngine 안에 있다(_companyTypes + TryGetCompanyType).
 
         public bool Place(Vector2Int tile, TileType type,
                           PlacementDirection direction = PlacementDirection.North,
@@ -679,7 +668,7 @@ Expected: 컴파일 에러 — `SetCompanyTypeCatalog` / `TryGetCompanyTypeIdFor
 ```csharp
         // SimEngine.Place 안
         int capacity = 0;
-        if (_companyTypes != null && _companyTypes.TryGet(companyTypeId, out CompanyTypeSO def))
+        if (TryGetCompanyType(companyTypeId, out CompanyTypeInfo info))
             capacity = def.capacity;
         _demand.RegisterCompany(tile, type, _simTime, companyTypeId, capacity);
 ```
@@ -693,11 +682,10 @@ Expected: 컴파일 에러 — `SetCompanyTypeCatalog` / `TryGetCompanyTypeIdFor
             SimConfig cfg = SimConfig.Default();
             cfg.GridWidth = 8; cfg.GridHeight = 4;
             var engine = new SimEngine(cfg, new SimEventHub());
-            var big = NewType("factory", 20f, 5f); big.capacity = 10;
-            var small = NewType("warehouse", 4f, 13f); small.capacity = 4;
-            var catalog = ScriptableObject.CreateInstance<CompanyTypeCatalogSO>();
-            catalog.SetTypesForTest(new[] { big, small });
-            engine.SetCompanyTypeCatalog(catalog);
+            engine.SetCompanyTypes(new[] {
+                NewType("factory",   20f, 5f,  capacity: 10),
+                NewType("warehouse",  4f, 13f, capacity: 4),
+            });
 
             Assert.IsTrue(engine.Place(V(0, 0), TileType.Office, PlacementDirection.North, "factory"));
             Assert.IsTrue(engine.Place(V(4, 0), TileType.Office, PlacementDirection.North, "warehouse"));
@@ -712,7 +700,7 @@ Expected: 컴파일 에러 — `SetCompanyTypeCatalog` / `TryGetCompanyTypeIdFor
 - [ ] **Step 6: 통과 확인**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **432/432 PASS** (429 + 신규 3). 기존 테스트 갱신분이 있으면 숫자는 같고 내용만 바뀐다.
+Expected: **434/434 PASS** (431 + 신규 3). 기존 테스트 갱신분이 있으면 숫자는 같고 내용만 바뀐다.
 
 - [ ] **Step 7: 커밋**
 
@@ -751,12 +739,10 @@ Office 배치에 companyTypeId 를 요구하고 미지정·미등록 id 는 거�
             cfg.CarsPerHouse = 1;
             var engine = new SimEngine(cfg, new SimEventHub());
 
-            var catalog = ScriptableObject.CreateInstance<CompanyTypeCatalogSO>();
-            catalog.SetTypesForTest(new[] {
-                NewType("office",  6f, 15f),   // 오전 출근
+            engine.SetCompanyTypes(new[] {
+                NewType("office",  6f, 17f),   // 오전 출근
                 NewType("factory", 20f, 5f),   // 야간 출근 — 자정 넘김
             });
-            engine.SetCompanyTypeCatalog(catalog);
 
             for (int x = 0; x <= 11; x++) Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
             Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
@@ -825,21 +811,13 @@ Expected: 컴파일 에러 — `DepartHomeHourForTest` 미정의
         // 목적지 타일 → 그 회사 유형의 출퇴근 창. 카탈로그·유형이 없으면 SimConfig 폴백.
         internal CommuteWindow CommuteWindowAt(Vector2Int sink)
         {
-            if (_companyTypes != null
-                && _demand.TryGetCompanyTypeId(sink, out string id)
-                && _companyTypes.TryGet(id, out CompanyTypeSO def))
+            if (_demand.TryGetCompanyTypeId(sink, out string id)
+                && TryGetCompanyType(id, out CompanyTypeInfo info))
             {
-                return new CommuteWindow(
-                    id,
-                    def.workStartHour, def.workStartWindow,
-                    def.workEndHour,   def.workEndWindow);
+                return info.Window;
             }
 
-            // 폴백 — School 등 유형이 없는 목적지와 카탈로그 미주입 상황
-            return new CommuteWindow(
-                string.Empty,
-                _config.MorningStartHour, _config.MorningEndHour - _config.MorningStartHour,
-                _config.EveningStartHour, _config.EveningEndHour - _config.EveningStartHour);
+            return FallbackCommuteWindow();   // School 등 유형 없는 목적지·표 미주입
         }
 ```
 
@@ -850,7 +828,7 @@ Expected: 컴파일 에러 — `DepartHomeHourForTest` 미정의
 - [ ] **Step 6: 통과 확인**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **433/433 PASS** (432 + 신규 1)
+Expected: **435/435 PASS** (434 + 신규 1)
 
 기존 `CommuteSchedulerTests`가 옛 시그니처로 `Rebuild`를 부르면 컴파일이 깨진다. **콜백을 넘기도록 갱신한다** — 폴백 창을 돌려주는 람다 한 줄이면 기존 동작이 그대로 재현된다.
 
@@ -895,9 +873,7 @@ git commit -m "[Feat] Rebuild 시각 인자 4개를 창 콜백으로 대체 — 
             cfg.TickInterval = 0.25f;
             cfg.ConstructionHoursOffice = 2f;      // 2 게임시간 = 2 시뮬초 = 8틱
             var engine = new SimEngine(cfg, new SimEventHub());
-            var catalog = ScriptableObject.CreateInstance<CompanyTypeCatalogSO>();
-            catalog.SetTypesForTest(new[] { NewType("office", 6f, 15f), NewType("factory", 20f, 5f) });
-            engine.SetCompanyTypeCatalog(catalog);
+            engine.SetCompanyTypes(new[] { NewType("office", 6f, 17f), NewType("factory", 20f, 5f) });
 
             Assert.IsTrue(engine.Place(V(4, 0), TileType.Office, PlacementDirection.North, "factory"));
             Assert.AreEqual(TileType.UnderConstruction, engine.GetTileType(V(4, 0)));
@@ -905,7 +881,7 @@ git commit -m "[Feat] Rebuild 시각 인자 4개를 창 콜백으로 대체 — 
             // 공사 중 저장 → 로드
             var snap = engine.CreateSnapshot();
             var restored = new SimEngine(cfg, new SimEventHub());
-            restored.SetCompanyTypeCatalog(catalog);
+            restored.SetCompanyTypes(new[] { NewType("factory", 20f, 5f) });
             restored.RestoreSnapshot(snap);
 
             for (int i = 0; i < 8; i++) restored.Tick(0.25f);
@@ -928,7 +904,7 @@ git commit -m "[Feat] Rebuild 시각 인자 4개를 창 콜백으로 대체 — 
 
 `ConstructionSaveData`에 `public string CompanyTypeId;`를 더하고 `CreateSnapshot`/`RestoreSnapshot` 양쪽에 배선한다. **구세이브는 이 필드가 null이므로 폴백 경로가 살아 있어야 한다.**
 
-- [ ] **Step 5: 통과 확인** — `run_tests` **434/434 PASS**
+- [ ] **Step 5: 통과 확인** — `run_tests` **436/436 PASS**
 
 - [ ] **Step 6: 커밋**
 
@@ -948,11 +924,26 @@ ConstructionSite 와 세이브에 CompanyTypeId 를 싣는다. 구세이브는 n
 
 코드가 아니라 **데이터**다. 카탈로그가 비어 있으면 전부 폴백 창으로 돌아 3종이 갈리지 않는다.
 
+> **Task 3에서 이동됨.** SO 정의는 오서링 계층이고 Sim이 볼 수 없으므로(Task 3 정정 참고) 여기서 만든다.
+
 **Files:**
+- Create: `Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeSO.cs` (+ `.cs.meta`)
+- Create: `Assets/01_Scripts/CityFlow/Configs/Buildings/CompanyTypeCatalogSO.cs` (+ `.cs.meta`)
+- Modify: `Assets/01_Scripts/CityFlow/Bootstrap/CityBootstrap.cs` (SO → `CompanyTypeInfo` 배선)
 - Create: `Assets/05_ScriptableObjects/Companies/CompanyType_Office.asset`
 - Create: `Assets/05_ScriptableObjects/Companies/CompanyType_Factory.asset`
 - Create: `Assets/05_ScriptableObjects/Companies/CompanyType_Warehouse.asset`
 - Create: `Assets/05_ScriptableObjects/Companies/CompanyTypeCatalog.asset`
+
+- [ ] **Step 0: SO 정의 2개 작성**
+
+`Configs/Buildings/`에 둔다 — `BuildingCatalogSO`가 사는 곳이고 `Assembly-CSharp`이라 배선 계층에서 보인다.
+`Contents/`는 **진우 소유**이므로 쓰지 않는다. 필드는 `CompanyTypeSO`: `companyTypeId`·`displayName`·
+`capacity`·`workStartHour`·`workStartWindow`·`workEndHour`·`workEndWindow`. 카탈로그는 `BuildingCatalogSO.cs`를
+먼저 읽고 그 형태를 따른다(id 인덱스, 중복·빈 id 경고, `OnValidate` 재색인).
+
+**이 두 클래스에는 EditMode 테스트를 붙이지 않는다** — `CityFlow.Sim.Tests`는 `Assembly-CSharp`를 참조할 수
+없다(asmdef 제약). 검증 대상 로직은 Task 3~5의 Sim 쪽 표에 이미 다 있고, SO는 값 전달자일 뿐이다.
 
 - [ ] **Step 1: 에셋 4개 생성**
 
@@ -986,14 +977,14 @@ Unity 메뉴 `Assets > Create > CityFlow > Content > Company Type` 으로 3개, 
 
 - [ ] **Step 4: 부트스트랩 배선 확인**
 
-`SimEngine.SetCompanyTypeCatalog`를 누가 부르는지 확인하고, 카탈로그를 주입하는 경로가 없으면 `CityBootstrap`에 `[SerializeField] private CompanyTypeCatalogSO companyTypes;` 를 더해 엔진 생성 직후 주입한다.
+`CityBootstrap`이 엔진 생성 직후 SO 카탈로그를 `CompanyTypeInfo` 목록으로 옮겨 `engine.SetCompanyTypes(...)`로 주입한다. **표를 주입하지 않으면 종전 동작 그대로**(전역 창 폴백 + 유형 미지정 Office 허용)이므로, 배선이 없는 씬은 영향을 받지 않는다.
 
 > ⚠️ 이건 **통합 씬 직렬화**와 얽힌다. `CityBootstrap`에 `[SerializeField]`를 더하면 씬에서 값을 물려야 하고, 씬 커밋 금지 규칙에 걸린다. **씬을 건드리지 않으려면** `Resources.Load` 또는 카탈로그를 `SimConfigAsset` 옆에 두고 코드에서 경로로 읽는 방식을 쓴다. 어느 쪽이든 **씬 저장이 필요 없어야 한다.**
 
 - [ ] **Step 5: 검증 — 에셋만 바뀌므로 테스트는 무변경**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **434/434 PASS** (테스트는 카탈로그를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
+Expected: **436/436 PASS** (테스트는 유형 표를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
 
 라이브 확인은 하루 12분 전환 이후다 — 지금은 창 4시간이 실시간 4초라 세 유형이 갈리는 게 눈에 안 보인다.
 
@@ -1012,7 +1003,7 @@ git commit -m "[Feat] 회사 유형 3종 에셋 — 사무실/물류창고/공�
 
 ## 완료 기준
 
-- EditMode `CityFlow.Sim.Tests` **434/434 green** (기준선 423 + 신규 11)
+- EditMode `CityFlow.Sim.Tests` **436/436 green** (기준선 423 + 신규 13)
 - 컴파일 `error CS` 0
 - 통합 씬 파일이 커밋에 **없음**
 - 신규 `.cs`의 `.cs.meta` 전부 커밋됨
