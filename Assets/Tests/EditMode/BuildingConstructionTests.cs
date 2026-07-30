@@ -289,5 +289,29 @@ namespace CityFlow.Sim.Tests
             Assert.IsFalse(engine.TryGetConstructionProgress01(V(6, 3), out _),
                 "빈 타일도 false");
         }
+
+        [Test]
+        public void ConstructionTargetType_ResolvesWholeFootprint_AndClearsOnCompletion()
+        {
+            SimConfig cfg = Cfg();
+            cfg.ConstructionHoursHospital = 4f;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            Assert.IsTrue(engine.Place(V(0, 0), TileType.Hospital));
+
+            Assert.IsTrue(engine.TryGetConstructionTargetType(
+                V(0, 0),
+                out TileType anchorTarget));
+            Assert.AreEqual(TileType.Hospital, anchorTarget);
+            Assert.IsTrue(engine.TryGetConstructionTargetType(
+                V(1, 1),
+                out TileType nonAnchorTarget));
+            Assert.AreEqual(TileType.Hospital, nonAnchorTarget);
+
+            for (int i = 0; i < 16; i++) engine.Tick(0.25f);
+
+            Assert.IsFalse(engine.TryGetConstructionTargetType(
+                V(0, 0),
+                out _));
+        }
     }
 }

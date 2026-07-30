@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using CityFlow.Bootstrap;
 using CityFlow.Buildings;
+using CityFlow.Configs;
 using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
@@ -11,6 +12,7 @@ using CityFlow.Save;
 using CityFlow.Sim;
 using CityFlow.View;
 using CityFlow.UI;
+using CityFlow.UI.Controllers.Placement;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -421,6 +423,206 @@ namespace CityFlow.Tests
         }
 
         [Test]
+        public void Service_PendingConstruction_RestoresAndActivatesHappinessOnCompletion()
+        {
+            BuildingCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<BuildingCatalogSO>(CatalogPath);
+            GameObject firstObject = null;
+            GameObject restoredObject = null;
+
+            try
+            {
+                RuntimeContext first = CreateRuntime(
+                    catalog,
+                    out firstObject,
+                    constructionHoursSpecial: 4f);
+                int firstActivations = 0;
+                first.Service.HappinessEffectChanged += changed =>
+                {
+                    if (changed.IsActive)
+                    {
+                        firstActivations++;
+                    }
+                };
+
+                Vector2Int anchor = new Vector2Int(2, 3);
+                Assert.IsTrue(first.Service.TryPlace("cinema", anchor));
+                Assert.AreEqual(
+                    TileType.UnderConstruction,
+                    first.Engine.GetTileType(anchor));
+                Assert.AreEqual(1, first.Service.BuildingCount);
+                Assert.AreEqual(
+                    0,
+                    first.Service.CreateActiveHappinessEffectSnapshot().Length);
+                Assert.AreEqual(0, firstActivations);
+
+                GameSaveData snapshot = first.Save.CreateSnapshot();
+                RuntimeContext restored = CreateRuntime(
+                    catalog,
+                    out restoredObject,
+                    constructionHoursSpecial: 4f);
+                int restoredActivations = 0;
+                restored.Service.HappinessEffectChanged += changed =>
+                {
+                    if (changed.IsActive)
+                    {
+                        restoredActivations++;
+                    }
+                };
+
+                restored.Save.RestoreSnapshot(snapshot);
+
+                Assert.AreEqual(1, restored.Service.BuildingCount);
+                Assert.IsTrue(restored.Service.TryGetBuilding(
+                    new Vector2Int(3, 4),
+                    out SpecialBuildingInstance loaded));
+                Assert.AreEqual("cinema", loaded.BuildingId);
+                Assert.AreEqual(
+                    0,
+                    restored.Service.CreateActiveHappinessEffectSnapshot().Length);
+                Assert.AreEqual(0, restoredActivations);
+
+                for (int i = 0; i < 16; i++)
+                {
+                    restored.Engine.Tick(0.25f);
+                }
+
+                Assert.AreEqual(
+                    TileType.SpecialBuilding,
+                    restored.Engine.GetTileType(anchor));
+                Assert.AreEqual(
+                    1,
+                    restored.Service.CreateActiveHappinessEffectSnapshot().Length);
+                Assert.AreEqual(1, restoredActivations);
+            }
+            finally
+            {
+                if (firstObject != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(firstObject);
+                }
+
+                if (restoredObject != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(restoredObject);
+                }
+            }
+        }
+
+        [Test]
+        public void Dispatcher_DemolishesPendingSpecialBuilding_AndAllowsReplacement()
+        {
+            BuildingCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<BuildingCatalogSO>(CatalogPath);
+            GameObject serviceObject = null;
+
+            try
+            {
+                RuntimeContext runtime = CreateRuntime(
+                    catalog,
+                    out serviceObject,
+                    constructionHoursSpecial: 4f);
+                Vector2Int anchor = new Vector2Int(2, 3);
+                Assert.IsTrue(runtime.Service.TryPlace("cinema", anchor));
+                Assert.AreEqual(
+                    TileType.UnderConstruction,
+                    runtime.Engine.GetTileType(anchor));
+                Assert.AreEqual(
+                    0,
+                    runtime.Service.CreateActiveHappinessEffectSnapshot().Length);
+
+                var dispatcher = new PlacementActionDispatcher(
+                    availableTiles: null,
+                    useFakeMode: false);
+                dispatcher.PlaceInfrastructure(
+                    new Vector2Int(3, 4),
+                    TileType.Empty,
+                    PlacementDirection.North,
+                    runtime.Services);
+
+                Assert.AreEqual(0, runtime.Service.BuildingCount);
+                Assert.AreEqual(
+                    TileType.Empty,
+                    runtime.Engine.GetTileType(anchor));
+                Assert.AreEqual(
+                    0,
+                    runtime.Service.CreateActiveHappinessEffectSnapshot().Length);
+                Assert.AreEqual(
+                    0,
+                    runtime.Service.CreateSnapshot().Buildings.Length);
+                Assert.IsTrue(
+                    runtime.Service.TryPlace("cinema", anchor),
+                    "공사 중 철거 뒤 같은 앵커에 다시 배치할 수 있어야 한다");
+            }
+            finally
+            {
+                if (serviceObject != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(serviceObject);
+                }
+            }
+        }
+
+        [Test]
+        public void Dispatcher_DemolishingConstruction_RefundsTargetTypeCost()
+        {
+            TileDataSO hospitalData =
+                ScriptableObject.CreateInstance<TileDataSO>();
+
+            try
+            {
+                const int hospitalCost = 800;
+                hospitalData.Initialize(
+                    "hospital",
+                    "병원",
+                    TileType.Hospital,
+                    hospitalCost,
+                    0,
+                    0,
+                    string.Empty);
+
+                SimConfig config = SimConfig.Default();
+                config.GridWidth = 20;
+                config.GridHeight = 20;
+                config.DayLengthSeconds = 24f;
+                config.ConstructionHoursHospital = 4f;
+                var events = new SimEventHub();
+                var engine = new SimEngine(config, events);
+                var economy = new TestEconomy();
+                var services = new CityFlowServices(
+                    events,
+                    engine,
+                    engine,
+                    economy: economy,
+                    stats: engine);
+                var dispatcher = new PlacementActionDispatcher(
+                    new[] { hospitalData },
+                    useFakeMode: false);
+                Vector2Int anchor = new Vector2Int(2, 3);
+                Assert.IsTrue(engine.Place(anchor, TileType.Hospital));
+                Assert.AreEqual(
+                    TileType.UnderConstruction,
+                    engine.GetTileType(anchor));
+
+                dispatcher.PlaceInfrastructure(
+                    new Vector2Int(3, 4),
+                    TileType.Empty,
+                    PlacementDirection.North,
+                    services);
+
+                Assert.AreEqual(
+                    hospitalCost,
+                    economy.Coins,
+                    "공사 중 비앵커 철거도 목표 타입 Hospital 단가로 환불해야 한다");
+                Assert.AreEqual(TileType.Empty, engine.GetTileType(anchor));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(hospitalData);
+            }
+        }
+
+        [Test]
         public void LegacySave_RestoresSpecialBuildingAndVisitsAtWorldOrigin()
         {
             BuildingCatalogSO catalog =
@@ -542,11 +744,17 @@ namespace CityFlow.Tests
         private static RuntimeContext CreateRuntime(
             BuildingCatalogSO catalog,
             out GameObject serviceObject,
-            bool unlockCinema = true)
+            bool unlockCinema = true,
+            float constructionHoursSpecial = 0f)
         {
             SimConfig config = SimConfig.Default();
             config.GridWidth = 20;
             config.GridHeight = 20;
+            config.ConstructionHoursSpecial = constructionHoursSpecial;
+            if (constructionHoursSpecial > 0f)
+            {
+                config.DayLengthSeconds = 24f;
+            }
             var events = new SimEventHub();
             var engine = new SimEngine(config, events);
             var save = new SaveService(
@@ -574,7 +782,12 @@ namespace CityFlow.Tests
             SetPrivateField(service, "catalog", catalog);
             service.Initialize(services);
 
-            return new RuntimeContext(engine, save, service, research);
+            return new RuntimeContext(
+                engine,
+                save,
+                service,
+                research,
+                services);
         }
 
         private static void AssertCadence(
@@ -610,18 +823,21 @@ namespace CityFlow.Tests
                 SimEngine engine,
                 SaveService save,
                 SpecialBuildingService service,
-                ResearchUnlockService research)
+                ResearchUnlockService research,
+                CityFlowServices services)
             {
                 Engine = engine;
                 Save = save;
                 Service = service;
                 Research = research;
+                Services = services;
             }
 
             public SimEngine Engine { get; }
             public SaveService Save { get; }
             public SpecialBuildingService Service { get; }
             public ResearchUnlockService Research { get; }
+            public CityFlowServices Services { get; }
         }
 
         private sealed class TestPopulation : IReadOnlyPopulationData
