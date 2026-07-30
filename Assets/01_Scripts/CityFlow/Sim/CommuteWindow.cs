@@ -31,4 +31,18 @@ namespace CityFlow.Sim
                     ? (hour >= start || hour < end)
                     : false;   // start == end 는 빈 구간
     }
+
+    // 회사 유형 1종의 Sim 쪽 표현. 오서링 SO(CompanyTypeSO)는 Assembly-CSharp 소속이고
+    // CityFlow.Sim은 그 어셈블리를 참조할 수 없다 — 배선 계층이 이 구조체로 옮겨 넣는다.
+    public readonly struct CompanyTypeInfo
+    {
+        public readonly CommuteWindow Window;
+        public readonly int Capacity;   // 유형별 정원. <= 0 이면 유형 정원 미지정(기존 정원 규칙을 쓴다)
+
+        public CompanyTypeInfo(CommuteWindow window, int capacity)
+        {
+            Window = window;
+            Capacity = capacity;
+        }
+    }
 }

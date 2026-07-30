@@ -1657,5 +1657,38 @@ namespace CityFlow.Sim
                 tiles.Insert(index, tile);
             }
         }
+
+        // ── 회사 유형 표 (환) ─────────────────────────────────────────────
+        // 오서링 SO 카탈로그는 Assembly-CSharp 에 있고 CityFlow.Sim 은 그 어셈블리를 참조할 수 없다.
+        // 배선 계층(CityBootstrap)이 SO → CompanyTypeInfo 로 옮겨 여기에 주입한다.
+        // 표가 비어 있으면 전역 창 폴백 = 종전 동작. 배선 없는 씬은 영향받지 않는다.
+        readonly Dictionary<string, CompanyTypeInfo> _companyTypes = new(StringComparer.Ordinal);
+
+        public void SetCompanyTypes(IReadOnlyList<CompanyTypeInfo> types)
+        {
+            _companyTypes.Clear();
+            if (types == null) return;
+            for (int i = 0; i < types.Count; i++)
+            {
+                string id = types[i].Window.CompanyTypeId;
+                if (string.IsNullOrWhiteSpace(id)) continue;   // 무명 유형은 조회할 수 없다
+                _companyTypes[id.Trim()] = types[i];
+            }
+        }
+
+        internal bool TryGetCompanyType(string companyTypeId, out CompanyTypeInfo info)
+        {
+            info = default;
+            if (string.IsNullOrWhiteSpace(companyTypeId)) return false;
+            return _companyTypes.TryGetValue(companyTypeId.Trim(), out info);
+        }
+
+        // 유형 없는 목적지(School 등)·표 미주입 상황의 폴백 — 종전 전역 창 그대로.
+        internal CommuteWindow FallbackCommuteWindow() => new CommuteWindow(
+            string.Empty,
+            _config.MorningStartHour, _config.MorningEndHour - _config.MorningStartHour,
+            _config.EveningStartHour, _config.EveningEndHour - _config.EveningStartHour);
+
+        internal int CompanyTypeCountForTest => _companyTypes.Count;
     }
 }
