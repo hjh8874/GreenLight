@@ -586,6 +586,8 @@ namespace Tests.EditMode
             }
         }
 
+#if LEGACY_EXTERNAL_TRAFFIC_INTEGRATION_TESTS
+        // Superseded by BusWorldView and RoadTrafficCoordinator tests.
         [Test]
         public void CityBusWorldView_RouteUnavailable_KeepsLastBusVisible()
         {
@@ -850,6 +852,8 @@ namespace Tests.EditMode
                 Object.DestroyImmediate(cityObject);
             }
         }
+
+#endif
 
         [Test]
         public void CityBus_RemovedNextStop_IsOnlyUsedAsDepartureOnce()

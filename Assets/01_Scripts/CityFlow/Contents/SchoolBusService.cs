@@ -91,6 +91,7 @@ namespace CityFlow.Content.Transit
             schoolRouteStops;
         public bool IsInitialized => isInitialized;
         public bool IsScheduled => schedule != null;
+        public BusDefinitionSO Definition => definition;
 
         public bool IsOperating =>
             busRoute != null &&
@@ -182,6 +183,12 @@ namespace CityFlow.Content.Transit
             busRoute.AllowUnscheduledStopArrival = false;
             busRoute.RoadsideStopFilter =
                 IsResidentialStop;
+            if (definition != null)
+            {
+                busRoute.ConfigureRoadTrafficAgent(
+                    RoadTrafficAgentKind.SchoolBus,
+                    definition.VehicleFootprint);
+            }
             busRoute.Initialize(cityServices);
 
             int capacity = definition != null

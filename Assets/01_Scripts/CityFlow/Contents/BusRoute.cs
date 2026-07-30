@@ -73,6 +73,7 @@ namespace CityFlow.Content.Transit
         private readonly List<Vector2Int> stops = new();
         private readonly List<Vector2Int> stopAccessRoads = new();
         private readonly List<Vector2Int> currentRoadPath = new();
+        private readonly List<Vector2Int> roadTrafficPath = new();
         private readonly List<Vector2Int> candidateRoadPath = new();
         private readonly List<Vector2Int> validationRoadPath = new();
 
@@ -83,6 +84,9 @@ namespace CityFlow.Content.Transit
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
         private IWorldGridAccess worldGridAccess;
+        private IRoadTrafficService roadTraffic;
+        private RoadTrafficAgentRegistration roadTrafficRegistration;
+        private RoadTrafficAgentId roadTrafficAgentId;
 
         private int currentStopIndex;
         private int currentRoadPathIndex;
@@ -100,6 +104,10 @@ namespace CityFlow.Content.Transit
         private bool hasCurrentStopAccessRoad;
         private bool useRoadsideStopApproach;
         private bool currentSegmentUsesRoadsideStop;
+        private bool roadTrafficConfigured;
+        private bool holdRoadTrafficAtDestination;
+        private bool roadTrafficArrivalHandled;
+        private int roadTrafficPathOffset;
         private int roadsideStopSetbackTiles;
 
         public IReadOnlyList<Vector2Int> Stops => stops;
@@ -114,6 +122,9 @@ namespace CityFlow.Content.Transit
 
         public int CurrentStopIndex => currentStopIndex;
         public int CurrentRoadPathIndex => currentRoadPathIndex;
+        public int RoadSegmentVersion { get; private set; }
+        public bool UsesRoadTraffic =>
+            roadTraffic != null && roadTrafficAgentId.IsValid;
 
         public bool LoopRoute
         {
@@ -173,6 +184,53 @@ namespace CityFlow.Content.Transit
         public event Action RouteCompleted;
         public event Action RouteUnavailable;
 
+        public bool TryGetRoadTrafficSnapshot(
+            out RoadTrafficSnapshot snapshot)
+        {
+            if (roadTraffic == null || !roadTrafficAgentId.IsValid)
+            {
+                snapshot = default;
+                return false;
+            }
+
+            return roadTraffic.TryGetSnapshot(
+                roadTrafficAgentId,
+                out snapshot);
+        }
+
+        public void ConfigureRoadTrafficAgent(
+            RoadTrafficAgentKind kind,
+            VehicleFootprint footprint,
+            bool holdAtDestination = false)
+        {
+            if (roadTrafficAgentId.IsValid)
+            {
+                ReleaseRoadTrafficAgent();
+            }
+
+            roadTrafficRegistration =
+                new RoadTrafficAgentRegistration(kind, footprint);
+            roadTrafficConfigured = true;
+            holdRoadTrafficAtDestination = holdAtDestination;
+            TryRegisterRoadTrafficAgent();
+        }
+
+        public void ConfigureRoadTrafficAgent(
+            RoadTrafficAgentKind kind,
+            float lengthTiles,
+            float widthTiles,
+            bool holdAtDestination = false)
+        {
+            ConfigureRoadTrafficAgent(
+                kind,
+                new VehicleFootprint(
+                    VehicleSizeClass.Standard,
+                    lengthTiles,
+                    widthTiles,
+                    0f),
+                holdAtDestination);
+        }
+
         public void Initialize(CityFlowServices services)
         {
             if (!isActiveAndEnabled)
@@ -196,6 +254,7 @@ namespace CityFlow.Content.Transit
 
             this.services = services;
             tileData = services.TileData;
+            roadTraffic = services.RoadTraffic;
             worldGridAccess = services.WorldGrid;
             if (worldGridAccess != null)
             {
@@ -203,6 +262,7 @@ namespace CityFlow.Content.Transit
                 gridHeight = Mathf.Max(1, worldGridAccess.WorldHeight);
             }
             isInitialized = true;
+            TryRegisterRoadTrafficAgent();
 
             if (autoStart && stops.Count >= 2)
             {
@@ -376,6 +436,7 @@ namespace CityFlow.Content.Transit
         public bool ReconfigureLoopAtCurrentStop(
             IReadOnlyList<Vector2Int> newStops)
         {
+            Vector2Int currentStop = CurrentStop;
             Vector2Int preservedForbiddenTile =
                 forbiddenDepartureTile;
             bool preservedForbidden =
@@ -384,7 +445,14 @@ namespace CityFlow.Content.Transit
                 currentStopAccessRoad;
             bool preservedAccess = hasCurrentStopAccessRoad;
 
-            bool configured = ConfigureRoute(newStops, true);
+            PrepareHeldRouteReconfiguration();
+            bool configured = ReplaceStops(newStops);
+
+            if (configured)
+            {
+                currentStopIndex = stops.IndexOf(currentStop);
+                configured = currentStopIndex >= 0;
+            }
 
             if (configured && avoidImmediateUTurn)
             {
@@ -401,6 +469,15 @@ namespace CityFlow.Content.Transit
                 hasCurrentStopAccessRoad = true;
                 CurrentTile = preservedAccessRoad;
             }
+            else if (configured)
+            {
+                CurrentTile = currentStop;
+            }
+
+            if (configured)
+            {
+                TileChanged?.Invoke(CurrentTile);
+            }
 
             return configured;
         }
@@ -414,34 +491,12 @@ namespace CityFlow.Content.Transit
             bool preservedForbidden =
                 hasForbiddenDepartureTile;
 
-            StopRoute();
-            stops.Clear();
-            stopAccessRoads.Clear();
-
-            if (newStops == null)
+            PrepareHeldRouteReconfiguration();
+            if (!ReplaceStops(newStops))
             {
                 return false;
             }
 
-            for (int i = 0; i < newStops.Count; i++)
-            {
-                Vector2Int stop = newStops[i];
-
-                if (stops.Count > 0 &&
-                    stops[stops.Count - 1] == stop)
-                {
-                    continue;
-                }
-
-                stops.Add(stop);
-            }
-
-            if (stops.Count == 0)
-            {
-                return false;
-            }
-
-            loopRoute = true;
             departureStop = currentPosition;
             hasDepartureStop = true;
             currentStopIndex = -1;
@@ -503,11 +558,14 @@ namespace CityFlow.Content.Transit
             waitTimer = 0f;
 
             currentRoadPath.Clear();
+            roadTrafficPath.Clear();
             currentRoadPathIndex = 0;
             hasDepartureStop = false;
             hasForbiddenDepartureTile = false;
             hasCurrentStopAccessRoad = false;
             currentSegmentUsesRoadsideStop = false;
+
+            ReleaseRoadTrafficAgent();
 
             State = BusRouteState.Idle;
         }
@@ -538,6 +596,12 @@ namespace CityFlow.Content.Transit
 
         private void UpdateMoving(float deltaTime)
         {
+            if (roadTrafficAgentId.IsValid)
+            {
+                UpdateRoadTrafficMovement();
+                return;
+            }
+
             moveTimer += Mathf.Max(0f, deltaTime);
 
             float safeSecondsPerTile =
@@ -548,6 +612,52 @@ namespace CityFlow.Content.Transit
             {
                 moveTimer -= safeSecondsPerTile;
                 MoveOneTile();
+            }
+        }
+
+        private void UpdateRoadTrafficMovement()
+        {
+            if (roadTraffic == null ||
+                !roadTraffic.TryGetSnapshot(
+                    roadTrafficAgentId,
+                    out RoadTrafficSnapshot snapshot))
+            {
+                SetRouteUnavailable();
+                return;
+            }
+
+            if (snapshot.State ==
+                RoadTrafficAgentState.RouteUnavailable)
+            {
+                SetRouteUnavailable();
+                return;
+            }
+
+            int pathIndex = Mathf.Clamp(
+                roadTrafficPathOffset + snapshot.RouteTileIndex,
+                0,
+                Mathf.Max(0, currentRoadPath.Count - 1));
+            if (currentRoadPath.Count > 0 &&
+                (CurrentTile != snapshot.CurrentTile ||
+                 currentRoadPathIndex != pathIndex))
+            {
+                currentRoadPathIndex = pathIndex;
+                CurrentTile = snapshot.CurrentTile;
+                TileChanged?.Invoke(CurrentTile);
+            }
+
+            if (snapshot.State == RoadTrafficAgentState.Arrived &&
+                !roadTrafficArrivalHandled)
+            {
+                roadTrafficArrivalHandled = true;
+                ArriveAtNextStop();
+            }
+            else if (snapshot.State ==
+                         RoadTrafficAgentState.HoldingAtDestination &&
+                     !roadTrafficArrivalHandled)
+            {
+                roadTrafficArrivalHandled = true;
+                ArriveAtNextStop();
             }
         }
 
@@ -986,10 +1096,30 @@ namespace CityFlow.Content.Transit
                         forbiddenFirstStep);
             }
 
+            if (foundPath && startRoad != endRoad &&
+                services?.RoadRoutePlanning != null)
+            {
+                foundPath = services.RoadRoutePlanning.TryPlanRoadRoute(
+                    startRoad,
+                    endRoad,
+                    out RoadRoutePlan plannedRoute);
+                if (foundPath)
+                {
+                    currentRoadPath.Clear();
+                    for (int index = 0;
+                         index < plannedRoute.TileCount;
+                         index++)
+                    {
+                        currentRoadPath.Add(plannedRoute.Tiles[index]);
+                    }
+                }
+            }
+
             if (!foundPath)
             {
                 Debug.LogWarning(
                     $"[BusRoute] 연결된 합법 경로를 찾지 못했습니다. " +
+                    $"DestinationStop: {destinationStop}, " +
                     $"StartRoad: {startRoad}, EndRoad: {endRoad}",
                     this
                 );
@@ -1029,8 +1159,136 @@ namespace CityFlow.Content.Transit
             moveTimer = 0f;
             State = BusRouteState.Moving;
 
+            if (roadTrafficConfigured &&
+                !TryStartRoadTrafficSegment())
+            {
+                SetRouteUnavailable();
+                return false;
+            }
+
             TileChanged?.Invoke(CurrentTile);
             return true;
+        }
+
+        private bool TryStartRoadTrafficSegment()
+        {
+            if (roadTraffic == null)
+            {
+                return true;
+            }
+
+            if (!TryRegisterRoadTrafficAgent())
+            {
+                return false;
+            }
+
+            roadTrafficPath.Clear();
+            roadTrafficPathOffset = -1;
+            for (int index = 0; index < currentRoadPath.Count; index++)
+            {
+                if (!IsRoad(currentRoadPath[index]))
+                {
+                    if (roadTrafficPath.Count > 0)
+                    {
+                        break;
+                    }
+
+                    continue;
+                }
+
+                if (roadTrafficPathOffset < 0)
+                {
+                    roadTrafficPathOffset = index;
+                }
+
+                roadTrafficPath.Add(currentRoadPath[index]);
+            }
+
+            if (roadTrafficPath.Count == 0)
+            {
+                return false;
+            }
+
+            roadTrafficArrivalHandled = false;
+            var route = new RoadRoutePlan(roadTrafficPath);
+            RoadSegmentVersion++;
+            return roadTraffic.TryAssignRoute(
+                       new RoadTrafficRouteRequest(
+                           roadTrafficAgentId,
+                           route,
+                           false,
+                           holdRoadTrafficAtDestination
+                               ? RoadTrafficArrivalPolicy
+                                   .HoldAtDestination
+                               : RoadTrafficArrivalPolicy
+                                   .ReleaseAtDestination))
+                && roadTraffic.TryStartAgent(roadTrafficAgentId);
+        }
+
+        private void PrepareHeldRouteReconfiguration()
+        {
+            routeRequested = false;
+            moveTimer = 0f;
+            waitTimer = 0f;
+            currentRoadPath.Clear();
+            roadTrafficPath.Clear();
+            stopAccessRoads.Clear();
+            currentRoadPathIndex = 0;
+            hasDepartureStop = false;
+            hasCurrentStopAccessRoad = false;
+            currentSegmentUsesRoadsideStop = false;
+            State = BusRouteState.Idle;
+        }
+
+        private bool ReplaceStops(
+            IReadOnlyList<Vector2Int> newStops)
+        {
+            stops.Clear();
+            loopRoute = true;
+
+            if (newStops == null)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < newStops.Count; index++)
+            {
+                Vector2Int stop = newStops[index];
+                if (stops.Count == 0 ||
+                    stops[stops.Count - 1] != stop)
+                {
+                    stops.Add(stop);
+                }
+            }
+
+            return stops.Count > 0;
+        }
+
+        private bool TryRegisterRoadTrafficAgent()
+        {
+            if (roadTrafficAgentId.IsValid)
+            {
+                return true;
+            }
+
+            return roadTrafficConfigured &&
+                roadTraffic != null &&
+                roadTraffic.TryRegisterAgent(
+                    roadTrafficRegistration,
+                    out roadTrafficAgentId);
+        }
+
+        private void ReleaseRoadTrafficAgent()
+        {
+            if (roadTraffic != null && roadTrafficAgentId.IsValid)
+            {
+                roadTraffic.TryRemoveAgent(roadTrafficAgentId);
+            }
+
+            roadTrafficAgentId = RoadTrafficAgentId.Invalid;
+            roadTrafficPath.Clear();
+            roadTrafficPathOffset = 0;
+            roadTrafficArrivalHandled = false;
         }
 
         private bool TryFindRoadsidePath(
@@ -1605,6 +1863,7 @@ namespace CityFlow.Content.Transit
         {
             routeRequested = false;
             currentSegmentUsesRoadsideStop = false;
+            ReleaseRoadTrafficAgent();
             State = BusRouteState.Completed;
 
             RouteCompleted?.Invoke();
@@ -1614,9 +1873,15 @@ namespace CityFlow.Content.Transit
         {
             routeRequested = false;
             currentSegmentUsesRoadsideStop = false;
+            ReleaseRoadTrafficAgent();
             State = BusRouteState.RouteUnavailable;
 
             RouteUnavailable?.Invoke();
+        }
+
+        private void OnDestroy()
+        {
+            ReleaseRoadTrafficAgent();
         }
 
 #if UNITY_EDITOR

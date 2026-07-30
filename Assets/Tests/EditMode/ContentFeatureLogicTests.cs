@@ -104,6 +104,15 @@ namespace CityFlow.Sim.Tests
             Assert.That(prefab, Is.Not.Null);
             Assert.That(scene, Is.Not.Null);
             Assert.That(busConfig, Is.Not.Null);
+            Assert.That(
+                busConfig.VehicleFootprintProfile,
+                Is.Not.Null);
+            Assert.That(
+                busConfig.VehicleFootprint.SizeClass,
+                Is.EqualTo(VehicleSizeClass.Large));
+            Assert.That(
+                busConfig.VehicleLengthTiles,
+                Is.EqualTo(0.8f).Within(0.0001f));
             Assert.That(emergencyConfig, Is.Not.Null);
             Assert.That(busStopData, Is.Not.Null);
             Assert.That(

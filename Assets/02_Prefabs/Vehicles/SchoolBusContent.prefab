@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7491311111299783233}
   - component: {fileID: 91657992659517729}
+  - component: {fileID: 2596078360832210754}
   - component: {fileID: 4158941390222681485}
   - component: {fileID: 7034095190917756821}
   m_Layer: 0
@@ -48,11 +49,26 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.Transit.BusRoute
   gridWidth: 20
   gridHeight: 20
-  secondsPerTile: 0.2
-  stopWaitSeconds: 2
+  secondsPerTile: 0.24
+  stopWaitSeconds: 1.2
   loopRoute: 0
   autoStart: 0
   avoidImmediateUTurn: 1
+--- !u!114 &2596078360832210754
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1992869644887255421}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc4d81c25b30b774b95d19101cb547a8, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.Transit.BusStopRegistry
+  gridWidth: 20
+  gridHeight: 20
+  rebuildOnInitialize: 1
 --- !u!114 &4158941390222681485
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -67,7 +83,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.Transit.SchoolBusService
   definition: {fileID: 11400000, guid: c14bab61267254549b64ce068f4afc1a, type: 2}
   schedule: {fileID: 11400000, guid: d30e936842af4ad7968eb65c87f94a8b, type: 2}
-  stopRegistry: {fileID: 0}
+  stopRegistry: {fileID: 2596078360832210754}
   busRoute: {fileID: 91657992659517729}
   maxResidentialStopsPerTrip: 4
   schoolWaitSeconds: 3
@@ -82,15 +98,15 @@ MonoBehaviour:
   m_GameObject: {fileID: 1992869644887255421}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 73be27da31f7d054bbe082f5e5f89118, type: 3}
+  m_Script: {fileID: 11500000, guid: 4a3c3f30ca374f83a8f90eb465b4ea3f, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.SchoolBusWorldView
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.BusWorldView
   definition: {fileID: 11400000, guid: c14bab61267254549b64ce068f4afc1a, type: 2}
   busRoute: {fileID: 91657992659517729}
   cityView: {fileID: 0}
   busMaterial: {fileID: 2100000, guid: 94a1370b83b9174428b9bd8cc98a686f, type: 2}
   visualScale: 0.085
   visualDepth: -0.38
-  movementDuration: 0.22
+  movementDuration: 0.24
   schoolParkingSlot: 1
   parkingApproachDistance: 0.7

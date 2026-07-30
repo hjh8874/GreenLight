@@ -221,7 +221,19 @@ namespace CityFlow.View
         public float TileSize => tileSize;
         public float LaneOffset => Mathf.Max(0f, laneOffset);
         public float VehicleMinHeadway =>
-            Mathf.Max(0.05f, vehicleMinHeadway);
+            simEngine != null
+                ? simEngine.StandardVehicleFootprint.HeadwayTiles
+                : Mathf.Max(0.05f, vehicleMinHeadway);
+        public float IntersectionQueueInsetTiles =>
+            Mathf.Max(0f, intersectionQueueInset);
+        public float CornerTurnRadiusFraction =>
+            GetCornerTurnRadiusFraction();
+        public float RoundaboutOrbitRadiusTiles =>
+            Mathf.Max(0f, roundaboutOrbitRadius);
+        public float RoundaboutEntryExitRadians =>
+            roundaboutEntryExitDeg * Mathf.Deg2Rad;
+        public float RoundaboutTransitionSpanTiles =>
+            RoundaboutTransitionSpan();
         public float FieldTileZ => fieldTileZ;
         public GameObject FieldTilePrefab => fieldTilePrefab;
         public float GridLineThickness => gridLineThickness;
@@ -231,6 +243,13 @@ namespace CityFlow.View
         public Color FlowBurstColor => flowBurstColor;
         public bool IsDriveViewActive => driveViewCamera != null && driveViewCamera.IsFollowing;
         public event System.Action GridCellsBuilt;
+
+        public bool IsRoundaboutRoadTile(Vector2Int tile) =>
+            IsRoundaboutTile(tile);
+
+        public bool IsSharedIntersectionTile(Vector2Int tile) =>
+            simEngine != null &&
+            simEngine.IsSharedCarIntersection(tile);
         public event System.Action CoordinateSpaceChanged;
 
         public bool TryGetGridCell(Vector2Int coordinate, out GridCellView cell)

@@ -63,7 +63,14 @@ namespace CityFlow.Bootstrap
                 config.GridHeight = worldGridAccess?.WorldHeight ?? mapHeight;
 
                 var hub = new SimEventHub();
-                simEngine = new SimEngine(config, hub, worldGridAccess);
+                VehicleFootprint standardVehicleFootprint = simConfig != null
+                    ? simConfig.StandardVehicleFootprint
+                    : VehicleFootprint.StandardDefault;
+                simEngine = new SimEngine(
+                    config,
+                    hub,
+                    worldGridAccess,
+                    standardVehicleFootprint);
                 Services = new CityFlowServices(
                     hub,
                     simEngine,
@@ -71,6 +78,8 @@ namespace CityFlow.Bootstrap
                     CreateSaveService(simEngine),
                     stats: simEngine);
                 Services.RegisterVehicleTrips(simEngine);
+                Services.RegisterRoadTraffic(simEngine.RoadTraffic);
+                Services.RegisterRoadRoutePlanning(simEngine);
             }
 
             worldGridConsumer?.Initialize(Services);

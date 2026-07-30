@@ -205,7 +205,7 @@ namespace CityFlow.View
                     self.TravelSpeed,
                     vehicleBrakeAccel,
                     simEngine.TickInterval,
-                    vehicleMinHeadway * tileSize,
+                    VehicleMinHeadway * tileSize,
                     tileSize,
                     2,
                     3);
@@ -311,28 +311,6 @@ namespace CityFlow.View
                 }
             }
 
-            RoutePolyline externalTrafficPath =
-                carIndex >= 0 &&
-                carIndex < lanePolyline.Length
-                    ? lanePolyline[carIndex]
-                    : null;
-            float externalTrafficDistance =
-                carIndex >= 0 &&
-                carIndex < carSimMirrors.Count
-                    ? carSimMirrors[carIndex].Distance
-                    : 0f;
-            if (TryGetExternalTrafficHeadway(
-                    vehicle,
-                    externalTrafficPath,
-                    externalTrafficDistance,
-                    out float externalHeadway,
-                    out float externalLeaderSpeed) &&
-                (!found || externalHeadway < headway))
-            {
-                headway = externalHeadway;
-                leaderSpeed = externalLeaderSpeed;
-                found = true;
-            }
             // 예전엔 `headway > 0`일 때만 제약을 걸었다 — 앞차를 파고든 순간 제약이 통째로
             // 사라져서 그대로 관통했다(계측 2026-07-20: 추종을 넣고도 SAME-DIR 겹침이
             // 385→359로 거의 안 줄었다). 겹친 순간이야말로 가장 강하게 눌러야 한다.
@@ -662,7 +640,7 @@ namespace CityFlow.View
                         float reprojectedDistance = ReprojectDistance(
                             snapshot,
                             newPolyline,
-                            snapshot.QueueSlot);
+                            snapshot.QueueOffsetTiles);
                         car.Distance = reprojectedDistance;
                         vehicle.HasTickTarget = false;
                         vehicle.TargetTileIndex = -1;
@@ -700,7 +678,7 @@ namespace CityFlow.View
                         car.Distance = ReprojectDistance(
                             snapshot,
                             activePolyline,
-                            snapshot.QueueSlot);
+                            snapshot.QueueOffsetTiles);
                     }
                     ApplyCarStyle(fresh, car);
                     carVehicles[car] = fresh;
@@ -752,7 +730,7 @@ namespace CityFlow.View
         private float ReprojectDistance(
             CarSnapshot snapshot,
             RoutePolyline polyline,
-            int queueSlot)
+            float queueOffsetTiles)
         {
             int tileIndex = Mathf.Clamp(snapshot.TileIndex, 0, polyline.TileCount - 1);
             Vector2Int simTile = polyline.TileAt(tileIndex);
@@ -761,8 +739,7 @@ namespace CityFlow.View
                 : 0f;
             return polyline.ReprojectDistance(
                 tileIndex,
-                queueSlot,
-                vehicleMinHeadway * tileSize,
+                queueOffsetTiles * tileSize,
                 headInset,
                 snapshot.IntersectionProgress01,
                 snapshot.LinkProgress01,
@@ -869,7 +846,6 @@ namespace CityFlow.View
                 Sample parked;
                 bool followingParkingPath = vehicle.Settling;
                 float parkingPreviousDistance = car.Distance;
-                bool parkingBlockedByTraffic = false;
                 if (followingParkingPath)
                 {
                     // 정착 속도는 '남은 스퍼 거리 / 정착시간'의 등속이어야 한다.
@@ -897,16 +873,7 @@ namespace CityFlow.View
                             parkingPolyline.Length,
                             vehicle.SettleRate *
                             Time.deltaTime);
-                    float safeParkingDistance =
-                        LimitVehicleTravelDistance(
-                            vehicle,
-                            parkingPolyline,
-                            car.Distance,
-                            proposedParkingDistance);
-                    parkingBlockedByTraffic =
-                        safeParkingDistance <
-                        proposedParkingDistance - 0.0001f;
-                    car.Distance = safeParkingDistance;
+                    car.Distance = proposedParkingDistance;
                     parked =
                         parkingPolyline.SampleAt(
                             car.Distance);
@@ -926,8 +893,7 @@ namespace CityFlow.View
                 float parkingDeltaTime =
                     Mathf.Max(Time.deltaTime, 0.0001f);
                 float parkingTravelSpeed =
-                    followingParkingPath &&
-                    !parkingBlockedByTraffic
+                    followingParkingPath
                         ? Mathf.Abs(
                               car.Distance -
                               parkingPreviousDistance) /
@@ -975,7 +941,6 @@ namespace CityFlow.View
             // Phase B 범위이며, 이번 단계에서도 앞차 추종의 headway 방어는 그대로 유지한다.
             // 07-20 계측: 슬롯 갭 0.55 단독(추종 방어 없이)은 SAME-DIR 겹침 385→769 —
             // 슬롯 목표는 반드시 headway 추종과 병행한다.
-            float slotGap = vehicleMinHeadway * tileSize;
             bool stateChanged = hadPrevious && previous != snapshot.State;
             if (stateChanged) car.Distance = 0f;
             bool isRoundaboutTile = IsRoundaboutTile(simTile);
@@ -990,15 +955,14 @@ namespace CityFlow.View
                     out roundaboutStopDistance);
             // 접근 외곽·arm은 roundaboutEntryLimited가 진입 간격을, 링은 로터리 권한이
             // 위치를 책임진다. 이 구간에 일반 타일 슬롯까지 적용하면 같은 거리를 이중 제한한다.
-            int targetQueueSlot = isRoundaboutTile || roundaboutEntryLimited
-                ? 0
-                : snapshot.QueueSlot;
+            float targetQueueOffset = isRoundaboutTile || roundaboutEntryLimited
+                ? 0f
+                : snapshot.QueueOffsetTiles * tileSize;
             // 매 프레임 주행 권한은 기존 상태 기계가 소유한다. ReprojectDistance는 리빌드
             // 바인딩 시점 전용이며, 여기서 공용화하면 권한 우선순위·단조 상태가 달라진다.
-            float targetDistance = poly.DistanceAtQueueSlot(
+            float targetDistance = poly.DistanceAtQueueOffset(
                 tileIndex,
-                targetQueueSlot,
-                slotGap,
+                targetQueueOffset,
                 headInset);
             bool hasIntersectionAuthorization = snapshot.IntersectionProgress01 >= 0f;
             float intersectionAuthorizedSpeed = 0f;
@@ -1199,7 +1163,7 @@ namespace CityFlow.View
                 {
                     // 상한 없이 노브 그대로 쓴다. 슬롯은 더 이상 위치의 주인이 아니므로
                     // Sim 슬롯 간격(0.250)으로 누를 이유가 없다.
-                    float minHeadway = vehicleMinHeadway * tileSize;
+                    float minHeadway = VehicleMinHeadway * tileSize;
                     hardHeadway = headway;
                     hardMinimumHeadway = minHeadway;
                     hardLeaderSpeed = leaderSpeed;
@@ -1234,20 +1198,6 @@ namespace CityFlow.View
                     vehicle.TravelSpeed = Mathf.Min(vehicle.TravelSpeed, hardLeaderSpeed);
                 }
                 car.Distance = Mathf.Min(corridor, car.Distance + allowedAdvance);
-            }
-
-            float unconstrainedDistance = car.Distance;
-            car.Distance =
-                LimitVehicleTravelDistance(
-                    vehicle,
-                    poly,
-                    previousDistance,
-                    unconstrainedDistance);
-            if (Mathf.Abs(
-                    car.Distance -
-                    unconstrainedDistance) > 0.0001f)
-            {
-                vehicle.TravelSpeed = 0f;
             }
 
             Sample sample = poly.SampleAt(car.Distance);

@@ -19,6 +19,8 @@ namespace CityFlow.EditorTools
             "Assets/02_Prefabs/Vehicles/SchoolBusContent.prefab";
         private const string DefinitionPath =
             "Assets/05_ScriptableObjects/CityFlow/Transit/SchoolBusDefinition.asset";
+        private const string LargeVehicleFootprintPath =
+            "Assets/05_ScriptableObjects/CityFlow/Traffic/LargeVehicleFootprint.asset";
         private const string SchedulePath =
             "Assets/05_ScriptableObjects/CityFlow/Transit/KoreanSchoolBusSchedule.asset";
         private const string DebugTimeSettingsPath =
@@ -147,8 +149,13 @@ namespace CityFlow.EditorTools
                 3;
             serialized.FindProperty("leavingDemandPerStop").intValue =
                 12;
+            serialized.FindProperty("vehicleFootprintProfile")
+                .objectReferenceValue =
+                AssetDatabase.LoadAssetAtPath<
+                    VehicleFootprintProfileSO>(
+                    LargeVehicleFootprintPath);
             serialized.FindProperty("vehicleLengthTiles").floatValue =
-                0.64f;
+                0.8f;
             serialized.FindProperty("vehicleWidthTiles").floatValue =
                 0.24f;
             serialized.FindProperty("routeColor").colorValue =
@@ -173,10 +180,12 @@ namespace CityFlow.EditorTools
             {
                 BusRoute route =
                     root.AddComponent<BusRoute>();
+                BusStopRegistry stopRegistry =
+                    root.AddComponent<BusStopRegistry>();
                 SchoolBusService service =
                     root.AddComponent<SchoolBusService>();
-                SchoolBusWorldView worldView =
-                    root.AddComponent<SchoolBusWorldView>();
+                BusWorldView worldView =
+                    root.AddComponent<BusWorldView>();
 
                 SetReference(
                     service,
@@ -186,6 +195,10 @@ namespace CityFlow.EditorTools
                     service,
                     "schedule",
                     schedule);
+                SetReference(
+                    service,
+                    "stopRegistry",
+                    stopRegistry);
                 SetReference(
                     service,
                     "busRoute",
@@ -207,6 +220,14 @@ namespace CityFlow.EditorTools
                 SetValue(route, "autoStart", false);
                 SetValue(
                     route,
+                    "secondsPerTile",
+                    definition.SecondsPerTile);
+                SetValue(
+                    route,
+                    "stopWaitSeconds",
+                    definition.StopWaitSeconds);
+                SetValue(
+                    route,
                     "avoidImmediateUTurn",
                     true);
 
@@ -222,6 +243,10 @@ namespace CityFlow.EditorTools
                     worldView,
                     "busMaterial",
                     material);
+                SetValue(
+                    worldView,
+                    "movementDuration",
+                    definition.SecondsPerTile);
                 SetValue(
                     worldView,
                     "schoolParkingSlot",

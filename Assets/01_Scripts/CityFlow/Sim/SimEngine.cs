@@ -12,7 +12,8 @@ namespace CityFlow.Sim
         IReadOnlyCityStats, ISimSaveSource, ISignalControl,
         IIntersectionFacilityService, ITrafficRuleService,
         IRouteDistanceProvider, IHighwayService,
-        IBusStopInfrastructureService, IVehicleTripService
+        IBusStopInfrastructureService, IVehicleTripService,
+        IRoadRoutePlanningService
     {
         SimConfig _config;   // seam(스펙 2026-07-12)으로 재주입 가능 — readonly 제거, ApplyConfig 참고
         readonly CityGrid _grid;
@@ -23,7 +24,9 @@ namespace CityFlow.Sim
         private readonly List<ConstructionSite> _completedBuffer = new(16);
         readonly RoutePlanner _planner;
         readonly RoadQueueNetwork _roadQueues;
+        readonly RoadTrafficCoordinator _roadTraffic;
         readonly CarSim _carSim;
+        readonly VehicleFootprint _standardVehicleFootprint;
         readonly DeviceStateAdapter _deviceState;
         readonly SignalGateAdapter _signalGate;
         readonly CongestionLevel[] _carCongestion;
@@ -82,12 +85,16 @@ namespace CityFlow.Sim
         internal bool TopologyDirtyForTest => _grid.TopologyDirty;
         internal float TripSuccessRateForTest => _stats.TripSuccessRate;
         internal RoadQueueNetwork RoadQueuesForTest => _roadQueues;
+        public IRoadTrafficService RoadTraffic => _roadTraffic;
+        public VehicleFootprint StandardVehicleFootprint =>
+            _standardVehicleFootprint;
         internal int ConstructionSiteCountForTest => _construction.Count;
 
         public SimEngine(
             SimConfig config,
             SimEventHub hub,
-            IWorldGridAccess worldGridAccess = null)
+            IWorldGridAccess worldGridAccess = null,
+            VehicleFootprint? standardVehicleFootprint = null)
         {
             _worldGridAccess = worldGridAccess;
             if (_worldGridAccess != null)
@@ -97,11 +104,21 @@ namespace CityFlow.Sim
             }
 
             _config = config;
+            _standardVehicleFootprint = standardVehicleFootprint ??
+                VehicleFootprint.StandardDefault;
             _grid = new CityGrid(config.GridWidth, config.GridHeight);
             _network = new RoadNetwork(_grid);
             _demand = new DemandMap(config);
             _planner = new RoutePlanner(config.GridWidth, config.GridHeight);
-            _roadQueues = new RoadQueueNetwork(config.GridWidth, config.GridHeight, config);
+            _roadQueues = new RoadQueueNetwork(
+                config.GridWidth,
+                config.GridHeight,
+                config,
+                _standardVehicleFootprint);
+            _roadTraffic = new RoadTrafficCoordinator(
+                _roadQueues,
+                () => TickInterval,
+                () => TickProgress01);
             _carSim = new CarSim(config);
             _deviceState = new DeviceStateAdapter(this);
             _signalGate = new SignalGateAdapter(this);
@@ -259,7 +276,8 @@ namespace CityFlow.Sim
                 _roadQueues,
                 _events,
                 _signalGate,
-                StepCount);
+                StepCount,
+                _roadTraffic);
             if (_carSim.HasCompletedRetirements)
             {
                 _buildingAssignmentChangePending = true;
@@ -761,6 +779,26 @@ namespace CityFlow.Sim
 
         public bool TryGetCityAverageRouteDistance(out float distanceTiles) =>
             _planner.TryGetCityAverageRouteDistance(out distanceTiles);
+
+        public bool TryPlanRoadRoute(
+            Vector2Int originRoad,
+            Vector2Int destinationRoad,
+            out RoadRoutePlan route)
+        {
+            route = default;
+            EnsureCarTopologyCurrent();
+
+            List<Vector2Int> routeTiles = _planner.PlanVehicleTrip(
+                originRoad,
+                destinationRoad);
+            if (routeTiles == null || routeTiles.Count == 0)
+            {
+                return false;
+            }
+
+            route = new RoadRoutePlan(routeTiles);
+            return true;
+        }
 
         // ── ISignalControl(신호 조작 창구): 유저가 교차로를 조율하는 두 레버 — 오프셋·초록 길이 ──
         // 제안 단계: 계약으로 승격(설계 §5), 최종 확정은 주석·김건 합의. 김건 Game뷰 UI가 이 계약에 붙음.
@@ -1275,6 +1313,7 @@ namespace CityFlow.Sim
             _placedBusStops.Clear();
             _busStopSet.Clear();
             _roadQueues.RemoveAllCars();
+            _roadTraffic.ResetNetworkOccupancy();
             Array.Clear(_carCongestion, 0, _carCongestion.Length);
             _carSim.ClearPopulation();
             _construction.Clear();

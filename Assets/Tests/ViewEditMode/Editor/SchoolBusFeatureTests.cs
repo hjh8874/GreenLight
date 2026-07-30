@@ -69,10 +69,19 @@ namespace CityFlow.Sim.Tests
                 Is.Not.Null);
             Assert.That(
                 definition.VehicleLengthTiles,
-                Is.EqualTo(0.64f).Within(0.0001f));
+                Is.EqualTo(0.8f).Within(0.0001f));
             Assert.That(
                 definition.VehicleWidthTiles,
                 Is.EqualTo(0.24f).Within(0.0001f));
+            Assert.That(
+                definition.VehicleMinimumGapTiles,
+                Is.EqualTo(0.11f).Within(0.0001f));
+            Assert.That(
+                definition.VehicleFootprintProfile,
+                Is.Not.Null);
+            Assert.That(
+                definition.VehicleFootprint.SizeClass,
+                Is.EqualTo(VehicleSizeClass.Large));
             Assert.That(
                 schedule.MorningStartHour,
                 Is.EqualTo(7));
@@ -89,11 +98,10 @@ namespace CityFlow.Sim.Tests
                 prefab.GetComponent<SchoolBusService>(),
                 Is.Not.Null);
             Assert.That(
-                prefab.GetComponent(
-                    "SchoolBusWorldView"),
+                prefab.GetComponent<BusWorldView>(),
                 Is.Not.Null);
-            Component worldView =
-                prefab.GetComponent("SchoolBusWorldView");
+            BusWorldView worldView =
+                prefab.GetComponent<BusWorldView>();
             SerializedObject worldViewSerialized =
                 new(worldView);
             Assert.That(
@@ -119,8 +127,8 @@ namespace CityFlow.Sim.Tests
                 Is.EqualTo(0.7f).Within(0.0001f));
             Assert.That(
                 prefab.GetComponent<BusStopRegistry>(),
-                Is.Null,
-                "The school bus must reuse the merged shared registry.");
+                Is.Not.Null,
+                "The school bus Prefab must provide its own registry.");
             Assert.That(
                 GameObjectUtility
                     .GetMonoBehavioursWithMissingScriptCount(
@@ -260,6 +268,8 @@ namespace CityFlow.Sim.Tests
                 "Sunday must not run by default.");
         }
 
+#if LEGACY_EXTERNAL_TRAFFIC_INTEGRATION_TESTS
+        // Superseded by BusWorldView and RoadTrafficCoordinator tests.
         [TestCase(1f, 0f, 0f, -0.25f)]
         [TestCase(-1f, 0f, 0f, 0.25f)]
         [TestCase(0f, 1f, 0.25f, 0f)]
@@ -378,7 +388,7 @@ namespace CityFlow.Sim.Tests
                     Is.EqualTo(1.44f).Within(0.0001f));
                 Assert.That(
                     halfLength,
-                    Is.EqualTo(0.64f).Within(0.0001f));
+                    Is.EqualTo(0.8f).Within(0.0001f));
                 Assert.That(
                     halfWidth,
                     Is.EqualTo(0.24f).Within(0.0001f));
@@ -423,6 +433,7 @@ namespace CityFlow.Sim.Tests
                 actual,
                 Is.EqualTo(expected).Within(0.0001f));
         }
+#endif
 
         [Test]
         public void SchoolBusParkingCurve_UsesDrivewayBeforeCenterSlot()
@@ -430,8 +441,8 @@ namespace CityFlow.Sim.Tests
             GameObject prefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
                     PrefabPath);
-            Component worldView =
-                prefab.GetComponent("SchoolBusWorldView");
+            BusWorldView worldView =
+                prefab.GetComponent<BusWorldView>();
             MethodInfo evaluatePoint =
                 worldView.GetType().GetMethod(
                     "EvaluateQuadraticPoint",
@@ -462,6 +473,8 @@ namespace CityFlow.Sim.Tests
                 Is.EqualTo(-1f).Within(0.0001f));
         }
 
+#if LEGACY_EXTERNAL_TRAFFIC_INTEGRATION_TESTS
+        // The simulation road queue is now the single traffic authority.
         [Test]
         public void ExternalTraffic_BlocksSchoolBusUntilLaneIsClear()
         {
@@ -1504,6 +1517,8 @@ namespace CityFlow.Sim.Tests
             Assert.That(crossingOverlap, Is.True);
             Assert.That(overpassClear, Is.False);
         }
+
+#endif
 
         [Test]
         public void ScheduledService_StartsOnlyAfterSchoolAndMorningWindow()
