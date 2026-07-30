@@ -7,6 +7,10 @@ namespace CityFlow.UI.Controllers.Placement
 {
     internal class PlacementActionDispatcher
     {
+        // 건설 패널 3종 분리 전 임시 기본값(2026-07-30 환 결정) —
+        // 패널이 유형 선택을 넘기면 대체한다.
+        private const string DefaultCompanyTypeId = "office";
+
         private readonly CityFlow.Configs.TileDataSO[] _availableTiles;
         private readonly bool _useFakeMode;
 
@@ -146,7 +150,10 @@ namespace CityFlow.UI.Controllers.Placement
                         : services.Placement.Place(
                             coord,
                             currentType,
-                            direction);
+                            direction,
+                            currentType == TileType.Office
+                                ? DefaultCompanyTypeId
+                                : null);
                     if (placed)
                     {
                         if (services.Economy != null && buildCost > 0)
