@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using TMPro;
 using UnityEngine;
 
@@ -32,7 +33,46 @@ namespace CityFlow.UI
 
             if (_services?.Events == null) return;
             _services.Events.Placed += OnPlaced;
+            if (_services.Save != null)
+            {
+                _services.Save.RestoreCompleted += OnRestoreCompleted;
+            }
             _subscribed = true;
+
+            CollectExistingSites();   // 씬 진입 시점에 이미 공사 중인 것들
+        }
+
+        private void OnRestoreCompleted(RestoreCompletedEvent _) => CollectExistingSites();
+
+        // 세이브 복원은 PlacedEvent 를 쏘지 않는다 — `SimEngine.RestoreSnapshot`이 "복원은 '건설'이
+        // 아니다"라며 의도적으로 생략한다. 이벤트만 기다리면 **복원된 공사장은 영구히 라벨이 없다**
+        // (공사 중 저장 → 로드 시 진행도는 도는데 표시가 안 됨. 리뷰 지적 2026-07-30).
+        // ponytail: 틱당 스캔이 아니라 로드당 1회 전수 훑기다. 그리드 크기에 비례하지만 프레임
+        // 비용이 아니므로 허용 — Sim 에 공사 사이트 열거 API 가 생기면 그걸로 갈아탄다.
+        private void CollectExistingSites()
+        {
+            IReadOnlyTileData tiles = _services?.TileData;
+            IWorldGridAccess grid = _services?.WorldGrid;
+            if (tiles == null || grid == null) return;
+
+            for (int y = 0; y < grid.WorldHeight; y++)
+            {
+                for (int x = 0; x < grid.WorldWidth; x++)
+                {
+                    var tile = new Vector2Int(x, y);
+                    if (_labels.ContainsKey(tile)) continue;
+                    // 앵커에만 라벨 하나. 진행도 조회는 풋프린트 어느 타일로 물어도 답하므로
+                    // 앵커 필터가 없으면 2x2 건물에 라벨이 4개 생긴다.
+                    if (!tiles.IsFootprintAnchor(tile)) continue;
+                    if (!tiles.TryGetConstructionProgress01(tile, out _)) continue;
+
+                    TextMeshPro label = CreateLabel(tile);
+                    if (label != null)
+                    {
+                        _labels.Add(tile, label);
+                    }
+                }
+            }
         }
 
         private void OnPlaced(PlacedEvent e)
@@ -67,6 +107,7 @@ namespace CityFlow.UI
             IReadOnlyTileData tiles = _services?.TileData;
             IWorldCoordinateSpace space = _services?.WorldCoordinates;
             if (tiles == null) return;
+            Camera cam = Camera.main;   // 프레임당 1회 조회(라벨마다 부르지 않는다)
 
             foreach (KeyValuePair<Vector2Int, TextMeshPro> pair in _labels)
             {
@@ -82,6 +123,17 @@ namespace CityFlow.UI
                 {
                     pair.Value.transform.position =
                         space.GridToWorld(pair.Key, heightOffset);
+                    // 위치만 바꾸면 XZ 평면(표준 WorldCoordinateProfile)에서 라벨 면이 카메라를
+                    // 향하지 않아 옆면으로 눕는다. FlowBurstFloatingText:225-232 와 같은 규칙 —
+                    // XY 는 좌표계 회전, XZ 는 카메라 빌보드.
+                    if (space.Plane == WorldCoordinatePlane.XY)
+                    {
+                        pair.Value.transform.rotation = space.CoordinateRotation;
+                    }
+                    else if (cam != null)
+                    {
+                        pair.Value.transform.rotation = cam.transform.rotation;
+                    }
                 }
             }
 
@@ -106,6 +158,10 @@ namespace CityFlow.UI
             if (_subscribed && _services?.Events != null)
             {
                 _services.Events.Placed -= OnPlaced;
+                if (_services.Save != null)
+                {
+                    _services.Save.RestoreCompleted -= OnRestoreCompleted;
+                }
             }
 
             _subscribed = false;
