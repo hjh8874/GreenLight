@@ -120,6 +120,39 @@ public class ResearchConditionTests
         finally { Object.DestroyImmediate(owner); }
     }
 
+    [Test]
+    public void FinalizedArrivals_UpdateUnlocksOnlyAfterStatsValueChanges()
+    {
+        var owner = new GameObject("research");
+        var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+        try
+        {
+            var service = owner.AddComponent<ResearchUnlockService>();
+            ConfigureCatalog(catalog,
+                ("research_arr60", ResearchConditionKind.DailyArrivals, 60));
+            SetPrivateField(service, "catalog", catalog);
+
+            var stats = new FakeStats { LastDayArrivalCount = 59 };
+            var services = new CityFlowServices(
+                new SimEventHub(), null, null, stats: stats);
+            service.Initialize(services);
+
+            InvokeUpdate(service);
+            Assert.IsFalse(service.IsUnlocked("research_arr60"),
+                "어제 확정 통행량이 임계값 미달이면 잠긴 채여야 한다");
+
+            stats.LastDayArrivalCount = 60;
+            InvokeUpdate(service);
+            Assert.IsTrue(service.IsUnlocked("research_arr60"),
+                "통계 확정값이 바뀐 뒤 Update에서 해금해야 한다");
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(catalog);
+        }
+    }
+
     static void ConfigureCatalog(ResearchCatalogSO catalog,
         params (string id, ResearchConditionKind kind, int threshold)[] rows)
     {
@@ -146,4 +179,27 @@ public class ResearchConditionTests
     static void SetTestInputs(ResearchUnlockService service, int population, int arrivals) =>
         service.inputsOverrideForTest = () =>
             new ResearchConditionInputs(arrivals, population, null);
+
+    static void InvokeUpdate(ResearchUnlockService service)
+    {
+        var method = typeof(ResearchUnlockService).GetMethod(
+            "Update",
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.Instance);
+        method?.Invoke(service, null);
+    }
+
+    sealed class FakeStats : IReadOnlyCityStats
+    {
+        public int ActiveVehicleCount => 0;
+        public int LastDayArrivalCount { get; set; }
+
+        public bool TryGetCompanyStaffing(
+            Vector2Int tile,
+            out CompanyStaffing staffing)
+        {
+            staffing = default;
+            return false;
+        }
+    }
 }

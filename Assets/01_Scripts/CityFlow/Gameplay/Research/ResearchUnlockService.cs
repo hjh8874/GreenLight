@@ -27,8 +27,8 @@ namespace CityFlow.Gameplay.Research
             new(StringComparer.Ordinal);
         private bool initialized;
         private CityFlowServices cityServices;
-        private IGameCalendarService boundCalendar;
         private IReadOnlyPopulationData boundPopulation;
+        private int lastSeenDayArrivals;
         internal Func<ResearchConditionInputs> inputsOverrideForTest;
 
         public int UnlockedCount => unlockedResearchIds.Count;
@@ -64,6 +64,8 @@ namespace CityFlow.Gameplay.Research
             Debug.Log("[ResearchUnlockService] Registered.", this);
 
             cityServices = services;
+            lastSeenDayArrivals =
+                cityServices.Stats?.LastDayArrivalCount ?? 0;
             if (catalog == null)
             {
                 catalog = ResearchCatalogSO.LoadDefault();
@@ -74,8 +76,6 @@ namespace CityFlow.Gameplay.Research
             {
                 services.Save.RestoreCompleted += OnRestoreForResearch;
             }
-            BindCalendar(services.GameCalendar);
-            services.GameCalendarRegistered += BindCalendar;      // 등록 지연 대비
             BindPopulation(services.Population);
             services.PopulationRegistered += BindPopulation;
             EvaluatePendingResearch();                            // 초기 1회
@@ -93,12 +93,7 @@ namespace CityFlow.Gameplay.Research
                 {
                     cityServices.Save.RestoreCompleted -= OnRestoreForResearch;
                 }
-                cityServices.GameCalendarRegistered -= BindCalendar;
                 cityServices.PopulationRegistered -= BindPopulation;
-            }
-            if (boundCalendar != null)
-            {
-                boundCalendar.DayChanged -= OnDayChangedForResearch;
             }
             if (boundPopulation != null)
             {
@@ -106,19 +101,23 @@ namespace CityFlow.Gameplay.Research
             }
         }
 
-        private void BindCalendar(IGameCalendarService gameCalendar)
+        private void Update()
         {
-            if (gameCalendar == null || ReferenceEquals(boundCalendar, gameCalendar))
+            IReadOnlyCityStats stats = cityServices?.Stats;
+            if (stats == null)
             {
                 return;
             }
 
-            if (boundCalendar != null)
+            int currentDayArrivals = stats.LastDayArrivalCount;
+            if (currentDayArrivals == lastSeenDayArrivals)
             {
-                boundCalendar.DayChanged -= OnDayChangedForResearch;
+                // 같은 확정 입력이면 판정 결과도 같으므로 생략해도 결과가 달라지지 않는다.
+                return;
             }
-            boundCalendar = gameCalendar;
-            boundCalendar.DayChanged += OnDayChangedForResearch;
+
+            lastSeenDayArrivals = currentDayArrivals;
+            EvaluatePendingResearch();
         }
 
         private void BindPopulation(IReadOnlyPopulationData population)
@@ -143,7 +142,6 @@ namespace CityFlow.Gameplay.Research
         }
 
         private void OnRestoreForResearch(RestoreCompletedEvent _) => EvaluatePendingResearch();
-        private void OnDayChangedForResearch(int _) => EvaluatePendingResearch();
         private void OnPopulationChangedForResearch(int _) => EvaluatePendingResearch();
 
         internal void EvaluatePendingResearch()
