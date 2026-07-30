@@ -121,11 +121,14 @@ namespace CityFlow.Tests.ViewEditMode
                 schoolBusRoute.SecondsPerTile;
             float originalSchoolBusStopWaitSeconds =
                 schoolBusRoute.StopWaitSeconds;
-            var originalSchoolBusCanEnterTile =
+            var schoolBusCanEnterTile =
                 schoolBusRoute.CanEnterTile;
+            Assert.That(
+                schoolBusCanEnterTile,
+                Is.Not.Null,
+                "School-bus traffic entry validation must stay connected.");
             schoolBusRoute.SecondsPerTile = 0.01f;
             schoolBusRoute.StopWaitSeconds = 0f;
-            schoolBusRoute.CanEnterTile = null;
             Assert.That(schoolBus.StartService(), Is.True);
             MethodInfo updateSchoolBusRoute =
                 typeof(BusRoute).GetMethod(
@@ -147,8 +150,10 @@ namespace CityFlow.Tests.ViewEditMode
                 originalSchoolBusSecondsPerTile;
             schoolBusRoute.StopWaitSeconds =
                 originalSchoolBusStopWaitSeconds;
-            schoolBusRoute.CanEnterTile =
-                originalSchoolBusCanEnterTile;
+            Assert.That(
+                schoolBusRoute.CanEnterTile,
+                Is.EqualTo(schoolBusCanEnterTile),
+                "School-bus traffic entry validation was replaced during the trip.");
 
             Assert.That(
                 schoolBus.State,
@@ -312,7 +317,7 @@ namespace CityFlow.Tests.ViewEditMode
                      !sawVisibleBus ||
                      maximumVisibleStations < 2 ||
                      maximumRenderedTiles <= 400 ||
-                     maximumTrafficLightLenses < 1))
+                     maximumTrafficLightLenses < 2))
             {
                 yield return null;
 
@@ -364,7 +369,7 @@ namespace CityFlow.Tests.ViewEditMode
                 cityBus.Runtime.CurrentTile);
             Assert.That(
                 maximumTrafficLightLenses,
-                Is.GreaterThanOrEqualTo(1));
+                Is.GreaterThanOrEqualTo(2));
             Assert.That(screenshotCaptured, Is.True);
 
             TimeOfDaySkyController sky =
