@@ -88,6 +88,24 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void PlacementContract_FourArgumentPlace_PreservesCompanyTypeId()
+        {
+            SimEngine engine = NewEngineWithTypes();
+            IPlacementService placement = engine;
+
+            Assert.IsTrue(placement.Place(
+                new Vector2Int(0, 0),
+                TileType.Office,
+                PlacementDirection.North,
+                "factory"));
+            Assert.IsTrue(engine.TryGetCompanyTypeIdForTest(
+                new Vector2Int(0, 0),
+                out string id));
+            Assert.AreEqual("factory", id,
+                "UI가 쓰는 공용 배치 계약을 거쳐도 회사 유형이 보존되어야 한다");
+        }
+
+        [Test]
         public void PlaceOffice_UnknownTypeId_WarnsAndFallsBack()
         {
             SimEngine engine = NewEngineWithTypes();
