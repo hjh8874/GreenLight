@@ -1376,7 +1376,14 @@ namespace CityFlow.View
                 AddFallbackBuildingDetails(body.transform, type);
             }
 
-            AddParkingLotDetails(root.transform, type);
+            // 공사장에는 주차 자리를 만들지 않는다. 차가 여기로 배정되지는 않지만
+            // (타입이 House/Office 가 아니므로), ParkingSlot_{n} 자식을 남겨두면
+            // CarMotion.GetParkingAnchor()가 Find 로 집어갈 여지가 생긴다 — 그 경로는
+            // 에러 없이 조용히 폴백하므로 애초에 만들지 않는 편이 안전하다.
+            if (type != TileType.UnderConstruction)
+            {
+                AddParkingLotDetails(root.transform, type);
+            }
 
             return new TileVisual
             {
@@ -1394,6 +1401,8 @@ namespace CityFlow.View
                 TileType.Office => tileSize * 1.35f,
                 TileType.School => tileSize * 0.65f,
                 TileType.Hospital => tileSize * 0.85f,
+                // 공사 중 = 낮게 깔린 기초. 한눈에 "아직 건물이 아니다"로 읽히는 게 목적이다.
+                TileType.UnderConstruction => tileSize * 0.18f,
                 _ => tileSize * 0.8f
             };
 
@@ -1590,11 +1599,17 @@ namespace CityFlow.View
                 TileType.Office => officeColor,
                 TileType.School => schoolColor,
                 TileType.Hospital => hospitalColor,
+                TileType.UnderConstruction => ConstructionColor,
                 _ => Color.clear
             };
 
             ApplyRendererColor(visual.Renderer, color, visual.Block);
         }
+
+        // 공사장 색. houseColor 등과 달리 [SerializeField]가 아니다 — MainCityView 에
+        // 직렬화 필드를 추가하는 것은 금지(씬 7개를 함께 고쳐야 하므로 담당자가 몰아서 추가).
+        // 튜닝이 필요해지면 그때 담당자에게 필드 추가를 요청한다.
+        private static readonly Color ConstructionColor = new Color(0.62f, 0.55f, 0.38f);
 
         private Color GetRoadColor(CongestionLevel congestion)
         {

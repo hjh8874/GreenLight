@@ -22,6 +22,7 @@ namespace CityFlow.Bootstrap
         private FakeFlowReader fakeFlowReader;
         private FakePlacementService fakePlacementService;
         private SimEngine simEngine;
+        private SimConfig engineConfig;
         private SaveService saveService;
         private IWorldGridAccess worldGridAccess;
         private ICityFlowServiceConsumer worldGridConsumer;
@@ -63,6 +64,7 @@ namespace CityFlow.Bootstrap
                 config.GridHeight = worldGridAccess?.WorldHeight ?? mapHeight;
 
                 var hub = new SimEventHub();
+                engineConfig = config;
                 VehicleFootprint standardVehicleFootprint = simConfig != null
                     ? simConfig.StandardVehicleFootprint
                     : VehicleFootprint.StandardDefault;
@@ -88,6 +90,53 @@ namespace CityFlow.Bootstrap
         private void Start()
         {
             InstallServices();
+            SyncSimDayLengthToCalendar();
+        }
+
+        // 하루 길이 단일 출처화의 마지막 조각. `GameTimeSettingsSO`(표시 시계)와
+        // `SimConfig.DayLengthSeconds`(Sim 사본)는 어셈블리 경계 때문에 값을 복제해야 하는데,
+        // **복제는 어긋난다.** 기본값을 맞춰놔도 씬이 다른 GameTimeSettings 에셋을 물리면 갈라진다
+        // (리뷰 지적 2026-07-30: `CityFlowIntegrated_Lee`가 24초 디버그 설정 + 720초 SimConfig 를
+        // 함께 참조 → 30배). 씬이 실제로 쓰는 캘린더 값을 런타임에 Sim 으로 밀어 불일치를
+        // 구조적으로 불가능하게 만든다. 씬 편집도, 씬별 전용 SimConfig 도 필요 없다.
+        private void SyncSimDayLengthToCalendar()
+        {
+            if (simEngine == null) return;
+
+            IGameCalendarService calendar = Services?.GameCalendar;
+            if (calendar == null) return;
+
+            if (!TryResolveSimDayLength(
+                    calendar.RealSecondsPerGameDay,
+                    engineConfig.DayLengthSeconds,
+                    out float resolved))
+            {
+                return;
+            }
+
+            engineConfig.DayLengthSeconds = resolved;
+            if (!simEngine.ApplyConfig(engineConfig))
+            {
+                Debug.LogWarning(
+                    "[CityBootstrap] 하루 길이 동기화가 거부됐다(퇴화 config). "
+                    + $"Sim 은 {engineConfig.DayLengthSeconds}초를 유지한다.",
+                    this);
+            }
+        }
+
+        // 순수 판정 — 캘린더 값이 유효하고 Sim 사본과 다를 때만 동기화한다.
+        // internal 이라 기본 에디터 어셈블리(테스트)에서 보인다(AssemblyInfo 의 InternalsVisibleTo).
+        internal static bool TryResolveSimDayLength(
+            float calendarSecondsPerDay,
+            float currentSimDayLength,
+            out float resolved)
+        {
+            resolved = currentSimDayLength;
+            if (calendarSecondsPerDay <= 0f) return false;   // 미설정·퇴화 값은 무시
+            if (Mathf.Approximately(calendarSecondsPerDay, currentSimDayLength)) return false;
+
+            resolved = calendarSecondsPerDay;
+            return true;
         }
 
         private void Update()
