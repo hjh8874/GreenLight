@@ -12,8 +12,8 @@
 
 ## Global Constraints
 
-- 기준 브랜치: **`develop 43c0d5f`에서 직접 분기.** 스택 금지 — Squash 머지라 브랜치를 쌓으면 diff가 중복된다.
-- 회귀 기준선: **EditMode `CityFlow.Sim.Tests` 410/410 green** (`develop 43c0d5f` 실측, 2026-07-29). **부분 실패 허용 없음.**
+- 기준 브랜치: **`develop 74bec26`에서 직접 분기.** 스택 금지 — Squash 머지라 브랜치를 쌓으면 diff가 중복된다.
+- 회귀 기준선: **EditMode `CityFlow.Sim.Tests` 423/423 green** (`develop 74bec26` 실측, 2026-07-30). **부분 실패 허용 없음.**
 - 검증 순서 (매 태스크 끝): `refresh_unity`(compile=request, mode=force) → `read_console`(types=["error"]) → `run_tests`(EditMode, `CityFlow.Sim.Tests`).
 - **무시해도 되는 콘솔 에러 2건** — 환경/도구 로그이지 코드 문제가 아니다:
   1. `Required external font asset is missing: 'Assets/99_Download/Fonts/NanumGothic SDF.asset'`
@@ -47,7 +47,7 @@
 ```
 Phase ②  자정 넘김 지원         Task 1~2        → PR 1   (동작 무변경, 단독 머지 안전)
 Phase ③  회사 3종 + 유형별 창    Task 3~5, 7     → PR 2
-Phase ④  공사 중 유형 보존       Task 6 (조건부)  → PR 3   ← PR #171 머지 후에만
+Phase ④  공사 중 유형 보존       Task 6          → PR 3   ← #171 머지 완료(0d313da), 조건 충족
 ```
 
 Phase ②는 **동작 무변경**으로 끝난다(모든 차가 여전히 같은 전역 창을 받는다). 자정 넘김 능력만 생기고 쓰는 데가 없다. 그래서 단독 머지가 안전하다.
@@ -161,7 +161,7 @@ namespace CityFlow.Sim
 - [ ] **Step 4: 통과 확인**
 
 `run_tests`(test_names=`CityFlow.Sim.Tests.CommuteWindowTests`) → 3/3 PASS
-그다음 전체: `run_tests`(EditMode, `CityFlow.Sim.Tests`) → **413/413 PASS** (410 + 신규 3)
+그다음 전체: `run_tests`(EditMode, `CityFlow.Sim.Tests`) → **426/426 PASS** (423 + 신규 3)
 
 - [ ] **Step 5: 커밋**
 
@@ -177,9 +177,19 @@ start > end 면 자정을 넘는 구간으로 해석한다. 아직 소비자 없
 
 ---
 
-### Task 2: 출퇴근 판정을 차 개별 값 기준으로 (동작 무변경)
+### Task 2: 출퇴근 판정을 차 개별 창 기준으로 (동작 무변경)
 
-전역 필드(`_eveningEnd` 등) 대신 **차 자신의 근무 구간**으로 판정하게 바꾼다. 이 태스크가 끝나도 모든 차가 여전히 같은 전역 창을 받으므로 **동작은 변하지 않는다.** 자정 넘김 능력만 생긴다.
+전역 필드(`_morningEnd`·`_eveningStart`·`_eveningEnd`) 대신 **차 자신의 창 값**으로 판정하게 바꾼다. 이 태스크가 끝나도 모든 차가 같은 전역 값을 복사받으므로 **동작은 변하지 않는다.** 자정 넘김 능력만 생긴다.
+
+> **계획 정정 (2026-07-30, 실제 코드 확인 후).** 초안은 `WorkStartHour`/`WorkEndHour`(근무 구간)를 추가해
+> 퇴근을 `!InWindow(hour, WorkStart, WorkEnd)`로 판정하려 했다. **그건 동작 무변경이 아니다.**
+> 현재 퇴근 조건은 `hour >= car.DepartWorkHour`(집마다 흩뿌려진 **개인** 퇴근 시각)인데, 구간 이탈 판정으로
+> 바꾸면 전 차가 퇴근창 끝에 **동시에** 퇴근한다 — 스태거가 사라지고 퇴근 러시가 한 틱에 몰린다.
+> 게다가 Task 5는 `WorkEndHour = w.EndHour`(퇴근창 **시작**)를 넣어 Task 2의 의미(`eveningEnd`)와 어긋났다.
+>
+> **정정안:** 트리거는 개인 시각(`DepartHomeHour`/`DepartWorkHour`)을 그대로 쓰고 **비교만 순환식**으로 바꾼다.
+> 새 필드는 퇴근창 2개(`EveningStartHour`/`EveningEndHour`)뿐이고, 근무 구간 필드는 만들지 않는다.
+> `SnapCar`의 2026-07-17 기획 결정("퇴근창 안만 ParkedWork, 낮 로드는 전원 지각 출근")도 그대로 보존된다.
 
 **Files:**
 - Modify: `Assets/01_Scripts/CityFlow/Sim/CommuteScheduler.cs`
@@ -187,136 +197,158 @@ start > end 면 자정을 넘는 구간으로 해석한다. 아직 소비자 없
 
 **Interfaces:**
 - Consumes: `CommuteWindow.InWindow` (Task 1)
-- Produces: `CommuteCar.WorkStartHour` / `CommuteCar.WorkEndHour` (근무 구간). Task 5가 유형별 값으로 채운다.
+- Produces: `CommuteCar.EveningStartHour` / `CommuteCar.EveningEndHour` (퇴근창 `[시작, 끝)`).
+  Task 5가 유형별 값으로 채운다.
+
+**판정 3곳의 새 규칙** (모두 `InWindow` 하나로):
+
+| 전이 | 현재 | 바뀐 뒤 | 주간조에서 동일한가 |
+|---|---|---|---|
+| ParkedHome → Outbound | `hour >= DepartHomeHour && hour < _eveningEnd` | `InWindow(hour, DepartHomeHour, EveningEndHour)` | 동일 |
+| ParkedWork → Inbound | `hour >= DepartWorkHour` | `InWindow(hour, DepartWorkHour, DepartHomeHour)` | 동일 (예외: 근무 중 새벽 로드 같은 창 밖 상태는 이제 귀가) |
+| `SnapCar` ParkedWork | `hour >= _eveningStart && hour < _eveningEnd` | `InWindow(hour, EveningStartHour, EveningEndHour)` | 동일 |
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
-기존 `Assets/Tests/EditMode/CommuteSchedulerTests.cs`를 먼저 읽고 **그 파일의 스케줄러 생성·호출 패턴을 그대로 따라** 아래 테스트를 추가한다. 새 헬퍼를 만들지 말고 기존 것을 재사용한다.
+기존 `Assets/Tests/EditMode/CommuteSchedulerTests.cs`의 `Build(homes, officeSlots)` 헬퍼를 재사용하고,
+차의 창 값만 야간조로 덮어쓴다. 새 헬퍼를 만들지 않는다.
 
 ```csharp
+        // 자정을 넘는 근무(20시 출근 / 5시 퇴근). 전역 창이 아니라 차 개별 값으로 판정하므로 성립한다.
         [Test]
-        public void NightShift_DepartsAtNight_AndReturnsBeforeDawn()
+        public void NightShift_StaysAtWorkPastMidnight_AndLeavesAtDawn()
         {
-            // 출근 20시 / 퇴근 5시 — 자정을 넘는 근무
-            var car = new CommuteCar
-            {
-                Home = V(0, 0), Work = V(4, 0),
-                DepartHomeHour = 20f, DepartWorkHour = 5f,
-                WorkStartHour = 20f, WorkEndHour = 5f,
-                State = CarState.ParkedHome,
-            };
-            var scheduler = NewSchedulerWith(car);   // 기존 파일의 헬퍼를 쓰거나 같은 방식으로 구성
+            var s = Build(homes: 1, officeSlots: 4);
+            var car = s.Cars[0];
+            car.DepartHomeHour = 20f;     // 출근창 [20, 24)
+            car.DepartWorkHour = 5f;      // 퇴근창 [5, 9)
+            car.EveningStartHour = 5f;
+            car.EveningEndHour = 9f;
+            car.State = CarState.ParkedHome;
 
-            scheduler.UpdateDepartures(19f);
+            s.UpdateDepartures(19f);
             Assert.AreEqual(CarState.ParkedHome, car.State, "19시엔 아직 집");
-
-            scheduler.UpdateDepartures(20f);
-            Assert.AreEqual(CarState.Outbound, car.State, "20시에 출근 시작");
-
-            scheduler.NotifyArrived(car);
+            s.UpdateDepartures(20f);
+            Assert.AreEqual(CarState.Outbound, car.State, "20시에 출근");
+            s.NotifyArrived(car);
             Assert.AreEqual(CarState.ParkedWork, car.State);
 
-            scheduler.UpdateDepartures(23f);
-            Assert.AreEqual(CarState.ParkedWork, car.State, "23시엔 아직 근무 중");
-            scheduler.UpdateDepartures(2f);
+            s.UpdateDepartures(23f);
+            Assert.AreEqual(CarState.ParkedWork, car.State, "23시엔 근무 중");
+            s.UpdateDepartures(2f);
             Assert.AreEqual(CarState.ParkedWork, car.State, "새벽 2시에도 근무 중 — 자정을 넘겼다");
 
-            scheduler.UpdateDepartures(5f);
+            s.UpdateDepartures(5f);
             Assert.AreEqual(CarState.Inbound, car.State, "5시에 퇴근");
         }
 
+        // 퇴근창 자체가 자정을 넘는 경우(23시~2시)의 스냅. 2026-07-17 정책은 유지 —
+        // 퇴근창 안만 ParkedWork이고 그 밖(근무 중인 낮 포함)은 전부 ParkedHome이다.
         [Test]
-        public void SnapCar_NightShift_ParksAtWorkAcrossMidnight()
+        public void SnapCar_EveningWindowWrapsMidnight()
         {
-            var car = new CommuteCar
-            {
-                Home = V(0, 0), Work = V(4, 0),
-                DepartHomeHour = 20f, DepartWorkHour = 5f,
-                WorkStartHour = 20f, WorkEndHour = 5f,
-            };
-            var scheduler = NewSchedulerWith(car);
+            var s = Build(homes: 1, officeSlots: 4);
+            var car = s.Cars[0];
+            car.DepartHomeHour = 14f;
+            car.DepartWorkHour = 23.5f;
+            car.EveningStartHour = 23f;   // 퇴근창 [23, 2) — 자정 넘김
+            car.EveningEndHour = 2f;
 
-            scheduler.SnapCar(car, 23f);
-            Assert.AreEqual(CarState.ParkedWork, car.State, "23시 로드 → 근무 중");
-
-            scheduler.SnapCar(car, 3f);
-            Assert.AreEqual(CarState.ParkedWork, car.State, "새벽 3시 로드 → 근무 중");
-
-            scheduler.SnapCar(car, 12f);
-            Assert.AreEqual(CarState.ParkedHome, car.State, "정오 로드 → 집");
+            s.SnapCar(car, 23.5f);
+            Assert.AreEqual(CarState.ParkedWork, car.State, "퇴근창 안(자정 전)");
+            s.SnapCar(car, 1f);
+            Assert.AreEqual(CarState.ParkedWork, car.State, "퇴근창 안(자정 후)");
+            s.SnapCar(car, 2f);
+            Assert.AreEqual(CarState.ParkedHome, car.State, "끝 시각은 배타");
+            s.SnapCar(car, 18f);
+            Assert.AreEqual(CarState.ParkedHome, car.State, "근무 중인 낮도 ParkedHome — 첫 움직임은 출근");
         }
 ```
 
-> `NewSchedulerWith`는 예시 이름이다. 기존 파일에 스케줄러를 만드는 방식이 이미 있으면 **그것을 쓴다.** 없으면 기존 테스트가 하는 방식(대개 `Rebuild` 호출)으로 구성하고, 위 두 테스트가 요구하는 것은 "특정 차 하나를 원하는 시각 값으로 두고 `UpdateDepartures`/`SnapCar`를 부르는 것"뿐이다.
-
 - [ ] **Step 2: 실패 확인**
 
-Expected: 컴파일 에러 — `CommuteCar`에 `WorkStartHour`/`WorkEndHour` 없음
+`run_tests`(test_names=`CityFlow.Sim.Tests.CommuteSchedulerTests`)
+Expected: 컴파일 에러 — `CommuteCar`에 `EveningStartHour`/`EveningEndHour` 없음
 
-- [ ] **Step 3: `CommuteCar`에 근무 구간 추가**
+- [ ] **Step 3: `CommuteCar`에 퇴근창 추가**
 
-`CommuteScheduler.cs`의 `CommuteCar` 클래스에 필드 2개를 추가한다.
+`CommuteScheduler.cs`의 `CommuteCar`(현재 `:22`)에 필드 2개를 추가한다.
 
 ```csharp
         public float DepartHomeHour, DepartWorkHour;
-        // 근무 구간 [WorkStartHour, WorkEndHour). WorkStart > WorkEnd 면 자정을 넘는 근무다.
-        // 출퇴근 판정의 기준 — 전역 창이 아니라 차 자신의 값을 쓴다(유형별 창 대비).
-        public float WorkStartHour, WorkEndHour;
+        // 이 차의 퇴근창 [EveningStartHour, EveningEndHour). Start > End 면 자정을 넘는다.
+        // 판정 기준을 전역 창이 아니라 차 개별 값으로 두는 이유 = 유형별 근무시간(야간조) 대비.
+        public float EveningStartHour, EveningEndHour;
 ```
 
-- [ ] **Step 4: 차 생성 시 근무 구간 채우기**
+- [ ] **Step 4: 차 생성 시 퇴근창 채우기**
 
-`Rebuild` 안 `new CommuteCar { ... }`(현재 `:119-127`)에 두 줄을 추가한다. **이 태스크에서는 전역 창을 그대로 쓴다** — 그래서 동작이 안 바뀐다.
+`Rebuild` 안 `new CommuteCar { ... }`(현재 `:226-234`)에 두 줄을 추가한다. **이 태스크에서는 전역 창을
+그대로 복사한다** — 그래서 동작이 안 바뀐다.
 
 ```csharp
                     DepartHomeHour = StaggerHour(sources[i], morningStart, morningEnd),
                     DepartWorkHour = StaggerHour(sources[i], eveningStart, eveningEnd),
-                    WorkStartHour = morningStart,
-                    WorkEndHour = eveningEnd,
+                    EveningStartHour = eveningStart,
+                    EveningEndHour = eveningEnd,
 ```
 
 - [ ] **Step 5: 판정을 차 개별 값으로 교체**
 
-`UpdateDepartures`(현재 `:159-178`)의 두 조건을 바꾼다.
+`UpdateDepartures`(현재 `:290-313`)의 세 조건을 바꾼다. `AwaitingNextWave` 해제 조건도 순환식으로 바꿔야
+한다 — 야간조는 "출발 시각 이전"이 자정을 걸쳐 있어서 `hour < DepartHomeHour`가 근무 시간대를 포함해버린다.
 
 ```csharp
+                if (car.State == CarState.ParkedHome && car.AwaitingNextWave)
+                {
+                    // 창 밖(=다음 파도 이전)을 한 번 관측하면 해제. 자정을 넘는 창도 성립한다.
+                    if (!CommuteWindow.InWindow(hour, car.DepartHomeHour, car.EveningEndHour))
+                        car.AwaitingNextWave = false;
+                    else
+                        continue;
+                }
                 if (car.State == CarState.ParkedHome
-                    && hour >= car.DepartHomeHour
-                    && CommuteWindow.InWindow(hour, car.WorkStartHour, car.WorkEndHour))
+                    && CommuteWindow.InWindow(hour, car.DepartHomeHour, car.EveningEndHour))
                 { car.State = CarState.Outbound; car.Distance = 0f; }
                 else if (car.State == CarState.ParkedWork
-                    && (!CommuteWindow.InWindow(hour, car.WorkStartHour, car.WorkEndHour)
+                    && (CommuteWindow.InWindow(hour, car.DepartWorkHour, car.DepartHomeHour)
                         || car.RetireReason == RetireReason.WorkLost))
                 { car.State = CarState.Inbound; car.Distance = 0f; }
 ```
 
-> 퇴근 조건이 `hour >= DepartWorkHour`에서 **"근무 구간을 벗어났는가"**로 바뀐다.
-> 자정을 넘는 근무에서는 단순 비교가 성립하지 않기 때문이다.
+> 퇴근 구간이 **`[개인 퇴근 시각, 다음 개인 출근 시각)`** 이다. 개인 시각을 트리거로 유지하므로
+> 스태거가 살아 있고, 자정을 넘는 근무에서도 단순 `>=` 비교가 필요 없다.
 
-`SnapCar`(현재 `:210-224`)의 창 판정을 바꾼다.
+`SnapCar`(현재 `:355-367`)의 창 판정을 바꾼다.
 
 ```csharp
-                bool inWorkWindow = CommuteWindow.InWindow(
-                    hour, car.WorkStartHour, car.WorkEndHour);
-                car.State = inWorkWindow ? CarState.ParkedWork : CarState.ParkedHome;
+                bool inEveningWindow = CommuteWindow.InWindow(
+                    hour, car.EveningStartHour, car.EveningEndHour);
+                car.State = inEveningWindow ? CarState.ParkedWork : CarState.ParkedHome;
 ```
+
+`_morningEnd`·`_eveningStart`·`_eveningEnd` 필드와 `Rebuild`의 대입(현재 `:132`)을 **이 태스크에서 제거한다**
+(초안은 Task 5로 미뤘지만 남길 이유가 없다). `Rebuild`의 시각 인자 4개는 스태거·창 복사에 아직 쓰이므로
+Task 5까지 남는다.
 
 - [ ] **Step 6: 통과 확인**
 
 `refresh_unity` → `read_console`(위 화이트리스트 2건 외 `error CS` 없음) → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **415/415 PASS** (413 + 신규 2)
+Expected: **428/428 PASS** (426 + 신규 2)
 
-**기존 통근 테스트가 깨지면 수치만 갱신하고 실패를 덮는 완화는 하지 마라.** 깨진 이유가 "전역 창 전제"였다면 갱신이 맞고, 그 외 이유면 멈추고 보고한다.
+**기존 통근 테스트가 깨지면 수치만 갱신하고 실패를 덮는 완화는 하지 마라.** 주간조 값에서는 위 표대로
+동작이 같아야 하므로, 깨졌다면 정정안 자체를 다시 봐야 한다. 멈추고 보고한다.
 
 - [ ] **Step 7: 커밋**
 
 ```bash
 git add Assets/01_Scripts/CityFlow/Sim/CommuteScheduler.cs \
         Assets/Tests/EditMode/CommuteSchedulerTests.cs
-git commit -m "[Feat] 출퇴근 판정을 차 개별 근무 구간 기준으로 — 자정 넘김 지원
+git commit -m "[Feat] 출퇴근 판정을 차 개별 퇴근창 기준으로 — 자정 넘김 지원
 
-전역 _eveningEnd 대신 CommuteCar.WorkStartHour/WorkEndHour 로 판정한다.
-이 커밋 시점에는 전 차가 같은 전역 창을 받으므로 동작은 변하지 않는다."
+전역 _eveningStart/_eveningEnd 대신 CommuteCar 의 퇴근창으로 판정한다.
+트리거는 개인 출퇴근 시각을 그대로 쓰므로 스태거가 유지되고,
+이 커밋 시점에는 전 차가 같은 전역 값을 복사받으므로 동작은 변하지 않는다."
 ```
 
 > 여기까지가 **PR 1**이다. 동작 무변경이므로 단독 머지가 안전하다.
@@ -487,7 +519,7 @@ namespace CityFlow.Content
 - [ ] **Step 4: 통과 확인**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **416/416 PASS** (415 + 신규 1)
+Expected: **429/429 PASS** (428 + 신규 1)
 
 - [ ] **Step 5: 커밋**
 
@@ -680,7 +712,7 @@ Expected: 컴파일 에러 — `SetCompanyTypeCatalog` / `TryGetCompanyTypeIdFor
 - [ ] **Step 6: 통과 확인**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **419/419 PASS** (416 + 신규 3). 기존 테스트 갱신분이 있으면 숫자는 같고 내용만 바뀐다.
+Expected: **432/432 PASS** (429 + 신규 3). 기존 테스트 갱신분이 있으면 숫자는 같고 내용만 바뀐다.
 
 - [ ] **Step 7: 커밋**
 
@@ -699,13 +731,13 @@ Office 배치에 companyTypeId 를 요구하고 미지정·미등록 id 는 거�
 ### Task 5: `Rebuild` 콜백 전환 + 유형별 창 적용
 
 **Files:**
-- Modify: `Assets/01_Scripts/CityFlow/Sim/CommuteScheduler.cs` (`Rebuild` `:45`, 차 생성 `:119`)
-- Modify: `Assets/01_Scripts/CityFlow/Sim/CarSim.cs` (`:358` 호출부)
+- Modify: `Assets/01_Scripts/CityFlow/Sim/CommuteScheduler.cs` (`Rebuild` `:122`, 차 생성 `:226`)
+- Modify: `Assets/01_Scripts/CityFlow/Sim/CarSim.cs` (`:444` 호출부)
 - Modify: `Assets/01_Scripts/CityFlow/Sim/SimEngine.cs` (창 조회 제공)
 - Test: `Assets/Tests/EditMode/CompanyTypeTests.cs` · `CommuteSchedulerTests.cs`
 
 **Interfaces:**
-- Consumes: `CommuteWindow` (Task 1), `CommuteCar.WorkStartHour/WorkEndHour` (Task 2), 카탈로그(Task 3), `DemandMap.TryGetCompanyTypeId` (Task 4)
+- Consumes: `CommuteWindow` (Task 1), `CommuteCar.EveningStartHour/EveningEndHour` (Task 2), 카탈로그(Task 3), `DemandMap.TryGetCompanyTypeId` (Task 4)
 - Produces: `Rebuild(..., Func<Vector2Int, CommuteWindow> windowFor, ...)` — 시각 인자 4개 제거
 
 - [ ] **Step 1: 실패하는 테스트 작성**
@@ -765,7 +797,7 @@ Expected: 컴파일 에러 — `DepartHomeHourForTest` 미정의
             // _morningEnd / _eveningStart / _eveningEnd 저장은 제거한다 — 판정이 차 개별 값으로 옮겨졌다
 ```
 
-차 생성부(`:119`)를 바꾼다.
+차 생성부(`:226`)를 바꾼다.
 
 ```csharp
                 CommuteWindow w = windowFor(sinks[i]);
@@ -775,8 +807,8 @@ Expected: 컴파일 에러 — `DepartHomeHourForTest` 미정의
                     WorkSlot = workSlot, HomeSlot = homeSlot,
                     DepartHomeHour = StaggerHour(sources[i], w.StartHour, w.StartHour + w.StartWindow),
                     DepartWorkHour = StaggerHour(sources[i], w.EndHour,   w.EndHour   + w.EndWindow),
-                    WorkStartHour = w.StartHour,
-                    WorkEndHour   = w.EndHour,
+                    EveningStartHour = w.EndHour,
+                    EveningEndHour   = w.EndHour + w.EndWindow,
                     State = CarState.ParkedHome,
                     AwaitingNextWave = deferNewAssignments,
                 };
@@ -785,7 +817,7 @@ Expected: 컴파일 에러 — `DepartHomeHourForTest` 미정의
 > `CommuteCar`에 `CompanyTypeId` 필드도 더한다(설계 결정 ①). `w.CompanyTypeId`를 그대로 싣는다.
 > 콜백이 출처이고 필드는 캐시다 — 역할이 겹치지 않는다.
 
-`_morningEnd`·`_eveningStart`·`_eveningEnd` 필드와 그 참조를 전부 제거한다. Task 2에서 판정이 이미 차 개별 값으로 옮겨졌으므로 남은 참조가 없어야 한다. **남아 있으면 그 지점을 보고하라.**
+`_morningEnd`·`_eveningStart`·`_eveningEnd`는 **Task 2에서 이미 제거됐다.** 여기서는 `Rebuild`의 시각 인자 4개(`morningStart`~`eveningEnd`)를 없애고 콜백으로 대체한다. 남은 참조가 있으면 그 지점을 보고하라.
 
 - [ ] **Step 4: `SimEngine`이 창을 제공**
 
@@ -813,12 +845,12 @@ Expected: 컴파일 에러 — `DepartHomeHourForTest` 미정의
 
 - [ ] **Step 5: `CarSim` 호출부 갱신**
 
-`CarSim.cs:358`의 `_scheduler.Rebuild(...)`에서 시각 인자 4개를 빼고 콜백을 넘긴다. `CarSim`이 `SimEngine`을 참조하지 않으므로 **`CarSim.Rebuild`에 콜백을 인자로 받아 전달**한다. `SimEngine`이 `_carSim.Rebuild(..., CommuteWindowAt, ...)` 형태로 넘기는 배선이 필요하다. 실제 시그니처는 `CarSim.Rebuild`를 읽고 맞춘다.
+`CarSim.cs:444`의 `_scheduler.Rebuild(...)`에서 시각 인자 4개를 빼고 콜백을 넘긴다. `CarSim`이 `SimEngine`을 참조하지 않으므로 **`CarSim.Rebuild`에 콜백을 인자로 받아 전달**한다. `SimEngine`이 `_carSim.Rebuild(..., CommuteWindowAt, ...)` 형태로 넘기는 배선이 필요하다. 실제 시그니처는 `CarSim.Rebuild`를 읽고 맞춘다.
 
 - [ ] **Step 6: 통과 확인**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **420/420 PASS** (419 + 신규 1)
+Expected: **433/433 PASS** (432 + 신규 1)
 
 기존 `CommuteSchedulerTests`가 옛 시그니처로 `Rebuild`를 부르면 컴파일이 깨진다. **콜백을 넘기도록 갱신한다** — 폴백 창을 돌려주는 람다 한 줄이면 기존 동작이 그대로 재현된다.
 
@@ -841,9 +873,9 @@ git commit -m "[Feat] Rebuild 시각 인자 4개를 창 콜백으로 대체 — 
 
 ---
 
-### Task 6 (조건부): 공사 중 유형 보존 — **PR #171 머지 후에만**
+### Task 6: 공사 중 유형 보존
 
-`ConstructionSite`는 PR #171(건물 건설시간)이 도입한 타입이다. **#171이 develop에 머지되기 전에는 이 태스크를 시작하지 마라.** `git log origin/develop --oneline | grep -i "건설시간"`로 확인한다.
+`ConstructionSite`는 PR #171(건물 건설시간)이 도입한 타입이다. **#171은 `0d313da`로 머지 완료**(후속 #178·#179까지 반영) — 초안의 선행 조건은 충족됐고 이 태스크는 조건부가 아니다.
 
 **Files:**
 - Modify: `Assets/01_Scripts/CityFlow/Sim/ConstructionSites.cs`
@@ -896,7 +928,7 @@ git commit -m "[Feat] Rebuild 시각 인자 4개를 창 콜백으로 대체 — 
 
 `ConstructionSaveData`에 `public string CompanyTypeId;`를 더하고 `CreateSnapshot`/`RestoreSnapshot` 양쪽에 배선한다. **구세이브는 이 필드가 null이므로 폴백 경로가 살아 있어야 한다.**
 
-- [ ] **Step 5: 통과 확인** — `run_tests` **421/421 PASS**
+- [ ] **Step 5: 통과 확인** — `run_tests` **434/434 PASS**
 
 - [ ] **Step 6: 커밋**
 
@@ -961,7 +993,7 @@ Unity 메뉴 `Assets > Create > CityFlow > Content > Company Type` 으로 3개, 
 - [ ] **Step 5: 검증 — 에셋만 바뀌므로 테스트는 무변경**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **421/421 PASS** (테스트는 카탈로그를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
+Expected: **434/434 PASS** (테스트는 카탈로그를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
 
 라이브 확인은 하루 12분 전환 이후다 — 지금은 창 4시간이 실시간 4초라 세 유형이 갈리는 게 눈에 안 보인다.
 
@@ -980,11 +1012,11 @@ git commit -m "[Feat] 회사 유형 3종 에셋 — 사무실/물류창고/공�
 
 ## 완료 기준
 
-- EditMode `CityFlow.Sim.Tests` **421/421 green** (기준선 410 + 신규 11). Task 6(조건부)을 못 하면 420.
+- EditMode `CityFlow.Sim.Tests` **434/434 green** (기준선 423 + 신규 11)
 - 컴파일 `error CS` 0
 - 통합 씬 파일이 커밋에 **없음**
 - 신규 `.cs`의 `.cs.meta` 전부 커밋됨
-- **PR 1** = Task 1~2 (동작 무변경) · **PR 2** = Task 3~5 + Task 7 · **PR 3(조건부)** = Task 6
+- **PR 1** = Task 1~2 (동작 무변경) · **PR 2** = Task 3~5 + Task 7 · **PR 3** = Task 6
 - PR은 **15:00~16:00에만** 제출 (팀 규칙)
 
 ## 범위 밖 (하지 않을 것)
