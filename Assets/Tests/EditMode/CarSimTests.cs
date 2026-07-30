@@ -1254,6 +1254,47 @@ namespace CityFlow.Sim.Tests
             events = new SimEventBuffer(new SimEventHub());
         }
 
+        // 통합 사슬 고정: DemandMap(유형별 창) → CarSim(demands.CommuteWindowAt) → 스케줄러 판정.
+        // 야간조는 아침에 출근하지 않고 밤에 출근한다. 배선이 끊기면(전역 창으로 되돌아가면) 깨진다.
+        [Test]
+        public void NightShiftCompany_CarsDepartAtNight_NotMorning()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(6, 3);
+            for (int x = 0; x <= 5; x++) Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+            // 공장: 출근창 [20,24) · 퇴근창 [5,9) — 근무가 자정을 넘는다.
+            // RegisterCompany 는 채용 램프가 0에서 시작해 이 틱에 차가 안 생긴다 → 로드 경로(만석)를 쓴다.
+            demands.RegisterRestoredCompany(
+                V(4, 0), TileType.Office,
+                companyType: new CompanyTypeInfo(
+                    new CommuteWindow("factory", 20f, 4f, 5f, 4f), 10));
+            demands.Reassign(grid, road);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            var events = new SimEventBuffer(new SimEventHub());
+
+            Assert.AreEqual(1, sim.CarCount);
+
+            // 정오: 야간조는 집에 있다. 전역 창(출근 [6,7) · 퇴근창 [17,18))이면 근무 시간대라
+            // 여기서 Outbound 가 된다 — 배선이 끊기면 이 단정이 깨진다.
+            sim.Step(12f, net, events);
+            Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State,
+                "야간조는 정오에 출근하지 않는다");
+
+            // 자정 직전: 출근창 [20,24) 안이므로 스태거 값과 무관하게 출발한다.
+            sim.Step(23.99f, net, events);
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State, "밤에 출근한다");
+        }
+
         private static void BuildStraightCity(
             out CityGrid grid,
             out DemandMap demands,

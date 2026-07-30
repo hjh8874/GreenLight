@@ -908,7 +908,11 @@ Unity 메뉴 `Assets > Create > CityFlow > Content > Company Type` 으로 3개, 
 - [ ] **Step 5: 검증 — 에셋만 바뀌므로 테스트는 무변경**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **440/440 PASS** (테스트는 유형 표를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
+Expected: **441/441 PASS** (440 + 통합 사슬 1건)
+
+통합 사슬은 관측 가능한 동작으로 고정한다 — 야간조 차는 정오에 집에 있고 밤에 출근한다
+(`CarSimTests.NightShiftCompany_CarsDepartAtNight_NotMorning`). 전역 창으로 되돌아가면 깨진다.
+`CarSnapshot`에 필드를 더하지 않았다 — 뷰가 읽는 계약이다.
 
 라이브 확인은 하루 12분 전환 이후다 — 지금은 창 4시간이 실시간 4초라 세 유형이 갈리는 게 눈에 안 보인다.
 
@@ -927,7 +931,7 @@ git commit -m "[Feat] 회사 유형 3종 에셋 — 사무실/물류창고/공�
 
 ## 완료 기준
 
-- EditMode `CityFlow.Sim.Tests` **440/440 green** (기준선 423 + 신규 17)
+- EditMode `CityFlow.Sim.Tests` **441/441 green** (기준선 423 + 신규 18) · `CompanyTypeCatalogTests` 2/2 (기본 에디터 어셈블리, 이름 필터)
 - 컴파일 `error CS` 0
 - 통합 씬 파일이 커밋에 **없음**
 - 신규 `.cs`의 `.cs.meta` 전부 커밋됨
