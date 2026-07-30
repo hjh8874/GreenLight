@@ -343,6 +343,16 @@ namespace CityFlow.Sim
                     continue;
                 }
 
+                // 지각 출근(2026-07-30 환 결정): 채용 시각이 [개인 출근 시각, 퇴근창 시작) 안이면
+                // 다음 날을 기다리지 않는다 — "낮 로드 = 지각 출근"(2026-07-17) 철학의 신규 채용 확장.
+                // 퇴근 러시 직전 역방향 출근차를 피하려고 퇴근창 이후 채용은 현행 유지(다음 날).
+                // 기존 차(리빌드 생존자)의 AwaitingNextWave 의미는 건드리지 않는다 — 신규 차 훅에서만.
+                if (_newCars[i].AwaitingNextWave &&
+                    hour >= _newCars[i].DepartHomeHour && hour < _eveningStart)
+                {
+                    _newCars[i].AwaitingNextWave = false;
+                }
+
                 SnapCar(_newCars[i], hour);
             }
             _newCars.Clear();

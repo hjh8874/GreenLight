@@ -181,5 +181,50 @@ namespace CityFlow.Sim.Tests
                     c.Work == largeOffice)
             );
         }
+
+        // 지각 출근(2026-07-30 환 결정): 출근 시각이 지난 낮 시간대에 채용된 신규 차는
+        // 다음 날을 기다리지 않고 그날 즉시 출근한다. 퇴근창 이후 채용은 현행대로 다음 날.
+        [Test]
+        public void NewHire_DuringDay_DepartsSameDay()
+        {
+            var s = BuildDeferred(hour: 12f);   // 출근창(6~10)은 지났고 퇴근창(17~)은 전
+            var car = s.Cars[0];
+            Assert.IsFalse(car.AwaitingNextWave, "낮 채용은 대기 해제");
+            s.UpdateDepartures(12f);
+            Assert.AreEqual(CarState.Outbound, car.State, "그날 즉시 지각 출근");
+        }
+
+        [Test]
+        public void NewHire_DuringEvening_WaitsForNextDay()
+        {
+            var s = BuildDeferred(hour: 18f);   // 퇴근창(17~21) 안
+            var car = s.Cars[0];
+            Assert.IsTrue(car.AwaitingNextWave, "퇴근창 채용은 다음 날");
+            s.UpdateDepartures(18f);
+            Assert.AreEqual(CarState.ParkedHome, car.State);
+        }
+
+        [Test]
+        public void NewHire_BeforeMorning_KeepsNormalSameDayFlow()
+        {
+            var s = BuildDeferred(hour: 4f);    // 출근 시각 전 — 종전에도 그날 출근했다
+            var car = s.Cars[0];
+            s.UpdateDepartures(4f);
+            Assert.AreEqual(CarState.ParkedHome, car.State, "아직 출근 시각 전");
+            s.UpdateDepartures(car.DepartHomeHour + 0.05f);
+            Assert.AreEqual(CarState.Outbound, car.State, "정상 출근 유지");
+        }
+
+        static CommuteScheduler BuildDeferred(float hour)
+        {
+            var sources = new List<Vector2Int> { V(0, 0) };
+            var sinks = new List<Vector2Int> { V(50, 50) };
+            var s = new CommuteScheduler();
+            s.Rebuild(sources, sinks, _ => 4, homeSlots: 1, maxCars: 96,
+                morningStart: 6f, morningEnd: 10f, eveningStart: 17f, eveningEnd: 21f,
+                deferNewAssignments: true);
+            s.SnapNewToHour(hour);
+            return s;
+        }
     }
 }

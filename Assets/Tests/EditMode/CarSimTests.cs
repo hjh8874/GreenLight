@@ -645,8 +645,10 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0, completedTrips[0].RewardCoins);
         }
 
+        // 2026-07-30 환 결정으로 구 "다음 날 아침까지 대기" 정책을 대체한다.
+        // 퇴근창 이후 대기는 CommuteSchedulerTests.NewHire_DuringEvening_WaitsForNextDay 가 고정한다.
         [Test]
-        public void Rebuild_AddedHome_NewAssignmentWaitsUntilNextMorningWave()
+        public void Rebuild_AddedHomeAfterDeparture_NewAssignmentDepartsSameDay()
         {
             SimConfig cfg = Cfg();
             var grid = new CityGrid(6, 3);
@@ -671,18 +673,9 @@ namespace CityFlow.Sim.Tests
             sim.Step(7f, net, events);
             Assert.AreEqual(1, sim.CarCount);
             Assert.AreEqual(
-                CarState.ParkedHome,
-                sim.GetCar(0).State,
-                "이미 시작된 아침 웨이브에 신규 배정을 소급 출발시키면 안 된다");
-            sim.Step(7f, net, events);
-            Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State);
-
-            sim.Step(0f, net, events);
-            sim.Step(7f, net, events);
-            Assert.AreEqual(
                 CarState.Outbound,
                 sim.GetCar(0).State,
-                "다음 날 출발 시각 경계를 지난 뒤 신규 배정이 활성화되어야 한다");
+                "개인 출근 시각이 지난 낮 신규 배정은 그날 즉시 지각 출근한다");
         }
 
         [Test]
