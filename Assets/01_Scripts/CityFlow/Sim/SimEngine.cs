@@ -59,6 +59,7 @@ namespace CityFlow.Sim
         readonly Dictionary<Vector2Int, Vector2Int> _highwayPartners = new();
         readonly List<Vector2Int> _placedBusStops = new();
         readonly HashSet<Vector2Int> _busStopSet = new();
+        readonly HashSet<Vector2Int> _busStopPlatformSet = new();
         static readonly Vector2Int[] BusStopNeighborDirections =
         {
             Vector2Int.right,
@@ -691,7 +692,7 @@ namespace CityFlow.Sim
             {
                 for (int x = 0; x < size.x; x++)
                 {
-                    if (_busStopSet.Contains(
+                    if (_busStopPlatformSet.Contains(
                             tile + new Vector2Int(x, y)))
                     {
                         return true;
@@ -1312,6 +1313,7 @@ namespace CityFlow.Sim
             _highwayPartners.Clear();
             _placedBusStops.Clear();
             _busStopSet.Clear();
+            _busStopPlatformSet.Clear();
             _roadQueues.RemoveAllCars();
             _roadTraffic.ResetNetworkOccupancy();
             Array.Clear(_carCongestion, 0, _carCongestion.Length);
@@ -1583,15 +1585,32 @@ namespace CityFlow.Sim
                  _worldGridAccess != null &&
                  !_worldGridAccess.IsTileUnlocked(tile)) ||
                 _grid.GetTile(tile) != TileType.Empty ||
-                _busStopSet.Contains(tile))
+                _busStopPlatformSet.Contains(tile) ||
+                !BusStopInfrastructurePolicy.TryGetPlatformPair(
+                    tile,
+                    IsRoad,
+                    out _,
+                    out Vector2Int oppositePlatform) ||
+                !CanUseBusStopPlatform(
+                    oppositePlatform,
+                    requireUnlockedTile))
             {
                 return false;
             }
 
-            return BusStopInfrastructurePolicy
-                .HasRoadsideApproach(
-                    tile,
-                    IsRoad);
+            return true;
+        }
+
+        private bool CanUseBusStopPlatform(
+            Vector2Int tile,
+            bool requireUnlockedTile)
+        {
+            return _grid.InBounds(tile) &&
+                (!requireUnlockedTile ||
+                 _worldGridAccess == null ||
+                 _worldGridAccess.IsTileUnlocked(tile)) &&
+                _grid.GetTile(tile) == TileType.Empty &&
+                !_busStopPlatformSet.Contains(tile);
         }
 
         public bool TryPlaceBusStop(Vector2Int tile)
@@ -1603,7 +1622,7 @@ namespace CityFlow.Sim
         {
             if (!_grid.InBounds(tile) ||
                 _grid.GetTile(tile) != TileType.Empty ||
-                _busStopSet.Contains(tile) ||
+                _busStopPlatformSet.Contains(tile) ||
                 (!CanPlaceBusStop(
                      tile,
                      requireUnlockedTile: false) &&
@@ -1615,6 +1634,7 @@ namespace CityFlow.Sim
                 return false;
             }
 
+            RegisterBusStopPlatforms(tile);
             InsertSorted(_placedBusStops, tile);
             return true;
         }
@@ -1629,8 +1649,24 @@ namespace CityFlow.Sim
                 return false;
             }
 
+            RegisterBusStopPlatforms(tile);
             InsertSorted(_placedBusStops, tile);
             return true;
+        }
+
+        private void RegisterBusStopPlatforms(Vector2Int stopTile)
+        {
+            _busStopPlatformSet.Add(stopTile);
+            if (BusStopInfrastructurePolicy.TryGetPlatformPair(
+                    stopTile,
+                    IsRoad,
+                    out _,
+                    out Vector2Int oppositePlatform) &&
+                _grid.InBounds(oppositePlatform) &&
+                _grid.GetTile(oppositePlatform) == TileType.Empty)
+            {
+                _busStopPlatformSet.Add(oppositePlatform);
+            }
         }
 
         public bool TryRemoveBusStop(Vector2Int tile)
@@ -1638,6 +1674,16 @@ namespace CityFlow.Sim
             if (!_busStopSet.Remove(tile))
             {
                 return false;
+            }
+
+            _busStopPlatformSet.Remove(tile);
+            if (BusStopInfrastructurePolicy.TryGetPlatformPair(
+                    tile,
+                    IsRoad,
+                    out _,
+                    out Vector2Int oppositePlatform))
+            {
+                _busStopPlatformSet.Remove(oppositePlatform);
             }
 
             _placedBusStops.Remove(tile);
@@ -1649,6 +1695,30 @@ namespace CityFlow.Sim
         {
             foreach (Vector2Int stopTile in _placedBusStops)
             {
+                if (BusStopInfrastructurePolicy.TryGetPlatformPair(
+                        stopTile,
+                        IsRoad,
+                        out Vector2Int accessRoad,
+                        out Vector2Int oppositePlatform))
+                {
+                    bool keepsSamePlatformPair =
+                        BusStopInfrastructurePolicy.TryGetPlatformPair(
+                            stopTile,
+                            candidate =>
+                                candidate != roadTile &&
+                                IsRoad(candidate),
+                            out Vector2Int remainingAccessRoad,
+                            out Vector2Int remainingOppositePlatform) &&
+                        remainingAccessRoad == accessRoad &&
+                        remainingOppositePlatform == oppositePlatform;
+                    if (!keepsSamePlatformPair)
+                    {
+                        return true;
+                    }
+
+                    continue;
+                }
+
                 bool currentlyHasStrictApproach =
                     BusStopInfrastructurePolicy
                         .HasRoadsideApproach(

@@ -66,6 +66,38 @@ namespace CityFlow.View
             visual != null &&
             visual.gameObject.activeInHierarchy;
 
+        public void ConfigureCityBusAgent(
+            CityFlowServices services,
+            BusDefinitionSO busDefinition,
+            BusRoute route,
+            CityBusService owner,
+            BusWorldView presentationTemplate = null)
+        {
+            Unsubscribe();
+            definition = busDefinition;
+            busRoute = route;
+            cityBusService = owner;
+
+            if (presentationTemplate != null &&
+                presentationTemplate != this)
+            {
+                cityView = presentationTemplate.cityView;
+                busVisualPrefab =
+                    presentationTemplate.busVisualPrefab;
+                busMaterial = presentationTemplate.busMaterial;
+                visualScale = presentationTemplate.visualScale;
+                visualDepth = presentationTemplate.visualDepth;
+                movementDuration =
+                    presentationTemplate.movementDuration;
+                schoolParkingSlot =
+                    presentationTemplate.schoolParkingSlot;
+                parkingApproachDistance =
+                    presentationTemplate.parkingApproachDistance;
+            }
+
+            Initialize(services);
+        }
+
         public void Initialize(CityFlowServices services)
         {
             tileData = services?.TileData;
@@ -101,6 +133,22 @@ namespace CityFlow.View
         protected virtual void OnDestroy()
         {
             Unsubscribe();
+
+            if (visual == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(visual.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(visual.gameObject);
+            }
+
+            visual = null;
         }
 
         private void Update()

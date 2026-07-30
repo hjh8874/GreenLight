@@ -4,6 +4,7 @@ using CityFlow.Bootstrap;
 using CityFlow.Content.Transit;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
+using CityFlow.View;
 using UnityEngine;
 
 namespace CityFlow.Content
@@ -14,8 +15,39 @@ namespace CityFlow.Content
         MonoBehaviour,
         ICityFlowServiceConsumer
     {
+        private readonly struct DirectedRoadEdge :
+            IEquatable<DirectedRoadEdge>
+        {
+            public Vector2Int Start { get; }
+            public Vector2Int End { get; }
+
+            public DirectedRoadEdge(
+                Vector2Int start,
+                Vector2Int end)
+            {
+                Start = start;
+                End = end;
+            }
+
+            public bool Equals(DirectedRoadEdge other) =>
+                Start == other.Start && End == other.End;
+
+            public override bool Equals(object obj) =>
+                obj is DirectedRoadEdge other && Equals(other);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return (Start.GetHashCode() * 397) ^
+                        End.GetHashCode();
+                }
+            }
+        }
+
         private const string StopRevenueReason =
             "city bus stop";
+        private const int LegacyDefaultRouteId = 1;
 
         [Header("Configuration")]
         [SerializeField] private BusDefinitionSO definition;
@@ -30,22 +62,34 @@ namespace CityFlow.Content
         [SerializeField] private bool verboseLogging;
 
         private readonly List<Vector2Int> routeStops = new();
+        private readonly List<CityBusVehicleAgent> activeVehicles = new();
+        private readonly Dictionary<
+            int,
+            BusLineDirectionAvailability> availabilityByRoute = new();
+        private readonly List<int> staleAvailabilityRouteIds = new();
+
         private CityFlowServices services;
         private IGameCalendarService calendar;
-        private BusRouteState observedRouteState;
+        private BusWorldView rootView;
+        private CityBusVehicleAgent primaryAgent;
+        private BusRuntime fallbackRuntime;
         private bool initialized;
         private bool subscribed;
         private bool calendarSubscribed;
-        private bool routeRefreshPending;
-        private bool routeRecoveryPending;
-        private bool routeOperationInProgress;
+        private bool serviceRequested;
+        private bool rebuildPending;
+        private bool recoveryPending;
+        private bool rebuildInProgress;
         private bool vehicleVisible;
-        private bool hasFailedDestination;
-        private Vector2Int failedDestination;
+        private bool ownsLegacyDefaultLine;
+        private bool synchronizingLegacyLine;
 
-        public BusRuntime Runtime { get; private set; }
-        public IReadOnlyList<Vector2Int> RouteStops =>
-            routeStops;
+        public BusRuntime Runtime =>
+            primaryAgent?.Runtime ?? fallbackRuntime;
+        public IBusLineService BusLines { get; private set; }
+        public IReadOnlyList<Vector2Int> RouteStops => routeStops;
+        public IReadOnlyList<CityBusVehicleAgent> ActiveVehicles =>
+            activeVehicles;
         public bool IsInitialized => initialized;
         public BusDefinitionSO Definition => definition;
         public CityBusScheduleSO Schedule => schedule;
@@ -56,6 +100,10 @@ namespace CityFlow.Content
         public event Action<Vector2Int, int, int> StopServed;
         public event Action ServiceUnavailable;
         public event Action<bool> VehicleVisibilityChanged;
+        public event Action<
+            int,
+            BusLineDirectionAvailability>
+            DirectionAvailabilityChanged;
 
         private void Reset()
         {
@@ -67,6 +115,7 @@ namespace CityFlow.Content
         {
             busRoute ??= GetComponent<BusRoute>();
             stopRegistry ??= GetComponent<BusStopRegistry>();
+            rootView = GetComponent<BusWorldView>();
         }
 
         public void Initialize(CityFlowServices cityServices)
@@ -83,33 +132,18 @@ namespace CityFlow.Content
 
             services = cityServices;
             stopRegistry.Initialize(services);
-            busRoute.UseRoadsideStopApproach = true;
-            busRoute.ConfigureRoadTrafficAgent(
-                RoadTrafficAgentKind.CityBus,
-                definition.VehicleFootprint,
-                true);
-            busRoute.Initialize(services);
-            busRoute.SecondsPerTile =
-                definition.SecondsPerTile;
-            busRoute.StopWaitSeconds =
-                definition.StopWaitSeconds;
-            Runtime = new BusRuntime(
+            BindBusLineService(cityServices);
+            ConfigureRootRoute();
+            fallbackRuntime = new BusRuntime(
                 definition.PassengerCapacity);
-            observedRouteState = busRoute.State;
             initialized = true;
             Subscribe();
             BindCalendar(cityServices.GameCalendar);
-            SynchronizeRuntime();
             SetVehicleVisible(false);
 
             if (autoStart)
             {
                 EvaluateOperatingWindow();
-            }
-            else
-            {
-                Runtime.SetState(
-                    BusOperatingState.OutOfService);
             }
         }
 
@@ -143,6 +177,7 @@ namespace CityFlow.Content
 
             busRoute ??= GetComponent<BusRoute>();
             stopRegistry ??= GetComponent<BusStopRegistry>();
+            rootView ??= GetComponent<BusWorldView>();
 
             if (busRoute == null || stopRegistry == null)
             {
@@ -155,47 +190,68 @@ namespace CityFlow.Content
             return true;
         }
 
+        private void ConfigureRootRoute()
+        {
+            busRoute.LoopRoute = true;
+            busRoute.UseRoadsideStopApproach = true;
+            busRoute.RoadsideStopsUsePairedPlatforms = true;
+            busRoute.AllowUnscheduledStopArrival = false;
+            busRoute.AvoidImmediateUTurn = true;
+            busRoute.SecondsPerTile = definition.SecondsPerTile;
+            busRoute.StopWaitSeconds = definition.StopWaitSeconds;
+            busRoute.ConfigureRoadTrafficAgent(
+                RoadTrafficAgentKind.CityBus,
+                definition.VehicleFootprint,
+                true);
+            busRoute.Initialize(services);
+        }
+
         private void Update()
+        {
+            if (!initialized || rebuildInProgress)
+            {
+                return;
+            }
+
+            if (recoveryPending && IsInsideOperatingWindow())
+            {
+                recoveryPending = false;
+                RebuildVehicles(false);
+                return;
+            }
+
+            if (rebuildPending &&
+                IsInsideOperatingWindow() &&
+                CanApplyPendingRebuild())
+            {
+                rebuildPending = false;
+                RebuildVehicles(false);
+            }
+        }
+
+        private bool CanApplyPendingRebuild()
+        {
+            if (primaryAgent?.Route == null)
+            {
+                return true;
+            }
+
+            return primaryAgent.Route.State is
+                BusRouteState.Idle or
+                BusRouteState.WaitingAtStop or
+                BusRouteState.RouteUnavailable or
+                BusRouteState.Completed;
+        }
+
+        private void OnEnable()
         {
             if (!initialized)
             {
                 return;
             }
 
-            if (observedRouteState != busRoute.State)
-            {
-                observedRouteState = busRoute.State;
-                ApplyRouteState(observedRouteState);
-            }
-
-            if (routeRefreshPending &&
-                busRoute.State == BusRouteState.WaitingAtStop)
-            {
-                RefreshRouteAtCurrentStop();
-            }
-
-            if (routeRecoveryPending && IsInsideOperatingWindow())
-            {
-                routeRecoveryPending = false;
-                TryRecoverRoute();
-            }
-
-            if (Runtime.CurrentTile != busRoute.CurrentTile ||
-                Runtime.NextStop != busRoute.NextStop)
-            {
-                Runtime.SetRoutePosition(
-                    busRoute.CurrentTile,
-                    busRoute.NextStop);
-            }
-        }
-
-        private void OnEnable()
-        {
-            if (initialized)
-            {
-                Subscribe();
-                EvaluateOperatingWindow();
-            }
+            Subscribe();
+            EvaluateOperatingWindow();
         }
 
         private void OnDisable()
@@ -211,6 +267,7 @@ namespace CityFlow.Content
         private void OnDestroy()
         {
             Unsubscribe();
+            ClearVehicleAgents();
         }
 
         public bool StartService()
@@ -220,60 +277,29 @@ namespace CityFlow.Content
                 return false;
             }
 
-            routeRefreshPending = false;
-            routeRecoveryPending = false;
-            hasFailedDestination = false;
-            BuildRouteStops();
-
-            routeOperationInProgress = true;
-            bool started;
-            try
+            if (vehicleVisible && activeVehicles.Count > 0)
             {
-                started = stopRegistry.BusStopCount >= 1 &&
-                    routeStops.Count >= 1 &&
-                    busRoute.ConfigureRoute(
-                        routeStops,
-                        true) &&
-                    busRoute.StartRoute();
-            }
-            finally
-            {
-                routeOperationInProgress = false;
+                return true;
             }
 
-            if (!started)
-            {
-                RememberFailedDestination();
-                SetServiceUnavailable(true);
-                return false;
-            }
-
-            observedRouteState = busRoute.State;
-            ApplyRouteState(observedRouteState);
-            SetVehicleVisible(true);
-            ServiceStarted?.Invoke();
-
-            if (verboseLogging)
-            {
-                Debug.Log(
-                    $"[CityBusService] Started with {routeStops.Count} stops.",
-                    this);
-            }
-
-            return true;
+            serviceRequested = true;
+            rebuildPending = false;
+            recoveryPending = false;
+            return RebuildVehicles(true);
         }
 
         public void StopService()
         {
             bool wasOperating = vehicleVisible;
-            routeRefreshPending = false;
-            routeRecoveryPending = false;
-            hasFailedDestination = false;
-            busRoute?.StopRoute();
-            Runtime?.ResetPassengers();
-            Runtime?.SetState(
-                BusOperatingState.OutOfService);
+            serviceRequested = false;
+            rebuildPending = false;
+            recoveryPending = false;
             SetVehicleVisible(false);
+            ClearVehicleAgents();
+            primaryAgent = null;
+            fallbackRuntime?.ResetPassengers();
+            fallbackRuntime?.SetState(
+                BusOperatingState.OutOfService);
 
             if (wasOperating)
             {
@@ -281,110 +307,608 @@ namespace CityFlow.Content
             }
         }
 
-
-
-        private void BuildRouteStops()
+        public bool TryGetDirectionAvailability(
+            int routeId,
+            out BusLineDirectionAvailability availability)
         {
-            routeStops.Clear();
+            return availabilityByRoute.TryGetValue(
+                routeId,
+                out availability);
+        }
 
-            IReadOnlyList<Vector2Int> stops =
-                stopRegistry.BusStops;
-
-            for (int i = 0; i < stops.Count; i++)
+        private bool RebuildVehicles(bool raiseStartedEvent)
+        {
+            if (rebuildInProgress)
             {
-                routeStops.Add(stops[i]);
+                return false;
+            }
+
+            rebuildInProgress = true;
+            bool wasOperating = vehicleVisible;
+
+            try
+            {
+                SetVehicleVisible(false);
+                ClearVehicleAgents();
+                primaryAgent = null;
+                RefreshLegacyRouteStops();
+                PrepareAvailabilityRefresh();
+
+                bool rootAssigned = false;
+                IReadOnlyList<BusLineData> lines =
+                    BusLines?.Lines;
+                if (lines != null)
+                {
+                    for (int lineIndex = 0;
+                         lineIndex < lines.Count;
+                         lineIndex++)
+                    {
+                        BusLineData line = lines[lineIndex];
+                        BusLineDirectionAvailability availability =
+                            BusLineDirectionAvailability.None;
+
+                        bool forwardStarted = TryStartDirection(
+                            line,
+                            BusTravelDirection.Forward,
+                            ref rootAssigned,
+                            ref availability,
+                            default,
+                            false,
+                            out RoadRoutePlan forwardRoadRoute);
+                        TryStartDirection(
+                            line,
+                            BusTravelDirection.Reverse,
+                            ref rootAssigned,
+                            ref availability,
+                            forwardRoadRoute,
+                            forwardStarted,
+                            out _);
+
+                        SetDirectionAvailability(
+                            line.RouteId,
+                            availability);
+                    }
+                }
+
+                CompleteAvailabilityRefresh();
+
+                if (activeVehicles.Count == 0)
+                {
+                    fallbackRuntime?.SetState(
+                        BusOperatingState.RouteUnavailable);
+                    ServiceUnavailable?.Invoke();
+                    return false;
+                }
+
+                primaryAgent = activeVehicles[0];
+                SetVehicleVisible(true);
+
+                if (raiseStartedEvent || !wasOperating)
+                {
+                    ServiceStarted?.Invoke();
+                }
+
+                if (verboseLogging)
+                {
+                    Debug.Log(
+                        $"[CityBusService] Started {activeVehicles.Count} " +
+                        $"vehicles across {BusLines.LineCount} lines.",
+                        this);
+                }
+
+                return true;
+            }
+            finally
+            {
+                rebuildInProgress = false;
             }
         }
 
-        private bool BuildRouteStopsFrom(
-            Vector2Int currentStop)
+        private bool TryStartDirection(
+            BusLineData line,
+            BusTravelDirection direction,
+            ref bool rootAssigned,
+            ref BusLineDirectionAvailability availability,
+            RoadRoutePlan comparisonRoute,
+            bool requireOppositeDirection,
+            out RoadRoutePlan roadRoute)
         {
-            routeStops.Clear();
-
-            IReadOnlyList<Vector2Int> stops =
-                stopRegistry.BusStops;
-            int currentIndex = -1;
-
-            for (int i = 0; i < stops.Count; i++)
+            roadRoute = default;
+            if (!BusLines.TryBuildDirectionalRoute(
+                    line.RouteId,
+                    direction,
+                    out BusDirectionalRoute directionalRoute))
             {
-                if (stops[i] == currentStop)
+                return false;
+            }
+
+            bool usesRoot = !rootAssigned;
+            CityBusVehicleAgent agent =
+                CreateVehicleAgent(
+                    line.RouteId,
+                    direction,
+                    usesRoot);
+            BusRoute candidateRoute = usesRoot
+                ? busRoute
+                : null;
+
+            bool prepared = agent.Prepare(
+                    services,
+                    definition,
+                    this,
+                    directionalRoute,
+                    candidateRoute) &&
+                agent.TryBuildLoopRoadRoute(
+                    out _,
+                    out roadRoute);
+            bool started = prepared &&
+                (!requireOppositeDirection ||
+                 UsesOppositeRoadDirection(
+                     comparisonRoute,
+                     roadRoute)) &&
+                agent.StartOperating(rootView);
+
+            if (!started)
+            {
+                DiscardVehicleAgent(agent, usesRoot);
+                roadRoute = default;
+                return false;
+            }
+
+            rootAssigned |= usesRoot;
+            SubscribeAgent(agent);
+            activeVehicles.Add(agent);
+            availability |= direction == BusTravelDirection.Forward
+                ? BusLineDirectionAvailability.Forward
+                : BusLineDirectionAvailability.Reverse;
+            return true;
+        }
+
+        private static bool UsesOppositeRoadDirection(
+            RoadRoutePlan forward,
+            RoadRoutePlan reverse)
+        {
+            if (!forward.IsValid || !reverse.IsValid)
+            {
+                return false;
+            }
+
+            int sameDirectionEdges = 0;
+            int oppositeDirectionEdges = 0;
+            var forwardEdges = new HashSet<DirectedRoadEdge>();
+
+            for (int forwardIndex = 0;
+                 forwardIndex < forward.TileCount - 1;
+                 forwardIndex++)
+            {
+                forwardEdges.Add(
+                    new DirectedRoadEdge(
+                        forward.Tiles[forwardIndex],
+                        forward.Tiles[forwardIndex + 1]));
+            }
+
+            for (int reverseIndex = 0;
+                 reverseIndex < reverse.TileCount - 1;
+                 reverseIndex++)
+            {
+                var reverseEdge = new DirectedRoadEdge(
+                    reverse.Tiles[reverseIndex],
+                    reverse.Tiles[reverseIndex + 1]);
+                if (forwardEdges.Contains(reverseEdge))
                 {
-                    currentIndex = i;
+                    sameDirectionEdges++;
+                }
+
+                var oppositeEdge = new DirectedRoadEdge(
+                    reverseEdge.End,
+                    reverseEdge.Start);
+                if (forwardEdges.Contains(oppositeEdge))
+                {
+                    oppositeDirectionEdges++;
+                }
+            }
+
+            return oppositeDirectionEdges > 0 &&
+                sameDirectionEdges == 0;
+        }
+
+        private CityBusVehicleAgent CreateVehicleAgent(
+            int routeId,
+            BusTravelDirection direction,
+            bool useRoot)
+        {
+            if (useRoot)
+            {
+                return GetComponent<CityBusVehicleAgent>() ??
+                    gameObject.AddComponent<CityBusVehicleAgent>();
+            }
+
+            var vehicleObject = new GameObject(
+                $"CityBus_{routeId}_{direction}");
+            vehicleObject.transform.SetParent(
+                transform,
+                false);
+            return vehicleObject.AddComponent<CityBusVehicleAgent>();
+        }
+
+        private void DiscardVehicleAgent(
+            CityBusVehicleAgent agent,
+            bool usesRoot)
+        {
+            if (agent == null)
+            {
+                return;
+            }
+
+            agent.Shutdown();
+            if (!usesRoot)
+            {
+                DestroyVehicleObject(agent.gameObject);
+            }
+        }
+
+        private void ClearVehicleAgents()
+        {
+            for (int index = activeVehicles.Count - 1;
+                 index >= 0;
+                 index--)
+            {
+                CityBusVehicleAgent agent =
+                    activeVehicles[index];
+                if (agent == null)
+                {
+                    continue;
+                }
+
+                UnsubscribeAgent(agent);
+                agent.Shutdown();
+
+                if (agent.gameObject != gameObject)
+                {
+                    DestroyVehicleObject(agent.gameObject);
+                }
+            }
+
+            activeVehicles.Clear();
+
+            CityBusVehicleAgent rootAgent =
+                GetComponent<CityBusVehicleAgent>();
+            if (rootAgent != null)
+            {
+                UnsubscribeAgent(rootAgent);
+                rootAgent.Shutdown();
+            }
+        }
+
+        private static void DestroyVehicleObject(
+            GameObject vehicleObject)
+        {
+            if (vehicleObject == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(vehicleObject);
+            }
+            else
+            {
+                DestroyImmediate(vehicleObject);
+            }
+        }
+
+        private void SubscribeAgent(CityBusVehicleAgent agent)
+        {
+            agent.StopServed += OnAgentStopServed;
+            agent.RouteUnavailable +=
+                OnAgentRouteUnavailable;
+        }
+
+        private void UnsubscribeAgent(CityBusVehicleAgent agent)
+        {
+            agent.StopServed -= OnAgentStopServed;
+            agent.RouteUnavailable -=
+                OnAgentRouteUnavailable;
+        }
+
+        private void OnAgentStopServed(
+            CityBusVehicleAgent _,
+            Vector2Int tile,
+            int boarded,
+            int left)
+        {
+            GrantStopRevenue(tile);
+            StopServed?.Invoke(
+                tile,
+                boarded,
+                left);
+        }
+
+        private void OnAgentRouteUnavailable(
+            CityBusVehicleAgent failedAgent)
+        {
+            recoveryPending = serviceRequested &&
+                IsInsideOperatingWindow();
+
+            bool anotherVehicleOperating = false;
+            for (int index = 0;
+                 index < activeVehicles.Count;
+                 index++)
+            {
+                CityBusVehicleAgent candidate =
+                    activeVehicles[index];
+                if (candidate != null &&
+                    candidate != failedAgent &&
+                    candidate.IsOperating)
+                {
+                    anotherVehicleOperating = true;
                     break;
                 }
             }
 
-            if (currentIndex >= 0)
+            if (!anotherVehicleOperating)
             {
-                routeStops.Add(currentStop);
-            }
-
-            for (int offset = 1; offset <= stops.Count; offset++)
-            {
-                int index = currentIndex >= 0
-                    ? (currentIndex + offset) % stops.Count
-                    : offset - 1;
-                Vector2Int stop = stops[index];
-
-                if (stop != currentStop)
-                {
-                    routeStops.Add(stop);
-                }
-            }
-
-            return currentIndex >= 0;
-        }
-
-        private void BuildRouteStopsStartingAt(int startIndex)
-        {
-            routeStops.Clear();
-            IReadOnlyList<Vector2Int> stops =
-                stopRegistry.BusStops;
-
-            for (int offset = 0; offset < stops.Count; offset++)
-            {
-                int index = (startIndex + offset) % stops.Count;
-                routeStops.Add(stops[index]);
+                ServiceUnavailable?.Invoke();
             }
         }
 
-        private void RefreshRouteAtCurrentStop()
+        private void GrantStopRevenue(Vector2Int tile)
         {
-            routeRefreshPending = false;
-            Vector2Int currentStop = busRoute.CurrentStop;
-            Vector2Int currentPosition = busRoute.CurrentTile;
-            bool currentStopIsRegistered =
-                BuildRouteStopsFrom(currentStop);
-            routeOperationInProgress = true;
-            bool routeConfigured;
-            bool started;
-            try
-            {
-                routeConfigured = currentStopIsRegistered
-                    ? busRoute.ReconfigureLoopAtCurrentStop(
-                        routeStops)
-                    : busRoute.ReconfigureLoopFromCurrentPosition(
-                        currentPosition,
-                        routeStops);
-                started = stopRegistry.BusStopCount >= 1 &&
-                    routeStops.Count >= 1 &&
-                    routeConfigured &&
-                    busRoute.StartRoute();
-            }
-            finally
-            {
-                routeOperationInProgress = false;
-            }
+            int revenue = definition.StopRevenueCoins;
 
-            if (!started)
+            if (revenue <= 0 ||
+                services?.Economy == null ||
+                services.Save?.IsRestoring == true)
             {
-                RememberFailedDestination();
-                SetServiceUnavailable(true);
                 return;
             }
 
-            observedRouteState = busRoute.State;
-            ApplyRouteState(observedRouteState);
+            services.Economy.AddCoins(
+                revenue,
+                StopRevenueReason);
+
+            if (verboseLogging)
+            {
+                Debug.Log(
+                    $"[CityBusService] Earned {revenue} coins at stop {tile}.",
+                    this);
+            }
+        }
+
+        private void BindBusLineService(
+            CityFlowServices cityServices)
+        {
+            BusLines = cityServices.BusLines;
+            if (BusLines == null)
+            {
+                var localService = new BusLineService();
+                cityServices.RegisterBusLines(localService);
+                BusLines = cityServices.BusLines;
+            }
+
+            SynchronizeLegacyDefaultLine();
+        }
+
+        private void SynchronizeLegacyDefaultLine()
+        {
+            if (BusLines == null || stopRegistry == null)
+            {
+                return;
+            }
+
+            synchronizingLegacyLine = true;
+            try
+            {
+                IReadOnlyList<Vector2Int> stops =
+                    stopRegistry.BusStops;
+                if (stops.Count < 2)
+                {
+                    if (ownsLegacyDefaultLine)
+                    {
+                        BusLines.TryRemoveLine(
+                            LegacyDefaultRouteId);
+                        ownsLegacyDefaultLine = false;
+                    }
+
+                    RefreshLegacyRouteStops();
+                    return;
+                }
+
+                if (!BusLines.TryGetLine(
+                        LegacyDefaultRouteId,
+                        out _))
+                {
+                    ownsLegacyDefaultLine =
+                        BusLines.TryCreateLine(
+                            LegacyDefaultRouteId,
+                            stops);
+                }
+                else if (ownsLegacyDefaultLine)
+                {
+                    BusLines.TryUpdateLine(
+                        LegacyDefaultRouteId,
+                        stops);
+                }
+
+                RefreshLegacyRouteStops();
+            }
+            finally
+            {
+                synchronizingLegacyLine = false;
+            }
+        }
+
+        private void RefreshLegacyRouteStops()
+        {
+            routeStops.Clear();
+            if (BusLines == null ||
+                !BusLines.TryGetLine(
+                    LegacyDefaultRouteId,
+                    out BusLineData line))
+            {
+                return;
+            }
+
+            for (int index = 0;
+                 index < line.StopCount;
+                 index++)
+            {
+                routeStops.Add(line.OrderedStops[index]);
+            }
+        }
+
+        private void PrepareAvailabilityRefresh()
+        {
+            staleAvailabilityRouteIds.Clear();
+            foreach (int routeId in availabilityByRoute.Keys)
+            {
+                staleAvailabilityRouteIds.Add(routeId);
+            }
+        }
+
+        private void SetDirectionAvailability(
+            int routeId,
+            BusLineDirectionAvailability availability)
+        {
+            staleAvailabilityRouteIds.Remove(routeId);
+            if (availabilityByRoute.TryGetValue(
+                    routeId,
+                    out BusLineDirectionAvailability previous) &&
+                previous == availability)
+            {
+                return;
+            }
+
+            availabilityByRoute[routeId] = availability;
+            DirectionAvailabilityChanged?.Invoke(
+                routeId,
+                availability);
+        }
+
+        private void CompleteAvailabilityRefresh()
+        {
+            for (int index = 0;
+                 index < staleAvailabilityRouteIds.Count;
+                 index++)
+            {
+                int routeId = staleAvailabilityRouteIds[index];
+                availabilityByRoute.Remove(routeId);
+                DirectionAvailabilityChanged?.Invoke(
+                    routeId,
+                    BusLineDirectionAvailability.None);
+            }
+
+            staleAvailabilityRouteIds.Clear();
+        }
+
+        private void Subscribe()
+        {
+            if (subscribed)
+            {
+                return;
+            }
+
+            stopRegistry.RegistryChanged += OnRegistryChanged;
+            if (BusLines != null)
+            {
+                BusLines.LineCreated += OnLineChanged;
+                BusLines.LineUpdated += OnLineChanged;
+                BusLines.LineRemoved += OnLineChanged;
+            }
+
+            if (services?.Save != null)
+            {
+                services.Save.RestoreCompleted +=
+                    OnRestoreCompleted;
+            }
+
+            if (services != null)
+            {
+                services.GameCalendarRegistered +=
+                    OnGameCalendarRegistered;
+            }
+
+            subscribed = true;
+            BindCalendar(services?.GameCalendar);
+        }
+
+        private void Unsubscribe()
+        {
+            if (!subscribed)
+            {
+                return;
+            }
+
+            if (stopRegistry != null)
+            {
+                stopRegistry.RegistryChanged -=
+                    OnRegistryChanged;
+            }
+
+            if (BusLines != null)
+            {
+                BusLines.LineCreated -= OnLineChanged;
+                BusLines.LineUpdated -= OnLineChanged;
+                BusLines.LineRemoved -= OnLineChanged;
+            }
+
+            if (services?.Save != null)
+            {
+                services.Save.RestoreCompleted -=
+                    OnRestoreCompleted;
+            }
+
+            if (services != null)
+            {
+                services.GameCalendarRegistered -=
+                    OnGameCalendarRegistered;
+            }
+
+            if (calendarSubscribed && calendar != null)
+            {
+                calendar.HourChanged -= OnHourChanged;
+            }
+
+            calendarSubscribed = false;
+            subscribed = false;
+        }
+
+        private void OnRegistryChanged()
+        {
+            if (!initialized)
+            {
+                return;
+            }
+
+            SynchronizeLegacyDefaultLine();
+            RequestServiceRebuild();
+        }
+
+        private void OnLineChanged(BusLineData _)
+        {
+            if (synchronizingLegacyLine)
+            {
+                return;
+            }
+
+            RefreshLegacyRouteStops();
+            RequestServiceRebuild();
+        }
+
+        private void RequestServiceRebuild()
+        {
+            if (!serviceRequested || !IsInsideOperatingWindow())
+            {
+                return;
+            }
+
+            rebuildPending = true;
+            if (activeVehicles.Count == 0)
+            {
+                rebuildPending = false;
+                RebuildVehicles(false);
+            }
         }
 
         private void EvaluateOperatingWindow()
@@ -400,9 +924,7 @@ namespace CityFlow.Content
                 return;
             }
 
-            if (vehicleVisible &&
-                busRoute.State is BusRouteState.Moving
-                    or BusRouteState.WaitingAtStop)
+            if (vehicleVisible && activeVehicles.Count > 0)
             {
                 return;
             }
@@ -456,85 +978,15 @@ namespace CityFlow.Content
             EvaluateOperatingWindow();
         }
 
-        private void TryRecoverRoute()
+        private void OnRestoreCompleted(
+            RestoreCompletedEvent _)
         {
-            IReadOnlyList<Vector2Int> stops =
-                stopRegistry.BusStops;
-            if (stops.Count == 0)
+            StopService();
+            SynchronizeLegacyDefaultLine();
+            if (autoStart)
             {
-                SetServiceUnavailable(false);
-                return;
+                EvaluateOperatingWindow();
             }
-
-            int startIndex = 0;
-            if (hasFailedDestination)
-            {
-                for (int index = 0; index < stops.Count; index++)
-                {
-                    if (stops[index] == failedDestination)
-                    {
-                        startIndex = (index + 1) % stops.Count;
-                        break;
-                    }
-                }
-            }
-
-            Vector2Int currentPosition = busRoute.CurrentTile;
-            for (int offset = 0; offset < stops.Count; offset++)
-            {
-                int candidateIndex =
-                    (startIndex + offset) % stops.Count;
-                BuildRouteStopsStartingAt(candidateIndex);
-
-                routeOperationInProgress = true;
-                bool started;
-                try
-                {
-                    started = busRoute
-                        .ReconfigureLoopFromCurrentPosition(
-                            currentPosition,
-                            routeStops) &&
-                        busRoute.StartRoute();
-                }
-                finally
-                {
-                    routeOperationInProgress = false;
-                }
-
-                if (!started)
-                {
-                    continue;
-                }
-
-                hasFailedDestination = false;
-                observedRouteState = busRoute.State;
-                ApplyRouteState(observedRouteState);
-                SetVehicleVisible(true);
-                ServiceStarted?.Invoke();
-                return;
-            }
-
-            SetServiceUnavailable(false);
-        }
-
-        private void RememberFailedDestination()
-        {
-            Vector2Int destination = busRoute.NextStop;
-            hasFailedDestination =
-                routeStops.Contains(destination);
-            failedDestination = destination;
-        }
-
-        private void SetServiceUnavailable(bool requestRecovery)
-        {
-            routeRefreshPending = false;
-            routeRecoveryPending = requestRecovery &&
-                stopRegistry.BusStopCount > 0;
-            busRoute.StopRoute();
-            Runtime.SetState(
-                BusOperatingState.RouteUnavailable);
-            SetVehicleVisible(false);
-            ServiceUnavailable?.Invoke();
         }
 
         private void SetVehicleVisible(bool visible)
@@ -555,194 +1007,6 @@ namespace CityFlow.Content
             }
         }
 
-        private void Subscribe()
-        {
-            if (subscribed)
-            {
-                return;
-            }
-
-            busRoute.StopArrived += OnStopArrived;
-            busRoute.RouteUnavailable +=
-                OnRouteUnavailable;
-            stopRegistry.RegistryChanged +=
-                OnRegistryChanged;
-
-            if (services?.Save != null)
-            {
-                services.Save.RestoreCompleted +=
-                    OnRestoreCompleted;
-            }
-
-            if (services != null)
-            {
-                services.GameCalendarRegistered +=
-                    OnGameCalendarRegistered;
-            }
-
-            subscribed = true;
-            BindCalendar(services?.GameCalendar);
-        }
-
-        private void Unsubscribe()
-        {
-            if (!subscribed)
-            {
-                return;
-            }
-
-            if (busRoute != null)
-            {
-                busRoute.StopArrived -= OnStopArrived;
-                busRoute.RouteUnavailable -=
-                    OnRouteUnavailable;
-            }
-
-            if (stopRegistry != null)
-            {
-                stopRegistry.RegistryChanged -=
-                    OnRegistryChanged;
-            }
-
-            if (services?.Save != null)
-            {
-                services.Save.RestoreCompleted -=
-                    OnRestoreCompleted;
-            }
-
-            if (services != null)
-            {
-                services.GameCalendarRegistered -=
-                    OnGameCalendarRegistered;
-            }
-
-            if (calendarSubscribed && calendar != null)
-            {
-                calendar.HourChanged -= OnHourChanged;
-            }
-
-            calendarSubscribed = false;
-            subscribed = false;
-        }
-
-        private void OnStopArrived(
-            Vector2Int tile,
-            int _)
-        {
-            int left = Runtime.Leave(
-                definition.LeavingDemandPerStop);
-            int boarded = Runtime.Board(
-                definition.BoardingDemandPerStop);
-            Runtime.CompleteStop();
-            GrantStopRevenue(tile);
-            Runtime.SetRoutePosition(
-                tile,
-                busRoute.NextStop);
-
-            StopServed?.Invoke(
-                tile,
-                boarded,
-                left);
-        }
-
-        private void GrantStopRevenue(Vector2Int tile)
-        {
-            int revenue = definition.StopRevenueCoins;
-
-            if (revenue <= 0 ||
-                services?.Economy == null ||
-                services.Save?.IsRestoring == true)
-            {
-                return;
-            }
-
-            services.Economy.AddCoins(
-                revenue,
-                StopRevenueReason);
-
-            if (verboseLogging)
-            {
-                Debug.Log(
-                    $"[CityBusService] Earned {revenue} coins at stop {tile}.",
-                    this);
-            }
-        }
-
-        private void OnRouteUnavailable()
-        {
-            if (routeOperationInProgress)
-            {
-                return;
-            }
-
-            RememberFailedDestination();
-            SetServiceUnavailable(
-                IsInsideOperatingWindow());
-        }
-
-        private void OnRegistryChanged()
-        {
-            if (!initialized)
-            {
-                return;
-            }
-
-            if (!autoStart || !IsInsideOperatingWindow())
-            {
-                return;
-            }
-
-            if (stopRegistry.BusStopCount < 1)
-            {
-                SetServiceUnavailable(false);
-                return;
-            }
-
-            if (busRoute.State is BusRouteState.Idle
-                or BusRouteState.RouteUnavailable)
-            {
-                StartService();
-                return;
-            }
-
-            routeRefreshPending = true;
-        }
-
-        private void OnRestoreCompleted(
-            RestoreCompletedEvent _)
-        {
-            StopService();
-            if (autoStart)
-            {
-                EvaluateOperatingWindow();
-            }
-        }
-
-        private void ApplyRouteState(
-            BusRouteState routeState)
-        {
-            BusOperatingState state = routeState switch
-            {
-                BusRouteState.Moving =>
-                    BusOperatingState.Moving,
-                BusRouteState.WaitingAtStop =>
-                    BusOperatingState.WaitingAtStop,
-                BusRouteState.RouteUnavailable =>
-                    BusOperatingState.RouteUnavailable,
-                _ => BusOperatingState.Idle
-            };
-
-            Runtime.SetState(state);
-            SynchronizeRuntime();
-        }
-
-        private void SynchronizeRuntime()
-        {
-            Runtime?.SetRoutePosition(
-                busRoute.CurrentTile,
-                busRoute.NextStop);
-        }
-
-        // Unity setup: place CityBusContent.prefab; its schedule and route references are prewired.
+        // Unity setup: place CityBusContent.prefab; route agents are created automatically.
     }
 }

@@ -242,7 +242,10 @@ namespace CityFlow.Sim.Tests
             Assert.That(
                 source.Place(alternativeApproach, TileType.Road),
                 Is.True);
-            Assert.That(source.Remove(primaryRoad), Is.True);
+            Assert.That(
+                source.Remove(primaryRoad),
+                Is.False,
+                "The road between paired platforms must remain installed.");
             Assert.That(source.BusStopTiles, Does.Contain(stop));
 
             SimSaveData snapshot = source.CreateSnapshot();
@@ -262,7 +265,7 @@ namespace CityFlow.Sim.Tests
                     TileType.House),
                 Is.False);
             Assert.That(
-                restored.Remove(alternativeRoad),
+                restored.Remove(primaryRoad),
                 Is.False);
         }
 
