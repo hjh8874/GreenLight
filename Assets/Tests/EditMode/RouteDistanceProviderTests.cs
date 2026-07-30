@@ -15,7 +15,11 @@ namespace CityFlow.Sim.Tests
             config.GridWidth = 7;
             config.GridHeight = 3;
             config.RoadCapacity = 10f;
-            config.CompanyHiringSlotsPerGameHour = 100f;
+            // 채용 램프는 **게임시간** 기준이라 1틱에 도는 게임시간이 하루 길이에 반비례한다
+            // (1틱 게임시간 = TickInterval / DayLengthSeconds × 24). 100슬롯/h 은 하루 120초일 때만
+            // 1틱에 정원이 찼고, 하루가 720초가 되자 0.8슬롯 → 0 이 되어 차가 안 생겼다.
+            // 이 테스트의 관심사는 "배달된 가중 거리를 보고하나"뿐이므로 하루 길이와 무관하게 만든다.
+            config.CompanyHiringSlotsPerGameHour = 100000f;
 
             var engine = new SimEngine(config, new SimEventHub());
             for (int x = 1; x <= 5; x++)

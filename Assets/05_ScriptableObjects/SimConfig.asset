@@ -46,7 +46,7 @@ MonoBehaviour:
     SchoolCapacity: 10
     DemandChoicePool: 3
     RushAmplitude: 0.6
-    DayLengthSeconds: 120
+    DayLengthSeconds: 720
     OverrideDurationSeconds: 3
     OverrideCooldownSeconds: 60
     OverrideCorridorSignals: 3
