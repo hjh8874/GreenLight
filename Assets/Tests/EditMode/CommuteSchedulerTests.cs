@@ -181,5 +181,55 @@ namespace CityFlow.Sim.Tests
                     c.Work == largeOffice)
             );
         }
+
+        // 자정을 넘는 근무(20시 출근 / 5시 퇴근). 전역 창이 아니라 차 개별 값으로 판정하므로 성립한다.
+        [Test]
+        public void NightShift_StaysAtWorkPastMidnight_AndLeavesAtDawn()
+        {
+            var s = Build(homes: 1, officeSlots: 4);
+            var car = s.Cars[0];
+            car.DepartHomeHour = 20f;     // 출근창 [20, 24)
+            car.DepartWorkHour = 5f;      // 퇴근창 [5, 9)
+            car.EveningStartHour = 5f;
+            car.EveningEndHour = 9f;
+            car.State = CarState.ParkedHome;
+
+            s.UpdateDepartures(19f);
+            Assert.AreEqual(CarState.ParkedHome, car.State, "19시엔 아직 집");
+            s.UpdateDepartures(20f);
+            Assert.AreEqual(CarState.Outbound, car.State, "20시에 출근");
+            s.NotifyArrived(car);
+            Assert.AreEqual(CarState.ParkedWork, car.State);
+
+            s.UpdateDepartures(23f);
+            Assert.AreEqual(CarState.ParkedWork, car.State, "23시엔 근무 중");
+            s.UpdateDepartures(2f);
+            Assert.AreEqual(CarState.ParkedWork, car.State, "새벽 2시에도 근무 중 — 자정을 넘겼다");
+
+            s.UpdateDepartures(5f);
+            Assert.AreEqual(CarState.Inbound, car.State, "5시에 퇴근");
+        }
+
+        // 퇴근창 자체가 자정을 넘는 경우(23시~2시)의 스냅. 2026-07-17 정책은 유지 —
+        // 퇴근창 안만 ParkedWork이고 그 밖(근무 중인 낮 포함)은 전부 ParkedHome이다.
+        [Test]
+        public void SnapCar_EveningWindowWrapsMidnight()
+        {
+            var s = Build(homes: 1, officeSlots: 4);
+            var car = s.Cars[0];
+            car.DepartHomeHour = 14f;
+            car.DepartWorkHour = 23.5f;
+            car.EveningStartHour = 23f;   // 퇴근창 [23, 2) — 자정 넘김
+            car.EveningEndHour = 2f;
+
+            s.SnapCar(car, 23.5f);
+            Assert.AreEqual(CarState.ParkedWork, car.State, "퇴근창 안(자정 전)");
+            s.SnapCar(car, 1f);
+            Assert.AreEqual(CarState.ParkedWork, car.State, "퇴근창 안(자정 후)");
+            s.SnapCar(car, 2f);
+            Assert.AreEqual(CarState.ParkedHome, car.State, "끝 시각은 배타");
+            s.SnapCar(car, 18f);
+            Assert.AreEqual(CarState.ParkedHome, car.State, "근무 중인 낮도 ParkedHome — 첫 움직임은 출근");
+        }
     }
 }
