@@ -51,6 +51,10 @@
 
 ## 실측된 접점 (2026-07-30, develop `d50078e` — 워커는 재확인만, 재조사 불필요)
 
+> 이 계획은 2026-07-30 리뷰 워커의 코드 대조 검증을 통과했다(P1 0건 · P2 4건 반영 완료:
+> 테스트 호출자 7곳 명시, 하니스를 `BuildSpecialVisitCity`로 교체, 패널의 서비스 동봉 제거,
+> 유령 관례 인용 교체). `SpecialBuildingService`의 연구 검사는 `:443-446`.
+
 - `SimStats.DayArrivalCount`(`SimStats.cs:16`)는 **오늘 누적치**이고 하루 경계(`wrapped`)에서 0으로 리셋된다(`:43`). "어제 도착"은 리셋 직전 값을 캡처해야 한다.
 - 방문 트립 생성: `SpecialBuildingVisitTripSource.ScheduleStatistics` → `IVehicleTripService.TryScheduleSpecialBuildingVisit(request)` → `TripScheduler.TryEnqueue` → `SpecialTripJourney.CreateTrip`(`TripScheduler.cs:320-335`)이 **`rewardCoins: 0` 하드코딩** — 여기가 구멍.
 - 방문 도착: `CarSim.HandleSpecialTripArrival`(`CarSim.cs:1498`)이 `journey.CompleteCurrentLeg()` → `VehicleTripSnapshot`(RewardCoins 필드 **이미 있음**) → `QueueTripArrival`. **코인은 안 준다.** 통근 코인은 `CarSim.cs:744` `QueueArrival(new ArrivalEvent(car.Work, _cfg.CoinPerTrip))`.
@@ -375,7 +379,7 @@ using UnityEngine;
 namespace CityFlow.Content
 {
     // 연구 사다리 카탈로그. 항목 추가 = 에셋 한 줄(코드 0). Resources 경로로 읽어
-    // 씬을 건드리지 않는다 — CompanyTypeCatalogSO 와 같은 방식.
+    // 씬을 건드리지 않는다 — GameTimeSettingsSO(Resources/CityFlow/GameTimeSettings)와 같은 방식.
     [CreateAssetMenu(fileName = "ResearchCatalog", menuName = "CityFlow/Research/Catalog")]
     public sealed class ResearchCatalogSO : ScriptableObject
     {
@@ -507,7 +511,7 @@ git commit -m "[Feat] 연구 조건 판정 + 사다리 카탈로그 SO
         //   BindCalendar(services.GameCalendar);
         //   services.GameCalendarRegistered += BindCalendar;      // 등록 지연 대비
         //   BindPopulation(services.Population);
-        //   services.PopulationRegistered += BindPopulation;      // 이벤트 명칭은 CityFlowServices 를 열어 실측 — 없으면 Population 은 평가 시점 직접 조회로 대체하고 보고
+        //   services.PopulationRegistered += BindPopulation;      // 실존 확인됨(리뷰 검증) — 그대로 쓴다
         //   EvaluatePendingResearch();                            // 초기 1회
         // OnDestroy 에서 전부 해제.
 
@@ -559,7 +563,7 @@ git commit -m "[Feat] 연구 조건 판정 + 사다리 카탈로그 SO
         }
 ```
 
-> ⚠️ 구독 대상의 정확한 멤버명(`PopulationRegistered` 존재 여부, `GameCalendarRegistered` 시그니처)은 `CityFlowServices.cs`를 열어 실측하고, 없으면 해당 트리거를 "평가 시점 직접 조회"로 대체한 뒤 **계획과 다른 점을 보고에 기록**한다.
+> `PopulationRegistered`·`GameCalendarRegistered`는 리뷰에서 실존 확인됨. 시그니처가 다르면 코드에 맞추고 보고에 기록한다.
 
 - [ ] **Step 4: GREEN 확인** — 이름 필터 + Sim.Tests 회귀 0.
 - [ ] **Step 5: 커밋** — `[Feat] 연구 자동 해금 평가 루프 — 트리거 4개(하루·인구·배치·로드), 열린 것은 재평가 스킵`
@@ -573,6 +577,7 @@ git commit -m "[Feat] 연구 조건 판정 + 사다리 카탈로그 SO
 - Modify: `Assets/01_Scripts/CityFlow/Sim/TripScheduler.cs` (`SpecialTripJourney.CreateTrip`)
 - Modify: `Assets/01_Scripts/CityFlow/Sim/CarSim.cs` (`HandleSpecialTripArrival`)
 - Modify: `Assets/01_Scripts/CityFlow/Buildings/SpecialBuildingVisitTripSource.cs` (`ScheduleStatistics`)
+- Modify: `Assets/Tests/EditMode/CarSimTests.cs` · `Assets/Tests/EditMode/CarSimEngineTests.cs` — `SpecialBuildingVisitTripRequest` 생성자 호출 7곳에 `rewardCoins: 0` 추가(컴파일 유지)
 - Test: `Assets/Tests/EditMode/SpecialVisitRewardTests.cs` (신규, `CityFlow.Sim.Tests`)
 
 **Interfaces:**
@@ -580,7 +585,7 @@ git commit -m "[Feat] 연구 조건 판정 + 사다리 카탈로그 SO
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
-기존 특수건물 방문 테스트(`SpecialBuildingTests` 계열)를 먼저 읽고 **그 파일의 엔진 구성·방문 스케줄 패턴을 재사용**한다. 핵심 단정:
+**하니스는 `CarSimTests.BuildSpecialVisitCity`(`CarSimTests.cs:909·978` 사용례)를 재사용한다** — 같은 어셈블리(`CityFlow.Sim.Tests`)이고 `hub.Arrival` 구독으로 코인 집계까지 이미 한다. (`SpecialBuildingTests`는 기본 에디터 어셈블리라 여기서 참조 불가 — 리뷰 지적 P2.) 핵심 단정:
 
 ```csharp
         [Test]
@@ -595,7 +600,7 @@ git commit -m "[Feat] 연구 조건 판정 + 사다리 카탈로그 SO
         }
 ```
 
-> 위는 뼈대다 — 실제 코드는 기존 방문 테스트의 하니스를 읽고 맞춘 뒤, 단정 3개(방문=RewardCoins·통근=CoinPerTrip·귀가 leg 0코인)를 반드시 포함한다. 하니스 재사용이 불가능하면 멈추고 보고.
+> 위는 뼈대다 — `BuildSpecialVisitCity` 시그니처를 읽고 맞춘 뒤, 단정 3개(방문=RewardCoins·통근=CoinPerTrip·귀가 leg 0코인)를 반드시 포함한다. 하니스 재사용이 불가능하면 멈추고 보고.
 
 - [ ] **Step 2: RED 확인** — Expected: `SpecialBuildingVisitTripRequest` 생성자 인자 불일치(CS1729/CS7036) 또는 단정 실패(코인 0).
 - [ ] **Step 3: 구현**
@@ -639,7 +644,7 @@ git commit -m "[Feat] 연구 조건 판정 + 사다리 카탈로그 SO
 > `TryScheduleSpecialBuildingVisit`의 다른 호출자(에디터 베이커 등)가 있으면 컴파일 에러로 드러난다 — `rewardCoins: 0`으로 갱신한다.
 
 - [ ] **Step 4: GREEN 확인** — 게이트 3단 + Sim.Tests 회귀 0.
-- [ ] **Step 5: 커밋** — `[Feat] 방문 도착 코인 지급 — 요청에 실어 도착 시 ArrivalEvent 로` (본문에: `CreateTrip rewardCoins:0` 하드코딩이 구멍이었다 · 귀가 leg 0 · 계약 파일 수정 명시)
+- [ ] **Step 5: 커밋** — `[Feat] 방문 도착 코인 지급 — 요청에 실어 도착 시 ArrivalEvent 로` (본문에: `CreateTrip rewardCoins:0` 하드코딩이 구멍이었다 · 귀가 leg 0 · 계약 파일 수정 명시 · 기존 테스트 호출자 7곳 `rewardCoins: 0` 갱신)
 
 ---
 
@@ -690,7 +695,7 @@ git commit -m "[Feat] 연구 조건 판정 + 사다리 카탈로그 SO
 - Test: `Assets/Tests/ViewEditMode/Editor/ResearchPanelTests.cs` (신규)
 
 **Interfaces:**
-- Consumes: `ResearchCatalogSO.ValidEntries()` · `ResearchConditionEvaluator.CurrentValue` · `IResearchUnlockService.IsUnlocked`/`ResearchUnlocked`/`ResearchStateRestored` · `LastDayArrivalCount`/`CurrentPopulation`
+- Consumes: `ResearchCatalogSO.ValidEntries()` · `ResearchConditionEvaluator.CurrentValue` · **`services.Research`**(`IResearchUnlockService.IsUnlocked`/`ResearchUnlocked`/`ResearchStateRestored`) · `LastDayArrivalCount`/`CurrentPopulation`
 
 - [ ] **Step 1: 실패하는 테스트 작성** — `ResearchPanelTests.cs`. `BuildingConstructionOverlayTests` 패턴(리플렉션으로 private 주입, `Object.DestroyImmediate` 정리):
 
@@ -709,7 +714,7 @@ git commit -m "[Feat] 연구 조건 판정 + 사다리 카탈로그 SO
 
 - [ ] **Step 2: RED 확인** — CS0246.
 - [ ] **Step 3: 컨트롤러 구현** — `ICityFlowServiceConsumer`. `Initialize`에서 카탈로그 로드(직렬화 필드 → `LoadDefault` 폴백), 행 템플릿 복제로 8행 생성, `ResearchUnlocked`·`ResearchStateRestored` 구독, 계기판 3줄(`어제 도착 n` — **"어제" 라벨 필수**(§8) · `인구 n` · 목표 대비 진행). 갱신은 이벤트 + `OnEnable`. `OnDestroy` 해제. `Camera`·`Update` 의존 없음(EditMode 검증 가능).
-- [ ] **Step 4: 프리팹 조립** — `manage_prefabs`/`manage_gameobject`로: 루트 `ResearchPanel`(자체 `Canvas`+`CanvasScaler`, sortingOrder 낮게) ─ `Panel` ─ `Dashboard`(TMP 3줄) ─ `RowTemplate`(비활성, 이름·진행·상태 TMP). 루트에 `ResearchPanelController` + **`ResearchUnlockService`**(씬에 없어도 프리팹 하나로 완결 — `RegisterResearch`가 중복 등록을 거부하므로 씬에 이미 있어도 안전). 직렬화 필드에 카탈로그·행 템플릿 연결. **씬에 인스턴스를 남기지 않는다** — 만들었다면 프리팹 저장 후 삭제.
+- [ ] **Step 4: 프리팹 조립** — `manage_prefabs`/`manage_gameobject`로: 루트 `ResearchPanel`(자체 `Canvas`+`CanvasScaler`, sortingOrder 낮게) ─ `Panel` ─ `Dashboard`(TMP 3줄) ─ `RowTemplate`(비활성, 이름·진행·상태 TMP). 루트에 `ResearchPanelController` **만** 둔다 — `ResearchUnlockService`를 동봉하지 마라. **서비스는 이미 `SpecialBuildingSystem.prefab`에 배선돼 있다**(리뷰 지적 P2 — 동봉하면 등록 경쟁에서 진 쪽이 매 로드 경고를 찍고, 패널이 죽은 형제를 구독하면 영원히 잠김 표시가 된다). 컨트롤러는 `services.Research`(`IResearchUnlockService`) 경유로만 서비스에 접근하고, null 이면 경고 1회 후 빈 패널로 degrade 한다. 직렬화 필드에 카탈로그·행 템플릿 연결. **씬에 인스턴스를 남기지 않는다** — 만들었다면 프리팹 저장 후 삭제.
 - [ ] **Step 5: GREEN 확인** — 이름 필터 + Sim.Tests 회귀 0. `git status`에 `.unity` 없음 확인.
 - [ ] **Step 6: 커밋** — `[Feat] 연구 패널 프리팹 — 끌어다 놓으면 배선 끝 (서비스 동봉)`
 
