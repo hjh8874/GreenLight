@@ -176,7 +176,10 @@ namespace CityFlow.Sim
             SchoolCapacity = 10,
             DemandChoicePool = 3,
             RushAmplitude = 0f,        // 기본 오프 — SimDebug 씬은 SO 에셋으로 켠다
-            DayLengthSeconds = 120f,
+            // 하루 길이의 단일 출처는 GameTimeSettingsSO.DefaultRealMinutesPerGameDay(12분)다.
+            // Sim 은 그 어셈블리를 참조할 수 없어 값을 복제해 갖는다 — 대신 두 값이 어긋나면
+            // GameTimeSettings_AndSimConfig_AgreeOnDayLength 테스트가 실패한다.
+            DayLengthSeconds = 720f,   // = 12분 × 60
             // 코리도어 버스트: 3초 강제 초록(일자 라인 최대 3신호) + 60초 쿨다운 = 업타임 ~5%, 짧고 강한 스킬.
             OverrideDurationSeconds = 3f,
             OverrideCooldownSeconds = 60f,
