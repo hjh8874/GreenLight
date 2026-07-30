@@ -543,7 +543,7 @@ namespace CityFlow.Sim
                     return false;
                 }
                 _construction.Register(
-                    tile, type, direction, _simTime, _simTime + constructionSeconds);
+                    tile, type, direction, _simTime, _simTime + constructionSeconds, companyTypeId);
                 _events.QueuePlaced(
                     new PlacedEvent(tile, TileType.UnderConstruction, isRemove: false, direction));
                 return true;
@@ -590,7 +590,7 @@ namespace CityFlow.Sim
                 _construction.Cancel(site.Anchor);
 
                 if (site.TargetType == TileType.Office)
-                    _demand.RegisterCompany(site.Anchor, site.TargetType, _simTime);
+                    RegisterCompanyOfType(site.Anchor, site.TargetType, site.CompanyTypeId);
                 if (site.TargetType == TileType.Office || site.TargetType == TileType.School)
                     _demandRebalancePending = true;
                 _buildingAssignmentChangePending = true;
@@ -1172,7 +1172,14 @@ namespace CityFlow.Sim
                     var type = _grid.GetTile(new Vector2Int(x, y));
                     if (type == TileType.Empty) continue;       // 계약: Empty 미저장
                     if (!_grid.IsFootprintAnchor(new Vector2Int(x, y))) continue;
-                    tiles.Add(new TileSaveData { X = x, Y = y, Type = type, Direction = _grid.GetDirection(new Vector2Int(x, y)) });
+                    var anchor = new Vector2Int(x, y);
+                    _demand.TryGetCompanyTypeId(anchor, out string companyTypeId);
+                    tiles.Add(new TileSaveData
+                    {
+                        X = x, Y = y, Type = type,
+                        Direction = _grid.GetDirection(anchor),
+                        CompanyTypeId = companyTypeId,
+                    });
                 }
 
             // 모든 신호를 두 레버(오프셋·초록) 다 저장 — 복원 시 덮어쓰기만으로 이전 조율 잔존을 지운다.
@@ -1245,6 +1252,7 @@ namespace CityFlow.Sim
                     Direction = site.Direction,
                     RemainingSimSeconds =
                         (float)System.Math.Max(0d, site.CompleteAtSimSeconds - _simTime),
+                    CompanyTypeId = site.CompanyTypeId,
                 };
             }
 
@@ -1302,7 +1310,8 @@ namespace CityFlow.Sim
                     var tile = RestoreTile(t.X, t.Y, restoreOffset);
                     if (!_grid.Place(tile, t.Type, t.Direction)) continue;   // OOB·중복은 Place가 거름(무사고)
                     if (t.Type == TileType.Office)
-                        _demand.RegisterRestoredCompany(tile, t.Type);
+                        _demand.RegisterRestoredCompany(
+                            tile, t.Type, CompanyTypeOrNull(t.CompanyTypeId));
                 }
             // 참고: PlacedEvent는 안 쏨 — 복원은 '건설'이 아니고, 뷰는 폴링이라 다음 프레임 자동 갱신.
 
@@ -1317,7 +1326,8 @@ namespace CityFlow.Sim
                     // 이미 지난 만큼(total - remaining)을 뒤로 물려 진행도(Task 7)가 이어지게 한다.
                     double started = _simTime - System.Math.Max(0d, total - remaining);
                     _construction.Register(
-                        anchor, c.TargetType, c.Direction, started, _simTime + remaining);
+                        anchor, c.TargetType, c.Direction, started, _simTime + remaining,
+                        c.CompanyTypeId);
                 }
 
             // 조율 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).
@@ -1726,5 +1736,11 @@ namespace CityFlow.Sim
 
         internal CommuteWindow CommuteWindowAtForTest(Vector2Int tile) =>
             _demand.CommuteWindowAt(tile);
+
+        // 세이브에서 온 id → 유형. 표에 없으면 null(폴백) — 로드가 실패하지는 않게 한다.
+        CompanyTypeInfo? CompanyTypeOrNull(string companyTypeId) =>
+            TryGetCompanyType(companyTypeId, out CompanyTypeInfo info)
+                ? info
+                : (CompanyTypeInfo?)null;
     }
 }

@@ -12,19 +12,23 @@ namespace CityFlow.Sim
         // StartedAt은 Task 7의 진행도 계산(경과/전체)에 필요하다. 처음부터 넣어 재작업을 피한다.
         public readonly double StartedAtSimSeconds;
         public readonly double CompleteAtSimSeconds;
+        // 완성 시 회사로 등록할 유형 id. 공사를 건너 유형을 나르는 유일한 경로다.
+        public readonly string CompanyTypeId;
 
         public ConstructionSite(
             Vector2Int anchor,
             TileType targetType,
             PlacementDirection direction,
             double startedAtSimSeconds,
-            double completeAtSimSeconds)
+            double completeAtSimSeconds,
+            string companyTypeId = null)
         {
             Anchor = anchor;
             TargetType = targetType;
             Direction = direction;
             StartedAtSimSeconds = startedAtSimSeconds;
             CompleteAtSimSeconds = completeAtSimSeconds;
+            CompanyTypeId = companyTypeId;
         }
     }
 
@@ -42,11 +46,13 @@ namespace CityFlow.Sim
             TileType targetType,
             PlacementDirection direction,
             double startedAtSimSeconds,
-            double completeAtSimSeconds)
+            double completeAtSimSeconds,
+            string companyTypeId = null)
         {
             Cancel(anchor);   // 같은 앵커 중복 방지
             _sites.Add(new ConstructionSite(
-                anchor, targetType, direction, startedAtSimSeconds, completeAtSimSeconds));
+                anchor, targetType, direction,
+                startedAtSimSeconds, completeAtSimSeconds, companyTypeId));
         }
 
         public bool Cancel(Vector2Int anchor)

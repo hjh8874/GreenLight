@@ -139,6 +139,59 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(cfg.EveningStartHour, plain.EndHour);
         }
 
+        // 완성된 회사의 유형이 세이브에 실려야 한다. 없으면 로드 후 전부 폴백 창으로 되돌아간다
+        // (RegisterRestoredCompany 가 타일 목록에서 회사를 다시 만드는 구조라 조용히 사라진다).
+        [Test]
+        public void CompanyType_SurvivesSaveRoundTrip_WhenAlreadyBuilt()
+        {
+            SimEngine engine = NewEngineWithTypes();
+            Assert.IsTrue(engine.Place(new Vector2Int(0, 0), TileType.Office,
+                PlacementDirection.North, "factory"));
+
+            SimConfig cfg = SimConfig.Default();
+            cfg.GridWidth = 8;
+            cfg.GridHeight = 4;
+            var restored = new SimEngine(cfg, new SimEventHub());
+            restored.SetCompanyTypes(new[] { NewType("factory", 20f, 5f, capacity: 10) });
+            restored.RestoreSnapshot(engine.CreateSnapshot());
+
+            Assert.IsTrue(restored.TryGetCompanyTypeIdForTest(new Vector2Int(0, 0), out string id));
+            Assert.AreEqual("factory", id, "로드 후에도 공장이다");
+            Assert.IsTrue(restored.TryGetCompanyStaffing(new Vector2Int(0, 0), out CompanyStaffing f));
+            Assert.AreEqual(10, f.Capacity, "유형 정원도 함께 복원된다");
+            Assert.AreEqual(20f, restored.CommuteWindowAtForTest(new Vector2Int(0, 0)).StartHour);
+        }
+
+        // 공사 중 저장 → 로드 → 완성. 유형을 안 실으면 완성 시 전부 사무실이 된다(설계 결정 ④).
+        [Test]
+        public void CompanyType_SurvivesConstruction_AndSaveRoundTrip()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.GridWidth = 8;
+            cfg.GridHeight = 4;
+            cfg.DayLengthSeconds = 24f;      // 1 게임시간 = 1 시뮬초
+            cfg.TickInterval = 0.25f;
+            cfg.ConstructionHoursOffice = 2f;   // 2 게임시간 = 2 시뮬초 = 8틱
+            var engine = new SimEngine(cfg, new SimEventHub());
+            engine.SetCompanyTypes(new[] { NewType("factory", 20f, 5f, capacity: 10) });
+
+            Assert.IsTrue(engine.Place(new Vector2Int(4, 0), TileType.Office,
+                PlacementDirection.North, "factory"));
+            Assert.AreEqual(TileType.UnderConstruction, engine.GetTileType(new Vector2Int(4, 0)));
+
+            var restored = new SimEngine(cfg, new SimEventHub());
+            restored.SetCompanyTypes(new[] { NewType("factory", 20f, 5f, capacity: 10) });
+            restored.RestoreSnapshot(engine.CreateSnapshot());
+            Assert.AreEqual(TileType.UnderConstruction, restored.GetTileType(new Vector2Int(4, 0)),
+                "공사 중 상태로 복원된다");
+
+            for (int i = 0; i < 12; i++) restored.Tick(0.25f);
+
+            Assert.AreEqual(TileType.Office, restored.GetTileType(new Vector2Int(4, 0)), "완성됨");
+            Assert.IsTrue(restored.TryGetCompanyTypeIdForTest(new Vector2Int(4, 0), out string id));
+            Assert.AreEqual("factory", id, "공사·세이브를 거쳐도 사무실로 되돌아가지 않는다");
+        }
+
         // ApplyConfig 재적용이 유형 정원을 SimConfig 상한으로 깎지 않는다(조용한 축소 방지).
         [Test]
         public void ApplyConfig_KeepsTypeCapacity()

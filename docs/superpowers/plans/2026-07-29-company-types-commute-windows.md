@@ -818,11 +818,17 @@ git commit -m "[Feat] Rebuild 시각 인자 4개를 창 콜백으로 대체 — 
 
 `SimEngine.Place`의 공사 분기에서 `companyTypeId`를 넘기고, `AdvanceConstruction`의 완성 처리에서 `_demand.RegisterCompany(site.Anchor, site.TargetType, _simTime, site.CompanyTypeId)`로 복원한다.
 
+> **범위 추가 (2026-07-30, 실제 세이브 경로 확인 후).** 초안은 공사 사이트만 다뤘다. 그런데
+> **완성된 회사의 유형도 세이브에 없다** — `RestoreSnapshot`이 타일 목록을 훑어
+> `RegisterRestoredCompany(tile, Office)`로 회사를 다시 만들기 때문에, 로드하면 3종 구분이
+> 조용히 사라지고 전부 폴백 창이 된다. 그래서 `TileSaveData`에도 `CompanyTypeId`를 더한다.
+> 둘 다 구세이브 = `null` → 폴백이라 마이그레이션은 공짜다(기존 섹션들과 같은 패턴).
+
 - [ ] **Step 4: 세이브에 유형 싣기**
 
 `ConstructionSaveData`에 `public string CompanyTypeId;`를 더하고 `CreateSnapshot`/`RestoreSnapshot` 양쪽에 배선한다. **구세이브는 이 필드가 null이므로 폴백 경로가 살아 있어야 한다.**
 
-- [ ] **Step 5: 통과 확인** — `run_tests` **439/439 PASS**
+- [ ] **Step 5: 통과 확인** — `run_tests` **440/440 PASS** (438 + 신규 2: 완성 후 라운드트립 · 공사 중 라운드트립)
 
 - [ ] **Step 6: 커밋**
 
@@ -902,7 +908,7 @@ Unity 메뉴 `Assets > Create > CityFlow > Content > Company Type` 으로 3개, 
 - [ ] **Step 5: 검증 — 에셋만 바뀌므로 테스트는 무변경**
 
 `refresh_unity` → `read_console` → `run_tests`(EditMode, `CityFlow.Sim.Tests`)
-Expected: **439/439 PASS** (테스트는 유형 표를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
+Expected: **440/440 PASS** (테스트는 유형 표를 코드로 주입하므로 에셋 추가에 영향받지 않는다)
 
 라이브 확인은 하루 12분 전환 이후다 — 지금은 창 4시간이 실시간 4초라 세 유형이 갈리는 게 눈에 안 보인다.
 
@@ -921,7 +927,7 @@ git commit -m "[Feat] 회사 유형 3종 에셋 — 사무실/물류창고/공�
 
 ## 완료 기준
 
-- EditMode `CityFlow.Sim.Tests` **439/439 green** (기준선 423 + 신규 16)
+- EditMode `CityFlow.Sim.Tests` **440/440 green** (기준선 423 + 신규 17)
 - 컴파일 `error CS` 0
 - 통합 씬 파일이 커밋에 **없음**
 - 신규 `.cs`의 `.cs.meta` 전부 커밋됨
