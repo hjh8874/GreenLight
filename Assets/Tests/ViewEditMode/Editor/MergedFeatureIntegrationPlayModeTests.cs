@@ -9,9 +9,11 @@ using CityFlow.Configs;
 using CityFlow.Content;
 using CityFlow.Content.Transit;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using CityFlow.DebugTools;
 using CityFlow.Environment;
 using CityFlow.Gameplay.Progression;
+using CityFlow.Gameplay.Research;
 using CityFlow.UI;
 using CityFlow.UI.Controllers;
 using CityFlow.UI.Controllers.Placement;
@@ -912,8 +914,17 @@ namespace CityFlow.Tests.ViewEditMode
                     item =>
                         !string.IsNullOrWhiteSpace(
                             item.RequiredResearchId));
-            services.Research.TryUnlock(
-                option.RequiredResearchId);
+            Assert.That(
+                services.Research,
+                Is.TypeOf<ResearchUnlockService>());
+            ((ResearchUnlockService)services.Research)
+                .RestoreSnapshot(new ResearchSaveData
+                {
+                    UnlockedResearchIds = new[]
+                    {
+                        option.RequiredResearchId
+                    }
+                });
             Assert.That(
                 services.SpecialBuildings.IsBuildingUnlocked(
                     option.BuildingId),

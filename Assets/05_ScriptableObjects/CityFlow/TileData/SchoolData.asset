@@ -21,3 +21,4 @@ MonoBehaviour:
   buildCost: 500
   dailyCoinValue: 10
   prosperityValue: 1
+  requiredResearchId: research_building_school

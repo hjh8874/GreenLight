@@ -37,6 +37,7 @@ namespace CityFlow.UI
             public TMP_Text StateText;
             public bool IsUnlocked;
             public bool IsReady;
+            public bool IsResearching;
             public int Depth;
             public int Branch;
         }
@@ -45,6 +46,7 @@ namespace CityFlow.UI
         private readonly List<GameObject> connectors = new();
         private CityFlowServices services;
         private IResearchUnlockService research;
+        private IEconomyService economy;
         private bool warnedMissingResearch;
 
         internal IReadOnlyList<Row> RowsForTest => rows;
@@ -57,7 +59,9 @@ namespace CityFlow.UI
             if (catalog == null) catalog = ResearchCatalogSO.LoadDefault();
 
             BindResearch(services.Research);
+            BindEconomy(services.Economy);
             services.ResearchRegistered += BindResearch;
+            services.EconomyRegistered += BindEconomy;
             if (research == null && !warnedMissingResearch)
             {
                 warnedMissingResearch = true;
@@ -75,13 +79,19 @@ namespace CityFlow.UI
 
         private void Unbind()
         {
-            if (services != null) services.ResearchRegistered -= BindResearch;
+            if (services != null)
+            {
+                services.ResearchRegistered -= BindResearch;
+                services.EconomyRegistered -= BindEconomy;
+            }
             if (research != null)
             {
                 research.ResearchUnlocked -= OnResearchUnlocked;
+                research.ResearchProgressChanged -= RefreshAll;
                 research.ResearchStateRestored -= RefreshAll;
                 research = null;
             }
+            BindEconomy(null);
             services = null;
         }
 
@@ -91,14 +101,26 @@ namespace CityFlow.UI
             if (research != null)
             {
                 research.ResearchUnlocked -= OnResearchUnlocked;
+                research.ResearchProgressChanged -= RefreshAll;
                 research.ResearchStateRestored -= RefreshAll;
             }
             research = service;
             research.ResearchUnlocked += OnResearchUnlocked;
+            research.ResearchProgressChanged += RefreshAll;
             research.ResearchStateRestored += RefreshAll;
             RefreshAll();
         }
 
+        private void BindEconomy(IEconomyService service)
+        {
+            if (ReferenceEquals(economy, service)) return;
+            if (economy != null) economy.CoinsChanged -= OnCoinsChanged;
+            economy = service;
+            if (economy != null) economy.CoinsChanged += OnCoinsChanged;
+            RefreshAll();
+        }
+
+        private void OnCoinsChanged(long _) => RefreshAll();
         private void OnResearchUnlocked(string _) => RefreshAll();
 
         private void BuildRows()
@@ -141,7 +163,11 @@ namespace CityFlow.UI
                 button.onClick.RemoveAllListeners();
                 button.onClick.AddListener(() =>
                 {
-                    if (research != null && research.TryUnlock(id)) RefreshAll();
+                    if (research != null &&
+                        research.TryStartResearch(id))
+                    {
+                        RefreshAll();
+                    }
                 });
                 rows.Add(row);
             }
@@ -159,29 +185,132 @@ namespace CityFlow.UI
                 Row row = rows[i];
                 row.IsUnlocked = research?.IsUnlocked(row.Entry.researchId) == true;
                 row.IsReady = !row.IsUnlocked && research?.IsReady(row.Entry.researchId) == true;
+                row.IsResearching =
+                    !row.IsUnlocked &&
+                    research?.IsResearching(row.Entry.researchId) == true;
                 if (row.IsUnlocked) unlockedCount++;
                 if (row.NameText != null) row.NameText.text = row.Entry.displayName;
                 if (row.ProgressText != null)
-                    row.ProgressText.text = row.IsUnlocked ? string.Empty :
-                        $"{ResearchConditionEvaluator.CurrentValue(row.Entry, inputs)}/{row.Entry.threshold}";
+                    row.ProgressText.text = CreateProgressText(row, inputs);
                 if (row.StateText != null)
-                    row.StateText.text = row.IsUnlocked ? "완료" : row.IsReady ? "해금 가능" : "잠김";
+                    row.StateText.text = CreateStateText(row);
                 CanvasGroup group = row.Instance.GetComponent<CanvasGroup>();
                 if (group == null) group = row.Instance.AddComponent<CanvasGroup>();
-                group.alpha = row.IsUnlocked || row.IsReady ? 1f : 0.85f;
+                group.alpha =
+                    row.IsUnlocked || row.IsReady || row.IsResearching
+                        ? 1f
+                        : 0.85f;
                 Image card = row.Instance.GetComponent<Image>();
                 if (card != null)
                     card.color = row.IsUnlocked ? new Color(0.13f, 0.27f, 0.17f)     // 완료 = 녹색톤
+                        : row.IsResearching ? new Color(0.10f, 0.24f, 0.38f)         // 연구 중 = 청색톤
                         : row.IsReady ? new Color(0.36f, 0.31f, 0.12f)               // 해금 가능 = 황색톤
                         : new Color(0.21f, 0.22f, 0.26f);                            // 잠김 = 밝은 회색톤(배경과 구분)
                 Button button = row.Instance.GetComponent<Button>();
-                if (button != null) button.interactable = row.IsReady;
+                if (button != null)
+                {
+                    button.interactable =
+                        row.IsReady &&
+                        string.IsNullOrEmpty(research?.ActiveResearchId) &&
+                        CanAfford(row.Entry);
+                }
             }
             UpdateConnectorColors();
             if (yesterdayArrivalsText != null) yesterdayArrivalsText.text = $"어제 도착 {arrivals}";
             if (populationText != null) populationText.text = $"인구 {population}";
             if (unlockProgressText != null) unlockProgressText.text = $"해금 {unlockedCount}/{rows.Count}";
         }
+
+        private string CreateProgressText(
+            Row row,
+            in ResearchConditionInputs inputs)
+        {
+            if (row.IsUnlocked)
+            {
+                return string.Empty;
+            }
+
+            if (row.IsResearching)
+            {
+                return $"남은 시간 " +
+                       $"{research.GetRemainingResearchHours(row.Entry.researchId)}시간";
+            }
+
+            var parts = new List<string>();
+            if (row.Entry.requirements != null &&
+                row.Entry.requirements.Count > 0)
+            {
+                for (int index = 0;
+                     index < row.Entry.requirements.Count;
+                     index++)
+                {
+                    ResearchRequirement requirement =
+                        row.Entry.requirements[index];
+                    if (requirement == null) continue;
+                    parts.Add(
+                        $"{GetConditionLabel(requirement.conditionKind, requirement.targetTileType)} " +
+                        $"{ResearchConditionEvaluator.CurrentValue(requirement, inputs)}/" +
+                        $"{Mathf.Max(0, requirement.threshold)}");
+                }
+            }
+            else
+            {
+                parts.Add(
+                    $"{GetConditionLabel(row.Entry.conditionKind, row.Entry.targetTileType)} " +
+                    $"{ResearchConditionEvaluator.CurrentValue(row.Entry, inputs)}/" +
+                    $"{Mathf.Max(0, row.Entry.threshold)}");
+            }
+
+            return string.Join(" · ", parts);
+        }
+
+        private string CreateStateText(Row row)
+        {
+            if (row.IsUnlocked) return "완료";
+            if (row.IsResearching) return "연구 중";
+            if (!row.IsReady) return "잠김";
+            if (!string.IsNullOrEmpty(research?.ActiveResearchId))
+                return "다른 연구 진행 중";
+            if (!CanAfford(row.Entry))
+                return $"재화 부족 · {Mathf.Max(0, row.Entry.researchCost):N0}";
+
+            int cost = Mathf.Max(0, row.Entry.researchCost);
+            int duration = Mathf.Max(
+                0,
+                row.Entry.researchDurationHours);
+            if (cost == 0 && duration == 0)
+            {
+                return "즉시 해금";
+            }
+
+            return $"연구 시작 · {cost:N0} · {duration}시간";
+        }
+
+        private bool CanAfford(ResearchEntry entry)
+        {
+            int cost = Mathf.Max(0, entry?.researchCost ?? 0);
+            return cost == 0 ||
+                   (economy != null && economy.Coins >= cost);
+        }
+
+        private static string GetConditionLabel(
+            ResearchConditionKind kind,
+            TileType targetTileType) =>
+            kind switch
+            {
+                ResearchConditionKind.DailyArrivals => "통행",
+                ResearchConditionKind.Population => "인구",
+                ResearchConditionKind.BuildingCount =>
+                    targetTileType switch
+                    {
+                        TileType.House => "주거",
+                        TileType.Office => "회사",
+                        TileType.School => "학교",
+                        TileType.Hospital => "병원",
+                        _ => targetTileType.ToString()
+                    },
+                _ => "조건"
+            };
 
         private void LayoutRows(Dictionary<string, ResearchEntry> byId)
         {

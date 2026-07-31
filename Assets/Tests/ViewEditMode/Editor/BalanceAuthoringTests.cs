@@ -1,6 +1,9 @@
 using System.IO;
 using System.Linq;
+using CityFlow.Configs;
+using CityFlow.Content;
 using CityFlow.EditorTools.Balance;
+using CityFlow.Gameplay.Research;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -16,6 +19,7 @@ namespace CityFlow.Sim.Tests
             "Assets/05_ScriptableObjects/Balance/Editor/DistanceRewardConfig_Balance.asset",
             "Assets/05_ScriptableObjects/Balance/Editor/PopulationConfig_Balance.asset",
             "Assets/05_ScriptableObjects/Balance/Editor/GameTimeSettings_Balance.asset",
+            "Assets/05_ScriptableObjects/Balance/Editor/ResearchCatalog_Balance.asset",
             "Assets/05_ScriptableObjects/Balance/Editor/CityBusDefinition_Balance.asset",
             "Assets/05_ScriptableObjects/Balance/Editor/SchoolBusDefinition_Balance.asset",
             "Assets/05_ScriptableObjects/Balance/Editor/DefaultCityBusSchedule_Balance.asset",
@@ -41,7 +45,8 @@ namespace CityFlow.Sim.Tests
             "6326890673d7b4fefa366098947b09e1",
             "35a25790f99b3ba4bace62965a0591e4",
             "d9d64cdcc77b71b46a1a929badff74a2",
-            "82f3ef980d6db1a4e82e91fbd8e2eaa6"
+            "82f3ef980d6db1a4e82e91fbd8e2eaa6",
+            "1eec600dab66a40738a25dc2f3ce7ec1"
         };
 
         [Test]
@@ -76,6 +81,106 @@ namespace CityFlow.Sim.Tests
                     Is.Not.Null,
                     $"작업용 밸런스 에셋 누락: {path}");
             }
+        }
+
+        [Test]
+        public void ResearchCatalog_HasSeparateWorkingCopy()
+        {
+            Object source = AssetDatabase.LoadMainAssetAtPath(
+                BalanceAuthoringWindow.ResearchCatalogPath);
+            Object working = AssetDatabase.LoadMainAssetAtPath(
+                BalanceAuthoringWindow.WorkingResearchCatalogPath);
+
+            Assert.That(source, Is.Not.Null);
+            Assert.That(working, Is.Not.Null);
+            Assert.That(working.GetType(), Is.EqualTo(source.GetType()));
+            Assert.That(
+                AssetDatabase.AssetPathToGUID(
+                    BalanceAuthoringWindow.WorkingResearchCatalogPath),
+                Is.Not.EqualTo(
+                    AssetDatabase.AssetPathToGUID(
+                        BalanceAuthoringWindow.ResearchCatalogPath)));
+        }
+
+        [Test]
+        public void LockedBuildings_HavePaidTimedResearchEntries()
+        {
+            ResearchCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<ResearchCatalogSO>(
+                    BalanceAuthoringWindow.ResearchCatalogPath);
+            Assert.That(catalog, Is.Not.Null);
+
+            var entriesById = catalog.ValidEntries()
+                .ToDictionary(
+                    entry => entry.researchId,
+                    entry => entry);
+            int linkedBuildingCount = 0;
+
+            foreach (string guid in
+                     AssetDatabase.FindAssets(
+                         "t:BuildingDefinitionSO"))
+            {
+                BuildingDefinitionSO building =
+                    AssetDatabase.LoadAssetAtPath<
+                        BuildingDefinitionSO>(
+                        AssetDatabase.GUIDToAssetPath(guid));
+                AssertPaidTimedResearch(
+                    entriesById,
+                    building?.RequiredResearchId,
+                    building?.buildingName,
+                    ref linkedBuildingCount);
+            }
+
+            foreach (string guid in
+                     AssetDatabase.FindAssets("t:TileDataSO"))
+            {
+                TileDataSO tile =
+                    AssetDatabase.LoadAssetAtPath<TileDataSO>(
+                        AssetDatabase.GUIDToAssetPath(guid));
+                AssertPaidTimedResearch(
+                    entriesById,
+                    tile?.RequiredResearchId,
+                    tile?.BuildingName,
+                    ref linkedBuildingCount);
+            }
+
+            Assert.That(
+                linkedBuildingCount,
+                Is.GreaterThanOrEqualTo(10),
+                "학교·병원과 특수 건물 8개가 연구에 연결되어야 합니다.");
+        }
+
+        private static void AssertPaidTimedResearch(
+            System.Collections.Generic.IReadOnlyDictionary<
+                string,
+                ResearchEntry> entriesById,
+            string researchId,
+            string buildingName,
+            ref int linkedBuildingCount)
+        {
+            string normalizedId =
+                researchId?.Trim() ?? string.Empty;
+            if (normalizedId.Length == 0)
+            {
+                return;
+            }
+
+            linkedBuildingCount++;
+            Assert.That(
+                entriesById.TryGetValue(
+                    normalizedId,
+                    out ResearchEntry entry),
+                Is.True,
+                $"{buildingName}의 연구 ID가 카탈로그에 없습니다: " +
+                normalizedId);
+            Assert.That(
+                entry.researchCost,
+                Is.GreaterThan(0),
+                $"{buildingName} 연구 비용은 0보다 커야 합니다.");
+            Assert.That(
+                entry.researchDurationHours,
+                Is.GreaterThan(0),
+                $"{buildingName} 연구 시간은 0보다 커야 합니다.");
         }
 
         [Test]

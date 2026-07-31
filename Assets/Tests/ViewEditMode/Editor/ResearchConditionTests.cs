@@ -43,6 +43,48 @@ public class ResearchConditionTests
     }
 
     [Test]
+    public void MultipleRequirements_MustAllBeSatisfied()
+    {
+        var entry = new ResearchEntry
+        {
+            researchId = "school",
+            requirements = new List<ResearchRequirement>
+            {
+                new()
+                {
+                    conditionKind = ResearchConditionKind.BuildingCount,
+                    threshold = 3,
+                    targetTileType = TileType.House
+                },
+                new()
+                {
+                    conditionKind = ResearchConditionKind.BuildingCount,
+                    threshold = 2,
+                    targetTileType = TileType.Office
+                }
+            }
+        };
+
+        ResearchConditionInputs missingOffice =
+            new(0, 0, type =>
+                type == TileType.House ? 3 :
+                type == TileType.Office ? 1 : 0);
+        ResearchConditionInputs allSatisfied =
+            new(0, 0, type =>
+                type == TileType.House ? 3 :
+                type == TileType.Office ? 2 : 0);
+
+        Assert.IsFalse(
+            ResearchConditionEvaluator.IsSatisfied(
+                entry,
+                missingOffice));
+        Assert.IsTrue(
+            ResearchConditionEvaluator.IsSatisfied(
+                entry,
+                allSatisfied));
+    }
+
+    [Test]
     public void CurrentValue_ReturnsTheConditionSourceValue()
     {
         Assert.AreEqual(131, ResearchConditionEvaluator.CurrentValue(

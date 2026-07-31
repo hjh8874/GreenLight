@@ -791,14 +791,16 @@ namespace CityFlow.Tests
 
         private static void UnlockCinemaForTest(ResearchUnlockService research)
         {
-            research.inputsOverrideForTest = () =>
-                new ResearchConditionInputs(0, 80, null);
-            research.EvaluatePendingResearch();
-            Assert.IsTrue(research.TryUnlock(
-                "research_building_coffee_shop"));
-            Assert.IsTrue(research.TryUnlock(
-                "research_building_video_store"));
-            Assert.IsTrue(research.TryUnlock(
+            research.RestoreSnapshot(new ResearchSaveData
+            {
+                UnlockedResearchIds = new[]
+                {
+                    "research_building_coffee_shop",
+                    "research_building_video_store",
+                    "research_building_cinema"
+                }
+            });
+            Assert.IsTrue(research.IsUnlocked(
                 "research_building_cinema"));
         }
 

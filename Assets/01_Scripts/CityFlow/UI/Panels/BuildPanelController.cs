@@ -39,6 +39,7 @@ namespace CityFlow.UI
             _specialBuildingSlots = new();
         private CityFlowServices _services;
         private ISpecialBuildingService _specialBuildings;
+        private IResearchUnlockService _research;
         private bool _started;
 
         public void Initialize(CityFlowServices services)
@@ -47,19 +48,26 @@ namespace CityFlow.UI
             {
                 _services.SpecialBuildingsRegistered -=
                     OnSpecialBuildingsRegistered;
+                _services.ResearchRegistered -=
+                    OnResearchRegistered;
             }
 
             _services = services;
             if (_services == null)
             {
                 BindSpecialBuildings(null);
+                BindResearch(null);
                 return;
             }
 
             _services.SpecialBuildingsRegistered +=
                 OnSpecialBuildingsRegistered;
+            _services.ResearchRegistered +=
+                OnResearchRegistered;
             BindSpecialBuildings(_services.SpecialBuildings);
+            BindResearch(_services.Research);
             RefreshSpecialBuildingSlots();
+            RefreshResearchLockedSlots();
         }
         // [통합 테스트 호환용] 
         // 팀원이 추가한 Configure 함수를 유지하여 테스트 씬(Runtime) 에러를 방지합니다.
@@ -123,6 +131,7 @@ namespace CityFlow.UI
             {
                 slot.Initialize(placementController, tooltipController);
             }
+            RefreshResearchLockedSlots();
 
             // 카테고리 버튼 연결
             for (int i = 0; i < categoryTabs.Length; i++)
@@ -150,9 +159,12 @@ namespace CityFlow.UI
             {
                 _services.SpecialBuildingsRegistered -=
                     OnSpecialBuildingsRegistered;
+                _services.ResearchRegistered -=
+                    OnResearchRegistered;
             }
 
             BindSpecialBuildings(null);
+            BindResearch(null);
         }
 
         private void OnSpecialBuildingsRegistered(
@@ -181,6 +193,54 @@ namespace CityFlow.UI
             {
                 _specialBuildings.BuildOptionsChanged +=
                     RefreshSpecialBuildingSlots;
+            }
+        }
+
+        private void OnResearchRegistered(
+            IResearchUnlockService service)
+        {
+            BindResearch(service);
+            RefreshResearchLockedSlots();
+        }
+
+        private void BindResearch(IResearchUnlockService service)
+        {
+            if (ReferenceEquals(_research, service))
+            {
+                return;
+            }
+
+            if (_research != null)
+            {
+                _research.ResearchUnlocked -=
+                    OnResearchUnlocked;
+                _research.ResearchStateRestored -=
+                    RefreshResearchLockedSlots;
+            }
+
+            _research = service;
+            if (_research != null)
+            {
+                _research.ResearchUnlocked +=
+                    OnResearchUnlocked;
+                _research.ResearchStateRestored +=
+                    RefreshResearchLockedSlots;
+            }
+        }
+
+        private void OnResearchUnlocked(string _) =>
+            RefreshResearchLockedSlots();
+
+        private void RefreshResearchLockedSlots()
+        {
+            if (!_started || buildSlots == null)
+            {
+                return;
+            }
+
+            for (int index = 0; index < buildSlots.Length; index++)
+            {
+                buildSlots[index]?.RefreshAvailability();
             }
         }
 

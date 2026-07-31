@@ -2,6 +2,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CityFlow.Configs;
+using CityFlow.Content;
+using CityFlow.Contracts;
+using CityFlow.Gameplay.Research;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -15,6 +19,10 @@ namespace CityFlow.EditorTools.Balance
             "Assets/00_Scenes/CityFlowIntegrated_cmt.unity";
         internal const string BalanceScenePath =
             "Assets/00_Scenes/Debug/CityFlowBalance_Lee.unity";
+        internal const string ResearchCatalogPath =
+            "Assets/05_ScriptableObjects/Resources/CityFlow/ResearchCatalog.asset";
+        internal const string WorkingResearchCatalogPath =
+            "Assets/05_ScriptableObjects/Balance/Editor/ResearchCatalog_Balance.asset";
         private const string WorkingRoot =
             "Assets/05_ScriptableObjects/Balance/Editor";
 
@@ -65,6 +73,11 @@ namespace CityFlow.EditorTools.Balance
                 "게임 시간",
                 "Assets/05_ScriptableObjects/Resources/CityFlow/GameTimeSettings.asset",
                 "GameTimeSettings_Balance"),
+            new(
+                "연구",
+                "건물 해금 연구",
+                ResearchCatalogPath,
+                "ResearchCatalog_Balance"),
             new(
                 "교통",
                 "시내버스",
@@ -131,6 +144,9 @@ namespace CityFlow.EditorTools.Balance
         private Vector2 scroll;
         private string selectedGroup = "핵심";
         private int selectedEntryIndex;
+        private int selectedResearchIndex;
+        private bool showResearchAdvanced;
+        private Dictionary<string, string> researchUnlockLabels;
         private UnityEditor.Editor cachedAssetEditor;
         private UnityEngine.Object cachedTarget;
 
@@ -177,6 +193,12 @@ namespace CityFlow.EditorTools.Balance
             DestroyCachedEditor();
         }
 
+        private void OnProjectChange()
+        {
+            researchUnlockLabels = null;
+            Repaint();
+        }
+
         private void OnGUI()
         {
             DrawHeader();
@@ -216,9 +238,14 @@ namespace CityFlow.EditorTools.Balance
                 {
                     RunValidation();
                 }
+            }
 
+            using (new EditorGUILayout.HorizontalScope())
+            {
                 GUI.backgroundColor = new Color(1f, 0.75f, 0.35f);
-                if (GUILayout.Button("확정값 실제 에셋에 반영", GUILayout.Height(28f)))
+                if (GUILayout.Button(
+                        "테스트 완료 후 확정값을 실제 에셋에 반영",
+                        GUILayout.Height(28f)))
                 {
                     PublishWorkingValues();
                 }
@@ -262,6 +289,7 @@ namespace CityFlow.EditorTools.Balance
                     {
                         selectedGroup = group;
                         selectedEntryIndex = 0;
+                        scroll = Vector2.zero;
                         DestroyCachedEditor();
                     }
                 }
@@ -282,6 +310,7 @@ namespace CityFlow.EditorTools.Balance
                         selectedEntryIndex != i)
                     {
                         selectedEntryIndex = i;
+                        scroll = Vector2.zero;
                         DestroyCachedEditor();
                     }
                 }
@@ -328,12 +357,28 @@ namespace CityFlow.EditorTools.Balance
                         "하루 길이는 '시간 > 게임 시간'에서 조정하세요.",
                         MessageType.Info);
                 }
+                else if (entry.Label == "건물 해금 연구")
+                {
+                    EditorGUILayout.HelpBox(
+                        "연구별 선행 연구, 해금 조건, 비용, 게임 내 연구 시간을 조정합니다. " +
+                        "조건 목록이 비어 있으면 기존 단일 조건을 사용하고, 조건을 여러 개 넣으면 모두 만족해야 합니다. " +
+                        "연구 ID는 건물 해금 연결에 사용되므로 변경할 때 주의하세요.",
+                        MessageType.Info);
+                }
 
                 if (target == null)
                 {
                     EditorGUILayout.HelpBox(
                         "작업용 에셋이 없습니다. '작업 공간 생성 / 열기'를 눌러 주세요.",
                         MessageType.Warning);
+                    return;
+                }
+
+                if (entry.Label == "건물 해금 연구")
+                {
+                    scroll = EditorGUILayout.BeginScrollView(scroll);
+                    DrawResearchCatalog(target);
+                    EditorGUILayout.EndScrollView();
                     return;
                 }
 
@@ -423,6 +468,9 @@ namespace CityFlow.EditorTools.Balance
         {
             Dictionary<UnityEngine.Object, UnityEngine.Object> replacements =
                 new();
+            UnityEngine.Object workingResearchCatalog =
+                AssetDatabase.LoadMainAssetAtPath(
+                    WorkingResearchCatalogPath);
 
             foreach (BalanceEntry entry in Entries)
             {
@@ -449,9 +497,27 @@ namespace CityFlow.EditorTools.Balance
                     }
 
                     SerializedObject serialized = new(component);
+                    SerializedProperty researchCatalogProperty =
+                        UsesResearchCatalog(component)
+                            ? serialized.FindProperty("catalog")
+                            : null;
                     SerializedProperty property = serialized.GetIterator();
                     bool enterChildren = true;
                     bool recorded = false;
+
+                    if (researchCatalogProperty != null &&
+                        workingResearchCatalog != null &&
+                        researchCatalogProperty.objectReferenceValue !=
+                        workingResearchCatalog)
+                    {
+                        Undo.RecordObject(
+                            component,
+                            "연구 작업용 설정 연결");
+                        recorded = true;
+                        researchCatalogProperty.objectReferenceValue =
+                            workingResearchCatalog;
+                        changeCount++;
+                    }
 
                     while (property.Next(enterChildren))
                     {
@@ -497,6 +563,15 @@ namespace CityFlow.EditorTools.Balance
             return changeCount;
         }
 
+        private static bool UsesResearchCatalog(Component component)
+        {
+            string typeName = component?.GetType().FullName;
+            return typeName ==
+                       "CityFlow.Gameplay.Research.ResearchUnlockService" ||
+                   typeName ==
+                       "CityFlow.UI.ResearchPanelController";
+        }
+
         private void RunValidation()
         {
             validationMessages.Clear();
@@ -532,6 +607,7 @@ namespace CityFlow.EditorTools.Balance
             }
 
             ValidateTimeConsistency();
+            ValidateResearchCatalog();
             ValidateLoadedSceneReferences();
 
             if (validationMessages.Count == 0)
@@ -576,6 +652,660 @@ namespace CityFlow.EditorTools.Balance
             }
         }
 
+        private void DrawResearchCatalog(UnityEngine.Object target)
+        {
+            var serialized = new SerializedObject(target);
+            serialized.Update();
+            SerializedProperty entries =
+                serialized.FindProperty("entries");
+            if (entries == null || entries.arraySize == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "편집할 연구가 없습니다.",
+                    MessageType.Warning);
+                return;
+            }
+
+            selectedResearchIndex = Mathf.Clamp(
+                selectedResearchIndex,
+                0,
+                entries.arraySize - 1);
+
+            string[] researchLabels = new string[entries.arraySize];
+            for (int index = 0; index < entries.arraySize; index++)
+            {
+                researchLabels[index] = GetResearchLabel(
+                    entries.GetArrayElementAtIndex(index),
+                    index);
+            }
+
+            EditorGUILayout.Space(4f);
+            EditorGUILayout.LabelField(
+                "1. 수정할 연구 선택",
+                EditorStyles.boldLabel);
+            selectedResearchIndex = EditorGUILayout.Popup(
+                selectedResearchIndex,
+                researchLabels);
+
+            SerializedProperty selectedEntry =
+                entries.GetArrayElementAtIndex(
+                    selectedResearchIndex);
+            string selectedResearchId = (
+                selectedEntry.FindPropertyRelative("researchId")
+                    ?.stringValue ?? string.Empty).Trim();
+
+            DrawUnlockedBuildingSummary(
+                selectedResearchId);
+
+            EditorGUILayout.Space(8f);
+            using (new EditorGUILayout.VerticalScope(
+                       EditorStyles.helpBox))
+            {
+                DrawResearchIdentity(entries, selectedEntry);
+            }
+
+            EditorGUILayout.Space(6f);
+            using (new EditorGUILayout.VerticalScope(
+                       EditorStyles.helpBox))
+            {
+                DrawResearchRequirements(selectedEntry);
+            }
+
+            EditorGUILayout.Space(6f);
+            using (new EditorGUILayout.VerticalScope(
+                       EditorStyles.helpBox))
+            {
+                DrawResearchCostAndDuration(selectedEntry);
+            }
+
+            EditorGUILayout.Space(6f);
+            showResearchAdvanced = EditorGUILayout.Foldout(
+                showResearchAdvanced,
+                "고급 설정",
+                true);
+            if (showResearchAdvanced)
+            {
+                using (new EditorGUILayout.VerticalScope(
+                           EditorStyles.helpBox))
+                {
+                    EditorGUILayout.HelpBox(
+                        "연구 ID는 건물 데이터와 저장 데이터가 사용합니다. " +
+                        "이미 연결된 연구 ID는 특별한 이유가 없다면 변경하지 마세요.",
+                        MessageType.Warning);
+                    EditorGUILayout.PropertyField(
+                        selectedEntry.FindPropertyRelative(
+                            "researchId"),
+                        new GUIContent("연구 ID"));
+                }
+            }
+
+            if (serialized.ApplyModifiedProperties())
+            {
+                EditorUtility.SetDirty(target);
+            }
+        }
+
+        private void DrawUnlockedBuildingSummary(
+            string researchId)
+        {
+            researchUnlockLabels ??=
+                BuildResearchUnlockLabels();
+
+            if (researchId.Length > 0 &&
+                researchUnlockLabels.TryGetValue(
+                    researchId,
+                    out string buildingNames))
+            {
+                EditorGUILayout.HelpBox(
+                    $"이 연구가 해금하는 건물: {buildingNames}",
+                    MessageType.Info);
+                return;
+            }
+
+            EditorGUILayout.HelpBox(
+                "이 연구 ID에 연결된 건물이 없습니다.",
+                MessageType.Warning);
+        }
+
+        private static Dictionary<string, string>
+            BuildResearchUnlockLabels()
+        {
+            var namesByResearch =
+                new Dictionary<string, List<string>>(
+                    StringComparer.Ordinal);
+
+            foreach (string guid in
+                     AssetDatabase.FindAssets(
+                         "t:BuildingDefinitionSO"))
+            {
+                string path =
+                    AssetDatabase.GUIDToAssetPath(guid);
+                BuildingDefinitionSO definition =
+                    AssetDatabase.LoadAssetAtPath<
+                        BuildingDefinitionSO>(path);
+                AddResearchBuildingLabel(
+                    namesByResearch,
+                    definition?.RequiredResearchId,
+                    definition?.buildingName);
+            }
+
+            foreach (string guid in
+                     AssetDatabase.FindAssets("t:TileDataSO"))
+            {
+                string path =
+                    AssetDatabase.GUIDToAssetPath(guid);
+                TileDataSO tileData =
+                    AssetDatabase.LoadAssetAtPath<TileDataSO>(
+                        path);
+                AddResearchBuildingLabel(
+                    namesByResearch,
+                    tileData?.RequiredResearchId,
+                    tileData?.BuildingName);
+            }
+
+            return namesByResearch.ToDictionary(
+                pair => pair.Key,
+                pair => string.Join(
+                    ", ",
+                    pair.Value
+                        .Where(name =>
+                            !string.IsNullOrWhiteSpace(name))
+                        .Distinct()));
+        }
+
+        private static void AddResearchBuildingLabel(
+            Dictionary<string, List<string>> namesByResearch,
+            string researchId,
+            string buildingName)
+        {
+            string normalizedId =
+                researchId?.Trim() ?? string.Empty;
+            string normalizedName =
+                buildingName?.Trim() ?? string.Empty;
+            if (normalizedId.Length == 0 ||
+                normalizedName.Length == 0)
+            {
+                return;
+            }
+
+            if (!namesByResearch.TryGetValue(
+                    normalizedId,
+                    out List<string> names))
+            {
+                names = new List<string>();
+                namesByResearch.Add(normalizedId, names);
+            }
+
+            names.Add(normalizedName);
+        }
+
+        private static string GetResearchLabel(
+            SerializedProperty entry,
+            int index)
+        {
+            string displayName = (
+                entry.FindPropertyRelative("displayName")
+                    ?.stringValue ?? string.Empty).Trim();
+            string researchId = (
+                entry.FindPropertyRelative("researchId")
+                    ?.stringValue ?? string.Empty).Trim();
+
+            if (displayName.Length > 0)
+            {
+                return displayName;
+            }
+
+            return researchId.Length > 0
+                ? researchId
+                : $"이름 없는 연구 {index + 1}";
+        }
+
+        private static void DrawResearchIdentity(
+            SerializedProperty entries,
+            SerializedProperty selectedEntry)
+        {
+            EditorGUILayout.LabelField(
+                "2. 이름과 선행 연구",
+                EditorStyles.boldLabel);
+
+            EditorGUILayout.PropertyField(
+                selectedEntry.FindPropertyRelative("displayName"),
+                new GUIContent(
+                    "화면 표시 이름",
+                    "게임 연구 화면에 보이는 이름입니다."));
+
+            DrawPrerequisitePopup(entries, selectedEntry);
+        }
+
+        private static void DrawPrerequisitePopup(
+            SerializedProperty entries,
+            SerializedProperty selectedEntry)
+        {
+            SerializedProperty selectedIdProperty =
+                selectedEntry.FindPropertyRelative("researchId");
+            SerializedProperty prerequisiteProperty =
+                selectedEntry.FindPropertyRelative(
+                    "prerequisiteId");
+            string selectedId =
+                selectedIdProperty?.stringValue?.Trim() ??
+                string.Empty;
+            string currentPrerequisite =
+                prerequisiteProperty?.stringValue?.Trim() ??
+                string.Empty;
+
+            var values = new List<string> { string.Empty };
+            var labels = new List<string>
+            {
+                "없음 — 바로 연구 가능"
+            };
+
+            for (int index = 0;
+                 index < entries.arraySize;
+                 index++)
+            {
+                SerializedProperty candidate =
+                    entries.GetArrayElementAtIndex(index);
+                string candidateId =
+                    candidate.FindPropertyRelative("researchId")
+                        ?.stringValue?.Trim() ?? string.Empty;
+                if (candidateId.Length == 0 ||
+                    candidateId == selectedId)
+                {
+                    continue;
+                }
+
+                values.Add(candidateId);
+                labels.Add(
+                    GetResearchLabel(candidate, index));
+            }
+
+            int selectedIndex = values.IndexOf(
+                currentPrerequisite);
+            if (selectedIndex < 0 &&
+                currentPrerequisite.Length > 0)
+            {
+                values.Add(currentPrerequisite);
+                labels.Add(
+                    $"연결 오류 — {currentPrerequisite}");
+                selectedIndex = values.Count - 1;
+            }
+
+            selectedIndex = EditorGUILayout.Popup(
+                new GUIContent(
+                    "먼저 완료할 연구",
+                    "이 연구를 시작하기 전에 완료해야 하는 연구입니다."),
+                Mathf.Max(0, selectedIndex),
+                labels.ToArray());
+            prerequisiteProperty.stringValue =
+                values[selectedIndex];
+        }
+
+        private static void DrawResearchRequirements(
+            SerializedProperty selectedEntry)
+        {
+            EditorGUILayout.LabelField(
+                "3. 해금 조건",
+                EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "표시된 조건을 모두 만족하면 연구를 시작할 수 있습니다.",
+                MessageType.None);
+
+            SerializedProperty requirements =
+                selectedEntry.FindPropertyRelative("requirements");
+            if (requirements == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "조건 목록을 찾을 수 없습니다.",
+                    MessageType.Error);
+                return;
+            }
+
+            if (requirements.arraySize == 0)
+            {
+                EditorGUILayout.LabelField(
+                    "조건 1",
+                    EditorStyles.miniBoldLabel);
+                DrawResearchCondition(
+                    selectedEntry.FindPropertyRelative(
+                        "conditionKind"),
+                    selectedEntry.FindPropertyRelative(
+                        "threshold"),
+                    selectedEntry.FindPropertyRelative(
+                        "targetTileType"));
+
+                if (GUILayout.Button(
+                        "+ 조건 하나 더 추가",
+                        GUILayout.Height(24f)))
+                {
+                    ConvertLegacyConditionToRequirements(
+                        selectedEntry,
+                        requirements);
+                }
+
+                return;
+            }
+
+            int removeIndex = -1;
+            for (int index = 0;
+                 index < requirements.arraySize;
+                 index++)
+            {
+                SerializedProperty requirement =
+                    requirements.GetArrayElementAtIndex(index);
+                using (new EditorGUILayout.VerticalScope(
+                           EditorStyles.helpBox))
+                {
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        EditorGUILayout.LabelField(
+                            $"조건 {index + 1}",
+                            EditorStyles.miniBoldLabel);
+                        if (GUILayout.Button(
+                                "삭제",
+                                GUILayout.Width(48f)))
+                        {
+                            removeIndex = index;
+                        }
+                    }
+
+                    DrawResearchCondition(
+                        requirement.FindPropertyRelative(
+                            "conditionKind"),
+                        requirement.FindPropertyRelative(
+                            "threshold"),
+                        requirement.FindPropertyRelative(
+                            "targetTileType"));
+                }
+            }
+
+            if (removeIndex >= 0)
+            {
+                if (requirements.arraySize == 1)
+                {
+                    CopyCondition(
+                        requirements.GetArrayElementAtIndex(0),
+                        selectedEntry);
+                }
+                requirements.DeleteArrayElementAtIndex(
+                    removeIndex);
+            }
+
+            if (GUILayout.Button(
+                    "+ 조건 추가",
+                    GUILayout.Height(24f)))
+            {
+                AddDefaultRequirement(requirements);
+            }
+        }
+
+        private static void DrawResearchCondition(
+            SerializedProperty conditionKind,
+            SerializedProperty threshold,
+            SerializedProperty targetTileType)
+        {
+            string[] conditionLabels =
+            {
+                "전날 도착 차량 수",
+                "도시 인구",
+                "건물 개수"
+            };
+            conditionKind.enumValueIndex =
+                EditorGUILayout.Popup(
+                    "조건 종류",
+                    conditionKind.enumValueIndex,
+                    conditionLabels);
+
+            if (conditionKind.enumValueIndex ==
+                (int)ResearchConditionKind.BuildingCount)
+            {
+                targetTileType.enumValueIndex =
+                    EditorGUILayout.Popup(
+                        "대상 건물",
+                        targetTileType.enumValueIndex,
+                        GetTileTypeLabels());
+            }
+
+            threshold.intValue = Mathf.Max(
+                0,
+                EditorGUILayout.IntField(
+                    conditionKind.enumValueIndex ==
+                    (int)ResearchConditionKind.BuildingCount
+                        ? "필요 개수"
+                        : "필요 수치",
+                    threshold.intValue));
+        }
+
+        private static string[] GetTileTypeLabels()
+        {
+            return Enum.GetValues(typeof(TileType))
+                .Cast<TileType>()
+                .Select(type => type switch
+                {
+                    TileType.Empty => "빈 공간",
+                    TileType.Road => "도로",
+                    TileType.House => "주거 지역",
+                    TileType.Office => "회사",
+                    TileType.School => "학교",
+                    TileType.Hospital => "병원",
+                    TileType.SpecialBuilding => "특수 건물",
+                    TileType.UnderConstruction => "건설 중",
+                    _ => type.ToString()
+                })
+                .ToArray();
+        }
+
+        private static void ConvertLegacyConditionToRequirements(
+            SerializedProperty selectedEntry,
+            SerializedProperty requirements)
+        {
+            requirements.arraySize = 2;
+            CopyCondition(
+                selectedEntry,
+                requirements.GetArrayElementAtIndex(0));
+            InitializeRequirement(
+                requirements.GetArrayElementAtIndex(1));
+        }
+
+        private static void AddDefaultRequirement(
+            SerializedProperty requirements)
+        {
+            int index = requirements.arraySize;
+            requirements.InsertArrayElementAtIndex(index);
+            InitializeRequirement(
+                requirements.GetArrayElementAtIndex(index));
+        }
+
+        private static void InitializeRequirement(
+            SerializedProperty requirement)
+        {
+            requirement.FindPropertyRelative(
+                    "conditionKind")
+                .enumValueIndex =
+                (int)ResearchConditionKind.BuildingCount;
+            requirement.FindPropertyRelative(
+                    "threshold")
+                .intValue = 1;
+            requirement.FindPropertyRelative(
+                    "targetTileType")
+                .enumValueIndex = (int)TileType.House;
+        }
+
+        private static void CopyCondition(
+            SerializedProperty source,
+            SerializedProperty destination)
+        {
+            destination.FindPropertyRelative(
+                    "conditionKind")
+                .enumValueIndex =
+                source.FindPropertyRelative(
+                        "conditionKind")
+                    .enumValueIndex;
+            destination.FindPropertyRelative(
+                    "threshold")
+                .intValue =
+                source.FindPropertyRelative(
+                        "threshold")
+                    .intValue;
+            destination.FindPropertyRelative(
+                    "targetTileType")
+                .enumValueIndex =
+                source.FindPropertyRelative(
+                        "targetTileType")
+                    .enumValueIndex;
+        }
+
+        private static void DrawResearchCostAndDuration(
+            SerializedProperty selectedEntry)
+        {
+            EditorGUILayout.LabelField(
+                "4. 비용과 시간",
+                EditorStyles.boldLabel);
+
+            SerializedProperty cost =
+                selectedEntry.FindPropertyRelative(
+                    "researchCost");
+            SerializedProperty duration =
+                selectedEntry.FindPropertyRelative(
+                    "researchDurationHours");
+
+            cost.intValue = Mathf.Max(
+                0,
+                EditorGUILayout.IntField(
+                    new GUIContent(
+                        "연구 비용",
+                        "연구 시작 시 한 번 지불하는 재화입니다."),
+                    cost.intValue));
+            duration.intValue = Mathf.Max(
+                0,
+                EditorGUILayout.IntField(
+                    new GUIContent(
+                        "연구 시간",
+                        "게임 안에서 흐르는 시간 기준입니다. 0이면 즉시 완료됩니다."),
+                    duration.intValue));
+
+            EditorGUILayout.HelpBox(
+                duration.intValue == 0
+                    ? "연구 시작 즉시 완료됩니다."
+                    : $"게임 시간으로 {duration.intValue}시간 뒤 완료됩니다.",
+                MessageType.Info);
+        }
+
+        private void ValidateResearchCatalog()
+        {
+            UnityEngine.Object catalog =
+                AssetDatabase.LoadMainAssetAtPath(
+                    WorkingResearchCatalogPath);
+            if (catalog == null)
+            {
+                return;
+            }
+
+            SerializedProperty entries =
+                new SerializedObject(catalog).FindProperty("entries");
+            if (entries == null)
+            {
+                validationMessages.Add(
+                    "연구 카탈로그에서 연구 목록을 찾을 수 없습니다.");
+                return;
+            }
+
+            var researchIds =
+                new HashSet<string>(StringComparer.Ordinal);
+            var prerequisiteIds = new List<(string ResearchId, string PrerequisiteId)>();
+
+            for (int index = 0; index < entries.arraySize; index++)
+            {
+                SerializedProperty entry =
+                    entries.GetArrayElementAtIndex(index);
+                string researchId = (
+                    entry.FindPropertyRelative("researchId")
+                        ?.stringValue ?? string.Empty).Trim();
+                string prerequisiteId = (
+                    entry.FindPropertyRelative("prerequisiteId")
+                        ?.stringValue ?? string.Empty).Trim();
+
+                if (researchId.Length == 0)
+                {
+                    validationMessages.Add(
+                        $"연구 {index + 1}번의 연구 ID가 비어 있습니다.");
+                }
+                else if (!researchIds.Add(researchId))
+                {
+                    validationMessages.Add(
+                        $"연구 ID가 중복되었습니다: {researchId}");
+                }
+
+                if (prerequisiteId.Length > 0)
+                {
+                    prerequisiteIds.Add((researchId, prerequisiteId));
+                }
+
+                ValidateNonNegative(
+                    entry,
+                    "researchCost",
+                    researchId,
+                    "연구 비용");
+                ValidateNonNegative(
+                    entry,
+                    "researchDurationHours",
+                    researchId,
+                    "연구 시간");
+                ValidateNonNegative(
+                    entry,
+                    "threshold",
+                    researchId,
+                    "단일 조건 목표치");
+
+                SerializedProperty requirements =
+                    entry.FindPropertyRelative("requirements");
+                if (requirements == null)
+                {
+                    continue;
+                }
+
+                for (int requirementIndex = 0;
+                     requirementIndex < requirements.arraySize;
+                     requirementIndex++)
+                {
+                    ValidateNonNegative(
+                        requirements.GetArrayElementAtIndex(
+                            requirementIndex),
+                        "threshold",
+                        researchId,
+                        $"조건 {requirementIndex + 1} 목표치");
+                }
+            }
+
+            for (int index = 0;
+                 index < prerequisiteIds.Count;
+                 index++)
+            {
+                (string researchId, string prerequisiteId) =
+                    prerequisiteIds[index];
+                if (!researchIds.Contains(prerequisiteId))
+                {
+                    validationMessages.Add(
+                        $"연구 {researchId}의 선행 연구 ID가 존재하지 않습니다: " +
+                        prerequisiteId);
+                }
+            }
+        }
+
+        private void ValidateNonNegative(
+            SerializedProperty owner,
+            string propertyName,
+            string researchId,
+            string label)
+        {
+            SerializedProperty value =
+                owner?.FindPropertyRelative(propertyName);
+            if (value != null && value.intValue < 0)
+            {
+                validationMessages.Add(
+                    $"연구 {researchId}: {label}는 0 이상이어야 합니다.");
+            }
+        }
+
         private void ValidateLoadedSceneReferences()
         {
             Scene scene = SceneManager.GetActiveScene();
@@ -591,7 +1321,11 @@ namespace CityFlow.EditorTools.Balance
                     AssetDatabase.LoadMainAssetAtPath(entry.SourcePath))
                 .Where(asset => asset != null)
                 .ToHashSet();
+            UnityEngine.Object workingResearchCatalog =
+                AssetDatabase.LoadMainAssetAtPath(
+                    WorkingResearchCatalogPath);
             int productionReferenceCount = 0;
+            int invalidResearchCatalogCount = 0;
 
             foreach (GameObject root in scene.GetRootGameObjects())
             {
@@ -616,6 +1350,19 @@ namespace CityFlow.EditorTools.Balance
                             productionReferenceCount++;
                         }
                     }
+
+                    if (UsesResearchCatalog(component))
+                    {
+                        SerializedProperty catalogProperty =
+                            new SerializedObject(component)
+                                .FindProperty("catalog");
+                        if (catalogProperty == null ||
+                            catalogProperty.objectReferenceValue !=
+                            workingResearchCatalog)
+                        {
+                            invalidResearchCatalogCount++;
+                        }
+                    }
                 }
             }
 
@@ -624,6 +1371,14 @@ namespace CityFlow.EditorTools.Balance
                 validationMessages.Add(
                     $"Scene에 실제 설정 참조가 {productionReferenceCount}개 남아 있습니다. " +
                     "'작업 공간 생성 / 열기'를 다시 눌러 작업용 설정으로 연결하세요.");
+            }
+
+            if (invalidResearchCatalogCount > 0)
+            {
+                validationMessages.Add(
+                    $"연구 서비스 또는 UI {invalidResearchCatalogCount}개가 " +
+                    "작업용 연구 카탈로그에 연결되지 않았습니다. " +
+                    "'작업 공간 생성 / 열기'를 다시 눌러 주세요.");
             }
         }
 

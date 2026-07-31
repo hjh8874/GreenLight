@@ -27,15 +27,20 @@ namespace CityFlow.Gameplay.Research
             new(StringComparer.Ordinal);
         private readonly HashSet<string> purchasedUpgradeIds =
             new(StringComparer.Ordinal);
+        private string activeResearchId = string.Empty;
+        private long researchCompletionGameHour;
         private bool initialized;
         private CityFlowServices cityServices;
         private IReadOnlyPopulationData boundPopulation;
+        private IGameCalendarService boundCalendar;
         private int lastSeenDayArrivals;
         internal Func<ResearchConditionInputs> inputsOverrideForTest;
 
         public int UnlockedCount => unlockedResearchIds.Count;
+        public string ActiveResearchId => activeResearchId;
 
         public event Action<string> ResearchUnlocked;
+        public event Action ResearchProgressChanged;
         public event Action ResearchStateRestored;
 
         public void Initialize(CityFlowServices services)
@@ -79,7 +84,9 @@ namespace CityFlow.Gameplay.Research
                 services.Save.RestoreCompleted += OnRestoreForResearch;
             }
             BindPopulation(services.Population);
+            BindCalendar(services.GameCalendar);
             services.PopulationRegistered += BindPopulation;
+            services.GameCalendarRegistered += OnGameCalendarRegistered;
             EvaluatePendingResearch();                            // 초기 1회
         }
 
@@ -96,11 +103,14 @@ namespace CityFlow.Gameplay.Research
                     cityServices.Save.RestoreCompleted -= OnRestoreForResearch;
                 }
                 cityServices.PopulationRegistered -= BindPopulation;
+                cityServices.GameCalendarRegistered -=
+                    OnGameCalendarRegistered;
             }
             if (boundPopulation != null)
             {
                 boundPopulation.PopulationChanged -= OnPopulationChangedForResearch;
             }
+            BindCalendar(null);
         }
 
         private void Update()
@@ -139,12 +149,50 @@ namespace CityFlow.Gameplay.Research
 
         private void OnPlacedForResearch(PlacedEvent e)
         {
-            if (e.IsRemove) return;
             EvaluatePendingResearch();     // 학교·병원 배치 즉시 시설 조건 반영
         }
 
         private void OnRestoreForResearch(RestoreCompletedEvent _) => EvaluatePendingResearch();
         private void OnPopulationChangedForResearch(int _) => EvaluatePendingResearch();
+
+        private void OnGameCalendarRegistered(
+            IGameCalendarService calendar)
+        {
+            BindCalendar(calendar);
+        }
+
+        private void BindCalendar(IGameCalendarService calendar)
+        {
+            if (ReferenceEquals(boundCalendar, calendar))
+            {
+                return;
+            }
+
+            if (boundCalendar != null)
+            {
+                boundCalendar.HourChanged -= OnGameHourChanged;
+            }
+
+            boundCalendar = calendar;
+            if (boundCalendar != null)
+            {
+                boundCalendar.HourChanged += OnGameHourChanged;
+                TryCompleteActiveResearch();
+            }
+        }
+
+        private void OnGameHourChanged(int _)
+        {
+            if (activeResearchId.Length == 0)
+            {
+                return;
+            }
+
+            if (!TryCompleteActiveResearch())
+            {
+                ResearchProgressChanged?.Invoke();
+            }
+        }
 
         internal void EvaluatePendingResearch()
         {
@@ -162,6 +210,7 @@ namespace CityFlow.Gameplay.Research
             {
                 ResearchEntry entry = entries[i];
                 if (IsUnlocked(entry.researchId)) continue;               // §9: 다시 잠기지 않는다
+                if (IsResearching(entry.researchId)) continue;
                 string prerequisiteId = NormalizeId(entry.prerequisiteId);
                 if (prerequisiteId.Length > 0 &&
                     (!entriesById.ContainsKey(prerequisiteId) ||
@@ -172,6 +221,8 @@ namespace CityFlow.Gameplay.Research
                 if (!ResearchConditionEvaluator.IsSatisfied(entry, inputs)) continue;
                 readyResearchIds.Add(NormalizeId(entry.researchId));
             }
+
+            ResearchProgressChanged?.Invoke();
         }
 
         private ResearchConditionInputs BuildInputs()
@@ -217,23 +268,154 @@ namespace CityFlow.Gameplay.Research
             return normalizedId.Length > 0 && readyResearchIds.Contains(normalizedId);
         }
 
-        public bool TryUnlock(string researchId)
+        public bool IsResearching(string researchId)
         {
             string normalizedId = NormalizeId(researchId);
-            if (!initialized || normalizedId.Length == 0 || !IsReady(normalizedId) ||
-                !unlockedResearchIds.Add(normalizedId))
+            return normalizedId.Length > 0 &&
+                   string.Equals(
+                       activeResearchId,
+                       normalizedId,
+                       StringComparison.Ordinal);
+        }
+
+        public int GetRemainingResearchHours(string researchId)
+        {
+            if (!IsResearching(researchId) || boundCalendar == null)
+            {
+                return 0;
+            }
+
+            long remaining = Math.Max(
+                0L,
+                researchCompletionGameHour - CurrentGameHour());
+            return (int)Math.Min(int.MaxValue, remaining);
+        }
+
+        public bool TryStartResearch(string researchId)
+        {
+            string normalizedId = NormalizeId(researchId);
+            if (!initialized ||
+                normalizedId.Length == 0 ||
+                activeResearchId.Length > 0 ||
+                !IsReady(normalizedId) ||
+                !TryResolveEntry(normalizedId, out ResearchEntry entry))
+            {
+                return false;
+            }
+
+            int durationHours = Mathf.Max(
+                0,
+                entry.researchDurationHours);
+            if (durationHours > 0 && boundCalendar == null)
+            {
+                Debug.LogWarning(
+                    "[ResearchUnlockService] Timed research requires " +
+                    "the game calendar service.",
+                    this);
+                return false;
+            }
+
+            int cost = Mathf.Max(0, entry.researchCost);
+            IEconomyService economy = cityServices?.Economy;
+            if (cost > 0 &&
+                (economy == null || !economy.TrySpend(cost)))
             {
                 return false;
             }
 
             readyResearchIds.Remove(normalizedId);
+            if (durationHours <= 0)
+            {
+                CompleteResearch(normalizedId);
+                return true;
+            }
 
+            activeResearchId = normalizedId;
+            researchCompletionGameHour =
+                CurrentGameHour() + durationHours;
+            EvaluatePendingResearch();
+            ResearchProgressChanged?.Invoke();
+
+            Debug.Log(
+                $"[ResearchUnlockService] Started {normalizedId}. " +
+                $"Cost={cost}, Duration={durationHours} game hours.",
+                this);
+            return true;
+        }
+
+        // 기존 호출부 호환. 연구 시간이 0이면 즉시 완료되고,
+        // 시간이 있으면 TryStartResearch와 동일하게 연구를 시작한다.
+        public bool TryUnlock(string researchId) =>
+            TryStartResearch(researchId);
+
+        private void CompleteResearch(string normalizedId)
+        {
+            if (normalizedId.Length == 0 ||
+                !unlockedResearchIds.Add(normalizedId))
+            {
+                return;
+            }
+
+            activeResearchId = string.Empty;
+            researchCompletionGameHour = 0L;
             Debug.Log(
                 $"[ResearchUnlockService] Unlocked {normalizedId}.",
                 this);
             EvaluatePendingResearch();
             ResearchUnlocked?.Invoke(normalizedId);
+            ResearchProgressChanged?.Invoke();
+        }
+
+        private bool TryCompleteActiveResearch()
+        {
+            if (activeResearchId.Length == 0 ||
+                boundCalendar == null ||
+                CurrentGameHour() < researchCompletionGameHour)
+            {
+                return false;
+            }
+
+            string completedResearchId = activeResearchId;
+            CompleteResearch(completedResearchId);
             return true;
+        }
+
+        private long CurrentGameHour()
+        {
+            if (boundCalendar == null)
+            {
+                return 0L;
+            }
+
+            return Math.Max(0L, boundCalendar.TotalDays) *
+                   Math.Max(1, boundCalendar.HoursPerDay) +
+                   Math.Max(0, boundCalendar.Hour);
+        }
+
+        private bool TryResolveEntry(
+            string researchId,
+            out ResearchEntry entry)
+        {
+            entry = null;
+            if (catalog == null)
+            {
+                return false;
+            }
+
+            List<ResearchEntry> entries = catalog.ValidEntries();
+            for (int index = 0; index < entries.Count; index++)
+            {
+                if (string.Equals(
+                        NormalizeId(entries[index].researchId),
+                        researchId,
+                        StringComparison.Ordinal))
+                {
+                    entry = entries[index];
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public ResearchSaveData CreateSnapshot()
@@ -243,7 +425,10 @@ namespace CityFlow.Gameplay.Research
                 UnlockedResearchIds = CreateSortedSnapshot(
                     unlockedResearchIds),
                 PurchasedUpgradeIds = CreateSortedSnapshot(
-                    purchasedUpgradeIds)
+                    purchasedUpgradeIds),
+                ActiveResearchId = activeResearchId,
+                ResearchCompletionGameHour =
+                    researchCompletionGameHour
             };
         }
 
@@ -255,8 +440,20 @@ namespace CityFlow.Gameplay.Research
             RestoreSet(
                 purchasedUpgradeIds,
                 snapshot?.PurchasedUpgradeIds);
+            activeResearchId = NormalizeId(
+                snapshot?.ActiveResearchId);
+            researchCompletionGameHour = Math.Max(
+                0L,
+                snapshot?.ResearchCompletionGameHour ?? 0L);
+            if (IsUnlocked(activeResearchId))
+            {
+                activeResearchId = string.Empty;
+                researchCompletionGameHour = 0L;
+            }
             EvaluatePendingResearch();
+            TryCompleteActiveResearch();
             ResearchStateRestored?.Invoke();
+            ResearchProgressChanged?.Invoke();
         }
 
 #if UNITY_EDITOR
