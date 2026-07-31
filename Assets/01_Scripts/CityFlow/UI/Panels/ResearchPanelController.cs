@@ -133,7 +133,10 @@ namespace CityFlow.UI
                     Depth = depth,
                     Branch = branch,
                 };
+                // 노드 카드 배경 — 상태색은 RefreshAll이 칠한다
+                Image card = instance.GetComponent<Image>() ?? instance.AddComponent<Image>();
                 Button button = instance.GetComponent<Button>() ?? instance.AddComponent<Button>();
+                button.targetGraphic = card;
                 string id = entries[i].researchId;
                 button.onClick.RemoveAllListeners();
                 button.onClick.AddListener(() =>
@@ -165,7 +168,12 @@ namespace CityFlow.UI
                     row.StateText.text = row.IsUnlocked ? "완료" : row.IsReady ? "해금 가능" : "잠김";
                 CanvasGroup group = row.Instance.GetComponent<CanvasGroup>();
                 if (group == null) group = row.Instance.AddComponent<CanvasGroup>();
-                group.alpha = row.IsUnlocked || row.IsReady ? 1f : 0.45f;
+                group.alpha = row.IsUnlocked || row.IsReady ? 1f : 0.85f;
+                Image card = row.Instance.GetComponent<Image>();
+                if (card != null)
+                    card.color = row.IsUnlocked ? new Color(0.13f, 0.27f, 0.17f)     // 완료 = 녹색톤
+                        : row.IsReady ? new Color(0.36f, 0.31f, 0.12f)               // 해금 가능 = 황색톤
+                        : new Color(0.21f, 0.22f, 0.26f);                            // 잠김 = 밝은 회색톤(배경과 구분)
                 Button button = row.Instance.GetComponent<Button>();
                 if (button != null) button.interactable = row.IsReady;
             }
@@ -184,9 +192,10 @@ namespace CityFlow.UI
                 rect.anchorMax = new Vector2(0f, 1f);
                 rect.pivot = new Vector2(0f, 1f);
                 rect.sizeDelta = new Vector2(CellWidth, CellHeight);
+                // 패널 좌상단 기준: 좌우 패딩 + 헤더 아래부터 그린다
                 rect.anchoredPosition = new Vector2(
-                    rows[i].Depth * (CellWidth + ColumnGap),
-                    -rows[i].Branch * (CellHeight + RowGap));
+                    PanelPadding + rows[i].Depth * (CellWidth + ColumnGap),
+                    -(HeaderHeight + PanelPadding) - rows[i].Branch * (CellHeight + RowGap));
             }
 
             var rowById = new Dictionary<string, Row>(StringComparer.Ordinal);
@@ -224,13 +233,67 @@ namespace CityFlow.UI
             }
             float gridWidth = columnCount * CellWidth + Mathf.Max(0, columnCount - 1) * ColumnGap;
             float gridHeight = branchCount * CellHeight + Mathf.Max(0, branchCount - 1) * RowGap;
-            panel.anchorMin = new Vector2(0.5f, 0.5f);
-            panel.anchorMax = new Vector2(0.5f, 0.5f);
             panel.pivot = new Vector2(0.5f, 0.5f);
-            panel.anchoredPosition = Vector2.zero;
             panel.sizeDelta = new Vector2(
                 gridWidth + PanelPadding * 2f,
                 HeaderHeight + gridHeight + PanelPadding * 2f);
+            // 부모(우측 독 서브패널)가 어디에 있든 화면 중앙 — 오버레이 캔버스는 픽셀 좌표
+            panel.position = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f);
+
+            // 행 컨테이너~패널 사이의 모든 중간 부모를 패널에 꽉 채워 정렬한다 —
+            // 프리팹의 중간 오프셋(스크롤 뷰포트 등)이 남으면 그리드가 배경 밖으로 밀린다.
+            if (rowTemplate != null)
+            {
+                Transform cursor = rowTemplate.transform.parent;
+                while (cursor is RectTransform stretch && stretch != panel)
+                {
+                    stretch.anchorMin = Vector2.zero;
+                    stretch.anchorMax = Vector2.one;
+                    stretch.pivot = new Vector2(0.5f, 0.5f);
+                    stretch.offsetMin = Vector2.zero;
+                    stretch.offsetMax = Vector2.zero;
+                    cursor = cursor.parent;
+                }
+            }
+            LayoutHeader(panel);
+            EnsureBackground(panel);
+        }
+
+        // 헤더 3줄(어제 도착·인구·해금)을 패널 좌상단 패딩 안에 고정한다.
+        private void LayoutHeader(RectTransform panel)
+        {
+            TMP_Text[] headers = { yesterdayArrivalsText, populationText, unlockProgressText };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (headers[i] == null) continue;
+                var rect = headers[i].rectTransform;
+                rect.SetParent(panel, false);
+                rect.anchorMin = new Vector2(0f, 1f);
+                rect.anchorMax = new Vector2(0f, 1f);
+                rect.pivot = new Vector2(0f, 1f);
+                rect.sizeDelta = new Vector2(320f, 26f);
+                rect.anchoredPosition = new Vector2(PanelPadding, -PanelPadding - i * 26f);
+                headers[i].alignment = TextAlignmentOptions.TopLeft;
+            }
+        }
+
+        // 패널 루트에는 프리팹상 배경 Image가 없다 — 맵 위에 텍스트가 떠 보이는 원인.
+        // 코드로 불투명 배경을 첫 자식으로 깔아 모달처럼 읽히게 한다.
+        private void EnsureBackground(RectTransform panel)
+        {
+            Transform existing = panel.Find("TreeBackground");
+            GameObject bg = existing != null ? existing.gameObject
+                : new GameObject("TreeBackground", typeof(RectTransform), typeof(Image));
+            bg.transform.SetParent(panel, false);
+            bg.transform.SetAsFirstSibling();
+            var rect = (RectTransform)bg.transform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            Image image = bg.GetComponent<Image>();
+            image.color = new Color(0.08f, 0.09f, 0.11f, 0.97f);
+            image.raycastTarget = true;   // 뒤 맵 클릭 차단
         }
 
         private void CreateConnector(Row parent, Row child)
