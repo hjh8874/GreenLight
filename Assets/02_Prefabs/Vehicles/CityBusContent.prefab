@@ -12,7 +12,6 @@ GameObject:
   - component: {fileID: 6527074732818209294}
   - component: {fileID: 5161138187899254478}
   - component: {fileID: 4217619027936533916}
-  - component: {fileID: 3543354564565336222}
   - component: {fileID: 4742349870720195101}
   - component: {fileID: 1183233741817494639}
   m_Layer: 0
@@ -88,23 +87,6 @@ MonoBehaviour:
   busRoute: {fileID: 6527074732818209294}
   stopRegistry: {fileID: 5161138187899254478}
   autoStart: 1
-  verboseLogging: 0
---- !u!114 &3543354564565336222
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3007267175668421125}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f806933de2bcb76429159d84e2adc8ca, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.EmergencyIncidentSystem
-  config: {fileID: 11400000, guid: 022333a06aa647d4d80d76196e435cde, type: 2}
-  gridWidth: 20
-  gridHeight: 20
-  enableAutomaticSpawn: 1
   verboseLogging: 0
 --- !u!114 &4742349870720195101
 MonoBehaviour:

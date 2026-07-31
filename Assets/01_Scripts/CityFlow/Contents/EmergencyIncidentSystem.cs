@@ -25,24 +25,36 @@ namespace CityFlow.Content
         [SerializeField]
         private bool enableAutomaticSpawn = true;
         [SerializeField]
+        private bool useExternalAmbulanceTransport;
+        [SerializeField]
         private bool verboseLogging;
 
         private readonly List<Vector2Int> sourceTiles = new();
         private readonly List<Vector2Int> hospitalTiles = new();
+        private readonly List<Vector2Int> candidateTiles = new();
+        private readonly List<Vector2Int> recentTargets = new();
         private readonly List<EmergencyIncident> incidents = new();
         private readonly HashSet<Vector2Int> occupiedSources = new();
 
         private CityFlowServices services;
         private IReadOnlyTileData tileData;
-        private float spawnRemainingSeconds;
+        private IGameCalendarService calendar;
+        private long nextAutomaticDispatchDay =
+            long.MaxValue;
         private int nextIncidentId = 1;
         private bool initialized;
         private bool subscribed;
+        private bool calendarSubscribed;
 
         public IReadOnlyList<EmergencyIncident> ActiveIncidents =>
             incidents;
+        public IReadOnlyList<Vector2Int> HospitalTiles =>
+            hospitalTiles;
         public int ActiveIncidentCount => incidents.Count;
         public bool IsInitialized => initialized;
+        public EmergencyIncidentConfigSO Config => config;
+        public bool UsesExternalAmbulanceTransport =>
+            useExternalAmbulanceTransport;
 
         public event Action<EmergencyIncident> IncidentCreated;
         public event Action<EmergencyIncident> IncidentChanged;
@@ -69,8 +81,9 @@ namespace CityFlow.Content
             ApplyWorldGridBounds(services.WorldGrid);
             initialized = true;
             RebuildLocations();
-            ScheduleNextSpawn();
             Subscribe();
+            BindCalendar(services.GameCalendar);
+            ScheduleNextSpawn();
         }
 
         private void ApplyWorldGridBounds(IWorldGridAccess worldGrid)
@@ -98,21 +111,6 @@ namespace CityFlow.Content
         {
             float safeDelta = Mathf.Max(0f, deltaTime);
             AdvanceIncidents(safeDelta);
-
-            if (!enableAutomaticSpawn)
-            {
-                return;
-            }
-
-            spawnRemainingSeconds -= safeDelta;
-
-            if (spawnRemainingSeconds > 0f)
-            {
-                return;
-            }
-
-            TryCreateRandomIncident();
-            ScheduleNextSpawn();
         }
 
         private void OnEnable()
@@ -135,49 +133,26 @@ namespace CityFlow.Content
 
         public bool TryCreateRandomIncident()
         {
-            if (incidents.Count >=
+            if (!initialized ||
+                incidents.Count >=
                     config.MaximumActiveIncidents ||
-                sourceTiles.Count == 0)
+                sourceTiles.Count == 0 ||
+                hospitalTiles.Count == 0)
             {
                 return false;
             }
 
-            int start = UnityEngine.Random.Range(
-                0,
-                sourceTiles.Count);
+            CollectCandidateTiles(excludeRecent: true);
 
-            for (int offset = 0;
-                 offset < sourceTiles.Count;
-                 offset++)
+            if (candidateTiles.Count == 0)
             {
-                Vector2Int tile =
-                    sourceTiles[
-                        (start + offset) %
-                        sourceTiles.Count];
-
-                if (occupiedSources.Contains(tile))
-                {
-                    continue;
-                }
-
-                TileType type =
-                    tileData.GetTileType(tile);
-                float weight = type switch
-                {
-                    TileType.House =>
-                        config.HouseWeight,
-                    TileType.Office =>
-                        config.OfficeWeight,
-                    _ => 0f
-                };
-
-                if (UnityEngine.Random.value <= weight)
-                {
-                    return TryCreateIncidentAt(tile);
-                }
+                CollectCandidateTiles(excludeRecent: false);
             }
 
-            return false;
+            return TryChooseWeightedTarget(
+                       candidateTiles,
+                       out Vector2Int target) &&
+                   TryCreateIncidentAt(target);
         }
 
         public bool TryCreateIncidentAt(Vector2Int tile)
@@ -192,8 +167,7 @@ namespace CityFlow.Content
             Vector2Int anchor = ResolveAnchor(tile);
             TileType type = tileData.GetTileType(anchor);
 
-            if (type is not TileType.House
-                    and not TileType.Office ||
+            if (!IsEligibleIncidentSource(type) ||
                 occupiedSources.Contains(anchor))
             {
                 return false;
@@ -206,6 +180,7 @@ namespace CityFlow.Content
 
             incidents.Add(incident);
             occupiedSources.Add(anchor);
+            RememberTarget(anchor);
             IncidentCreated?.Invoke(incident);
             TryDispatch(incident);
 
@@ -243,8 +218,7 @@ namespace CityFlow.Content
                         continue;
                     }
 
-                    if (type is TileType.House
-                        or TileType.Office)
+                    if (IsEligibleIncidentSource(type))
                     {
                         sourceTiles.Add(tile);
                     }
@@ -271,6 +245,14 @@ namespace CityFlow.Content
                     continue;
                 }
 
+                if (useExternalAmbulanceTransport &&
+                    incident.State is
+                        EmergencyIncidentState.AmbulanceOutbound
+                        or EmergencyIncidentState.AmbulanceReturning)
+                {
+                    continue;
+                }
+
                 if (!incident.Advance(deltaTime))
                 {
                     continue;
@@ -286,7 +268,9 @@ namespace CityFlow.Content
 
                     case EmergencyIncidentState.Treating:
                         incident.BeginReturn(
-                            TravelSeconds(incident));
+                            useExternalAmbulanceTransport
+                                ? config.RouteRetrySeconds
+                                : TravelSeconds(incident));
                         IncidentChanged?.Invoke(incident);
                         break;
 
@@ -314,6 +298,44 @@ namespace CityFlow.Content
                     incident.Location,
                     hospital));
             IncidentChanged?.Invoke(incident);
+            return true;
+        }
+
+        public bool TryMarkAmbulanceArrived(int incidentId)
+        {
+            if (!useExternalAmbulanceTransport ||
+                !TryFindIncident(
+                    incidentId,
+                    out EmergencyIncident incident,
+                    out _) ||
+                incident.State !=
+                    EmergencyIncidentState.AmbulanceOutbound)
+            {
+                return false;
+            }
+
+            incident.BeginTreatment(
+                config.TreatmentSeconds);
+            IncidentChanged?.Invoke(incident);
+            return true;
+        }
+
+        public bool TryMarkAmbulanceReturned(int incidentId)
+        {
+            if (!useExternalAmbulanceTransport ||
+                !TryFindIncident(
+                    incidentId,
+                    out EmergencyIncident incident,
+                    out int index) ||
+                incident.State !=
+                    EmergencyIncidentState.AmbulanceReturning)
+            {
+                return false;
+            }
+
+            incident.Resolve();
+            IncidentChanged?.Invoke(incident);
+            RemoveIncidentAt(index);
             return true;
         }
 
@@ -405,7 +427,11 @@ namespace CityFlow.Content
                     OnRestoreCompleted;
             }
 
+            services.GameCalendarRegistered +=
+                OnGameCalendarRegistered;
             subscribed = true;
+            BindCalendar(
+                services.GameCalendar ?? calendar);
         }
 
         private void Unsubscribe()
@@ -426,19 +452,44 @@ namespace CityFlow.Content
                     OnRestoreCompleted;
             }
 
+            if (services != null)
+            {
+                services.GameCalendarRegistered -=
+                    OnGameCalendarRegistered;
+            }
+
+            if (calendarSubscribed && calendar != null)
+            {
+                calendar.DayChanged -= OnDayChanged;
+            }
+
+            calendarSubscribed = false;
             subscribed = false;
         }
 
         private void OnPlaced(PlacedEvent placed)
         {
-            if (placed.Type is not TileType.House
-                    and not TileType.Office
-                    and not TileType.Hospital)
+            if (!IsEligibleIncidentSource(placed.Type) &&
+                placed.Type != TileType.Hospital)
             {
                 return;
             }
 
+            bool hadHospitals = hospitalTiles.Count > 0;
+            bool hadSources = sourceTiles.Count > 0;
             RebuildLocations();
+
+            if (hospitalTiles.Count == 0 ||
+                sourceTiles.Count == 0)
+            {
+                nextAutomaticDispatchDay =
+                    long.MaxValue;
+            }
+            else if ((!hadHospitals || !hadSources) &&
+                     !placed.IsRemove)
+            {
+                ScheduleNextSpawn();
+            }
 
             if (!placed.IsRemove)
             {
@@ -487,6 +538,7 @@ namespace CityFlow.Content
 
             incidents.Clear();
             occupiedSources.Clear();
+            recentTargets.Clear();
         }
 
         private void RemoveIncidentAt(int index)
@@ -508,10 +560,190 @@ namespace CityFlow.Content
 
         private void ScheduleNextSpawn()
         {
-            spawnRemainingSeconds =
+            if (!enableAutomaticSpawn ||
+                calendar == null ||
+                hospitalTiles.Count == 0 ||
+                sourceTiles.Count == 0)
+            {
+                nextAutomaticDispatchDay =
+                    long.MaxValue;
+                return;
+            }
+
+            int intervalDays =
                 UnityEngine.Random.Range(
-                    config.MinimumSpawnInterval,
-                    config.MaximumSpawnInterval);
+                    config.MinimumDispatchIntervalDays,
+                    config.MaximumDispatchIntervalDays + 1);
+            nextAutomaticDispatchDay =
+                calendar.TotalDays + intervalDays;
+        }
+
+        private void BindCalendar(
+            IGameCalendarService gameCalendar)
+        {
+            if (ReferenceEquals(calendar, gameCalendar) &&
+                calendarSubscribed)
+            {
+                return;
+            }
+
+            if (calendarSubscribed && calendar != null)
+            {
+                calendar.DayChanged -= OnDayChanged;
+            }
+
+            calendar = gameCalendar;
+            calendarSubscribed = false;
+
+            if (calendar != null)
+            {
+                calendar.DayChanged += OnDayChanged;
+                calendarSubscribed = true;
+            }
+        }
+
+        private void OnGameCalendarRegistered(
+            IGameCalendarService gameCalendar)
+        {
+            BindCalendar(gameCalendar);
+            ScheduleNextSpawn();
+        }
+
+        private void OnDayChanged(int _)
+        {
+            if (!enableAutomaticSpawn ||
+                calendar == null ||
+                calendar.TotalDays <
+                    nextAutomaticDispatchDay ||
+                incidents.Count > 0)
+            {
+                return;
+            }
+
+            if (TryCreateRandomIncident())
+            {
+                ScheduleNextSpawn();
+            }
+        }
+
+        private void CollectCandidateTiles(
+            bool excludeRecent)
+        {
+            candidateTiles.Clear();
+
+            for (int i = 0; i < sourceTiles.Count; i++)
+            {
+                Vector2Int tile = sourceTiles[i];
+
+                if (occupiedSources.Contains(tile) ||
+                    (excludeRecent &&
+                     recentTargets.Contains(tile)) ||
+                    GetSourceWeight(
+                        tileData.GetTileType(tile)) <= 0f)
+                {
+                    continue;
+                }
+
+                candidateTiles.Add(tile);
+            }
+        }
+
+        private bool TryChooseWeightedTarget(
+            IReadOnlyList<Vector2Int> candidates,
+            out Vector2Int result)
+        {
+            result = default;
+            float totalWeight = 0f;
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                totalWeight += GetSourceWeight(
+                    tileData.GetTileType(candidates[i]));
+            }
+
+            if (totalWeight <= 0f)
+            {
+                return false;
+            }
+
+            float selected =
+                UnityEngine.Random.Range(0f, totalWeight);
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                result = candidates[i];
+                selected -= GetSourceWeight(
+                    tileData.GetTileType(result));
+
+                if (selected <= 0f)
+                {
+                    return true;
+                }
+            }
+
+            return candidates.Count > 0;
+        }
+
+        private void RememberTarget(Vector2Int target)
+        {
+            int historySize =
+                config.RecentTargetHistorySize;
+
+            if (historySize <= 0)
+            {
+                recentTargets.Clear();
+                return;
+            }
+
+            recentTargets.Remove(target);
+            recentTargets.Add(target);
+
+            while (recentTargets.Count > historySize)
+            {
+                recentTargets.RemoveAt(0);
+            }
+        }
+
+        private bool TryFindIncident(
+            int incidentId,
+            out EmergencyIncident incident,
+            out int index)
+        {
+            for (index = 0; index < incidents.Count; index++)
+            {
+                incident = incidents[index];
+
+                if (incident.IncidentId == incidentId)
+                {
+                    return true;
+                }
+            }
+
+            incident = null;
+            index = -1;
+            return false;
+        }
+
+        private float GetSourceWeight(TileType type)
+        {
+            return type switch
+            {
+                TileType.House => config.HouseWeight,
+                TileType.Office => config.OfficeWeight,
+                TileType.School => config.SchoolWeight,
+                TileType.SpecialBuilding =>
+                    config.SpecialBuildingWeight,
+                _ => 0f
+            };
+        }
+
+        private static bool IsEligibleIncidentSource(
+            TileType type)
+        {
+            return type is TileType.House
+                or TileType.Office
+                or TileType.School
+                or TileType.SpecialBuilding;
         }
 
         private static int Manhattan(

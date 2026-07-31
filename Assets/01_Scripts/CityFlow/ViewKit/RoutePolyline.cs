@@ -19,6 +19,7 @@ namespace CityFlow.ViewKit
         public Func<Vector2Int, bool> IsRoundabout;
         public Vector3? StartAnchor;
         public Vector3? EndAnchor;
+        public bool ClampAnchorSpurOvershoot;
         public int SamplesPerSegment;
     }
 
@@ -122,12 +123,21 @@ namespace CityFlow.ViewKit
 
             if (input.StartAnchor.HasValue)
             {
-                PrependAnchorSpur(input.StartAnchor.Value, vertices, samplesPerSegment);
+                PrependAnchorSpur(
+                    input.StartAnchor.Value,
+                    vertices,
+                    samplesPerSegment,
+                    input.ClampAnchorSpurOvershoot);
             }
 
             if (input.EndAnchor.HasValue)
             {
-                AppendAnchorSpur(input.EndAnchor.Value, vertices, samplesPerSegment, Mathf.Max(0, segmentCount - 1));
+                AppendAnchorSpur(
+                    input.EndAnchor.Value,
+                    vertices,
+                    samplesPerSegment,
+                    Mathf.Max(0, segmentCount - 1),
+                    input.ClampAnchorSpurOvershoot);
             }
 
             var cumulative = new float[vertices.Count];
@@ -751,7 +761,11 @@ namespace CityFlow.ViewKit
         // 주차 앵커 스퍼: 앵커 ↔ 경로 끝 정점을 쿼터 베지어로 잇는다(핸들 길이 = 거리 × QuarterCircleHandle).
         // 앵커 쪽 접선은 앵커→경로 직선 방향, 경로 쪽 접선은 인접 정점의 진행 방향을 그대로 쓴다.
         // 스퍼 정점: IsSpur=true, TileIndex는 인접 끝 세그먼트 시작 인덱스 상속, SegT는 시작=0f/끝=1f 고정.
-        private static void PrependAnchorSpur(Vector3 anchor, List<Vertex> vertices, int samples)
+        private static void PrependAnchorSpur(
+            Vector3 anchor,
+            List<Vertex> vertices,
+            int samples,
+            bool clampOvershoot)
         {
             Vertex first = vertices[0];
             Vector3 delta = first.Pos - anchor;
@@ -763,7 +777,14 @@ namespace CityFlow.ViewKit
 
             Vector3 anchorTangent = delta.normalized;
             Vector3 controlIn = anchor + anchorTangent * (distance * PolylineMath.QuarterCircleHandle);
-            Vector3 controlOut = first.Pos - first.Dir * (distance * PolylineMath.QuarterCircleHandle);
+            float exitHandle =
+                !clampOvershoot ||
+                Vector3.Dot(first.Dir, delta) > 0f
+                    ? distance *
+                      PolylineMath.QuarterCircleHandle
+                    : distance * 0.12f;
+            Vector3 controlOut =
+                first.Pos - first.Dir * exitHandle;
 
             var spur = new List<Vertex>(samples);
             for (int k = 0; k < samples; k++)
@@ -783,7 +804,12 @@ namespace CityFlow.ViewKit
             vertices.InsertRange(0, spur);
         }
 
-        private static void AppendAnchorSpur(Vector3 anchor, List<Vertex> vertices, int samples, int endSegIndex)
+        private static void AppendAnchorSpur(
+            Vector3 anchor,
+            List<Vertex> vertices,
+            int samples,
+            int endSegIndex,
+            bool clampOvershoot)
         {
             Vertex last = vertices[vertices.Count - 1];
             Vector3 delta = anchor - last.Pos;
@@ -794,7 +820,14 @@ namespace CityFlow.ViewKit
             }
 
             Vector3 anchorTangent = delta.normalized;
-            Vector3 controlIn = last.Pos + last.Dir * (distance * PolylineMath.QuarterCircleHandle);
+            float entryHandle =
+                !clampOvershoot ||
+                Vector3.Dot(last.Dir, delta) > 0f
+                    ? distance *
+                      PolylineMath.QuarterCircleHandle
+                    : distance * 0.12f;
+            Vector3 controlIn =
+                last.Pos + last.Dir * entryHandle;
             Vector3 controlOut = anchor - anchorTangent * (distance * PolylineMath.QuarterCircleHandle);
 
             for (int k = 1; k <= samples; k++)

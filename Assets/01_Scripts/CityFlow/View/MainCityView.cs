@@ -145,6 +145,8 @@ namespace CityFlow.View
         private readonly Dictionary<Vector2Int, GameObject> priorityRoadVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> highwayVisuals = new();
         private readonly List<RouteVehicle> vehicles = new();
+        private readonly List<ExternalSelectableVehicle>
+            externalSelectableVehicles = new();
 
         // 통근 상태(유일 경로). 위상 리빌드 시 재구성된다.
         private readonly List<CommuteCar> carSimMirrors = new();
@@ -179,7 +181,7 @@ namespace CityFlow.View
         private UIDockController dockController;
         private PlacementController placementController;
         private InfrastructurePlacementCoordinator infrastructurePlacementCoordinator;
-        private RouteVehicle selectedVehicle;
+        private Transform selectedVehicleTarget;
         private Vector3 cameraTarget;
         private Vector3 cameraUpDirection;
         private float zoomDistance;
@@ -388,6 +390,13 @@ namespace CityFlow.View
             public float TravelSpeed;      // 현재 주행 속도(월드유닛/초) — 가감속으로 수렴시킨다
             public GameObject BrakeLight;  // 후방 제동등(기본 off) — CreateDetailCube 패턴
             public bool BrakeOn;           // 제동등 상태 캐시(매 프레임 SetActive 금지)
+        }
+
+        private sealed class ExternalSelectableVehicle
+        {
+            public Object Owner;
+            public Transform VisualRoot;
+            public Vector3 LocalTravelAxis;
         }
 
         // 도착 코인 팝: 소형 텍스트 마크 풀(고정 크기, 러시아워 다발 대비 — 매 도착마다 Instantiate 금지).
@@ -686,7 +695,7 @@ namespace CityFlow.View
 
         private void Update()
         {
-            if (selectedVehicle != null && !IsDriveViewActive)
+            if (selectedVehicleTarget != null && !IsDriveViewActive)
             {
                 ExitDriveView();
             }
@@ -748,17 +757,22 @@ namespace CityFlow.View
                 return;
             }
 
-            if (TryGetVehicleAtScreenPosition(mouse.position.ReadValue(), out RouteVehicle vehicle))
+            if (TryGetVehicleAtScreenPosition(
+                    mouse.position.ReadValue(),
+                    out Transform vehicleTarget,
+                    out Vector3 localTravelAxis))
             {
-                selectedVehicle = vehicle;
-                driveViewCamera.Follow(vehicle.Object.transform);
+                selectedVehicleTarget = vehicleTarget;
+                driveViewCamera.Follow(
+                    vehicleTarget,
+                    localTravelAxis);
                 if (IsDriveViewActive)
                 {
                     dockController?.SetDriveViewActive(true);
                 }
                 else
                 {
-                    selectedVehicle = null;
+                    selectedVehicleTarget = null;
                 }
             }
         }
@@ -787,7 +801,7 @@ namespace CityFlow.View
 
         private void ExitDriveView()
         {
-            selectedVehicle = null;
+            selectedVehicleTarget = null;
             if (driveViewCamera != null)
             {
                 driveViewCamera.StopFollowing();
@@ -800,12 +814,19 @@ namespace CityFlow.View
 
         public bool IsPointerOverVehicle(Vector2 screenPosition)
         {
-            return TryGetVehicleAtScreenPosition(screenPosition, out _);
+            return TryGetVehicleAtScreenPosition(
+                screenPosition,
+                out _,
+                out _);
         }
 
-        private bool TryGetVehicleAtScreenPosition(Vector2 screenPosition, out RouteVehicle vehicle)
+        private bool TryGetVehicleAtScreenPosition(
+            Vector2 screenPosition,
+            out Transform vehicleTarget,
+            out Vector3 localTravelAxis)
         {
-            vehicle = null;
+            vehicleTarget = null;
+            localTravelAxis = Vector3.right;
             if (mainCamera == null || !mainCamera.enabled)
             {
                 return false;
@@ -822,7 +843,24 @@ namespace CityFlow.View
                 return false;
             }
 
-            Transform hitTransform = hit.collider.transform;
+            return TryResolveSelectableVehicle(
+                hit.collider.transform,
+                out vehicleTarget,
+                out localTravelAxis);
+        }
+
+        internal bool TryResolveSelectableVehicle(
+            Transform hitTransform,
+            out Transform vehicleTarget,
+            out Vector3 localTravelAxis)
+        {
+            vehicleTarget = null;
+            localTravelAxis = Vector3.right;
+            if (hitTransform == null)
+            {
+                return false;
+            }
+
             for (int vehicleIndex = 0; vehicleIndex < vehicles.Count; vehicleIndex++)
             {
                 RouteVehicle candidate = vehicles[vehicleIndex];
@@ -836,12 +874,196 @@ namespace CityFlow.View
                 Transform vehicleTransform = candidate.Object.transform;
                 if (hitTransform == vehicleTransform || hitTransform.IsChildOf(vehicleTransform))
                 {
-                    vehicle = candidate;
+                    vehicleTarget = vehicleTransform;
                     return true;
                 }
             }
 
+            for (int vehicleIndex =
+                     externalSelectableVehicles.Count - 1;
+                 vehicleIndex >= 0;
+                 vehicleIndex--)
+            {
+                ExternalSelectableVehicle candidate =
+                    externalSelectableVehicles[vehicleIndex];
+                if (candidate.Owner == null ||
+                    candidate.VisualRoot == null)
+                {
+                    externalSelectableVehicles.RemoveAt(
+                        vehicleIndex);
+                    continue;
+                }
+
+                if (!candidate.VisualRoot.gameObject
+                        .activeInHierarchy)
+                {
+                    continue;
+                }
+
+                if (hitTransform != candidate.VisualRoot &&
+                    !hitTransform.IsChildOf(
+                        candidate.VisualRoot))
+                {
+                    continue;
+                }
+
+                vehicleTarget = candidate.VisualRoot;
+                localTravelAxis =
+                    candidate.LocalTravelAxis;
+                return true;
+            }
+
             return false;
+        }
+
+        public void RegisterExternalSelectableVehicle(
+            Object owner,
+            Transform visualRoot,
+            Vector3 localTravelAxis)
+        {
+            if (owner == null || visualRoot == null)
+            {
+                return;
+            }
+
+            EnsureVehicleSelectionCollider(visualRoot);
+            Vector3 normalizedTravelAxis =
+                localTravelAxis.sqrMagnitude > 0.0001f
+                    ? localTravelAxis.normalized
+                    : Vector3.right;
+
+            for (int i =
+                     externalSelectableVehicles.Count - 1;
+                 i >= 0;
+                 i--)
+            {
+                ExternalSelectableVehicle candidate =
+                    externalSelectableVehicles[i];
+                if (candidate.Owner == null ||
+                    candidate.VisualRoot == null)
+                {
+                    externalSelectableVehicles.RemoveAt(i);
+                    continue;
+                }
+
+                if (candidate.Owner != owner)
+                {
+                    continue;
+                }
+
+                candidate.VisualRoot = visualRoot;
+                candidate.LocalTravelAxis =
+                    normalizedTravelAxis;
+                return;
+            }
+
+            externalSelectableVehicles.Add(
+                new ExternalSelectableVehicle
+                {
+                    Owner = owner,
+                    VisualRoot = visualRoot,
+                    LocalTravelAxis =
+                        normalizedTravelAxis
+                });
+        }
+
+        public void UnregisterExternalSelectableVehicle(
+            Object owner)
+        {
+            for (int i =
+                     externalSelectableVehicles.Count - 1;
+                 i >= 0;
+                 i--)
+            {
+                ExternalSelectableVehicle candidate =
+                    externalSelectableVehicles[i];
+                if (candidate.Owner == null ||
+                    candidate.VisualRoot == null ||
+                    candidate.Owner == owner)
+                {
+                    if (candidate.VisualRoot ==
+                        selectedVehicleTarget)
+                    {
+                        ExitDriveView();
+                    }
+
+                    externalSelectableVehicles.RemoveAt(i);
+                }
+            }
+        }
+
+        private static void EnsureVehicleSelectionCollider(
+            Transform visualRoot)
+        {
+            if (visualRoot.GetComponentInChildren<
+                    Collider>(true) != null)
+            {
+                return;
+            }
+
+            Renderer[] renderers =
+                visualRoot.GetComponentsInChildren<
+                    Renderer>(true);
+            Bounds localBounds = default;
+            bool hasBounds = false;
+            for (int rendererIndex = 0;
+                 rendererIndex < renderers.Length;
+                 rendererIndex++)
+            {
+                Renderer renderer =
+                    renderers[rendererIndex];
+                Bounds rendererBounds =
+                    renderer.localBounds;
+                Vector3 min = rendererBounds.min;
+                Vector3 max = rendererBounds.max;
+
+                for (int corner = 0;
+                     corner < 8;
+                     corner++)
+                {
+                    Vector3 localCorner = new(
+                        (corner & 1) == 0
+                            ? min.x
+                            : max.x,
+                        (corner & 2) == 0
+                            ? min.y
+                            : max.y,
+                        (corner & 4) == 0
+                            ? min.z
+                            : max.z);
+                    Vector3 rootCorner =
+                        visualRoot.InverseTransformPoint(
+                            renderer.transform
+                                .TransformPoint(
+                                    localCorner));
+
+                    if (!hasBounds)
+                    {
+                        localBounds = new Bounds(
+                            rootCorner,
+                            Vector3.zero);
+                        hasBounds = true;
+                    }
+                    else
+                    {
+                        localBounds.Encapsulate(
+                            rootCorner);
+                    }
+                }
+            }
+
+            if (!hasBounds)
+            {
+                return;
+            }
+
+            BoxCollider selectionCollider =
+                visualRoot.gameObject
+                    .AddComponent<BoxCollider>();
+            selectionCollider.center =
+                localBounds.center;
+            selectionCollider.size =
+                localBounds.size;
         }
 
         private void BuildRoots()
