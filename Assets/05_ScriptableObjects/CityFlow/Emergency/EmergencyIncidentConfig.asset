@@ -14,9 +14,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: CityFlow.Content::CityFlow.Content.EmergencyIncidentConfigSO
   minimumSpawnInterval: 5
   maximumSpawnInterval: 8
+  minimumDispatchIntervalDays: 1
+  maximumDispatchIntervalDays: 3
   maximumActiveIncidents: 3
   houseWeight: 1
   officeWeight: 1
-  travelSecondsPerTile: 0.12
-  treatmentSeconds: 1.2
+  schoolWeight: 0.7
+  specialBuildingWeight: 0.4
+  recentTargetHistorySize: 3
+  travelSecondsPerTile: 0.45
+  treatmentSeconds: 2
   ambulancesPerHospital: 1
+  routeRetrySeconds: 2
+  vehicleVisualPrefab: {fileID: 100000, guid: e76a211798c34f4fb5e47bad0a4ee269, type: 3}
+  visualScale: 0.085
+  visualDepth: -0.18
+  vehicleLengthTiles: 0.56
+  vehicleWidthTiles: 0.24

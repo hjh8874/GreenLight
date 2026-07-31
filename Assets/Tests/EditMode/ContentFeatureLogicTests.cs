@@ -82,13 +82,38 @@ namespace CityFlow.Sim.Tests
                 "Assets/02_Prefabs/Vehicles/CityBusContent.prefab";
             const string scenePath =
                 "Assets/00_Scenes/Debug/PR151_ContentPrototype_cmt.unity";
+            const string ambulanceContentPath =
+                "Assets/02_Prefabs/Vehicles/AmbulanceContent.prefab";
+            const string ambulanceVehiclePath =
+                "Assets/02_Prefabs/Vehicles/AmbulanceVehicle.prefab";
+            const string ambulanceVisualPath =
+                "Assets/02_Prefabs/Vehicles/AmbulanceVehicleVisual.prefab";
+            const string ambulanceMaterialPath =
+                "Assets/03_Art/Materials/Vehicles/Ambulance_URP.mat";
+            const string ambulanceScenePath =
+                "Assets/00_Scenes/Debug/CityFlowIntegrated_Lee.unity";
 
             GameObject prefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
                     prefabPath);
+            GameObject ambulanceContent =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    ambulanceContentPath);
+            GameObject ambulanceVehicle =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    ambulanceVehiclePath);
+            GameObject ambulanceVisual =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    ambulanceVisualPath);
+            Material ambulanceMaterial =
+                AssetDatabase.LoadAssetAtPath<Material>(
+                    ambulanceMaterialPath);
             SceneAsset scene =
                 AssetDatabase.LoadAssetAtPath<SceneAsset>(
                     scenePath);
+            SceneAsset ambulanceScene =
+                AssetDatabase.LoadAssetAtPath<SceneAsset>(
+                    ambulanceScenePath);
             BusDefinitionSO busConfig =
                 AssetDatabase.LoadAssetAtPath<
                     BusDefinitionSO>(
@@ -102,7 +127,16 @@ namespace CityFlow.Sim.Tests
                     "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset");
 
             Assert.That(prefab, Is.Not.Null);
+            Assert.That(ambulanceContent, Is.Not.Null);
+            Assert.That(ambulanceVehicle, Is.Not.Null);
+            Assert.That(ambulanceVisual, Is.Not.Null);
+            Assert.That(ambulanceMaterial, Is.Not.Null);
+            Assert.That(
+                ambulanceMaterial.shader.name,
+                Is.EqualTo(
+                    "GreenLight/CityFlow Opaque Unlit"));
             Assert.That(scene, Is.Not.Null);
+            Assert.That(ambulanceScene, Is.Not.Null);
             Assert.That(busConfig, Is.Not.Null);
             Assert.That(
                 busConfig.VehicleFootprintProfile,
@@ -114,12 +148,28 @@ namespace CityFlow.Sim.Tests
                 busConfig.VehicleLengthTiles,
                 Is.EqualTo(0.8f).Within(0.0001f));
             Assert.That(emergencyConfig, Is.Not.Null);
+            Assert.That(
+                emergencyConfig.VehicleVisualPrefab,
+                Is.Not.Null);
             Assert.That(busStopData, Is.Not.Null);
             Assert.That(
                 GameObjectUtility
                     .GetMonoBehavioursWithMissingScriptCount(
                         prefab),
                 Is.Zero);
+            Assert.That(
+                GameObjectUtility
+                    .GetMonoBehavioursWithMissingScriptCount(
+                        ambulanceContent),
+                Is.Zero);
+            Assert.That(
+                GameObjectUtility
+                    .GetMonoBehavioursWithMissingScriptCount(
+                        ambulanceVehicle),
+                Is.Zero);
+            Assert.That(
+                emergencyConfig.VehicleVisualPrefab,
+                Is.EqualTo(ambulanceVisual));
 
             MonoBehaviour[] components =
                 prefab.GetComponents<MonoBehaviour>();
@@ -132,7 +182,8 @@ namespace CityFlow.Sim.Tests
                 HasComponentNamed(
                     components,
                     "EmergencyIncidentSystem"),
-                Is.True);
+                Is.False,
+                "Emergency response must not depend on the city-bus prefab.");
             Assert.That(
                 HasComponentNamed(
                     components,
@@ -148,6 +199,49 @@ namespace CityFlow.Sim.Tests
                     components,
                     "ContentFeaturePrototypeScenario"),
                 Is.False);
+
+            MonoBehaviour[] ambulanceComponents =
+                ambulanceContent
+                    .GetComponents<MonoBehaviour>();
+            Assert.That(
+                HasComponentNamed(
+                    ambulanceComponents,
+                    "EmergencyIncidentSystem"),
+                Is.True);
+            Assert.That(
+                HasComponentNamed(
+                    ambulanceComponents,
+                    "AmbulanceDispatchService"),
+                Is.True);
+            Assert.That(
+                ambulanceContent.GetComponentInChildren<
+                    Canvas>(true),
+                Is.Null,
+                "The ambulance feature must not recreate the removed emergency UI panel.");
+
+            MonoBehaviour[] vehicleComponents =
+                ambulanceVehicle
+                    .GetComponents<MonoBehaviour>();
+            Assert.That(
+                HasComponentNamed(
+                    vehicleComponents,
+                    "BusRoute"),
+                Is.True);
+            Assert.That(
+                HasComponentNamed(
+                    vehicleComponents,
+                    "AmbulanceVehicleAgent"),
+                Is.True);
+            Assert.That(
+                HasComponentNamed(
+                    vehicleComponents,
+                    "AmbulanceWorldView"),
+                Is.True);
+            Assert.That(
+                AssetDatabase.GetDependencies(
+                    ambulanceScenePath,
+                    recursive: true),
+                Does.Contain(ambulanceContentPath));
         }
 
         [Test]

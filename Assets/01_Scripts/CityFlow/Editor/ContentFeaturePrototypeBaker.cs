@@ -96,13 +96,9 @@ namespace CityFlow.EditorTools
                 CreateOrUpdateBusDefinition(busVisualPrefab);
             CityBusScheduleSO busSchedule =
                 CreateOrUpdateBusSchedule();
-            EmergencyIncidentConfigSO emergencyConfig =
-                CreateOrUpdateEmergencyConfig();
-
             CreateOrUpdatePrefab(
                 busDefinition,
                 busSchedule,
-                emergencyConfig,
                 font,
                 busMaterial);
             CreateOrUpdateScene();
@@ -295,7 +291,6 @@ namespace CityFlow.EditorTools
         private static void CreateOrUpdatePrefab(
             BusDefinitionSO busDefinition,
             CityBusScheduleSO busSchedule,
-            EmergencyIncidentConfigSO emergencyConfig,
             TMP_FontAsset font,
             Material busMaterial)
         {
@@ -312,9 +307,6 @@ namespace CityFlow.EditorTools
                 CityBusService cityBus =
                     root.GetComponent<CityBusService>() ??
                     root.AddComponent<CityBusService>();
-                EmergencyIncidentSystem emergency =
-                    root.AddComponent<
-                        EmergencyIncidentSystem>();
                 BusWorldView busWorldView =
                     root.AddComponent<BusWorldView>();
                 CityBusStopWorldView busStopWorldView =
@@ -336,10 +328,6 @@ namespace CityFlow.EditorTools
                     cityBus,
                     "stopRegistry",
                     registry);
-                SetObjectReference(
-                    emergency,
-                    "config",
-                    emergencyConfig);
                 SetObjectReference(
                     busWorldView,
                     "definition",
