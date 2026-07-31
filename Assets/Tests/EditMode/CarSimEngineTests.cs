@@ -311,17 +311,13 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(returnedHome, "기존 회사에서 귀가 완료");
             Assert.AreEqual(CarState.ParkedHome, engine.GetCarSnapshot(0).State);
             Assert.AreEqual(oldOffice, engine.GetCarSnapshot(0).Work,
-                "하루 경계를 넘기 전에는 기존 왕복 짝을 유지한다");
+                "귀가를 완료한 틱까지는 기존 왕복 짝을 유지한다");
 
-            engine.SetGameHour(23f);
-            engine.Tick(0.25f);
-            engine.SetGameHour(1f);
-            engine.Tick(0.25f);
             engine.Tick(0.25f);
 
             Assert.AreEqual(CarState.ParkedHome, engine.GetCarSnapshot(0).State);
             Assert.AreEqual(newOffice, engine.GetCarSnapshot(0).Work,
-                "하루 경계 후 전 차량 귀가 상태에서 새 회사로 일괄 재배정");
+                "전 차량 귀가 다음 틱에 새 회사로 일괄 재배정");
         }
 
         [Test]

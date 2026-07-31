@@ -241,8 +241,8 @@ namespace CityFlow.Sim
                 _grid.MarkTopologyDirty();
             }
 
-            // 신규 회사/학교 배정은 운행 중 목적지를 바꾸지 않는다. 하루 경계에서 pending을
-            // 세운 뒤, 전 차가 집에 돌아온 안전시점에 sticky를 한 번만 풀고 재구축한다.
+            // 신규 회사/학교 배정은 운행 중 목적지를 바꾸지 않는다. 배치 이벤트나 하루 경계에서
+            // pending을 세운 뒤, 전 차가 집에 돌아온 안전시점에 sticky를 한 번만 풀고 재구축한다.
             if (_demandRebalancePending && _carSim.AllParkedHome)
             {
                 _demand.ClearStickyAssignments();
@@ -562,6 +562,8 @@ namespace CityFlow.Sim
 
             if (type == TileType.Office)
                 _demand.RegisterCompany(tile, type, _simTime);
+            if (type == TileType.Office || type == TileType.School)
+                _demandRebalancePending = true;
             if (TileFootprint.IsBuilding(type))
                 _buildingAssignmentChangePending = true;
             else if (type == TileType.Road)
@@ -600,6 +602,8 @@ namespace CityFlow.Sim
 
                 if (site.TargetType == TileType.Office)
                     _demand.RegisterCompany(site.Anchor, site.TargetType, _simTime);
+                if (site.TargetType == TileType.Office || site.TargetType == TileType.School)
+                    _demandRebalancePending = true;
                 _buildingAssignmentChangePending = true;
                 _events.QueuePlaced(
                     new PlacedEvent(site.Anchor, site.TargetType, isRemove: false, site.Direction));
@@ -639,6 +643,7 @@ namespace CityFlow.Sim
                 _demand.RemoveCompany(anchor);
             if (TileFootprint.IsBuilding(removed))
             {
+                _demandRebalancePending = true;
                 _buildingAssignmentChangePending = true;
             }
             else if (removed == TileType.Road)
@@ -736,6 +741,7 @@ namespace CityFlow.Sim
             }
 
             _demand.SetCompanyCapacity(tile, capacity);
+            _demandRebalancePending = true;
             return true;
         }
 
