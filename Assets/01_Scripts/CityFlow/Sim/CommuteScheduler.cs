@@ -347,7 +347,14 @@ namespace CityFlow.Sim
         public void NotifyArrived(CommuteCar car)
         {
             if (car.State == CarState.Outbound) car.State = CarState.ParkedWork;
-            else if (car.State == CarState.Inbound) car.State = CarState.ParkedHome;
+            else if (car.State == CarState.Inbound)
+            {
+                car.State = CarState.ParkedHome;
+                // 귀가 = 이번 파도 완료. 출근 구간 [DepartHomeHour, EveningEndHour)이 자정을
+                // 넘는 야간조는 귀가 시각(새벽)이 아직 같은 구간 안이라(리뷰 P1), 대기를 세우지
+                // 않으면 다음 틱에 즉시 재출근한다. 구간 밖을 한 번 관측하면 해제된다(:330).
+                car.AwaitingNextWave = true;
+            }
             car.Distance = 0f;
         }
 

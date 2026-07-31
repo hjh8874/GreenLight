@@ -215,6 +215,32 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(CarState.Inbound, car.State, "5시에 퇴근");
         }
 
+        // [리뷰 P1 회귀] 야간조 귀가 시각(새벽)은 아직 자기 출근 구간 [20,9) 안이다 —
+        // 귀가가 다음 파도 대기를 세우지 않으면 다음 틱에 즉시 재출근한다. 출근은 파도당 한 번이다.
+        [Test]
+        public void NightShift_ArrivedHomeAtDawn_DoesNotRedepartUntilNextWindow()
+        {
+            var s = Build(homes: 1, officeSlots: 4);
+            var car = s.Cars[0];
+            car.DepartHomeHour = 20f;     // 출근창 [20, 24)
+            car.DepartWorkHour = 5f;      // 퇴근창 [5, 9)
+            car.EveningStartHour = 5f;
+            car.EveningEndHour = 9f;
+            car.State = CarState.Inbound; // 새벽 퇴근길
+
+            s.NotifyArrived(car);         // 6시께 귀가
+            Assert.AreEqual(CarState.ParkedHome, car.State);
+
+            s.UpdateDepartures(6.5f);
+            Assert.AreEqual(CarState.ParkedHome, car.State, "귀가 직후 같은 출근 구간 안에서 재출근하지 않는다");
+            s.UpdateDepartures(8.9f);
+            Assert.AreEqual(CarState.ParkedHome, car.State, "퇴근창 끝까지도 집");
+            s.UpdateDepartures(12f);      // 구간 밖 관측 → 다음 파도 대기 해제
+            Assert.AreEqual(CarState.ParkedHome, car.State, "낮에는 출근하지 않는다");
+            s.UpdateDepartures(20f);
+            Assert.AreEqual(CarState.Outbound, car.State, "다음 20~24시 창에서만 출근");
+        }
+
         // 유형별 창: 목적지마다 다른 창이 오면 차의 출퇴근 시각도 자기 목적지 창에서 나온다.
         [Test]
         public void Rebuild_PerDestinationWindows_ProduceDifferentDepartureHours()
