@@ -205,8 +205,21 @@ namespace CityFlow.Sim
                     workCapacityFor,
                     sinks[i]
                 );
+                CommuteWindow window = windowFor(sinks[i]);
                 if (car != null)
                 {
+                    // 같은 좌표에 다른 유형이 재건축되면 생존 차의 시간표가 옛 유형으로
+                    // 고착된다(리뷰 P1). 유형이 바뀐 경우에만 새 창으로 재초기화한다.
+                    if (car.CompanyTypeId != window.CompanyTypeId)
+                    {
+                        car.CompanyTypeId = window.CompanyTypeId;
+                        car.DepartHomeHour = Wrap24(StaggerHour(
+                            sources[i], window.StartHour, window.StartHour + window.StartWindow));
+                        car.DepartWorkHour = Wrap24(StaggerHour(
+                            sources[i], window.EndHour, window.EndHour + window.EndWindow));
+                        car.EveningStartHour = Wrap24(window.EndHour);
+                        car.EveningEndHour = Wrap24(window.EndHour + window.EndWindow);
+                    }
                     if (car.WorkSlot >= workCapacity)
                     {
                         if (!TryTakeSlot(workUsed, car.Work, workCapacity, out int ws)) continue;
@@ -231,7 +244,6 @@ namespace CityFlow.Sim
                     continue;
                 }
 
-                CommuteWindow window = windowFor(sinks[i]);
                 var fresh = new CommuteCar
                 {
                     Home = sources[i], Work = sinks[i], RouteIndex = i,

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.CompanyTypeSO
   companyTypeId: factory
   displayName: "\uACF5\uC7A5"
-  capacity: 10
+  capacity: 5
   workStartHour: 20
   workStartWindow: 4
   workEndHour: 5

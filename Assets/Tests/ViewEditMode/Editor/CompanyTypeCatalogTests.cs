@@ -51,6 +51,22 @@ public class CompanyTypeCatalogTests
         Assert.AreEqual(10, infos[1].Capacity);
     }
 
+    // [P2 가드] 뷰의 주차 앵커·디테일은 전역 SimConfig.OfficeCapacity 슬롯 수 하나로 그린다
+    // (CarMotion → PolylineMath.ParkingSlotOffset 이 slotCount-1 로 clamp). 카탈로그 정원이
+    // 이를 넘으면 초과 슬롯이 마지막 자리에 겹쳐 주차된다. 정원을 6 넘게 올리려면
+    // 목적지별 정원을 뷰에 노출하는 작업(뷰 소유자)이 먼저다.
+    [Test]
+    public void CatalogAsset_CapacitiesFitViewParkingContract()
+    {
+        var catalog = Resources.Load<CompanyTypeCatalogSO>("CityFlow/CompanyTypeCatalog");
+        Assert.IsNotNull(catalog, "Resources/CityFlow/CompanyTypeCatalog.asset 이 있어야 한다");
+
+        int parkingSlots = SimConfig.Default().OfficeCapacity;
+        foreach (var info in catalog.ToCompanyTypeInfos())
+            Assert.LessOrEqual(info.Capacity, parkingSlots,
+                $"'{info.Window.CompanyTypeId}' 정원이 뷰 주차 계약({parkingSlots}칸)을 넘는다");
+    }
+
     [Test]
     public void ToCompanyTypeInfos_WarnsAndSkips_EmptyAndDuplicateIds()
     {

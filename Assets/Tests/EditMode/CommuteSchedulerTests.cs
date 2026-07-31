@@ -248,6 +248,32 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(9f, factory.EveningEndHour, "공장 퇴근창 [5,9) — 근무가 자정을 넘는다");
         }
 
+        // [P1 회귀] 같은 좌표의 회사가 다른 유형으로 재건축되면 생존 매칭된 차도
+        // 새 유형의 창을 받아야 한다 — 옛 시간표가 영구 보존되면 안 된다.
+        [Test]
+        public void Rebuild_SameCoordinateTypeSwap_RefreshesSurvivorSchedule()
+        {
+            var sources = new List<Vector2Int> { V(0, 0) };
+            var sinks = new List<Vector2Int> { V(50, 50) };
+            var s = new CommuteScheduler();
+            s.Rebuild(sources, sinks, _ => 4,
+                _ => new CommuteWindow("office", 6f, 4f, 17f, 4f),
+                homeSlots: 1, maxCars: 96);
+            CommuteCar survivor = s.Cars[0];
+            Assert.AreEqual("office", survivor.CompanyTypeId);
+
+            s.Rebuild(sources, sinks, _ => 4,
+                _ => new CommuteWindow("factory", 20f, 4f, 5f, 4f),
+                homeSlots: 1, maxCars: 96);
+
+            Assert.AreSame(survivor, s.Cars[0], "같은 (집,회사) 차는 생존 매칭돼야 전제가 성립한다");
+            Assert.AreEqual("factory", survivor.CompanyTypeId, "유형 교체가 생존 차에 반영");
+            Assert.GreaterOrEqual(survivor.DepartHomeHour, 20f, "출근 시각이 새 야간창 [20,24)에서 나온다");
+            Assert.Less(survivor.DepartHomeHour, 24f);
+            Assert.AreEqual(5f, survivor.EveningStartHour);
+            Assert.AreEqual(9f, survivor.EveningEndHour);
+        }
+
         // 창 자체가 자정을 넘으면 끝 시각이 24를 넘게 계산된다([23,27) 등).
         // 감싸 넣지 않으면 게임시각 [0,24)와 절대 만나지 않아 차가 조용히 멈춘다.
         [Test]
