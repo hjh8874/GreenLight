@@ -40,6 +40,26 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(expected, actual);
         }
 
+        // 우선순위 주입(카메라 기준 순서용): 여러 면이 도로일 때만 결과가 달라진다.
+        [Test]
+        public void TryResolveAutoDirection_CustomPriority_BreaksTieOnCorner()
+        {
+            SimEngine engine = EngineWithRoads(V(3, 2), V(5, 3));   // 북·동 두 면 모두 도로
+
+            Assert.IsTrue(engine.TryResolveAutoDirection(
+                V(3, 3), TileType.House, out PlacementDirection byDefault));
+            Assert.AreEqual(PlacementDirection.North, byDefault, "기본 순서는 North 우선");
+
+            var cameraOrder = new[]
+            {
+                PlacementDirection.East, PlacementDirection.South,
+                PlacementDirection.West, PlacementDirection.North,
+            };
+            Assert.IsTrue(engine.TryResolveAutoDirection(
+                V(3, 3), TileType.House, out PlacementDirection byPriority, cameraOrder));
+            Assert.AreEqual(PlacementDirection.East, byPriority, "우선순위 주입이 타이브레이크를 바꾼다");
+        }
+
         [Test]
         public void TryResolveAutoDirection_UsesFixedDirectionOrder()
         {

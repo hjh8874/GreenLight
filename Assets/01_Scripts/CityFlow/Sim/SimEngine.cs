@@ -161,8 +161,9 @@ namespace CityFlow.Sim
         public bool TryResolveAutoDirection(
             Vector2Int tile,
             TileType type,
-            out PlacementDirection direction) =>
-            _network.TryResolveAutoDirection(tile, type, out direction);
+            out PlacementDirection direction,
+            IReadOnlyList<PlacementDirection> priority = null) =>
+            _network.TryResolveAutoDirection(tile, type, out direction, priority);
 
         private sealed class DeviceStateAdapter : IDeviceState
         {

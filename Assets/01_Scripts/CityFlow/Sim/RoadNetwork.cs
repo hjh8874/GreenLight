@@ -42,18 +42,22 @@ namespace CityFlow.Sim
         }
 
         // 배치 프리뷰와 실제 배치가 공유하는 자동 방향 결정 규칙.
-        // 주차면(frontage)에 도로가 있는 첫 방향을 North→East→South→West 순으로 고른다.
+        // 주차면(frontage)에 도로가 있는 첫 방향을 우선순위 순으로 고른다.
+        // priority 미지정이면 North→East→South→West. 1면 접촉이면 순서와 무관하게 그 면이 뽑힌다 —
+        // 순서는 여러 면이 도로일 때의 타이브레이크다(UI가 카메라 기준 순서를 넘길 수 있게 인자화).
         public bool TryResolveAutoDirection(
             Vector2Int tile,
             TileType type,
-            out PlacementDirection direction)
+            out PlacementDirection direction,
+            IReadOnlyList<PlacementDirection> priority = null)
         {
             direction = PlacementDirection.North;
             if (!TileFootprint.IsBuilding(type)) return false;
 
-            for (int i = 0; i < AutoDirectionOrder.Length; i++)
+            IReadOnlyList<PlacementDirection> order = priority ?? AutoDirectionOrder;
+            for (int i = 0; i < order.Count; i++)
             {
-                PlacementDirection candidate = AutoDirectionOrder[i];
+                PlacementDirection candidate = order[i];
                 Vector2Int size = TileFootprint.GetRotatedSize(type, candidate);
                 if (!TryGetRoadAlongFront(tile, size, candidate, out _)) continue;
 
