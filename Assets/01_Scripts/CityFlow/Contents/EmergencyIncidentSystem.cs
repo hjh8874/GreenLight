@@ -677,9 +677,7 @@ namespace CityFlow.Content
 
             if (savedState is
                 EmergencyIncidentState.Resolved
-                or EmergencyIncidentState.Failed
-                or EmergencyIncidentState
-                    .AmbulanceReturningAfterFailure)
+                or EmergencyIncidentState.Failed)
             {
                 return;
             }
@@ -687,13 +685,21 @@ namespace CityFlow.Content
             bool hasHospital =
                 hospitalTiles.Contains(hospital);
             EmergencyIncidentState restoredState =
-                savedState ==
-                    EmergencyIncidentState.WaitingForHospital ||
-                !hasHospital
-                    ? EmergencyIncidentState
-                        .WaitingForHospital
+                savedState !=
+                    EmergencyIncidentState.WaitingForHospital &&
+                hasHospital
+                    ? savedState
                     : EmergencyIncidentState
-                        .AmbulanceOutbound;
+                        .WaitingForHospital;
+            Vector2Int restoredHospital =
+                restoredState ==
+                    EmergencyIncidentState.WaitingForHospital
+                    ? new Vector2Int(-1, -1)
+                    : hospital;
+            EmergencyIncidentFailureReason restoredFailure =
+                RestoreFailureReason(
+                    entry.FailureReason,
+                    restoredState);
             EmergencyIncidentDefinitionSO definition =
                 FindDefinition(entry.DefinitionId);
             var incident = EmergencyIncident.Restore(
@@ -704,11 +710,9 @@ namespace CityFlow.Content
                 Math.Max(0L, entry.CreatedAbsoluteHour),
                 entry.DeadlineAbsoluteHour,
                 restoredState,
-                hasHospital
-                    ? hospital
-                    : new Vector2Int(-1, -1),
+                restoredHospital,
                 entry.StateRemainingSeconds,
-                EmergencyIncidentFailureReason.None);
+                restoredFailure);
 
             nextIncidentId = Mathf.Max(
                 nextIncidentId,
@@ -728,13 +732,40 @@ namespace CityFlow.Content
                 return;
             }
 
-            AddIncident(incident);
-
             if (restoredState ==
-                EmergencyIncidentState.WaitingForHospital)
+                EmergencyIncidentState
+                    .AmbulanceReturningAfterFailure)
             {
-                TryDispatch(incident);
+                reportedOutcomeIds.Add(
+                    incident.IncidentId);
             }
+
+            AddIncident(incident);
+        }
+
+        private static EmergencyIncidentFailureReason
+            RestoreFailureReason(
+                int savedReason,
+                EmergencyIncidentState restoredState)
+        {
+            if (restoredState !=
+                EmergencyIncidentState
+                    .AmbulanceReturningAfterFailure)
+            {
+                return EmergencyIncidentFailureReason.None;
+            }
+
+            if (Enum.IsDefined(
+                    typeof(EmergencyIncidentFailureReason),
+                    savedReason) &&
+                (EmergencyIncidentFailureReason)savedReason !=
+                EmergencyIncidentFailureReason.None)
+            {
+                return (EmergencyIncidentFailureReason)savedReason;
+            }
+
+            return EmergencyIncidentFailureReason
+                .DestinationUnreachable;
         }
 
         private void RestoreRecentTargets(

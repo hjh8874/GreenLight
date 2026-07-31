@@ -181,6 +181,52 @@ namespace CityFlow.Content
             return true;
         }
 
+        public bool RestoreAssignment(
+            EmergencyIncident targetIncident,
+            EmergencyIncidentSystem owner)
+        {
+            if (!initialized ||
+                targetIncident == null ||
+                owner == null ||
+                !hasHomeHospital ||
+                targetIncident.AssignedHospital !=
+                    homeHospital ||
+                targetIncident.State is not (
+                    EmergencyIncidentState.Treating
+                    or EmergencyIncidentState
+                        .AmbulanceReturning
+                    or EmergencyIncidentState
+                        .AmbulanceReturningAfterFailure))
+            {
+                return false;
+            }
+
+            incident = targetIncident;
+            incidentSystem = owner;
+            assigned = true;
+            retryRemainingSeconds = 0f;
+            routeFailureCount = 0;
+            hasDepartedHospital = true;
+            ConfigureRouteDefaults();
+
+            if (targetIncident.State ==
+                EmergencyIncidentState.Treating)
+            {
+                stage = TravelStage.None;
+                route.StopRoute();
+                worldView.ShowParkedAtIncident(
+                    targetIncident.Location,
+                    parkingSlot: 0,
+                    immediate: true);
+                return true;
+            }
+
+            stage = TravelStage.Returning;
+            worldView.PrepareRoadsideDeparture();
+            StartCurrentStage(preferCurrentRoad: false);
+            return true;
+        }
+
         public void BeginReturn()
         {
             if (!assigned ||

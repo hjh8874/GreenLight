@@ -1392,10 +1392,61 @@ namespace CityFlow.Tests.ViewEditMode
                     parkedAgent.IsAssigned,
                     Is.True);
 
+                float outboundRemaining =
+                    incident.StateRemainingSeconds;
+                EmergencyIncidentSaveData outboundSnapshot =
+                    system.CreateSnapshot();
+
+                system.RestoreSnapshot(outboundSnapshot);
+                incident = system.ActiveIncidents[0];
+
+                Assert.That(
+                    incident.State,
+                    Is.EqualTo(
+                        EmergencyIncidentState
+                            .AmbulanceOutbound));
+                Assert.That(
+                    incident.StateRemainingSeconds,
+                    Is.EqualTo(outboundRemaining)
+                        .Within(0.0001f));
+                Assert.That(
+                    dispatch.ActiveVehicleCount,
+                    Is.EqualTo(1),
+                    "Restoring the outbound trip must not dispatch a duplicate ambulance.");
+                Assert.That(
+                    dispatch.TotalVehicleCount,
+                    Is.EqualTo(
+                        config.AmbulancesPerHospital));
+
                 Assert.That(
                     system.TryMarkAmbulanceArrived(
                         incident.IncidentId),
                     Is.True);
+                float treatingRemaining =
+                    incident.StateRemainingSeconds;
+                EmergencyIncidentSaveData treatingSnapshot =
+                    system.CreateSnapshot();
+
+                system.RestoreSnapshot(treatingSnapshot);
+                incident = system.ActiveIncidents[0];
+
+                Assert.That(
+                    incident.State,
+                    Is.EqualTo(
+                        EmergencyIncidentState.Treating));
+                Assert.That(
+                    incident.StateRemainingSeconds,
+                    Is.EqualTo(treatingRemaining)
+                        .Within(0.0001f));
+                Assert.That(
+                    dispatch.ActiveVehicleCount,
+                    Is.EqualTo(1),
+                    "Restoring treatment must reconnect exactly one hospital ambulance.");
+                Assert.That(
+                    dispatch.TotalVehicleCount,
+                    Is.EqualTo(
+                        config.AmbulancesPerHospital));
+
                 system.Tick(
                     config.TreatmentSeconds + 0.01f);
                 Assert.That(
@@ -1403,6 +1454,31 @@ namespace CityFlow.Tests.ViewEditMode
                     Is.EqualTo(
                         EmergencyIncidentState
                             .AmbulanceReturning));
+                float returningRemaining =
+                    incident.StateRemainingSeconds;
+                EmergencyIncidentSaveData returningSnapshot =
+                    system.CreateSnapshot();
+
+                system.RestoreSnapshot(returningSnapshot);
+                incident = system.ActiveIncidents[0];
+
+                Assert.That(
+                    incident.State,
+                    Is.EqualTo(
+                        EmergencyIncidentState
+                            .AmbulanceReturning));
+                Assert.That(
+                    incident.StateRemainingSeconds,
+                    Is.EqualTo(returningRemaining)
+                        .Within(0.0001f));
+                Assert.That(
+                    dispatch.ActiveVehicleCount,
+                    Is.EqualTo(1),
+                    "Restoring the return trip must reconnect exactly one hospital ambulance.");
+                Assert.That(
+                    dispatch.TotalVehicleCount,
+                    Is.EqualTo(
+                        config.AmbulancesPerHospital));
                 Assert.That(
                     system.TryMarkAmbulanceReturned(
                         incident.IncidentId),
@@ -1859,6 +1935,243 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     (long)nextDispatchField.GetValue(system),
                     Is.EqualTo(scheduledDay));
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+                Object.DestroyImmediate(config);
+            }
+        }
+
+        [TestCase(
+            EmergencyIncidentState.WaitingForHospital)]
+        [TestCase(
+            EmergencyIncidentState.AmbulanceOutbound)]
+        [TestCase(
+            EmergencyIncidentState.Treating)]
+        [TestCase(
+            EmergencyIncidentState.AmbulanceReturning)]
+        [TestCase(
+            EmergencyIncidentState
+                .AmbulanceReturningAfterFailure)]
+        public void IncidentSnapshot_RoundTripsActiveStateWithoutDuplicateOutcome(
+            EmergencyIncidentState expectedState)
+        {
+            CreateEmergencyTestWorld(
+                useExternalTransport: true,
+                out GameObject owner,
+                out EmergencyIncidentSystem system,
+                out EmergencyIncidentConfigSO config);
+            FieldInfo servicesField =
+                typeof(EmergencyIncidentSystem).GetField(
+                    "services",
+                    BindingFlags.Instance |
+                    BindingFlags.NonPublic);
+            Assert.That(servicesField, Is.Not.Null);
+            var services =
+                (CityFlowServices)servicesField.GetValue(system);
+            int outcomeCount = 0;
+            services.Events.EmergencyIncidentOutcomeReported +=
+                _ => outcomeCount++;
+
+            try
+            {
+                if (expectedState ==
+                    EmergencyIncidentState.WaitingForHospital)
+                {
+                    var engine = services.TileData as SimEngine;
+                    Assert.That(engine, Is.Not.Null);
+                    var hospitals =
+                        new Vector2Int[
+                            system.HospitalTiles.Count];
+                    for (int i = 0;
+                         i < hospitals.Length;
+                         i++)
+                    {
+                        hospitals[i] =
+                            system.HospitalTiles[i];
+                    }
+
+                    for (int i = 0;
+                         i < hospitals.Length;
+                         i++)
+                    {
+                        Assert.That(
+                            engine.Remove(hospitals[i]),
+                            Is.True);
+                    }
+
+                    system.RebuildLocations();
+                    Assert.That(
+                        system.HospitalTiles.Count,
+                        Is.Zero);
+                }
+
+                Assert.That(
+                    system.TryCreateIncidentAt(
+                        new Vector2Int(4, 12)),
+                    Is.True);
+                EmergencyIncident incident =
+                    system.ActiveIncidents[0];
+
+                switch (expectedState)
+                {
+                    case EmergencyIncidentState.Treating:
+                        Assert.That(
+                            system.TryMarkAmbulanceArrived(
+                                incident.IncidentId),
+                            Is.True);
+                        break;
+
+                    case EmergencyIncidentState
+                        .AmbulanceReturning:
+                        Assert.That(
+                            system.TryMarkAmbulanceArrived(
+                                incident.IncidentId),
+                            Is.True);
+                        system.Tick(
+                            config.TreatmentSeconds + 0.01f);
+                        break;
+
+                    case EmergencyIncidentState
+                        .AmbulanceReturningAfterFailure:
+                        Assert.That(
+                            system.TryFailIncident(
+                                incident.IncidentId,
+                                EmergencyIncidentFailureReason
+                                    .DestinationUnreachable),
+                            Is.True);
+                        break;
+                }
+
+                Assert.That(
+                    incident.State,
+                    Is.EqualTo(expectedState));
+                float remainingSeconds =
+                    incident.StateRemainingSeconds;
+                EmergencyIncidentFailureReason failureReason =
+                    incident.FailureReason;
+                int outcomesBeforeRestore = outcomeCount;
+                EmergencyIncidentSaveData snapshot =
+                    system.CreateSnapshot();
+
+                system.RestoreSnapshot(snapshot);
+
+                Assert.That(
+                    system.ActiveIncidentCount,
+                    Is.EqualTo(1));
+                EmergencyIncident restored =
+                    system.ActiveIncidents[0];
+                Assert.That(
+                    restored.State,
+                    Is.EqualTo(expectedState));
+                Assert.That(
+                    restored.StateRemainingSeconds,
+                    Is.EqualTo(remainingSeconds)
+                        .Within(0.0001f));
+                Assert.That(
+                    restored.FailureReason,
+                    Is.EqualTo(failureReason));
+                Assert.That(
+                    outcomeCount,
+                    Is.EqualTo(outcomesBeforeRestore),
+                    "Restore must not publish a duplicate success or failure outcome.");
+
+                EmergencyIncidentSaveData roundTrip =
+                    system.CreateSnapshot();
+                Assert.That(
+                    roundTrip.ActiveIncidents,
+                    Has.Length.EqualTo(1));
+                Assert.That(
+                    roundTrip.ActiveIncidents[0].State,
+                    Is.EqualTo((int)expectedState));
+                Assert.That(
+                    roundTrip.ActiveIncidents[0]
+                        .StateRemainingSeconds,
+                    Is.EqualTo(remainingSeconds)
+                        .Within(0.0001f));
+
+                switch (expectedState)
+                {
+                    case EmergencyIncidentState
+                        .AmbulanceOutbound:
+                        Assert.That(
+                            system.TryMarkAmbulanceArrived(
+                                restored.IncidentId),
+                            Is.True);
+                        Assert.That(
+                            system.TryMarkAmbulanceArrived(
+                                restored.IncidentId),
+                            Is.False);
+                        Assert.That(
+                            outcomeCount,
+                            Is.EqualTo(
+                                outcomesBeforeRestore));
+                        break;
+
+                    case EmergencyIncidentState.Treating:
+                        system.Tick(
+                            remainingSeconds + 0.01f);
+                        Assert.That(
+                            restored.State,
+                            Is.EqualTo(
+                                EmergencyIncidentState
+                                    .AmbulanceReturning));
+                        Assert.That(
+                            outcomeCount,
+                            Is.EqualTo(
+                                outcomesBeforeRestore));
+                        break;
+
+                    case EmergencyIncidentState
+                        .AmbulanceReturning:
+                        Assert.That(
+                            system.TryMarkAmbulanceReturned(
+                                restored.IncidentId),
+                            Is.True);
+                        Assert.That(
+                            system.TryMarkAmbulanceReturned(
+                                restored.IncidentId),
+                            Is.False);
+                        Assert.That(
+                            outcomeCount,
+                            Is.EqualTo(
+                                outcomesBeforeRestore + 1));
+                        break;
+
+                    case EmergencyIncidentState
+                        .AmbulanceReturningAfterFailure:
+                        Assert.That(
+                            system.TryMarkAmbulanceReturned(
+                                restored.IncidentId),
+                            Is.True);
+                        Assert.That(
+                            system.TryMarkAmbulanceReturned(
+                                restored.IncidentId),
+                            Is.False);
+                        Assert.That(
+                            outcomeCount,
+                            Is.EqualTo(
+                                outcomesBeforeRestore));
+                        break;
+
+                    case EmergencyIncidentState
+                        .WaitingForHospital:
+                        system.Tick(0f);
+                        Assert.That(
+                            system.ActiveIncidentCount,
+                            Is.EqualTo(1));
+                        Assert.That(
+                            restored.State,
+                            Is.EqualTo(
+                                EmergencyIncidentState
+                                    .WaitingForHospital));
+                        Assert.That(
+                            outcomeCount,
+                            Is.EqualTo(
+                                outcomesBeforeRestore));
+                        break;
+                }
             }
             finally
             {

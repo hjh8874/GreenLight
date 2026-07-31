@@ -233,22 +233,28 @@ namespace CityFlow.Content
                 return;
             }
 
-            if (incident.State ==
-                EmergencyIncidentState.AmbulanceOutbound)
+            if (incident.State is
+                EmergencyIncidentState.AmbulanceOutbound
+                or EmergencyIncidentState.Treating)
             {
                 EnsureVehicle(incident);
                 return;
             }
 
-            if ((incident.State is
-                     EmergencyIncidentState.AmbulanceReturning
-                     or EmergencyIncidentState
-                         .AmbulanceReturningAfterFailure) &&
-                activeVehicles.TryGetValue(
-                    incident.IncidentId,
-                    out AmbulanceVehicleAgent returningVehicle))
+            if (incident.State is
+                EmergencyIncidentState.AmbulanceReturning
+                or EmergencyIncidentState
+                    .AmbulanceReturningAfterFailure)
             {
-                returningVehicle.BeginReturn();
+                EnsureVehicle(incident);
+
+                if (activeVehicles.TryGetValue(
+                        incident.IncidentId,
+                        out AmbulanceVehicleAgent returningVehicle))
+                {
+                    returningVehicle.BeginReturn();
+                }
+
                 return;
             }
 
@@ -296,9 +302,17 @@ namespace CityFlow.Content
 
             agent.Initialize(services);
 
-            if (agent.Assign(
-                    incident,
-                    incidentSystem))
+            bool assigned =
+                incident.State ==
+                    EmergencyIncidentState.AmbulanceOutbound
+                    ? agent.Assign(
+                        incident,
+                        incidentSystem)
+                    : agent.RestoreAssignment(
+                        incident,
+                        incidentSystem);
+
+            if (assigned)
             {
                 return;
             }
