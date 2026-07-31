@@ -102,6 +102,19 @@ namespace CityFlow.UI
                 signalControlPanel = GetComponentInChildren<SignalControlPanelView>(true);
             }
 
+            // 호환성 유지: 기존 씬에서 Inspector 수동 조립을 요구하지 않도록,
+            // 씬에 신호 제어 패널 프리팹이 없다면 Resources 폴더에서 동적 로드하여 자동 연동합니다.
+            if (signalControlPanel == null && signalControlContainer != null)
+            {
+                var prefab = Resources.Load<GameObject>("CityFlow/UI/UI_SignalControlPanel");
+                if (prefab != null)
+                {
+                    var instance = Instantiate(prefab, signalControlContainer.transform);
+                    signalControlPanel = instance.GetComponent<SignalControlPanelView>();
+                    Debug.Log($"[AnalysisCardController] UI_SignalControlPanel auto-loaded from Resources in scene {gameObject.scene.name}");
+                }
+            }
+
             if (btnResolveJam != null) btnResolveJam.onClick.AddListener(OnResolveJamClicked);
             if (btnUpgrade != null) btnUpgrade.onClick.AddListener(OnUpgradeClicked);
 
