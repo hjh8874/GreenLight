@@ -38,6 +38,19 @@ namespace CityFlow.Content
                 }
                 result.Add(entries[i]);
             }
+
+            var validIds = new HashSet<string>(seen, System.StringComparer.Ordinal);
+            for (int i = 0; i < result.Count; i++)
+            {
+                string prerequisiteId = result[i].prerequisiteId?.Trim();
+                if (!string.IsNullOrEmpty(prerequisiteId) &&
+                    !validIds.Contains(prerequisiteId))
+                {
+                    Debug.LogWarning(
+                        $"[ResearchCatalogSO] 연구 {result[i].researchId}의 " +
+                        $"전제 id가 없다: {prerequisiteId}. 루트로 취급한다.", this);
+                }
+            }
             return result;
         }
     }

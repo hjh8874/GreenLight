@@ -20,6 +20,10 @@ public class ResearchPanelTests
         {
             var services = new CityFlowServices(new SimEventHub(), null, null);
             var research = serviceOwner.AddComponent<ResearchUnlockService>();
+            var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+            Configure(catalog, ("research_a", 1), ("research_b", 99));
+            SetPrivate(research, "catalog", catalog);
+            research.inputsOverrideForTest = () => new ResearchConditionInputs(1, 0, null);
             research.Initialize(services);
             Assert.IsTrue(research.TryUnlock("research_a"), "테스트 준비: 하나는 열림");
 
@@ -48,6 +52,10 @@ public class ResearchPanelTests
         {
             var services = new CityFlowServices(new SimEventHub(), null, null);
             var research = serviceOwner.AddComponent<ResearchUnlockService>();
+            var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+            Configure(catalog, ("research_a", 1), ("research_b", 99));
+            SetPrivate(research, "catalog", catalog);
+            research.inputsOverrideForTest = () => new ResearchConditionInputs(1, 0, null);
             research.Initialize(services);
 
             ResearchPanelController controller = CreateController(owner, services,

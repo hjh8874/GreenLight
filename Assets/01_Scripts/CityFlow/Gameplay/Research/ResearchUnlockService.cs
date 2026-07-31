@@ -23,6 +23,8 @@ namespace CityFlow.Gameplay.Research
 
         private readonly HashSet<string> unlockedResearchIds =
             new(StringComparer.Ordinal);
+        private readonly HashSet<string> readyResearchIds =
+            new(StringComparer.Ordinal);
         private readonly HashSet<string> purchasedUpgradeIds =
             new(StringComparer.Ordinal);
         private bool initialized;
@@ -149,12 +151,26 @@ namespace CityFlow.Gameplay.Research
             if (!initialized || catalog == null) return;
             ResearchConditionInputs inputs = inputsOverrideForTest?.Invoke() ?? BuildInputs();
             List<ResearchEntry> entries = catalog.ValidEntries();
+            var entriesById = new Dictionary<string, ResearchEntry>(StringComparer.Ordinal);
+            for (int i = 0; i < entries.Count; i++)
+            {
+                entriesById[NormalizeId(entries[i].researchId)] = entries[i];
+            }
+
+            readyResearchIds.Clear();
             for (int i = 0; i < entries.Count; i++)
             {
                 ResearchEntry entry = entries[i];
                 if (IsUnlocked(entry.researchId)) continue;               // §9: 다시 잠기지 않는다
+                string prerequisiteId = NormalizeId(entry.prerequisiteId);
+                if (prerequisiteId.Length > 0 &&
+                    (!entriesById.ContainsKey(prerequisiteId) ||
+                     !IsUnlocked(prerequisiteId)))
+                {
+                    continue;
+                }
                 if (!ResearchConditionEvaluator.IsSatisfied(entry, inputs)) continue;
-                TryUnlock(entry.researchId);                              // 기존 경로 → 이벤트·세이브 공짜
+                readyResearchIds.Add(NormalizeId(entry.researchId));
             }
         }
 
@@ -195,18 +211,27 @@ namespace CityFlow.Gameplay.Research
                    unlockedResearchIds.Contains(normalizedId);
         }
 
+        public bool IsReady(string researchId)
+        {
+            string normalizedId = NormalizeId(researchId);
+            return normalizedId.Length > 0 && readyResearchIds.Contains(normalizedId);
+        }
+
         public bool TryUnlock(string researchId)
         {
             string normalizedId = NormalizeId(researchId);
-            if (!initialized || normalizedId.Length == 0 ||
+            if (!initialized || normalizedId.Length == 0 || !IsReady(normalizedId) ||
                 !unlockedResearchIds.Add(normalizedId))
             {
                 return false;
             }
 
+            readyResearchIds.Remove(normalizedId);
+
             Debug.Log(
                 $"[ResearchUnlockService] Unlocked {normalizedId}.",
                 this);
+            EvaluatePendingResearch();
             ResearchUnlocked?.Invoke(normalizedId);
             return true;
         }
@@ -230,6 +255,7 @@ namespace CityFlow.Gameplay.Research
             RestoreSet(
                 purchasedUpgradeIds,
                 snapshot?.PurchasedUpgradeIds);
+            EvaluatePendingResearch();
             ResearchStateRestored?.Invoke();
         }
 

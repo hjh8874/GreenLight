@@ -10,6 +10,7 @@ namespace CityFlow.Contracts
         event Action ResearchStateRestored;
 
         bool IsUnlocked(string researchId);
+        bool IsReady(string researchId);
         bool TryUnlock(string researchId);
     }
 }

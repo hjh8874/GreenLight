@@ -11,6 +11,7 @@ namespace CityFlow.Gameplay.Research
     public sealed class ResearchEntry
     {
         public string researchId;
+        public string prerequisiteId;
         public string displayName;
         public ResearchConditionKind conditionKind;
         public int threshold;
