@@ -20,7 +20,6 @@ namespace CityFlow.UI
         private readonly HashSet<Vector2Int> _trackedAnchors = new();
         private readonly Dictionary<Vector2Int, TextMeshPro> _labels = new();
         private readonly List<Vector2Int> _removedAnchors = new();
-        private readonly List<Vector2Int> _finishedLabels = new();
         private bool _subscribed;
 
         public void Initialize(CityFlowServices services)
@@ -80,7 +79,7 @@ namespace CityFlow.UI
                     out CompanyStaffing staffing)) return;
 
             _trackedAnchors.Add(anchor);
-            UpdateLabel(anchor, staffing);
+            RefreshLabel(anchor, staffing);
         }
 
         private TextMeshPro CreateLabel(Vector2Int tile)
@@ -113,18 +112,7 @@ namespace CityFlow.UI
                     continue;
                 }
 
-                if (staffing.Filled >= staffing.Capacity)
-                {
-                    _finishedLabels.Add(anchor);
-                    continue;
-                }
-
-                UpdateLabel(anchor, staffing, space, cam);
-            }
-
-            for (int i = 0; i < _finishedLabels.Count; i++)
-            {
-                RemoveLabel(_finishedLabels[i]);
+                RefreshLabel(anchor, staffing, space, cam);
             }
 
             for (int i = 0; i < _removedAnchors.Count; i++)
@@ -134,16 +122,21 @@ namespace CityFlow.UI
                 _trackedAnchors.Remove(anchor);
             }
 
-            _finishedLabels.Clear();
             _removedAnchors.Clear();
         }
 
-        private void UpdateLabel(
+        private void RefreshLabel(
             Vector2Int anchor,
             CompanyStaffing staffing,
             IWorldCoordinateSpace space = null,
             Camera cam = null)
         {
+            if (staffing.Filled >= staffing.Capacity)
+            {
+                RemoveLabel(anchor);
+                return;
+            }
+
             if (!_labels.TryGetValue(anchor, out TextMeshPro label) || label == null)
             {
                 label = CreateLabel(anchor);
