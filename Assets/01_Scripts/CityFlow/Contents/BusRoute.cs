@@ -1726,6 +1726,99 @@ namespace CityFlow.Content.Transit
                 }
             }
 
+            if (found)
+            {
+                return true;
+            }
+
+            return TryFindFallbackRoadsidePath(
+                startRoad,
+                destinationStop,
+                result,
+                preventImmediateReverse,
+                forbiddenFirstStep,
+                out selectedAccessRoad);
+        }
+
+        private bool TryFindFallbackRoadsidePath(
+            Vector2Int startRoad,
+            Vector2Int destinationStop,
+            List<Vector2Int> result,
+            bool preventImmediateReverse,
+            Vector2Int forbiddenFirstStep,
+            out Vector2Int selectedAccessRoad)
+        {
+            bool found = false;
+            selectedAccessRoad = default;
+            TileType stopType =
+                tileData.GetTileType(destinationStop);
+            Vector2Int footprint =
+                TileFootprint.IsBuilding(stopType)
+                    ? tileData.GetFootprintSize(stopType)
+                    : Vector2Int.one;
+
+            for (int y = 0; y < footprint.y; y++)
+            {
+                for (int x = 0; x < footprint.x; x++)
+                {
+                    Vector2Int footprintTile =
+                        destinationStop +
+                        new Vector2Int(x, y);
+
+                    for (int i = 0;
+                         i < Directions.Length;
+                         i++)
+                    {
+                        Vector2Int accessRoad =
+                            footprintTile + Directions[i];
+                        if (!IsRoad(accessRoad))
+                        {
+                            continue;
+                        }
+
+                        bool pathFound;
+                        if (startRoad == accessRoad)
+                        {
+                            candidateRoadPath.Clear();
+                            candidateRoadPath.Add(startRoad);
+                            pathFound = true;
+                        }
+                        else
+                        {
+                            pathFound = TryBuildRoadPath(
+                                startRoad,
+                                accessRoad,
+                                candidateRoadPath,
+                                preventImmediateReverse,
+                                forbiddenFirstStep);
+                        }
+
+                        if (!pathFound)
+                        {
+                            continue;
+                        }
+
+                        int candidateCount =
+                            GetRoadsidePathCount(
+                                candidateRoadPath);
+                        if (candidateCount <= 0)
+                        {
+                            continue;
+                        }
+
+                        if (!found ||
+                            candidateCount < result.Count)
+                        {
+                            CopyRoadsidePathWithSetback(
+                                candidateRoadPath,
+                                result,
+                                out selectedAccessRoad);
+                            found = true;
+                        }
+                    }
+                }
+            }
+
             return found;
         }
 
