@@ -77,9 +77,9 @@ namespace CityFlow.UI
 
         private void AutoWireSceneIntegration()
         {
-            // 구 씬 패널은 현재 프리팹의 catalog/rowTemplate가 없는 이전 직렬화 형태다.
-            // 해당 패널이 bootstrap 초기화 순서에서 새 연결을 되돌리지 않게 건너뛴다.
-            if (catalog == null || rowTemplate == null) return;
+            // 구 씬 패널은 rowTemplate 필드가 없던 이전 직렬화 형태다 — rowTemplate 만이 판별자.
+            // catalog 는 '비면 Resources 폴백'이 계약이라 null 이어도 유효한 새 패널일 수 있다.
+            if (rowTemplate == null) return;
 
             UIDockController dock = FindFirstObjectByType<UIDockController>(FindObjectsInactive.Include);
             if (dock != null)
