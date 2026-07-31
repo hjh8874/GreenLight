@@ -19,6 +19,8 @@ namespace CityFlow.UI
         private const float ColumnGap = 54f;
         private const float RowGap = 18f;
         private const float ConnectorThickness = 3f;
+        private const float HeaderHeight = 96f;
+        private const float PanelPadding = 24f;
 
         [SerializeField] private ResearchCatalogSO catalog;
         [SerializeField] private GameObject rowTemplate;
@@ -101,6 +103,7 @@ namespace CityFlow.UI
 
         private void BuildRows()
         {
+            DisableParentLayoutGroup();
             for (int i = 0; i < rows.Count; i++) DestroyObject(rows[i].Instance);
             for (int i = 0; i < connectors.Count; i++) DestroyObject(connectors[i]);
             rows.Clear();
@@ -194,6 +197,40 @@ namespace CityFlow.UI
                 if (prerequisite.Length == 0 || !byId.ContainsKey(prerequisite) || !rowById.ContainsKey(prerequisite)) continue;
                 CreateConnector(rowById[prerequisite], rows[i]);
             }
+            ResizePanelToGrid();
+        }
+
+        private void DisableParentLayoutGroup()
+        {
+            Transform parent = rowTemplate != null ? rowTemplate.transform.parent : null;
+            if (parent == null) return;
+            LayoutGroup[] layoutGroups = parent.GetComponents<LayoutGroup>();
+            for (int i = 0; i < layoutGroups.Length; i++) layoutGroups[i].enabled = false;
+            ContentSizeFitter[] fitters = parent.GetComponents<ContentSizeFitter>();
+            for (int i = 0; i < fitters.Length; i++) fitters[i].enabled = false;
+        }
+
+        private void ResizePanelToGrid()
+        {
+            RectTransform panel = GetComponent<RectTransform>();
+            if (panel == null) return;
+
+            int columnCount = 0;
+            int branchCount = 0;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                columnCount = Mathf.Max(columnCount, rows[i].Depth + 1);
+                branchCount = Mathf.Max(branchCount, rows[i].Branch + 1);
+            }
+            float gridWidth = columnCount * CellWidth + Mathf.Max(0, columnCount - 1) * ColumnGap;
+            float gridHeight = branchCount * CellHeight + Mathf.Max(0, branchCount - 1) * RowGap;
+            panel.anchorMin = new Vector2(0.5f, 0.5f);
+            panel.anchorMax = new Vector2(0.5f, 0.5f);
+            panel.pivot = new Vector2(0.5f, 0.5f);
+            panel.anchoredPosition = Vector2.zero;
+            panel.sizeDelta = new Vector2(
+                gridWidth + PanelPadding * 2f,
+                HeaderHeight + gridHeight + PanelPadding * 2f);
         }
 
         private void CreateConnector(Row parent, Row child)
@@ -205,11 +242,11 @@ namespace CityFlow.UI
             RectTransform rect = line.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0f, 1f);
             rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0f, 1f);
             Vector2 start = GetRect(parent.Instance).anchoredPosition + new Vector2(CellWidth, -CellHeight * 0.5f);
             Vector2 end = GetRect(child.Instance).anchoredPosition + new Vector2(0f, -CellHeight * 0.5f);
             Vector2 delta = end - start;
-            rect.anchoredPosition = (start + end) * 0.5f;
+            rect.anchoredPosition = start + new Vector2(0f, ConnectorThickness * 0.5f);
             rect.sizeDelta = new Vector2(delta.magnitude, ConnectorThickness);
             rect.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
             connectors.Add(line);
