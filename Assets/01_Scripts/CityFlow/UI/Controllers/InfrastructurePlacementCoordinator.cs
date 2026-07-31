@@ -50,6 +50,8 @@ namespace CityFlow.UI.Controllers
         private const float UNDO_REFUND_RATE = 1.0f;
         private const float DEMOLISH_REFUND_RATE = 0.5f;
 
+        public Func<bool> IsBuildMenuOpen { get; set; }
+
         public bool IsBuildingMode => _isBuildingMode;
 
         public void Initialize(CityFlowServices services)
@@ -283,6 +285,19 @@ namespace CityFlow.UI.Controllers
 
             if (mouse.rightButton.wasPressedThisFrame)
             {
+                if (_isBuildingMode && !_isDemolishMode)
+                {
+                    CancelPlacement();
+                    _rightClickStartCoord = null;
+                    return true;
+                }
+
+                if (!IsBuildMenuOpen?.Invoke() ?? true)
+                {
+                    _rightClickStartCoord = null;
+                    return false;
+                }
+
                 _rightClickStartCoord = GetMouseGridCoordinate();
             }
 

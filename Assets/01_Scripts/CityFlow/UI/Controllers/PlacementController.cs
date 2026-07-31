@@ -63,6 +63,8 @@ namespace CityFlow.UI
         private PlacementVisualManager _visualManager;
         private PlacementCostLabelManager _costLabelManager;
 
+        public Func<bool> IsBuildMenuOpen { get; set; }
+
         private PlacementActionDispatcher _actionDispatcher;
 
         private bool _managersInitialized = false;
@@ -95,6 +97,7 @@ namespace CityFlow.UI
             _inputHandler.OnDemolishRequested += HandleDemolish;
             _inputHandler.OnPlaceRequested += HandlePlace;
             _inputHandler.OnDragPlaceRequested += HandleDragPlace;
+            _inputHandler.OnCancelPlacementRequested += CancelPlacement;
 
             _managersInitialized = true;
         }
@@ -201,6 +204,11 @@ namespace CityFlow.UI
             return true;
         }
 
+        private void CancelPlacement()
+        {
+            ToggleBuildMode(false);
+        }
+
         public void ToggleBuildMode(bool isOn)
         {
             _isBuildingMode = isOn;
@@ -300,7 +308,8 @@ namespace CityFlow.UI
                 _currentSpecialBuildingId);
             bool isBuildingType = TileFootprint.IsBuilding(_currentType);
 
-            _inputHandler.UpdateGlobalInput(_isBuildingMode, isBuildingType, gridCoord);
+            bool isBuildMenuOpen = IsBuildMenuOpen?.Invoke() ?? false;
+            _inputHandler.UpdateGlobalInput(_isBuildingMode, isBuildingType, gridCoord, isBuildMenuOpen);
 
             if (_inputHandler.IsPointerOverBlockingUI())
             {
@@ -374,13 +383,27 @@ namespace CityFlow.UI
 
         private void HandlePlace(Vector2Int coord)
         {
-            _actionDispatcher.PlaceInfrastructure(
-                coord,
-                _currentType,
-                ResolvePlacementDirection(coord),
-                _services,
-                _currentSpecialBuildingId,
-                _currentCompanyTypeId);
+            PlacementDirection direction = ResolvePlacementDirection(coord);
+            if (_actionDispatcher.CheckCanPlace(
+                    coord,
+                    _currentType,
+                    direction,
+                    _services,
+                    _currentSpecialBuildingId))
+            {
+                _actionDispatcher.PlaceInfrastructure(
+                    coord,
+                    _currentType,
+                    direction,
+                    _services,
+                    _currentSpecialBuildingId,
+                    _currentCompanyTypeId);
+
+                if (_currentType != TileType.Road)
+                {
+                    CancelPlacement();
+                }
+            }
         }
 
         private void HandleDragPlace(Vector2Int from, Vector2Int to)

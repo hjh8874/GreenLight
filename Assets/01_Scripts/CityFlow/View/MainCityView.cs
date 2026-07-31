@@ -469,6 +469,13 @@ namespace CityFlow.View
             dockController = FindAnyObjectByType<UIDockController>(FindObjectsInactive.Include);
             placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
             infrastructurePlacementCoordinator = FindAnyObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+            
+            if (dockController != null)
+            {
+                if (placementController != null) placementController.IsBuildMenuOpen = () => dockController.CurrentMenu == UIDockController.MenuType.Build;
+                if (infrastructurePlacementCoordinator != null) infrastructurePlacementCoordinator.IsBuildMenuOpen = () => dockController.CurrentMenu == UIDockController.MenuType.Build;
+            }
+
             gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize, false);
         }
 
