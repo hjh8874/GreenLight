@@ -13,6 +13,7 @@ namespace CityFlow.Sim
         public int RouteIndex;
         public int TileIndex;
         public int QueueSlot;
+        public float QueueOffsetTiles;
         public int HomeSlot;
         public int WorkSlot;
         public bool IsVisible;
@@ -59,6 +60,7 @@ namespace CityFlow.Sim
         private readonly bool[] _enqueued;
         private readonly int[] _tileIndices;
         private readonly int[] _queueSlots;
+        private readonly float[] _queueOffsets;
         private readonly float[] _intersectionProgress;
         private readonly float[] _linkProgress;
         private readonly float[] _roundaboutProgress;
@@ -195,6 +197,7 @@ namespace CityFlow.Sim
             _enqueued = new bool[_runtimeVehicleCapacity];
             _tileIndices = new int[_runtimeVehicleCapacity];
             _queueSlots = new int[_runtimeVehicleCapacity];
+            _queueOffsets = new float[_runtimeVehicleCapacity];
             _intersectionProgress = new float[_runtimeVehicleCapacity];
             _linkProgress = new float[_runtimeVehicleCapacity];
             _roundaboutProgress = new float[_runtimeVehicleCapacity];
@@ -206,6 +209,7 @@ namespace CityFlow.Sim
             _offNetworkBlockedTicks =
                 new int[_runtimeVehicleCapacity];
             Array.Fill(_queueSlots, -1);
+            Array.Clear(_queueOffsets, 0, _queueOffsets.Length);
             Array.Fill(_intersectionProgress, -1f);
             Array.Clear(_linkProgress, 0, _linkProgress.Length);
             Array.Fill(_roundaboutProgress, -1f);
@@ -221,6 +225,7 @@ namespace CityFlow.Sim
             Array.Clear(_enqueued, 0, _enqueued.Length);
             Array.Clear(_tileIndices, 0, _tileIndices.Length);
             Array.Fill(_queueSlots, -1);
+            Array.Clear(_queueOffsets, 0, _queueOffsets.Length);
             Array.Fill(_intersectionProgress, -1f);
             Array.Clear(_linkProgress, 0, _linkProgress.Length);
             Array.Fill(_roundaboutProgress, -1f);
@@ -458,6 +463,7 @@ namespace CityFlow.Sim
             if (!preserveExistingAssignments)
                 Array.Clear(_tileIndices, 0, _tileIndices.Length);
             Array.Fill(_queueSlots, -1);
+            Array.Clear(_queueOffsets, 0, _queueOffsets.Length);
             Array.Fill(_intersectionProgress, -1f);
             Array.Clear(_linkProgress, 0, _linkProgress.Length);
             Array.Fill(_roundaboutProgress, -1f);
@@ -664,7 +670,8 @@ namespace CityFlow.Sim
             RoadQueueNetwork net,
             SimEventBuffer events,
             ISignalGate signalGate,
-            int tick)
+            int tick,
+            RoadTrafficCoordinator roadTraffic = null)
         {
             if (net == null) throw new ArgumentNullException(nameof(net));
             if (events == null) throw new ArgumentNullException(nameof(events));
@@ -676,6 +683,7 @@ namespace CityFlow.Sim
             if (_needsSnap || jumped)
             {
                 net.RemoveAllCars();
+                roadTraffic?.ResetNetworkOccupancy();
                 if (jumped)
                 {
                     CancelAllSpecialJourneys();
@@ -696,6 +704,7 @@ namespace CityFlow.Sim
                 }
                 Array.Clear(_enqueued, 0, _enqueued.Length);
                 Array.Fill(_queueSlots, -1);
+                Array.Clear(_queueOffsets, 0, _queueOffsets.Length);
                 Array.Fill(_intersectionProgress, -1f);
                 Array.Clear(_linkProgress, 0, _linkProgress.Length);
                 Array.Fill(_roundaboutProgress, -1f);
@@ -709,8 +718,16 @@ namespace CityFlow.Sim
             _commuteTripSource.SyncDepartures(
                 _scheduler.Cars,
                 _cfg.CoinPerTrip);
+            roadTraffic?.PrepareStep(this);
             TryEnqueueDepartures(net);
-            StepResult result = net.Step(this, signalGate, tick);
+            StepResult result = net.Step(
+                roadTraffic ?? (ICarRouteProvider)this,
+                signalGate,
+                tick);
+            int externalArrivals = roadTraffic?.ProcessArrivals() ?? 0;
+            result.Arrivals = Math.Max(
+                0,
+                result.Arrivals - externalArrivals);
             for (int i = 0; i < net.ArrivalCount; i++)
             {
                 ArrivalRecord arrival = net.GetArrival(i);
@@ -742,6 +759,7 @@ namespace CityFlow.Sim
             }
             ProcessLivenessWatchdog(net);
             SyncLocations(net);
+            roadTraffic?.SynchronizeSnapshots();
             return result;
         }
 
@@ -764,6 +782,7 @@ namespace CityFlow.Sim
                         : specialJourney.ViewRouteIndex,
                     TileIndex = _tileIndices[index],
                     QueueSlot = _queueSlots[index],
+                    QueueOffsetTiles = _queueOffsets[index],
                     HomeSlot = 0,
                     WorkSlot = 0,
                     IsVisible = true,
@@ -792,6 +811,7 @@ namespace CityFlow.Sim
                 RouteIndex = viewRouteIndex,
                 TileIndex = _tileIndices[index],
                 QueueSlot = _queueSlots[index],
+                QueueOffsetTiles = _queueOffsets[index],
                 HomeSlot = car.HomeSlot,
                 WorkSlot = car.WorkSlot,
                 IsVisible = car.State != CarState.Inactive &&
@@ -846,6 +866,7 @@ namespace CityFlow.Sim
                 _enqueued[i] = true;
                 _tileIndices[i] = start;
                 _queueSlots[i] = 0;
+                _queueOffsets[i] = 0f;
                 _intersectionProgress[i] = -1f;
                 _linkProgress[i] = 0f;
                 _roundaboutProgress[i] = -1f;
@@ -1024,6 +1045,7 @@ namespace CityFlow.Sim
             _enqueued[carId] = true;
             _tileIndices[carId] = start;
             _queueSlots[carId] = 0;
+            _queueOffsets[carId] = 0f;
             _intersectionProgress[carId] = -1f;
             _linkProgress[carId] = 0f;
             _roundaboutProgress[carId] = -1f;
@@ -1033,6 +1055,7 @@ namespace CityFlow.Sim
         {
             _tileIndices[carId] = 0;
             _queueSlots[carId] = -1;
+            _queueOffsets[carId] = 0f;
             _intersectionProgress[carId] = -1f;
             _linkProgress[carId] = 0f;
             _roundaboutProgress[carId] = -1f;
@@ -1115,10 +1138,12 @@ namespace CityFlow.Sim
                         out int slot,
                         out float intersectionProgress,
                         out float linkProgress,
-                        out int roundaboutCell))
+                        out int roundaboutCell,
+                        out float queueOffsetTiles))
                 {
                     _linkProgress[i] = 0f;
                     _queueSlots[i] = -1;
+                    _queueOffsets[i] = 0f;
                     _intersectionProgress[i] = -1f;
                     _roundaboutProgress[i] = -1f;
                     _tileIndices[i] = car.State == CarState.ParkedWork
@@ -1128,6 +1153,7 @@ namespace CityFlow.Sim
                 }
                 _linkProgress[i] = linkProgress;
                 _queueSlots[i] = slot;
+                _queueOffsets[i] = queueOffsetTiles;
                 _intersectionProgress[i] = intersectionProgress;
                 _roundaboutProgress[i] = -1f;
                 if (!TryRoute(i, out List<Vector2Int> route)) continue;
@@ -1499,6 +1525,9 @@ namespace CityFlow.Sim
         {
             VehicleTripSnapshot completed = journey.CompleteCurrentLeg();
             events.QueueTripArrival(new VehicleTripArrivedEvent(completed));
+            // 방문 도착 보상. ArrivalEvent 를 타면 주간 적립·HUD·피드·퀘스트가 기존 구독으로 따라온다.
+            if (completed.RewardCoins > 0)
+                events.QueueArrival(new ArrivalEvent(completed.Destination, completed.RewardCoins));
             ResetCarRuntimeState(carId);
 
             if (journey.TryBeginContinuation())
@@ -1674,6 +1703,7 @@ namespace CityFlow.Sim
             _enqueued[carId] = false;
             _tileIndices[carId] = 0;
             _queueSlots[carId] = -1;
+            _queueOffsets[carId] = 0f;
             _intersectionProgress[carId] = -1f;
             _linkProgress[carId] = 0f;
             _roundaboutProgress[carId] = -1f;

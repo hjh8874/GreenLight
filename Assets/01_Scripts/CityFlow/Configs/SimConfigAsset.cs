@@ -1,4 +1,6 @@
 using UnityEngine;
+using CityFlow.Content;
+using CityFlow.Contracts;
 using CityFlow.Sim;
 
 namespace CityFlow.Configs
@@ -10,5 +12,15 @@ namespace CityFlow.Configs
     public sealed class SimConfigAsset : ScriptableObject
     {
         public SimConfig Value = SimConfig.Default();
+
+        [SerializeField]
+        private VehicleFootprintProfileSO standardVehicleFootprint;
+
+        public VehicleFootprint StandardVehicleFootprint =>
+            standardVehicleFootprint != null
+                ? standardVehicleFootprint.Footprint
+                : VehicleFootprint.StandardDefault;
+
+        // Unity setup: assign StandardVehicleFootprint to keep core car spacing configurable.
     }
 }

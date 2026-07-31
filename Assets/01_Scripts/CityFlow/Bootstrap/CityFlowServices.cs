@@ -35,6 +35,9 @@ namespace CityFlow.Bootstrap
             private set;
         }
         public IVehicleTripService VehicleTrips { get; private set; }
+        public IRoadTrafficService RoadTraffic { get; private set; }
+        public IRoadRoutePlanningService RoadRoutePlanning { get; private set; }
+        public IBusLineService BusLines { get; private set; }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
@@ -52,6 +55,10 @@ namespace CityFlow.Bootstrap
         public event Action<ISpecialBuildingVisitService>
             SpecialBuildingVisitsRegistered;
         public event Action<IVehicleTripService> VehicleTripsRegistered;
+        public event Action<IRoadTrafficService> RoadTrafficRegistered;
+        public event Action<IRoadRoutePlanningService>
+            RoadRoutePlanningRegistered;
+        public event Action<IBusLineService> BusLinesRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -360,6 +367,60 @@ namespace CityFlow.Bootstrap
 
             VehicleTrips = vehicleTrips;
             VehicleTripsRegistered?.Invoke(vehicleTrips);
+            return true;
+        }
+
+        public bool RegisterRoadTraffic(IRoadTrafficService roadTraffic)
+        {
+            if (roadTraffic == null)
+            {
+                return false;
+            }
+
+            if (RoadTraffic != null)
+            {
+                return ReferenceEquals(RoadTraffic, roadTraffic);
+            }
+
+            RoadTraffic = roadTraffic;
+            RoadTrafficRegistered?.Invoke(roadTraffic);
+            return true;
+        }
+
+        public bool RegisterRoadRoutePlanning(
+            IRoadRoutePlanningService roadRoutePlanning)
+        {
+            if (roadRoutePlanning == null)
+            {
+                return false;
+            }
+
+            if (RoadRoutePlanning != null)
+            {
+                return ReferenceEquals(
+                    RoadRoutePlanning,
+                    roadRoutePlanning);
+            }
+
+            RoadRoutePlanning = roadRoutePlanning;
+            RoadRoutePlanningRegistered?.Invoke(roadRoutePlanning);
+            return true;
+        }
+
+        public bool RegisterBusLines(IBusLineService busLines)
+        {
+            if (busLines == null)
+            {
+                return false;
+            }
+
+            if (BusLines != null)
+            {
+                return ReferenceEquals(BusLines, busLines);
+            }
+
+            BusLines = busLines;
+            BusLinesRegistered?.Invoke(busLines);
             return true;
         }
 

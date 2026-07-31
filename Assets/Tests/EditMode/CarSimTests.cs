@@ -7,7 +7,8 @@ namespace CityFlow.Sim.Tests
 {
     public class CarSimTests
     {
-        static Vector2Int V(int x, int y) => new Vector2Int(x, y);
+        // SpecialVisitRewardTests 가 하니스를 재사용한다 — internal 로 연다.
+        internal static Vector2Int V(int x, int y) => new Vector2Int(x, y);
 
         // 종전 전역 창(morningStart/End·eveningStart/End)을 콜백 하나로 재현한다.
         static CommuteWindow Window(
@@ -17,7 +18,8 @@ namespace CityFlow.Sim.Tests
                 morningStart, morningEnd - morningStart,
                 eveningStart, eveningEnd - eveningStart);
 
-        static SimConfig Cfg()
+        // 버스 테스트가 재사용한다(#184) — internal 유지.
+        internal static SimConfig Cfg()
         {
             SimConfig cfg = SimConfig.Default();
             cfg.QueueCapacityPerTile = 4;
@@ -831,13 +833,15 @@ namespace CityFlow.Sim.Tests
                 V(8, 1),
                 3L,
                 1,
-                14f);
+                14f,
+                rewardCoins: 0);
             var earlier = new SpecialBuildingVisitTripRequest(
                 "coffee-shop",
                 V(4, 1),
                 3L,
                 0,
-                9f);
+                9f,
+                rewardCoins: 0);
 
             Assert.IsTrue(scheduler.TryEnqueue(later));
             Assert.IsTrue(scheduler.TryEnqueue(earlier));
@@ -934,7 +938,8 @@ namespace CityFlow.Sim.Tests
                     V(6, 0),
                     1L,
                     0,
-                    7f)));
+                    7f,
+                    rewardCoins: 0)));
 
             sim.Step(1L, 7f, queues, events, null, 0);
             events.Drain();
@@ -1004,7 +1009,8 @@ namespace CityFlow.Sim.Tests
                     V(6, 0),
                     1L,
                     0,
-                    17.5f)));
+                    17.5f,
+                    rewardCoins: 0)));
 
             for (int tick = 40; tick < 120; tick++)
             {
@@ -1062,7 +1068,8 @@ namespace CityFlow.Sim.Tests
                     V(3, 0),
                     1L,
                     0,
-                    1f)));
+                    1f,
+                    rewardCoins: 0)));
 
             for (int tick = 0; tick < 8; tick++)
             {
@@ -1121,7 +1128,8 @@ namespace CityFlow.Sim.Tests
                     V(10, 0),
                     1L,
                     0,
-                    1f)));
+                    1f,
+                    rewardCoins: 0)));
             sim.Step(1L, 1f, queues, events, null, 0);
             Assert.AreEqual(1, sim.PendingTripCount);
             Assert.AreEqual(0, sim.ActiveTripCount);
@@ -1142,7 +1150,7 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1, sim.ActiveTripCount);
         }
 
-        private static void BuildSpecialVisitCity(
+        internal static void BuildSpecialVisitCity(
             SimConfig config,
             out CityGrid grid,
             out RoadNetwork roads,

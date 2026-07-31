@@ -21,7 +21,8 @@ MonoBehaviour:
   passengerCapacity: 12
   boardingDemandPerStop: 3
   leavingDemandPerStop: 12
-  vehicleLengthTiles: 0.64
+  vehicleFootprintProfile: {fileID: 11400000, guid: 666216de66d544eca2299d2250b91563, type: 2}
+  vehicleLengthTiles: 0.8
   vehicleWidthTiles: 0.24
   routeColor: {r: 0.96, g: 0.64, b: 0.08, a: 1}
   vehicleVisualPrefab: {fileID: 100000, guid: aeccb9afd2c5d0a49806a3a543b169d2, type: 3}

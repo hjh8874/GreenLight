@@ -1,5 +1,6 @@
 using CityFlow.Bootstrap;
 using CityFlow.Content.Transit;
+using CityFlow.Contracts;
 using CityFlow.View;
 using UnityEngine;
 
@@ -21,15 +22,19 @@ namespace CityFlow.DebugTools
         [SerializeField] private float visualDepth = -0.24f;
 
         private Transform markerRoot;
+        private IReadOnlyTileData tileData;
         private bool subscribed;
+        private int visibleStationCount;
 
-        public int VisibleStationCount =>
+        public int VisibleStationCount => visibleStationCount;
+        public int VisiblePlatformCount =>
             markerRoot != null
                 ? markerRoot.childCount
                 : 0;
 
-        public void Initialize(CityFlowServices _)
+        public void Initialize(CityFlowServices services)
         {
+            tileData = services?.TileData;
             ResolveReferences();
             Subscribe();
             RebuildMarkers();
@@ -99,9 +104,10 @@ namespace CityFlow.DebugTools
                 Destroy(markerRoot.GetChild(i).gameObject);
             }
 
+            visibleStationCount = stopRegistry.BusStops.Count;
             for (int i = 0; i < stopRegistry.BusStops.Count; i++)
             {
-                CreateMarker(stopRegistry.BusStops[i], i + 1);
+                CreateMarkerPair(stopRegistry.BusStops[i], i + 1);
             }
         }
 
@@ -117,11 +123,33 @@ namespace CityFlow.DebugTools
             markerRoot.SetParent(cityView.transform, false);
         }
 
-        private void CreateMarker(Vector2Int tile, int number)
+        private void CreateMarkerPair(Vector2Int tile, int number)
+        {
+            CreateMarker(
+                tile,
+                $"BusStop_{number:00}_A_{tile.x}_{tile.y}");
+
+            if (tileData != null &&
+                BusStopInfrastructurePolicy.TryGetPlatformPair(
+                    tile,
+                    IsRoad,
+                    out _,
+                    out Vector2Int oppositePlatform))
+            {
+                CreateMarker(
+                    oppositePlatform,
+                    $"BusStop_{number:00}_B_" +
+                    $"{oppositePlatform.x}_{oppositePlatform.y}");
+            }
+        }
+
+        private void CreateMarker(
+            Vector2Int tile,
+            string objectName)
         {
             GameObject station = CreateStationVisual(
                 markerRoot,
-                $"BusStop_{number:00}_{tile.x}_{tile.y}");
+                objectName);
             Transform stationTransform = station.transform;
             Vector2Int localTile = tile - cityView.GridOrigin;
             stationTransform.localPosition = new Vector3(
@@ -142,6 +170,39 @@ namespace CityFlow.DebugTools
                 Quaternion.identity;
             return true;
         }
+
+        public bool TryCreatePlacementPreview(
+            Vector2Int tile,
+            out GameObject preview)
+        {
+            if (!TryCreatePlacementPreview(out preview) ||
+                tileData == null ||
+                !BusStopInfrastructurePolicy.TryGetPlatformPair(
+                    tile,
+                    IsRoad,
+                    out _,
+                    out Vector2Int oppositePlatform))
+            {
+                return preview != null;
+            }
+
+            GameObject oppositeVisual = CreateStationVisual(
+                preview.transform,
+                "OppositePlatform");
+            Vector2Int offset = oppositePlatform - tile;
+            float tileSize = cityView != null
+                ? cityView.TileSize
+                : 1f;
+            oppositeVisual.transform.localPosition = new Vector3(
+                offset.x * tileSize,
+                offset.y * tileSize,
+                0f);
+            return true;
+        }
+
+        private bool IsRoad(Vector2Int tile) =>
+            tileData != null &&
+            tileData.GetTileType(tile) == TileType.Road;
 
         private GameObject CreateStationVisual(
             Transform parent,
