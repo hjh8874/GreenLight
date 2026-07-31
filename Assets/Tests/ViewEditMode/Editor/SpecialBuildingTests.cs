@@ -220,7 +220,7 @@ namespace CityFlow.Tests
                 ResearchUnlockService research =
                     serviceObject.AddComponent<ResearchUnlockService>();
                 research.Initialize(services);
-                research.TryUnlock("research_building_cinema");
+                UnlockCinemaForTest(research);
 
                 SpecialBuildingService buildingService =
                     serviceObject.AddComponent<SpecialBuildingService>();
@@ -345,13 +345,7 @@ namespace CityFlow.Tests
                     "cinema",
                     new Vector2Int(2, 3)));
 
-                runtime.Research.inputsOverrideForTest = () =>
-                    new ResearchConditionInputs(0, 80, null);
-                runtime.Research.EvaluatePendingResearch();
-                Assert.IsTrue(runtime.Research.TryUnlock(
-                    "research_building_video_store"));
-                Assert.IsTrue(runtime.Research.TryUnlock(
-                    "research_building_cinema"));
+                UnlockCinemaForTest(runtime.Research);
                 Assert.IsTrue(runtime.Service.IsBuildingUnlocked("cinema"));
                 Assert.IsTrue(runtime.Service.TryPlace(
                     "cinema",
@@ -779,7 +773,7 @@ namespace CityFlow.Tests
             research.Initialize(services);
             if (unlockCinema)
             {
-                research.TryUnlock("research_building_cinema");
+                UnlockCinemaForTest(research);
             }
 
             SpecialBuildingService service =
@@ -793,6 +787,19 @@ namespace CityFlow.Tests
                 service,
                 research,
                 services);
+        }
+
+        private static void UnlockCinemaForTest(ResearchUnlockService research)
+        {
+            research.inputsOverrideForTest = () =>
+                new ResearchConditionInputs(0, 80, null);
+            research.EvaluatePendingResearch();
+            Assert.IsTrue(research.TryUnlock(
+                "research_building_coffee_shop"));
+            Assert.IsTrue(research.TryUnlock(
+                "research_building_video_store"));
+            Assert.IsTrue(research.TryUnlock(
+                "research_building_cinema"));
         }
 
         private static void AssertCadence(

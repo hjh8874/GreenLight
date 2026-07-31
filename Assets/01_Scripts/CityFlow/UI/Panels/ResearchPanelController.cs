@@ -160,7 +160,8 @@ namespace CityFlow.UI
                         $"{ResearchConditionEvaluator.CurrentValue(row.Entry, inputs)}/{row.Entry.threshold}";
                 if (row.StateText != null)
                     row.StateText.text = row.IsUnlocked ? "완료" : row.IsReady ? "해금 가능" : "잠김";
-                CanvasGroup group = row.Instance.GetComponent<CanvasGroup>() ?? row.Instance.AddComponent<CanvasGroup>();
+                CanvasGroup group = row.Instance.GetComponent<CanvasGroup>();
+                if (group == null) group = row.Instance.AddComponent<CanvasGroup>();
                 group.alpha = row.IsUnlocked || row.IsReady ? 1f : 0.45f;
                 Button button = row.Instance.GetComponent<Button>();
                 if (button != null) button.interactable = row.IsReady;
