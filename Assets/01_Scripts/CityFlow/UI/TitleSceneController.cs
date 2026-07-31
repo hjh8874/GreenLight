@@ -22,8 +22,11 @@ namespace CityFlow.UI
         [Tooltip("새 게임 시 띄울 경고 팝업(옵션).")]
         [SerializeField] private ConfirmPopupController confirmPopup;
 
-        private void Start()
+        private System.Collections.IEnumerator Start()
         {
+            // 백그라운드 씬(실제 게임) 로드 및 설정 (UI 숨김, 자동저장 방지)
+            yield return StartCoroutine(LoadBackgroundSceneRoutine());
+
             if (continueButton != null)
             {
                 continueButton.interactable = HasSave();
@@ -33,6 +36,116 @@ namespace CityFlow.UI
             {
                 settingsPanel.SetActive(false);
             }
+        }
+
+        private System.Collections.IEnumerator LoadBackgroundSceneRoutine()
+        {
+            if (string.IsNullOrEmpty(gameSceneName) || !Application.CanStreamedLevelBeLoaded(gameSceneName))
+                yield break;
+
+            // 이미 로드되어 있는지 확인
+            var scene = SceneManager.GetSceneByName(gameSceneName);
+            if (!scene.isLoaded)
+            {
+                var op = SceneManager.LoadSceneAsync(gameSceneName, LoadSceneMode.Additive);
+                yield return op;
+                scene = SceneManager.GetSceneByName(gameSceneName);
+            }
+
+            // 게임 씬의 UI 캔버스 숨기기 (타이틀 씬 UI만 보이도록)
+            // GameObject 전체를 비활성화(SetActive(false))하면 OfflineSettlementPopup 등
+            // UI에 붙은 스크립트들이 StartCoroutine을 실행하지 못하고 에러가 발생합니다.
+            // 따라서 렌더링(Canvas)과 터치(GraphicRaycaster) 기능만 꺼줍니다.
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                if (root.name.Contains("Canvas") || root.name.Contains("UI") || root.name.Contains("Popup"))
+                {
+                    var canvases = root.GetComponentsInChildren<Canvas>(true);
+                    foreach (var c in canvases) c.enabled = false;
+
+                    var raycasters = root.GetComponentsInChildren<UnityEngine.UI.GraphicRaycaster>(true);
+                    foreach (var r in raycasters) r.enabled = false;
+                }
+            }
+
+            // 게임이 라이브로 돌아가면서 자동 저장되는 것을 방지하기 위해 AutoSaveService 파괴
+            var autoSave = FindObjectOfType<CityFlow.Gameplay.Save.AutoSaveService>();
+            if (autoSave != null)
+            {
+                Destroy(autoSave);
+            }
+
+            // TitleScene에 기존 카메라가 남아있다면 충돌 방지를 위해 제거합니다.
+            foreach (var cam in FindObjectsOfType<Camera>())
+            {
+                if (cam.gameObject.scene != scene)
+                {
+                    Destroy(cam.gameObject);
+                }
+            }
+
+            // TitleScene에서는 MainCityView의 카메라 초기화가 지연되거나 무시될 수 있으므로,
+            // 매 프레임 강제로 카메라 각도를 고정하는 컴포넌트를 부착합니다.
+            StartCoroutine(ForceQuarterViewRoutine(scene));
+        }
+
+        private System.Collections.IEnumerator ForceQuarterViewRoutine(Scene loadedScene)
+        {
+            Camera mainCam = null;
+            // 로드된 씬에서 카메라 찾기
+            float timeout = 5f;
+            while (mainCam == null && timeout > 0)
+            {
+                if (loadedScene.isLoaded)
+                {
+                    foreach (var root in loadedScene.GetRootGameObjects())
+                    {
+                        mainCam = root.GetComponentInChildren<Camera>(true);
+                        if (mainCam != null) break;
+                    }
+                }
+                
+                timeout -= Time.deltaTime;
+                yield return null;
+            }
+
+            if (mainCam == null) yield break;
+
+            // 카메라 각도 고정을 위한 컴포넌트 추가
+            // 카메라 각도 고정을 위해 Update 루프에서 사용할 참조 저장
+            forcedCamera = mainCam;
+        }
+
+        private Camera forcedCamera;
+
+        private void LateUpdate()
+        {
+            if (forcedCamera == null) return;
+
+            forcedCamera.orthographic = true;
+            forcedCamera.orthographicSize = 6f; // 기존 12f에서 6f로 변경하여 50% 줌 인
+
+            // WorldCoordinateProfile에 의해 MainCityView가 X축으로 90도 회전하므로, 
+            // 맵은 실제 월드의 XZ 평면(바닥)에 깔리게 됩니다.
+            // 로컬 (10, 10, 0)의 월드 좌표는 (10, 0, 10)이 됩니다.
+            Vector3 cameraTarget = new Vector3(10f, 0f, 10f); // 20x20 그리드의 중앙
+
+            // 회전된 MainCityView의 월드 방향 벡터들
+            Vector3 transformRight = new Vector3(1f, 0f, 0f);
+            Vector3 transformUp = new Vector3(0f, 0f, 1f);
+            Vector3 transformForward = new Vector3(0f, -1f, 0f);
+
+            Vector3 cameraUpDirection = (transformUp - transformRight).normalized;
+            Vector3 southEastDirection = (transformRight - transformUp).normalized;
+            
+            float angleRadians = 35.264f * Mathf.Deg2Rad;
+            Vector3 angledOffsetDirection = southEastDirection * Mathf.Cos(angleRadians)
+                  - transformForward * Mathf.Sin(angleRadians);
+            Vector3 cameraForward = -angledOffsetDirection;
+
+            float distance = 25f; // 카메라를 위로 띄우고 뒤로 뺌
+            forcedCamera.transform.position = cameraTarget + angledOffsetDirection * distance;
+            forcedCamera.transform.rotation = Quaternion.LookRotation(cameraForward, cameraUpDirection);
         }
 
         // 새 게임 — 기존 저장과 백업을 제거해 게임 씬의 자동 불러오기 대상에서 제외한다.
@@ -72,11 +185,21 @@ namespace CityFlow.UI
             LoadGame();
         }
 
-        public void OnContinue()
+        public void OnAboutClicked()
+        {
+            Debug.Log("[TitleScene] 어바웃(크레딧) 클릭");
+            // 크레딧 팝업 띄우기 (미구현)
+        }
+
+        public void OnPlayGameClicked()
         {
             if (HasSave())
             {
                 LoadGame();
+            }
+            else
+            {
+                ExecuteStartNewGame();
             }
         }
 
@@ -90,13 +213,24 @@ namespace CityFlow.UI
 
         public void OnQuit()
         {
+            if (confirmPopup != null)
+            {
+                confirmPopup.Show("게임을 끄시겠습니까?", ExecuteQuit);
+            }
+            else
+            {
+                ExecuteQuit();
+            }
+        }
+
+        private void ExecuteQuit()
+        {
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
 #else
             Application.Quit();
 #endif
         }
-
         private void LoadGame()
         {
             if (string.IsNullOrEmpty(gameSceneName))
