@@ -12,7 +12,7 @@ namespace CityFlow.UI.Editor
     /// GUI-MonoRound 에셋 테마를 적용하며, Anchor/LayoutGroup 기반으로
     /// 해상도 변경·카메라 줌에도 UI가 깨지지 않는 Responsive 구조를 보장합니다.
     /// </summary>
-    public static class GeonSignalUIAssembler
+    public static class SignalControlBaker
     {
         // ──────────────────────────── Asset Paths ────────────────────────────
         private const string MONO_ROUND = "Assets/99_Download/Layer Lab/GUI-MonoRound/ResourcesData/Sprites/Components/";
@@ -38,120 +38,174 @@ namespace CityFlow.UI.Editor
         private static readonly Color COLOR_CROSS_BG       = new Color(0.13f, 0.15f, 0.18f, 0.9f);
         private static readonly Color COLOR_CROSS_LINE     = new Color(0.4f, 0.45f, 0.55f, 0.6f);
 
-        [MenuItem("CityFlow/UI/Assemble Signal Control UI")]
-        public static void Assemble()
+        [MenuItem("CityFlow/Bake UI/UI_SignalControlPanel")]
+        public static void BakePrefab()
         {
-            var scene = EditorSceneManager.GetActiveScene();
-            if (scene.name != "CityFlowIntegrated_Geon")
-            {
-                Debug.LogError("[CityFlow] Error: Please open the CityFlowIntegrated_Geon scene first.");
-                return;
-            }
-
-            GameObject analysisCardObj = FindObjectIncludingInactive("AnalysisCard_BottomLeft");
-            if (analysisCardObj == null)
-            {
-                Debug.LogError("[CityFlow] Error: AnalysisCard_BottomLeft not found in scene.");
-                return;
-            }
-
-            AnalysisCardController controller = analysisCardObj.GetComponent<AnalysisCardController>();
-            if (controller == null)
-            {
-                Debug.LogError("[CityFlow] Error: AnalysisCardController not found on AnalysisCard_BottomLeft.");
-                return;
-            }
-
-            // ── Font 추출 (기존 UI에서 폰트를 물려받음) ──
-            TMP_FontAsset fontToUse = null;
-            var existingText = analysisCardObj.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (existingText != null) fontToUse = existingText.font;
-
-            // ── NormalInfoContainer 확보 ──
-            Transform normalContainer = analysisCardObj.transform.Find("NormalInfoContainer");
-            if (normalContainer == null)
-            {
-                GameObject normalObj = CreateChild(analysisCardObj.transform, "NormalInfoContainer");
-                StretchFull(normalObj);
-                normalContainer = normalObj.transform;
-
-                int childCount = analysisCardObj.transform.childCount;
-                for (int i = childCount - 1; i >= 0; i--)
-                {
-                    Transform child = analysisCardObj.transform.GetChild(i);
-                    if (child != normalContainer)
-                    {
-                        child.SetParent(normalContainer, false);
-                    }
-                }
-            }
-
-            // ── 기존 SignalControlContainer 제거 후 재생성 ──
-            Transform oldSignal = analysisCardObj.transform.Find("SignalControlContainer");
-            if (oldSignal != null) Object.DestroyImmediate(oldSignal.gameObject);
-
-            // Prefab Load & Instantiate
-            string prefabPath = "Assets/02_Prefabs/UI/UI_SignalControlPanel.prefab";
-            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-            if (prefab == null)
-            {
-                Debug.LogError($"[CityFlow] Error: Signal Control Panel Prefab not found at {prefabPath}. Please run CityFlow/Bake UI/UI_SignalControlPanel first.");
-                return;
-            }
-
-            GameObject signalRoot = (GameObject)PrefabUtility.InstantiatePrefab(prefab, analysisCardObj.transform);
-            signalRoot.name = "SignalControlContainer";
-
-            // 타이틀 텍스트가 가려지지 않도록 상단 여백(45px)을 확보합니다
-            var signalRootRT = signalRoot.GetComponent<RectTransform>();
+            // 1. 임시 루트 게임오브젝트 생성
+            GameObject signalRoot = new GameObject("UI_SignalControlPanel");
+            var signalRootRT = signalRoot.AddComponent<RectTransform>();
             signalRootRT.anchorMin = Vector2.zero;
             signalRootRT.anchorMax = Vector2.one;
             signalRootRT.offsetMin = Vector2.zero;
             signalRootRT.offsetMax = new Vector2(0f, -45f); // Top = -45px 여백
 
+            var view = signalRoot.AddComponent<SignalControlPanelView>();
+
+            // ── Font 추출 (임시로 기본 폰트 사용, 실제로는 폰트 에셋 로드 권장) ──
+            TMP_FontAsset fontToUse = null;
+
             // ═══════════════════════════════════════════════════════════════
-            //  자동 Wire-Up (SerializedObject)
+            //  메인 레이아웃: 좌우 분할 (HorizontalLayoutGroup)
             // ═══════════════════════════════════════════════════════════════
-            var so = new SerializedObject(controller);
+            var hlg = signalRoot.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 8f;
+            hlg.padding = new RectOffset(12, 12, 10, 10);
+            hlg.childAlignment = TextAnchor.MiddleCenter;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = true;
 
-            // Title Text 확보
-            TextMeshProUGUI titleText = FindOrCreateTitle(analysisCardObj, fontToUse);
-            if (titleText != null) so.FindProperty("txtTitle").objectReferenceValue = titleText;
+            // ═══════════════════════════════════════════════════════════════
+            //  [좌측] 제어부 (VerticalLayoutGroup)
+            // ═══════════════════════════════════════════════════════════════
+            GameObject leftPanel = CreateChild(signalRoot.transform, "LeftControlPanel");
+            var leftLE = leftPanel.AddComponent<LayoutElement>();
+            leftLE.flexibleWidth = 3f;
+            leftLE.minWidth = 200f;
 
-            so.FindProperty("normalInfoContainer").objectReferenceValue = normalContainer.gameObject;
-            so.FindProperty("signalControlContainer").objectReferenceValue = signalRoot;
+            var leftVLG = leftPanel.AddComponent<VerticalLayoutGroup>();
+            leftVLG.spacing = 6f;
+            leftVLG.padding = new RectOffset(4, 4, 4, 4);
+            leftVLG.childAlignment = TextAnchor.MiddleCenter;
+            leftVLG.childControlWidth = true;
+            leftVLG.childControlHeight = true;
+            leftVLG.childForceExpandWidth = true;
+            leftVLG.childForceExpandHeight = false;
+
+            // ── 1) 신호 주기 게이지 막대 ──
+            GameObject gaugeSection = CreateGaugeSection(leftPanel.transform, fontToUse,
+                out RectTransform cursor,
+                out LayoutElement leHG, out LayoutElement leHY, out LayoutElement leHC,
+                out LayoutElement leVG, out LayoutElement leVY, out LayoutElement leVC);
+
+            // ── 2) Offset 슬라이더 ──
+            Slider sliderOffset = CreateThemedSlider(leftPanel.transform, "SliderOffset", "신호 타이밍", fontToUse);
+
+            // ── 3) Green 슬라이더 ──
+            Slider sliderGreen = CreateThemedSlider(leftPanel.transform, "SliderGreen", "파란불 길이", fontToUse);
+
+            // ── 4) 가로/세로 오버라이드 버튼 행 ──
+            GameObject btnRow = CreateChild(leftPanel.transform, "ButtonRow");
+            var btnRowLE = btnRow.AddComponent<LayoutElement>();
+            btnRowLE.preferredHeight = 38f;
+            var btnRowHLG = btnRow.AddComponent<HorizontalLayoutGroup>();
+            btnRowHLG.spacing = 8f;
+            btnRowHLG.childAlignment = TextAnchor.MiddleCenter;
+            btnRowHLG.childControlWidth = true;
+            btnRowHLG.childControlHeight = true;
+            btnRowHLG.childForceExpandWidth = true;
+            btnRowHLG.childForceExpandHeight = true;
+
+            Button btnH = CreateThemedButton(btnRow.transform, "BtnOverrideH", "가로", fontToUse, new Color(0.23f, 0.61f, 0.94f));
+            CreateCooldownOverlay(btnH, fontToUse, out Image imgCooldownH, out TextMeshProUGUI txtCooldownH);
+
+            Button btnV = CreateThemedButton(btnRow.transform, "BtnOverrideV", "세로", fontToUse, COLOR_GAUGE_GREEN);
+            CreateCooldownOverlay(btnV, fontToUse, out Image imgCooldownV, out TextMeshProUGUI txtCooldownV);
+
+            // ═══════════════════════════════════════════════════════════════
+            //  [우측] 미니맵 (RenderTexture) + 대기 차량 오버레이
+            // ═══════════════════════════════════════════════════════════════
+            GameObject rightPanel = CreateChild(signalRoot.transform, "RightMinimapPanel");
+            var rightLE = rightPanel.AddComponent<LayoutElement>();
+            rightLE.flexibleWidth = 2f;
+            rightLE.minWidth = 120f;
+
+            // 미니맵 테두리 (둥근 프레임) 및 마스크
+            Sprite frameSprite = LoadSprite(PATH_FRAME_RECT);
+            GameObject minimapMaskObj = CreateChild(rightPanel.transform, "MinimapMask");
+            StretchFull(minimapMaskObj);
+            var maskImg = minimapMaskObj.AddComponent<Image>();
+            if (frameSprite != null) { maskImg.sprite = frameSprite; maskImg.type = Image.Type.Sliced; }
+            maskImg.color = COLOR_SECTION_BG;
+            var mask = minimapMaskObj.AddComponent<Mask>();
+            mask.showMaskGraphic = true;
+
+            // 미니맵 배경 (RawImage: 마스크 자식으로 배치)
+            GameObject minimapObj = CreateChild(minimapMaskObj.transform, "MinimapRawImage");
+            StretchFull(minimapObj);
+            var minimapRawImage = minimapObj.AddComponent<RawImage>();
+            minimapRawImage.color = Color.white;
+            minimapRawImage.enabled = false;
+
+            // 미니맵 위에 대기 차량 숫자를 오버레이
+            TMP_Text txtWaitN = CreateCrossText(minimapObj.transform, "TxtWaitN", "0", fontToUse,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(44f, 24f));
+            TMP_Text txtWaitS = CreateCrossText(minimapObj.transform, "TxtWaitS", "0", fontToUse,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(44f, 24f));
+            TMP_Text txtWaitE = CreateCrossText(minimapObj.transform, "TxtWaitE", "0", fontToUse,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(44f, 24f));
+            TMP_Text txtWaitW = CreateCrossText(minimapObj.transform, "TxtWaitW", "0", fontToUse,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(44f, 24f));
+
+            txtWaitN.transform.parent.gameObject.SetActive(false);
+            txtWaitS.transform.parent.gameObject.SetActive(false);
+            txtWaitE.transform.parent.gameObject.SetActive(false);
+            txtWaitW.transform.parent.gameObject.SetActive(false);
+
+            // 미니맵 테두리 외곽선 덧씌우기
+            GameObject frameBorder = CreateChild(rightPanel.transform, "MinimapBorderOverlay");
+            StretchFull(frameBorder);
+            var borderImg = frameBorder.AddComponent<Image>();
+            if (frameSprite != null) { borderImg.sprite = frameSprite; borderImg.type = Image.Type.Sliced; }
+            borderImg.color = new Color(0.3f, 0.35f, 0.4f, 0.6f);
+            borderImg.raycastTarget = false;
+
+            // ═══════════════════════════════════════════════════════════════
+            //  자동 Wire-Up (View 참조 연결)
+            // ═══════════════════════════════════════════════════════════════
+            view.sliderOffset = sliderOffset;
+            view.sliderGreen = sliderGreen;
+            view.btnOverrideH = btnH;
+            view.btnOverrideV = btnV;
+            view.imgCooldownH = imgCooldownH;
+            view.txtCooldownH = txtCooldownH;
+            view.imgCooldownV = imgCooldownV;
+            view.txtCooldownV = txtCooldownV;
+
+            view.cycleGaugeCursor = cursor;
+            view.leHG = leHG;
+            view.leHY = leHY;
+            view.leHC = leHC;
+            view.leVG = leVG;
+            view.leVY = leVY;
+            view.leVC = leVC;
+
+            view.txtWaitN = txtWaitN;
+            view.txtWaitS = txtWaitS;
+            view.txtWaitE = txtWaitE;
+            view.txtWaitW = txtWaitW;
+
+            view.minimapRawImage = minimapRawImage;
             
-            // assign SignalControlPanelView
-            SignalControlPanelView panelView = signalRoot.GetComponent<SignalControlPanelView>();
-            if (panelView != null)
-            {
-                so.FindProperty("signalControlPanel").objectReferenceValue = panelView;
-            }
+            // 기존 AnalysisCardController의 기본값 복사
+            view.minimapZoomSize = 3f;
+            view.minimapFov = 20f;
+            view.minimapBackgroundColor = new Color(0.12f, 0.14f, 0.18f, 1f);
+            view.arRoadOffset = 0.4f;
+            view.minimapResolution = 256;
+            view.minimapCullingMask = ~0;
+            view.minimapCameraHeight = 8f;
 
-            // Delete all the old individual field references
-            // (These fields were removed from AnalysisCardController, so FindProperty will return null)
-            
-            so.ApplyModifiedProperties();
+            // 2. Prefab으로 저장
+            string prefabPath = "Assets/02_Prefabs/UI/UI_SignalControlPanel.prefab";
+            System.IO.Directory.CreateDirectory("Assets/02_Prefabs/UI");
+            PrefabUtility.SaveAsPrefabAsset(signalRoot, prefabPath);
 
-            // 초기 상태: 비활성화 (교차로 클릭 시 코드에서 활성화)
-            signalRoot.SetActive(false);
+            // 3. 임시 객체 삭제
+            Object.DestroyImmediate(signalRoot);
 
-            EditorSceneManager.MarkSceneDirty(scene);
-
-            // 통합 씬 커밋 금지 규칙 방어: 저장 전 명시적 사용자 확인
-            if (EditorUtility.DisplayDialog(
-                "CityFlow - Signal UI Assembler",
-                $"씬 '{scene.name}'에 Signal Control UI를 적용하고 저장하시겠습니까?\n\n" +
-                "⚠️ 통합 씬을 직접 커밋하지 않도록 주의하세요.",
-                "저장", "취소"))
-            {
-                EditorSceneManager.SaveScene(scene);
-                Debug.Log("[CityFlow] ✅ Signal Control UI assembled and scene saved!");
-            }
-            else
-            {
-                Debug.Log("[CityFlow] Signal Control UI assembled but scene was NOT saved (user cancelled).");
-            }
+            Debug.Log($"[CityFlow] ✅ Signal Control UI Baked to {prefabPath}");
         }
 
         // ═══════════════════════════════════════════════════════════════════

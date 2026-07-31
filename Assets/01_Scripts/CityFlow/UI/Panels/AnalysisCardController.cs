@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Linq;
 using CityFlow.Bootstrap;
 using CityFlow.Content;
@@ -25,18 +25,20 @@ namespace CityFlow.UI
         [Header("Containers")]
         [SerializeField] private GameObject normalInfoContainer;
         [SerializeField] private GameObject signalControlContainer;
+        [SerializeField] private SignalControlPanelView signalControlPanel;
 
-        [Header("Signal Control Elements")]
-        [SerializeField] private Slider sliderOffset;
-        [SerializeField] private Slider sliderGreen;
-        [SerializeField] private Button btnOverrideH;
-        [SerializeField] private Button btnOverrideV;
+        private SignalControlPanelView SafeSignalPanel
+        {
+            get
+            {
+                if (signalControlPanel == null)
+                {
+                    signalControlPanel = GetComponentInChildren<SignalControlPanelView>(true);
+                }
+                return signalControlPanel;
+            }
+        }
 
-        [Header("Cooldown Overlay")]
-        [SerializeField] private Image imgCooldownH;
-        [SerializeField] private Image imgCooldownV;
-        [SerializeField] private TMP_Text txtCooldownH;
-        [SerializeField] private TMP_Text txtCooldownV;
         [Header("Footer Buttons")]
         [SerializeField] private Button btnResolveJam;
         [SerializeField] private Button btnUpgrade;
@@ -57,30 +59,6 @@ namespace CityFlow.UI
         private bool _isClosing = false;
         private PopulationSystem _populationSystem;
         private PlacementController _placementController;
-
-        [Header("Signal Cycle Gauge UI")]
-        [SerializeField] private RectTransform cycleGaugeCursor;
-        [SerializeField] private UnityEngine.UI.LayoutElement leHG, leHY, leHC, leVG, leVY, leVC;
-
-        [Header("Waiting Vehicles UI")]
-        [SerializeField] private TMP_Text txtWaitN, txtWaitS, txtWaitE, txtWaitW;
-
-        [Header("Minimap (Intersection Preview)")]
-        [SerializeField] private RawImage minimapRawImage;
-        [Tooltip("미니맵 카메라가 찍을 레이어 마스크 (도로+차량만 권장)")]
-        [SerializeField] private LayerMask minimapCullingMask = ~0;
-        [SerializeField] private float minimapCameraHeight = 8f;
-
-        [Tooltip("미니맵 줌 크기 (직교 카메라 사이즈)")]
-        [SerializeField] private float minimapZoomSize = 3f;
-        [Tooltip("미니맵 FOV (투시 카메라용)")]
-        [SerializeField] private float minimapFov = 20f;
-        [Tooltip("미니맵 빈 공간의 배경색")]
-        [SerializeField] private Color minimapBackgroundColor = new Color(0.12f, 0.14f, 0.18f, 1f);
-        [Tooltip("AR 숫자 오버레이가 타일 중앙에서 떨어지는 오프셋 거리")]
-        [SerializeField] private float arRoadOffset = 0.4f;
-
-        [SerializeField] private int minimapResolution = 256;
 
         // ── Minimap 내부 상태 ──
         private Camera _minimapCamera;
@@ -119,14 +97,21 @@ namespace CityFlow.UI
 
         private void Start()
         {
+            if (signalControlPanel == null)
+            {
+                signalControlPanel = GetComponentInChildren<SignalControlPanelView>(true);
+            }
 
             if (btnResolveJam != null) btnResolveJam.onClick.AddListener(OnResolveJamClicked);
             if (btnUpgrade != null) btnUpgrade.onClick.AddListener(OnUpgradeClicked);
 
-            if (sliderOffset != null) sliderOffset.onValueChanged.AddListener(OnOffsetChanged);
-            if (sliderGreen != null) sliderGreen.onValueChanged.AddListener(OnGreenChanged);
-            if (btnOverrideH != null) btnOverrideH.onClick.AddListener(() => OnOverrideClicked(true));
-            if (btnOverrideV != null) btnOverrideV.onClick.AddListener(() => OnOverrideClicked(false));
+            if (SafeSignalPanel != null)
+            {
+                if (SafeSignalPanel.sliderOffset != null) SafeSignalPanel.sliderOffset.onValueChanged.AddListener(OnOffsetChanged);
+                if (SafeSignalPanel.sliderGreen != null) SafeSignalPanel.sliderGreen.onValueChanged.AddListener(OnGreenChanged);
+                if (SafeSignalPanel.btnOverrideH != null) SafeSignalPanel.btnOverrideH.onClick.AddListener(() => OnOverrideClicked(true));
+                if (SafeSignalPanel.btnOverrideV != null) SafeSignalPanel.btnOverrideV.onClick.AddListener(() => OnOverrideClicked(false));
+            }
         }
 
         private void OnOffsetChanged(float value)
@@ -186,6 +171,12 @@ namespace CityFlow.UI
             var signalControl = _services?.Placement as ISignalControl;
             if (signalControl != null && signalControl.SignalTiles.Contains(tile))
             {
+                if (SafeSignalPanel == null)
+                {
+                    Debug.LogWarning("[CityFlow] SignalControlPanelView not found! Please run 'CityFlow/UI/Assemble Signal Control UI'.");
+                    return;
+                }
+
                 // 신호 제어 모드
                 if (normalInfoContainer != null) normalInfoContainer.SetActive(false);
                 if (signalControlContainer != null) signalControlContainer.SetActive(true);
@@ -196,16 +187,16 @@ namespace CityFlow.UI
                 PositionMinimapCamera(tile);
 
                 int cycle = signalControl.GetSignalCycleSlots(tile);
-                if (sliderOffset != null)
+                if (SafeSignalPanel.sliderOffset != null)
                 {
-                    sliderOffset.maxValue = Mathf.Max(0, cycle - 1);
-                    sliderOffset.SetValueWithoutNotify(signalControl.GetSignalOffsetSlots(tile));
+                    SafeSignalPanel.sliderOffset.maxValue = Mathf.Max(0, cycle - 1);
+                    SafeSignalPanel.sliderOffset.SetValueWithoutNotify(signalControl.GetSignalOffsetSlots(tile));
                 }
-                if (sliderGreen != null)
+                if (SafeSignalPanel.sliderGreen != null)
                 {
-                    sliderGreen.minValue = 1;
-                    sliderGreen.maxValue = Mathf.Max(1, cycle - 1);
-                    sliderGreen.SetValueWithoutNotify(signalControl.GetSignalGreenSlots(tile));
+                    SafeSignalPanel.sliderGreen.minValue = 1;
+                    SafeSignalPanel.sliderGreen.maxValue = Mathf.Max(1, cycle - 1);
+                    SafeSignalPanel.sliderGreen.SetValueWithoutNotify(signalControl.GetSignalGreenSlots(tile));
                 }
 
                 // 쿨다운 상태 즉시 반영 후 갱신 코루틴 시작
@@ -510,19 +501,19 @@ namespace CityFlow.UI
 
         private void UpdateRealtimeGauge(ISignalControl signalControl)
         {
-            if (cycleGaugeCursor == null) return;
+            if (SafeSignalPanel == null || SafeSignalPanel.cycleGaugeCursor == null) return;
 
             // 1. 커서 위치 (진행도) 업데이트 — 오버라이드 중이면 커서 숨김
             float fillRatio = signalControl.GetCurrentCycleProgress(_currentTile);
             if (fillRatio < 0f)
             {
                 // 오버라이드(양축 강제 초록) 중 — 커서를 숨겨 혼란 방지
-                cycleGaugeCursor.gameObject.SetActive(false);
+                SafeSignalPanel.cycleGaugeCursor.gameObject.SetActive(false);
                 return;
             }
-            cycleGaugeCursor.gameObject.SetActive(true);
-            cycleGaugeCursor.anchorMin = new Vector2(fillRatio, 0f);
-            cycleGaugeCursor.anchorMax = new Vector2(fillRatio, 1f);
+            SafeSignalPanel.cycleGaugeCursor.gameObject.SetActive(true);
+            SafeSignalPanel.cycleGaugeCursor.anchorMin = new Vector2(fillRatio, 0f);
+            SafeSignalPanel.cycleGaugeCursor.anchorMax = new Vector2(fillRatio, 1f);
 
             int cycleSlots = signalControl.GetSignalCycleSlots(_currentTile);
             if (cycleSlots <= 0) return;
@@ -537,29 +528,30 @@ namespace CityFlow.UI
             int greenSlots = signalControl.GetSignalGreenSlots(_currentTile);
 
             // 게이지 세그먼트 폭 비율(FlexibleWidth) 업데이트
-            if (leHG != null && leHY != null && leHC != null &&
-                leVG != null && leVY != null && leVC != null)
+            if (SafeSignalPanel.leHG != null && SafeSignalPanel.leHY != null && SafeSignalPanel.leHC != null &&
+                SafeSignalPanel.leVG != null && SafeSignalPanel.leVY != null && SafeSignalPanel.leVC != null)
             {
                 float hSpan = greenSlots * slotSec;
                 float vSpan = cycle - hSpan;
 
-                leHG.flexibleWidth = hSpan * greenFrac;
-                leHY.flexibleWidth = hSpan * yellowFrac;
-                leHC.flexibleWidth = hSpan * clearFrac;
-                leVG.flexibleWidth = vSpan * greenFrac;
-                leVY.flexibleWidth = vSpan * yellowFrac;
-                leVC.flexibleWidth = vSpan * clearFrac;
+                SafeSignalPanel.leHG.flexibleWidth = hSpan * greenFrac;
+                SafeSignalPanel.leHY.flexibleWidth = hSpan * yellowFrac;
+                SafeSignalPanel.leHC.flexibleWidth = hSpan * clearFrac;
+                SafeSignalPanel.leVG.flexibleWidth = vSpan * greenFrac;
+                SafeSignalPanel.leVY.flexibleWidth = vSpan * yellowFrac;
+                SafeSignalPanel.leVC.flexibleWidth = vSpan * clearFrac;
             }
         }
 
         private void UpdateRealtimeWaitCounts()
         {
             if (_services?.TileData == null || _minimapCamera == null) return;
+            if (SafeSignalPanel == null) return;
 
-            UpdateWaitText(txtWaitN, Dir.N);
-            UpdateWaitText(txtWaitS, Dir.S);
-            UpdateWaitText(txtWaitE, Dir.E);
-            UpdateWaitText(txtWaitW, Dir.W);
+            UpdateWaitText(SafeSignalPanel.txtWaitN, Dir.N);
+            UpdateWaitText(SafeSignalPanel.txtWaitS, Dir.S);
+            UpdateWaitText(SafeSignalPanel.txtWaitE, Dir.E);
+            UpdateWaitText(SafeSignalPanel.txtWaitW, Dir.W);
         }
 
         private void UpdateWaitText(TMP_Text txtWait, Dir dir)
@@ -599,14 +591,15 @@ namespace CityFlow.UI
 
         private Vector3 GetRoadWorldPos(Vector2Int tile, Dir dir)
         {
-            // 각 도로 끝 지점의 로컬 좌표 오프셋 (기본값: arRoadOffset = 0.4f)
+            // 각 도로 끝 지점의 로컬 좌표 오프셋 (기본값: SafeSignalPanel.arRoadOffset = 0.4f)
             float dx = 0f, dy = 0f;
+            float offset = SafeSignalPanel != null ? SafeSignalPanel.arRoadOffset : 0.4f;
             switch (dir)
             {
-                case Dir.N: dy = arRoadOffset; break;
-                case Dir.S: dy = -arRoadOffset; break;
-                case Dir.E: dx = arRoadOffset; break;
-                case Dir.W: dx = -arRoadOffset; break;
+                case Dir.N: dy = offset; break;
+                case Dir.S: dy = -offset; break;
+                case Dir.E: dx = offset; break;
+                case Dir.W: dx = -offset; break;
             }
 
             if (_services?.WorldCoordinates != null)
@@ -624,6 +617,8 @@ namespace CityFlow.UI
 
         private void ApplyCooldownVisuals(ISignalControl signalControl)
         {
+            if (SafeSignalPanel == null) return;
+
             float cooldownLeft = signalControl.GetOverrideCooldownLeft(_currentTile);
             bool onCooldown = cooldownLeft > 0f;
 
@@ -633,31 +628,31 @@ namespace CityFlow.UI
             string timeLabel = onCooldown ? Mathf.CeilToInt(cooldownLeft) + "초" : "";
 
             // 가로 오버라이드 버튼
-            if (btnOverrideH != null) btnOverrideH.interactable = !onCooldown;
-            SetButtonLabelVisible(btnOverrideH, !onCooldown);
-            if (imgCooldownH != null)
+            if (SafeSignalPanel.btnOverrideH != null) SafeSignalPanel.btnOverrideH.interactable = !onCooldown;
+            SetButtonLabelVisible(SafeSignalPanel.btnOverrideH, !onCooldown);
+            if (SafeSignalPanel.imgCooldownH != null)
             {
-                imgCooldownH.gameObject.SetActive(onCooldown);
-                imgCooldownH.fillAmount = fillRatio;
+                SafeSignalPanel.imgCooldownH.gameObject.SetActive(onCooldown);
+                SafeSignalPanel.imgCooldownH.fillAmount = fillRatio;
             }
-            if (txtCooldownH != null)
+            if (SafeSignalPanel.txtCooldownH != null)
             {
-                txtCooldownH.gameObject.SetActive(onCooldown);
-                txtCooldownH.text = timeLabel;
+                SafeSignalPanel.txtCooldownH.gameObject.SetActive(onCooldown);
+                SafeSignalPanel.txtCooldownH.text = timeLabel;
             }
 
             // 세로 오버라이드 버튼
-            if (btnOverrideV != null) btnOverrideV.interactable = !onCooldown;
-            SetButtonLabelVisible(btnOverrideV, !onCooldown);
-            if (imgCooldownV != null)
+            if (SafeSignalPanel.btnOverrideV != null) SafeSignalPanel.btnOverrideV.interactable = !onCooldown;
+            SetButtonLabelVisible(SafeSignalPanel.btnOverrideV, !onCooldown);
+            if (SafeSignalPanel.imgCooldownV != null)
             {
-                imgCooldownV.gameObject.SetActive(onCooldown);
-                imgCooldownV.fillAmount = fillRatio;
+                SafeSignalPanel.imgCooldownV.gameObject.SetActive(onCooldown);
+                SafeSignalPanel.imgCooldownV.fillAmount = fillRatio;
             }
-            if (txtCooldownV != null)
+            if (SafeSignalPanel.txtCooldownV != null)
             {
-                txtCooldownV.gameObject.SetActive(onCooldown);
-                txtCooldownV.text = timeLabel;
+                SafeSignalPanel.txtCooldownV.gameObject.SetActive(onCooldown);
+                SafeSignalPanel.txtCooldownV.text = timeLabel;
             }
         }
 
@@ -742,12 +737,12 @@ namespace CityFlow.UI
         /// </summary>
         private void PositionMinimapCamera(Vector2Int tile)
         {
-            if (minimapRawImage == null) return;
+            if (SafeSignalPanel == null || SafeSignalPanel.minimapRawImage == null) return;
 
             // RenderTexture 생성 (최초 1회)
             if (_minimapRT == null)
             {
-                _minimapRT = new RenderTexture(minimapResolution, minimapResolution, 16, RenderTextureFormat.ARGB32);
+                _minimapRT = new RenderTexture(SafeSignalPanel.minimapResolution, SafeSignalPanel.minimapResolution, 16, RenderTextureFormat.ARGB32);
                 _minimapRT.antiAliasing = 1; // MSAA 끄기 (최적화)
                 _minimapRT.name = "SignalMinimapRT";
             }
@@ -760,10 +755,10 @@ namespace CityFlow.UI
                 _minimapCamera = camObj.AddComponent<Camera>();
                 _minimapCamera.enabled = false; // 카드 열릴 때 활성화
                 _minimapCamera.orthographic = true;
-                _minimapCamera.orthographicSize = minimapZoomSize;
-                _minimapCamera.cullingMask = minimapCullingMask;
+                _minimapCamera.orthographicSize = SafeSignalPanel.minimapZoomSize;
+                _minimapCamera.cullingMask = SafeSignalPanel.minimapCullingMask;
                 _minimapCamera.clearFlags = CameraClearFlags.SolidColor;
-                _minimapCamera.backgroundColor = minimapBackgroundColor;
+                _minimapCamera.backgroundColor = SafeSignalPanel.minimapBackgroundColor;
                 _minimapCamera.targetTexture = _minimapRT;
                 _minimapCamera.depth = -10;
             }
@@ -783,20 +778,20 @@ namespace CityFlow.UI
             if (Camera.main != null)
             {
                 _minimapCamera.transform.rotation = Camera.main.transform.rotation;
-                _minimapCamera.transform.position = tileWorldPos - Camera.main.transform.forward * minimapCameraHeight;
+                _minimapCamera.transform.position = tileWorldPos - Camera.main.transform.forward * SafeSignalPanel.minimapCameraHeight;
                 _minimapCamera.orthographic = Camera.main.orthographic;
                 if (_minimapCamera.orthographic)
                 {
-                    _minimapCamera.orthographicSize = minimapZoomSize;
+                    _minimapCamera.orthographicSize = SafeSignalPanel.minimapZoomSize;
                 }
                 else
                 {
-                    _minimapCamera.fieldOfView = minimapFov;
+                    _minimapCamera.fieldOfView = SafeSignalPanel.minimapFov;
                 }
             }
             else
             {
-                _minimapCamera.transform.position = tileWorldPos + Vector3.up * minimapCameraHeight;
+                _minimapCamera.transform.position = tileWorldPos + Vector3.up * SafeSignalPanel.minimapCameraHeight;
                 _minimapCamera.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
             }
 
@@ -804,8 +799,8 @@ namespace CityFlow.UI
             _minimapCamera.enabled = true; // URP 호환: enabled=true로 파이프라인이 자동 렌더
 
             // RawImage에 RenderTexture 연결
-            minimapRawImage.texture = _minimapRT;
-            minimapRawImage.enabled = true;
+            SafeSignalPanel.minimapRawImage.texture = _minimapRT;
+            SafeSignalPanel.minimapRawImage.enabled = true;
 
             _minimapFrameCounter = 0;
         }
