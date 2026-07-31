@@ -42,11 +42,6 @@ namespace CityFlow.UI.Editor
         public static void Assemble()
         {
             var scene = EditorSceneManager.GetActiveScene();
-            if (scene.name != "CityFlowIntegrated_Geon")
-            {
-                Debug.LogError("[CityFlow] Error: Please open the CityFlowIntegrated_Geon scene first.");
-                return;
-            }
 
             GameObject analysisCardObj = FindObjectIncludingInactive("AnalysisCard_BottomLeft");
             if (analysisCardObj == null)
@@ -141,8 +136,8 @@ namespace CityFlow.UI.Editor
             // 통합 씬 커밋 금지 규칙 방어: 저장 전 명시적 사용자 확인
             if (EditorUtility.DisplayDialog(
                 "CityFlow - Signal UI Assembler",
-                $"씬 '{scene.name}'에 Signal Control UI를 적용하고 저장하시겠습니까?\n\n" +
-                "⚠️ 통합 씬을 직접 커밋하지 않도록 주의하세요.",
+                $"현재 씬('{scene.name}')의 AnalysisCardController에 Signal Control UI를 성공적으로 적용했습니다.\n\n" +
+                "씬을 저장하시겠습니까?\n⚠️ 통합 씬(Integrated Scene)인 경우 직접 커밋하지 마세요.",
                 "저장", "취소"))
             {
                 EditorSceneManager.SaveScene(scene);

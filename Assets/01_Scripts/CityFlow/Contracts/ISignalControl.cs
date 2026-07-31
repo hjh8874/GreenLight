@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace CityFlow.Contracts
@@ -21,6 +21,7 @@ namespace CityFlow.Contracts
         int GetSignalCycleSlots(Vector2Int tile);
 
         // 현재 주기 진행도 (0.0 ~ 1.0)
+        // 수동 제어(오버라이드) 중일 경우 Sentinel 값인 -1.0f를 반환합니다.
         float GetCurrentCycleProgress(Vector2Int tile);
 
         // 오프셋 레버: 인접 신호 타이밍을 밀어 그린웨이브를 맞춘다. 값은 랩어라운드(주기 등가).

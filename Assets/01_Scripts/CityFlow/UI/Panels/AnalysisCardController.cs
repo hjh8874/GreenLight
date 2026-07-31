@@ -556,7 +556,10 @@ namespace CityFlow.UI
 
         private void UpdateWaitText(TMP_Text txtWait, Dir dir)
         {
-            if (txtWait == null) return;
+            if (txtWait == null || txtWait.transform.parent == null) return;
+
+            GameObject wrapperObj = txtWait.transform.parent.gameObject;
+            RectTransform wrapperRT = wrapperObj.GetComponent<RectTransform>();
 
             // 텍스트 내용 업데이트
             int count = _services.TileData.GetQueueCount(_currentTile, dir);
@@ -565,7 +568,7 @@ namespace CityFlow.UI
             // 대기 차량이 없으면 오버레이 숨기기 (옵션)
             if (count == 0)
             {
-                txtWait.gameObject.SetActive(false);
+                wrapperObj.SetActive(false);
                 return;
             }
 
@@ -576,17 +579,16 @@ namespace CityFlow.UI
             // 카메라 뒤에 있거나 시야 바깥이면 숨김
             if (viewportPos.z < 0 || viewportPos.x < -0.2f || viewportPos.x > 1.2f || viewportPos.y < -0.2f || viewportPos.y > 1.2f)
             {
-                txtWait.gameObject.SetActive(false);
+                wrapperObj.SetActive(false);
                 return;
             }
 
-            txtWait.gameObject.SetActive(true);
+            wrapperObj.SetActive(true);
 
             // RawImage를 꽉 채우고 있는 RectTransform 내부에서의 Viewport(0~1) 비율을 Anchor로 설정하여 완벽히 추적
-            RectTransform rt = txtWait.rectTransform;
-            rt.anchorMin = new Vector2(viewportPos.x, viewportPos.y);
-            rt.anchorMax = new Vector2(viewportPos.x, viewportPos.y);
-            rt.anchoredPosition = Vector2.zero;
+            wrapperRT.anchorMin = new Vector2(viewportPos.x, viewportPos.y);
+            wrapperRT.anchorMax = new Vector2(viewportPos.x, viewportPos.y);
+            wrapperRT.anchoredPosition = Vector2.zero;
         }
 
         private Vector3 GetRoadWorldPos(Vector2Int tile, Dir dir)
