@@ -84,6 +84,36 @@ public class HiringStatusOverlayTests
 
             Assert.AreEqual(0, LabelCount(overlay),
                 "철거로 staffing 조회가 실패하면 라벨을 제거해야 한다");
+            Assert.AreEqual(0, TrackedAnchorCount(overlay),
+                "철거로 staffing 조회가 실패하면 앵커 추적도 해제해야 한다");
+        });
+    }
+
+    [Test]
+    public void Update_RecreatesLabel_WhenFullyStaffedCompanyBecomesUnderstaffed()
+    {
+        RunWithOverlay((overlay, tiles, stats, services) =>
+        {
+            var anchor = new Vector2Int(1, 2);
+            tiles.AddOffice(anchor);
+            stats.SetStaffing(anchor, 1, 2);
+            services.RegisterWorldGrid(new FakeWorldGrid(5, 5));
+            overlay.Initialize(services);
+            Assert.AreEqual(1, LabelCount(overlay));
+
+            stats.SetStaffing(anchor, 2, 2);
+            LogAssert.Expect(
+                LogType.Error,
+                new System.Text.RegularExpressions.Regex(
+                    "HiringStatus_1_2: Destroy may not be called from edit mode!"));
+            InvokeUpdate(overlay);
+            Assert.AreEqual(0, LabelCount(overlay),
+                "정원이 차면 라벨만 제거하고 회사 앵커는 계속 추적해야 한다");
+
+            stats.SetStaffing(anchor, 1, 2);
+            InvokeUpdate(overlay);
+            Assert.AreEqual(1, LabelCount(overlay),
+                "추적 중인 회사의 인력이 줄면 다음 폴링에서 라벨을 재생성해야 한다");
         });
     }
 
@@ -121,6 +151,16 @@ public class HiringStatusOverlayTests
             System.Reflection.BindingFlags.NonPublic);
         var labels = (Dictionary<Vector2Int, TextMeshPro>)field.GetValue(overlay);
         return labels.Count;
+    }
+
+    static int TrackedAnchorCount(HiringStatusOverlay overlay)
+    {
+        var field = typeof(HiringStatusOverlay).GetField(
+            "_trackedAnchors",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        var anchors = (HashSet<Vector2Int>)field.GetValue(overlay);
+        return anchors.Count;
     }
 
     static void InvokeUpdate(HiringStatusOverlay overlay)

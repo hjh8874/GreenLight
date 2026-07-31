@@ -17,8 +17,10 @@ namespace CityFlow.UI
         [SerializeField] private float heightOffset = 1.2f;
 
         private CityFlowServices _services;
+        private readonly HashSet<Vector2Int> _trackedAnchors = new();
         private readonly Dictionary<Vector2Int, TextMeshPro> _labels = new();
-        private readonly List<Vector2Int> _finished = new();
+        private readonly List<Vector2Int> _removedAnchors = new();
+        private readonly List<Vector2Int> _finishedLabels = new();
         private bool _subscribed;
 
         public void Initialize(CityFlowServices services)
@@ -66,7 +68,7 @@ namespace CityFlow.UI
 
         private void TryRegister(Vector2Int anchor)
         {
-            if (_labels.ContainsKey(anchor)) return;
+            if (_trackedAnchors.Contains(anchor)) return;
 
             IReadOnlyTileData tiles = _services?.TileData;
             IReadOnlyCityStats stats = _services?.Stats;
@@ -76,13 +78,9 @@ namespace CityFlow.UI
             if (!stats.TryGetCompanyStaffing(
                     anchor,
                     out CompanyStaffing staffing)) return;
-            if (staffing.Filled >= staffing.Capacity) return;
 
-            TextMeshPro label = CreateLabel(anchor);
-            if (label != null)
-            {
-                _labels.Add(anchor, label);
-            }
+            _trackedAnchors.Add(anchor);
+            UpdateLabel(anchor, staffing);
         }
 
         private TextMeshPro CreateLabel(Vector2Int tile)
@@ -98,57 +96,86 @@ namespace CityFlow.UI
 
         private void Update()
         {
-            if (_labels.Count == 0) return;
+            if (_trackedAnchors.Count == 0) return;
 
             IReadOnlyCityStats stats = _services?.Stats;
             IWorldCoordinateSpace space = _services?.WorldCoordinates;
             if (stats == null) return;
             Camera cam = Camera.main;
 
-            foreach (KeyValuePair<Vector2Int, TextMeshPro> pair in _labels)
+            foreach (Vector2Int anchor in _trackedAnchors)
             {
                 if (!stats.TryGetCompanyStaffing(
-                        pair.Key,
-                        out CompanyStaffing staffing) ||
-                    staffing.Filled >= staffing.Capacity)
+                        anchor,
+                        out CompanyStaffing staffing))
                 {
-                    _finished.Add(pair.Key);
+                    _removedAnchors.Add(anchor);
                     continue;
                 }
 
-                pair.Value.text =
-                    $"채용중 {staffing.Filled}/{staffing.Capacity}";
-                if (space != null)
+                if (staffing.Filled >= staffing.Capacity)
                 {
-                    pair.Value.transform.position =
-                        space.GridToWorld(pair.Key, heightOffset);
-                    if (space.Plane == WorldCoordinatePlane.XY)
-                    {
-                        pair.Value.transform.rotation =
-                            space.CoordinateRotation;
-                    }
-                    else if (cam != null)
-                    {
-                        pair.Value.transform.rotation =
-                            cam.transform.rotation;
-                    }
+                    _finishedLabels.Add(anchor);
+                    continue;
                 }
+
+                UpdateLabel(anchor, staffing, space, cam);
             }
 
-            for (int i = 0; i < _finished.Count; i++)
+            for (int i = 0; i < _finishedLabels.Count; i++)
             {
-                if (_labels.TryGetValue(
-                        _finished[i],
-                        out TextMeshPro label) &&
-                    label != null)
-                {
-                    Destroy(label.gameObject);
-                }
-
-                _labels.Remove(_finished[i]);
+                RemoveLabel(_finishedLabels[i]);
             }
 
-            _finished.Clear();
+            for (int i = 0; i < _removedAnchors.Count; i++)
+            {
+                Vector2Int anchor = _removedAnchors[i];
+                RemoveLabel(anchor);
+                _trackedAnchors.Remove(anchor);
+            }
+
+            _finishedLabels.Clear();
+            _removedAnchors.Clear();
+        }
+
+        private void UpdateLabel(
+            Vector2Int anchor,
+            CompanyStaffing staffing,
+            IWorldCoordinateSpace space = null,
+            Camera cam = null)
+        {
+            if (!_labels.TryGetValue(anchor, out TextMeshPro label) || label == null)
+            {
+                label = CreateLabel(anchor);
+                if (label == null) return;
+                _labels[anchor] = label;
+            }
+
+            label.text = $"채용중 {staffing.Filled}/{staffing.Capacity}";
+            if (space != null)
+            {
+                label.transform.position =
+                    space.GridToWorld(anchor, heightOffset);
+                if (space.Plane == WorldCoordinatePlane.XY)
+                {
+                    label.transform.rotation = space.CoordinateRotation;
+                }
+                else if (cam != null)
+                {
+                    label.transform.rotation = cam.transform.rotation;
+                }
+            }
+        }
+
+        private void RemoveLabel(Vector2Int anchor)
+        {
+            if (_labels.TryGetValue(anchor, out TextMeshPro label) &&
+                label != null)
+            {
+                Destroy(label.gameObject);
+            }
+
+            _labels.Remove(anchor);
         }
 
         private void OnDestroy() => Unsubscribe();
