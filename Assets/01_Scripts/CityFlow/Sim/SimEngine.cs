@@ -715,7 +715,10 @@ namespace CityFlow.Sim
 
         // 뷰 연동: 엔진이 이번 틱 계산한 실제 통근 경로들. 차를 이 위에 그리면 라우팅을 눈으로 검증.
         // ponytail: 지금은 디버그 뷰용 public. 진짜 View 붙을 때 Contracts로 승격.
-        public int CarSimOfficeParkingSlots => Math.Max(1, _config.OfficeCapacity);
+        // 유형 최대 정원이 하한 — ApplyConfig 로 전역 OfficeCapacity 를 낮춰도 유형 정원은
+        // 함께 내려가지 않으므로(리뷰 P2), 뷰 슬롯이 정원 아래로 떨어지면 초과분이 겹쳐 주차된다.
+        public int CarSimOfficeParkingSlots =>
+            Math.Max(Math.Max(1, _config.OfficeCapacity), _maxCompanyTypeCapacity);
         public int CarSimHomeParkingSlots => Math.Max(1, _config.CarsPerHouse);
         public int CarSimMaxCars => Math.Max(1, _config.MaxSimCars);
         public int CarSimVehicleStorageCount => _carSim.CarCount;
@@ -1793,16 +1796,20 @@ namespace CityFlow.Sim
         // 배선 계층(CityBootstrap)이 SO → CompanyTypeInfo 로 옮겨 여기에 주입한다.
         // 표가 비어 있으면 전역 창 폴백 = 종전 동작. 배선 없는 씬은 영향받지 않는다.
         readonly Dictionary<string, CompanyTypeInfo> _companyTypes = new(StringComparer.Ordinal);
+        int _maxCompanyTypeCapacity;   // 뷰 주차 슬롯 계약의 하한 — CarSimOfficeParkingSlots 참조
 
         public void SetCompanyTypes(IReadOnlyList<CompanyTypeInfo> types)
         {
             _companyTypes.Clear();
+            _maxCompanyTypeCapacity = 0;
             if (types == null) return;
             for (int i = 0; i < types.Count; i++)
             {
                 string id = types[i].Window.CompanyTypeId;
                 if (string.IsNullOrWhiteSpace(id)) continue;   // 무명 유형은 조회할 수 없다
                 _companyTypes[id.Trim()] = types[i];
+                if (types[i].Capacity > _maxCompanyTypeCapacity)
+                    _maxCompanyTypeCapacity = types[i].Capacity;
             }
         }
 

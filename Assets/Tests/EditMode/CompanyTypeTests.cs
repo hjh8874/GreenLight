@@ -27,6 +27,23 @@ namespace CityFlow.Sim.Tests
             Assert.IsFalse(engine.TryGetCompanyType("", out _), "빈 문자열도 false");
         }
 
+        // [리뷰 P2 후속] 뷰 주차 슬롯 계약은 런타임 ApplyConfig 로 전역 OfficeCapacity 가
+        // 내려가도 등록된 유형 최대 정원 아래로 떨어지면 안 된다 — 떨어지면 초과 슬롯이
+        // 마지막 칸에 겹쳐 주차된다.
+        [Test]
+        public void ApplyConfig_LoweredOfficeCapacity_KeepsParkingSlotsAtTypeMax()
+        {
+            var engine = new SimEngine(SimConfig.Default(), new SimEventHub());
+            engine.SetCompanyTypes(new[] { NewType("factory", 20f, 5f, capacity: 5) });
+
+            SimConfig lowered = SimConfig.Default();
+            lowered.OfficeCapacity = 4;
+            Assert.IsTrue(engine.ApplyConfig(lowered), "정상 config 재주입은 수용된다");
+
+            Assert.GreaterOrEqual(engine.CarSimOfficeParkingSlots, 5,
+                "전역 정원을 4로 낮춰도 뷰 슬롯 수는 유형 최대 정원(5) 이상을 유지한다");
+        }
+
         [Test]
         public void FallbackWindow_ComesFromSimConfig()
         {
