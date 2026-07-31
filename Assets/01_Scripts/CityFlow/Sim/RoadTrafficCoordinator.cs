@@ -45,6 +45,7 @@ namespace CityFlow.Sim
             public bool IsVisible { get; set; }
             public RoadTrafficArrivalPolicy ArrivalPolicy { get; set; }
             public bool IsHoldingAtDestination { get; set; }
+            public bool PauseOnEntry { get; set; }
         }
 
         private readonly RoadQueueNetwork network;
@@ -114,6 +115,8 @@ namespace CityFlow.Sim
 
             agent.Loop = request.Loop;
             agent.ArrivalPolicy = request.ArrivalPolicy;
+            agent.PauseOnEntry =
+                !continueFromHeldDestination && request.PauseOnEntry;
             agent.Started = false;
             agent.IsEnqueued = continueFromHeldDestination;
             agent.IsPaused = continueFromHeldDestination;
@@ -259,7 +262,11 @@ namespace CityFlow.Sim
                 agent.NextTile = GetNextTile(agent, startIndex);
                 agent.IsEnqueued = true;
                 agent.IsVisible = true;
-                agent.State = RoadTrafficAgentState.Queued;
+                agent.IsPaused = agent.PauseOnEntry;
+                agent.PauseOnEntry = false;
+                agent.State = agent.IsPaused
+                    ? RoadTrafficAgentState.Paused
+                    : RoadTrafficAgentState.Queued;
             }
         }
 

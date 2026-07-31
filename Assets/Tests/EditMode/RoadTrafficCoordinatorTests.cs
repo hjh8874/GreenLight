@@ -186,6 +186,81 @@ namespace CityFlow.Tests.EditMode
         }
 
         [Test]
+        public void PauseOnEntry_ReservesSchoolBusFootprintUntilReleased()
+        {
+            SimConfig config = SimConfig.Default();
+            config.GridWidth = 3;
+            config.GridHeight = 1;
+            config.QueueCapacityPerTile = 4;
+            var network = new RoadQueueNetwork(3, 1, config);
+            var coordinator = new RoadTrafficCoordinator(network);
+
+            Assert.IsTrue(coordinator.TryRegisterAgent(
+                new RoadTrafficAgentRegistration(
+                    RoadTrafficAgentKind.SchoolBus,
+                    new VehicleFootprint(
+                        VehicleSizeClass.Large,
+                        0.8f,
+                        0.24f,
+                        0.11f)),
+                out RoadTrafficAgentId busId));
+            Assert.IsTrue(coordinator.TryAssignRoute(
+                new RoadTrafficRouteRequest(
+                    busId,
+                    new RoadRoutePlan(new[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(1, 0),
+                        new Vector2Int(2, 0)
+                    }),
+                    false,
+                    RoadTrafficArrivalPolicy.HoldAtDestination,
+                    true)));
+            Assert.IsTrue(coordinator.TryStartAgent(busId));
+
+            coordinator.PrepareStep(new EmptyRouteProvider());
+            coordinator.SynchronizeSnapshots();
+
+            Assert.IsTrue(coordinator.TryGetSnapshot(
+                busId,
+                out RoadTrafficSnapshot reserved));
+            Assert.AreEqual(
+                RoadTrafficAgentState.Paused,
+                reserved.State);
+            Assert.IsTrue(reserved.IsVisible);
+            Assert.AreEqual(Vector2Int.zero, reserved.CurrentTile);
+            Assert.AreEqual(2, network.QueueOccupancyUnits(
+                Vector2Int.zero,
+                Dir.E));
+
+            network.Step(coordinator, null, 0);
+            coordinator.ProcessArrivals();
+            coordinator.SynchronizeSnapshots();
+            Assert.IsTrue(coordinator.TryGetSnapshot(
+                busId,
+                out RoadTrafficSnapshot stillReserved));
+            Assert.AreEqual(
+                Vector2Int.zero,
+                stillReserved.CurrentTile);
+            Assert.AreEqual(
+                RoadTrafficAgentState.Paused,
+                stillReserved.State);
+
+            Assert.IsTrue(coordinator.TrySetAgentPaused(
+                busId,
+                false));
+            network.Step(coordinator, null, 1);
+            coordinator.ProcessArrivals();
+            coordinator.SynchronizeSnapshots();
+            Assert.IsTrue(coordinator.TryGetSnapshot(
+                busId,
+                out RoadTrafficSnapshot released));
+            Assert.AreNotEqual(
+                RoadTrafficAgentState.Paused,
+                released.State);
+        }
+
+        [Test]
         public void RegisteredBus_UsesRoadQueueAndPublishesArrival()
         {
             SimConfig config = SimConfig.Default();
@@ -312,7 +387,7 @@ namespace CityFlow.Tests.EditMode
 
             coordinator.TryRegisterAgent(
                 new RoadTrafficAgentRegistration(
-                    RoadTrafficAgentKind.CityBus,
+                    RoadTrafficAgentKind.SchoolBus,
                     new VehicleFootprint(
                         VehicleSizeClass.Large,
                         0.8f,

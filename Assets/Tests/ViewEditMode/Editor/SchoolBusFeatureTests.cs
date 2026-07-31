@@ -369,6 +369,9 @@ namespace CityFlow.Sim.Tests
                     route.UseRoadsideStopApproach,
                     Is.True);
                 Assert.That(
+                    route.SynchronizeOffRoadTransitions,
+                    Is.True);
+                Assert.That(
                     route.RoadsideStopSetbackTiles,
                     Is.EqualTo(1));
                 Assert.That(
@@ -387,6 +390,10 @@ namespace CityFlow.Sim.Tests
                     service.CurrentTrip,
                     Is.EqualTo(
                         SchoolBusTripKind.MorningCommute));
+                Assert.That(
+                    route.State,
+                    Is.EqualTo(
+                        BusRouteState.WaitingForRoadEntry));
             }
             finally
             {
