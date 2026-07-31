@@ -7,6 +7,7 @@ using UnityEngine.InputSystem;
 using CityFlow.UI.Controllers;
 using CityFlow.UI.Controllers.Placement;
 using CityFlow.View;
+using CityFlow.Sim;
 
 namespace CityFlow.UI
 {
@@ -291,6 +292,7 @@ namespace CityFlow.UI
             Vector2Int gridCoord = _inputHandler.GetMouseGridCoordinate(
                 useXYPlane,
                 coordinateSpace);
+            _currentDirection = ResolvePlacementDirection(gridCoord);
             bool canPlace = _actionDispatcher.CheckCanPlace(
                 gridCoord,
                 _currentType,
@@ -362,13 +364,8 @@ namespace CityFlow.UI
                 return;
             }
 
-            _currentDirection = TileFootprint.RotateClockwise(_currentDirection);
-            _visualManager.UpdateGhostFootprint(_currentType, _currentDirection);
-            _visualManager.SyncPlacementRotation(
-                TileFootprint.ToAngle(_currentDirection),
-                useXYPlane,
-                _services?.WorldCoordinates);
-            _costLabelManager.ResetState();
+            // 건물 방향은 현재 마우스 타일의 인접 도로를 향해 Sim 계층에서 결정한다.
+            // 도로·일방통행 등 인프라 도구의 회전 동작은 이 분기와 무관하게 유지한다.
         }
 
         private bool HandleDemolish(Vector2Int coord)
@@ -381,7 +378,7 @@ namespace CityFlow.UI
             _actionDispatcher.PlaceInfrastructure(
                 coord,
                 _currentType,
-                _currentDirection,
+                ResolvePlacementDirection(coord),
                 _services,
                 _currentSpecialBuildingId,
                 _currentCompanyTypeId);
@@ -406,21 +403,42 @@ namespace CityFlow.UI
 
         private void TryPlaceDragTile(Vector2Int coord)
         {
+            PlacementDirection direction = ResolvePlacementDirection(coord);
             if (_actionDispatcher.CheckCanPlace(
                     coord,
                     _currentType,
-                    _currentDirection,
+                    direction,
                     _services,
                     _currentSpecialBuildingId))
             {
                 _actionDispatcher.PlaceInfrastructure(
                     coord,
                     _currentType,
-                    _currentDirection,
+                    direction,
                     _services,
                     _currentSpecialBuildingId,
                     _currentCompanyTypeId);
             }
+        }
+
+        private PlacementDirection ResolvePlacementDirection(Vector2Int coord)
+        {
+            if (!TileFootprint.IsBuilding(_currentType))
+            {
+                return _currentDirection;
+            }
+
+            SimEngine engine = _services?.Placement as SimEngine;
+            if (engine != null &&
+                engine.TryResolveAutoDirection(
+                    coord,
+                    _currentType,
+                    out PlacementDirection direction))
+            {
+                return direction;
+            }
+
+            return PlacementDirection.North;
         }
 
         public bool TryDemolishAt(Vector2Int coord)

@@ -156,6 +156,14 @@ namespace CityFlow.Sim
             return _congestionLedger.LastDayJamRatio01(index);
         }
 
+        // 건물 주차면이 인접 도로를 향하도록 방향을 결정한다.
+        // 방향 규칙의 실제 구현은 RoadNetwork에 두어 통근 접근면과 단일 출처를 공유한다.
+        public bool TryResolveAutoDirection(
+            Vector2Int tile,
+            TileType type,
+            out PlacementDirection direction) =>
+            _network.TryResolveAutoDirection(tile, type, out direction);
+
         private sealed class DeviceStateAdapter : IDeviceState
         {
             private readonly SimEngine _engine;

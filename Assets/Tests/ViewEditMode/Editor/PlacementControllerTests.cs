@@ -206,7 +206,7 @@ namespace Tests.EditMode
         [TestCase(TileType.Office)]
         [TestCase(TileType.School)]
         [TestCase(TileType.Hospital)]
-        public void HandleRotate_AdvancesEveryStandardBuildingDirection(
+        public void HandleRotate_IgnoresStandardBuildingDirection(
             TileType buildingType)
         {
             var services = new CityFlow.Bootstrap.CityFlowServices(
@@ -232,7 +232,7 @@ namespace Tests.EditMode
                 rotateMethod.Invoke(controller, null);
 
                 Assert.AreEqual(
-                    PlacementDirection.East,
+                    PlacementDirection.North,
                     ReadPrivateField<PlacementDirection>(
                         controller,
                         "_currentDirection"));
@@ -244,7 +244,7 @@ namespace Tests.EditMode
         }
 
         [Test]
-        public void HandleRotate_AdvancesSpecialBuildingDirection()
+        public void HandleRotate_IgnoresSpecialBuildingDirection()
         {
             var services = new CityFlow.Bootstrap.CityFlowServices(
                 new SimEventHub(),
@@ -272,7 +272,7 @@ namespace Tests.EditMode
                 rotateMethod.Invoke(controller, null);
 
                 Assert.AreEqual(
-                    PlacementDirection.East,
+                    PlacementDirection.North,
                     ReadPrivateField<PlacementDirection>(
                         controller,
                         "_currentDirection"));
