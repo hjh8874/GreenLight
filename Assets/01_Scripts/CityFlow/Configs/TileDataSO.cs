@@ -33,6 +33,13 @@ namespace CityFlow.Configs
         public int BuildCost => buildCost;
         public int DailyCoinValue => dailyCoinValue;
         public int ProsperityValue => prosperityValue;
+
+        [Header("Research")]
+        [SerializeField]
+        [Tooltip("비어 있으면 기본 해금. 값이 있으면 해당 연구 완료 후 건설 가능")]
+        private string requiredResearchId;
+
+        public string RequiredResearchId => requiredResearchId;
         
         // 에디터/제너레이터용 데이터 세팅 메서드 (캡슐화 유지)
         public void Initialize(string id, string name, TileType type, int cost, int coin, int prosperity, string desc)
@@ -45,5 +52,17 @@ namespace CityFlow.Configs
             prosperityValue = prosperity;
             buildingDescription = desc;
         }
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            buildingId = buildingId?.Trim();
+            buildingName = buildingName?.Trim();
+            requiredResearchId = requiredResearchId?.Trim();
+            buildCost = Mathf.Max(0, buildCost);
+            dailyCoinValue = Mathf.Max(0, dailyCoinValue);
+            prosperityValue = Mathf.Max(0, prosperityValue);
+        }
+#endif
     }
 }

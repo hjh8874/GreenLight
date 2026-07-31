@@ -7,5 +7,7 @@ namespace CityFlow.Contracts.Save
     {
         public string[] UnlockedResearchIds;
         public string[] PurchasedUpgradeIds;
+        public string ActiveResearchId;
+        public long ResearchCompletionGameHour;
     }
 }
