@@ -54,6 +54,14 @@ namespace CityFlow.UI
             BindButtons();
         }
 
+        /// <summary>
+        /// 씬에 배치된 연구 패널 프리팹이 도크 연결을 스스로 복구할 때 사용합니다.
+        /// </summary>
+        public void RebindResearchPanel(GameObject researchPanel)
+        {
+            panelResearch = researchPanel;
+        }
+
         private void Awake()
         {
             var scalers = FindObjectsByType<CanvasScaler>(FindObjectsInactive.Include);
