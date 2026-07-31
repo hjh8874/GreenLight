@@ -498,6 +498,18 @@ namespace CityFlow.Sim
                 }
             }
 
+            // A new route may begin inside an intersection or roundabout.
+            // Enter at the first ordinary queue tile instead of rejecting it.
+            for (int index = start + 1;
+                 index < agent.Route.Count;
+                 index++)
+            {
+                if (network.IsSafeResumeTile(agent.Route[index]))
+                {
+                    return index;
+                }
+            }
+
             return -1;
         }
 

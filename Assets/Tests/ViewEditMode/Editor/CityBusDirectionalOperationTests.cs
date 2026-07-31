@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using CityFlow.Bootstrap;
 using CityFlow.Content;
@@ -8,6 +9,7 @@ using CityFlow.Sim;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace CityFlow.View.Tests
 {
@@ -201,6 +203,52 @@ namespace CityFlow.View.Tests
         }
 
         [Test]
+        public void PendingStopPresentation_PreservesReverseCompletedPath()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceTwoSidedLoop(engine);
+            GameObject root = new("CityBusPresentationPathTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine);
+                Assert.That(service.StartService(), Is.True);
+
+                CityBusVehicleAgent reverse = FindVehicle(
+                    service.ActiveVehicles,
+                    BusTravelDirection.Reverse);
+                Assert.That(reverse, Is.Not.Null);
+
+                BusRoute route = reverse.Route;
+                route.RequireStopPresentationConfirmation = true;
+                Assert.That(
+                    route.CurrentRoadPath.Count,
+                    Is.GreaterThan(1));
+
+                InvokePrivate(route, "UpdateMoving", 100f);
+
+                Assert.That(
+                    route.State,
+                    Is.EqualTo(BusRouteState.WaitingAtStop));
+                Assert.That(
+                    route.IsStopPresentationPending,
+                    Is.True);
+                Assert.That(
+                    route.CurrentRoadPath.Count,
+                    Is.GreaterThan(1));
+                Assert.That(
+                    route.CurrentRoadPathIndex,
+                    Is.EqualTo(route.CurrentRoadPath.Count - 1));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
         public void MultipleLines_KeepVehicleRouteIdsIsolated()
         {
             SimEngine engine = CreateEngine();
@@ -294,18 +342,523 @@ namespace CityFlow.View.Tests
             }
         }
 
-        private static SimEngine CreateEngine()
+        [Test]
+        public void StopPresentationGate_DelaysDwellUntilViewConfirms()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceTwoSidedLoop(engine);
+            GameObject root = new("CityBusStopPresentationTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine);
+                Assert.That(service.StartService(), Is.True);
+                BusRoute route =
+                    service.ActiveVehicles[0].Route;
+                route.RequireStopPresentationConfirmation =
+                    true;
+                int arrivalCount = 0;
+                route.StopArrived += (_, _) =>
+                    arrivalCount++;
+
+                InvokePrivate(route, "UpdateMoving", 100f);
+
+                Assert.That(
+                    route.IsStopPresentationPending,
+                    Is.True);
+                Assert.That(
+                    route.State,
+                    Is.EqualTo(BusRouteState.WaitingAtStop));
+                Assert.That(arrivalCount, Is.Zero);
+
+                InvokePrivate(route, "UpdateWaiting", 100f);
+                Assert.That(
+                    route.IsStopPresentationPending,
+                    Is.True);
+                Assert.That(arrivalCount, Is.Zero);
+
+                Assert.That(
+                    route.ConfirmStopPresentationReached(),
+                    Is.True);
+                Assert.That(
+                    route.IsStopPresentationPending,
+                    Is.False);
+                Assert.That(arrivalCount, Is.EqualTo(1));
+                Assert.That(
+                    route.State,
+                    Is.EqualTo(BusRouteState.WaitingAtStop));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void StopPresentationGate_RequiresConfirmationAtEveryStop()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceTwoSidedLoop(engine);
+            GameObject root = new("CityBusRepeatedStopPresentationTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine);
+                Assert.That(service.StartService(), Is.True);
+                BusRoute route =
+                    service.ActiveVehicles[0].Route;
+                route.RequireStopPresentationConfirmation =
+                    true;
+                int requestCount = 0;
+                int arrivalCount = 0;
+                route.StopPresentationRequested += (_, _) =>
+                    requestCount++;
+                route.StopArrived += (_, _) =>
+                    arrivalCount++;
+
+                for (int stop = 0; stop < 3; stop++)
+                {
+                    InvokePrivate(route, "UpdateMoving", 100f);
+
+                    Assert.That(
+                        route.IsStopPresentationPending,
+                        Is.True);
+                    Assert.That(
+                        requestCount,
+                        Is.EqualTo(stop + 1));
+                    Assert.That(
+                        arrivalCount,
+                        Is.EqualTo(stop));
+
+                    Assert.That(
+                        route.ConfirmStopPresentationReached(),
+                        Is.True);
+                    Assert.That(
+                        route.IsStopPresentationPending,
+                        Is.False);
+                    Assert.That(
+                        arrivalCount,
+                        Is.EqualTo(stop + 1));
+
+                    InvokePrivate(route, "UpdateWaiting", 100f);
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void DirectionalVehicles_OrderThreeStopsByRoadDirection()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceThreeStopLoopOutOfCoordinateOrder(engine);
+            GameObject root = new("CityBusRoadStopOrderTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine);
+                Assert.That(service.StartService(), Is.True);
+                Assert.That(
+                    service.ActiveVehicles.Count,
+                    Is.EqualTo(2));
+
+                CityBusVehicleAgent forward =
+                    FindVehicle(
+                        service.ActiveVehicles,
+                        BusTravelDirection.Forward);
+                CityBusVehicleAgent reverse =
+                    FindVehicle(
+                        service.ActiveVehicles,
+                        BusTravelDirection.Reverse);
+                Assert.That(forward, Is.Not.Null);
+                Assert.That(reverse, Is.Not.Null);
+                Assert.That(
+                    forward.Route.Stops,
+                    Is.EqualTo(new[]
+                    {
+                        new Vector2Int(7, 1),
+                        new Vector2Int(7, 7),
+                        new Vector2Int(3, 7)
+                    }));
+                Assert.That(
+                    reverse.Route.Stops,
+                    Is.EqualTo(new[]
+                    {
+                        new Vector2Int(7, 7),
+                        new Vector2Int(7, 1),
+                        new Vector2Int(3, 7)
+                    }));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void SavedThreeStopAsymmetricLayout_StartsBothDirections()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceSavedThreeStopAsymmetricLoop(engine);
+            GameObject root = new("CityBusSavedThreeStopTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine);
+
+                Assert.That(service.StartService(), Is.True);
+                Assert.That(
+                    service.ActiveVehicles.Count,
+                    Is.EqualTo(2));
+                Assert.That(
+                    FindVehicle(
+                        service.ActiveVehicles,
+                        BusTravelDirection.Forward),
+                    Is.Not.Null);
+                Assert.That(
+                    FindVehicle(
+                        service.ActiveVehicles,
+                        BusTravelDirection.Reverse),
+                    Is.Not.Null);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RebuiltStopLayout_SkipsUnreachableStopAndStartsBuses()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceRebuiltFourStopAsymmetricLoop(engine);
+            GameObject root = new("CityBusRebuiltStopTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine);
+
+                LogAssert.Expect(
+                    LogType.Warning,
+                    new System.Text.RegularExpressions.Regex(
+                        "skipped 1 unreachable stop"));
+                LogAssert.Expect(
+                    LogType.Warning,
+                    new System.Text.RegularExpressions.Regex(
+                        "skipped 1 unreachable stop"));
+
+                Assert.That(service.StartService(), Is.True);
+                Assert.That(
+                    service.ActiveVehicles.Count,
+                    Is.EqualTo(2));
+
+                for (int index = 0;
+                     index < service.ActiveVehicles.Count;
+                     index++)
+                {
+                    IReadOnlyList<Vector2Int> stops =
+                        service.ActiveVehicles[index].Route.Stops;
+                    Assert.That(stops.Count, Is.EqualTo(3));
+                    Assert.That(
+                        ContainsTile(
+                            stops,
+                            new Vector2Int(6, 13)),
+                        Is.False);
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RoundaboutLoop_StartsForwardAndReverseVehicles()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceSavedRoundaboutLoop(engine);
+            GameObject root = new("CityBusRoundaboutDirectionTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine);
+
+                LogAssert.Expect(
+                    LogType.Warning,
+                    new System.Text.RegularExpressions.Regex(
+                        "skipped 1 unreachable stop"));
+                LogAssert.Expect(
+                    LogType.Warning,
+                    new System.Text.RegularExpressions.Regex(
+                        "skipped 1 unreachable stop"));
+
+                Assert.That(service.StartService(), Is.True);
+                Assert.That(
+                    service.ActiveVehicles.Count,
+                    Is.EqualTo(2));
+                Assert.That(
+                    FindVehicle(
+                        service.ActiveVehicles,
+                        BusTravelDirection.Forward),
+                    Is.Not.Null);
+                Assert.That(
+                    FindVehicle(
+                        service.ActiveVehicles,
+                        BusTravelDirection.Reverse),
+                    Is.Not.Null);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RoadRemovedAndRestored_RefreshesServiceImmediately()
+        {
+            var eventHub = new SimEventHub();
+            SimEngine engine = CreateEngine(eventHub);
+            PlaceTwoSidedLoop(engine);
+            GameObject root = new("CityBusRoadRefreshTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine,
+                    eventHub: eventHub);
+                Assert.That(service.StartService(), Is.True);
+                Assert.That(
+                    service.ActiveVehicles.Count,
+                    Is.EqualTo(2));
+
+                Vector2Int removedRoad = new(5, 2);
+                Assert.That(engine.Remove(removedRoad), Is.True);
+                eventHub.Publish(
+                    new PlacedEvent(
+                        removedRoad,
+                        TileType.Road,
+                        true));
+
+                Assert.That(service.ActiveVehicles, Is.Empty);
+                Assert.That(
+                    service.IsVehicleVisible,
+                    Is.False);
+
+                Assert.That(
+                    engine.Place(removedRoad, TileType.Road),
+                    Is.True);
+                eventHub.Publish(
+                    new PlacedEvent(
+                        removedRoad,
+                        TileType.Road,
+                        false));
+
+                Assert.That(
+                    service.ActiveVehicles.Count,
+                    Is.EqualTo(2));
+                Assert.That(
+                    service.IsVehicleVisible,
+                    Is.True);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RoundaboutLoop_RestoredRoad_RecreatesVisibleDirections()
+        {
+            var eventHub = new SimEventHub();
+            SimEngine engine = CreateEngine(eventHub);
+            PlaceSavedRoundaboutLoop(engine);
+            GameObject root = new("CityBusRoundaboutRestoreTest");
+
+            try
+            {
+                LogAssert.Expect(
+                    LogType.Warning,
+                    new System.Text.RegularExpressions.Regex(
+                        "skipped 1 unreachable stop"));
+                LogAssert.Expect(
+                    LogType.Warning,
+                    new System.Text.RegularExpressions.Regex(
+                        "skipped 1 unreachable stop"));
+
+                CityBusService service = CreateService(
+                    root,
+                    engine,
+                    eventHub: eventHub,
+                    registerRoadTraffic: true);
+                Assert.That(service.StartService(), Is.True);
+                AdvanceUntilVisibleDirections(engine, service);
+
+                Vector2Int removedRoad = new(11, 5);
+                Assert.That(engine.Remove(removedRoad), Is.True);
+                LogAssert.Expect(
+                    LogType.Warning,
+                    new System.Text.RegularExpressions.Regex(
+                        "Route 1 Forward was not started: " +
+                        "loop route could not be built"));
+                LogAssert.Expect(
+                    LogType.Warning,
+                    new System.Text.RegularExpressions.Regex(
+                        "Route 1 Reverse was not started: " +
+                        "loop route could not be built"));
+                engine.Tick(engine.TickInterval);
+
+                Assert.That(service.ActiveVehicles, Is.Empty);
+                Assert.That(service.IsVehicleVisible, Is.False);
+
+                Assert.That(
+                    engine.Place(removedRoad, TileType.Road),
+                    Is.True);
+                engine.Tick(engine.TickInterval);
+                Assert.That(
+                    service.ActiveVehicles.Count,
+                    Is.EqualTo(2));
+
+                AdvanceUntilVisibleDirections(engine, service);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void ServiceEnd_RetiresEachBusAtItsNextStop()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceTwoSidedLoop(engine);
+            GameObject root = new("CityBusServiceEndTest");
+
+            try
+            {
+                var calendar = new TestGameCalendar(12);
+                CityBusService service = CreateService(
+                    root,
+                    engine,
+                    calendar);
+                Assert.That(service.StartService(), Is.True);
+                SetPrivateField(service, "autoStart", true);
+                var vehicles =
+                    new List<CityBusVehicleAgent>(
+                        service.ActiveVehicles);
+                for (int index = 0;
+                     index < vehicles.Count;
+                     index++)
+                {
+                    vehicles[index].Route
+                        .RequireStopPresentationConfirmation =
+                        true;
+                }
+                int stoppedEventCount = 0;
+                service.ServiceStopped += () =>
+                    stoppedEventCount++;
+
+                calendar.SetHour(22);
+                Assert.That(
+                    service.IsStoppingAtNextStop,
+                    Is.True);
+                Assert.That(
+                    service.IsVehicleVisible,
+                    Is.True);
+                Assert.That(
+                    service.ActiveVehicles.Count,
+                    Is.EqualTo(2));
+
+                for (int index = 0;
+                     index < vehicles.Count;
+                     index++)
+                {
+                    CityBusVehicleAgent vehicle =
+                        vehicles[index];
+                    InvokePrivate(
+                        vehicle.Route,
+                        "UpdateMoving",
+                        100f);
+
+                    Assert.That(
+                        vehicle.Route.State,
+                        Is.EqualTo(
+                            BusRouteState.WaitingAtStop));
+                    Assert.That(
+                        vehicle.Route
+                            .IsStopPresentationPending,
+                        Is.True);
+
+                    InvokePrivate(service, "Update");
+
+                    Assert.That(
+                        ContainsVehicle(
+                            service.ActiveVehicles,
+                            vehicle),
+                        Is.True);
+
+                    Assert.That(
+                        vehicle.Route
+                            .ConfirmStopPresentationReached(),
+                        Is.True);
+                    InvokePrivate(service, "Update");
+
+                    Assert.That(
+                        ContainsVehicle(
+                            service.ActiveVehicles,
+                            vehicle),
+                        Is.False);
+                }
+
+                Assert.That(
+                    service.IsStoppingAtNextStop,
+                    Is.False);
+                Assert.That(
+                    service.IsVehicleVisible,
+                    Is.False);
+                Assert.That(
+                    service.ActiveVehicles,
+                    Is.Empty);
+                Assert.That(stoppedEventCount, Is.EqualTo(1));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        private static SimEngine CreateEngine(
+            SimEventHub eventHub = null)
         {
             SimConfig config = SimConfig.Default();
             config.GridWidth = 18;
             config.GridHeight = 18;
             config.AutoDetectSignals = false;
-            return new SimEngine(config, new SimEventHub());
+            return new SimEngine(
+                config,
+                eventHub ?? new SimEventHub());
         }
 
         private static CityBusService CreateService(
             GameObject root,
-            SimEngine engine)
+            SimEngine engine,
+            TestGameCalendar calendar = null,
+            SimEventHub eventHub = null,
+            bool registerRoadTraffic = false)
         {
             BusRoute route = root.AddComponent<BusRoute>();
             BusStopRegistry registry =
@@ -328,12 +881,17 @@ namespace CityFlow.View.Tests
             SetPrivateField(service, "autoStart", false);
 
             var services = new CityFlowServices(
-                new SimEventHub(),
+                eventHub ?? new SimEventHub(),
                 engine,
                 engine);
             services.RegisterRoadRoutePlanning(engine);
+            if (registerRoadTraffic)
+            {
+                services.RegisterRoadTraffic(engine.RoadTraffic);
+            }
+
             services.RegisterGameCalendar(
-                new TestGameCalendar(12));
+                calendar ?? new TestGameCalendar(12));
             service.Initialize(services);
             Assert.That(service.IsInitialized, Is.True);
             return service;
@@ -366,6 +924,81 @@ namespace CityFlow.View.Tests
 
         private static void PlaceAsymmetricLoop(SimEngine engine)
         {
+            PlaceAsymmetricRoads(engine);
+
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(10, 2)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(10, 6)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(5, 7)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(6, 11)),
+                Is.True);
+        }
+
+        private static void PlaceSavedThreeStopAsymmetricLoop(
+            SimEngine engine)
+        {
+            PlaceAsymmetricRoads(engine);
+
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(5, 2)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(10, 6)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(6, 11)),
+                Is.True);
+        }
+
+        private static void PlaceRebuiltFourStopAsymmetricLoop(
+            SimEngine engine)
+        {
+            PlaceAsymmetricRoads(engine);
+
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(7, 2)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(5, 7)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(10, 7)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(6, 13)),
+                Is.True);
+        }
+
+        private static void PlaceSavedRoundaboutLoop(
+            SimEngine engine)
+        {
+            PlaceAsymmetricRoads(engine);
+
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(7, 2)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(10, 7)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(5, 8)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(6, 11)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceRoundabout(new Vector2Int(4, 12)),
+                Is.True);
+        }
+
+        private static void PlaceAsymmetricRoads(SimEngine engine)
+        {
             Vector2Int[] roads =
             {
                 new(4, 1), new(5, 1), new(6, 1), new(7, 1),
@@ -389,18 +1022,20 @@ namespace CityFlow.View.Tests
                     engine.Place(roads[index], TileType.Road),
                     Is.True);
             }
+        }
 
+        private static void PlaceThreeStopLoopOutOfCoordinateOrder(
+            SimEngine engine)
+        {
+            PlaceRectangleRoad(engine, 2, 2, 8, 6);
             Assert.That(
-                engine.TryPlaceBusStop(new Vector2Int(10, 2)),
+                engine.TryPlaceBusStop(new Vector2Int(7, 1)),
                 Is.True);
             Assert.That(
-                engine.TryPlaceBusStop(new Vector2Int(10, 6)),
+                engine.TryPlaceBusStop(new Vector2Int(3, 7)),
                 Is.True);
             Assert.That(
-                engine.TryPlaceBusStop(new Vector2Int(5, 7)),
-                Is.True);
-            Assert.That(
-                engine.TryPlaceBusStop(new Vector2Int(6, 11)),
+                engine.TryPlaceBusStop(new Vector2Int(7, 7)),
                 Is.True);
         }
 
@@ -445,6 +1080,141 @@ namespace CityFlow.View.Tests
             Vector2Int right) =>
             Mathf.Abs(left.x - right.x) +
             Mathf.Abs(left.y - right.y);
+
+        private static void AdvanceUntilVisibleDirections(
+            SimEngine engine,
+            CityBusService service)
+        {
+            const int maxTicks = 32;
+            for (int tick = 0; tick < maxTicks; tick++)
+            {
+                engine.Tick(engine.TickInterval);
+                if (AreDirectionsVisible(service))
+                {
+                    return;
+                }
+            }
+
+            AssertVisibleDirections(service);
+        }
+
+        private static bool AreDirectionsVisible(
+            CityBusService service)
+        {
+            if (service.ActiveVehicles.Count != 2)
+            {
+                return false;
+            }
+
+            for (int directionIndex = 0;
+                 directionIndex < 2;
+                 directionIndex++)
+            {
+                BusTravelDirection direction =
+                    directionIndex == 0
+                        ? BusTravelDirection.Forward
+                        : BusTravelDirection.Reverse;
+                CityBusVehicleAgent vehicle = FindVehicle(
+                    service.ActiveVehicles,
+                    direction);
+
+                if (vehicle == null ||
+                    !vehicle.Route.TryGetRoadTrafficSnapshot(
+                        out RoadTrafficSnapshot snapshot) ||
+                    !snapshot.IsVisible ||
+                    snapshot.State ==
+                        RoadTrafficAgentState.RouteUnavailable)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static void AssertVisibleDirections(
+            CityBusService service)
+        {
+            Assert.That(
+                service.ActiveVehicles.Count,
+                Is.EqualTo(2));
+
+            for (int directionIndex = 0;
+                 directionIndex < 2;
+                 directionIndex++)
+            {
+                BusTravelDirection direction =
+                    directionIndex == 0
+                        ? BusTravelDirection.Forward
+                        : BusTravelDirection.Reverse;
+                CityBusVehicleAgent vehicle = FindVehicle(
+                    service.ActiveVehicles,
+                    direction);
+
+                Assert.That(vehicle, Is.Not.Null);
+                Assert.That(
+                    vehicle.Route.TryGetRoadTrafficSnapshot(
+                        out RoadTrafficSnapshot snapshot),
+                    Is.True);
+                Assert.That(
+                    snapshot.State,
+                    Is.Not.EqualTo(
+                        RoadTrafficAgentState.RouteUnavailable));
+                Assert.That(snapshot.IsVisible, Is.True);
+            }
+        }
+
+        private static bool ContainsVehicle(
+            IReadOnlyList<CityBusVehicleAgent> vehicles,
+            CityBusVehicleAgent expected)
+        {
+            for (int index = 0;
+                 index < vehicles.Count;
+                 index++)
+            {
+                if (ReferenceEquals(
+                        vehicles[index],
+                        expected))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool ContainsTile(
+            IReadOnlyList<Vector2Int> tiles,
+            Vector2Int expected)
+        {
+            for (int index = 0; index < tiles.Count; index++)
+            {
+                if (tiles[index] == expected)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static CityBusVehicleAgent FindVehicle(
+            IReadOnlyList<CityBusVehicleAgent> vehicles,
+            BusTravelDirection direction)
+        {
+            for (int index = 0;
+                 index < vehicles.Count;
+                 index++)
+            {
+                if (vehicles[index] != null &&
+                    vehicles[index].Direction == direction)
+                {
+                    return vehicles[index];
+                }
+            }
+
+            return null;
+        }
 
         private static void AssertOppositeDirectedRoutes(
             RoadRoutePlan forward,
@@ -528,11 +1298,7 @@ namespace CityFlow.View.Tests
             public int HoursPerDay => 24;
             public float TimeOfDay01 => Hour / 24f;
 
-            public event Action<int> HourChanged
-            {
-                add { }
-                remove { }
-            }
+            public event Action<int> HourChanged;
 
             public event Action<int> DayChanged
             {
@@ -544,6 +1310,12 @@ namespace CityFlow.View.Tests
             {
                 add { }
                 remove { }
+            }
+
+            public void SetHour(int hour)
+            {
+                Hour = Mathf.Clamp(hour, 0, 23);
+                HourChanged?.Invoke(Hour);
             }
         }
 

@@ -51,6 +51,13 @@ namespace CityFlow.View
         private float targetDistance;
         private float segmentElapsed;
         private float segmentDuration;
+        private bool hasStopPresentationTarget;
+        private float stopPresentationDistance;
+        private int stopPresentationSegmentVersion = -1;
+        private bool hasObservedTrafficSnapshot;
+        private bool observedSnapshotVisible;
+        private RoadTrafficAgentState observedSnapshotState;
+        private bool snapshotMissingLogged;
 
         private bool offRoadTransitionActive;
         private bool transitionEndsOnRoad;
@@ -65,6 +72,7 @@ namespace CityFlow.View
         public bool HasVisibleBus =>
             visual != null &&
             visual.gameObject.activeInHierarchy;
+        public bool IsAgentVisible { get; private set; } = true;
 
         public void ConfigureCityBusAgent(
             CityFlowServices services,
@@ -77,6 +85,7 @@ namespace CityFlow.View
             definition = busDefinition;
             busRoute = route;
             cityBusService = owner;
+            IsAgentVisible = false;
 
             if (presentationTemplate != null &&
                 presentationTemplate != this)
@@ -106,10 +115,26 @@ namespace CityFlow.View
                 services?.Placement as IIntersectionFacilityService;
             ResolveReferences();
             EnsureVisual();
+            UpdateStopPresentationGate();
             Subscribe();
             HandleTileChanged(busRoute != null
                 ? busRoute.CurrentTile
                 : default);
+            LogCityBusPresentationState("configured");
+        }
+
+        public void SetAgentVisible(bool visible)
+        {
+            IsAgentVisible = visible;
+            UpdateStopPresentationGate();
+            if (!visible)
+            {
+                HideCityBusVisual();
+                return;
+            }
+
+            RefreshVisiblePresentation();
+            LogCityBusPresentationState("agent visibility enabled");
         }
 
         protected virtual void Awake()
@@ -122,16 +147,19 @@ namespace CityFlow.View
         {
             ResolveReferences();
             EnsureVisual();
+            UpdateStopPresentationGate();
             Subscribe();
         }
 
         protected virtual void OnDisable()
         {
+            DisableStopPresentationGate();
             Unsubscribe();
         }
 
         protected virtual void OnDestroy()
         {
+            DisableStopPresentationGate();
             Unsubscribe();
 
             if (visual == null)
@@ -155,9 +183,11 @@ namespace CityFlow.View
         {
             ResolveReferences();
             EnsureVisual();
+            UpdateStopPresentationGate();
 
-            if (cityBusService != null &&
-                !cityBusService.IsVehicleVisible)
+            if (!IsAgentVisible ||
+                (cityBusService != null &&
+                 !cityBusService.IsVehicleVisible))
             {
                 HideCityBusVisual();
                 return;
@@ -200,6 +230,8 @@ namespace CityFlow.View
 
             busRoute.TileChanged += HandleTileChanged;
             busRoute.RouteUnavailable += HandleRouteUnavailable;
+            busRoute.StopPresentationRequested +=
+                HandleStopPresentationRequested;
             if (cityBusService != null)
             {
                 cityBusService.VehicleVisibilityChanged +=
@@ -223,6 +255,8 @@ namespace CityFlow.View
 
             busRoute.TileChanged -= HandleTileChanged;
             busRoute.RouteUnavailable -= HandleRouteUnavailable;
+            busRoute.StopPresentationRequested -=
+                HandleStopPresentationRequested;
             if (cityBusService != null)
             {
                 cityBusService.VehicleVisibilityChanged -=
@@ -257,6 +291,19 @@ namespace CityFlow.View
             visual.localScale = Vector3.one * visualScale;
             ApplyFeatureMaterial(instance);
             instance.SetActive(false);
+
+            CityBusVehicleAgent agent =
+                GetComponent<CityBusVehicleAgent>();
+            if (agent != null)
+            {
+                Debug.Log(
+                    $"[BusWorldView] Route {agent.RouteId} " +
+                    $"{agent.Direction} visual instantiated. " +
+                    $"visual={instance.name}, " +
+                    $"visualEntity={instance.GetEntityId()}, " +
+                    $"cityView={cityView.name}.",
+                    this);
+            }
         }
 
         private void ApplyFeatureMaterial(GameObject instance)
@@ -344,8 +391,14 @@ namespace CityFlow.View
             }
 
             if (!busRoute.TryGetRoadTrafficSnapshot(
-                    out RoadTrafficSnapshot snapshot) ||
-                !snapshot.IsVisible ||
+                    out RoadTrafficSnapshot snapshot))
+            {
+                LogMissingTrafficSnapshot();
+                return;
+            }
+
+            LogTrafficSnapshotTransition(snapshot);
+            if (!snapshot.IsVisible ||
                 snapshot.State == RoadTrafficAgentState.RouteUnavailable ||
                 !TryBakeRoadPath(out bool pathChanged) ||
                 roadPolyline == null)
@@ -375,8 +428,13 @@ namespace CityFlow.View
                 snapshot.LinkProgress01,
                 snapshot.RoundaboutProgress01,
                 cityView.RoundaboutTransitionSpanTiles);
+            nextTarget = ResolveStopPresentationTarget(nextTarget);
 
-            if (!hasRoadPose || pathChanged || segmentChanged)
+            bool stopPresentationPending =
+                busRoute.IsStopPresentationPending;
+            if (!hasRoadPose ||
+                (!stopPresentationPending &&
+                 (pathChanged || segmentChanged)))
             {
                 currentDistance = nextTarget;
                 targetDistance = nextTarget;
@@ -384,8 +442,19 @@ namespace CityFlow.View
                 segmentElapsed = 0f;
                 segmentDuration = 0f;
                 hasRoadPose = true;
+                bool visualWasInactive =
+                    !visual.gameObject.activeSelf;
                 visual.gameObject.SetActive(true);
                 ApplyRoadSample(snapshot);
+                if (visualWasInactive)
+                {
+                    LogCityBusPresentationState(
+                        "road visual activated");
+                }
+
+                TryConfirmStopPresentationReached(
+                    snapshot,
+                    nextTarget);
                 return;
             }
 
@@ -416,6 +485,80 @@ namespace CityFlow.View
             }
 
             ApplyRoadSample(snapshot);
+            TryConfirmStopPresentationReached(
+                snapshot,
+                nextTarget);
+        }
+
+        private float ResolveStopPresentationTarget(
+            float snapshotTarget)
+        {
+            if (busRoute == null ||
+                !busRoute.IsStopPresentationPending)
+            {
+                ResetStopPresentationTarget();
+                return snapshotTarget;
+            }
+
+            if (!hasStopPresentationTarget ||
+                stopPresentationSegmentVersion !=
+                busRoute.RoadSegmentVersion)
+            {
+                stopPresentationDistance = hasRoadPose
+                    ? Mathf.Max(currentDistance, snapshotTarget)
+                    : snapshotTarget;
+                stopPresentationSegmentVersion =
+                    busRoute.RoadSegmentVersion;
+                hasStopPresentationTarget = true;
+
+                if (hasRoadPose)
+                {
+                    segmentStartDistance = currentDistance;
+                    targetDistance = stopPresentationDistance;
+                    segmentElapsed = 0f;
+                    float stepInterval =
+                        roadTraffic?.StepIntervalSeconds ?? 0.1f;
+                    float stepProgress =
+                        roadTraffic?.StepProgress01 ?? 0f;
+                    segmentDuration = Mathf.Max(
+                        0.02f,
+                        stepInterval * (1f - stepProgress));
+                }
+            }
+
+            return stopPresentationDistance;
+        }
+
+        private void TryConfirmStopPresentationReached(
+            RoadTrafficSnapshot snapshot,
+            float stopDistance)
+        {
+            if (busRoute == null ||
+                !busRoute.IsStopPresentationPending ||
+                cityView == null)
+            {
+                return;
+            }
+
+            float tolerance = Mathf.Max(
+                0.005f,
+                cityView.TileSize * 0.02f);
+            if (Mathf.Abs(currentDistance - stopDistance) >
+                tolerance)
+            {
+                return;
+            }
+
+            currentDistance = stopDistance;
+            targetDistance = stopDistance;
+            segmentStartDistance = stopDistance;
+            segmentElapsed = 0f;
+            segmentDuration = 0f;
+            ApplyRoadSample(snapshot);
+            if (busRoute.ConfirmStopPresentationReached())
+            {
+                ResetStopPresentationTarget();
+            }
         }
 
         private bool TryBakeRoadPath(out bool changed)
@@ -596,7 +739,10 @@ namespace CityFlow.View
             if (transitionEndsOnRoad)
             {
                 hasRoadPose = false;
+                return;
             }
+
+            busRoute?.ConfirmStopPresentationReached();
         }
 
         private bool TryGetSchoolParkingPose(
@@ -704,6 +850,14 @@ namespace CityFlow.View
             offRoadTransitionActive = false;
             segmentElapsed = 0f;
             segmentDuration = 0f;
+            ResetStopPresentationTarget();
+        }
+
+        private void HandleStopPresentationRequested(
+            Vector2Int _,
+            int __)
+        {
+            ResetStopPresentationTarget();
         }
 
         private void HandleVehicleVisibilityChanged(bool visible)
@@ -711,6 +865,154 @@ namespace CityFlow.View
             if (!visible)
             {
                 HideCityBusVisual();
+                return;
+            }
+
+            RefreshVisiblePresentation();
+            LogCityBusPresentationState(
+                "service visibility enabled");
+        }
+
+        private void RefreshVisiblePresentation()
+        {
+            if (!IsAgentVisible)
+            {
+                return;
+            }
+
+            ResolveReferences();
+            EnsureVisual();
+            UpdateStopPresentationGate();
+            if (offRoadTransitionActive)
+            {
+                UpdateOffRoadTransition();
+                return;
+            }
+
+            UpdateRoadPose();
+        }
+
+        private void LogMissingTrafficSnapshot()
+        {
+            if (snapshotMissingLogged)
+            {
+                return;
+            }
+
+            snapshotMissingLogged = true;
+            CityBusVehicleAgent agent =
+                GetComponent<CityBusVehicleAgent>();
+            if (agent == null)
+            {
+                return;
+            }
+
+            Debug.LogWarning(
+                $"[BusWorldView] Route {agent.RouteId} " +
+                $"{agent.Direction} has no road traffic snapshot. " +
+                $"agentEntity={agent.GetEntityId()}.",
+                this);
+        }
+
+        private void LogTrafficSnapshotTransition(
+            RoadTrafficSnapshot snapshot)
+        {
+            snapshotMissingLogged = false;
+            if (hasObservedTrafficSnapshot &&
+                observedSnapshotVisible == snapshot.IsVisible &&
+                observedSnapshotState == snapshot.State)
+            {
+                return;
+            }
+
+            hasObservedTrafficSnapshot = true;
+            observedSnapshotVisible = snapshot.IsVisible;
+            observedSnapshotState = snapshot.State;
+
+            CityBusVehicleAgent agent =
+                GetComponent<CityBusVehicleAgent>();
+            if (agent == null)
+            {
+                return;
+            }
+
+            Debug.Log(
+                $"[BusWorldView] Route {agent.RouteId} " +
+                $"{agent.Direction} traffic changed. " +
+                $"state={snapshot.State}, " +
+                $"snapshotVisible={snapshot.IsVisible}, " +
+                $"tile={snapshot.CurrentTile}, " +
+                $"routeIndex={snapshot.RouteTileIndex}, " +
+                $"visualExists={visual != null}, " +
+                $"visualActive=" +
+                $"{(visual != null && visual.gameObject.activeSelf)}.",
+                this);
+        }
+
+        private void LogCityBusPresentationState(string reason)
+        {
+            CityBusVehicleAgent agent =
+                GetComponent<CityBusVehicleAgent>();
+            if (agent == null)
+            {
+                return;
+            }
+
+            string trafficState = "snapshot=missing";
+            if (busRoute != null &&
+                busRoute.TryGetRoadTrafficSnapshot(
+                    out RoadTrafficSnapshot snapshot))
+            {
+                trafficState =
+                    $"state={snapshot.State}, " +
+                    $"snapshotVisible={snapshot.IsVisible}, " +
+                    $"tile={snapshot.CurrentTile}, " +
+                    $"routeIndex={snapshot.RouteTileIndex}";
+            }
+
+            Debug.Log(
+                $"[BusWorldView] Route {agent.RouteId} " +
+                $"{agent.Direction} {reason}. " +
+                $"agentEntity={agent.GetEntityId()}, " +
+                $"agentVisible={IsAgentVisible}, " +
+                $"visualExists={visual != null}, " +
+                $"visualActiveSelf=" +
+                $"{(visual != null && visual.gameObject.activeSelf)}, " +
+                $"visualActiveInHierarchy={HasVisibleBus}, " +
+                trafficState,
+                this);
+        }
+
+        private void UpdateStopPresentationGate()
+        {
+            if (busRoute == null)
+            {
+                return;
+            }
+
+            bool shouldRequireConfirmation =
+                isActiveAndEnabled &&
+                IsAgentVisible &&
+                visual != null &&
+                cityView != null &&
+                roadTraffic != null &&
+                busRoute.UsesRoadTraffic;
+            if (busRoute.IsStopPresentationPending &&
+                !shouldRequireConfirmation)
+            {
+                return;
+            }
+
+            busRoute.RequireStopPresentationConfirmation =
+                shouldRequireConfirmation;
+        }
+
+        private void DisableStopPresentationGate()
+        {
+            if (busRoute != null)
+            {
+                busRoute.RequireStopPresentationConfirmation =
+                    false;
             }
         }
 
@@ -727,7 +1029,17 @@ namespace CityFlow.View
             observedRoadSegmentVersion = -1;
             segmentElapsed = 0f;
             segmentDuration = 0f;
+            hasObservedTrafficSnapshot = false;
+            snapshotMissingLogged = false;
+            ResetStopPresentationTarget();
             visual.gameObject.SetActive(false);
+        }
+
+        private void ResetStopPresentationTarget()
+        {
+            hasStopPresentationTarget = false;
+            stopPresentationDistance = 0f;
+            stopPresentationSegmentVersion = -1;
         }
 
 #if UNITY_EDITOR

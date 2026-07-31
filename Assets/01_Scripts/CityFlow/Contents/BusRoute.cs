@@ -78,6 +78,10 @@ namespace CityFlow.Content.Transit
         private readonly List<Vector2Int> validationRoadPath = new();
         private readonly List<Vector2Int> validationLoopRoadPath = new();
         private readonly List<Vector2Int> validationStartRoads = new();
+        private readonly List<Vector2Int> validationRemainingStops = new();
+        private readonly List<Vector2Int> validationOrderedStops = new();
+        private readonly List<Vector2Int> validationBestOrderedStops = new();
+        private readonly List<Vector2Int> validationSelectedRoadPath = new();
 
         private readonly Queue<Vector2Int> searchQueue = new();
         private readonly Dictionary<Vector2Int, Vector2Int> cameFrom = new();
@@ -95,6 +99,8 @@ namespace CityFlow.Content.Transit
 
         private float moveTimer;
         private float waitTimer;
+        private bool requireStopPresentationConfirmation;
+        private bool stopPresentationPending;
 
         private bool isInitialized;
         private bool routeRequested;
@@ -149,6 +155,22 @@ namespace CityFlow.Content.Transit
             get => stopWaitSeconds;
             set => stopWaitSeconds = Mathf.Max(0f, value);
         }
+
+        public bool RequireStopPresentationConfirmation
+        {
+            get => requireStopPresentationConfirmation;
+            set
+            {
+                requireStopPresentationConfirmation = value;
+                if (!value && stopPresentationPending)
+                {
+                    BeginStopWait();
+                }
+            }
+        }
+
+        public bool IsStopPresentationPending =>
+            stopPresentationPending;
 
         public bool UseRoadsideStopApproach
         {
@@ -205,6 +227,7 @@ namespace CityFlow.Content.Transit
 
         public event Action<Vector2Int> TileChanged;
         public event Action<Vector2Int, int> StopArrived;
+        public event Action<Vector2Int, int> StopPresentationRequested;
         public event Action RouteCompleted;
         public event Action RouteUnavailable;
 
@@ -525,6 +548,193 @@ namespace CityFlow.Content.Transit
             return false;
         }
 
+        public bool TryOrderRoadsideLoopStops(
+            IReadOnlyList<Vector2Int> candidateStops,
+            out IReadOnlyList<Vector2Int> orderedStops)
+        {
+            orderedStops = Array.Empty<Vector2Int>();
+            if (!isInitialized ||
+                !useRoadsideStopApproach ||
+                !roadsideStopsUsePairedPlatforms ||
+                candidateStops == null ||
+                candidateStops.Count < 2)
+            {
+                return false;
+            }
+
+            validationBestOrderedStops.Clear();
+
+            for (int startIndex = 0;
+                 startIndex < candidateStops.Count;
+                 startIndex++)
+            {
+                if (!TryOrderRoadsideLoopFromStop(
+                        candidateStops,
+                        startIndex))
+                {
+                    continue;
+                }
+
+                if (validationOrderedStops.Count >
+                    validationBestOrderedStops.Count)
+                {
+                    CopyPath(
+                        validationOrderedStops,
+                        validationBestOrderedStops);
+                }
+
+                if (validationBestOrderedStops.Count ==
+                    candidateStops.Count)
+                {
+                    break;
+                }
+            }
+
+            if (validationBestOrderedStops.Count < 2)
+            {
+                return false;
+            }
+
+            orderedStops = Array.AsReadOnly(
+                validationBestOrderedStops.ToArray());
+            return true;
+        }
+
+        private bool TryOrderRoadsideLoopFromStop(
+            IReadOnlyList<Vector2Int> candidateStops,
+            int startIndex)
+        {
+            validationOrderedStops.Clear();
+            validationRemainingStops.Clear();
+            validationSelectedRoadPath.Clear();
+
+            Vector2Int startStop = candidateStops[startIndex];
+            if (!TryGetPairedStopApproach(
+                    startStop,
+                    out Vector2Int currentRoad,
+                    out _,
+                    out Vector2Int arrivalDirection))
+            {
+                return false;
+            }
+
+            Vector2Int forbiddenFirstStep =
+                currentRoad - arrivalDirection;
+            if (!IsRoad(forbiddenFirstStep))
+            {
+                return false;
+            }
+
+            validationOrderedStops.Add(startStop);
+            for (int index = 0;
+                 index < candidateStops.Count;
+                 index++)
+            {
+                if (index != startIndex)
+                {
+                    validationRemainingStops.Add(
+                        candidateStops[index]);
+                }
+            }
+
+            while (validationRemainingStops.Count > 0)
+            {
+                int selectedIndex = -1;
+                int selectedPathLength = int.MaxValue;
+                Vector2Int selectedEndRoad = default;
+                validationSelectedRoadPath.Clear();
+
+                for (int index = 0;
+                     index < validationRemainingStops.Count;
+                     index++)
+                {
+                    Vector2Int candidate =
+                        validationRemainingStops[index];
+                    if (!TryFindRoadsidePath(
+                            currentRoad,
+                            candidate,
+                            validationRoadPath,
+                            true,
+                            forbiddenFirstStep,
+                            out Vector2Int candidateEndRoad) ||
+                        validationRoadPath.Count < 2)
+                    {
+                        continue;
+                    }
+
+                    bool shorter =
+                        validationRoadPath.Count <
+                        selectedPathLength;
+                    bool sameLengthEarlierCoordinate =
+                        validationRoadPath.Count ==
+                        selectedPathLength &&
+                        (selectedIndex < 0 ||
+                         CompareStopCoordinates(
+                             candidate,
+                             validationRemainingStops[
+                                 selectedIndex]) < 0);
+                    if (!shorter &&
+                        !sameLengthEarlierCoordinate)
+                    {
+                        continue;
+                    }
+
+                    selectedIndex = index;
+                    selectedPathLength =
+                        validationRoadPath.Count;
+                    selectedEndRoad = candidateEndRoad;
+                    CopyPath(
+                        validationRoadPath,
+                        validationSelectedRoadPath);
+                }
+
+                if (selectedIndex < 0 ||
+                    validationSelectedRoadPath.Count < 2)
+                {
+                    break;
+                }
+
+                validationOrderedStops.Add(
+                    validationRemainingStops[selectedIndex]);
+                validationRemainingStops.RemoveAt(selectedIndex);
+                forbiddenFirstStep =
+                    validationSelectedRoadPath[
+                        validationSelectedRoadPath.Count - 2];
+                currentRoad = selectedEndRoad;
+            }
+
+            return validationOrderedStops.Count >= 2 &&
+                   TryFindRoadsidePath(
+                       currentRoad,
+                       startStop,
+                       validationRoadPath,
+                       true,
+                       forbiddenFirstStep,
+                       out _) &&
+                   validationRoadPath.Count >= 2;
+        }
+
+        private static void CopyPath(
+            IReadOnlyList<Vector2Int> source,
+            List<Vector2Int> destination)
+        {
+            destination.Clear();
+            for (int index = 0; index < source.Count; index++)
+            {
+                destination.Add(source[index]);
+            }
+        }
+
+        private static int CompareStopCoordinates(
+            Vector2Int left,
+            Vector2Int right)
+        {
+            int yCompare = left.y.CompareTo(right.y);
+            return yCompare != 0
+                ? yCompare
+                : left.x.CompareTo(right.x);
+        }
+
         public void SetInitialAccessRoad(Vector2Int accessRoad)
         {
             preferredInitialAccessRoad = accessRoad;
@@ -805,6 +1015,7 @@ namespace CityFlow.Content.Transit
 
             moveTimer = 0f;
             waitTimer = 0f;
+            stopPresentationPending = false;
 
             currentRoadPath.Clear();
             roadTrafficPath.Clear();
@@ -999,21 +1210,20 @@ namespace CityFlow.Content.Transit
                 CurrentTile = stops[currentStopIndex];
             }
 
-            currentRoadPath.Clear();
-            currentRoadPathIndex = 0;
-
             TileChanged?.Invoke(CurrentTile);
-            StopArrived?.Invoke(
-                stops[currentStopIndex],
-                currentStopIndex);
 
-            waitTimer = stopWaitSeconds;
             State = BusRouteState.WaitingAtStop;
-
-            if (waitTimer <= 0f)
+            if (requireStopPresentationConfirmation)
             {
-                ContinueAfterWait();
+                stopPresentationPending = true;
+                waitTimer = 0f;
+                StopPresentationRequested?.Invoke(
+                    stops[currentStopIndex],
+                    currentStopIndex);
+                return;
             }
+
+            BeginStopWait();
         }
 
         private void RememberArrivalApproach()
@@ -1311,7 +1521,39 @@ namespace CityFlow.Content.Transit
 
         private void UpdateWaiting(float deltaTime)
         {
+            if (stopPresentationPending)
+            {
+                return;
+            }
+
             waitTimer -= Mathf.Max(0f, deltaTime);
+
+            if (waitTimer <= 0f)
+            {
+                ContinueAfterWait();
+            }
+        }
+
+        public bool ConfirmStopPresentationReached()
+        {
+            if (!stopPresentationPending)
+            {
+                return false;
+            }
+
+            BeginStopWait();
+            return true;
+        }
+
+        private void BeginStopWait()
+        {
+            stopPresentationPending = false;
+            StopArrived?.Invoke(
+                stops[currentStopIndex],
+                currentStopIndex);
+
+            waitTimer = stopWaitSeconds;
+            State = BusRouteState.WaitingAtStop;
 
             if (waitTimer <= 0f)
             {
@@ -1564,6 +1806,7 @@ namespace CityFlow.Content.Transit
             routeRequested = false;
             moveTimer = 0f;
             waitTimer = 0f;
+            stopPresentationPending = false;
             currentRoadPath.Clear();
             roadTrafficPath.Clear();
             stopAccessRoads.Clear();
@@ -2455,6 +2698,7 @@ namespace CityFlow.Content.Transit
         private void CompleteRoute()
         {
             routeRequested = false;
+            stopPresentationPending = false;
             currentSegmentUsesRoadsideStop = false;
             ReleaseRoadTrafficAgent();
             State = BusRouteState.Completed;
@@ -2465,6 +2709,7 @@ namespace CityFlow.Content.Transit
         private void SetRouteUnavailable()
         {
             routeRequested = false;
+            stopPresentationPending = false;
             currentSegmentUsesRoadsideStop = false;
             ReleaseRoadTrafficAgent();
             State = BusRouteState.RouteUnavailable;
