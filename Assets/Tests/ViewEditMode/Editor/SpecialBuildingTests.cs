@@ -345,6 +345,11 @@ namespace CityFlow.Tests
                     "cinema",
                     new Vector2Int(2, 3)));
 
+                runtime.Research.inputsOverrideForTest = () =>
+                    new ResearchConditionInputs(0, 80, null);
+                runtime.Research.EvaluatePendingResearch();
+                Assert.IsTrue(runtime.Research.TryUnlock(
+                    "research_building_video_store"));
                 Assert.IsTrue(runtime.Research.TryUnlock(
                     "research_building_cinema"));
                 Assert.IsTrue(runtime.Service.IsBuildingUnlocked("cinema"));

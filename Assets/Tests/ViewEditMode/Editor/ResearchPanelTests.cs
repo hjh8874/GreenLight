@@ -83,6 +83,7 @@ public class ResearchPanelTests
         SetPrivate(controller, "catalog", catalog);
 
         var template = new GameObject("RowTemplate");
+        template.AddComponent<RectTransform>();
         template.transform.SetParent(owner.transform);
         template.SetActive(false);
         SetPrivate(controller, "rowTemplate", template);

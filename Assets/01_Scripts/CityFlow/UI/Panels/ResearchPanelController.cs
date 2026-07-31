@@ -280,7 +280,7 @@ namespace CityFlow.UI
         }
 
         private static RectTransform GetRect(GameObject instance) =>
-            instance.GetComponent<RectTransform>() ?? instance.AddComponent<RectTransform>();
+            instance.GetComponent<RectTransform>();
 
         private static string Normalize(string value) => value?.Trim() ?? string.Empty;
 
