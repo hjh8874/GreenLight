@@ -17,6 +17,14 @@ MonoBehaviour:
   minimumDispatchIntervalDays: 1
   maximumDispatchIntervalDays: 3
   maximumActiveIncidents: 3
+  maximumAutomaticIncidentsPerDay: 1
+  incidentDefinitions:
+  - {fileID: 11400000, guid: c025ee3a612844448fe76b4bd10d53c3, type: 2}
+  - {fileID: 11400000, guid: 65fb36b235da4dbb8a868988f2fcf74f, type: 2}
+  - {fileID: 11400000, guid: 3467037f96b34d21a5aa63f0018621d0, type: 2}
+  - {fileID: 11400000, guid: 5d2639f67d1745acabe15b0558f0854f, type: 2}
+  - {fileID: 11400000, guid: bebedadff17c4a56b222b4df800f75f4, type: 2}
+  - {fileID: 11400000, guid: 540c32b5d3a049b2b9314f1a57bb1c4e, type: 2}
   houseWeight: 1
   officeWeight: 1
   schoolWeight: 0.7
@@ -24,8 +32,10 @@ MonoBehaviour:
   recentTargetHistorySize: 3
   travelSecondsPerTile: 0.45
   treatmentSeconds: 2
-  ambulancesPerHospital: 1
+  ambulancesPerHospital: 2
   routeRetrySeconds: 2
+  maximumOutboundRouteRetries: 3
+  maximumReturnRouteRetries: 5
   vehicleVisualPrefab: {fileID: 100000, guid: e76a211798c34f4fb5e47bad0a4ee269, type: 3}
   visualScale: 0.085
   visualDepth: -0.18

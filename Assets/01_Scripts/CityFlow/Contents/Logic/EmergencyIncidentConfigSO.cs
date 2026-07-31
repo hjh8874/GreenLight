@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace CityFlow.Content
@@ -20,6 +21,10 @@ namespace CityFlow.Content
         private int maximumDispatchIntervalDays = 3;
         [SerializeField, Min(1)]
         private int maximumActiveIncidents = 3;
+        [SerializeField, Min(1)]
+        private int maximumAutomaticIncidentsPerDay = 1;
+        [SerializeField]
+        private EmergencyIncidentDefinitionSO[] incidentDefinitions;
         [SerializeField, Range(0f, 1f)]
         private float houseWeight = 0.7f;
         [SerializeField, Range(0f, 1f)]
@@ -37,9 +42,13 @@ namespace CityFlow.Content
         [SerializeField, Min(0.01f)]
         private float treatmentSeconds = 2f;
         [SerializeField, Min(1)]
-        private int ambulancesPerHospital = 1;
+        private int ambulancesPerHospital = 2;
         [SerializeField, Min(0.1f)]
         private float routeRetrySeconds = 2f;
+        [SerializeField, Min(1)]
+        private int maximumOutboundRouteRetries = 3;
+        [SerializeField, Min(1)]
+        private int maximumReturnRouteRetries = 5;
 
         [Header("Ambulance Presentation")]
         [SerializeField]
@@ -67,6 +76,13 @@ namespace CityFlow.Content
                 maximumDispatchIntervalDays);
         public int MaximumActiveIncidents =>
             Mathf.Max(1, maximumActiveIncidents);
+        public int MaximumAutomaticIncidentsPerDay =>
+            Mathf.Max(1, maximumAutomaticIncidentsPerDay);
+        public IReadOnlyList<EmergencyIncidentDefinitionSO>
+            IncidentDefinitions =>
+                incidentDefinitions ??
+                System.Array.Empty<
+                    EmergencyIncidentDefinitionSO>();
         public float HouseWeight =>
             Mathf.Clamp01(houseWeight);
         public float OfficeWeight =>
@@ -85,6 +101,10 @@ namespace CityFlow.Content
             Mathf.Max(1, ambulancesPerHospital);
         public float RouteRetrySeconds =>
             Mathf.Max(0.1f, routeRetrySeconds);
+        public int MaximumOutboundRouteRetries =>
+            Mathf.Max(1, maximumOutboundRouteRetries);
+        public int MaximumReturnRouteRetries =>
+            Mathf.Max(1, maximumReturnRouteRetries);
         public GameObject VehicleVisualPrefab =>
             vehicleVisualPrefab;
         public float VisualScale =>
@@ -113,6 +133,10 @@ namespace CityFlow.Content
             maximumActiveIncidents = Mathf.Max(
                 1,
                 maximumActiveIncidents);
+            maximumAutomaticIncidentsPerDay =
+                Mathf.Max(
+                    1,
+                    maximumAutomaticIncidentsPerDay);
             houseWeight = Mathf.Clamp01(houseWeight);
             officeWeight = Mathf.Clamp01(officeWeight);
             schoolWeight = Mathf.Clamp01(schoolWeight);
@@ -133,6 +157,12 @@ namespace CityFlow.Content
             routeRetrySeconds = Mathf.Max(
                 0.1f,
                 routeRetrySeconds);
+            maximumOutboundRouteRetries = Mathf.Max(
+                1,
+                maximumOutboundRouteRetries);
+            maximumReturnRouteRetries = Mathf.Max(
+                1,
+                maximumReturnRouteRetries);
             visualScale = Mathf.Max(
                 0.01f,
                 visualScale);

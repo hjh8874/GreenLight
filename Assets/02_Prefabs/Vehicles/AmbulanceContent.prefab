@@ -51,6 +51,9 @@ MonoBehaviour:
   enableAutomaticSpawn: 1
   useExternalAmbulanceTransport: 1
   verboseLogging: 0
+  testUseRandomTarget: 1
+  testTarget: {x: 0, y: 0}
+  testDefinitionIndex: 0
 --- !u!114 &620000000000000004
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8459043cce844ec8bbab5a202274bfd0, type: 3}
+  m_Name: Emergency_CardiacArrest_3h
+  m_EditorClassIdentifier: CityFlow.Content::CityFlow.Content.EmergencyIncidentDefinitionSO
+  incidentId: cardiac_arrest
+  title: 심정지 환자 발생
+  description: 골든타임이 끝나기 전에 환자에게 도착하세요.
+  responseDeadlineHours: 3
+  selectionWeight: 0.35
+  successMessage: 환자가 제시간에 응급 치료를 받았습니다.
+  timeoutMessage: 골든타임을 넘겨 환자가 사망했습니다.
+  unreachableMessage: 환자에게 도달할 응급 경로가 없어 사망했습니다.
+  failureHappinessPenalty: 3
+  icon: {fileID: 0}

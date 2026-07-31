@@ -34,6 +34,8 @@ namespace CityFlow.Content
         private IReadOnlyTileData tileData;
         private TravelStage stage;
         private float retryRemainingSeconds;
+        private int routeFailureCount;
+        private bool hasDepartedHospital;
         private bool initialized;
         private bool subscribed;
         private bool assigned;
@@ -100,6 +102,8 @@ namespace CityFlow.Content
             assigned = false;
             stage = TravelStage.None;
             retryRemainingSeconds = 0f;
+            routeFailureCount = 0;
+            hasDepartedHospital = false;
             route.StopRoute();
             worldView.ShowParkedAtHospital(
                 homeHospital,
@@ -168,6 +172,8 @@ namespace CityFlow.Content
             assigned = true;
             stage = TravelStage.Outbound;
             retryRemainingSeconds = 0f;
+            routeFailureCount = 0;
+            hasDepartedHospital = false;
             ConfigureRouteDefaults();
             worldView.PrepareRoadsideIncidentStop();
             StartCurrentStage(
@@ -179,8 +185,10 @@ namespace CityFlow.Content
         {
             if (!assigned ||
                 incident == null ||
-                incident.State !=
-                    EmergencyIncidentState.AmbulanceReturning ||
+                incident.State is not (
+                    EmergencyIncidentState.AmbulanceReturning
+                    or EmergencyIncidentState
+                        .AmbulanceReturningAfterFailure) ||
                 (stage == TravelStage.Returning &&
                  (route.State == BusRouteState.Moving ||
                   route.State ==
@@ -191,15 +199,18 @@ namespace CityFlow.Content
 
             stage = TravelStage.Returning;
             retryRemainingSeconds = 0f;
+            routeFailureCount = 0;
+            hasDepartedHospital = false;
             worldView.PrepareRoadsideDeparture();
-            StartCurrentStage(
-                preferCurrentRoad: true);
+            ScheduleRetry(immediate: true);
         }
 
         public void Release()
         {
             assigned = false;
             retryRemainingSeconds = 0f;
+            routeFailureCount = 0;
+            hasDepartedHospital = false;
             stage = TravelStage.None;
             route?.StopRoute();
             incident = null;
@@ -229,6 +240,7 @@ namespace CityFlow.Content
             }
 
             route.StopArrived += HandleStopArrived;
+            route.TileChanged += HandleTileChanged;
             route.RouteUnavailable +=
                 HandleRouteUnavailable;
             subscribed = true;
@@ -242,6 +254,7 @@ namespace CityFlow.Content
             }
 
             route.StopArrived -= HandleStopArrived;
+            route.TileChanged -= HandleTileChanged;
             route.RouteUnavailable -=
                 HandleRouteUnavailable;
             subscribed = false;
@@ -331,6 +344,7 @@ namespace CityFlow.Content
             }
 
             retryRemainingSeconds = 0f;
+            routeFailureCount = 0;
             return true;
         }
 
@@ -395,16 +409,74 @@ namespace CityFlow.Content
 
         private void HandleRouteUnavailable()
         {
-            if (assigned)
+            if (!assigned ||
+                incident == null ||
+                incidentSystem == null)
             {
-                ScheduleRetry();
+                return;
+            }
+
+            routeFailureCount++;
+
+            if (stage == TravelStage.Outbound &&
+                routeFailureCount >=
+                    config.MaximumOutboundRouteRetries)
+            {
+                retryRemainingSeconds = 0f;
+                incidentSystem
+                    .TryFailIncidentRouteUnavailable(
+                        incident.IncidentId,
+                        hasDepartedHospital);
+                return;
+            }
+
+            if (stage == TravelStage.Returning &&
+                routeFailureCount >=
+                    config.MaximumReturnRouteRetries)
+            {
+                RecoverAtHospital();
+                return;
+            }
+
+            ScheduleRetry();
+        }
+
+        private void HandleTileChanged(Vector2Int tile)
+        {
+            if (assigned &&
+                stage == TravelStage.Outbound &&
+                tile != homeHospital)
+            {
+                hasDepartedHospital = true;
             }
         }
 
-        private void ScheduleRetry()
+        private void RecoverAtHospital()
+        {
+            if (!assigned ||
+                incident == null ||
+                incidentSystem == null)
+            {
+                return;
+            }
+
+            int returningIncidentId = incident.IncidentId;
+            retryRemainingSeconds = 0f;
+            route.StopRoute();
+            worldView.ShowParkedAtHospital(
+                homeHospital,
+                hospitalParkingSlot,
+                immediate: true);
+            incidentSystem.TryMarkAmbulanceReturned(
+                returningIncidentId);
+        }
+
+        private void ScheduleRetry(bool immediate = false)
         {
             retryRemainingSeconds =
-                config != null
+                immediate
+                    ? 0.01f
+                    : config != null
                     ? config.RouteRetrySeconds
                     : 2f;
         }

@@ -1,4 +1,5 @@
 using CityFlow.Bootstrap;
+using CityFlow.Content;
 using CityFlow.UI.Quests;
 using UnityEngine;
 
@@ -62,6 +63,11 @@ namespace CityFlow.Gameplay.Quests
 
             boundBootstrap = bootstrap;
             questSystem.Initialize(bootstrap.Services);
+
+            if (questUI != null)
+            {
+                BindQuestUI();
+            }
         }
 
         private void TryCreateUI()
@@ -79,7 +85,16 @@ namespace CityFlow.Gameplay.Quests
             }
 
             questUI = QuestBubbleUI.Create(canvas.transform);
-            questUI.Bind(questSystem);
+            BindQuestUI();
+        }
+
+        private void BindQuestUI()
+        {
+            questUI.Bind(
+                questSystem,
+                boundBootstrap.Services);
+            FindAnyObjectByType<EmergencyIncidentSystem>()
+                ?.RepublishActiveAlerts();
         }
 
         private static Canvas FindTargetCanvas()

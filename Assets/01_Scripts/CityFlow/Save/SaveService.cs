@@ -23,6 +23,11 @@ namespace CityFlow.Save
             get;
             private set;
         }
+        public IEmergencyIncidentSaveSource EmergencyIncidentSaveSource
+        {
+            get;
+            private set;
+        }
         public IOfflineSettlementSource OfflineSettlementSource { get; private set; }
         public IOfflineCalendarProgressionSource OfflineCalendarProgressionSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
@@ -45,6 +50,7 @@ namespace CityFlow.Save
         private WorldGridSaveData retainedWorldGrid;
         private SpecialBuildingSaveData retainedSpecialBuildings;
         private SpecialBuildingVisitSaveData retainedSpecialBuildingVisits;
+        private EmergencyIncidentSaveData retainedEmergencyIncidents;
         private readonly IWorldGridAccess worldGridAccess;
         private bool hasLoadedSave;
 
@@ -192,6 +198,20 @@ namespace CityFlow.Save
             }
         }
 
+        public void RegisterEmergencyIncidentSaveSource(
+            IEmergencyIncidentSaveSource emergencyIncidentSaveSource)
+        {
+            EmergencyIncidentSaveSource =
+                emergencyIncidentSaveSource;
+
+            if (hasLoadedSave)
+            {
+                EmergencyIncidentSaveSource?.RestoreSnapshot(
+                    retainedEmergencyIncidents ??
+                    new EmergencyIncidentSaveData());
+            }
+        }
+
         public GameSaveData CreateSnapshot()
         {
             return new GameSaveData
@@ -223,7 +243,10 @@ namespace CityFlow.Save
                     ?? retainedSpecialBuildings,
                 SpecialBuildingVisits =
                     SpecialBuildingVisitSaveSource?.CreateSnapshot()
-                    ?? retainedSpecialBuildingVisits
+                    ?? retainedSpecialBuildingVisits,
+                EmergencyIncidents =
+                    EmergencyIncidentSaveSource?.CreateSnapshot()
+                    ?? retainedEmergencyIncidents
             };
         }
 
@@ -321,6 +344,13 @@ namespace CityFlow.Save
             {
                 SpecialBuildingVisitSaveSource.RestoreSnapshot(
                     CreateRestoredSpecialBuildingVisitData(saveData));
+            }
+
+            if (EmergencyIncidentSaveSource != null)
+            {
+                EmergencyIncidentSaveSource.RestoreSnapshot(
+                    saveData.EmergencyIncidents ??
+                    new EmergencyIncidentSaveData());
             }
         }
 
@@ -656,6 +686,8 @@ namespace CityFlow.Save
                 CreateRestoredSpecialBuildingData(saveData);
             retainedSpecialBuildingVisits =
                 CreateRestoredSpecialBuildingVisitData(saveData);
+            retainedEmergencyIncidents =
+                saveData?.EmergencyIncidents;
         }
 
         private SpecialBuildingSaveData CreateRestoredSpecialBuildingData(

@@ -26,6 +26,16 @@ namespace CityFlow.EditorTools
             "Assets/02_Prefabs/Vehicles/AmbulanceVehicleVisual.prefab";
         private const string CityBusPrefabPath =
             "Assets/02_Prefabs/Vehicles/CityBusContent.prefab";
+        private static readonly string[]
+            IncidentDefinitionPaths =
+            {
+                "Assets/05_ScriptableObjects/CityFlow/Emergency/Emergency_CardiacArrest_3h.asset",
+                "Assets/05_ScriptableObjects/CityFlow/Emergency/Emergency_TrafficTrauma_6h.asset",
+                "Assets/05_ScriptableObjects/CityFlow/Emergency/Emergency_SevereInjury_9h.asset",
+                "Assets/05_ScriptableObjects/CityFlow/Emergency/Emergency_HomeAccident_12h.asset",
+                "Assets/05_ScriptableObjects/CityFlow/Emergency/Emergency_UrgentCare_18h.asset",
+                "Assets/05_ScriptableObjects/CityFlow/Emergency/Emergency_MedicalTransfer_24h.asset"
+            };
 
         [MenuItem(
             "Tools/GreenLight/Content/Build Ambulance Prototype")]
@@ -210,6 +220,25 @@ namespace CityFlow.EditorTools
                 .intValue = 3;
             serialized.FindProperty("maximumActiveIncidents")
                 .intValue = 3;
+            serialized.FindProperty(
+                    "maximumAutomaticIncidentsPerDay")
+                .intValue = 1;
+            SerializedProperty incidentDefinitions =
+                serialized.FindProperty(
+                    "incidentDefinitions");
+            incidentDefinitions.arraySize =
+                IncidentDefinitionPaths.Length;
+            for (int i = 0;
+                 i < IncidentDefinitionPaths.Length;
+                 i++)
+            {
+                incidentDefinitions
+                        .GetArrayElementAtIndex(i)
+                        .objectReferenceValue =
+                    AssetDatabase.LoadAssetAtPath<
+                        EmergencyIncidentDefinitionSO>(
+                        IncidentDefinitionPaths[i]);
+            }
             serialized.FindProperty("houseWeight")
                 .floatValue = 1f;
             serialized.FindProperty("officeWeight")
@@ -225,9 +254,15 @@ namespace CityFlow.EditorTools
             serialized.FindProperty("treatmentSeconds")
                 .floatValue = 2f;
             serialized.FindProperty("ambulancesPerHospital")
-                .intValue = 1;
+                .intValue = 2;
             serialized.FindProperty("routeRetrySeconds")
                 .floatValue = 2f;
+            serialized.FindProperty(
+                    "maximumOutboundRouteRetries")
+                .intValue = 3;
+            serialized.FindProperty(
+                    "maximumReturnRouteRetries")
+                .intValue = 5;
             serialized.FindProperty("vehicleVisualPrefab")
                 .objectReferenceValue = visualPrefab;
             serialized.FindProperty("visualScale")
@@ -340,6 +375,14 @@ namespace CityFlow.EditorTools
                     incidents,
                     "useExternalAmbulanceTransport",
                     true);
+                SetValue(
+                    incidents,
+                    "testUseRandomTarget",
+                    true);
+                SetValue(
+                    incidents,
+                    "testDefinitionIndex",
+                    0);
 
                 SetReference(
                     dispatch,

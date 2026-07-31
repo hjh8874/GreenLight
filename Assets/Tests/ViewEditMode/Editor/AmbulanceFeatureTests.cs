@@ -2,7 +2,9 @@ using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Content.Transit;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using CityFlow.DebugTools;
+using CityFlow.Save;
 using CityFlow.Sim;
 using CityFlow.View;
 using CityFlow.ViewKit;
@@ -31,6 +33,23 @@ namespace CityFlow.Tests.ViewEditMode
             Assert.That(
                 config.TravelSecondsPerTile,
                 Is.EqualTo(0.45f).Within(0.0001f));
+            Assert.That(
+                config.AmbulancesPerHospital,
+                Is.EqualTo(2));
+            Assert.That(
+                config.MaximumAutomaticIncidentsPerDay,
+                Is.EqualTo(1));
+            Assert.That(
+                config.IncidentDefinitions.Count,
+                Is.EqualTo(6));
+            Assert.That(
+                config.IncidentDefinitions[0]
+                    .ResponseDeadlineHours,
+                Is.EqualTo(3));
+            Assert.That(
+                config.IncidentDefinitions[5]
+                    .ResponseDeadlineHours,
+                Is.EqualTo(24));
 
             BusRoute route =
                 vehiclePrefab.GetComponent<BusRoute>();
@@ -1027,6 +1046,108 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
+        public void AmbulanceRoadsideStop_BacksOutOfRoundaboutFootprint()
+        {
+            SimConfig config = SimConfig.Default();
+            config.AutoDetectSignals = false;
+            var events = new SimEventHub();
+            var engine = new SimEngine(config, events);
+            Vector2Int hospital = new(1, 2);
+            Vector2Int incidentLocation = new(6, 2);
+            Vector2Int roundabout = new(5, 1);
+            GameObject owner =
+                new("Ambulance Roundabout Hold Test");
+
+            try
+            {
+                for (int x = 1; x <= 7; x++)
+                {
+                    Assert.That(
+                        engine.Place(
+                            new Vector2Int(x, 1),
+                            TileType.Road),
+                        Is.True);
+                }
+
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(5, 0),
+                        TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(
+                        new Vector2Int(5, 2),
+                        TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(
+                        hospital,
+                        TileType.Hospital),
+                    Is.True);
+                Assert.That(
+                    engine.Place(
+                        incidentLocation,
+                        TileType.House),
+                    Is.True);
+                Assert.That(
+                    engine.TryPlaceRoundabout(roundabout),
+                    Is.True);
+                engine.Tick(config.TickInterval);
+
+                var services =
+                    new CityFlowServices(
+                        events,
+                        engine,
+                        engine,
+                        stats: engine);
+                services.RegisterRoadTraffic(
+                    engine.RoadTraffic);
+                services.RegisterRoadRoutePlanning(engine);
+
+                BusRoute route =
+                    owner.AddComponent<BusRoute>();
+                route.ConfigureRoadTrafficAgent(
+                    RoadTrafficAgentKind.FeatureVehicle,
+                    VehicleFootprint.StandardDefault,
+                    holdAtDestination: true);
+                route.Initialize(services);
+                route.UseRoadsideStopApproach = true;
+                route.RoadsideStopFilter = _ => true;
+                route.RoadsideStopSetbackTiles = 1;
+                route.LoopRoute = false;
+
+                Assert.That(
+                    route.ConfigureRoute(
+                        new[]
+                        {
+                            hospital,
+                            incidentLocation
+                        },
+                        shouldLoop: false),
+                    Is.True);
+                Assert.That(route.StartRoute(), Is.True);
+                Assert.That(
+                    route.CurrentRoadPath,
+                    Is.Not.Empty);
+
+                Vector2Int holdTile =
+                    route.CurrentRoadPath[
+                        route.CurrentRoadPath.Count - 1];
+                Assert.That(
+                    engine.IsInRoundaboutFootprint(holdTile),
+                    Is.False,
+                    "An ambulance must not hold and rebuild its return route inside the roundabout state machine.");
+                Assert.That(
+                    engine.RoadTraffic.IsSafeHoldTile(holdTile),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+            }
+        }
+
+        [Test]
         public void ExternalTransport_WaitsForPhysicalArrivalAndReturn()
         {
             CreateEmergencyTestWorld(
@@ -1313,6 +1434,137 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
+        public void HospitalFleet_RebuildsAfterSaveRestore()
+        {
+            SimConfig simulationConfig =
+                SimConfig.Default();
+            var sourceEvents = new SimEventHub();
+            var sourceEngine =
+                new SimEngine(
+                    simulationConfig,
+                    sourceEvents);
+            Assert.That(
+                ContentFeaturePrototypeScenario
+                    .BuildPrototypeCity(sourceEngine),
+                Is.GreaterThan(0));
+
+            var events = new SimEventHub();
+            var engine =
+                new SimEngine(
+                    simulationConfig,
+                    events);
+            var save =
+                new SaveService(
+                    engine,
+                    repository: null,
+                    clock: null);
+            var services =
+                new CityFlowServices(
+                    events,
+                    engine,
+                    engine,
+                    save,
+                    stats: engine);
+            GameObject owner =
+                new("Ambulance Restore Fleet Test");
+            GameObject cityViewObject =
+                new("Ambulance Restore City View");
+
+            try
+            {
+                cityViewObject.AddComponent<MainCityView>();
+                EmergencyIncidentConfigSO config =
+                    AssetDatabase.LoadAssetAtPath<
+                        EmergencyIncidentConfigSO>(
+                        "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset");
+                GameObject vehiclePrefab =
+                    AssetDatabase.LoadAssetAtPath<GameObject>(
+                        "Assets/02_Prefabs/Vehicles/AmbulanceVehicle.prefab");
+                Assert.That(config, Is.Not.Null);
+                Assert.That(vehiclePrefab, Is.Not.Null);
+
+                EmergencyIncidentSystem system =
+                    owner.AddComponent<
+                        EmergencyIncidentSystem>();
+                AmbulanceDispatchService dispatch =
+                    owner.AddComponent<
+                        AmbulanceDispatchService>();
+
+                SerializedObject systemValues =
+                    new(system);
+                systemValues.FindProperty("config")
+                    .objectReferenceValue = config;
+                systemValues.FindProperty(
+                        "enableAutomaticSpawn")
+                    .boolValue = false;
+                systemValues
+                    .ApplyModifiedPropertiesWithoutUndo();
+
+                SerializedObject dispatchValues =
+                    new(dispatch);
+                dispatchValues.FindProperty(
+                        "incidentSystem")
+                    .objectReferenceValue = system;
+                dispatchValues.FindProperty("config")
+                    .objectReferenceValue = config;
+                dispatchValues.FindProperty(
+                        "ambulanceVehiclePrefab")
+                    .objectReferenceValue = vehiclePrefab;
+                dispatchValues
+                    .ApplyModifiedPropertiesWithoutUndo();
+
+                system.Initialize(services);
+                dispatch.Initialize(services);
+                Assert.That(
+                    dispatch.TotalVehicleCount,
+                    Is.Zero);
+
+                engine.RestoreSnapshot(
+                    sourceEngine.CreateSnapshot());
+                MethodInfo publishRestoreCompleted =
+                    typeof(SaveService).GetMethod(
+                        "PublishRestoreCompleted",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                Assert.That(
+                    publishRestoreCompleted,
+                    Is.Not.Null);
+                publishRestoreCompleted.Invoke(
+                    save,
+                    new object[] { 0.0, false });
+
+                Assert.That(
+                    dispatch.TotalVehicleCount,
+                    Is.Zero,
+                    "Fleet synchronization must wait until restore subscribers finish.");
+                typeof(AmbulanceDispatchService)
+                    .GetMethod(
+                        "LateUpdate",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic)
+                    .Invoke(dispatch, null);
+
+                Assert.That(
+                    system.HospitalTiles.Count,
+                    Is.GreaterThan(0));
+                Assert.That(
+                    dispatch.TotalVehicleCount,
+                    Is.EqualTo(
+                        system.HospitalTiles.Count *
+                        config.AmbulancesPerHospital));
+                Assert.That(
+                    dispatch.ParkedVehicleCount,
+                    Is.EqualTo(
+                        dispatch.TotalVehicleCount));
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+                Object.DestroyImmediate(cityViewObject);
+            }
+        }
+
+        [Test]
         public void RandomTarget_AvoidsImmediateRepeat()
         {
             CreateEmergencyTestWorld(
@@ -1400,6 +1652,259 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     nextDueDay - calendar.TotalDays,
                     Is.InRange(1L, 3L));
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+                Object.DestroyImmediate(config);
+            }
+        }
+
+        [Test]
+        public void ResponseDeadline_FailsAndPublishesHappinessHook()
+        {
+            var calendar = new TestGameCalendar();
+            CreateEmergencyTestWorld(
+                useExternalTransport: true,
+                out GameObject owner,
+                out EmergencyIncidentSystem system,
+                out EmergencyIncidentConfigSO config,
+                gameCalendar: calendar);
+            EmergencyIncidentDefinitionSO definition =
+                ScriptableObject.CreateInstance<
+                    EmergencyIncidentDefinitionSO>();
+
+            try
+            {
+                SerializedObject definitionValues =
+                    new(definition);
+                definitionValues.FindProperty("incidentId")
+                    .stringValue = "deadline_test";
+                definitionValues.FindProperty(
+                        "responseDeadlineHours")
+                    .intValue = 3;
+                definitionValues.FindProperty(
+                        "failureHappinessPenalty")
+                    .floatValue = 2.5f;
+                definitionValues
+                    .ApplyModifiedPropertiesWithoutUndo();
+
+                SerializedObject configValues =
+                    new(config);
+                SerializedProperty definitions =
+                    configValues.FindProperty(
+                        "incidentDefinitions");
+                definitions.arraySize = 1;
+                definitions.GetArrayElementAtIndex(0)
+                    .objectReferenceValue = definition;
+                configValues
+                    .ApplyModifiedPropertiesWithoutUndo();
+
+                EmergencyIncidentOutcomeEvent outcome =
+                    default;
+                bool receivedOutcome = false;
+                FieldInfo servicesField =
+                    typeof(EmergencyIncidentSystem)
+                        .GetField(
+                            "services",
+                            BindingFlags.Instance |
+                            BindingFlags.NonPublic);
+                var services =
+                    (CityFlowServices)servicesField
+                        .GetValue(system);
+                services.Events
+                    .EmergencyIncidentOutcomeReported +=
+                    value =>
+                    {
+                        outcome = value;
+                        receivedOutcome = true;
+                    };
+
+                Assert.That(
+                    system.TryCreateIncidentAt(
+                        new Vector2Int(4, 12)),
+                    Is.True);
+                EmergencyIncident incident =
+                    system.ActiveIncidents[0];
+                Assert.That(
+                    incident.DeadlineAbsoluteHour,
+                    Is.EqualTo(3L));
+
+                calendar.AdvanceHours(3);
+
+                Assert.That(receivedOutcome, Is.True);
+                Assert.That(
+                    outcome.Outcome,
+                    Is.EqualTo(
+                        EmergencyIncidentOutcome.Failed));
+                Assert.That(
+                    outcome.FailureReason,
+                    Is.EqualTo(
+                        EmergencyIncidentFailureReason
+                            .ResponseDeadlineExceeded));
+                Assert.That(
+                    outcome.SuggestedHappinessDelta,
+                    Is.EqualTo(-2.5f));
+                Assert.That(
+                    incident.State,
+                    Is.EqualTo(
+                        EmergencyIncidentState
+                            .AmbulanceReturningAfterFailure));
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+                Object.DestroyImmediate(config);
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        [Test]
+        public void AutomaticDispatch_RespectsConfiguredDailyMaximum()
+        {
+            var calendar = new TestGameCalendar();
+            CreateEmergencyTestWorld(
+                useExternalTransport: true,
+                out GameObject owner,
+                out EmergencyIncidentSystem system,
+                out EmergencyIncidentConfigSO config,
+                gameCalendar: calendar);
+
+            try
+            {
+                SerializedObject values = new(config);
+                values.FindProperty("maximumActiveIncidents")
+                    .intValue = 3;
+                values.FindProperty(
+                        "maximumAutomaticIncidentsPerDay")
+                    .intValue = 2;
+                values
+                    .ApplyModifiedPropertiesWithoutUndo();
+
+                Assert.That(
+                    system.TryCreateAutomaticIncident(),
+                    Is.True);
+                Assert.That(
+                    system.TryCreateAutomaticIncident(),
+                    Is.True);
+                Assert.That(
+                    system.TryCreateAutomaticIncident(),
+                    Is.False);
+                Assert.That(
+                    system.AutomaticDispatchCountToday,
+                    Is.EqualTo(2));
+
+                calendar.AdvanceDay();
+                Assert.That(
+                    system.AutomaticDispatchCountToday,
+                    Is.Zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+                Object.DestroyImmediate(config);
+            }
+        }
+
+        [Test]
+        public void TestDispatch_BypassesDailyMaximumWithoutChangingSchedule()
+        {
+            var calendar = new TestGameCalendar();
+            CreateEmergencyTestWorld(
+                useExternalTransport: true,
+                out GameObject owner,
+                out EmergencyIncidentSystem system,
+                out EmergencyIncidentConfigSO config,
+                gameCalendar: calendar);
+
+            try
+            {
+                SerializedObject values = new(config);
+                values.FindProperty("maximumActiveIncidents")
+                    .intValue = 3;
+                values.FindProperty(
+                        "maximumAutomaticIncidentsPerDay")
+                    .intValue = 1;
+                values.ApplyModifiedPropertiesWithoutUndo();
+
+                FieldInfo nextDispatchField =
+                    typeof(EmergencyIncidentSystem)
+                        .GetField(
+                            "nextAutomaticDispatchDay",
+                            BindingFlags.Instance |
+                            BindingFlags.NonPublic);
+                Assert.That(nextDispatchField, Is.Not.Null);
+                long scheduledDay =
+                    (long)nextDispatchField.GetValue(system);
+
+                Assert.That(
+                    system.TryCreateAutomaticIncident(),
+                    Is.True);
+                Assert.That(
+                    system.TryCreateAutomaticIncident(),
+                    Is.False);
+                Assert.That(
+                    system.AutomaticDispatchCountToday,
+                    Is.EqualTo(1));
+
+                Assert.That(
+                    system.TryCreateTestIncidentNow(),
+                    Is.True);
+                Assert.That(
+                    system.ActiveIncidentCount,
+                    Is.EqualTo(2));
+                Assert.That(
+                    system.AutomaticDispatchCountToday,
+                    Is.EqualTo(1));
+                Assert.That(
+                    (long)nextDispatchField.GetValue(system),
+                    Is.EqualTo(scheduledDay));
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+                Object.DestroyImmediate(config);
+            }
+        }
+
+        [Test]
+        public void IncidentSnapshot_PreservesDeadlineAndDailyLimit()
+        {
+            var calendar = new TestGameCalendar();
+            CreateEmergencyTestWorld(
+                useExternalTransport: true,
+                out GameObject owner,
+                out EmergencyIncidentSystem system,
+                out EmergencyIncidentConfigSO config,
+                gameCalendar: calendar);
+
+            try
+            {
+                Assert.That(
+                    system.TryCreateAutomaticIncident(),
+                    Is.True);
+                EmergencyIncident original =
+                    system.ActiveIncidents[0];
+                EmergencyIncidentSaveData snapshot =
+                    system.CreateSnapshot();
+                long deadline =
+                    original.DeadlineAbsoluteHour;
+
+                system.RestoreSnapshot(snapshot);
+
+                Assert.That(
+                    system.ActiveIncidentCount,
+                    Is.EqualTo(1));
+                Assert.That(
+                    system.ActiveIncidents[0]
+                        .DeadlineAbsoluteHour,
+                    Is.EqualTo(deadline));
+                Assert.That(
+                    system.AutomaticDispatchCountToday,
+                    Is.EqualTo(1));
+                Assert.That(
+                    system.TryCreateAutomaticIncident(),
+                    Is.False);
             }
             finally
             {
@@ -1496,7 +2001,7 @@ namespace CityFlow.Tests.ViewEditMode
             public int Year => 1;
             public int Month => 1;
             public int Day { get; private set; } = 1;
-            public int Hour => 0;
+            public int Hour { get; private set; }
             public int TotalMonths => 1;
             public long TotalDays { get; private set; }
             public float RealSecondsPerGameHour => 1f;
@@ -1512,7 +2017,28 @@ namespace CityFlow.Tests.ViewEditMode
             {
                 TotalDays++;
                 Day++;
+                Hour = 0;
                 DayChanged?.Invoke(Day);
+            }
+
+            public void AdvanceHours(int hours)
+            {
+                int remaining = Mathf.Max(0, hours);
+
+                while (remaining-- > 0)
+                {
+                    Hour++;
+
+                    if (Hour >= HoursPerDay)
+                    {
+                        Hour = 0;
+                        TotalDays++;
+                        Day++;
+                        DayChanged?.Invoke(Day);
+                    }
+
+                    HourChanged?.Invoke(Hour);
+                }
             }
         }
 

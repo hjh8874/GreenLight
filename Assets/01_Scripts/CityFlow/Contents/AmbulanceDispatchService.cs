@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using UnityEngine;
 
 namespace CityFlow.Content
@@ -33,6 +34,7 @@ namespace CityFlow.Content
         private bool initialized;
         private bool subscribed;
         private bool hospitalFleetSyncPending;
+        private bool activeIncidentSyncPending;
 
         public int ActiveVehicleCount =>
             activeVehicles.Count;
@@ -112,13 +114,23 @@ namespace CityFlow.Content
 
         private void LateUpdate()
         {
-            if (!hospitalFleetSyncPending)
+            if (!hospitalFleetSyncPending &&
+                !activeIncidentSyncPending)
             {
                 return;
             }
 
-            hospitalFleetSyncPending = false;
-            SynchronizeHospitalFleet();
+            if (hospitalFleetSyncPending)
+            {
+                hospitalFleetSyncPending = false;
+                SynchronizeHospitalFleet();
+            }
+
+            if (activeIncidentSyncPending)
+            {
+                activeIncidentSyncPending = false;
+                SynchronizeActiveIncidents();
+            }
         }
 
         private void ResolveReferences()
@@ -145,6 +157,11 @@ namespace CityFlow.Content
             {
                 services.Events.Placed += HandlePlaced;
             }
+            if (services?.Save != null)
+            {
+                services.Save.RestoreCompleted +=
+                    HandleRestoreCompleted;
+            }
             subscribed = true;
         }
 
@@ -165,6 +182,11 @@ namespace CityFlow.Content
             {
                 services.Events.Placed -= HandlePlaced;
             }
+            if (services?.Save != null)
+            {
+                services.Save.RestoreCompleted -=
+                    HandleRestoreCompleted;
+            }
             subscribed = false;
         }
 
@@ -177,6 +199,14 @@ namespace CityFlow.Content
                 // otherwise the ambulance is first created when a call starts.
                 hospitalFleetSyncPending = true;
             }
+        }
+
+        private void HandleRestoreCompleted(
+            RestoreCompletedEvent _)
+        {
+            // Defer until every restore subscriber has rebuilt its data.
+            hospitalFleetSyncPending = true;
+            activeIncidentSyncPending = true;
         }
 
         private void SynchronizeActiveIncidents()
@@ -210,8 +240,10 @@ namespace CityFlow.Content
                 return;
             }
 
-            if (incident.State ==
-                    EmergencyIncidentState.AmbulanceReturning &&
+            if ((incident.State is
+                     EmergencyIncidentState.AmbulanceReturning
+                     or EmergencyIncidentState
+                         .AmbulanceReturningAfterFailure) &&
                 activeVehicles.TryGetValue(
                     incident.IncidentId,
                     out AmbulanceVehicleAgent returningVehicle))

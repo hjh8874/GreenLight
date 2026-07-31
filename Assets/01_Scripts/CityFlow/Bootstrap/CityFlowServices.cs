@@ -38,6 +38,11 @@ namespace CityFlow.Bootstrap
         public IRoadTrafficService RoadTraffic { get; private set; }
         public IRoadRoutePlanningService RoadRoutePlanning { get; private set; }
         public IBusLineService BusLines { get; private set; }
+        public IEmergencyIncidentSaveSource EmergencyIncidents
+        {
+            get;
+            private set;
+        }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
@@ -200,6 +205,27 @@ namespace CityFlow.Bootstrap
             }
 
             Save?.RegisterRadioSaveSource(radioSaveSource);
+        }
+
+        public bool RegisterEmergencyIncidentSaveSource(
+            IEmergencyIncidentSaveSource emergencyIncidentSaveSource)
+        {
+            if (emergencyIncidentSaveSource == null)
+            {
+                return false;
+            }
+
+            if (EmergencyIncidents != null)
+            {
+                return ReferenceEquals(
+                    EmergencyIncidents,
+                    emergencyIncidentSaveSource);
+            }
+
+            EmergencyIncidents = emergencyIncidentSaveSource;
+            Save?.RegisterEmergencyIncidentSaveSource(
+                emergencyIncidentSaveSource);
+            return true;
         }
 
         public bool RegisterTerrainDecorationSaveSource(

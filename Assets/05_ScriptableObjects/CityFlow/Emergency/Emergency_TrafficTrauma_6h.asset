@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8459043cce844ec8bbab5a202274bfd0, type: 3}
+  m_Name: Emergency_TrafficTrauma_6h
+  m_EditorClassIdentifier: CityFlow.Content::CityFlow.Content.EmergencyIncidentDefinitionSO
+  incidentId: traffic_trauma
+  title: 중증 교통사고
+  description: 교통사고 현장에 구급차를 출동시키세요.
+  responseDeadlineHours: 6
+  selectionWeight: 0.7
+  successMessage: 사고 환자가 응급 치료를 받았습니다.
+  timeoutMessage: 구급차가 제시간에 도착하지 못해 환자가 사망했습니다.
+  unreachableMessage: 도로가 연결되지 않아 환자에게 도착하지 못했습니다.
+  failureHappinessPenalty: 2.5
+  icon: {fileID: 0}
