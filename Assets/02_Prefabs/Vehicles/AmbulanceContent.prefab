@@ -43,7 +43,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f806933de2bcb76429159d84e2adc8ca, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.EmergencyIncidentSystem
   config: {fileID: 11400000, guid: 022333a06aa647d4d80d76196e435cde, type: 2}
   gridWidth: 20
@@ -64,7 +64,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6fc29131034149159fb81b0a4626d631, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.AmbulanceDispatchService
   incidentSystem: {fileID: 620000000000000003}
   config: {fileID: 11400000, guid: 022333a06aa647d4d80d76196e435cde, type: 2}

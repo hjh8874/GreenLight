@@ -44,7 +44,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8c4d02a002001664a850814f1611aa1b, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.Transit.BusRoute
   gridWidth: 20
   gridHeight: 20
@@ -63,7 +63,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: eab4e8bb749a40e1bb9b25b8d4f0a0cc, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.AmbulanceVehicleAgent
   route: {fileID: 610000000000000003}
   config: {fileID: 11400000, guid: 022333a06aa647d4d80d76196e435cde, type: 2}
@@ -78,7 +78,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 261a3e39d01d43bda4b7b7e56bdff26c, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.AmbulanceWorldView
   route: {fileID: 610000000000000003}
   config: {fileID: 11400000, guid: 022333a06aa647d4d80d76196e435cde, type: 2}
