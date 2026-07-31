@@ -2,6 +2,7 @@ using CityFlow.Content;
 using CityFlow.Content.Transit;
 using CityFlow.DebugTools;
 using CityFlow.Gameplay.Save;
+using CityFlow.View;
 using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -21,6 +22,10 @@ namespace CityFlow.EditorTools
             "Assets/02_Prefabs/Vehicles/CityBusContent.prefab";
         private const string BusConfigPath =
             "Assets/05_ScriptableObjects/CityFlow/Transit/CityBusDefinition.asset";
+        private const string LargeVehicleFootprintPath =
+            "Assets/05_ScriptableObjects/CityFlow/Traffic/LargeVehicleFootprint.asset";
+        private const string BusSchedulePath =
+            "Assets/05_ScriptableObjects/CityFlow/Transit/DefaultCityBusSchedule.asset";
         private const string EmergencyConfigPath =
             "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset";
         private const string FontPath =
@@ -88,15 +93,17 @@ namespace CityFlow.EditorTools
             }
 
             BusDefinitionSO busDefinition =
-                CreateOrUpdateBusDefinition();
+                CreateOrUpdateBusDefinition(busVisualPrefab);
+            CityBusScheduleSO busSchedule =
+                CreateOrUpdateBusSchedule();
             EmergencyIncidentConfigSO emergencyConfig =
                 CreateOrUpdateEmergencyConfig();
 
             CreateOrUpdatePrefab(
                 busDefinition,
+                busSchedule,
                 emergencyConfig,
                 font,
-                busVisualPrefab,
                 busMaterial);
             CreateOrUpdateScene();
 
@@ -108,7 +115,7 @@ namespace CityFlow.EditorTools
         }
 
         private static BusDefinitionSO
-            CreateOrUpdateBusDefinition()
+            CreateOrUpdateBusDefinition(GameObject busVisualPrefab)
         {
             BusDefinitionSO asset =
                 AssetDatabase.LoadAssetAtPath<
@@ -132,7 +139,7 @@ namespace CityFlow.EditorTools
             serialized.FindProperty("busType").enumValueIndex =
                 (int)BusType.CityBus;
             serialized.FindProperty("secondsPerTile").floatValue =
-                0.22f;
+                0.65f;
             serialized.FindProperty("stopWaitSeconds").floatValue =
                 0.8f;
             serialized.FindProperty("passengerCapacity").intValue =
@@ -141,10 +148,21 @@ namespace CityFlow.EditorTools
                 4;
             serialized.FindProperty("leavingDemandPerStop").intValue =
                 2;
+            serialized.FindProperty("vehicleFootprintProfile")
+                .objectReferenceValue =
+                AssetDatabase.LoadAssetAtPath<
+                    VehicleFootprintProfileSO>(
+                    LargeVehicleFootprintPath);
+            serialized.FindProperty("vehicleLengthTiles").floatValue =
+                0.8f;
+            serialized.FindProperty("vehicleWidthTiles").floatValue =
+                0.24f;
             serialized.FindProperty("stopRevenueCoins").intValue =
                 5;
             serialized.FindProperty("routeColor").colorValue =
                 CyanColor;
+            serialized.FindProperty("vehicleVisualPrefab")
+                .objectReferenceValue = busVisualPrefab;
 
             SerializedProperty stops =
                 serialized.FindProperty("initialStops");
@@ -163,6 +181,32 @@ namespace CityFlow.EditorTools
                     .vector2IntValue = values[i];
             }
 
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(asset);
+            return asset;
+        }
+
+        private static CityBusScheduleSO
+            CreateOrUpdateBusSchedule()
+        {
+            CityBusScheduleSO asset =
+                AssetDatabase.LoadAssetAtPath<
+                    CityBusScheduleSO>(BusSchedulePath);
+
+            if (asset == null)
+            {
+                asset = ScriptableObject.CreateInstance<
+                    CityBusScheduleSO>();
+                AssetDatabase.CreateAsset(
+                    asset,
+                    BusSchedulePath);
+            }
+
+            SerializedObject serialized = new(asset);
+            serialized.FindProperty("serviceStartHour")
+                .intValue = 6;
+            serialized.FindProperty("serviceEndHour")
+                .intValue = 22;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(asset);
             return asset;
@@ -250,9 +294,9 @@ namespace CityFlow.EditorTools
 
         private static void CreateOrUpdatePrefab(
             BusDefinitionSO busDefinition,
+            CityBusScheduleSO busSchedule,
             EmergencyIncidentConfigSO emergencyConfig,
             TMP_FontAsset font,
-            GameObject busVisualPrefab,
             Material busMaterial)
         {
             var root =
@@ -271,8 +315,8 @@ namespace CityFlow.EditorTools
                 EmergencyIncidentSystem emergency =
                     root.AddComponent<
                         EmergencyIncidentSystem>();
-                CityBusWorldView busWorldView =
-                    root.AddComponent<CityBusWorldView>();
+                BusWorldView busWorldView =
+                    root.AddComponent<BusWorldView>();
                 CityBusStopWorldView busStopWorldView =
                     root.AddComponent<CityBusStopWorldView>();
 
@@ -280,6 +324,10 @@ namespace CityFlow.EditorTools
                     cityBus,
                     "definition",
                     busDefinition);
+                SetObjectReference(
+                    cityBus,
+                    "schedule",
+                    busSchedule);
                 SetObjectReference(
                     cityBus,
                     "busRoute",
@@ -294,12 +342,16 @@ namespace CityFlow.EditorTools
                     emergencyConfig);
                 SetObjectReference(
                     busWorldView,
+                    "definition",
+                    busDefinition);
+                SetObjectReference(
+                    busWorldView,
                     "busRoute",
                     route);
                 SetObjectReference(
                     busWorldView,
-                    "busVisualPrefab",
-                    busVisualPrefab);
+                    "cityBusService",
+                    cityBus);
                 SetObjectReference(
                     busWorldView,
                     "busMaterial",

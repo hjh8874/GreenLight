@@ -146,6 +146,7 @@ public class HiringStatusOverlayTests
         readonly Dictionary<Vector2Int, CompanyStaffing> _staffing = new();
 
         public int ActiveVehicleCount => 0;
+        public int LastDayArrivalCount => 0;
 
         public void SetStaffing(Vector2Int anchor, int filled, int capacity) =>
             _staffing[anchor] = new CompanyStaffing(filled, capacity);

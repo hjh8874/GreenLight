@@ -11,9 +11,11 @@ namespace CityFlow.Sim
         private bool _hasLastHour;
         private bool _skipCurrentDay;
         private int _dayArrivals;
+        private int _lastDayArrivals;
 
         internal float TripSuccessRate { get; private set; } = 1f;
         internal int DayArrivalCount => _dayArrivals;
+        internal int LastDayArrivalCount => _lastDayArrivals;
         internal bool SkipCurrentDay => _skipCurrentDay;
 
         internal void UpdateCarSim(
@@ -39,6 +41,10 @@ namespace CityFlow.Sim
                         ? 1f
                         : Mathf.Clamp01((float)_dayArrivals / expected);
                     TripSuccessRate = Mathf.Lerp(TripSuccessRate, dayRate, SuccessEmaAlpha);
+                }
+                if (!_skipCurrentDay)
+                {
+                    _lastDayArrivals = _dayArrivals;   // 시각 점프로 끊긴 날은 캡처하지 않는다
                 }
                 _dayArrivals = 0;
                 _skipCurrentDay = false;

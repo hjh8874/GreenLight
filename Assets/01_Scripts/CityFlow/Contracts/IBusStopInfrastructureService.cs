@@ -19,8 +19,8 @@ namespace CityFlow.Contracts
     }
 
     /// <summary>
-    /// Shared placement rule for a stop that a right-driving bus can approach
-    /// without crossing into the opposite lane.
+    /// Shared placement rules for one logical stop with platforms on both
+    /// sides of its adjacent road.
     /// </summary>
     public static class BusStopInfrastructurePolicy
     {
@@ -62,6 +62,48 @@ namespace CityFlow.Contracts
                 {
                     return true;
                 }
+            }
+
+            return false;
+        }
+
+        public static bool TryGetPlatformPair(
+            Vector2Int stopTile,
+            Func<Vector2Int, bool> isRoad,
+            out Vector2Int accessRoad,
+            out Vector2Int oppositePlatformTile)
+        {
+            accessRoad = default;
+            oppositePlatformTile = default;
+            if (isRoad == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < Directions.Length; i++)
+            {
+                Vector2Int candidateRoad =
+                    stopTile + Directions[i];
+                if (!isRoad(candidateRoad))
+                {
+                    continue;
+                }
+
+                Vector2Int stopSide =
+                    stopTile - candidateRoad;
+                Vector2Int roadAxis = new(
+                    -stopSide.y,
+                    stopSide.x);
+                if (!isRoad(candidateRoad - roadAxis) &&
+                    !isRoad(candidateRoad + roadAxis))
+                {
+                    continue;
+                }
+
+                accessRoad = candidateRoad;
+                oppositePlatformTile =
+                    candidateRoad - stopSide;
+                return true;
             }
 
             return false;

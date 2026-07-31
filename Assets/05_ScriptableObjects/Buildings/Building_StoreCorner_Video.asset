@@ -21,7 +21,7 @@ MonoBehaviour:
   canReceiveTraffic: 1
   trafficGenerationAmount: 0
   destinationRewardMultiplier: 1
-  buildCost: 0
+  buildCost: 250
   dailyCoinValue: 0
   prosperityValue: 0
   unlockedByDefault: 0
@@ -37,13 +37,12 @@ MonoBehaviour:
   canReceiveVisitors: 1
   visitCadence:
     visitsPerPeriod: 1
-    periodDays: 1
+    periodDays: 7
   visitorCapacity: 0
   attractionWeight: 1
-  coinPerVisit: 0
+  coinPerVisit: 10
   happinessEffectKey: happiness_building_video_store
   schoolCoverageCapacity: 0
   coveredPopulationCapBonus: 0
   hospitalCoverageRadius: 0
   hospitalPatientCapacity: 0
-  hospitalStabilityBonus: 0

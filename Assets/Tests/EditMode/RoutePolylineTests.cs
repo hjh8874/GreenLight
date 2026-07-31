@@ -199,6 +199,26 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void ReprojectDistance_QueueOffset_UsesMeasuredDistance()
+        {
+            var p = RoutePolyline.Bake(Straight3());
+
+            float actual = p.ReprojectDistance(
+                tileIndex: 1,
+                queueOffset: 0.73f,
+                headInset: 0.1f,
+                intersectionProgress01: -1f,
+                linkProgress01: 0f,
+                roundaboutProgress01: -1f,
+                roundaboutTransitionSpan: 0.66f);
+
+            Assert.AreEqual(
+                p.DistanceAtQueueOffset(1, 0.73f, 0.1f),
+                actual,
+                1e-4f);
+        }
+
+        [Test]
         public void ReprojectDistance_Intersection_MapsAuthorizedStage()
         {
             var p = RoutePolyline.Bake(Straight3());
