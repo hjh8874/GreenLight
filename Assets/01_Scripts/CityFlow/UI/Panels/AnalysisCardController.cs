@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Linq;
 using CityFlow.Bootstrap;
 using CityFlow.Content;
@@ -70,14 +70,16 @@ namespace CityFlow.UI
         [Tooltip("미니맵 카메라가 찍을 레이어 마스크 (도로+차량만 권장)")]
         [SerializeField] private LayerMask minimapCullingMask = ~0;
         [SerializeField] private float minimapCameraHeight = 8f;
-        
+
         [Tooltip("미니맵 줌 크기 (직교 카메라 사이즈)")]
         [SerializeField] private float minimapZoomSize = 3f;
+        [Tooltip("미니맵 FOV (투시 카메라용)")]
+        [SerializeField] private float minimapFov = 20f;
         [Tooltip("미니맵 빈 공간의 배경색")]
         [SerializeField] private Color minimapBackgroundColor = new Color(0.12f, 0.14f, 0.18f, 1f);
         [Tooltip("AR 숫자 오버레이가 타일 중앙에서 떨어지는 오프셋 거리")]
         [SerializeField] private float arRoadOffset = 0.4f;
-        
+
         [SerializeField] private int minimapResolution = 256;
 
         // ── Minimap 내부 상태 ──
@@ -120,7 +122,7 @@ namespace CityFlow.UI
 
             if (btnResolveJam != null) btnResolveJam.onClick.AddListener(OnResolveJamClicked);
             if (btnUpgrade != null) btnUpgrade.onClick.AddListener(OnUpgradeClicked);
-            
+
             if (sliderOffset != null) sliderOffset.onValueChanged.AddListener(OnOffsetChanged);
             if (sliderGreen != null) sliderGreen.onValueChanged.AddListener(OnGreenChanged);
             if (btnOverrideH != null) btnOverrideH.onClick.AddListener(() => OnOverrideClicked(true));
@@ -159,7 +161,7 @@ namespace CityFlow.UI
         {
             if (gameObject.activeSelf && _currentTile == tile && !_isClosing) return; // 이미 열려있으면 무시
 
-            
+
             _isClosing = false;
             _currentTile = tile;
             gameObject.SetActive(true);
@@ -168,7 +170,7 @@ namespace CityFlow.UI
             transform.DOKill();
             transform.localScale = Vector3.zero;
             transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
-            
+
             // 모드 전환 전 기존 갱신 코루틴 정리 (신호 제어 타일로 넘어갈 때의 누수 방지)
             if (_updateRoutine != null)
             {
@@ -180,19 +182,19 @@ namespace CityFlow.UI
                 StopCoroutine(_signalCooldownRoutine);
                 _signalCooldownRoutine = null;
             }
-            
+
             var signalControl = _services?.Placement as ISignalControl;
             if (signalControl != null && signalControl.SignalTiles.Contains(tile))
             {
                 // 신호 제어 모드
                 if (normalInfoContainer != null) normalInfoContainer.SetActive(false);
                 if (signalControlContainer != null) signalControlContainer.SetActive(true);
-                
+
                 if (txtTitle != null) txtTitle.text = "교차로 신호 제어";
 
                 // 미니맵 카메라를 교차로 위치로 이동 및 활성화
                 PositionMinimapCamera(tile);
-                
+
                 int cycle = signalControl.GetSignalCycleSlots(tile);
                 if (sliderOffset != null)
                 {
@@ -236,9 +238,13 @@ namespace CityFlow.UI
 
             if (_updateRoutine != null) { StopCoroutine(_updateRoutine); _updateRoutine = null; }
             if (_signalCooldownRoutine != null) { StopCoroutine(_signalCooldownRoutine); _signalCooldownRoutine = null; }
-            
+
             // 미니맵 카메라 비활성화 (메모리 유지, 렌더링만 중단)
-            if (_minimapCamera != null) _minimapCamera.gameObject.SetActive(false);
+            if (_minimapCamera != null)
+            {
+                _minimapCamera.enabled = false;
+                _minimapCamera.gameObject.SetActive(false);
+            }
 
             // DOTween 닫기 애니메이션
             transform.DOKill();
@@ -257,23 +263,23 @@ namespace CityFlow.UI
                 type = _services.TileData.GetTileType(tile);
                 tileName = type.ToString();
             }
-            
+
             // 피그마 기획 반영: 헤더 텍스트
             if (txtTitle != null) txtTitle.text = $"{tileName} (Lv.1)";
 
             // 같은 타일을 누르면 항상 같은 가짜 차량이 나오도록 Random Seed 고정
             Random.InitState(tile.x * 1000 + tile.y);
-            
+
             if (txtTileCoord != null) txtTileCoord.text = $"타일: {tile.x}, {tile.y}";
 
             if (TryRefreshBuildingDetails(type))
             {
                 return;
             }
-            
+
             string[] types = { "세단", "SUV", "트럭", "버스", "스포츠카" };
             if (txtVehicleType != null) txtVehicleType.text = types[Random.Range(0, types.Length)];
-            
+
             int idPrefix = Random.Range(10, 99);
             char idChar = (char)Random.Range(65, 90);
             int idSuffix = Random.Range(1000, 9999);
@@ -450,7 +456,7 @@ namespace CityFlow.UI
                 if (txtWaitTime != null)
                 {
                     string timeText = _currentWaitTime.ToString("F1") + "초";
-                    
+
                     // 70% 돌파 시 크리티컬 경고 처리
                     if (density > 0.7f)
                     {
@@ -471,7 +477,7 @@ namespace CityFlow.UI
         private float GetTileDensity()
         {
             if (useFakeMode) return fakeDensity;
-            
+
             if (_services != null && _services.TileData != null)
             {
                 // 실제 코어 엔진에서 타일 혼잡도 수신
@@ -495,13 +501,8 @@ namespace CityFlow.UI
                     UpdateRealtimeWaitCounts();
                 }
 
-                // 미니맵: 매 4번째 프레임(~5fps)에만 수동 렌더 (최적화)
-                _minimapFrameCounter++;
-                if (_minimapFrameCounter >= 4 && _minimapCamera != null && _minimapCamera.gameObject.activeSelf)
-                {
-                    _minimapFrameCounter = 0;
-                    _minimapCamera.Render();
-                }
+                // 미니맵: 카메라 enabled=true로 URP가 자동 렌더 (Camera.Render()는 SRP 비호환)
+                // 별도 수동 렌더 호출 불필요 — URP 파이프라인이 매 프레임 처리
 
                 yield return wait;
             }
@@ -511,44 +512,50 @@ namespace CityFlow.UI
         {
             if (cycleGaugeCursor == null) return;
 
-            // 1. 커서 위치 (진행도) 업데이트 (SimEngine 의존성 제거 완수)
+            // 1. 커서 위치 (진행도) 업데이트 — 오버라이드 중이면 커서 숨김
             float fillRatio = signalControl.GetCurrentCycleProgress(_currentTile);
+            if (fillRatio < 0f)
+            {
+                // 오버라이드(양축 강제 초록) 중 — 커서를 숨겨 혼란 방지
+                cycleGaugeCursor.gameObject.SetActive(false);
+                return;
+            }
+            cycleGaugeCursor.gameObject.SetActive(true);
             cycleGaugeCursor.anchorMin = new Vector2(fillRatio, 0f);
             cycleGaugeCursor.anchorMax = new Vector2(fillRatio, 1f);
 
             int cycleSlots = signalControl.GetSignalCycleSlots(_currentTile);
             if (cycleSlots <= 0) return;
-            float cycle = cycleSlots * 0.5f;
+
+            // SignalMath 단일 진실원에서 파생된 값 사용 — 하드코딩 금지
+            float slotSec = signalControl.GetSlotSeconds();
+            float yellowFrac = signalControl.GetYellowFraction();
+            float clearFrac = signalControl.GetClearFraction();
+            float greenFrac = 1f - yellowFrac - clearFrac;
+
+            float cycle = cycleSlots * slotSec;
             int greenSlots = signalControl.GetSignalGreenSlots(_currentTile);
 
             // 게이지 세그먼트 폭 비율(FlexibleWidth) 업데이트
             if (leHG != null && leHY != null && leHC != null &&
                 leVG != null && leVY != null && leVC != null)
             {
-                float hSpan = greenSlots * 0.5f;
+                float hSpan = greenSlots * slotSec;
                 float vSpan = cycle - hSpan;
-                
-                float hGreen = hSpan * 0.65f;
-                float hYellow = hSpan * 0.2f;
-                float hClear = hSpan * 0.15f;
-                
-                float vGreen = vSpan * 0.65f;
-                float vYellow = vSpan * 0.2f;
-                float vClear = vSpan * 0.15f;
 
-                leHG.flexibleWidth = hGreen;
-                leHY.flexibleWidth = hYellow;
-                leHC.flexibleWidth = hClear;
-                leVG.flexibleWidth = vGreen;
-                leVY.flexibleWidth = vYellow;
-                leVC.flexibleWidth = vClear;
+                leHG.flexibleWidth = hSpan * greenFrac;
+                leHY.flexibleWidth = hSpan * yellowFrac;
+                leHC.flexibleWidth = hSpan * clearFrac;
+                leVG.flexibleWidth = vSpan * greenFrac;
+                leVY.flexibleWidth = vSpan * yellowFrac;
+                leVC.flexibleWidth = vSpan * clearFrac;
             }
         }
 
         private void UpdateRealtimeWaitCounts()
         {
             if (_services?.TileData == null || _minimapCamera == null) return;
-            
+
             UpdateWaitText(txtWaitN, Dir.N);
             UpdateWaitText(txtWaitS, Dir.S);
             UpdateWaitText(txtWaitE, Dir.E);
@@ -558,7 +565,7 @@ namespace CityFlow.UI
         private void UpdateWaitText(TMP_Text txtWait, Dir dir)
         {
             if (txtWait == null) return;
-            
+
             // 텍스트 내용 업데이트
             int count = _services.TileData.GetQueueCount(_currentTile, dir);
             txtWait.text = count.ToString();
@@ -580,9 +587,9 @@ namespace CityFlow.UI
                 txtWait.gameObject.SetActive(false);
                 return;
             }
-            
+
             txtWait.gameObject.SetActive(true);
-            
+
             // RawImage를 꽉 채우고 있는 RectTransform 내부에서의 Viewport(0~1) 비율을 Anchor로 설정하여 완벽히 추적
             RectTransform rt = txtWait.rectTransform;
             rt.anchorMin = new Vector2(viewportPos.x, viewportPos.y);
@@ -601,7 +608,7 @@ namespace CityFlow.UI
                 case Dir.E: dx = arRoadOffset; break;
                 case Dir.W: dx = -arRoadOffset; break;
             }
-            
+
             if (_services?.WorldCoordinates != null)
             {
                 // 월드 좌표계 서비스가 존재하면 정확한 3D 투영 좌표 사용
@@ -749,16 +756,16 @@ namespace CityFlow.UI
             if (_minimapCamera == null)
             {
                 GameObject camObj = new GameObject("[MinimapCamera_Signal]");
-                camObj.transform.SetParent(transform.root, false); // 씬 루트에 배치
+                camObj.transform.SetParent(null, false); // Canvas 스케일 영향을 받지 않도록 씬 루트에 배치
                 _minimapCamera = camObj.AddComponent<Camera>();
-                _minimapCamera.enabled = false; // 자동 렌더링 끄기 (수동 Render() 전용)
+                _minimapCamera.enabled = false; // 카드 열릴 때 활성화
                 _minimapCamera.orthographic = true;
-                _minimapCamera.orthographicSize = minimapZoomSize; // 인스펙터 속성 사용
+                _minimapCamera.orthographicSize = minimapZoomSize;
                 _minimapCamera.cullingMask = minimapCullingMask;
                 _minimapCamera.clearFlags = CameraClearFlags.SolidColor;
-                _minimapCamera.backgroundColor = minimapBackgroundColor; // 인스펙터 속성 사용
+                _minimapCamera.backgroundColor = minimapBackgroundColor;
                 _minimapCamera.targetTexture = _minimapRT;
-                _minimapCamera.depth = -10; // 메인 카메라보다 낮은 우선순위
+                _minimapCamera.depth = -10;
             }
 
             // 교차로 월드 좌표 계산 (GridUtil 규약 준수)
@@ -780,11 +787,11 @@ namespace CityFlow.UI
                 _minimapCamera.orthographic = Camera.main.orthographic;
                 if (_minimapCamera.orthographic)
                 {
-                    _minimapCamera.orthographicSize = 3f; // 교차로 확대
+                    _minimapCamera.orthographicSize = minimapZoomSize;
                 }
                 else
                 {
-                    _minimapCamera.fieldOfView = 20f;
+                    _minimapCamera.fieldOfView = minimapFov;
                 }
             }
             else
@@ -794,14 +801,13 @@ namespace CityFlow.UI
             }
 
             _minimapCamera.gameObject.SetActive(true);
+            _minimapCamera.enabled = true; // URP 호환: enabled=true로 파이프라인이 자동 렌더
 
             // RawImage에 RenderTexture 연결
             minimapRawImage.texture = _minimapRT;
             minimapRawImage.enabled = true;
 
-            // 즉시 첫 프레임 렌더 (팝업 시 빈 화면 방지)
             _minimapFrameCounter = 0;
-            _minimapCamera.Render();
         }
 
         private void OnDestroy()

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using CityFlow.Contracts;
@@ -906,8 +906,10 @@ namespace CityFlow.Sim
         public float GetCurrentCycleProgress(Vector2Int tile)
         {
             if (!_signals.TryGet(tile, out var s) || s.CycleSlots <= 0) return 0f;
-            float cycle = s.CycleSlots * 0.5f;
-            double openTime = (s.OffsetSlots * 0.5f) % cycle;
+            // 오버라이드(양축 강제 초록) 중에는 게이지가 정상 주기를 표시할 수 없음 → UI에 알림
+            if (s.OverrideUntil > _simTime) return -1f;
+            float cycle = s.CycleSlots * SignalMath.SlotSeconds;
+            double openTime = (s.OffsetSlots * SignalMath.SlotSeconds) % cycle;
             double localTime = (SimTime - openTime) % cycle;
             if (localTime < 0) localTime += cycle;
             return (float)(localTime / cycle);
@@ -1288,6 +1290,11 @@ namespace CityFlow.Sim
                 ? (float)(ready - _simTime) : 0f;
 
         public float GetTotalOverrideCooldown() => _config.OverrideCooldownSeconds;
+
+        // ── 신호 타이밍 상수 접근자 (ISignalControl 계약) ── SignalMath 단일 진실원 경유
+        public float GetSlotSeconds() => SignalMath.SlotSeconds;
+        public float GetYellowFraction() => SignalMath.YellowFrac;
+        public float GetClearFraction() => SignalMath.ClearFrac;
 
         // 진입 허가 = 초록만(노랑·적색은 진입 금지).
         public bool IsSignalGreen(Vector2Int tile, bool horizontal) =>

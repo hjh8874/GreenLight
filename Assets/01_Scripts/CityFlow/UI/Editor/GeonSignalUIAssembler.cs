@@ -1,4 +1,4 @@
-using UnityEditor;
+﻿using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -181,7 +181,7 @@ namespace CityFlow.UI.Editor
             var minimapRawImage = minimapObj.AddComponent<RawImage>();
             minimapRawImage.color = Color.white; // 렌더 텍스처를 원본 색상으로 표시
             minimapRawImage.enabled = false; // 기본적으론 꺼둠 (카메라 연동 전)
-            
+
             // 미니맵 위에 대기 차량 숫자를 오버레이 (N, S, E, W) - 코루틴이 화면 좌표로 실시간 추적할 예정
             TMP_Text txtWaitN = CreateCrossText(minimapObj.transform, "TxtWaitN", "0", fontToUse,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(44f, 24f));
@@ -250,8 +250,21 @@ namespace CityFlow.UI.Editor
             signalRoot.SetActive(false);
 
             EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene);
-            Debug.Log("[CityFlow] ✅ Signal Control UI assembled successfully with GUI-MonoRound theme!");
+
+            // 통합 씬 커밋 금지 규칙 방어: 저장 전 명시적 사용자 확인
+            if (EditorUtility.DisplayDialog(
+                "CityFlow - Signal UI Assembler",
+                $"씬 '{scene.name}'에 Signal Control UI를 적용하고 저장하시겠습니까?\n\n" +
+                "⚠️ 통합 씬을 직접 커밋하지 않도록 주의하세요.",
+                "저장", "취소"))
+            {
+                EditorSceneManager.SaveScene(scene);
+                Debug.Log("[CityFlow] ✅ Signal Control UI assembled and scene saved!");
+            }
+            else
+            {
+                Debug.Log("[CityFlow] Signal Control UI assembled but scene was NOT saved (user cancelled).");
+            }
         }
 
         // ═══════════════════════════════════════════════════════════════════
@@ -443,12 +456,12 @@ namespace CityFlow.UI.Editor
             handleRT.sizeDelta = new Vector2(20f, 20f);
             handleRT.anchoredPosition = Vector2.zero;
             var handleImg = handleObj.AddComponent<Image>();
-            
+
             // 완벽한 원형 보장을 위해 유니티 기본 Knob 스프라이트 강제 사용
             Sprite knobSprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/Knob.psd");
             if (knobSprite != null) { handleImg.sprite = knobSprite; handleImg.type = Image.Type.Simple; }
             else if (handleSprite != null) { handleImg.sprite = handleSprite; }
-            
+
             handleImg.color = Color.white;
 
             // Slider 컴포넌트 세팅

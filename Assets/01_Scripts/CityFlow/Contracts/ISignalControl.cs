@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
 namespace CityFlow.Contracts
@@ -19,7 +19,7 @@ namespace CityFlow.Contracts
 
         // 전체 주기 (Max Value 설정을 위해 UI에서 사용)
         int GetSignalCycleSlots(Vector2Int tile);
-        
+
         // 현재 주기 진행도 (0.0 ~ 1.0)
         float GetCurrentCycleProgress(Vector2Int tile);
 
@@ -38,6 +38,12 @@ namespace CityFlow.Contracts
         float GetOverrideSecondsLeft(Vector2Int tile);   // 0 = 비활성
         float GetOverrideCooldownLeft(Vector2Int tile);  // 0 = 사용 가능
         float GetTotalOverrideCooldown();                // 전체 쿨다운(비율 계산용)
+
+        // 신호 타이밍 상수 접근자 — UI가 SlotSeconds·YellowFrac·ClearFrac를 하드코딩하지 않도록
+        // SignalMath(단일 진실원)에서 파생된 값을 계약을 통해 내려준다.
+        float GetSlotSeconds();       // 1슬롯 = N초 (현재 0.5f)
+        float GetYellowFraction();    // 각 축 창 중 노란불 비율 (현재 0.2f)
+        float GetClearFraction();     // 각 축 창 중 전적색 비율 (현재 0.15f)
 
         // UI 쿨타임 애니메이션용 (타일, 가로여부, 오버라이드지속시간, 전체쿨타임시간)
         event System.Action<Vector2Int, bool, float, float> OnOverrideTriggered;
