@@ -197,9 +197,9 @@ namespace CityFlow.UI.Editor
             view.minimapCullingMask = ~0;
             view.minimapCameraHeight = 8f;
 
-            // 2. Prefab으로 저장
-            string prefabPath = "Assets/02_Prefabs/UI/UI_SignalControlPanel.prefab";
-            System.IO.Directory.CreateDirectory("Assets/02_Prefabs/UI");
+            // Prefab Load (Resources 경로)
+            string prefabPath = "Assets/Resources/CityFlow/UI/UI_SignalControlPanel.prefab";
+            System.IO.Directory.CreateDirectory("Assets/Resources/CityFlow/UI");
             PrefabUtility.SaveAsPrefabAsset(signalRoot, prefabPath);
 
             // 3. 임시 객체 삭제

@@ -85,8 +85,8 @@ namespace CityFlow.UI.Editor
             Transform oldSignal = analysisCardObj.transform.Find("SignalControlContainer");
             if (oldSignal != null) Object.DestroyImmediate(oldSignal.gameObject);
 
-            // Prefab Load & Instantiate
-            string prefabPath = "Assets/02_Prefabs/UI/UI_SignalControlPanel.prefab";
+            // 2. 신호등 조작 패널 프리팹 로드 (Resources 경로)
+            string prefabPath = "Assets/Resources/CityFlow/UI/UI_SignalControlPanel.prefab";
             GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             if (prefab == null)
             {
