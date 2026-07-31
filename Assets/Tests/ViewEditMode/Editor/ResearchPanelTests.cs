@@ -74,6 +74,68 @@ public class ResearchPanelTests
         }
     }
 
+    [Test]
+    public void Initialize_RebindsDockResearchPanelToThisPanel()
+    {
+        var panelOwner = new GameObject("new panel");
+        var oldPanelOwner = new GameObject("old panel");
+        var dockOwner = new GameObject("dock");
+        try
+        {
+            var dock = dockOwner.AddComponent<UIDockController>();
+            SetPrivate(dock, "panelResearch", oldPanelOwner);
+            var controller = CreateController(panelOwner, null);
+
+            controller.Initialize(null);
+
+            Assert.AreSame(panelOwner, GetPrivate<GameObject>(dock, "panelResearch"),
+                "새 연구 패널이 도크의 연구 패널로 자동 연결되어야 한다");
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelOwner);
+            Object.DestroyImmediate(oldPanelOwner);
+            Object.DestroyImmediate(dockOwner);
+        }
+    }
+
+    [Test]
+    public void Initialize_DisablesOtherResearchPanelControllers()
+    {
+        var panelOwner = new GameObject("new panel");
+        var oldPanelOwner = new GameObject("old panel");
+        try
+        {
+            oldPanelOwner.AddComponent<ResearchPanelController>();
+            var controller = CreateController(panelOwner, null);
+
+            controller.Initialize(null);
+
+            Assert.IsFalse(oldPanelOwner.activeSelf, "구 연구 패널은 자동으로 비활성화되어야 한다");
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelOwner);
+            Object.DestroyImmediate(oldPanelOwner);
+        }
+    }
+
+    [Test]
+    public void Initialize_WithoutDock_DoesNotThrow()
+    {
+        var panelOwner = new GameObject("panel");
+        try
+        {
+            var controller = CreateController(panelOwner, null);
+
+            Assert.DoesNotThrow(() => controller.Initialize(null));
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelOwner);
+        }
+    }
+
     static ResearchPanelController CreateController(GameObject owner,
         CityFlowServices services, params (string id, int threshold)[] rows)
     {
@@ -115,4 +177,10 @@ public class ResearchPanelTests
                 System.Reflection.BindingFlags.Instance |
                 System.Reflection.BindingFlags.NonPublic)
             .SetValue(target, value);
+
+    static T GetPrivate<T>(object target, string field) =>
+        (T)target.GetType().GetField(field,
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic)
+            .GetValue(target);
 }

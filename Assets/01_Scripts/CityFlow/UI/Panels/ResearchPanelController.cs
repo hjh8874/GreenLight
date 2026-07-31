@@ -53,6 +53,7 @@ namespace CityFlow.UI
 
         public void Initialize(CityFlowServices cityServices)
         {
+            AutoWireSceneIntegration();
             Unbind();
             services = cityServices;
             if (services == null) return;
@@ -72,6 +73,38 @@ namespace CityFlow.UI
 
             BuildRows();
             RefreshAll();
+        }
+
+        private void AutoWireSceneIntegration()
+        {
+            // 구 씬 패널은 현재 프리팹의 catalog/rowTemplate가 없는 이전 직렬화 형태다.
+            // 해당 패널이 bootstrap 초기화 순서에서 새 연결을 되돌리지 않게 건너뛴다.
+            if (catalog == null || rowTemplate == null) return;
+
+            UIDockController dock = FindFirstObjectByType<UIDockController>(FindObjectsInactive.Include);
+            if (dock != null)
+            {
+                dock.RebindResearchPanel(gameObject);
+            }
+
+            ResearchPanelController[] panels = FindObjectsByType<ResearchPanelController>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            int disabledCount = 0;
+            for (int i = 0; i < panels.Length; i++)
+            {
+                ResearchPanelController panel = panels[i];
+                if (panel == this || panel == null) continue;
+                panel.gameObject.SetActive(false);
+                disabledCount++;
+            }
+
+            if (disabledCount > 0)
+            {
+                Debug.LogWarning(
+                    $"[ResearchPanelController] 구 연구 패널 {disabledCount}개를 비활성화했다.",
+                    this);
+            }
         }
 
         private void OnEnable() => RefreshAll();
