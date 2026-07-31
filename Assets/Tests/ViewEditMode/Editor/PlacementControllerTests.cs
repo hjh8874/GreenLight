@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
@@ -19,6 +20,46 @@ namespace Tests.EditMode
     public class PlacementControllerTests
     {
         private GameObject _cameraGo;
+
+        private sealed class AutoDirectionPlacementService : IPlacementService
+        {
+            public bool CanPlace(
+                Vector2Int tile,
+                TileType type,
+                PlacementDirection direction = PlacementDirection.North) => true;
+
+            public bool Place(
+                Vector2Int tile,
+                TileType type,
+                PlacementDirection direction = PlacementDirection.North) => true;
+
+            public bool Remove(Vector2Int tile) => true;
+
+            public bool TryResolveAutoDirection(
+                Vector2Int tile,
+                TileType type,
+                out PlacementDirection direction,
+                IReadOnlyList<PlacementDirection> priority = null)
+            {
+                direction = PlacementDirection.East;
+                return true;
+            }
+        }
+
+        private sealed class DefaultAutoDirectionPlacementService : IPlacementService
+        {
+            public bool CanPlace(
+                Vector2Int tile,
+                TileType type,
+                PlacementDirection direction = PlacementDirection.North) => true;
+
+            public bool Place(
+                Vector2Int tile,
+                TileType type,
+                PlacementDirection direction = PlacementDirection.North) => true;
+
+            public bool Remove(Vector2Int tile) => true;
+        }
 
         [SetUp]
         public void Setup()
@@ -322,6 +363,66 @@ namespace Tests.EditMode
             {
                 Object.DestroyImmediate(
                     controllerObject);
+            }
+        }
+
+        [Test]
+        public void ResolvePlacementDirection_UsesAutoDirectionFromPlacementContract()
+        {
+            var controllerObject = new GameObject("ContractAutoDirectionTest");
+            var controller = controllerObject.AddComponent<PlacementController>();
+            var placement = new AutoDirectionPlacementService();
+
+            try
+            {
+                controller.Initialize(new CityFlow.Bootstrap.CityFlowServices(
+                    new SimEventHub(),
+                    null,
+                    placement));
+                controller.SetBuildType(TileType.House);
+
+                MethodInfo resolveMethod = typeof(PlacementController).GetMethod(
+                    "ResolvePlacementDirection",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                var direction = (PlacementDirection)resolveMethod.Invoke(
+                    controller,
+                    new object[] { Vector2Int.zero });
+
+                Assert.AreEqual(PlacementDirection.East, direction);
+            }
+            finally
+            {
+                Object.DestroyImmediate(controllerObject);
+            }
+        }
+
+        [Test]
+        public void ResolvePlacementDirection_DefaultContractFallsBackToNorth()
+        {
+            var controllerObject = new GameObject("DefaultAutoDirectionTest");
+            var controller = controllerObject.AddComponent<PlacementController>();
+            var placement = new DefaultAutoDirectionPlacementService();
+
+            try
+            {
+                controller.Initialize(new CityFlow.Bootstrap.CityFlowServices(
+                    new SimEventHub(),
+                    null,
+                    placement));
+                controller.SetBuildType(TileType.House);
+
+                MethodInfo resolveMethod = typeof(PlacementController).GetMethod(
+                    "ResolvePlacementDirection",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                var direction = (PlacementDirection)resolveMethod.Invoke(
+                    controller,
+                    new object[] { Vector2Int.zero });
+
+                Assert.AreEqual(PlacementDirection.North, direction);
+            }
+            finally
+            {
+                Object.DestroyImmediate(controllerObject);
             }
         }
 

@@ -7,7 +7,6 @@ using UnityEngine.InputSystem;
 using CityFlow.UI.Controllers;
 using CityFlow.UI.Controllers.Placement;
 using CityFlow.View;
-using CityFlow.Sim;
 
 namespace CityFlow.UI
 {
@@ -428,9 +427,8 @@ namespace CityFlow.UI
                 return _currentDirection;
             }
 
-            SimEngine engine = _services?.Placement as SimEngine;
-            if (engine != null &&
-                engine.TryResolveAutoDirection(
+            if (_services?.Placement != null &&
+                _services.Placement.TryResolveAutoDirection(
                     coord,
                     _currentType,
                     out PlacementDirection direction,
