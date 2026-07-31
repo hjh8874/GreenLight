@@ -82,7 +82,7 @@ public class ResearchConditionTests
     }
 
     [Test]
-    public void EvaluatePendingResearch_UnlocksSatisfied_SkipsLocked_NeverRelocks()
+    public void EvaluatePendingResearch_MarksSatisfiedReady_SkipsLocked_NeverRelocks()
     {
         var owner = new GameObject("research");
         try
@@ -103,19 +103,23 @@ public class ResearchConditionTests
             // 인구만 충족하는 입력을 주입해 평가
             SetTestInputs(service, population: 25, arrivals: 10);
             service.EvaluatePendingResearch();
-            CollectionAssert.AreEquivalent(new[] { "research_pop20" }, unlocked);
-            Assert.IsTrue(service.IsUnlocked("research_pop20"));
+            CollectionAssert.IsEmpty(unlocked);
+            Assert.IsTrue(service.IsReady("research_pop20"));
+            Assert.IsFalse(service.IsUnlocked("research_pop20"));
             Assert.IsFalse(service.IsUnlocked("research_arr60"), "미달 조건은 잠긴 채");
 
-            // 재평가 — 이미 열린 것은 다시 이벤트가 나가지 않는다
+            // 재평가 — ready 상태만 다시 계산하고 이벤트는 내지 않는다
             service.EvaluatePendingResearch();
-            Assert.AreEqual(1, unlocked.Count, "이중 발화 금지");
+            Assert.AreEqual(0, unlocked.Count, "자동 해금 금지");
+
+            Assert.IsTrue(service.TryUnlock("research_pop20"));
+            Assert.AreEqual(1, unlocked.Count, "수동 해금 이벤트 1회");
 
             // 통행량 충족 → 남은 것 해금
             SetTestInputs(service, population: 25, arrivals: 60);
             service.EvaluatePendingResearch();
-            CollectionAssert.AreEquivalent(
-                new[] { "research_pop20", "research_arr60" }, unlocked);
+            Assert.IsTrue(service.IsReady("research_arr60"));
+            Assert.IsFalse(service.IsUnlocked("research_arr60"));
         }
         finally { Object.DestroyImmediate(owner); }
     }
@@ -143,8 +147,8 @@ public class ResearchConditionTests
 
             stats.LastDayArrivalCount = 60;
             InvokeUpdate(service);
-            Assert.IsTrue(service.IsUnlocked("research_arr60"),
-                "통계 확정값이 바뀐 뒤 Update에서 해금해야 한다");
+            Assert.IsTrue(service.IsReady("research_arr60"),
+                "통계 확정값이 바뀐 뒤 Update에서 해금 가능해야 한다");
         }
         finally
         {

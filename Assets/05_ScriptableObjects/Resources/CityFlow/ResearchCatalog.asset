@@ -14,41 +14,49 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.ResearchCatalogSO
   entries:
   - researchId: research_building_coffee_shop
+    prerequisiteId:
     displayName: "\uCEE4\uD53C\uC20D"
     conditionKind: 1
     threshold: 20
     targetTileType: 0
   - researchId: research_building_video_store
+    prerequisiteId: research_building_coffee_shop
     displayName: "\uBE44\uB514\uC624 \uB300\uC5EC\uC810"
     conditionKind: 1
     threshold: 40
     targetTileType: 0
   - researchId: research_building_pharmacy
+    prerequisiteId:
     displayName: "\uC57D\uAD6D"
     conditionKind: 2
     threshold: 1
     targetTileType: 4
   - researchId: research_building_petrol_station
+    prerequisiteId:
     displayName: "\uC8FC\uC720\uC18C"
     conditionKind: 0
     threshold: 60
     targetTileType: 0
   - researchId: research_building_auto_repair
+    prerequisiteId: research_building_petrol_station
     displayName: "\uC815\uBE44\uC18C"
     conditionKind: 0
     threshold: 100
     targetTileType: 0
   - researchId: research_building_cinema
+    prerequisiteId: research_building_video_store
     displayName: "\uC601\uD654\uAD00"
     conditionKind: 1
     threshold: 80
     targetTileType: 0
   - researchId: research_building_police_station
+    prerequisiteId: research_building_pharmacy
     displayName: "\uACBD\uCC30\uC11C"
     conditionKind: 2
     threshold: 1
     targetTileType: 5
   - researchId: research_building_mall
+    prerequisiteId: research_building_auto_repair
     displayName: "\uD070 \uC0C1\uC810"
     conditionKind: 0
     threshold: 150
