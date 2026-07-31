@@ -836,6 +836,25 @@ namespace CityFlow.Sim
             return found;
         }
 
+        public bool TryGetCompanyTypeId(Vector2Int tile, out string companyTypeId) =>
+            _demand.TryGetCompanyTypeId(tile, out companyTypeId);
+
+        public IReadOnlyList<CommuterHomeCount> GetCompanyCommuterHomes(Vector2Int tile)
+        {
+            var counts = new Dictionary<Vector2Int, int>();
+            for (int i = 0; i < _carSim.CarCount; i++)
+            {
+                CarSnapshot snap = _carSim.GetCar(i);
+                if (snap.Work != tile) continue;
+                counts.TryGetValue(snap.Home, out int n);
+                counts[snap.Home] = n + 1;
+            }
+            var list = new List<CommuterHomeCount>(counts.Count);
+            foreach (var kv in counts)
+                list.Add(new CommuterHomeCount(kv.Key, kv.Value));
+            return list;
+        }
+
         public bool IsSharedCarIntersection(Vector2Int tile) =>
             _grid.IsIntersection(tile)
             && !_roundaboutSet.Contains(tile)

@@ -12,4 +12,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 047e86a4071d47db9d106684a251253e, type: 3}
   m_Name: GameTimeSettings
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Gameplay.Progression.GameTimeSettingsSO
-  realMinutesPerGameDay: 12
+  realMinutesPerGameDay: 3

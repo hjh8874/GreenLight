@@ -247,5 +247,15 @@ public class ResearchConditionTests
             staffing = default;
             return false;
         }
+
+        public bool TryGetCompanyTypeId(Vector2Int tile, out string companyTypeId)
+        {
+            companyTypeId = null;
+            return false;
+        }
+
+        public System.Collections.Generic.IReadOnlyList<CommuterHomeCount>
+            GetCompanyCommuterHomes(Vector2Int tile) =>
+            System.Array.Empty<CommuterHomeCount>();
     }
 }

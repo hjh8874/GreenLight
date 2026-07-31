@@ -324,24 +324,31 @@ namespace CityFlow.Sim
             {
                 Vector2Int house = _houses[i];
                 int reduction = _commuterReduction?.Invoke(house) ?? 0;
-                int commuterCount = Mathf.Max(0, 1 - reduction);
+                // 데모 밸런스(2026-07-31): 회사 통근자 = 집당 CarsPerHouse. 버스 커버(M4)가 감축.
+                int commuterCount = Mathf.Max(0, _config.CarsPerHouse - reduction);
                 for (int commuter = 0; commuter < commuterCount; commuter++)
                     _commuterSources.Add(house);
             }
 
-            // 다목적지: 집마다 각 수요처 종류로 1건씩.
+            // 다목적지: 집마다 각 수요처 종류로 1건씩 — 단, 회사는 CarsPerHouse명(2026-07-31 밸런스).
+            // 종전 집당 1명 규칙은 좌석을 늘려도 교통량이 안 늘던 병목이었다. 학교는 집당 1건 유지 —
+            // 집 주차 슬롯(CarsPerHouse)을 회사가 다 쓰는 집은 통학 차가 밀린다(스케줄러 슬롯에서 걸러짐).
             foreach (var sinkType in SinkTypes)
             {
                 _sinks.Clear();
                 Collect(grid, sinkType, _sinks);
 
+                // ponytail: 같은 집 항목 복제 = 통근자 수(회사만 CarsPerHouse−버스감축, 학교는 1).
+                // sticky 는 (집,종류) 키라 한 집의 통근자들이 같은 회사를 공유한다.
+                List<Vector2Int> sources = _houses;
                 if (sinkType == TileType.Office)
                 {
                     SynchronizeCompanies(_sinks);
+                    sources = _commuterSources;
                 }
 
                 AssignType(
-                    _commuterSources,
+                    sources,
                     _sinks,
                     sinkType,
                     net

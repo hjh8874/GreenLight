@@ -58,6 +58,29 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1, scheduler.Cars[1].HomeSlot);
         }
 
+        // [밸런스 2026-07-31] 집 1채는 회사 통근자를 CarsPerHouse명 낸다.
+        // 종전(집당 1명)은 회사 좌석을 늘려도 차가 안 늘던 병목이었다.
+        [Test]
+        public void Demands_OfficeCommutersPerHouse_FollowCarsPerHouse()
+        {
+            SimConfig cfg = Cfg();
+            cfg.CarsPerHouse = 2;
+            cfg.OfficeCapacity = 4;
+            var grid = new CityGrid(7, 4);
+            for (int x = 1; x <= 5; x++) Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(5, 0), TileType.Office));
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+
+            demands.Reassign(grid, road);
+
+            int officeDemands = 0;
+            foreach (var d in demands.Demands)
+                if (d.SinkType == TileType.Office) officeDemands++;
+            Assert.AreEqual(2, officeDemands, "집 1채 = 회사 통근자 CarsPerHouse(2)명");
+        }
+
         [Test]
         public void Morning_TwoCarsArriveAtWork_EmitsOnePaidEventPerCar()
         {
