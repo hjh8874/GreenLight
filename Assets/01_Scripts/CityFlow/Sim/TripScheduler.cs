@@ -177,6 +177,21 @@ namespace CityFlow.Sim
                 active.TryGetValue(vehicle, out journey);
         }
 
+        internal SpecialTripJourney FindStaleJourney(
+            float currentAbsoluteHour,
+            float maxAgeHours)
+        {
+            foreach (SpecialTripJourney journey in active.Values)
+            {
+                if (currentAbsoluteHour - journey.StartAbsoluteHour > maxAgeHours)
+                {
+                    return journey;
+                }
+            }
+
+            return null;
+        }
+
         public bool RemoveActive(CommuteCar vehicle)
         {
             if (vehicle == null ||
@@ -238,6 +253,7 @@ namespace CityFlow.Sim
     {
         private List<UnityEngine.Vector2Int> firstRoute;
         private List<UnityEngine.Vector2Int> secondRoute;
+        private float startAbsoluteHour;
 
         public SpecialTripJourney(
             SpecialBuildingVisitTripRequest request,
@@ -247,7 +263,8 @@ namespace CityFlow.Sim
             UnityEngine.Vector2Int finalDestination,
             CarState finalRoutineState,
             List<UnityEngine.Vector2Int> firstRoute,
-            List<UnityEngine.Vector2Int> secondRoute)
+            List<UnityEngine.Vector2Int> secondRoute,
+            float startAbsoluteHour)
         {
             Request = request;
             Vehicle = vehicle;
@@ -257,6 +274,7 @@ namespace CityFlow.Sim
             FinalRoutineState = finalRoutineState;
             this.firstRoute = firstRoute ?? throw new ArgumentNullException(nameof(firstRoute));
             this.secondRoute = secondRoute;
+            this.startAbsoluteHour = startAbsoluteHour;
             CurrentLegIndex = 0;
             CurrentTrip = CreateTrip(
                 0,
@@ -278,6 +296,13 @@ namespace CityFlow.Sim
         public List<UnityEngine.Vector2Int> CurrentRoute =>
             CurrentLegIndex == 0 ? firstRoute : secondRoute;
         public bool HasContinuation => secondRoute != null && secondRoute.Count > 0;
+        internal float StartAbsoluteHour => startAbsoluteHour;
+
+        // 테스트 전용 seam: 스테일 여정 워치독의 시간 경과를 결정론적으로 재현한다.
+        internal void BackdateStartForTest(float hours)
+        {
+            startAbsoluteHour -= hours;
+        }
 
         public VehicleTripSnapshot CompleteCurrentLeg()
         {
