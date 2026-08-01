@@ -15,6 +15,7 @@ MonoBehaviour:
   standardVehicleFootprint: {fileID: 11400000, guid: 3b090c7283c648fc88a9333d9a8ee8f4, type: 2}
   Value:
     TickInterval: 0.1
+    MaxConcurrentSpecialTrips: 16
     MaxStepsPerFrame: 5
     GridWidth: 20
     GridHeight: 20
