@@ -27,6 +27,7 @@ namespace CityFlow.Sim
     internal sealed class CarSim : ICarRouteProvider
     {
         private const float JumpThresholdHours = 1f;
+        private const float StaleSpecialJourneyHours = 24f;
         // Watchdog thresholds are deliberately derived from the existing L1
         // contract: L2 at 3x and L3 at 6x GridlockValveTicks. Promote them to
         // SimConfig only if tuning ownership is approved later.
@@ -78,6 +79,8 @@ namespace CityFlow.Sim
         private RoadNetwork _roadNetwork;
         private float _lastHour;
         private bool _hasLastHour;
+        private long _lastReservationSweepAbsoluteHour;
+        private bool _hasReservationSweepHour;
         private bool _needsSnap;
         private bool _populationInitialized;
 
@@ -716,6 +719,18 @@ namespace CityFlow.Sim
             _lastHour = gameHour;
             _hasLastHour = true;
 
+            float currentAbsoluteHour = gameDay * 24f + gameHour;
+            long currentAbsoluteHourBoundary = gameDay * 24L +
+                (long)Mathf.Floor(gameHour);
+            if (!_hasReservationSweepHour ||
+                currentAbsoluteHourBoundary != _lastReservationSweepAbsoluteHour)
+            {
+                ReleaseOrphanedSpecialReservations();
+                _lastReservationSweepAbsoluteHour = currentAbsoluteHourBoundary;
+                _hasReservationSweepHour = true;
+            }
+            CancelStaleSpecialJourneys(currentAbsoluteHour);
+
             TryStartPendingSpecialTrip(gameDay, gameHour, tick);
             _scheduler.UpdateDepartures(gameHour);
             _commuteTripSource.SyncDepartures(
@@ -764,6 +779,53 @@ namespace CityFlow.Sim
             SyncLocations(net);
             roadTraffic?.SynchronizeSnapshots();
             return result;
+        }
+
+        private void ReleaseOrphanedSpecialReservations()
+        {
+            IReadOnlyList<CommuteCar> cars = _scheduler.Cars;
+            for (int index = 0; index < cars.Count; index++)
+            {
+                CommuteCar car = cars[index];
+                if (car == null || car.IsTransient || !car.SpecialTripReserved ||
+                    IsActiveSpecialTripOwner(car))
+                {
+                    continue;
+                }
+
+                car.SetSpecialTripReservation(false);
+                Debug.LogWarning(
+                    $"[CarSim] Orphaned special-trip reservation released " +
+                    $"Home={car.Home} Work={car.Work} State={car.State}");
+            }
+        }
+
+        private bool IsActiveSpecialTripOwner(CommuteCar car)
+        {
+            foreach (SpecialTripJourney journey in _tripScheduler.ActiveJourneys)
+            {
+                if (journey.RoutineOwner == car)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void CancelStaleSpecialJourneys(float currentAbsoluteHour)
+        {
+            SpecialTripJourney stale;
+            while ((stale = _tripScheduler.FindStaleJourney(
+                        currentAbsoluteHour,
+                        StaleSpecialJourneyHours)) != null)
+            {
+                Debug.LogWarning(
+                    $"[CarSim] Stale special journey cancelled " +
+                    $"Home={stale.RoutineOwner?.Home} " +
+                    $"Work={stale.RoutineOwner?.Work}");
+                CancelSpecialJourney(stale);
+            }
         }
 
         public CarSnapshot GetCar(int index)
@@ -1213,6 +1275,7 @@ namespace CityFlow.Sim
 
             if (!TryCreateSpecialJourney(
                     request,
+                    gameDay,
                     gameHour,
                     out SpecialTripStartFailure failure))
             {
@@ -1225,6 +1288,7 @@ namespace CityFlow.Sim
 
         private bool TryCreateSpecialJourney(
             SpecialBuildingVisitTripRequest request,
+            long gameDay,
             float gameHour,
             out SpecialTripStartFailure failure)
         {
@@ -1258,6 +1322,7 @@ namespace CityFlow.Sim
 
                     if (TryLaunchSpecialJourney(
                             request,
+                            gameDay * 24f + gameHour,
                             owner,
                             origin,
                             finalDestination,
@@ -1294,6 +1359,7 @@ namespace CityFlow.Sim
                 Vector2Int home = houses[(houseStart + offset) % houses.Count];
                 if (TryLaunchSpecialJourney(
                         request,
+                        gameDay * 24f + gameHour,
                         null,
                         home,
                         home,
@@ -1322,6 +1388,7 @@ namespace CityFlow.Sim
 
         private bool TryLaunchSpecialJourney(
             SpecialBuildingVisitTripRequest request,
+            float startAbsoluteHour,
             CommuteCar routineOwner,
             Vector2Int origin,
             Vector2Int finalDestination,
@@ -1374,7 +1441,8 @@ namespace CityFlow.Sim
                 finalDestination,
                 finalRoutineState,
                 firstRoute,
-                secondRoute);
+                secondRoute,
+                startAbsoluteHour);
             if (!_tripScheduler.TryActivate(journey))
             {
                 _scheduler.ReleaseTransient(vehicle);
