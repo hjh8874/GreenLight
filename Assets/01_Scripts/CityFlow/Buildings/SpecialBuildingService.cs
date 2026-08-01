@@ -474,7 +474,8 @@ namespace CityFlow.Buildings
                 cadence.PeriodDays,
                 definition.VisitorCapacity,
                 definition.AttractionWeight,
-                definition.CoinPerVisit);
+                definition.CoinPerVisit,
+                definition.VisitTimeProfile);
             return true;
         }
 

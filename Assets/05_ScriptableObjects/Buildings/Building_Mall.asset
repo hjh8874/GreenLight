@@ -41,6 +41,7 @@ MonoBehaviour:
   visitorCapacity: 0
   attractionWeight: 1
   coinPerVisit: 10
+  visitTimeProfile: 2
   happinessEffectKey: happiness_building_mall
   schoolCoverageCapacity: 0
   coveredPopulationCapBonus: 0

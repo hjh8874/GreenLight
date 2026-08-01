@@ -41,6 +41,7 @@ MonoBehaviour:
   visitorCapacity: 0
   attractionWeight: 1
   coinPerVisit: 10
+  visitTimeProfile: 0
   happinessEffectKey: happiness_building_police_station
   schoolCoverageCapacity: 0
   coveredPopulationCapBonus: 0
