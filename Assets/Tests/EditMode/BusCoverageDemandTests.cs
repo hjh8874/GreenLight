@@ -47,8 +47,8 @@ namespace CityFlow.Sim.Tests
 
             demandMap.Reassign(grid, new RoadNetwork(grid));
 
-            Assert.AreEqual(1, DemandCountFrom(demandMap, V(0, 0)));
-            Assert.AreEqual(2, DemandCountFrom(demandMap, V(3, 0)));
+            Assert.AreEqual(0, DemandCountFrom(demandMap, V(0, 0)));
+            Assert.AreEqual(1, DemandCountFrom(demandMap, V(3, 0)));
         }
 
         [Test]
@@ -64,22 +64,23 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void NullDelegate_BitIdentical()
+        public void NullDelegate_BitIdenticalToUncoveredReduction()
         {
             CityGrid grid = MakeCommuteGrid();
             SimConfig config = DemandConfig();
             DemandMap implicitNull = new DemandMap(config);
-            DemandMap explicitNull = new DemandMap(config);
-            explicitNull.SetCommuterReduction(null);
+            DemandMap uncovered = new DemandMap(config);
+            // 정류장 2개가 있어도 모든 집이 반경 밖이면 감축 0과 동일해야 한다.
+            uncovered.SetCommuterReduction(_ => 0);
 
             implicitNull.Reassign(grid, new RoadNetwork(grid));
-            explicitNull.Reassign(grid, new RoadNetwork(grid));
+            uncovered.Reassign(grid, new RoadNetwork(grid));
 
-            Assert.AreEqual(implicitNull.Demands.Count, explicitNull.Demands.Count);
+            Assert.AreEqual(implicitNull.Demands.Count, uncovered.Demands.Count);
             for (int i = 0; i < implicitNull.Demands.Count; i++)
             {
                 Demand expected = implicitNull.Demands[i];
-                Demand actual = explicitNull.Demands[i];
+                Demand actual = uncovered.Demands[i];
                 Assert.AreEqual(expected.Source, actual.Source);
                 Assert.AreEqual(expected.Sink, actual.Sink);
                 Assert.AreEqual(expected.SourceRoad, actual.SourceRoad);

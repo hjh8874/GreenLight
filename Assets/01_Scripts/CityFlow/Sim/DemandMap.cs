@@ -280,9 +280,7 @@ namespace CityFlow.Sim
             {
                 Vector2Int house = _houses[i];
                 int reduction = _commuterReduction?.Invoke(house) ?? 0;
-                int commuterCount = _commuterReduction == null
-                    ? 1
-                    : Mathf.Max(0, _config.CarsPerHouse - reduction);
+                int commuterCount = Mathf.Max(0, 1 - reduction);
                 for (int commuter = 0; commuter < commuterCount; commuter++)
                     _commuterSources.Add(house);
             }
