@@ -39,6 +39,7 @@ namespace CityFlow.Sim
 
         // 선할당 재사용 버퍼(재배정은 드물지만 습관).
         readonly List<Vector2Int> _houses = new(64);
+        readonly List<Vector2Int> _commuterSources = new(128);
         readonly List<Vector2Int> _sinks = new(16);
         readonly List<Demand> _demands = new(128);
         readonly Dictionary<Vector2Int, CompanyCapacityState> _companies = new(16);
@@ -274,6 +275,17 @@ namespace CityFlow.Sim
             _assignedBySink.Clear();
             _houses.Clear();
             Collect(grid, TileType.House, _houses);
+            _commuterSources.Clear();
+            for (int i = 0; i < _houses.Count; i++)
+            {
+                Vector2Int house = _houses[i];
+                int reduction = _commuterReduction?.Invoke(house) ?? 0;
+                int commuterCount = _commuterReduction == null
+                    ? 1
+                    : Mathf.Max(0, _config.CarsPerHouse - reduction);
+                for (int commuter = 0; commuter < commuterCount; commuter++)
+                    _commuterSources.Add(house);
+            }
 
             // 다목적지: 집마다 각 수요처 종류로 1건씩.
             foreach (var sinkType in SinkTypes)
@@ -287,7 +299,7 @@ namespace CityFlow.Sim
                 }
 
                 AssignType(
-                    _houses,
+                    _commuterSources,
                     _sinks,
                     sinkType,
                     net
@@ -457,9 +469,6 @@ namespace CityFlow.Sim
             for (int h = 0; h < sources.Count; h++)
             {
                 var house = sources[h];
-                int reduction = _commuterReduction?.Invoke(house) ?? 0;
-                int commuters = Mathf.Max(0, _config.CarsPerHouse - reduction);
-                if (commuters == 0) continue;
                 _houseFrontageBuffer.Clear();
                 net.CollectAccessRoads(house, _houseFrontageBuffer);
 
@@ -514,15 +523,12 @@ namespace CityFlow.Sim
                 }
 
                 _sticky[key] = sinks[best];
-                for (int commuter = 0; commuter < commuters; commuter++)
+                _demands.Add(new Demand
                 {
-                    _demands.Add(new Demand
-                    {
-                        Source = house, Sink = sinks[best],
-                        SourceRoad = chosenHouseRoad, SinkRoad = chosenSinkRoad,
-                        SinkType = sinkType,
-                    });
-                }
+                    Source = house, Sink = sinks[best],
+                    SourceRoad = chosenHouseRoad, SinkRoad = chosenSinkRoad,
+                    SinkType = sinkType,
+                });
 
                 Vector2Int assignedSink = sinks[best];
                 _assignedBySink.TryGetValue(
@@ -530,7 +536,7 @@ namespace CityFlow.Sim
                     out int assignedCount
                 );
                 _assignedBySink[assignedSink] =
-                    assignedCount + commuters;
+                    assignedCount + 1;
             }
         }
 
