@@ -1586,10 +1586,10 @@ namespace CityFlow.Sim
             {
                 if (gameHour < owner.DepartWorkHour)
                 {
-                    origin = default;
-                    finalDestination = default;
+                    origin = owner.Work;
+                    finalDestination = owner.Work;
                     finalState = CarState.ParkedWork;
-                    return false;
+                    return true;
                 }
 
                 origin = owner.Work;
