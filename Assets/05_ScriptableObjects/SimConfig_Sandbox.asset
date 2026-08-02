@@ -16,6 +16,7 @@ MonoBehaviour:
   Value:
     TickInterval: 0.1
     MaxConcurrentSpecialTrips: 16
+    TruckCommuterRatio: 0
     MaxStepsPerFrame: 5
     GridWidth: 20
     GridHeight: 20

@@ -429,6 +429,19 @@ namespace CityFlow.Sim
             return TryDirection(next - current, out entryDirAtNext);
         }
 
+        // 라이브 경로에선 코디네이터가 net.Step의 provider다 — 크레딧 질의를 CarSim에
+        // 위임하지 않으면 트럭 게이트가 라이브에서만 무력화된다(TryGetNextTile과 동일 패턴).
+        public bool TryConsumeAdvanceCredit(int carId, int tick)
+        {
+            if (agentsByNetworkId.ContainsKey(carId))
+            {
+                return true; // 버스 등 외부 에이전트는 속도 크레딧 미사용
+            }
+
+            return coreRoutes == null
+                || coreRoutes.TryConsumeAdvanceCredit(carId, tick);
+        }
+
         public bool IsDestination(int carId, Vector2Int tile)
         {
             if (!agentsByNetworkId.TryGetValue(carId, out Agent agent))

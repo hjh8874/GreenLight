@@ -8,6 +8,8 @@ namespace CityFlow.Sim
     {
         bool TryGetNextTile(int carId, Vector2Int current, out Vector2Int next, out Dir entryDirAtNext);
         bool IsDestination(int carId, Vector2Int tile);
+        // 이번 틱 전진 크레딧 소비 시도. 기본 = 무제한(속도 다양성 미사용 경로 호환).
+        bool TryConsumeAdvanceCredit(int carId, int tick) => true;
     }
 
     internal interface IDestinationOccupancyPolicy
@@ -926,6 +928,17 @@ namespace CityFlow.Sim
                         _intents[count++] = intent;
                     }
                     else _blockedTicks[node]++;
+                    continue;
+                }
+
+                // 속도 크레딧: 부족하면 이번 틱 후보에서 조용히 제외. _blockedTicks를
+                // 올리지 않는다 — 밸브와 무관한 자발적 대기다. 교차로 공유예산 내부 이동
+                // (IntersectionStage.Exit)은 IntersectionAdvance와 같은 횡단의 마지막
+                // 스텝이므로 교차로 비우기 원칙대로 무게이트(게이트는 접근 정지선에서만).
+                if (!(UsesSharedBudget(tileIndex)
+                        && intersectionStage == IntersectionStage.Exit)
+                    && !routes.TryConsumeAdvanceCredit(carId, tick))
+                {
                     continue;
                 }
 
