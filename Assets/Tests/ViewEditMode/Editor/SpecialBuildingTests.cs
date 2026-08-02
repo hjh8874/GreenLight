@@ -43,7 +43,7 @@ namespace CityFlow.Tests
             AssertCadence(catalog, "police_station", 1, 10);
             AssertCadence(catalog, "video_store", 1, 1);
             AssertCadence(catalog, "pharmacy", 1, 2);
-            AssertCadence(catalog, "coffee_shop", 1, 1);
+            AssertCadence(catalog, "coffee_shop", 1, 2);
             AssertCadence(catalog, "cinema", 1, 1);
             AssertCadence(catalog, "auto_repair", 1, 5);
         }

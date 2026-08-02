@@ -1052,6 +1052,155 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void SpecialVisit_DuringWork_RoutesFromWorkThroughVisitBackToWork()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 16;
+            config.MaxPendingVehicleTrips = 16;
+            config.MaxConcurrentSpecialTrips = 2;
+            BuildSpecialVisitCity(
+                config,
+                out CityGrid grid,
+                out RoadNetwork roads,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork queues);
+            var sim = new CarSim(config);
+            sim.Rebuild(demands, planner, queues, grid: grid, roadNetwork: roads);
+            var hub = new SimEventHub();
+            var events = new SimEventBuffer(hub);
+            var completed = new List<VehicleTripSnapshot>();
+            hub.VehicleTripArrived += message => completed.Add(message.Trip);
+
+            for (int tick = 0; tick < 40; tick++)
+            {
+                sim.Step(1L, 7f, queues, events, null, tick);
+                events.Drain();
+            }
+
+            Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
+            completed.Clear();
+
+            // 7→12시를 점프 없이 증분 — 1시간 초과 점프는 SnapToHour가 차를 집으로
+            // 재주차시켜 근무 중 전제가 무너진다(감독 진단).
+            for (int hour = 8; hour <= 11; hour++)
+            {
+                sim.Step(1L, hour, queues, events, null, 40 + hour);
+                events.Drain();
+            }
+            Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
+
+            Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                new SpecialBuildingVisitTripRequest(
+                    "coffee-shop", V(6, 0), 1L, 0, 12f, rewardCoins: 0)));
+
+            // 탈출 조건은 특수 방문 도착만 센다 — 통근 도착이 섞이면 조기 탈출한다(감독 진단).
+            List<VehicleTripSnapshot> specialTrips = new List<VehicleTripSnapshot>();
+            for (int tick = 60; tick < 200 && specialTrips.Count < 2; tick++)
+            {
+                sim.Step(1L, 12f, queues, events, null, tick);
+                events.Drain();
+                specialTrips = completed.FindAll(trip =>
+                    trip.Purpose == VehicleTripPurpose.SpecialBuildingVisit);
+            }
+
+            Assert.AreEqual(2, specialTrips.Count);
+            Assert.AreEqual(V(10, 0), specialTrips[0].Origin);
+            Assert.AreEqual(V(6, 0), specialTrips[0].Destination);
+            Assert.AreEqual(V(6, 0), specialTrips[1].Origin);
+            Assert.AreEqual(V(10, 0), specialTrips[1].Destination);
+            Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
+        }
+
+        [Test]
+        public void SpecialVisit_DuringWorkCrossingDepartureHour_RestoresWorkThenStartsLateCommute()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 16;
+            config.MaxPendingVehicleTrips = 16;
+            config.MaxConcurrentSpecialTrips = 2;
+            BuildSpecialVisitCity(
+                config,
+                out CityGrid grid,
+                out RoadNetwork roads,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork queues);
+            var sim = new CarSim(config);
+            sim.Rebuild(demands, planner, queues, grid: grid, roadNetwork: roads);
+            var hub = new SimEventHub();
+            var events = new SimEventBuffer(hub);
+            var completed = new List<VehicleTripSnapshot>();
+            hub.VehicleTripArrived += message => completed.Add(message.Trip);
+
+            for (int tick = 0; tick < 40; tick++)
+            {
+                sim.Step(1L, 7f, queues, events, null, tick);
+                events.Drain();
+            }
+
+            completed.Clear();
+            Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                new SpecialBuildingVisitTripRequest(
+                    "coffee-shop", V(6, 0), 1L, 0, 16.9f, rewardCoins: 0)));
+
+            int completionTick = -1;
+            for (int tick = 40; tick < 220 && completed.Count < 2; tick++)
+            {
+                sim.Step(1L, 16.9f + (tick - 40) * 0.1f, queues, events, null, tick);
+                events.Drain();
+                if (completed.Count >= 2)
+                {
+                    completionTick = tick;
+                    Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
+                }
+            }
+
+            Assert.GreaterOrEqual(completionTick, 0, "점심 왕복 복귀가 퇴근시각 이후에도 완료되어야 한다");
+            Assert.AreEqual(V(10, 0), completed[1].Destination);
+
+            sim.Step(
+                1L,
+                16.9f + (completionTick - 40 + 1) * 0.1f,
+                queues,
+                events,
+                null,
+                completionTick + 1);
+            events.Drain();
+            Assert.AreNotEqual(
+                CarState.ParkedWork,
+                sim.GetCar(0).State,
+                "복귀 후 ParkedWork가 복원되면 기존 퇴근 조건으로 늦은 출발이 시작되어야 한다");
+        }
+
+        [Test]
+        public void SpecialVisit_FromHome_DuringWorkWindow_RemainsUnavailable()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 16;
+            config.MaxPendingVehicleTrips = 16;
+            config.MaxConcurrentSpecialTrips = 2;
+            BuildSpecialVisitCity(
+                config,
+                out CityGrid grid,
+                out RoadNetwork roads,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork queues);
+            var sim = new CarSim(config);
+            sim.Rebuild(demands, planner, queues, grid: grid, roadNetwork: roads);
+
+            Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                new SpecialBuildingVisitTripRequest(
+                    "coffee-shop", V(6, 0), 1L, 0, 6.5f, rewardCoins: 0)));
+            sim.Step(1L, 6.5f, queues, new SimEventBuffer(new SimEventHub()), null, 0);
+
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State);
+            Assert.AreEqual(V(0, 0), sim.GetCar(0).Home);
+            Assert.AreEqual(V(10, 0), sim.GetCar(0).Work);
+        }
+
+        [Test]
         public void SpecialVisit_SharedAccessRoad_CompletesBothLegs()
         {
             SimConfig config = Cfg();

@@ -456,6 +456,12 @@ namespace CityFlow.Sim
                 && agent.Route[agent.Route.Count - 1] == tile;
         }
 
+        public bool IsTransient(int carId)
+        {
+            if (agentsByNetworkId.ContainsKey(carId)) return false;
+            return coreRoutes != null && coreRoutes.IsTransient(carId);
+        }
+
         public bool ShouldHoldAtDestination(
             int carId,
             Vector2Int tile) =>

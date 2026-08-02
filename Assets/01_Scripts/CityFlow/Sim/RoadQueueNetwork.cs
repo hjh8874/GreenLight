@@ -8,6 +8,9 @@ namespace CityFlow.Sim
     {
         bool TryGetNextTile(int carId, Vector2Int current, out Vector2Int next, out Dir entryDirAtNext);
         bool IsDestination(int carId, Vector2Int tile);
+        // Special-trip transients are released at the routine owner's destination;
+        // they must not inherit an Office/parking hold intended for persistent agents.
+        bool IsTransient(int carId) => false;
         // 이번 틱 전진 크레딧 소비 시도. 기본 = 무제한(속도 다양성 미사용 경로 호환).
         bool TryConsumeAdvanceCredit(int carId, int tick) => true;
     }
@@ -821,10 +824,8 @@ namespace CityFlow.Sim
                         entry,
                         entry);
                     arrival.HoldAtDestination =
-                        ShouldHoldAtDestination(
-                            routes,
-                            carId,
-                            tile);
+                        !routes.IsTransient(carId) &&
+                        ShouldHoldAtDestination(routes, carId, tile);
                     _intents[count++] = arrival;
                     continue;
                 }
@@ -1481,10 +1482,8 @@ namespace CityFlow.Sim
                     if (routes.IsDestination(carId, position))
                     {
                         RecordArrival(carId, position);
-                        if (ShouldHoldAtDestination(
-                                routes,
-                                carId,
-                                position))
+                        if (!routes.IsTransient(carId) &&
+                            ShouldHoldAtDestination(routes, carId, position))
                         {
                             _movedThisTick[node] = true;
                             _blockedTicks[node] = 0;
