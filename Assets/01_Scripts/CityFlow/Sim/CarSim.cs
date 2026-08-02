@@ -963,6 +963,11 @@ namespace CityFlow.Sim
             && route.Count > 0
             && route[route.Count - 1] == tile;
 
+        public bool IsTransient(int carId) =>
+            carId >= 0 &&
+            carId < _scheduler.Cars.Count &&
+            _scheduler.Cars[carId].IsTransient;
+
         // 차급 배정(M1-2): (home, slot) 결정론 해시 — 같은 도시·같은 설정이면
         // 리빌드·재실행마다 동일하다. ratio 0(기본) = 전원 표준 60 = 기존 비트 동일.
         private void ApplyCommuterVehicleClasses()
