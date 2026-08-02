@@ -1080,13 +1080,23 @@ namespace CityFlow.Sim.Tests
 
             Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
             completed.Clear();
+
+            // 7→12시를 점프 없이 증분 — 1시간 초과 점프는 SnapToHour가 차를 집으로
+            // 재주차시켜 근무 중 전제가 무너진다(감독 진단).
+            for (int hour = 8; hour <= 11; hour++)
+            {
+                sim.Step(1L, hour, queues, events, null, 40 + hour);
+                events.Drain();
+            }
+            Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
+
             Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
                 new SpecialBuildingVisitTripRequest(
                     "coffee-shop", V(6, 0), 1L, 0, 12f, rewardCoins: 0)));
 
             // 탈출 조건은 특수 방문 도착만 센다 — 통근 도착이 섞이면 조기 탈출한다(감독 진단).
             List<VehicleTripSnapshot> specialTrips = new List<VehicleTripSnapshot>();
-            for (int tick = 40; tick < 160 && specialTrips.Count < 2; tick++)
+            for (int tick = 60; tick < 200 && specialTrips.Count < 2; tick++)
             {
                 sim.Step(1L, 12f, queues, events, null, tick);
                 events.Drain();
