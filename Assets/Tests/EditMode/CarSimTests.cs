@@ -1084,14 +1084,16 @@ namespace CityFlow.Sim.Tests
                 new SpecialBuildingVisitTripRequest(
                     "coffee-shop", V(6, 0), 1L, 0, 12f, rewardCoins: 0)));
 
-            for (int tick = 40; tick < 160 && completed.Count < 2; tick++)
+            // 탈출 조건은 특수 방문 도착만 센다 — 통근 도착이 섞이면 조기 탈출한다(감독 진단).
+            List<VehicleTripSnapshot> specialTrips = new List<VehicleTripSnapshot>();
+            for (int tick = 40; tick < 160 && specialTrips.Count < 2; tick++)
             {
                 sim.Step(1L, 12f, queues, events, null, tick);
                 events.Drain();
+                specialTrips = completed.FindAll(trip =>
+                    trip.Purpose == VehicleTripPurpose.SpecialBuildingVisit);
             }
 
-            List<VehicleTripSnapshot> specialTrips = completed.FindAll(trip =>
-                trip.Purpose == VehicleTripPurpose.SpecialBuildingVisit);
             Assert.AreEqual(2, specialTrips.Count);
             Assert.AreEqual(V(10, 0), specialTrips[0].Origin);
             Assert.AreEqual(V(6, 0), specialTrips[0].Destination);
