@@ -32,6 +32,7 @@ namespace CityFlow.Sim
         static readonly TileType[] SinkTypes = { TileType.Office, TileType.School };
 
         SimConfig _config;   // seam(SimEngine.ApplyConfig, 스펙 2026-07-12)으로 갈아 끼워짐 — readonly 제거
+        Func<Vector2Int, int> _commuterReduction;
 
         // 프론티지 전혀 없음(맹지) 센티널 — 항상 그리드 밖(x,y<0)이라 IsRoad 경계 체크가 자연히 걸러냄.
         static readonly Vector2Int NoRoad = new Vector2Int(-1, -1);
@@ -63,6 +64,12 @@ namespace CityFlow.Sim
         public DemandMap(SimConfig config)
         {
             _config = config;
+        }
+
+        // 집별 통근자 감축 주입점. null은 기존 CarsPerHouse 동작을 유지한다.
+        internal void SetCommuterReduction(Func<Vector2Int, int> reductionAt)
+        {
+            _commuterReduction = reductionAt;
         }
 
         // SimEngine.ApplyConfig의 유일한 전파 지점(스펙 2026-07-12): 용량(CapacityFor)·
@@ -450,6 +457,9 @@ namespace CityFlow.Sim
             for (int h = 0; h < sources.Count; h++)
             {
                 var house = sources[h];
+                int reduction = _commuterReduction?.Invoke(house) ?? 0;
+                int commuters = Mathf.Max(0, _config.CarsPerHouse - reduction);
+                if (commuters == 0) continue;
                 _houseFrontageBuffer.Clear();
                 net.CollectAccessRoads(house, _houseFrontageBuffer);
 
@@ -504,12 +514,15 @@ namespace CityFlow.Sim
                 }
 
                 _sticky[key] = sinks[best];
-                _demands.Add(new Demand
+                for (int commuter = 0; commuter < commuters; commuter++)
                 {
-                    Source = house, Sink = sinks[best],
-                    SourceRoad = chosenHouseRoad, SinkRoad = chosenSinkRoad,
-                    SinkType = sinkType,
-                });
+                    _demands.Add(new Demand
+                    {
+                        Source = house, Sink = sinks[best],
+                        SourceRoad = chosenHouseRoad, SinkRoad = chosenSinkRoad,
+                        SinkType = sinkType,
+                    });
+                }
 
                 Vector2Int assignedSink = sinks[best];
                 _assignedBySink.TryGetValue(
@@ -517,7 +530,7 @@ namespace CityFlow.Sim
                     out int assignedCount
                 );
                 _assignedBySink[assignedSink] =
-                    assignedCount + 1;
+                    assignedCount + commuters;
             }
         }
 

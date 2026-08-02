@@ -32,6 +32,7 @@ namespace CityFlow.Sim
         public int GridlockValveTicks;    // 머리 차 연속 막힘 후 강제 전이까지의 틱 수 🔓
         public int CoinPerTrip;           // 회사 도착 1회 보상 🔓
         public int CarsPerHouse;          // 집 주차 슬롯/차량 상한 🔓
+        public int BusCoverageRadius;     // 유효 정류장 반경(체비셰프 거리), 0 = 꺼짐 🔓
         public float MorningStartHour;
         public float MorningEndHour;
         public float EveningStartHour;
