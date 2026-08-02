@@ -23,6 +23,7 @@ MonoBehaviour:
     RoadCapacity: 10
     UnsignaledIntersectionRoundCap: 1
     CarsPerHouse: 2
+    BusCoverageRadius: 3
     DemandPerHouse: 1
     SlowRatio: 0.7
     JamRatio: 1

@@ -34,6 +34,7 @@ namespace CityFlow.Sim
         public int UnsignaledIntersectionRoundCap;
         public int CoinPerTrip;           // 회사 도착 1회 보상 🔓
         public int CarsPerHouse;          // 집 주차 슬롯/차량 상한 🔓
+        public int BusCoverageRadius;     // 유효 정류장 반경(체비셰프 거리), 0 = 꺼짐 🔓
         public float MorningStartHour;
         public float MorningEndHour;
         public float EveningStartHour;

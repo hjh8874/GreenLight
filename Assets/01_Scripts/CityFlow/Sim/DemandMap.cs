@@ -32,12 +32,14 @@ namespace CityFlow.Sim
         static readonly TileType[] SinkTypes = { TileType.Office, TileType.School };
 
         SimConfig _config;   // seam(SimEngine.ApplyConfig, 스펙 2026-07-12)으로 갈아 끼워짐 — readonly 제거
+        Func<Vector2Int, int> _commuterReduction;
 
         // 프론티지 전혀 없음(맹지) 센티널 — 항상 그리드 밖(x,y<0)이라 IsRoad 경계 체크가 자연히 걸러냄.
         static readonly Vector2Int NoRoad = new Vector2Int(-1, -1);
 
         // 선할당 재사용 버퍼(재배정은 드물지만 습관).
         readonly List<Vector2Int> _houses = new(64);
+        readonly List<Vector2Int> _commuterSources = new(128);
         readonly List<Vector2Int> _sinks = new(16);
         readonly List<Demand> _demands = new(128);
         readonly Dictionary<Vector2Int, CompanyCapacityState> _companies = new(16);
@@ -63,6 +65,12 @@ namespace CityFlow.Sim
         public DemandMap(SimConfig config)
         {
             _config = config;
+        }
+
+        // 집별 통근자 감축 주입점. null은 기존 CarsPerHouse 동작을 유지한다.
+        internal void SetCommuterReduction(Func<Vector2Int, int> reductionAt)
+        {
+            _commuterReduction = reductionAt;
         }
 
         // SimEngine.ApplyConfig의 유일한 전파 지점(스펙 2026-07-12): 용량(CapacityFor)·
@@ -267,6 +275,15 @@ namespace CityFlow.Sim
             _assignedBySink.Clear();
             _houses.Clear();
             Collect(grid, TileType.House, _houses);
+            _commuterSources.Clear();
+            for (int i = 0; i < _houses.Count; i++)
+            {
+                Vector2Int house = _houses[i];
+                int reduction = _commuterReduction?.Invoke(house) ?? 0;
+                int commuterCount = Mathf.Max(0, 1 - reduction);
+                for (int commuter = 0; commuter < commuterCount; commuter++)
+                    _commuterSources.Add(house);
+            }
 
             // 다목적지: 집마다 각 수요처 종류로 1건씩.
             foreach (var sinkType in SinkTypes)
@@ -280,7 +297,7 @@ namespace CityFlow.Sim
                 }
 
                 AssignType(
-                    _houses,
+                    _commuterSources,
                     _sinks,
                     sinkType,
                     net

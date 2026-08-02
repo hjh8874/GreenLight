@@ -25,6 +25,7 @@ MonoBehaviour:
     UnsignaledIntersectionRoundCap: 1
     CoinPerTrip: 10
     CarsPerHouse: 2
+    BusCoverageRadius: 3
     MorningStartHour: 6
     MorningEndHour: 10
     EveningStartHour: 17
