@@ -30,6 +30,8 @@ namespace CityFlow.Sim
         public int QueueCapacityPerTile;
         public int QueueServicePerTick;   // 한 방향 큐가 틱당 서비스할 최대 차 수 🔓
         public int GridlockValveTicks;    // 머리 차 연속 막힘 후 강제 전이까지의 틱 수 🔓
+        // 무신호 교차로가 한 서비스 라운드에 승인하는 차량 수. 0 = 기존 동작.
+        public int UnsignaledIntersectionRoundCap;
         public int CoinPerTrip;           // 회사 도착 1회 보상 🔓
         public int CarsPerHouse;          // 집 주차 슬롯/차량 상한 🔓
         public float MorningStartHour;

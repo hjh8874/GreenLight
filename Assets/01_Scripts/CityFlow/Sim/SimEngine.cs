@@ -188,6 +188,7 @@ namespace CityFlow.Sim
             public SignalGateAdapter(SimEngine engine) => _engine = engine;
             public bool IsServiceOpen(Vector2Int tile, Dir entryDir, int tick) =>
                 _engine.IsSignalGreen(tile, entryDir == Dir.E || entryDir == Dir.W);
+            public bool HasSignal(Vector2Int tile) => _engine._signals.TryGet(tile, out _);
         }
 
         // SimConfig 런타임 재주입 seam(스펙 2026-07-12) — 정책 서비스(진우) 창구.

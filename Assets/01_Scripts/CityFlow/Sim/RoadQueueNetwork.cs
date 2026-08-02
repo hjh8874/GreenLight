@@ -20,6 +20,7 @@ namespace CityFlow.Sim
     internal interface ISignalGate
     {
         bool IsServiceOpen(Vector2Int tile, Dir entryDir, int tick);
+        bool HasSignal(Vector2Int tile) => false;
     }
 
     internal interface IDeviceState
@@ -92,6 +93,7 @@ namespace CityFlow.Sim
         private readonly float _standardHeadwayTiles;
         private readonly int _servicePerTick;
         private readonly int _gridlockValveTicks;
+        private readonly int _unsignaledIntersectionRoundCap;
         private readonly int[] _cars;
         private readonly int[] _occupancyUnits;
         private readonly float[] _lengthTiles;
@@ -119,6 +121,7 @@ namespace CityFlow.Sim
         private readonly bool[] _intentHandled;
         private readonly IntersectionCell[] _intersectionOccupancy;
         private readonly IntersectionCell[] _intersectionRoundReservations;
+        private readonly int[] _intersectionApprovedThisRound;
         private readonly bool[] _approachingStraightThreats;
         private readonly IntersectionStage[] _intersectionStages;
         private readonly Dir[] _intersectionMovementExits;
@@ -167,6 +170,7 @@ namespace CityFlow.Sim
                 Math.Max(1, Mathf.CeilToInt(1f / _standardHeadwayTiles)));
             _servicePerTick = Math.Max(1, cfg.QueueServicePerTick);
             _gridlockValveTicks = Math.Max(1, cfg.GridlockValveTicks);
+            _unsignaledIntersectionRoundCap = Math.Max(0, cfg.UnsignaledIntersectionRoundCap);
 
             int tileCount = checked(width * height);
             int queueCount = checked(tileCount * DirectionCount);
@@ -197,6 +201,7 @@ namespace CityFlow.Sim
             _intentHandled = new bool[queueCount];
             _intersectionOccupancy = new IntersectionCell[tileCount];
             _intersectionRoundReservations = new IntersectionCell[tileCount];
+            _intersectionApprovedThisRound = new int[tileCount];
             _approachingStraightThreats = new bool[queueCount];
             _intersectionStages = new IntersectionStage[maxCars];
             _intersectionMovementExits = new Dir[maxCars];
@@ -759,7 +764,7 @@ namespace CityFlow.Sim
                 ServiceRoundaboutRings(routes, ref result);
                 RebuildIntersectionOccupancy(routes);
                 int intentCount = CollectIntents(routes, signalGate, tick);
-                ResolveIntents(intentCount, ref result);
+                ResolveIntents(intentCount, signalGate, ref result);
             }
             return result;
         }
@@ -1124,27 +1129,36 @@ namespace CityFlow.Sim
             }
         }
 
-        private void ResolveIntents(int intentCount, ref StepResult result)
+        private void ResolveIntents(
+            int intentCount,
+            ISignalGate signalGate,
+            ref StepResult result)
         {
             Array.Clear(_intentHandled, 0, intentCount);
             Array.Clear(
                 _intersectionRoundReservations,
                 0,
                 _intersectionRoundReservations.Length);
+            // 승인 캡은 ResolveIntersectionGroup 호출 단위가 아니라 서비스 라운드
+            // 단위다. 내부 전진/신규 진입 중 신규 진입 승인만 같은 타일 카운터를 쓴다.
+            Array.Clear(
+                _intersectionApprovedThisRound,
+                0,
+                _intersectionApprovedThisRound.Length);
 
             // Resolve vehicles already inside first. Entry is a valid waiting state for turns,
             // but new arrivals must not repeatedly take the cells needed to finish that turn.
             for (int tile = 0; tile < _intersections.Length; tile++)
             {
                 if (UsesSharedBudget(tile))
-                    ResolveIntersectionGroup(intentCount, tile, false, ref result);
+                    ResolveIntersectionGroup(intentCount, tile, false, signalGate, ref result);
             }
 
             // Admit new vehicles after internal transitions have reserved this round's cells.
             for (int tile = 0; tile < _intersections.Length; tile++)
             {
                 if (UsesSharedBudget(tile))
-                    ResolveIntersectionGroup(intentCount, tile, true, ref result);
+                    ResolveIntersectionGroup(intentCount, tile, true, signalGate, ref result);
             }
 
             for (int i = 0; i < intentCount; i++)
@@ -1159,6 +1173,7 @@ namespace CityFlow.Sim
             int intentCount,
             int intersectionTile,
             bool useReservation,
+            ISignalGate signalGate,
             ref StepResult result)
         {
             IntersectionCell granted = useReservation
@@ -1166,6 +1181,10 @@ namespace CityFlow.Sim
                     | _intersectionRoundReservations[intersectionTile]
                 : _intersectionOccupancy[intersectionTile];
 
+            int roundCap = _unsignaledIntersectionRoundCap;
+            bool capApplies = useReservation
+                && roundCap > 0
+                && !(signalGate?.HasSignal(TileAt(intersectionTile)) ?? false);
             while (true)
             {
                 int winner = NoNode;
@@ -1174,27 +1193,40 @@ namespace CityFlow.Sim
                     if (_intentHandled[i] || !BelongsToIntersectionGroup(
                             _intents[i], intersectionTile, useReservation)) continue;
 
-                    IntersectionCell blocking = granted & ~_intents[i].CurrentReservationMask;
+                    Intent candidate = _intents[i];
+
+                    IntersectionCell blocking = granted & ~candidate.CurrentReservationMask;
                     IntersectionCell requested = GetRequestedMovementMask(
-                        _intents[i],
+                        candidate,
                         intersectionTile,
                         useReservation,
                         blocking,
                         out _);
                     if (!useReservation
-                        && _intents[i].Kind == IntentKind.IntersectionAdvance
-                        && !IsStraightMovement(_intents[i])
+                        && candidate.Kind == IntentKind.IntersectionAdvance
+                        && !IsStraightMovement(candidate)
                         && HasOpposingStraightThreat(
-                            _intents[i].Node,
+                            candidate.Node,
                             intersectionTile,
-                            _intents[i].MovementEntry,
-                            _intents[i].MovementExit))
+                            candidate.MovementEntry,
+                            candidate.MovementExit))
                     {
                         continue;
                     }
                     if (IntersectionMicroGrid.Conflicts(blocking, requested)) continue;
+                    if (capApplies
+                        && _intersectionApprovedThisRound[intersectionTile] >= roundCap
+                        && !candidate.Force)
+                    {
+                        if (_blockedTicks[candidate.Node] < _gridlockValveTicks) continue;
+
+                        // Cap 대기도 일반 교착과 동일하게 valve을 무장한다. Force는
+                        // 안전한 충돌 판정을 통과한 뒤 캡만 우회한다.
+                        candidate.Force = true;
+                        _intents[i] = candidate;
+                    }
                     if (winner == NoNode || IsBetterForIntersection(
-                            _intents[i], _intents[winner], intersectionTile, useReservation))
+                            candidate, _intents[winner], intersectionTile, useReservation))
                     {
                         winner = i;
                     }
@@ -1214,6 +1246,7 @@ namespace CityFlow.Sim
                 winnerIntent.CompleteIntersectionOnEntry = completeIntersectionOnEntry;
                 _intents[winner] = winnerIntent;
                 granted |= winnerMask;
+                if (capApplies) _intersectionApprovedThisRound[intersectionTile]++;
                 if (useReservation || _intents[winner].Kind == IntentKind.IntersectionAdvance)
                 {
                     _intersectionRoundReservations[intersectionTile] |= winnerMask;
