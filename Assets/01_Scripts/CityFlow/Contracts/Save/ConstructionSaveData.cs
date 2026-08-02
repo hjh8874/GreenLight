@@ -12,5 +12,7 @@ namespace CityFlow.Contracts.Save
         public TileType TargetType;
         public PlacementDirection Direction;
         public float RemainingSimSeconds;
+        // 공사 중인 회사의 유형 id. 없으면 완성 시 전부 사무실이 된다(설계 결정 ④). 구세이브 = null.
+        public string CompanyTypeId;
     }
 }

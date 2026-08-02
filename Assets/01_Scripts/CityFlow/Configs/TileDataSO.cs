@@ -10,10 +10,13 @@ namespace CityFlow.Configs
         [SerializeField] private string buildingId;           // e.g. house_001
         [SerializeField] private string buildingName;         // e.g. 집
         [SerializeField] private TileType category;           // e.g. Residential
+        // Office 카테고리 전용 — 회사 3종 선택용(2026-07-30). 빈 값 허용.
+        [SerializeField] private string companyTypeId;
 
         public string BuildingId => buildingId;
         public string BuildingName => buildingName;
         public TileType Category => category;
+        public string CompanyTypeId => companyTypeId;
         
         [Header("UI & Visuals")]
         [SerializeField] private Sprite buildingIcon;         // 하단 건설 버튼용

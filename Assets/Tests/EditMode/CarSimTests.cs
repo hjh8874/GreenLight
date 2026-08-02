@@ -10,6 +10,15 @@ namespace CityFlow.Sim.Tests
         // SpecialVisitRewardTests 가 하니스를 재사용한다 — internal 로 연다.
         internal static Vector2Int V(int x, int y) => new Vector2Int(x, y);
 
+        // 종전 전역 창(morningStart/End·eveningStart/End)을 콜백 하나로 재현한다.
+        static CommuteWindow Window(
+            float morningStart, float morningEnd, float eveningStart, float eveningEnd) =>
+            new CommuteWindow(
+                string.Empty,
+                morningStart, morningEnd - morningStart,
+                eveningStart, eveningEnd - eveningStart);
+
+        // 버스 테스트가 재사용한다(#184) — internal 유지.
         internal static SimConfig Cfg()
         {
             SimConfig cfg = SimConfig.Default();
@@ -40,12 +49,9 @@ namespace CityFlow.Sim.Tests
                 homes,
                 works,
                 workCapacityFor: _ => 6,
+                windowFor: _ => Window(6f, 7f, 17f, 18f),
                 homeSlots: 2,
-                maxCars: 96,
-                morningStart: 6f,
-                morningEnd: 7f,
-                eveningStart: 17f,
-                eveningEnd: 18f);
+                maxCars: 96);
 
             Assert.AreEqual(2, scheduler.Cars.Count);
             Assert.AreEqual(0, scheduler.Cars[0].HomeSlot);
@@ -756,12 +762,9 @@ namespace CityFlow.Sim.Tests
                 sources,
                 sinks,
                 _ => 1,
+                _ => Window(6f, 7f, 17f, 18f),
                 homeSlots: 1,
                 maxCars: 4,
-                morningStart: 6f,
-                morningEnd: 7f,
-                eveningStart: 17f,
-                eveningEnd: 18f,
                 transientStorageCapacity: 2);
 
             Assert.AreEqual(
@@ -781,12 +784,9 @@ namespace CityFlow.Sim.Tests
                 sources,
                 sinks,
                 _ => 1,
+                _ => Window(6f, 7f, 17f, 18f),
                 homeSlots: 1,
                 maxCars: 4,
-                morningStart: 6f,
-                morningEnd: 7f,
-                eveningStart: 17f,
-                eveningEnd: 18f,
                 transientStorageCapacity: 2);
 
             Assert.AreEqual(
@@ -873,12 +873,9 @@ namespace CityFlow.Sim.Tests
                 homes,
                 works,
                 _ => 1,
+                _ => Window(6f, 7f, 17f, 18f),
                 1,
                 10,
-                6f,
-                7f,
-                17f,
-                18f,
                 transientStorageCapacity: 2);
 
             Assert.AreEqual(10, scheduler.Cars.Count);
@@ -1263,6 +1260,47 @@ namespace CityFlow.Sim.Tests
             sim = new CarSim(cfg);
             sim.Rebuild(demands, planner, net);
             events = new SimEventBuffer(new SimEventHub());
+        }
+
+        // 통합 사슬 고정: DemandMap(유형별 창) → CarSim(demands.CommuteWindowAt) → 스케줄러 판정.
+        // 야간조는 아침에 출근하지 않고 밤에 출근한다. 배선이 끊기면(전역 창으로 되돌아가면) 깨진다.
+        [Test]
+        public void NightShiftCompany_CarsDepartAtNight_NotMorning()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(6, 3);
+            for (int x = 0; x <= 5; x++) Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
+            var road = new RoadNetwork(grid);
+            var demands = new DemandMap(cfg);
+            // 공장: 출근창 [20,24) · 퇴근창 [5,9) — 근무가 자정을 넘는다.
+            // RegisterCompany 는 채용 램프가 0에서 시작해 이 틱에 차가 안 생긴다 → 로드 경로(만석)를 쓴다.
+            demands.RegisterRestoredCompany(
+                V(4, 0), TileType.Office,
+                companyType: new CompanyTypeInfo(
+                    new CommuteWindow("factory", 20f, 4f, 5f, 4f), 10));
+            demands.Reassign(grid, road);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net);
+            var events = new SimEventBuffer(new SimEventHub());
+
+            Assert.AreEqual(1, sim.CarCount);
+
+            // 정오: 야간조는 집에 있다. 전역 창(출근 [6,7) · 퇴근창 [17,18))이면 근무 시간대라
+            // 여기서 Outbound 가 된다 — 배선이 끊기면 이 단정이 깨진다.
+            sim.Step(12f, net, events);
+            Assert.AreEqual(CarState.ParkedHome, sim.GetCar(0).State,
+                "야간조는 정오에 출근하지 않는다");
+
+            // 자정 직전: 출근창 [20,24) 안이므로 스태거 값과 무관하게 출발한다.
+            sim.Step(23.99f, net, events);
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State, "밤에 출근한다");
         }
 
         private static void BuildStraightCity(

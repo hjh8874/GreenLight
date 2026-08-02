@@ -78,7 +78,7 @@ namespace CityFlow.Bootstrap
                 config.GridHeight = worldGridAccess?.WorldHeight ?? mapHeight;
 
                 var hub = new SimEventHub();
-                engineConfig = config;
+                engineConfig = config;   // 하루 길이 동기화에 재사용(Sim 의 config 는 internal 이라 못 읽는다)
                 VehicleFootprint standardVehicleFootprint = simConfig != null
                     ? simConfig.StandardVehicleFootprint
                     : VehicleFootprint.StandardDefault;
@@ -87,6 +87,7 @@ namespace CityFlow.Bootstrap
                     hub,
                     worldGridAccess,
                     standardVehicleFootprint);
+                InstallCompanyTypes(simEngine);
                 Services = new CityFlowServices(
                     hub,
                     simEngine,
@@ -99,6 +100,16 @@ namespace CityFlow.Bootstrap
             }
 
             worldGridConsumer?.Initialize(Services);
+        }
+
+        // 회사 유형 표 주입. SO 카탈로그는 오서링 데이터이고 CityFlow.Sim 은 이 어셈블리를 참조할 수
+        // 없으므로, 여기서 평범한 구조체로 옮겨 넣는다. 씬을 건드리지 않으려고 Resources 경로로 읽는다
+        // (GameTimeSettingsSO 와 같은 방식). 카탈로그가 없으면 표가 비고 = 종전 전역 창 동작.
+        private static void InstallCompanyTypes(SimEngine engine)
+        {
+            Content.CompanyTypeCatalogSO catalog = Content.CompanyTypeCatalogSO.LoadDefault();
+            if (catalog == null) return;
+            engine.SetCompanyTypes(catalog.ToCompanyTypeInfos());
         }
 
         private void Start()

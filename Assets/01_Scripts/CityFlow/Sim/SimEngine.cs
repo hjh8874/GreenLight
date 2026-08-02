@@ -590,7 +590,17 @@ namespace CityFlow.Sim
             && !OverlapsBusStopFootprint(tile, type, direction)
             && _grid.CanPlace(tile, type, direction);
 
-        public bool Place(Vector2Int tile, TileType type, PlacementDirection direction = PlacementDirection.North)
+        // IPlacementService 계약 그대로(3인자). 유형은 아래 오버로드로 넘긴다 —
+        // 계약에 인자를 더하면 FakePlacementService·UI 구현체가 함께 깨진다.
+        public bool Place(Vector2Int tile, TileType type,
+                         PlacementDirection direction = PlacementDirection.North)
+            => Place(tile, type, direction, null);
+
+        // companyTypeId: Office 의 회사 유형(사무실·공장·물류창고). 미지정은 거부하지 않고 폴백 창을 쓴다
+        // (환 결정 2026-07-30 — UI 상점이 3종으로 갈리면 미지정 경로 자체가 없어진다).
+        // 등록되지 않은 id 는 오타이므로 경고를 남긴다 — 조용히 묻히지 않게.
+        public bool Place(Vector2Int tile, TileType type,
+                         PlacementDirection direction, string companyTypeId)
         {
             if (type == TileType.UnderConstruction) return false;
             if (!IsAreaUnlocked(tile, type, direction)) return false;
@@ -611,14 +621,14 @@ namespace CityFlow.Sim
                     return false;
                 }
                 _construction.Register(
-                    tile, type, direction, _simTime, _simTime + constructionSeconds);
+                    tile, type, direction, _simTime, _simTime + constructionSeconds, companyTypeId);
                 _events.QueuePlaced(
                     new PlacedEvent(tile, TileType.UnderConstruction, isRemove: false, direction));
                 return true;
             }
 
             if (type == TileType.Office)
-                _demand.RegisterCompany(tile, type, _simTime);
+                RegisterCompanyOfType(tile, type, companyTypeId);
             if (type == TileType.Office || type == TileType.School)
                 _demandRebalancePending = true;
             if (TileFootprint.IsBuilding(type))
@@ -658,7 +668,7 @@ namespace CityFlow.Sim
                 _construction.Cancel(site.Anchor);
 
                 if (site.TargetType == TileType.Office)
-                    _demand.RegisterCompany(site.Anchor, site.TargetType, _simTime);
+                    RegisterCompanyOfType(site.Anchor, site.TargetType, site.CompanyTypeId);
                 if (site.TargetType == TileType.Office || site.TargetType == TileType.School)
                     _demandRebalancePending = true;
                 _buildingAssignmentChangePending = true;
@@ -764,7 +774,10 @@ namespace CityFlow.Sim
 
         // 뷰 연동: 엔진이 이번 틱 계산한 실제 통근 경로들. 차를 이 위에 그리면 라우팅을 눈으로 검증.
         // ponytail: 지금은 디버그 뷰용 public. 진짜 View 붙을 때 Contracts로 승격.
-        public int CarSimOfficeParkingSlots => Math.Max(1, _config.OfficeCapacity);
+        // 유형 최대 정원이 하한 — ApplyConfig 로 전역 OfficeCapacity 를 낮춰도 유형 정원은
+        // 함께 내려가지 않으므로(리뷰 P2), 뷰 슬롯이 정원 아래로 떨어지면 초과분이 겹쳐 주차된다.
+        public int CarSimOfficeParkingSlots =>
+            Math.Max(Math.Max(1, _config.OfficeCapacity), _maxCompanyTypeCapacity);
         public int CarSimHomeParkingSlots => Math.Max(1, _config.CarsPerHouse);
         public int CarSimMaxCars => Math.Max(1, _config.MaxSimCars);
         public int CarSimVehicleStorageCount => _carSim.CarCount;
@@ -1261,7 +1274,14 @@ namespace CityFlow.Sim
                     var type = _grid.GetTile(new Vector2Int(x, y));
                     if (type == TileType.Empty) continue;       // 계약: Empty 미저장
                     if (!_grid.IsFootprintAnchor(new Vector2Int(x, y))) continue;
-                    tiles.Add(new TileSaveData { X = x, Y = y, Type = type, Direction = _grid.GetDirection(new Vector2Int(x, y)) });
+                    var anchor = new Vector2Int(x, y);
+                    _demand.TryGetCompanyTypeId(anchor, out string companyTypeId);
+                    tiles.Add(new TileSaveData
+                    {
+                        X = x, Y = y, Type = type,
+                        Direction = _grid.GetDirection(anchor),
+                        CompanyTypeId = companyTypeId,
+                    });
                 }
 
             // 모든 신호를 두 레버(오프셋·초록) 다 저장 — 복원 시 덮어쓰기만으로 이전 조율 잔존을 지운다.
@@ -1334,6 +1354,7 @@ namespace CityFlow.Sim
                     Direction = site.Direction,
                     RemainingSimSeconds =
                         (float)System.Math.Max(0d, site.CompleteAtSimSeconds - _simTime),
+                    CompanyTypeId = site.CompanyTypeId,
                 };
             }
 
@@ -1393,7 +1414,8 @@ namespace CityFlow.Sim
                     var tile = RestoreTile(t.X, t.Y, restoreOffset);
                     if (!_grid.Place(tile, t.Type, t.Direction)) continue;   // OOB·중복은 Place가 거름(무사고)
                     if (t.Type == TileType.Office)
-                        _demand.RegisterRestoredCompany(tile, t.Type);
+                        _demand.RegisterRestoredCompany(
+                            tile, t.Type, CompanyTypeOrNull(t.CompanyTypeId));
                 }
             // 참고: PlacedEvent는 안 쏨 — 복원은 '건설'이 아니고, 뷰는 폴링이라 다음 프레임 자동 갱신.
 
@@ -1408,7 +1430,8 @@ namespace CityFlow.Sim
                     // 이미 지난 만큼(total - remaining)을 뒤로 물려 진행도(Task 7)가 이어지게 한다.
                     double started = _simTime - System.Math.Max(0d, total - remaining);
                     _construction.Register(
-                        anchor, c.TargetType, c.Direction, started, _simTime + remaining);
+                        anchor, c.TargetType, c.Direction, started, _simTime + remaining,
+                        c.CompanyTypeId);
                 }
 
             // 조율 적용 전에 교차로부터 감지(Rebuild 전 TrySet은 실패 — SignalMap 계약).
@@ -1860,5 +1883,74 @@ namespace CityFlow.Sim
                 tiles.Insert(index, tile);
             }
         }
+
+        // ── 회사 유형 표 (환) ─────────────────────────────────────────────
+        // 오서링 SO 카탈로그는 Assembly-CSharp 에 있고 CityFlow.Sim 은 그 어셈블리를 참조할 수 없다.
+        // 배선 계층(CityBootstrap)이 SO → CompanyTypeInfo 로 옮겨 여기에 주입한다.
+        // 표가 비어 있으면 전역 창 폴백 = 종전 동작. 배선 없는 씬은 영향받지 않는다.
+        readonly Dictionary<string, CompanyTypeInfo> _companyTypes = new(StringComparer.Ordinal);
+        int _maxCompanyTypeCapacity;   // 뷰 주차 슬롯 계약의 하한 — CarSimOfficeParkingSlots 참조
+
+        public void SetCompanyTypes(IReadOnlyList<CompanyTypeInfo> types)
+        {
+            _companyTypes.Clear();
+            _maxCompanyTypeCapacity = 0;
+            if (types == null) return;
+            for (int i = 0; i < types.Count; i++)
+            {
+                string id = types[i].Window.CompanyTypeId;
+                if (string.IsNullOrWhiteSpace(id)) continue;   // 무명 유형은 조회할 수 없다
+                _companyTypes[id.Trim()] = types[i];
+                if (types[i].Capacity > _maxCompanyTypeCapacity)
+                    _maxCompanyTypeCapacity = types[i].Capacity;
+            }
+        }
+
+        internal bool TryGetCompanyType(string companyTypeId, out CompanyTypeInfo info)
+        {
+            info = default;
+            if (string.IsNullOrWhiteSpace(companyTypeId)) return false;
+            return _companyTypes.TryGetValue(companyTypeId.Trim(), out info);
+        }
+
+        // 유형 없는 목적지(School 등)·표 미주입 상황의 폴백 — 종전 전역 창 그대로.
+        internal CommuteWindow FallbackCommuteWindow() => CommuteWindow.FromConfig(_config);
+
+        internal int CompanyTypeCountForTest => _companyTypes.Count;
+
+        // 유형 id 를 정원과 함께 DemandMap 에 싣는다. 미등록 id 는 경고 후 유형 없이 등록한다.
+        void RegisterCompanyOfType(Vector2Int tile, TileType type, string companyTypeId)
+        {
+            if (string.IsNullOrWhiteSpace(companyTypeId))
+            {
+                _demand.RegisterCompany(tile, type, _simTime);
+                return;
+            }
+
+            if (!TryGetCompanyType(companyTypeId, out CompanyTypeInfo info))
+            {
+                Debug.LogWarning(
+                    $"[SimEngine] 등록되지 않은 회사 유형 id '{companyTypeId}' — 폴백 창으로 배치한다.");
+                _demand.RegisterCompany(tile, type, _simTime);
+                return;
+            }
+
+            _demand.RegisterCompany(
+                tile, type, _simTime,
+                capacityOverride: null,
+                companyType: info);
+        }
+
+        internal bool TryGetCompanyTypeIdForTest(Vector2Int tile, out string companyTypeId) =>
+            _demand.TryGetCompanyTypeId(tile, out companyTypeId);
+
+        internal CommuteWindow CommuteWindowAtForTest(Vector2Int tile) =>
+            _demand.CommuteWindowAt(tile);
+
+        // 세이브에서 온 id → 유형. 표에 없으면 null(폴백) — 로드가 실패하지는 않게 한다.
+        CompanyTypeInfo? CompanyTypeOrNull(string companyTypeId) =>
+            TryGetCompanyType(companyTypeId, out CompanyTypeInfo info)
+                ? info
+                : (CompanyTypeInfo?)null;
     }
 }

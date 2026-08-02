@@ -277,7 +277,7 @@ namespace CityFlow.UI
                     return;
                 }
 
-                _placementController.SetBuildType(tileData.Category);
+                _placementController.SetBuildType(tileData);
                 Debug.Log($"[BuildSlot] {tileData.BuildingName} 건설 모드 활성화");
             }
         }

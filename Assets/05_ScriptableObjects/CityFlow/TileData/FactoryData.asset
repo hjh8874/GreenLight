@@ -10,12 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e2f59b7cd21b92448996b0bc26e27670, type: 3}
-  m_Name: OfficeData
-  m_EditorClassIdentifier: CityFlow.Contracts::CityFlow.Contracts.TileDataSO
-  buildingId: office_001
-  buildingName: "\uD68C\uC0AC"
+  m_Name: FactoryData
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.TileDataSO
+  buildingId: factory_001
+  buildingName: "\uACF5\uC7A5"
   category: 3
-  companyTypeId: office
+  companyTypeId: factory
   buildingIcon: {fileID: 0}
   buildingPrefab: {fileID: 0}
   buildingDescription: "\uC774\uAC83\uB4E4\uC740 \uB354 \uB9CE\uC740 \uC77C\uC790\uB9AC\uC640

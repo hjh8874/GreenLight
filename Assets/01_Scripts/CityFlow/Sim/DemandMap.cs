@@ -53,6 +53,12 @@ namespace CityFlow.Sim
         sealed class CompanyCapacityState
         {
             public TileType Type;
+            // 회사 유형 id(사무실·공장·물류창고). 없으면 SimConfig 폴백 규칙을 쓴다.
+            public string CompanyTypeId;
+            // 유형별 정원. > 0 이면 이 값이 정원 상한이다 — SimConfig.OfficeCapacity 로 깎지 않는다.
+            public int CompanyTypeCapacity;
+            // 배치 시점에 확정된 출퇴근 창. CarSim이 스케줄러에 넘기는 콜백의 값이다.
+            public CommuteWindow Window;
             public int TotalCapacity;
             public double BuiltAtSimSeconds;
             public bool IsFullyOpen;
@@ -83,7 +89,7 @@ namespace CityFlow.Sim
             foreach (CompanyCapacityState company in _companies.Values)
             {
                 int typeCapacity =
-                    CapacityForType(company.Type);
+                    CapacityCeilingFor(company);
                 company.TotalCapacity =
                     company.UsesTypeDefault
                         ? typeCapacity
@@ -98,7 +104,8 @@ namespace CityFlow.Sim
             Vector2Int tile,
             TileType type,
             double builtAtSimSeconds,
-            int? capacityOverride = null
+            int? capacityOverride = null,
+            CompanyTypeInfo? companyType = null
         )
         {
             if (type != TileType.Office)
@@ -106,7 +113,11 @@ namespace CityFlow.Sim
                 return;
             }
 
-            int typeCapacity = CapacityForType(type);
+            string companyTypeId = companyType?.Window.CompanyTypeId;
+            int companyTypeCapacity = companyType?.Capacity ?? 0;
+            int typeCapacity = companyTypeCapacity > 0
+                ? companyTypeCapacity
+                : CapacityForType(type);
             bool usesTypeDefault = !capacityOverride.HasValue;
             int totalCapacity = usesTypeDefault
                 ? typeCapacity
@@ -120,6 +131,9 @@ namespace CityFlow.Sim
                 new CompanyCapacityState
                 {
                     Type = type,
+                    CompanyTypeId = companyTypeId,
+                    CompanyTypeCapacity = companyTypeCapacity,
+                    Window = companyType?.Window ?? default,
                     TotalCapacity = totalCapacity,
                     BuiltAtSimSeconds = builtAtSimSeconds,
                     IsFullyOpen = false,
@@ -129,7 +143,8 @@ namespace CityFlow.Sim
 
         internal void RegisterRestoredCompany(
             Vector2Int tile,
-            TileType type
+            TileType type,
+            CompanyTypeInfo? companyType = null
         )
         {
             if (type != TileType.Office)
@@ -137,16 +152,45 @@ namespace CityFlow.Sim
                 return;
             }
 
+            int companyTypeCapacity = companyType?.Capacity ?? 0;
             _companies[tile] =
                 new CompanyCapacityState
                 {
                     Type = type,
-                    TotalCapacity = CapacityForType(type),
+                    CompanyTypeId = companyType?.Window.CompanyTypeId,
+                    CompanyTypeCapacity = companyTypeCapacity,
+                    Window = companyType?.Window ?? default,
+                    TotalCapacity = companyTypeCapacity > 0
+                        ? companyTypeCapacity
+                        : CapacityForType(type),
                     BuiltAtSimSeconds = _companySimTime,
                     IsFullyOpen = true,
                     UsesTypeDefault = true
                 };
         }
+
+        // 회사 하나의 정원 상한. 유형 정원이 있으면 그것이 상한이고, 없으면 SimConfig 값이다.
+        // SetCompanyCapacity·ApplyConfig 도 이 상한을 쓴다 — 유형 정원이 조용히 깎이지 않게.
+        int CapacityCeilingFor(CompanyCapacityState company) =>
+            company.CompanyTypeCapacity > 0
+                ? company.CompanyTypeCapacity
+                : CapacityForType(company.Type);
+
+        internal bool TryGetCompanyTypeId(Vector2Int tile, out string companyTypeId)
+        {
+            companyTypeId = null;
+            if (!_companies.TryGetValue(tile, out CompanyCapacityState company)) return false;
+            companyTypeId = company.CompanyTypeId;
+            return !string.IsNullOrEmpty(companyTypeId);
+        }
+
+        // 목적지 → 출퇴근 창. CommuteScheduler.Rebuild 의 windowFor 콜백이 이것이다.
+        // 유형 없는 목적지(School·유형 미지정 회사)는 SimConfig 폴백 창.
+        internal CommuteWindow CommuteWindowAt(Vector2Int tile) =>
+            _companies.TryGetValue(tile, out CompanyCapacityState company)
+                && !string.IsNullOrEmpty(company.CompanyTypeId)
+                    ? company.Window
+                    : CommuteWindow.FromConfig(_config);
 
         internal void SetCompanyCapacity(
             Vector2Int tile,
@@ -165,7 +209,7 @@ namespace CityFlow.Sim
                 Mathf.Clamp(
                     capacity,
                     0,
-                    CapacityForType(company.Type)
+                    CapacityCeilingFor(company)
                 );
             company.UsesTypeDefault = false;
         }

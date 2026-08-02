@@ -56,6 +56,7 @@ namespace CityFlow.UI
         private bool _isBuildingMode = false;
         private TileType _currentType = TileType.Road;
         private string _currentSpecialBuildingId = string.Empty;
+        private string _currentCompanyTypeId = string.Empty;
         private PlacementDirection _currentDirection = PlacementDirection.North;
 
         private PlacementInputHandler _inputHandler;
@@ -122,6 +123,7 @@ namespace CityFlow.UI
 
             _currentType = type;
             _currentSpecialBuildingId = string.Empty;
+            _currentCompanyTypeId = string.Empty;
             _currentDirection = PlacementDirection.North;
 
             _costLabelManager.ResetState();
@@ -140,13 +142,22 @@ namespace CityFlow.UI
             ToggleBuildMode(true);
         }
 
+        public void SetBuildType(CityFlow.Configs.TileDataSO tileData)
+        {
+            SetBuildType(tileData != null
+                ? tileData.Category
+                : TileType.Road);
+            _currentCompanyTypeId =
+                tileData?.CompanyTypeId?.Trim() ?? string.Empty;
+        }
+
         public bool IsTileTypeUnlocked(TileType type)
         {
             EnsureManagers();
             return _actionDispatcher == null ||
                    _actionDispatcher.IsTileTypeUnlocked(
-                       type,
-                       _services);
+                        type,
+                        _services);
         }
 
         public bool SetSpecialBuilding(string buildingId)
@@ -154,6 +165,7 @@ namespace CityFlow.UI
             string normalizedId = buildingId?.Trim() ?? string.Empty;
             _currentType = TileType.SpecialBuilding;
             _currentSpecialBuildingId = normalizedId;
+            _currentCompanyTypeId = string.Empty;
             _currentDirection = PlacementDirection.North;
             _visualManager.SetBuildingPreview(null);
 
@@ -371,7 +383,8 @@ namespace CityFlow.UI
                 _currentType,
                 _currentDirection,
                 _services,
-                _currentSpecialBuildingId);
+                _currentSpecialBuildingId,
+                _currentCompanyTypeId);
         }
 
         private void HandleDragPlace(Vector2Int from, Vector2Int to)
@@ -405,7 +418,8 @@ namespace CityFlow.UI
                     _currentType,
                     _currentDirection,
                     _services,
-                    _currentSpecialBuildingId);
+                    _currentSpecialBuildingId,
+                    _currentCompanyTypeId);
             }
         }
 

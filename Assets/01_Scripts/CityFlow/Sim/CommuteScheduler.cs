@@ -19,7 +19,13 @@ namespace CityFlow.Sim
     {
         public Vector2Int Home, Work;
         public int RouteIndex, WorkSlot, HomeSlot;
+        // 근무지의 회사 유형 id. 창의 출처는 Rebuild 콜백이고 이 필드는 차 생애 동안의 캐시다
+        // (설계 결정 ① — 디버깅·추적용. 판정에는 아래 시각 필드만 쓴다).
+        public string CompanyTypeId;
         public float DepartHomeHour, DepartWorkHour;
+        // 이 차의 퇴근창 [EveningStartHour, EveningEndHour). Start > End 면 자정을 넘는다.
+        // 판정 기준을 전역 창이 아니라 차 개별 값으로 두는 이유 = 유형별 근무시간(야간조) 대비.
+        public float EveningStartHour, EveningEndHour;
         public CarState State;
         public float Distance;
         // 리빌드(건설) 생존 차의 현재 월드 타일. 인덱스는 재배열되지만 이 인스턴스는
@@ -106,7 +112,6 @@ namespace CityFlow.Sim
     {
         readonly List<CommuteCar> _cars = new(96);
         readonly List<CommuteCar> _newCars = new(32);   // 직전 Rebuild에서 신규 생성된 차 — SnapNewToHour 대상
-        float _morningEnd, _eveningStart, _eveningEnd;
 
         public IReadOnlyList<CommuteCar> Cars => _cars;
         public int ActiveCount
@@ -132,17 +137,20 @@ namespace CityFlow.Sim
         // 새 목록에도 있으면 차 객체를 보존한다(State·Distance·DepartHour 유지, RouteIndex만 갱신).
         // 무관한 건물 건설/해체가 이동·주차 중인 차를 리셋하지 않게 하는 핵심.
         // 슬롯 유일성 불변식: (Work, WorkSlot)/(Home, HomeSlot)은 점유 셋이 절대 보장.
+        // windowFor: 목적지 타일 → 그 회사 유형의 출퇴근 창. 시각 인자 4개를 대체한다 —
+        // 창의 출처를 하나로 모아 이중 권한을 없앤다(설계 결정 ②).
         public void Rebuild(IReadOnlyList<Vector2Int> sources, IReadOnlyList<Vector2Int> sinks,
-            Func<Vector2Int, int> workCapacityFor, int homeSlots, int maxCars,
-            float morningStart, float morningEnd, float eveningStart, float eveningEnd,
+            Func<Vector2Int, int> workCapacityFor,
+            Func<Vector2Int, CommuteWindow> windowFor,
+            int homeSlots, int maxCars,
             bool deferNewAssignments = false,
             IReadOnlyList<VehicleTripPurpose> purposes = null,
             int transientStorageCapacity = 0)
         {
             if (workCapacityFor == null)
                 throw new ArgumentNullException(nameof(workCapacityFor));
-
-            _morningEnd = morningEnd; _eveningStart = eveningStart; _eveningEnd = eveningEnd;
+            if (windowFor == null)
+                throw new ArgumentNullException(nameof(windowFor));
 
             var activeTransients = new List<CommuteCar>();
             int reservedRoutineCount = 0;
@@ -210,8 +218,21 @@ namespace CityFlow.Sim
                     workCapacityFor,
                     sinks[i]
                 );
+                CommuteWindow window = windowFor(sinks[i]);
                 if (car != null)
                 {
+                    // 같은 좌표에 다른 유형이 재건축되면 생존 차의 시간표가 옛 유형으로
+                    // 고착된다(리뷰 P1). 유형이 바뀐 경우에만 새 창으로 재초기화한다.
+                    if (car.CompanyTypeId != window.CompanyTypeId)
+                    {
+                        car.CompanyTypeId = window.CompanyTypeId;
+                        car.DepartHomeHour = Wrap24(StaggerHour(
+                            sources[i], window.StartHour, window.StartHour + window.StartWindow));
+                        car.DepartWorkHour = Wrap24(StaggerHour(
+                            sources[i], window.EndHour, window.EndHour + window.EndWindow));
+                        car.EveningStartHour = Wrap24(window.EndHour);
+                        car.EveningEndHour = Wrap24(window.EndHour + window.EndWindow);
+                    }
                     if (car.WorkSlot >= workCapacity)
                     {
                         if (!TryTakeSlot(workUsed, car.Work, workCapacity, out int ws)) continue;
@@ -240,8 +261,15 @@ namespace CityFlow.Sim
                 {
                     Home = sources[i], Work = sinks[i], RouteIndex = i,
                     WorkSlot = workSlot, HomeSlot = homeSlot,
-                    DepartHomeHour = StaggerHour(sources[i], morningStart, morningEnd),
-                    DepartWorkHour = StaggerHour(sources[i], eveningStart, eveningEnd),
+                    CompanyTypeId = window.CompanyTypeId,
+                    // 창이 자정을 넘으면 끝 시각이 24를 넘는다(예: [23, 27)). 시각은 [0,24) 이므로
+                    // 감싸 넣지 않으면 게임시간과 절대 일치하지 않아 차가 조용히 안 움직인다.
+                    DepartHomeHour = Wrap24(StaggerHour(
+                        sources[i], window.StartHour, window.StartHour + window.StartWindow)),
+                    DepartWorkHour = Wrap24(StaggerHour(
+                        sources[i], window.EndHour, window.EndHour + window.EndWindow)),
+                    EveningStartHour = Wrap24(window.EndHour),
+                    EveningEndHour = Wrap24(window.EndHour + window.EndWindow),
                     State = CarState.ParkedHome,
                     AwaitingNextWave = deferNewAssignments,
                 };
@@ -311,16 +339,20 @@ namespace CityFlow.Sim
                 }
                 if (car.State == CarState.ParkedHome && car.AwaitingNextWave)
                 {
-                    if (hour < car.DepartHomeHour)
+                    // 창 밖(=다음 파도 이전)을 한 번 관측하면 해제. 자정을 넘는 창도 성립한다.
+                    if (!CommuteWindow.InWindow(hour, car.DepartHomeHour, car.EveningEndHour))
                         car.AwaitingNextWave = false;
                     else
                         continue;
                 }
+                // 출근 = [개인 출근 시각, 퇴근창 끝) · 퇴근 = [개인 퇴근 시각, 다음 개인 출근 시각).
+                // 트리거가 개인 시각이라 스태거가 유지되고, 자정을 넘는 근무도 단순 비교 없이 성립한다.
                 if (car.State == CarState.ParkedHome
-                    && hour >= car.DepartHomeHour && hour < _eveningEnd)
+                    && CommuteWindow.InWindow(hour, car.DepartHomeHour, car.EveningEndHour))
                 { car.State = CarState.Outbound; car.Distance = 0f; }
                 else if (car.State == CarState.ParkedWork
-                    && (hour >= car.DepartWorkHour || car.RetireReason == RetireReason.WorkLost))
+                    && (CommuteWindow.InWindow(hour, car.DepartWorkHour, car.DepartHomeHour)
+                        || car.RetireReason == RetireReason.WorkLost))
                 { car.State = CarState.Inbound; car.Distance = 0f; }
             }
         }
@@ -328,7 +360,14 @@ namespace CityFlow.Sim
         public void NotifyArrived(CommuteCar car)
         {
             if (car.State == CarState.Outbound) car.State = CarState.ParkedWork;
-            else if (car.State == CarState.Inbound) car.State = CarState.ParkedHome;
+            else if (car.State == CarState.Inbound)
+            {
+                car.State = CarState.ParkedHome;
+                // 귀가 = 이번 파도 완료. 출근 구간 [DepartHomeHour, EveningEndHour)이 자정을
+                // 넘는 야간조는 귀가 시각(새벽)이 아직 같은 구간 안이라(리뷰 P1), 대기를 세우지
+                // 않으면 다음 틱에 즉시 재출근한다. 구간 밖을 한 번 관측하면 해제된다(:330).
+                car.AwaitingNextWave = true;
+            }
             car.Distance = 0f;
         }
 
@@ -373,7 +412,8 @@ namespace CityFlow.Sim
             }
             else
             {
-                bool inEveningWindow = hour >= _eveningStart && hour < _eveningEnd;
+                bool inEveningWindow = CommuteWindow.InWindow(
+                    hour, car.EveningStartHour, car.EveningEndHour);
                 car.State = inEveningWindow ? CarState.ParkedWork : CarState.ParkedHome;
             }
             car.Distance = 0f;
@@ -422,6 +462,13 @@ namespace CityFlow.Sim
             }
 
             car.ReleaseTransient();
+        }
+
+        // 시각을 [0,24)로 감싼다. 자정을 넘는 창은 끝 시각이 24 이상으로 계산된다.
+        public static float Wrap24(float hour)
+        {
+            float wrapped = hour % 24f;
+            return wrapped < 0f ? wrapped + 24f : wrapped;
         }
 
         public static float StaggerHour(Vector2Int home, float windowStart, float windowEnd)
