@@ -267,7 +267,8 @@ namespace CityFlow.Sim
             RoadQueueNetwork net,
             bool preserveExistingAssignments = false,
             CityGrid grid = null,
-            RoadNetwork roadNetwork = null)
+            RoadNetwork roadNetwork = null,
+            SimEventBuffer events = null)
         {
             if (demands == null) throw new ArgumentNullException(nameof(demands));
             if (planner == null) throw new ArgumentNullException(nameof(planner));
@@ -276,6 +277,15 @@ namespace CityFlow.Sim
             _grid = grid ?? _grid;
             _demands = demands;
             _roadNetwork = roadNetwork ?? _roadNetwork;
+            var oldWorksByHome = new Dictionary<Vector2Int, List<Vector2Int>>();
+            for (int i = 0; i < _scheduler.Cars.Count; i++)
+            {
+                CommuteCar car = _scheduler.Cars[i];
+                if (car.IsTransient || car.State == CarState.Inactive) continue;
+                if (!oldWorksByHome.TryGetValue(car.Home, out List<Vector2Int> works))
+                    oldWorksByHome[car.Home] = works = new List<Vector2Int>();
+                works.Add(car.Work);
+            }
             var previousAssignments = new List<PreviousAssignment>(CarCount);
             // 클리어 전에 생존 차의 현재 월드 타일을 차 객체에 실어둔다. 이게 없으면
             // 재큐잉이 route[0](집)에서 일어나 건설할 때마다 주행 차가 순간이동한다
@@ -472,6 +482,33 @@ namespace CityFlow.Sim
                 deferNewAssignments: _populationInitialized,
                 purposes: _routinePurposes,
                 transientStorageCapacity: _specialTransientCapacity);
+            if (events != null)
+            {
+                var newWorksByHome = new Dictionary<Vector2Int, List<Vector2Int>>();
+                for (int i = 0; i < _scheduler.Cars.Count; i++)
+                {
+                    CommuteCar car = _scheduler.Cars[i];
+                    if (car.IsTransient || car.State == CarState.Inactive) continue;
+                    if (!newWorksByHome.TryGetValue(car.Home, out List<Vector2Int> works))
+                        newWorksByHome[car.Home] = works = new List<Vector2Int>();
+                    works.Add(car.Work);
+                }
+                foreach (KeyValuePair<Vector2Int, List<Vector2Int>> pair in newWorksByHome)
+                {
+                    if (!oldWorksByHome.TryGetValue(pair.Key, out List<Vector2Int> oldWorks)) continue;
+                    var unmatchedOld = new List<Vector2Int>(oldWorks);
+                    for (int i = 0; i < pair.Value.Count; i++)
+                    {
+                        Vector2Int newWork = pair.Value[i];
+                        int same = unmatchedOld.IndexOf(newWork);
+                        if (same >= 0) { unmatchedOld.RemoveAt(same); continue; }
+                        if (unmatchedOld.Count == 0) continue;
+                        Vector2Int oldWork = unmatchedOld[0];
+                        unmatchedOld.RemoveAt(0);
+                        events.QueueJobChanged(new JobChangedEvent(pair.Key, oldWork, newWork));
+                    }
+                }
+            }
             _populationInitialized = true;
             ApplyCommuterVehicleClasses();
             _commuteTripSource.Prune(_scheduler.Cars);
