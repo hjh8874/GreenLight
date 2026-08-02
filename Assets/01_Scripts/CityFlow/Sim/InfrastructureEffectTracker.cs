@@ -67,6 +67,22 @@ namespace CityFlow.Sim
             OnPlaced(tile, _ledger);
         }
 
+        public void OnRemoved(Vector2Int tile)
+        {
+            for (int i = _pending.Count - 1; i >= 0; i--)
+            {
+                if (_pending[i].Tile == tile)
+                {
+                    _pending.RemoveAt(i);
+                }
+            }
+        }
+
+        public void ClearPending()
+        {
+            _pending.Clear();
+        }
+
         public List<InfrastructureEffectEvent> EvaluateOnDayWrap(CongestionLedger ledger)
         {
             var effects = new List<InfrastructureEffectEvent>();

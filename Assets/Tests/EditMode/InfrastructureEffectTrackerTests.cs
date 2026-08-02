@@ -88,5 +88,37 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0.5f, effects[0].BeforeRatio01, 1e-4f);
             Assert.AreEqual(0.125f, effects[0].AfterRatio01, 1e-4f);
         }
+
+        [Test]
+        public void OnRemoved_CancelsPendingEffect()
+        {
+            var ledger = NewLedgerWithLastDay(24f);
+            var tracker = new InfrastructureEffectTracker(ledger);
+            tracker.OnPlaced(Center);
+            tracker.OnRemoved(Center);
+
+            ledger.OnDayWrap();
+            tracker.EvaluateOnDayWrap(ledger);
+            ledger.OnDayWrap();
+            var effects = tracker.EvaluateOnDayWrap(ledger);
+
+            Assert.AreEqual(0, effects.Count);
+        }
+
+        [Test]
+        public void ClearPending_CancelsPendingEffect()
+        {
+            var ledger = NewLedgerWithLastDay(24f);
+            var tracker = new InfrastructureEffectTracker(ledger);
+            tracker.OnPlaced(Center);
+            tracker.ClearPending();
+
+            ledger.OnDayWrap();
+            tracker.EvaluateOnDayWrap(ledger);
+            ledger.OnDayWrap();
+            var effects = tracker.EvaluateOnDayWrap(ledger);
+
+            Assert.AreEqual(0, effects.Count);
+        }
     }
 }

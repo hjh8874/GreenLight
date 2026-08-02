@@ -138,7 +138,11 @@ namespace CityFlow.Sim
 
         private void OnInfrastructureChanged(InfrastructureChangedEvent e)
         {
-            if (!e.IsRemove)
+            if (e.IsRemove)
+            {
+                _infrastructureEffectTracker.OnRemoved(e.Tile);
+            }
+            else
             {
                 _infrastructureEffectTracker.OnPlaced(e.Tile, _congestionLedger);
             }
@@ -391,6 +395,7 @@ namespace CityFlow.Sim
 
             Array.Clear(_carCongestion, 0, _carCongestion.Length);
             _congestionLedger.Clear();
+            _infrastructureEffectTracker.ClearPending();
             _hasLastCongestionHour = false;
         }
 
