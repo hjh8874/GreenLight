@@ -79,6 +79,23 @@ namespace CityFlow.Contracts
         }
     }
 
+    public readonly struct InfrastructureEffectEvent
+    {
+        public readonly Vector2Int Tile;
+        public readonly float BeforeRatio01;
+        public readonly float AfterRatio01;
+
+        public InfrastructureEffectEvent(
+            Vector2Int tile,
+            float beforeRatio01,
+            float afterRatio01)
+        {
+            Tile = tile;
+            BeforeRatio01 = beforeRatio01;
+            AfterRatio01 = afterRatio01;
+        }
+    }
+
     public sealed class SimEventHub
     {
         public event Action<ArrivalEvent> Arrival;
@@ -87,6 +104,7 @@ namespace CityFlow.Contracts
         public event Action<CongestionEvent> CongestionChanged;
         public event Action<PlacedEvent> Placed;
         public event Action<InfrastructureChangedEvent> InfrastructureChanged;
+        public event Action<InfrastructureEffectEvent> InfrastructureEffect;
         public event Action<bool> CongestionViewToggled;
 
         public bool IsCongestionViewEnabled { get; private set; } = false;
@@ -103,6 +121,8 @@ namespace CityFlow.Contracts
         public void Publish(PlacedEvent e) => Placed?.Invoke(e);
 
         public void Publish(InfrastructureChangedEvent e) => InfrastructureChanged?.Invoke(e);
+
+        public void Publish(InfrastructureEffectEvent e) => InfrastructureEffect?.Invoke(e);
 
         public void PublishCongestionViewToggled(bool isOn)
         {

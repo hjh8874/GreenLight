@@ -32,6 +32,7 @@ namespace CityFlow.Sim
         readonly SignalGateAdapter _signalGate;
         readonly CongestionLevel[] _carCongestion;
         readonly CongestionLedger _congestionLedger;
+        readonly InfrastructureEffectTracker _infrastructureEffectTracker;
         readonly SignalMap _signals = new SignalMap();
         // 배치 모드(AutoDetectSignals=false) 소유 상태: flat 정렬 유지 = SignalMap 순회 순서(결정론).
         readonly List<Vector2Int> _placedSignals = new();
@@ -130,7 +131,17 @@ namespace CityFlow.Sim
             _carCongestion = new CongestionLevel[config.GridWidth * config.GridHeight];
             _congestionLedger = new CongestionLedger();
             _congestionLedger.Configure(config.GridWidth, config.GridHeight);
+            _infrastructureEffectTracker = new InfrastructureEffectTracker(_congestionLedger);
+            hub.InfrastructureChanged += OnInfrastructureChanged;
             _events = new SimEventBuffer(hub);   // 계산 중 발행 금지 — 큐/Drain으로 재진입 차단
+        }
+
+        private void OnInfrastructureChanged(InfrastructureChangedEvent e)
+        {
+            if (!e.IsRemove)
+            {
+                _infrastructureEffectTracker.OnPlaced(e.Tile, _congestionLedger);
+            }
         }
 
         public float LastDayJamRatio01(Vector2Int tile)
@@ -320,6 +331,10 @@ namespace CityFlow.Sim
             if (wrapped && !_carSim.LastStepJumped)
             {
                 _congestionLedger.OnDayWrap();
+                foreach (var effect in _infrastructureEffectTracker.EvaluateOnDayWrap(_congestionLedger))
+                {
+                    _events.QueueInfrastructureEffect(effect);
+                }
             }
 
             float stepGameHours = 0f;

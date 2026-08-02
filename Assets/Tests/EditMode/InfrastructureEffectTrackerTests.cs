@@ -33,7 +33,7 @@ namespace CityFlow.Sim.Tests
         public void OnPlaced_DoesNotPublishImmediately()
         {
             var ledger = NewLedgerWithLastDay(24f);
-            var tracker = new InfrastructureEffectTracker();
+            var tracker = new InfrastructureEffectTracker(ledger);
 
             tracker.OnPlaced(Center);
 
@@ -45,7 +45,7 @@ namespace CityFlow.Sim.Tests
         public void EvaluateOnDayWrap_SkipsFirstBoundary_AndPublishesOnSecond()
         {
             var ledger = NewLedgerWithLastDay(24f);
-            var tracker = new InfrastructureEffectTracker();
+            var tracker = new InfrastructureEffectTracker(ledger);
             tracker.OnPlaced(Center);
 
             RecordRadius(ledger, 24f);
@@ -67,7 +67,7 @@ namespace CityFlow.Sim.Tests
         public void OnPlaced_SameTile_RefreshesPendingBaseline()
         {
             var ledger = NewLedgerWithLastDay(24f);
-            var tracker = new InfrastructureEffectTracker();
+            var tracker = new InfrastructureEffectTracker(ledger);
             tracker.OnPlaced(Center);
 
             RecordRadius(ledger, 12f);
