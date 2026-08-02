@@ -272,8 +272,8 @@ namespace CityFlow.Sim
                 _grid.MarkTopologyDirty();
             }
 
-            // 신규 회사/학교 배정은 운행 중 목적지를 바꾸지 않는다. 전 차가 집에 돌아온
-            // 안전시점에 sticky를 한 번만 풀고, 같은 틱의 정상 topology 파이프라인으로 재구축한다.
+            // 신규 회사/학교 배정은 운행 중 목적지를 바꾸지 않는다. 배치 이벤트나 하루 경계에서
+            // pending을 세운 뒤, 전 차가 집에 돌아온 안전시점에 sticky를 한 번만 풀고 재구축한다.
             if (_demandRebalancePending && _carSim.AllParkedHome)
             {
                 _demand.ClearStickyAssignments();
@@ -317,13 +317,15 @@ namespace CityFlow.Sim
             }
             _lastStepArrivals = carResult.Arrivals;
             float jamRatio = ScanCarCongestion();
-            _stats.UpdateCarSim(
+            bool gameDayWrapped = _stats.UpdateCarSim(
                 _gameHour,
                 carResult.Arrivals,
                 _carSim.SimulatedVehicleCount,
                 _carSim.LastStepJumped,
                 jamRatio,
                 _config);
+            if (gameDayWrapped)
+                _demandRebalancePending = true;
 
             if (_config.GreenWaveScanInterval > 0 && StepCount % _config.GreenWaveScanInterval == 0)
             {
