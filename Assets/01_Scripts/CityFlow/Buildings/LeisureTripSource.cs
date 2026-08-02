@@ -41,6 +41,7 @@ namespace CityFlow.Buildings
                 return selected;
 
             float clamped = Mathf.Clamp01(ratio);
+            clamped = EffectiveRatio(clamped, day);
             for (int i = 0; i < houses.Count; i++)
             {
                 uint hash = StableHash(houses[i], day);
@@ -50,6 +51,16 @@ namespace CityFlow.Buildings
                     selected.Add(houses[i]);
             }
             return selected;
+        }
+
+        // School-bus precedent: totalDays % 7 < 5 is weekday. Weekend leisure
+        // doubles the opportunity (capped at 100%) while commute remains unchanged.
+        public static float EffectiveRatio(float ratio, long day)
+        {
+            float clamped = Mathf.Clamp01(ratio);
+            return (day % 7L) < 5L
+                ? clamped
+                : Mathf.Min(1f, clamped * 2f);
         }
 
         public static float SampleEveningHour(int index, int count) =>

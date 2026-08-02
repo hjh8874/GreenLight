@@ -21,6 +21,20 @@ namespace CityFlow.Tests
         }
 
         [Test]
+        public void RatioZero_IsDisabled()
+        {
+            Assert.IsEmpty(LeisureTripPlanner.SelectHouseholds(
+                new[] { new Vector2Int(1, 1) }, 12, 0f));
+        }
+
+        [Test]
+        public void WeekendRatio_IsHigher()
+        {
+            Assert.AreEqual(.5f, LeisureTripPlanner.EffectiveRatio(.25f, 5));
+            Assert.AreEqual(.25f, LeisureTripPlanner.EffectiveRatio(.25f, 4));
+        }
+
+        [Test]
         public void DestinationResolution_UsesThreeFallbacks()
         {
             var home = new Vector2Int(1, 1);
