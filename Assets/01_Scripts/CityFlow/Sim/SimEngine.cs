@@ -91,6 +91,7 @@ namespace CityFlow.Sim
         internal bool TopologyDirtyForTest => _grid.TopologyDirty;
         internal float TripSuccessRateForTest => _stats.TripSuccessRate;
         internal RoadQueueNetwork RoadQueuesForTest => _roadQueues;
+        internal DemandMap DemandForTest => _demand;
         public IRoadTrafficService RoadTraffic => _roadTraffic;
         public VehicleFootprint StandardVehicleFootprint =>
             _standardVehicleFootprint;

@@ -363,12 +363,10 @@ namespace CityFlow.Sim.Tests
             SimConfig config = SimConfig.Default();
             var events = new SimEventHub();
             var engine = new SimEngine(config, events);
-            Vector2Int stop = new(2, 3);
-            Vector2Int secondStop = new(4, 1);
+            Vector2Int stop = new(3, 3);
+            Vector2Int secondStop = new(7, 3);
 
             PlaceRoadLoop(engine);
-            Assert.That(engine.Place(new Vector2Int(4, 2), TileType.Road), Is.True);
-            Assert.That(engine.Place(new Vector2Int(5, 2), TileType.Road), Is.True);
             Assert.That(
                 engine.Place(
                     new Vector2Int(8, 8),
@@ -507,24 +505,22 @@ namespace CityFlow.Sim.Tests
 
         private static void PlaceRoadLoop(SimEngine engine)
         {
-            var roads = new[]
-            {
-                new Vector2Int(1, 2),
-                new Vector2Int(2, 2),
-                new Vector2Int(3, 2),
-                new Vector2Int(3, 3),
-                new Vector2Int(3, 4),
-                new Vector2Int(2, 4),
-                new Vector2Int(1, 4),
-                new Vector2Int(1, 3)
-            };
-
-            for (int i = 0; i < roads.Length; i++)
+            for (int x = 2; x <= 8; x++)
             {
                 Assert.That(
-                    engine.Place(roads[i], TileType.Road),
+                    engine.Place(new Vector2Int(x, 2), TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(new Vector2Int(x, 4), TileType.Road),
                     Is.True);
             }
+
+            Assert.That(
+                engine.Place(new Vector2Int(2, 3), TileType.Road),
+                Is.True);
+            Assert.That(
+                engine.Place(new Vector2Int(8, 3), TileType.Road),
+                Is.True);
         }
 
         private static TileType[,] CaptureTiles(

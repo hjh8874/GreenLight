@@ -108,6 +108,7 @@ namespace CityFlow.Sim.Tests
             for (int x = 0; x < 14; x++)
                 Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
             Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
+            Assert.IsTrue(engine.Place(V(6, 0), TileType.House));
             Assert.IsTrue(engine.Place(V(10, 0), TileType.Office));
             engine.Tick(config.TickInterval);
             return engine;
@@ -123,14 +124,14 @@ namespace CityFlow.Sim.Tests
         public void PlaceBusStop_TriggersRebuild()
         {
             SimEngine engine = MakeEngine();
-            Assert.AreEqual(2, engine.CarSimVehicleStorageCount);
+            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
 
             PlaceStops(engine);
             engine.Tick(engine.TickInterval);
 
             Assert.AreEqual(
                 1,
-                engine.CarSimVehicleStorageCount,
+                engine.DemandForTest.Demands.Count,
                 "정류장 2개 배치 후 다음 Step에서 수요가 재배정되어야 한다");
         }
 
@@ -138,24 +139,24 @@ namespace CityFlow.Sim.Tests
         public void TwoStops_CoveredHouseLosesOneCar()
         {
             SimEngine engine = MakeEngine();
-            Assert.AreEqual(2, engine.CarSimVehicleStorageCount);
+            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
 
             PlaceStops(engine);
             engine.Tick(engine.TickInterval);
 
-            Assert.AreEqual(1, engine.CarSimVehicleStorageCount);
+            Assert.AreEqual(1, engine.DemandForTest.Demands.Count);
         }
 
         [Test]
         public void OneStop_NoReduction()
         {
             SimEngine engine = MakeEngine();
-            Assert.AreEqual(2, engine.CarSimVehicleStorageCount);
+            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
 
             Assert.IsTrue(engine.TryPlaceBusStop(V(2, 3)));
             engine.Tick(engine.TickInterval);
 
-            Assert.AreEqual(2, engine.CarSimVehicleStorageCount);
+            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
         }
 
         [Test]
@@ -164,12 +165,12 @@ namespace CityFlow.Sim.Tests
             SimEngine engine = MakeEngine();
             PlaceStops(engine);
             engine.Tick(engine.TickInterval);
-            Assert.AreEqual(1, engine.CarSimVehicleStorageCount);
+            Assert.AreEqual(1, engine.DemandForTest.Demands.Count);
 
             Assert.IsTrue(engine.TryRemoveBusStop(V(2, 3)));
             engine.Tick(engine.TickInterval);
 
-            Assert.AreEqual(2, engine.CarSimVehicleStorageCount);
+            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
         }
     }
 }
