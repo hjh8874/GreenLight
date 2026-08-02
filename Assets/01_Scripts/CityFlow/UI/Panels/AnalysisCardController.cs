@@ -453,7 +453,8 @@ namespace CityFlow.UI
 
                     if (txtTitle != null)
                     {
-                        txtTitle.text = "회사";
+                        // 유형(사무실/공장/물류창고)과 출근창까지 — "회사"만으로는 3종이 구분이 안 된다
+                        txtTitle.text = DescribeCompanyType(_currentTile);
                     }
                     if (txtVehicleType != null)
                     {
@@ -468,11 +469,12 @@ namespace CityFlow.UI
                     if (txtWaitTime != null)
                     {
                         txtWaitTime.color = normalColor;
-                        txtWaitTime.text =
+                        string status =
                             hasStaffing &&
                             staffing.Filled >= staffing.Capacity
                                 ? "구인 완료"
                                 : "구인 중";
+                        txtWaitTime.text = status + DescribeCommuterHomes(_currentTile);
                     }
 
                     return true;
@@ -667,6 +669,65 @@ namespace CityFlow.UI
             {
                 label.gameObject.SetActive(isVisible);
             }
+        }
+
+        // ── 회사 카드 상세 (회사 3종) ──────────────────────────────────────
+
+        private CompanyTypeCatalogSO _companyCatalog;
+        private bool _companyCatalogLoaded;
+
+        // "공장 (20~24시 출근)" — 유형 미지정·정보 없음이면 "회사"
+        private string DescribeCompanyType(Vector2Int tile)
+        {
+            if (_services?.Stats == null ||
+                !_services.Stats.TryGetCompanyTypeId(tile, out string typeId))
+            {
+                return "회사";
+            }
+
+            if (!_companyCatalogLoaded)
+            {
+                _companyCatalogLoaded = true;
+                _companyCatalog = Resources.Load<CompanyTypeCatalogSO>(
+                    "CityFlow/CompanyTypeCatalog");
+            }
+            if (_companyCatalog == null)
+            {
+                return "회사";
+            }
+
+            foreach (CompanyTypeSO so in _companyCatalog.Types)
+            {
+                if (so == null || so.companyTypeId?.Trim() != typeId) continue;
+                string name = string.IsNullOrWhiteSpace(so.displayName)
+                    ? typeId
+                    : so.displayName;
+                return $"{name} ({so.workStartHour:0}~{so.workStartHour + so.workStartWindow:0}시 출근)";
+            }
+            return "회사";
+        }
+
+        // " · 통근 (3,4)×2 (5,1)×1 외 2곳" — 통근자가 없으면 빈 문자열
+        private string DescribeCommuterHomes(Vector2Int tile)
+        {
+            var homes = _services?.Stats?.GetCompanyCommuterHomes(tile);
+            if (homes == null || homes.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var sb = new System.Text.StringBuilder(" · 통근 ");
+            int shown = Mathf.Min(3, homes.Count);
+            for (int i = 0; i < shown; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                sb.Append($"({homes[i].Home.x},{homes[i].Home.y})×{homes[i].Count}");
+            }
+            if (homes.Count > shown)
+            {
+                sb.Append($" 외 {homes.Count - shown}곳");
+            }
+            return sb.ToString();
         }
     }
 }

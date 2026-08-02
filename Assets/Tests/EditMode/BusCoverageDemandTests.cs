@@ -47,8 +47,9 @@ namespace CityFlow.Sim.Tests
 
             demandMap.Reassign(grid, new RoadNetwork(grid));
 
-            Assert.AreEqual(0, DemandCountFrom(demandMap, V(0, 0)));
-            Assert.AreEqual(1, DemandCountFrom(demandMap, V(3, 0)));
+            // 데모 밸런스(2026-07-31): 회사 통근자 = 집당 CarsPerHouse(2) − 감축.
+            Assert.AreEqual(1, DemandCountFrom(demandMap, V(0, 0)));
+            Assert.AreEqual(2, DemandCountFrom(demandMap, V(3, 0)));
         }
 
         [Test]

@@ -16,16 +16,25 @@ namespace CityFlow.Sim.Tests
             return g;
         }
 
-        static SimConfig OfficeCap(int cap)
+        // 이 파일의 주제는 배정 규칙이지 통근자 수가 아니다 — 집당 1건으로 고정
+        // (CarsPerHouse 다중 통근자는 CarSimTests.Demands_OfficeCommutersPerHouse 가 검증).
+        static SimConfig Base()
         {
             var c = SimConfig.Default();
+            c.CarsPerHouse = 1;
+            return c;
+        }
+
+        static SimConfig OfficeCap(int cap)
+        {
+            var c = Base();
             c.OfficeCapacity = cap;
             return c;
         }
 
         static SimConfig NearestCfg()   // 최근접 배정을 검증하는 테스트용: 선택 풀 1
         {
-            var c = SimConfig.Default();
+            var c = Base();
             c.DemandChoicePool = 1;
             return c;
         }
@@ -70,7 +79,7 @@ namespace CityFlow.Sim.Tests
         public void NoOffice_NoDemand()
         {
             var g = MakeGrid(5, 5, (V(0, 0), TileType.House)); // 수요처 없음
-            var dm = new DemandMap(SimConfig.Default());
+            var dm = new DemandMap(Base());
             dm.Reassign(g, new RoadNetwork(g));
 
             Assert.AreEqual(0, dm.Demands.Count);
@@ -86,7 +95,7 @@ namespace CityFlow.Sim.Tests
             }
             Assert.IsTrue(g.Place(V(21, 0), TileType.Office));
 
-            var dm = new DemandMap(SimConfig.Default());
+            var dm = new DemandMap(Base());
             dm.Reassign(g, new RoadNetwork(g));
 
             Assert.AreEqual(6, dm.Demands.Count);
@@ -104,7 +113,7 @@ namespace CityFlow.Sim.Tests
                 (V(0, 0), TileType.House),
                 (V(2, 0), TileType.Office),
                 (V(4, 0), TileType.School));
-            var dm = new DemandMap(SimConfig.Default());
+            var dm = new DemandMap(Base());
             dm.Reassign(g, new RoadNetwork(g));
 
             Assert.AreEqual(2, dm.Demands.Count);
@@ -207,7 +216,7 @@ namespace CityFlow.Sim.Tests
             foreach (int ox in new[] { 9, 11, 13 }) tiles.Add((V(ox, 1), TileType.Office));
             var g = MakeGrid(16, 3, tiles.ToArray());
 
-            var dm = new DemandMap(SimConfig.Default());
+            var dm = new DemandMap(Base());
             dm.Reassign(g, new RoadNetwork(g));
             Assert.AreEqual(4, dm.Demands.Count);
 
@@ -216,7 +225,7 @@ namespace CityFlow.Sim.Tests
                 if (d.Sink != V(9, 1)) anySpread = true;
             Assert.IsTrue(anySpread);
 
-            var dm2 = new DemandMap(SimConfig.Default());   // 결정론: 두 번 돌려도 동일
+            var dm2 = new DemandMap(Base());   // 결정론: 두 번 돌려도 동일
             dm2.Reassign(g, new RoadNetwork(g));
             for (int i = 0; i < dm.Demands.Count; i++)
             {
@@ -256,7 +265,7 @@ namespace CityFlow.Sim.Tests
         public void MultiFrontage_IsolatedStubFirst_StillReachable()
         {
             var g = MultiFrontageGrid();
-            var cfg = SimConfig.Default();
+            var cfg = Base();
 
             var net = new RoadNetwork(g);
             var dm = new DemandMap(cfg);
@@ -271,7 +280,7 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void MultiFrontage_Deterministic()
         {
-            var cfg = SimConfig.Default();
+            var cfg = Base();
             List<Vector2Int> a = RouteOf(MultiFrontageGrid(), cfg);
             List<Vector2Int> b = RouteOf(MultiFrontageGrid(), cfg);
             CollectionAssert.AreEqual(a, b);

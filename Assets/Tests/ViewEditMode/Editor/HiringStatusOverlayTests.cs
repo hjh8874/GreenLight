@@ -188,6 +188,16 @@ public class HiringStatusOverlayTests
         public int ActiveVehicleCount => 0;
         public int LastDayArrivalCount => 0;
 
+        public bool TryGetCompanyTypeId(Vector2Int tile, out string companyTypeId)
+        {
+            companyTypeId = null;
+            return false;
+        }
+
+        public System.Collections.Generic.IReadOnlyList<CityFlow.Contracts.CommuterHomeCount>
+            GetCompanyCommuterHomes(Vector2Int tile) =>
+            System.Array.Empty<CityFlow.Contracts.CommuterHomeCount>();
+
         public void SetStaffing(Vector2Int anchor, int filled, int capacity) =>
             _staffing[anchor] = new CompanyStaffing(filled, capacity);
 

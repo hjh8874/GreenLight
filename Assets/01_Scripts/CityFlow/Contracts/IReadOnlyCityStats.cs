@@ -15,6 +15,19 @@ namespace CityFlow.Contracts
         }
     }
 
+    // 회사 하나로 통근하는 집 하나의 (좌표, 인원) — 회사 카드/디버그 표시용
+    public readonly struct CommuterHomeCount
+    {
+        public readonly UnityEngine.Vector2Int Home;
+        public readonly int Count;
+
+        public CommuterHomeCount(UnityEngine.Vector2Int home, int count)
+        {
+            Home = home;
+            Count = count;
+        }
+    }
+
     public interface IReadOnlyCityStats
     {
         int ActiveVehicleCount { get; }
@@ -28,6 +41,18 @@ namespace CityFlow.Contracts
         bool TryGetCompanyStaffing(
             UnityEngine.Vector2Int tile,
             out CompanyStaffing staffing
+        );
+
+        // 이 회사의 유형 id (office/factory/…). 유형 미지정·회사 아님이면 false.
+        bool TryGetCompanyTypeId(
+            UnityEngine.Vector2Int tile,
+            out string companyTypeId
+        );
+
+        // 이 회사로 통근하는 집 목록 (집 좌표, 인원). 회사가 아니면 빈 목록.
+        // 호출마다 새 목록을 만든다 — 클릭 카드용, 매 프레임 폴링 금지.
+        System.Collections.Generic.IReadOnlyList<CommuterHomeCount> GetCompanyCommuterHomes(
+            UnityEngine.Vector2Int tile
         );
     }
 }

@@ -22,6 +22,7 @@ namespace CityFlow.Sim.Tests
         static SimConfig Cfg()
         {
             var c = SimConfig.Default();
+            c.CarsPerHouse = 1;   // 경로 주제 — 집당 1건 고정(다중 통근자는 CarSimTests 검증)
             c.RoadCapacity = 10f;
             c.DemandChoicePool = 1;
             return c;

@@ -286,7 +286,12 @@ namespace CityFlow.UI
             {
                 if (_gameCalendar != null)
                 {
-                    timeText.text = $"{_gameCalendar.Month:D2}월 {_gameCalendar.Day:D2}일 {_gameCalendar.Hour:D2}:00";
+                    // 하루 720초에선 시(時)만 표시하면 30초에 한 번 바뀌어 시계가 멈춘 것처럼
+                    // 보인다 — TimeOfDay01로 분까지 계산해 실제 게임시간을 그대로 보여준다.
+                    float hourF = _gameCalendar.TimeOfDay01 * _gameCalendar.HoursPerDay;
+                    int hh = Mathf.FloorToInt(hourF);
+                    int mm = Mathf.FloorToInt((hourF - hh) * 60f);
+                    timeText.text = $"{_gameCalendar.Month:D2}월 {_gameCalendar.Day:D2}일 {hh:D2}:{mm:D2}";
                 }
                 else
                 {
