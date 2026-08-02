@@ -364,11 +364,11 @@ namespace CityFlow.Sim.Tests
             var events = new SimEventHub();
             var engine = new SimEngine(config, events);
             Vector2Int stop = new(2, 3);
-            Vector2Int secondStop = new(4, 4);
+            Vector2Int secondStop = new(4, 1);
 
             PlaceRoadLoop(engine);
-            Assert.That(engine.Place(new Vector2Int(4, 3), TileType.Road), Is.True);
-            Assert.That(engine.Place(new Vector2Int(5, 3), TileType.Road), Is.True);
+            Assert.That(engine.Place(new Vector2Int(4, 2), TileType.Road), Is.True);
+            Assert.That(engine.Place(new Vector2Int(5, 2), TileType.Road), Is.True);
             Assert.That(
                 engine.Place(
                     new Vector2Int(8, 8),

@@ -97,6 +97,7 @@ namespace CityFlow.Sim.Tests
             config.MaxSimCars = 32;
             config.MaxPendingVehicleTrips = 32;
             config.QueueCapacityPerTile = 8;
+            config.CompanyHiringSlotsPerGameHour = 100f;
             return config;
         }
 
@@ -122,15 +123,15 @@ namespace CityFlow.Sim.Tests
         public void PlaceBusStop_TriggersRebuild()
         {
             SimEngine engine = MakeEngine();
+            Assert.AreEqual(2, engine.CarSimVehicleStorageCount);
 
-            Assert.IsTrue(engine.TryPlaceBusStop(V(1, 3)));
-
-            Assert.IsTrue(
-                engine.TopologyDirtyForTest,
-                "버스 정류장 배치가 다음 틱 수요 재배정을 위한 더티를 세워야 한다");
-            int before = engine.StepCount;
+            PlaceStops(engine);
             engine.Tick(engine.TickInterval);
-            Assert.AreEqual(before + 1, engine.StepCount);
+
+            Assert.AreEqual(
+                1,
+                engine.CarSimVehicleStorageCount,
+                "정류장 2개 배치 후 다음 Step에서 수요가 재배정되어야 한다");
         }
 
         [Test]
