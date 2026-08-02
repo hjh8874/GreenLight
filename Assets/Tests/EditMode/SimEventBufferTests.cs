@@ -56,6 +56,29 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void JobChanged_QueuesAndPublishesOnceOnDrain()
+        {
+            var hub = new SimEventHub();
+            int calls = 0;
+            JobChangedEvent received = default;
+            hub.JobChanged += e => { calls++; received = e; };
+            var buf = new SimEventBuffer(hub);
+            var expected = new JobChangedEvent(
+                new Vector2Int(1, 1), new Vector2Int(2, 2), new Vector2Int(3, 3));
+
+            buf.QueueJobChanged(expected);
+            Assert.AreEqual(0, calls);
+            buf.Drain();
+
+            Assert.AreEqual(1, calls);
+            Assert.AreEqual(expected.Home, received.Home);
+            Assert.AreEqual(expected.OldWork, received.OldWork);
+            Assert.AreEqual(expected.NewWork, received.NewWork);
+            buf.Drain();
+            Assert.AreEqual(1, calls);
+        }
+
+        [Test]
         public void Drain_SubscriberException_IsolatesOtherEventCategories_NoDoublePublishNextDrain()
         {
             // 구독자(뷰/UI) 예외가 시뮬 틱과 다른 구독자를 죽이지 않게 격리 —

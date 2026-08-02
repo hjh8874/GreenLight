@@ -119,10 +119,18 @@ namespace CityFlow.Feed
                     return $"{context.ActiveVehicleCount}대";
                 case "Facility":
                     return FormatInfrastructure(context.InfrastructureType);
+                case "Home":
+                    return FormatLocation(context.Home);
+                case "OldWork":
+                    return FormatLocation(context.OldWork);
+                case "NewWork":
+                    return FormatLocation(context.NewWork);
                 default:
                     return originalToken;
             }
         }
+
+        private static string FormatLocation(Vector2Int tile) => $"{tile.x + 1}-{tile.y + 1}";
 
         private static string FormatSignalChange(in CitizenFeedContext context)
         {

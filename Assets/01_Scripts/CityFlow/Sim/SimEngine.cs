@@ -297,7 +297,8 @@ namespace CityFlow.Sim
                     _roadQueues,
                     PreserveExistingAssignmentsForRebuild(),
                     _grid,
-                    _network);
+                    _network,
+                    _events);
                 ClearRebuildChangeKinds();
                 _grid.ClearTopologyDirty();
             }
@@ -556,7 +557,8 @@ namespace CityFlow.Sim
                 _demand,
                 _planner,
                 _roadQueues,
-                PreserveExistingAssignmentsForRebuild());
+                PreserveExistingAssignmentsForRebuild(),
+                events: _events);
             ClearRebuildChangeKinds();
             _grid.ClearTopologyDirty();
         }

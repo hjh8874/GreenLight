@@ -11,7 +11,8 @@ namespace CityFlow.Feed
         InfrastructurePlaced = 7,
         InfrastructureRemoved = 8,
         NotableArrival = 9,
-        VehicleSurge = 10
+        VehicleSurge = 10,
+        JobChanged = 11
     }
 
     public enum CitizenFeedRole

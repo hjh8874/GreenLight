@@ -116,6 +116,7 @@ namespace CityFlow.Feed
             services.Events.CongestionChanged += OnCongestionChanged;
             services.Events.InfrastructureChanged += OnInfrastructureChanged;
             services.Events.Arrival += OnArrival;
+            services.Events.JobChanged += OnJobChanged;
             services.GameCalendarRegistered += OnGameCalendarRegistered;
             BindCalendar(services.GameCalendar);
             RebuildLookups();
@@ -520,6 +521,21 @@ namespace CityFlow.Feed
             TryGeneratePost(context);
         }
 
+        private void OnJobChanged(JobChangedEvent jobChangedEvent)
+        {
+            if (!initialized)
+            {
+                return;
+            }
+
+            CitizenFeedContext context = CitizenFeedContext.ForJobChanged(
+                jobChangedEvent.Home,
+                jobChangedEvent.OldWork,
+                jobChangedEvent.NewWork,
+                GetGameHour());
+            TryGeneratePost(context);
+        }
+
         private void ObserveVehicleSurge()
         {
             if (settings == null || services?.Stats == null)
@@ -638,6 +654,7 @@ namespace CityFlow.Feed
                 services.Events.CongestionChanged -= OnCongestionChanged;
                 services.Events.InfrastructureChanged -= OnInfrastructureChanged;
                 services.Events.Arrival -= OnArrival;
+                services.Events.JobChanged -= OnJobChanged;
                 services.GameCalendarRegistered -= OnGameCalendarRegistered;
             }
 

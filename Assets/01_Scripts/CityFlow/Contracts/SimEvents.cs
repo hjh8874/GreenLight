@@ -96,6 +96,20 @@ namespace CityFlow.Contracts
         }
     }
 
+    public readonly struct JobChangedEvent
+    {
+        public readonly Vector2Int Home;
+        public readonly Vector2Int OldWork;
+        public readonly Vector2Int NewWork;
+
+        public JobChangedEvent(Vector2Int home, Vector2Int oldWork, Vector2Int newWork)
+        {
+            Home = home;
+            OldWork = oldWork;
+            NewWork = newWork;
+        }
+    }
+
     public sealed class SimEventHub
     {
         public event Action<ArrivalEvent> Arrival;
@@ -105,6 +119,7 @@ namespace CityFlow.Contracts
         public event Action<PlacedEvent> Placed;
         public event Action<InfrastructureChangedEvent> InfrastructureChanged;
         public event Action<InfrastructureEffectEvent> InfrastructureEffect;
+        public event Action<JobChangedEvent> JobChanged;
         public event Action<bool> HeatmapViewToggled;
         public event Action<bool> CongestionViewToggled;
 
@@ -125,6 +140,8 @@ namespace CityFlow.Contracts
         public void Publish(InfrastructureChangedEvent e) => InfrastructureChanged?.Invoke(e);
 
         public void Publish(InfrastructureEffectEvent e) => InfrastructureEffect?.Invoke(e);
+
+        public void Publish(JobChangedEvent e) => JobChanged?.Invoke(e);
 
         public void PublishHeatmapViewToggled(bool isOn)
         {

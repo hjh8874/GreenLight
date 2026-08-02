@@ -19,6 +19,9 @@ namespace CityFlow.Feed
         public CitizenFeedInfrastructureType InfrastructureType { get; }
         public bool IsRemoval { get; }
         public int GameHour { get; }
+        public Vector2Int Home { get; }
+        public Vector2Int OldWork { get; }
+        public Vector2Int NewWork { get; }
 
         private CitizenFeedContext(
             CitizenFeedEventType eventType,
@@ -50,6 +53,9 @@ namespace CityFlow.Feed
             InfrastructureType = infrastructureType;
             IsRemoval = isRemoval;
             GameHour = Mathf.Clamp(gameHour, 0, 23);
+            Home = Vector2Int.zero;
+            OldWork = Vector2Int.zero;
+            NewWork = Vector2Int.zero;
         }
 
         public static CitizenFeedContext ForCongestion(
@@ -165,6 +171,35 @@ namespace CityFlow.Feed
                 CitizenFeedInfrastructureType.None,
                 false,
                 gameHour);
+        }
+
+        public static CitizenFeedContext ForJobChanged(
+            Vector2Int home, Vector2Int oldWork, Vector2Int newWork, int gameHour)
+        {
+            CitizenFeedContext context = new CitizenFeedContext(
+                CitizenFeedEventType.JobChanged,
+                newWork,
+                0f,
+                CongestionLevel.Free,
+                CongestionLevel.Free,
+                0, 0, 0, 0, 0f, 0,
+                CitizenFeedInfrastructureType.None,
+                false,
+                gameHour);
+            return new CitizenFeedContext(
+                context, home, oldWork, newWork);
+        }
+
+        private CitizenFeedContext(
+            CitizenFeedContext source, Vector2Int home, Vector2Int oldWork, Vector2Int newWork)
+        {
+            EventType = source.EventType; Tile = source.Tile; Density01 = source.Density01;
+            PreviousCongestion = source.PreviousCongestion; CurrentCongestion = source.CurrentCongestion;
+            PreviousGreenSlots = source.PreviousGreenSlots; CurrentGreenSlots = source.CurrentGreenSlots;
+            PreviousOffsetSlots = source.PreviousOffsetSlots; CurrentOffsetSlots = source.CurrentOffsetSlots;
+            RouteDistanceTiles = source.RouteDistanceTiles; ActiveVehicleCount = source.ActiveVehicleCount;
+            InfrastructureType = source.InfrastructureType; IsRemoval = source.IsRemoval; GameHour = source.GameHour;
+            Home = home; OldWork = oldWork; NewWork = newWork;
         }
     }
 
