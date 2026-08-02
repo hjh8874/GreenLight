@@ -47,6 +47,8 @@ namespace CityFlow.Sim
         public int MaxSimCars;
         public int MaxPendingVehicleTrips;
         public int MaxConcurrentSpecialTrips;
+        // 시민 여가 외출 비율. 0 = 꺼짐(기존 시뮬레이션과 동일).
+        public float LeisureTripRatio;
         // 통근·방문 차량 중 트럭(SpeedFactor 0.67 = 40/60) 비율 [0,1].
         // 기본 0 = 꺼짐 = 기존과 비트 동일 — Default() 무수정으로 안전. 🔓
         public float TruckCommuterRatio;
