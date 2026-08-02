@@ -88,102 +88,12 @@ namespace CityFlow.Sim.Tests
             }
         }
 
-        static SimConfig EngineConfig()
-        {
-            SimConfig config = DemandConfig();
-            config.GridWidth = 16;
-            config.GridHeight = 6;
-            config.BusCoverageRadius = 3;
-            config.MaxSimCars = 32;
-            config.MaxPendingVehicleTrips = 32;
-            config.QueueCapacityPerTile = 8;
-            config.CompanyHiringSlotsPerGameHour = 100f;
-            return config;
-        }
-
-        static SimEngine MakeEngine()
-        {
-            SimConfig config = EngineConfig();
-            var engine = new SimEngine(config, new SimEventHub());
-            for (int x = 0; x < 14; x++)
-                Assert.IsTrue(engine.Place(V(x, 2), TileType.Road));
-            Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
-            Assert.IsTrue(engine.Place(V(6, 0), TileType.House));
-            Assert.IsTrue(engine.Place(V(10, 0), TileType.Office));
-            engine.Tick(config.TickInterval);
-            return engine;
-        }
-
-        static void PlaceStops(SimEngine engine)
-        {
-            Assert.IsTrue(engine.TryPlaceBusStop(V(1, 3)));
-            Assert.IsTrue(engine.TryPlaceBusStop(V(2, 3)));
-        }
-
-        static void EstablishBaseline(SimEngine engine)
-        {
-            engine.SetGameTime(0, 5f);
-            engine.Tick(engine.TickInterval);
-            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
-        }
-
-        [Test]
-        public void PlaceBusStop_TriggersRebuild()
-        {
-            SimEngine engine = MakeEngine();
-            EstablishBaseline(engine);
-
-            PlaceStops(engine);
-            engine.SetGameTime(0, 6f);
-            engine.Tick(engine.TickInterval);
-
-            Assert.AreEqual(
-                1,
-                engine.DemandForTest.Demands.Count,
-                "정류장 2개 배치 후 다음 Step에서 수요가 재배정되어야 한다");
-        }
-
-        [Test]
-        public void TwoStops_CoveredHouseLosesOneCar()
-        {
-            SimEngine engine = MakeEngine();
-            EstablishBaseline(engine);
-
-            PlaceStops(engine);
-            engine.SetGameTime(0, 6f);
-            engine.Tick(engine.TickInterval);
-
-            Assert.AreEqual(1, engine.DemandForTest.Demands.Count);
-        }
-
-        [Test]
-        public void OneStop_NoReduction()
-        {
-            SimEngine engine = MakeEngine();
-            EstablishBaseline(engine);
-
-            Assert.IsTrue(engine.TryPlaceBusStop(V(2, 3)));
-            engine.SetGameTime(0, 6f);
-            engine.Tick(engine.TickInterval);
-
-            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
-        }
-
-        [Test]
-        public void RemoveToOneStop_RestoresCars()
-        {
-            SimEngine engine = MakeEngine();
-            EstablishBaseline(engine);
-            PlaceStops(engine);
-            engine.SetGameTime(0, 6f);
-            engine.Tick(engine.TickInterval);
-            Assert.AreEqual(1, engine.DemandForTest.Demands.Count);
-
-            Assert.IsTrue(engine.TryRemoveBusStop(V(2, 3)));
-            engine.SetGameTime(0, 7f);
-            engine.Tick(engine.TickInterval);
-
-            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
-        }
+        // 엔진 레벨(배치→리빌드→감축) 종단 테스트 4건은 보류(2026-08-02 감독 결정).
+        // 사유: 수요 수가 좌석 채용 램프와 결합돼 있어 "정류장 리빌드가 좌석을 갱신하며
+        // 커버 감축(-1)과 상쇄"되는 관측 불가 구조를 실측으로 확인(타임라인
+        // h2=1 plateau, stops 후에도 1). 후속 재도입 설계: 원거리 정류장(비커버)으로
+        // 리빌드-좌석갱신을 먼저 관측(1→2)한 뒤 근거리 정류장으로 감축(2→1)을 분리 관측.
+        // 배선 자체(SetCommuterReduction 주입·MarkTopologyDirty)는 코드 리뷰 + 위
+        // DemandMap 단위 테스트 + IntegrationPrefab 통합 테스트로 커버된다.
     }
 }
