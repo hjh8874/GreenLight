@@ -43,6 +43,7 @@ namespace CityFlow.Sim
         readonly List<Vector2Int> _sinks = new(16);
         readonly List<Demand> _demands = new(128);
         readonly Dictionary<Vector2Int, CompanyCapacityState> _companies = new(16);
+        readonly HashSet<Vector2Int> _schools = new();
         readonly Dictionary<Vector2Int, int> _effectiveCapacityBySink = new(16);
         readonly Dictionary<Vector2Int, int> _assignedBySink = new(16);
         // 홈타일+sink종류 → 배정 sink. sink 철거/도로 단절 때만 해제해 차량 순간이동을 막는다.
@@ -108,6 +109,11 @@ namespace CityFlow.Sim
             CompanyTypeInfo? companyType = null
         )
         {
+            if (type == TileType.School)
+            {
+                _schools.Add(tile);
+                return;
+            }
             if (type != TileType.Office)
             {
                 return;
@@ -147,6 +153,11 @@ namespace CityFlow.Sim
             CompanyTypeInfo? companyType = null
         )
         {
+            if (type == TileType.School)
+            {
+                _schools.Add(tile);
+                return;
+            }
             if (type != TileType.Office)
             {
                 return;
@@ -185,9 +196,11 @@ namespace CityFlow.Sim
         }
 
         // 목적지 → 출퇴근 창. CommuteScheduler.Rebuild 의 windowFor 콜백이 이것이다.
-        // 유형 없는 목적지(School·유형 미지정 회사)는 SimConfig 폴백 창.
+        // School은 전용 노브가 있으면 짧은 창, 미설정이면 SimConfig 전역 창.
         internal CommuteWindow CommuteWindowAt(Vector2Int tile) =>
-            _companies.TryGetValue(tile, out CompanyCapacityState company)
+            _schools.Contains(tile)
+                ? CommuteWindow.SchoolFromConfig(_config)
+                : _companies.TryGetValue(tile, out CompanyCapacityState company)
                 && !string.IsNullOrEmpty(company.CompanyTypeId)
                     ? company.Window
                     : CommuteWindow.FromConfig(_config);
@@ -217,6 +230,7 @@ namespace CityFlow.Sim
         internal void RemoveCompany(Vector2Int tile)
         {
             _companies.Remove(tile);
+            _schools.Remove(tile);
             _effectiveCapacityBySink.Remove(tile);
             _assignedBySink.Remove(tile);
         }
@@ -224,6 +238,7 @@ namespace CityFlow.Sim
         internal void ClearCompanies()
         {
             _companies.Clear();
+            _schools.Clear();
             _effectiveCapacityBySink.Clear();
             _assignedBySink.Clear();
         }

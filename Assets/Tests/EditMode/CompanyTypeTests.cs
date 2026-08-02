@@ -174,6 +174,60 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(cfg.EveningStartHour, plain.EndHour);
         }
 
+        [Test]
+        public void CommuteWindowAt_SchoolUsesConfiguredShortWindows()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.SchoolMorningStartHour = 7.5f;
+            cfg.SchoolMorningEndHour = 8.5f;
+            cfg.SchoolReturnStartHour = 14f;
+            cfg.SchoolReturnEndHour = 15f;
+            var engine = new SimEngine(cfg, new SimEventHub());
+
+            Assert.IsTrue(engine.Place(new Vector2Int(0, 0), TileType.School));
+            CommuteWindow school = engine.CommuteWindowAtForTest(new Vector2Int(0, 0));
+
+            Assert.AreEqual(string.Empty, school.CompanyTypeId);
+            Assert.AreEqual(7.5f, school.StartHour);
+            Assert.AreEqual(1f, school.StartWindow);
+            Assert.AreEqual(14f, school.EndHour);
+            Assert.AreEqual(1f, school.EndWindow);
+        }
+
+        [Test]
+        public void CommuteWindowAt_SchoolZeroKnobsFallBackToGlobalWindow()
+        {
+            SimConfig cfg = SimConfig.Default();
+            var engine = new SimEngine(cfg, new SimEventHub());
+            Assert.IsTrue(engine.Place(new Vector2Int(0, 0), TileType.School));
+
+            CommuteWindow school = engine.CommuteWindowAtForTest(new Vector2Int(0, 0));
+            CommuteWindow global = CommuteWindow.FromConfig(cfg);
+            Assert.AreEqual(global.StartHour, school.StartHour);
+            Assert.AreEqual(global.StartWindow, school.StartWindow);
+            Assert.AreEqual(global.EndHour, school.EndHour);
+            Assert.AreEqual(global.EndWindow, school.EndWindow);
+        }
+
+        [Test]
+        public void CommuteWindowAt_SchoolKnobsDoNotAffectCompanyWindow()
+        {
+            SimConfig cfg = SimConfig.Default();
+            cfg.SchoolMorningStartHour = 7.5f;
+            cfg.SchoolMorningEndHour = 8.5f;
+            cfg.SchoolReturnStartHour = 14f;
+            cfg.SchoolReturnEndHour = 15f;
+            var engine = new SimEngine(cfg, new SimEventHub());
+            engine.SetCompanyTypes(new[] { NewType("factory", 20f, 5f) });
+            Assert.IsTrue(engine.Place(new Vector2Int(0, 0), TileType.Office,
+                PlacementDirection.North, "factory"));
+
+            CommuteWindow company = engine.CommuteWindowAtForTest(new Vector2Int(0, 0));
+            Assert.AreEqual("factory", company.CompanyTypeId);
+            Assert.AreEqual(20f, company.StartHour);
+            Assert.AreEqual(5f, company.EndHour);
+        }
+
         // 완성된 회사의 유형이 세이브에 실려야 한다. 없으면 로드 후 전부 폴백 창으로 되돌아간다
         // (RegisterRestoredCompany 가 타일 목록에서 회사를 다시 만드는 구조라 조용히 사라진다).
         [Test]

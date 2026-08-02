@@ -29,6 +29,23 @@ namespace CityFlow.Sim
             config.MorningStartHour, config.MorningEndHour - config.MorningStartHour,
             config.EveningStartHour, config.EveningEndHour - config.EveningStartHour);
 
+        // All-zero settings retain the global window for old configs and saves.
+        public static CommuteWindow SchoolFromConfig(in SimConfig config)
+        {
+            bool hasSchoolWindow = config.SchoolMorningStartHour != 0f
+                || config.SchoolMorningEndHour != 0f
+                || config.SchoolReturnStartHour != 0f
+                || config.SchoolReturnEndHour != 0f;
+            return hasSchoolWindow
+                ? new CommuteWindow(
+                    string.Empty,
+                    config.SchoolMorningStartHour,
+                    config.SchoolMorningEndHour - config.SchoolMorningStartHour,
+                    config.SchoolReturnStartHour,
+                    config.SchoolReturnEndHour - config.SchoolReturnStartHour)
+                : FromConfig(config);
+        }
+
         // 반개 구간 [start, end) 판정. start > end 면 자정을 넘는 구간으로 해석한다.
         // 순수 함수 — 결정론적이고 테스트하기 쉽다.
         public static bool InWindow(float hour, float start, float end) =>
