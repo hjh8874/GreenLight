@@ -150,9 +150,7 @@ namespace CityFlow.Sim.Tests
         public void Ordering_RoundaboutBeatsUnsignaledCap1()
         {
             int unsignaled = RunCrossTraffic(Config(cap: 1), signal: null, devices: null, ticks: 12);
-            var devices = new FakeDeviceState();
-            devices.AddRoundabout(Center);
-            int roundabout = RunCrossTraffic(Config(cap: 1), signal: null, devices, ticks: 12);
+            int roundabout = RunRoundaboutTraffic(Config(cap: 1), ticks: 20);
 
             Assert.GreaterOrEqual(
                 roundabout,
@@ -187,6 +185,29 @@ namespace CityFlow.Sim.Tests
             return arrivals;
         }
 
+        private static int RunRoundaboutTraffic(SimConfig config, int ticks)
+        {
+            var devices = new FakeDeviceState();
+            Vector2Int center = V(2, 2);
+            devices.AddRoundabout(center);
+            var network = new RoadQueueNetwork(5, 5, config);
+            network.RebuildTopology(CrossGrid5(), devices);
+            var routes = new CapRouteProvider();
+            routes.Add(10, V(4, 2), V(3, 2), center, V(1, 2), V(0, 2));
+            routes.Add(11, V(4, 2), V(3, 2), center, V(1, 2), V(0, 2));
+            routes.Add(12, V(2, 4), V(2, 3), center, V(2, 1), V(2, 0));
+            routes.Add(13, V(2, 4), V(2, 3), center, V(2, 1), V(2, 0));
+            Assert.IsTrue(network.TryEnqueue(V(4, 2), Dir.W, 10));
+            Assert.IsTrue(network.TryEnqueue(V(4, 2), Dir.W, 11));
+            Assert.IsTrue(network.TryEnqueue(V(2, 4), Dir.S, 12));
+            Assert.IsTrue(network.TryEnqueue(V(2, 4), Dir.S, 13));
+
+            int arrivals = 0;
+            for (int tick = 0; tick < ticks; tick++)
+                arrivals += network.Step(routes, null, tick).Arrivals;
+            return arrivals;
+        }
+
         private static RoadQueueNetwork CreateCrossTraffic(
             SimConfig config,
             CapFakeSignalGate signal,
@@ -215,6 +236,18 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
             Assert.IsTrue(grid.Place(V(1, 0), TileType.Road));
             Assert.IsTrue(grid.Place(V(0, 1), TileType.Road));
+            return grid;
+        }
+
+        private static CityGrid CrossGrid5()
+        {
+            var grid = new CityGrid(5, 5);
+            for (int offset = 0; offset < 5; offset++)
+            {
+                Assert.IsTrue(grid.Place(V(offset, 2), TileType.Road));
+                if (offset != 2)
+                    Assert.IsTrue(grid.Place(V(2, offset), TileType.Road));
+            }
             return grid;
         }
 

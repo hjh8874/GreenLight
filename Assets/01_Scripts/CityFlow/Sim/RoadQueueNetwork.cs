@@ -121,6 +121,7 @@ namespace CityFlow.Sim
         private readonly bool[] _intentHandled;
         private readonly IntersectionCell[] _intersectionOccupancy;
         private readonly IntersectionCell[] _intersectionRoundReservations;
+        private readonly int[] _intersectionApprovedThisRound;
         private readonly bool[] _approachingStraightThreats;
         private readonly IntersectionStage[] _intersectionStages;
         private readonly Dir[] _intersectionMovementExits;
@@ -200,6 +201,7 @@ namespace CityFlow.Sim
             _intentHandled = new bool[queueCount];
             _intersectionOccupancy = new IntersectionCell[tileCount];
             _intersectionRoundReservations = new IntersectionCell[tileCount];
+            _intersectionApprovedThisRound = new int[tileCount];
             _approachingStraightThreats = new bool[queueCount];
             _intersectionStages = new IntersectionStage[maxCars];
             _intersectionMovementExits = new Dir[maxCars];
@@ -1137,6 +1139,12 @@ namespace CityFlow.Sim
                 _intersectionRoundReservations,
                 0,
                 _intersectionRoundReservations.Length);
+            // 승인 캡은 ResolveIntersectionGroup 호출 단위가 아니라 서비스 라운드
+            // 단위다. 내부 전진/신규 진입 중 신규 진입 승인만 같은 타일 카운터를 쓴다.
+            Array.Clear(
+                _intersectionApprovedThisRound,
+                0,
+                _intersectionApprovedThisRound.Length);
 
             // Resolve vehicles already inside first. Entry is a valid waiting state for turns,
             // but new arrivals must not repeatedly take the cells needed to finish that turn.
@@ -1173,7 +1181,6 @@ namespace CityFlow.Sim
                     | _intersectionRoundReservations[intersectionTile]
                 : _intersectionOccupancy[intersectionTile];
 
-            int approvedThisRound = 0;
             int roundCap = _unsignaledIntersectionRoundCap;
             bool capApplies = useReservation
                 && roundCap > 0
@@ -1208,7 +1215,7 @@ namespace CityFlow.Sim
                     }
                     if (IntersectionMicroGrid.Conflicts(blocking, requested)) continue;
                     if (capApplies
-                        && approvedThisRound >= roundCap
+                        && _intersectionApprovedThisRound[intersectionTile] >= roundCap
                         && !candidate.Force)
                     {
                         if (_blockedTicks[candidate.Node] < _gridlockValveTicks) continue;
@@ -1239,7 +1246,7 @@ namespace CityFlow.Sim
                 winnerIntent.CompleteIntersectionOnEntry = completeIntersectionOnEntry;
                 _intents[winner] = winnerIntent;
                 granted |= winnerMask;
-                if (capApplies) approvedThisRound++;
+                if (capApplies) _intersectionApprovedThisRound[intersectionTile]++;
                 if (useReservation || _intents[winner].Kind == IntentKind.IntersectionAdvance)
                 {
                     _intersectionRoundReservations[intersectionTile] |= winnerMask;
