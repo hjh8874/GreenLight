@@ -36,6 +36,7 @@ MonoBehaviour:
     SchoolReturnEndHour: 15
     MaxSimCars: 96
     MaxConcurrentSpecialTrips: 16
+    LeisureTripRatio: 0.25
     TruckCommuterRatio: 0
     QueueSlowRatio: 0.5
     QueueJamRatio: 0.99
