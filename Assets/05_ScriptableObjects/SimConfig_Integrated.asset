@@ -30,6 +30,10 @@ MonoBehaviour:
     MorningEndHour: 10
     EveningStartHour: 17
     EveningEndHour: 21
+    SchoolMorningStartHour: 7.5
+    SchoolMorningEndHour: 8.5
+    SchoolReturnStartHour: 14
+    SchoolReturnEndHour: 15
     MaxSimCars: 96
     MaxConcurrentSpecialTrips: 16
     TruckCommuterRatio: 0.2

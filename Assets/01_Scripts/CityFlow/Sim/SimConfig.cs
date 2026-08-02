@@ -39,6 +39,11 @@ namespace CityFlow.Sim
         public float MorningEndHour;
         public float EveningStartHour;
         public float EveningEndHour;
+        // Optional school-specific commute windows. All four zero means global fallback.
+        public float SchoolMorningStartHour;
+        public float SchoolMorningEndHour;
+        public float SchoolReturnStartHour;
+        public float SchoolReturnEndHour;
         public int MaxSimCars;
         public int MaxPendingVehicleTrips;
         public int MaxConcurrentSpecialTrips;

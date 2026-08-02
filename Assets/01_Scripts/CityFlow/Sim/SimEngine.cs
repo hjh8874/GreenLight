@@ -627,7 +627,7 @@ namespace CityFlow.Sim
                 return true;
             }
 
-            if (type == TileType.Office)
+            if (type == TileType.Office || type == TileType.School)
                 RegisterCompanyOfType(tile, type, companyTypeId);
             if (type == TileType.Office || type == TileType.School)
                 _demandRebalancePending = true;
@@ -667,7 +667,7 @@ namespace CityFlow.Sim
                 if (!_grid.Promote(site.Anchor, site.TargetType)) continue;
                 _construction.Cancel(site.Anchor);
 
-                if (site.TargetType == TileType.Office)
+                if (site.TargetType == TileType.Office || site.TargetType == TileType.School)
                     RegisterCompanyOfType(site.Anchor, site.TargetType, site.CompanyTypeId);
                 if (site.TargetType == TileType.Office || site.TargetType == TileType.School)
                     _demandRebalancePending = true;
@@ -1432,7 +1432,7 @@ namespace CityFlow.Sim
                 {
                     var tile = RestoreTile(t.X, t.Y, restoreOffset);
                     if (!_grid.Place(tile, t.Type, t.Direction)) continue;   // OOB·중복은 Place가 거름(무사고)
-                    if (t.Type == TileType.Office)
+                    if (t.Type == TileType.Office || t.Type == TileType.School)
                         _demand.RegisterRestoredCompany(
                             tile, t.Type, CompanyTypeOrNull(t.CompanyTypeId));
                 }

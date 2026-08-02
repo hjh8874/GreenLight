@@ -40,6 +40,10 @@ MonoBehaviour:
     SchoolCapacity: 10
     DemandChoicePool: 3
     RushAmplitude: 0.6
+    SchoolMorningStartHour: 7.5
+    SchoolMorningEndHour: 8.5
+    SchoolReturnStartHour: 14
+    SchoolReturnEndHour: 15
     DayLengthSeconds: 180
     OverrideDurationSeconds: 3
     OverrideCooldownSeconds: 60
