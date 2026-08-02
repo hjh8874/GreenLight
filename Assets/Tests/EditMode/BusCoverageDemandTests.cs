@@ -120,13 +120,21 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(engine.TryPlaceBusStop(V(2, 3)));
         }
 
+        static void EstablishBaseline(SimEngine engine)
+        {
+            engine.SetGameTime(0, 5f);
+            engine.Tick(engine.TickInterval);
+            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
+        }
+
         [Test]
         public void PlaceBusStop_TriggersRebuild()
         {
             SimEngine engine = MakeEngine();
-            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
+            EstablishBaseline(engine);
 
             PlaceStops(engine);
+            engine.SetGameTime(0, 6f);
             engine.Tick(engine.TickInterval);
 
             Assert.AreEqual(
@@ -139,9 +147,10 @@ namespace CityFlow.Sim.Tests
         public void TwoStops_CoveredHouseLosesOneCar()
         {
             SimEngine engine = MakeEngine();
-            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
+            EstablishBaseline(engine);
 
             PlaceStops(engine);
+            engine.SetGameTime(0, 6f);
             engine.Tick(engine.TickInterval);
 
             Assert.AreEqual(1, engine.DemandForTest.Demands.Count);
@@ -151,9 +160,10 @@ namespace CityFlow.Sim.Tests
         public void OneStop_NoReduction()
         {
             SimEngine engine = MakeEngine();
-            Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
+            EstablishBaseline(engine);
 
             Assert.IsTrue(engine.TryPlaceBusStop(V(2, 3)));
+            engine.SetGameTime(0, 6f);
             engine.Tick(engine.TickInterval);
 
             Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
@@ -163,11 +173,14 @@ namespace CityFlow.Sim.Tests
         public void RemoveToOneStop_RestoresCars()
         {
             SimEngine engine = MakeEngine();
+            EstablishBaseline(engine);
             PlaceStops(engine);
+            engine.SetGameTime(0, 6f);
             engine.Tick(engine.TickInterval);
             Assert.AreEqual(1, engine.DemandForTest.Demands.Count);
 
             Assert.IsTrue(engine.TryRemoveBusStop(V(2, 3)));
+            engine.SetGameTime(0, 7f);
             engine.Tick(engine.TickInterval);
 
             Assert.AreEqual(2, engine.DemandForTest.Demands.Count);
