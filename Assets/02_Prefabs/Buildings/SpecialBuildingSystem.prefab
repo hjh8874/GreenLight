@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 11400002}
   - component: {fileID: 11400003}
   - component: {fileID: 11400004}
+  - component: {fileID: 11400005}
   m_Layer: 0
   m_Name: SpecialBuildingSystem
   m_TagString: Untagged
@@ -104,3 +105,15 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Buildings.SpecialBuildingVisitTripSource
   maximumVisualTripsPerBuildingPerDay: 64
+--- !u!114 &11400005
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 100000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f1d4f5322d34b0a9b8d2bb8f7d0a6c1, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Buildings.LeisureTripSource

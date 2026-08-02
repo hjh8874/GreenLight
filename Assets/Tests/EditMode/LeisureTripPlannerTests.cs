@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using CityFlow.Buildings;
+using CityFlow.Contracts;
 using NUnit.Framework;
 using UnityEngine;
 
