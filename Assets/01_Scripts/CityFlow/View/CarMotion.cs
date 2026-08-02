@@ -1045,11 +1045,13 @@ namespace CityFlow.View
                 vehicle.HasTickTarget = true;
                 vehicle.TargetAdvancing = targetAdvancing;
             }
-            else if (tickEdge)
+            else if (tickEdge && !snapshot.WaitingForSpeedCredit)
             {
                 // 틱이 지났는데 목표가 그대로 = Sim이 나를 잡고 있다(신호·정원). 천장이 멈췄다.
                 vehicle.TargetAdvancing = false;
             }
+            // credit 대기(M1-3)는 "심이 잡은 것"이 아니라 "느린 차의 자발적 페이스" —
+            // 천장을 끄지 않고 아래의 감속된 순항으로 자연스럽게 흐른다.
 
             // 속도 기반 주행(MM 전환 Phase 2, 2026-07-20). 차가 프레임 위치의 주인이고,
             // Sim 위치는 목표가 아니라 **코리도 상한**이다. 예전엔 Sim 목표에 닿으면 다음
@@ -1059,7 +1061,11 @@ namespace CityFlow.View
             float brakeAccel = Mathf.Max(0.01f, vehicleBrakeAccel);
             // 평균 속도는 Sim이 정한다(틱당 1타일) — 개성으로 최고속도를 바꾸면 느린 차는
             // 영원히 목표를 못 따라잡는다. 개성은 가속도(AccelMul)에만 건다.
-            float nominal = tileSize / Mathf.Max(0.0001f, simEngine.TickInterval);
+            // 차급 SpeedFactor(M1-3)는 예외: 심의 크레딧 게이트가 같은 값으로 전진을
+            // 늦추므로, 뷰가 같은 배율로 순항해야 목표를 따라잡되 앞지르지 않는다.
+            float speedFactor = snapshot.SpeedFactorNumerator / 60f;
+            float nominal = tileSize * speedFactor
+                / Mathf.Max(0.0001f, simEngine.TickInterval);
             // 일반 도로는 QueueSlot 목표(슬롯0 포함), 교차로·로터리·링크는 위에서 덮어쓴
             // 각 권한 거리가 그대로 상한이다. +1타일 선행은 Sim 타일 전환 때 새 슬롯 목표보다
             // 앞서 있던 차를 도로 한가운데 세웠으므로 폐지한다(2026-07-24 라이브 계측).
@@ -1142,7 +1148,14 @@ namespace CityFlow.View
                     // 기존 가감속과 뒤처짐 catch-up은 이 속도 목표의 바깥에서 그대로 작동한다.
                     authorizedCruise = Mathf.Min(authorizedCruise, pacedArrivalSpeed);
                 }
-                float cruise = authorizedCruise * (1f + behind * vehicleCatchUpRange);
+                // 개성 SpeedMul(±7%, M1-3)은 순항에만 합성 — 교차로 권한 속도는 심의
+                // 마이크로그리드 페이스라 개성을 태우지 않는다(설계 Q4). 느린 개성(0.93)의
+                // 누적 뒤처짐은 아래 behind catch-up이 흡수한다.
+                float personalityMul = hasIntersectionAuthorization
+                    ? 1f
+                    : vehicle.Style.SpeedMul;
+                float cruise = authorizedCruise * personalityMul
+                    * (1f + behind * vehicleCatchUpRange);
 
                 // 제동식은 **상대가 움직이는지**를 반영해야 한다. √(2a·여유)는 '정지한 벽'
                 // 공식이라 이산 천장에선 여유가 줄 때마다 감속하는 톱니를 탄다(§4.6.1 계측:

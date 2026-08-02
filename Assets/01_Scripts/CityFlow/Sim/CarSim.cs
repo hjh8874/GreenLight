@@ -25,6 +25,9 @@ namespace CityFlow.Sim
         // 뷰 mirror(SyncCarSimMirrors)는 CommuteCar 원본이 아닌 스냅샷 복사본을 읽는다 —
         // 심·뷰가 SpeedFactor 하나를 공유하려면 차급이 스냅샷에 실려야 한다(분모 60 고정).
         public int SpeedFactorNumerator;
+        // 이번 틱 credit 부족으로 자발 대기 중 — 뷰는 이걸 "심이 잡은 정지"와 구분해
+        // 천장을 끄지 않고 감속 순항으로 흘린다(M1-3).
+        public bool WaitingForSpeedCredit { get; internal set; }
     }
 
     internal sealed class CarSim : ICarRouteProvider
@@ -74,6 +77,8 @@ namespace CityFlow.Sim
         // 속도 크레딧 적립은 틱당 1회 — _servicePerTick > 1이어도 라운드당 재질의에
         // 이중 적립되지 않도록 Step 진입 시 Clear한다.
         private readonly bool[] _creditAccrued;
+        // 이번 틱 credit 거부 마킹(스냅샷 WaitingForSpeedCredit 원천). Step 진입 시 Clear.
+        private readonly bool[] _creditWaiting;
         private readonly int[] _offNetworkBlockedTicks;
         private readonly List<Vector2Int> _originAccessRoads = new(8);
         private readonly List<Vector2Int> _destinationAccessRoads = new(8);
@@ -218,6 +223,7 @@ namespace CityFlow.Sim
             _offNetworkBlockedTicks =
                 new int[_runtimeVehicleCapacity];
             _creditAccrued = new bool[_runtimeVehicleCapacity];
+            _creditWaiting = new bool[_runtimeVehicleCapacity];
             Array.Fill(_queueSlots, -1);
             Array.Clear(_queueOffsets, 0, _queueOffsets.Length);
             Array.Fill(_intersectionProgress, -1f);
@@ -691,6 +697,7 @@ namespace CityFlow.Sim
             if (events == null) throw new ArgumentNullException(nameof(events));
             _net = net;
             Array.Clear(_creditAccrued, 0, _creditAccrued.Length);
+            Array.Clear(_creditWaiting, 0, _creditWaiting.Length);
 
             bool jumped = _hasLastHour
                 && Mathf.Repeat(gameHour - _lastHour, 24f) > JumpThresholdHours;
@@ -865,7 +872,8 @@ namespace CityFlow.Sim
                     IntersectionProgress01 = _intersectionProgress[index],
                     LinkProgress01 = _linkProgress[index],
                     RoundaboutProgress01 = _roundaboutProgress[index],
-                    SpeedFactorNumerator = car.SpeedFactorNumerator
+                    SpeedFactorNumerator = car.SpeedFactorNumerator,
+                    WaitingForSpeedCredit = _creditWaiting[index]
                 };
             }
 
@@ -896,7 +904,8 @@ namespace CityFlow.Sim
                 IntersectionProgress01 = _intersectionProgress[index],
                 LinkProgress01 = _linkProgress[index],
                 RoundaboutProgress01 = _roundaboutProgress[index],
-                SpeedFactorNumerator = car.SpeedFactorNumerator
+                SpeedFactorNumerator = car.SpeedFactorNumerator,
+                WaitingForSpeedCredit = _creditWaiting[index]
             };
         }
 
@@ -957,8 +966,13 @@ namespace CityFlow.Sim
                 car.SpeedCredit = Math.Min(120, car.SpeedCredit + car.SpeedFactorNumerator);
                 _creditAccrued[carId] = true;
             }
-            if (car.SpeedCredit < 60) return false;
+            if (car.SpeedCredit < 60)
+            {
+                _creditWaiting[carId] = true;
+                return false;
+            }
             car.SpeedCredit -= 60;
+            _creditWaiting[carId] = false; // 늦은 서비스 라운드에서 허가되면 대기 해제
             return true;
         }
 
