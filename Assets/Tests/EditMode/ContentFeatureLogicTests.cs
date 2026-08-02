@@ -364,6 +364,7 @@ namespace CityFlow.Sim.Tests
             var events = new SimEventHub();
             var engine = new SimEngine(config, events);
             Vector2Int stop = new(2, 3);
+            Vector2Int secondStop = new(3, 5);
 
             PlaceRoadLoop(engine);
             Assert.That(
@@ -372,6 +373,7 @@ namespace CityFlow.Sim.Tests
                     TileType.House),
                 Is.True);
             Assert.That(engine.TryPlaceBusStop(stop), Is.True);
+            Assert.That(engine.TryPlaceBusStop(secondStop), Is.True);
 
             TileType[,] before =
                 CaptureTiles(engine, config);
@@ -399,6 +401,8 @@ namespace CityFlow.Sim.Tests
                     null,
                     null,
                     engine);
+                ((CityFlow.Bootstrap.CityFlowServices)services)
+                    .RegisterGameCalendar(new TestGameCalendar());
                 MonoBehaviour[] consumers =
                     instance.GetComponents<MonoBehaviour>();
 
@@ -554,6 +558,24 @@ namespace CityFlow.Sim.Tests
                         $"Integration prefab changed tile {tile}.");
                 }
             }
+        }
+
+        private sealed class TestGameCalendar : IGameCalendarService
+        {
+            public int Year => 1;
+            public int Month => 1;
+            public int Day => 1;
+            public int Hour => 8;
+            public int TotalMonths => 0;
+            public long TotalDays => 0L;
+            public float RealSecondsPerGameHour => 30f;
+            public float RealSecondsPerGameDay => 720f;
+            public int HoursPerDay => 24;
+            public float TimeOfDay01 => Hour / 24f;
+
+            public event System.Action<int> HourChanged;
+            public event System.Action<int> DayChanged;
+            public event System.Action<int> MonthChanged;
         }
     }
 }
