@@ -22,6 +22,7 @@ MonoBehaviour:
     QueueCapacityPerTile: 4
     QueueServicePerTick: 1
     GridlockValveTicks: 8
+    UnsignaledIntersectionRoundCap: 1
     CoinPerTrip: 10
     CarsPerHouse: 2
     MorningStartHour: 6

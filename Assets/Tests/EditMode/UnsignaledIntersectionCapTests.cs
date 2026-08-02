@@ -161,7 +161,7 @@ namespace CityFlow.Sim.Tests
         }
 
         private static readonly Vector2Int Center = new(1, 1);
-        private static readonly int _blockedCarId = 2;
+        private static readonly int _blockedCarId = 0;
         private static CapRouteProvider _routes;
 
         private static SimConfig Config(int cap, int valveTicks = 8)
