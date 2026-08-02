@@ -42,6 +42,27 @@ namespace CityFlow.UI.Controllers.Placement
             return 0;
         }
 
+        public bool IsTileTypeUnlocked(
+            TileType type,
+            CityFlowServices services)
+        {
+            if (_useFakeMode ||
+                type == TileType.Empty ||
+                type == TileType.Road ||
+                type == TileType.SpecialBuilding)
+            {
+                return true;
+            }
+
+            CityFlow.Configs.TileDataSO tileData =
+                FindTileData(type);
+            string requiredResearchId =
+                tileData?.RequiredResearchId?.Trim() ?? string.Empty;
+            return requiredResearchId.Length == 0 ||
+                   services?.Research?.IsUnlocked(
+                       requiredResearchId) == true;
+        }
+
         public bool CheckCanPlace(
             Vector2Int coord,
             TileType currentType,
@@ -53,6 +74,11 @@ namespace CityFlow.UI.Controllers.Placement
 
             if (services != null && services.Placement != null && services.TileData != null)
             {
+                if (!IsTileTypeUnlocked(currentType, services))
+                {
+                    return false;
+                }
+
                 Vector2Int footprint = TileFootprint.GetRotatedSize(
                     currentType,
                     direction);
@@ -126,6 +152,13 @@ namespace CityFlow.UI.Controllers.Placement
                 }
                 else
                 {
+                    if (!IsTileTypeUnlocked(currentType, services))
+                    {
+                        Debug.LogWarning(
+                            $"[UI] {currentType} 건물은 연구 완료 후 건설할 수 있습니다.");
+                        return;
+                    }
+
                     long buildCost = GetTileCost(
                         currentType,
                         specialBuildingId,
@@ -229,6 +262,27 @@ namespace CityFlow.UI.Controllers.Placement
                 return anchor;
             }
             return coord;
+        }
+
+        private CityFlow.Configs.TileDataSO FindTileData(
+            TileType type)
+        {
+            if (_availableTiles == null)
+            {
+                return null;
+            }
+
+            for (int index = 0; index < _availableTiles.Length; index++)
+            {
+                CityFlow.Configs.TileDataSO tileData =
+                    _availableTiles[index];
+                if (tileData != null && tileData.Category == type)
+                {
+                    return tileData;
+                }
+            }
+
+            return null;
         }
 
         private long GetDemolitionRefund(

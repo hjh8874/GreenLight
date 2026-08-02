@@ -26,7 +26,8 @@ namespace CityFlow.Contracts
             int periodDays,
             int visitorCapacity,
             float attractionWeight,
-            int coinPerVisit)
+            int coinPerVisit,
+            VisitTimeProfile visitTimeProfile = VisitTimeProfile.AllDay)
         {
             BuildingId = buildingId ?? string.Empty;
             DisplayName = displayName ?? string.Empty;
@@ -44,6 +45,7 @@ namespace CityFlow.Contracts
             VisitorCapacity = Mathf.Max(0, visitorCapacity);
             AttractionWeight = Mathf.Max(0f, attractionWeight);
             CoinPerVisit = Mathf.Max(0, coinPerVisit);
+            VisitTimeProfile = visitTimeProfile;
         }
 
         public string BuildingId { get; }
@@ -62,5 +64,6 @@ namespace CityFlow.Contracts
         public int VisitorCapacity { get; }
         public float AttractionWeight { get; }
         public int CoinPerVisit { get; }
+        public VisitTimeProfile VisitTimeProfile { get; }
     }
 }

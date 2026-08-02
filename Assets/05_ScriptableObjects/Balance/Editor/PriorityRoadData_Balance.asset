@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b10c4abb99e2cc4d806ce034d4d8a02, type: 3}
+  m_Name: PriorityRoadData
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Data.InfrastructureDataSO
+  Kind: 5
+  InfrastructureName: PriorityRoad
+  Icon: {fileID: 0}
+  Description: "PriorityRoad \uC778\uD504\uB77C \uAC74\uC124 \uB370\uC774\uD130\uC785\uB2C8\uB2E4."
+  Cost: 50
+  GreenSlots: 0
+  OnewayDir: {x: 0, y: 0}
+  TurnMode: 0
+  PriorityAxis: 0

@@ -9,6 +9,7 @@ namespace CityFlow.Sim
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
     public sealed class SimEngine : IPlacementService, IReadOnlyTileData,
+        ICongestionHistory,
         IReadOnlyCityStats, ISimSaveSource, ISignalControl,
         IIntersectionFacilityService, ITrafficRuleService,
         IRouteDistanceProvider, IHighwayService,
@@ -30,6 +31,8 @@ namespace CityFlow.Sim
         readonly DeviceStateAdapter _deviceState;
         readonly SignalGateAdapter _signalGate;
         readonly CongestionLevel[] _carCongestion;
+        readonly CongestionLedger _congestionLedger;
+        readonly InfrastructureEffectTracker _infrastructureEffectTracker;
         readonly SignalMap _signals = new SignalMap();
         // 배치 모드(AutoDetectSignals=false) 소유 상태: flat 정렬 유지 = SignalMap 순회 순서(결정론).
         readonly List<Vector2Int> _placedSignals = new();
@@ -72,6 +75,8 @@ namespace CityFlow.Sim
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
         float _gameHour;
+        float _lastCongestionHour;
+        bool _hasLastCongestionHour;
         long _gameDay;
         int _lastStepArrivals;
         bool _demandRebalancePending;
@@ -86,6 +91,7 @@ namespace CityFlow.Sim
         internal bool TopologyDirtyForTest => _grid.TopologyDirty;
         internal float TripSuccessRateForTest => _stats.TripSuccessRate;
         internal RoadQueueNetwork RoadQueuesForTest => _roadQueues;
+        internal DemandMap DemandForTest => _demand;
         public IRoadTrafficService RoadTraffic => _roadTraffic;
         public VehicleFootprint StandardVehicleFootprint =>
             _standardVehicleFootprint;
@@ -124,7 +130,30 @@ namespace CityFlow.Sim
             _deviceState = new DeviceStateAdapter(this);
             _signalGate = new SignalGateAdapter(this);
             _carCongestion = new CongestionLevel[config.GridWidth * config.GridHeight];
+            _congestionLedger = new CongestionLedger();
+            _congestionLedger.Configure(config.GridWidth, config.GridHeight);
+            _infrastructureEffectTracker = new InfrastructureEffectTracker(_congestionLedger);
+            hub.InfrastructureChanged += OnInfrastructureChanged;
             _events = new SimEventBuffer(hub);   // 계산 중 발행 금지 — 큐/Drain으로 재진입 차단
+            RefreshBusCoverageReduction();
+        }
+
+        private void OnInfrastructureChanged(InfrastructureChangedEvent e)
+        {
+            if (e.IsRemove)
+            {
+                _infrastructureEffectTracker.OnRemoved(e.Tile);
+            }
+            else
+            {
+                _infrastructureEffectTracker.OnPlaced(e.Tile, _congestionLedger);
+            }
+        }
+
+        public float LastDayJamRatio01(Vector2Int tile)
+        {
+            int index = tile.x + tile.y * _grid.Width;
+            return _congestionLedger.LastDayJamRatio01(index);
         }
 
         private sealed class DeviceStateAdapter : IDeviceState
@@ -161,6 +190,7 @@ namespace CityFlow.Sim
             public SignalGateAdapter(SimEngine engine) => _engine = engine;
             public bool IsServiceOpen(Vector2Int tile, Dir entryDir, int tick) =>
                 _engine.IsSignalGreen(tile, entryDir == Dir.E || entryDir == Dir.W);
+            public bool HasSignal(Vector2Int tile) => _engine._signals.TryGet(tile, out _);
         }
 
         // SimConfig 런타임 재주입 seam(스펙 2026-07-12) — 정책 서비스(진우) 창구.
@@ -188,6 +218,7 @@ namespace CityFlow.Sim
 
             _config = merged;
             _demand.ApplyConfig(_config);
+            RefreshBusCoverageReduction();
             MarkRoutingChangePending();   // 다음 틱에 Reassign+Plan 강제(즉시 재계산은 안 함 — 파이프라인 순서 보존)
             return true;
         }
@@ -241,8 +272,8 @@ namespace CityFlow.Sim
                 _grid.MarkTopologyDirty();
             }
 
-            // 신규 회사/학교 배정은 운행 중 목적지를 바꾸지 않는다. 전 차가 집에 돌아온
-            // 안전시점에 sticky를 한 번만 풀고, 같은 틱의 정상 topology 파이프라인으로 재구축한다.
+            // 신규 회사/학교 배정은 운행 중 목적지를 바꾸지 않는다. 배치 이벤트나 하루 경계에서
+            // pending을 세운 뒤, 전 차가 집에 돌아온 안전시점에 sticky를 한 번만 풀고 재구축한다.
             if (_demandRebalancePending && _carSim.AllParkedHome)
             {
                 _demand.ClearStickyAssignments();
@@ -286,13 +317,15 @@ namespace CityFlow.Sim
             }
             _lastStepArrivals = carResult.Arrivals;
             float jamRatio = ScanCarCongestion();
-            _stats.UpdateCarSim(
+            bool gameDayWrapped = _stats.UpdateCarSim(
                 _gameHour,
                 carResult.Arrivals,
                 _carSim.SimulatedVehicleCount,
                 _carSim.LastStepJumped,
                 jamRatio,
                 _config);
+            if (gameDayWrapped)
+                _demandRebalancePending = true;
 
             if (_config.GreenWaveScanInterval > 0 && StepCount % _config.GreenWaveScanInterval == 0)
             {
@@ -304,6 +337,26 @@ namespace CityFlow.Sim
 
         private float ScanCarCongestion()
         {
+            bool wrapped = _hasLastCongestionHour && _gameHour < _lastCongestionHour;
+            if (wrapped && !_carSim.LastStepJumped)
+            {
+                _congestionLedger.OnDayWrap();
+                foreach (var effect in _infrastructureEffectTracker.EvaluateOnDayWrap(_congestionLedger))
+                {
+                    _events.QueueInfrastructureEffect(effect);
+                }
+            }
+
+            float stepGameHours = 0f;
+            if (_hasLastCongestionHour && !_carSim.LastStepJumped)
+            {
+                stepGameHours = wrapped
+                    ? (24f - _lastCongestionHour) + _gameHour
+                    : Mathf.Max(0f, _gameHour - _lastCongestionHour);
+                // A calendar jump is not a period for which a road state was observed.
+                if (stepGameHours > 1f) stepGameHours = 0f;
+            }
+
             int jammed = 0;
             int roads = _grid.RoadTileCount;
             for (int i = 0; i < roads; i++)
@@ -314,6 +367,7 @@ namespace CityFlow.Sim
                     index / _grid.Width);
                 float occupancy = _roadQueues.MaxOccupancy01(tile);
                 CongestionLevel level = CongestionForOccupancy(occupancy, _config);
+                _congestionLedger.Record(index, level, stepGameHours);
                 if (_carCongestion[index] != level)
                 {
                     _carCongestion[index] = level;
@@ -321,6 +375,8 @@ namespace CityFlow.Sim
                 }
                 if (level == CongestionLevel.Jam) jammed++;
             }
+            _lastCongestionHour = _gameHour;
+            _hasLastCongestionHour = true;
             return roads <= 0 ? 0f : (float)jammed / roads;
         }
 
@@ -344,6 +400,9 @@ namespace CityFlow.Sim
             }
 
             Array.Clear(_carCongestion, 0, _carCongestion.Length);
+            _congestionLedger.Clear();
+            _infrastructureEffectTracker.ClearPending();
+            _hasLastCongestionHour = false;
         }
 
         private struct GreenWaveSegment : System.IEquatable<GreenWaveSegment>
@@ -1639,7 +1698,14 @@ namespace CityFlow.Sim
 
         public bool TryPlaceBusStop(Vector2Int tile)
         {
-            return TryRegisterBusStop(tile, requireUnlockedTile: true);
+            if (!TryRegisterBusStop(tile, requireUnlockedTile: true))
+            {
+                return false;
+            }
+
+            RefreshBusCoverageReduction();
+            _grid.MarkTopologyDirty();
+            return true;
         }
 
         private bool TryRestoreBusStop(Vector2Int tile)
@@ -1660,6 +1726,7 @@ namespace CityFlow.Sim
 
             RegisterBusStopPlatforms(tile);
             InsertSorted(_placedBusStops, tile);
+            RefreshBusCoverageReduction();
             return true;
         }
 
@@ -1711,7 +1778,33 @@ namespace CityFlow.Sim
             }
 
             _placedBusStops.Remove(tile);
+            RefreshBusCoverageReduction();
+            _grid.MarkTopologyDirty();
             return true;
+        }
+
+        void RefreshBusCoverageReduction()
+        {
+            int radius = _config.BusCoverageRadius;
+            if (radius <= 0 || _placedBusStops.Count < 2)
+            {
+                _demand.SetCommuterReduction(null);
+                return;
+            }
+
+            _demand.SetCommuterReduction(home =>
+            {
+                for (int i = 0; i < _placedBusStops.Count; i++)
+                {
+                    Vector2Int stop = _placedBusStops[i];
+                    int distance = Mathf.Max(
+                        Mathf.Abs(home.x - stop.x),
+                        Mathf.Abs(home.y - stop.y));
+                    if (distance <= radius) return 1;
+                }
+
+                return 0;
+            });
         }
 
         private bool WouldOrphanBusStopIfRoadRemoved(

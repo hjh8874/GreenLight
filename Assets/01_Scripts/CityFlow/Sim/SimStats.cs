@@ -18,7 +18,7 @@ namespace CityFlow.Sim
         internal int LastDayArrivalCount => _lastDayArrivals;
         internal bool SkipCurrentDay => _skipCurrentDay;
 
-        internal void UpdateCarSim(
+        internal bool UpdateCarSim(
             float gameHour,
             int arrivals,
             int carCount,
@@ -53,6 +53,7 @@ namespace CityFlow.Sim
             _dayArrivals += arrivals;
             _lastHour = gameHour;
             _hasLastHour = true;
+            return wrapped;
         }
 
         internal void RestoreCarSim(float successRate, int dayArrivals, bool skipCurrentDay, bool hasData)

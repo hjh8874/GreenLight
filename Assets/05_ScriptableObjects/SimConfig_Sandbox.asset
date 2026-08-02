@@ -15,11 +15,15 @@ MonoBehaviour:
   standardVehicleFootprint: {fileID: 11400000, guid: 3b090c7283c648fc88a9333d9a8ee8f4, type: 2}
   Value:
     TickInterval: 0.1
+    MaxConcurrentSpecialTrips: 16
+    TruckCommuterRatio: 0
     MaxStepsPerFrame: 5
     GridWidth: 20
     GridHeight: 20
     RoadCapacity: 10
+    UnsignaledIntersectionRoundCap: 1
     CarsPerHouse: 2
+    BusCoverageRadius: 3
     DemandPerHouse: 1
     SlowRatio: 0.7
     JamRatio: 1

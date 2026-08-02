@@ -21,3 +21,4 @@ MonoBehaviour:
   buildCost: 100
   dailyCoinValue: 20
   prosperityValue: 1
+  requiredResearchId: research_building_hospital

@@ -22,13 +22,17 @@ MonoBehaviour:
     QueueCapacityPerTile: 4
     QueueServicePerTick: 1
     GridlockValveTicks: 8
+    UnsignaledIntersectionRoundCap: 1
     CoinPerTrip: 10
     CarsPerHouse: 2
+    BusCoverageRadius: 3
     MorningStartHour: 6
     MorningEndHour: 10
     EveningStartHour: 17
     EveningEndHour: 21
     MaxSimCars: 96
+    MaxConcurrentSpecialTrips: 16
+    TruckCommuterRatio: 0
     QueueSlowRatio: 0.5
     QueueJamRatio: 0.99
     SlowRatio: 0.7

@@ -363,7 +363,8 @@ namespace CityFlow.Sim.Tests
             SimConfig config = SimConfig.Default();
             var events = new SimEventHub();
             var engine = new SimEngine(config, events);
-            Vector2Int stop = new(2, 3);
+            Vector2Int stop = new(3, 3);
+            Vector2Int secondStop = new(7, 3);
 
             PlaceRoadLoop(engine);
             Assert.That(
@@ -372,6 +373,7 @@ namespace CityFlow.Sim.Tests
                     TileType.House),
                 Is.True);
             Assert.That(engine.TryPlaceBusStop(stop), Is.True);
+            Assert.That(engine.TryPlaceBusStop(secondStop), Is.True);
 
             TileType[,] before =
                 CaptureTiles(engine, config);
@@ -399,6 +401,12 @@ namespace CityFlow.Sim.Tests
                     null,
                     null,
                     engine);
+                MethodInfo registerCalendar =
+                    servicesType.GetMethod("RegisterGameCalendar");
+                Assert.That(registerCalendar, Is.Not.Null);
+                registerCalendar.Invoke(
+                    services,
+                    new object[] { new TestGameCalendar() });
                 MonoBehaviour[] consumers =
                     instance.GetComponents<MonoBehaviour>();
 
@@ -497,24 +505,22 @@ namespace CityFlow.Sim.Tests
 
         private static void PlaceRoadLoop(SimEngine engine)
         {
-            var roads = new[]
-            {
-                new Vector2Int(1, 2),
-                new Vector2Int(2, 2),
-                new Vector2Int(3, 2),
-                new Vector2Int(3, 3),
-                new Vector2Int(3, 4),
-                new Vector2Int(2, 4),
-                new Vector2Int(1, 4),
-                new Vector2Int(1, 3)
-            };
-
-            for (int i = 0; i < roads.Length; i++)
+            for (int x = 2; x <= 8; x++)
             {
                 Assert.That(
-                    engine.Place(roads[i], TileType.Road),
+                    engine.Place(new Vector2Int(x, 2), TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(new Vector2Int(x, 4), TileType.Road),
                     Is.True);
             }
+
+            Assert.That(
+                engine.Place(new Vector2Int(2, 3), TileType.Road),
+                Is.True);
+            Assert.That(
+                engine.Place(new Vector2Int(8, 3), TileType.Road),
+                Is.True);
         }
 
         private static TileType[,] CaptureTiles(
@@ -554,6 +560,24 @@ namespace CityFlow.Sim.Tests
                         $"Integration prefab changed tile {tile}.");
                 }
             }
+        }
+
+        private sealed class TestGameCalendar : IGameCalendarService
+        {
+            public int Year => 1;
+            public int Month => 1;
+            public int Day => 1;
+            public int Hour => 8;
+            public int TotalMonths => 0;
+            public long TotalDays => 0L;
+            public float RealSecondsPerGameHour => 30f;
+            public float RealSecondsPerGameDay => 720f;
+            public int HoursPerDay => 24;
+            public float TimeOfDay01 => Hour / 24f;
+
+            public event System.Action<int> HourChanged;
+            public event System.Action<int> DayChanged;
+            public event System.Action<int> MonthChanged;
         }
     }
 }

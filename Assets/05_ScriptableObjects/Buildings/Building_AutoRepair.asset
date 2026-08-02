@@ -41,6 +41,7 @@ MonoBehaviour:
   visitorCapacity: 0
   attractionWeight: 1
   coinPerVisit: 10
+  visitTimeProfile: 1
   happinessEffectKey: happiness_building_auto_repair
   schoolCoverageCapacity: 0
   coveredPopulationCapBonus: 0

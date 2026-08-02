@@ -111,6 +111,16 @@ namespace CityFlow.UI
 
         public void SetBuildType(TileType type)
         {
+            EnsureManagers();
+            if (!IsTileTypeUnlocked(type))
+            {
+                ToggleBuildMode(false);
+                Debug.LogWarning(
+                    $"[PlacementController] {type} 건물은 연구 완료 후 건설할 수 있습니다.",
+                    this);
+                return;
+            }
+
             _currentType = type;
             _currentSpecialBuildingId = string.Empty;
             _currentCompanyTypeId = string.Empty;
@@ -139,6 +149,15 @@ namespace CityFlow.UI
                 : TileType.Road);
             _currentCompanyTypeId =
                 tileData?.CompanyTypeId?.Trim() ?? string.Empty;
+        }
+
+        public bool IsTileTypeUnlocked(TileType type)
+        {
+            EnsureManagers();
+            return _actionDispatcher == null ||
+                   _actionDispatcher.IsTileTypeUnlocked(
+                        type,
+                        _services);
         }
 
         public bool SetSpecialBuilding(string buildingId)

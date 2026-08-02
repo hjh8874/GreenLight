@@ -23,6 +23,10 @@ namespace CityFlow.ViewKit
             new Color(0.72f, 0.64f, 0.47f), // 모래
         };
 
+        // 트럭 전용 도장(차급 시인성) — 개성 팔레트와 분리. SpeedFactorNumerator < 60
+        // 차량에 뷰가 적용한다(M1-2).
+        public static readonly Color TruckColor = new Color(0.42f, 0.40f, 0.38f); // 무광 강회
+
         CarStyle(float lengthScale, float widthScale, float speedMul, float accelMul, float departDelaySec, int colorIndex)
         {
             LengthScale = lengthScale;
@@ -50,7 +54,9 @@ namespace CityFlow.ViewKit
 
             float lengthScale = Mathf.Lerp(0.85f, 1.15f, t0);
             float widthScale = Mathf.Lerp(0.9f, 1.1f, t1);
-            float speedMul = Mathf.Lerp(0.9f, 1.1f, t2);
+            // ±7%로 압축(M1-2): 차급 SpeedFactor(0.67)가 속도 차이의 주역이 되고,
+            // 개성은 순항 위에 미세 편차만 얹는다(설계 Q4 — 교차로 권한 속도 미적용).
+            float speedMul = Mathf.Lerp(0.93f, 1.07f, t2);
             float accelMul = Mathf.Lerp(0.9f, 1.1f, t3);
             float departDelaySec = Mathf.Lerp(0.1f, 0.4f, t4);
             int colorIndex = colorByte % Palette.Length;

@@ -22,11 +22,18 @@ namespace CityFlow.Sim
         public float IntersectionProgress01 { get; internal set; }
         public float LinkProgress01;
         public float RoundaboutProgress01 { get; internal set; }
+        // 뷰 mirror(SyncCarSimMirrors)는 CommuteCar 원본이 아닌 스냅샷 복사본을 읽는다 —
+        // 심·뷰가 SpeedFactor 하나를 공유하려면 차급이 스냅샷에 실려야 한다(분모 60 고정).
+        public int SpeedFactorNumerator;
+        // 이번 틱 credit 부족으로 자발 대기 중 — 뷰는 이걸 "심이 잡은 정지"와 구분해
+        // 천장을 끄지 않고 감속 순항으로 흘린다(M1-3).
+        public bool WaitingForSpeedCredit { get; internal set; }
     }
 
     internal sealed class CarSim : ICarRouteProvider
     {
         private const float JumpThresholdHours = 1f;
+        private const float StaleSpecialJourneyHours = 24f;
         // Watchdog thresholds are deliberately derived from the existing L1
         // contract: L2 at 3x and L3 at 6x GridlockValveTicks. Promote them to
         // SimConfig only if tuning ownership is approved later.
@@ -67,6 +74,11 @@ namespace CityFlow.Sim
         private readonly List<Vector2Int>[] _rescueRoutes;
         private readonly int[] _rescueViewRouteIndices;
         private readonly byte[] _rescueStages;
+        // 속도 크레딧 적립은 틱당 1회 — _servicePerTick > 1이어도 라운드당 재질의에
+        // 이중 적립되지 않도록 Step 진입 시 Clear한다.
+        private readonly bool[] _creditAccrued;
+        // 이번 틱 credit 거부 마킹(스냅샷 WaitingForSpeedCredit 원천). Step 진입 시 Clear.
+        private readonly bool[] _creditWaiting;
         private readonly int[] _offNetworkBlockedTicks;
         private readonly List<Vector2Int> _originAccessRoads = new(8);
         private readonly List<Vector2Int> _destinationAccessRoads = new(8);
@@ -78,6 +90,8 @@ namespace CityFlow.Sim
         private RoadNetwork _roadNetwork;
         private float _lastHour;
         private bool _hasLastHour;
+        private long _lastReservationSweepAbsoluteHour;
+        private bool _hasReservationSweepHour;
         private bool _needsSnap;
         private bool _populationInitialized;
 
@@ -208,6 +222,8 @@ namespace CityFlow.Sim
             _rescueStages = new byte[_runtimeVehicleCapacity];
             _offNetworkBlockedTicks =
                 new int[_runtimeVehicleCapacity];
+            _creditAccrued = new bool[_runtimeVehicleCapacity];
+            _creditWaiting = new bool[_runtimeVehicleCapacity];
             Array.Fill(_queueSlots, -1);
             Array.Clear(_queueOffsets, 0, _queueOffsets.Length);
             Array.Fill(_intersectionProgress, -1f);
@@ -457,6 +473,7 @@ namespace CityFlow.Sim
                 purposes: _routinePurposes,
                 transientStorageCapacity: _specialTransientCapacity);
             _populationInitialized = true;
+            ApplyCommuterVehicleClasses();
             _commuteTripSource.Prune(_scheduler.Cars);
             _tripScheduler.AllowImmediateRetry();
             Array.Clear(_enqueued, 0, _enqueued.Length);
@@ -676,6 +693,8 @@ namespace CityFlow.Sim
             if (net == null) throw new ArgumentNullException(nameof(net));
             if (events == null) throw new ArgumentNullException(nameof(events));
             _net = net;
+            Array.Clear(_creditAccrued, 0, _creditAccrued.Length);
+            Array.Clear(_creditWaiting, 0, _creditWaiting.Length);
 
             bool jumped = _hasLastHour
                 && Mathf.Repeat(gameHour - _lastHour, 24f) > JumpThresholdHours;
@@ -712,6 +731,18 @@ namespace CityFlow.Sim
             }
             _lastHour = gameHour;
             _hasLastHour = true;
+
+            float currentAbsoluteHour = gameDay * 24f + gameHour;
+            long currentAbsoluteHourBoundary = gameDay * 24L +
+                (long)Mathf.Floor(gameHour);
+            if (!_hasReservationSweepHour ||
+                currentAbsoluteHourBoundary != _lastReservationSweepAbsoluteHour)
+            {
+                ReleaseOrphanedSpecialReservations();
+                _lastReservationSweepAbsoluteHour = currentAbsoluteHourBoundary;
+                _hasReservationSweepHour = true;
+            }
+            CancelStaleSpecialJourneys(currentAbsoluteHour);
 
             TryStartPendingSpecialTrip(gameDay, gameHour, tick);
             _scheduler.UpdateDepartures(gameHour);
@@ -763,6 +794,53 @@ namespace CityFlow.Sim
             return result;
         }
 
+        private void ReleaseOrphanedSpecialReservations()
+        {
+            IReadOnlyList<CommuteCar> cars = _scheduler.Cars;
+            for (int index = 0; index < cars.Count; index++)
+            {
+                CommuteCar car = cars[index];
+                if (car == null || car.IsTransient || !car.SpecialTripReserved ||
+                    IsActiveSpecialTripOwner(car))
+                {
+                    continue;
+                }
+
+                car.SetSpecialTripReservation(false);
+                Debug.LogWarning(
+                    $"[CarSim] Orphaned special-trip reservation released " +
+                    $"Home={car.Home} Work={car.Work} State={car.State}");
+            }
+        }
+
+        private bool IsActiveSpecialTripOwner(CommuteCar car)
+        {
+            foreach (SpecialTripJourney journey in _tripScheduler.ActiveJourneys)
+            {
+                if (journey.RoutineOwner == car)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void CancelStaleSpecialJourneys(float currentAbsoluteHour)
+        {
+            SpecialTripJourney stale;
+            while ((stale = _tripScheduler.FindStaleJourney(
+                        currentAbsoluteHour,
+                        StaleSpecialJourneyHours)) != null)
+            {
+                Debug.LogWarning(
+                    $"[CarSim] Stale special journey cancelled " +
+                    $"Home={stale.RoutineOwner?.Home} " +
+                    $"Work={stale.RoutineOwner?.Work}");
+                CancelSpecialJourney(stale);
+            }
+        }
+
         public CarSnapshot GetCar(int index)
         {
             if (index < 0 || index >= CarCount) throw new ArgumentOutOfRangeException(nameof(index));
@@ -790,7 +868,9 @@ namespace CityFlow.Sim
                     AwaitingNextWave = false,
                     IntersectionProgress01 = _intersectionProgress[index],
                     LinkProgress01 = _linkProgress[index],
-                    RoundaboutProgress01 = _roundaboutProgress[index]
+                    RoundaboutProgress01 = _roundaboutProgress[index],
+                    SpeedFactorNumerator = car.SpeedFactorNumerator,
+                    WaitingForSpeedCredit = _creditWaiting[index]
                 };
             }
 
@@ -820,7 +900,9 @@ namespace CityFlow.Sim
                 AwaitingNextWave = car.AwaitingNextWave,
                 IntersectionProgress01 = _intersectionProgress[index],
                 LinkProgress01 = _linkProgress[index],
-                RoundaboutProgress01 = _roundaboutProgress[index]
+                RoundaboutProgress01 = _roundaboutProgress[index],
+                SpeedFactorNumerator = car.SpeedFactorNumerator,
+                WaitingForSpeedCredit = _creditWaiting[index]
             };
         }
 
@@ -843,6 +925,53 @@ namespace CityFlow.Sim
             TryRoute(carId, out List<Vector2Int> route)
             && route.Count > 0
             && route[route.Count - 1] == tile;
+
+        // 차급 배정(M1-2): (home, slot) 결정론 해시 — 같은 도시·같은 설정이면
+        // 리빌드·재실행마다 동일하다. ratio 0(기본) = 전원 표준 60 = 기존 비트 동일.
+        private void ApplyCommuterVehicleClasses()
+        {
+            IReadOnlyList<CommuteCar> cars = _scheduler.Cars;
+            for (int i = 0; i < cars.Count; i++)
+            {
+                CommuteCar car = cars[i];
+                if (car == null || car.IsTransient) continue;
+                int seed = StableHash(
+                    $"{car.Home.x}:{car.Home.y}:{car.HomeSlot}");
+                car.SetSpeedNumerator(
+                    IsTruckByHash(seed, _cfg.TruckCommuterRatio) ? 40 : 60);
+            }
+        }
+
+        // 해시 하위 분포를 [0,1)로 사상해 ratio 미만이면 트럭.
+        private static bool IsTruckByHash(int seed, float ratio)
+        {
+            if (ratio <= 0f) return false;
+            if (ratio >= 1f) return true;
+            return seed % 10000 / 10000f < ratio;
+        }
+
+        // 정수 크레딧 게이트(설계 Q1·Q4): 틱당 분자 적립, 60 도달 시 허가 후 차감.
+        // 허가 시 소비(이동 성공 여부 무관) — 캡 120이 신호 대기 후 폭주를 최대
+        // 1회 연속 전진으로 상한한다.
+        public bool TryConsumeAdvanceCredit(int carId, int tick)
+        {
+            if (carId < 0 || carId >= CarCount) return true; // 버스 등 외부 에이전트
+            CommuteCar car = _scheduler.Cars[carId];
+            if (car.SpeedFactorNumerator >= 60) return true; // 표준 = 무비용 경로(기존 비트 동일)
+            if (!_creditAccrued[carId])
+            {
+                car.SpeedCredit = Math.Min(120, car.SpeedCredit + car.SpeedFactorNumerator);
+                _creditAccrued[carId] = true;
+            }
+            if (car.SpeedCredit < 60)
+            {
+                _creditWaiting[carId] = true;
+                return false;
+            }
+            car.SpeedCredit -= 60;
+            _creditWaiting[carId] = false; // 늦은 서비스 라운드에서 허가되면 대기 해제
+            return true;
+        }
 
         private void TryEnqueueDepartures(RoadQueueNetwork net)
         {
@@ -1210,6 +1339,7 @@ namespace CityFlow.Sim
 
             if (!TryCreateSpecialJourney(
                     request,
+                    gameDay,
                     gameHour,
                     out SpecialTripStartFailure failure))
             {
@@ -1222,6 +1352,7 @@ namespace CityFlow.Sim
 
         private bool TryCreateSpecialJourney(
             SpecialBuildingVisitTripRequest request,
+            long gameDay,
             float gameHour,
             out SpecialTripStartFailure failure)
         {
@@ -1255,6 +1386,7 @@ namespace CityFlow.Sim
 
                     if (TryLaunchSpecialJourney(
                             request,
+                            gameDay * 24f + gameHour,
                             owner,
                             origin,
                             finalDestination,
@@ -1291,6 +1423,7 @@ namespace CityFlow.Sim
                 Vector2Int home = houses[(houseStart + offset) % houses.Count];
                 if (TryLaunchSpecialJourney(
                         request,
+                        gameDay * 24f + gameHour,
                         null,
                         home,
                         home,
@@ -1319,6 +1452,7 @@ namespace CityFlow.Sim
 
         private bool TryLaunchSpecialJourney(
             SpecialBuildingVisitTripRequest request,
+            float startAbsoluteHour,
             CommuteCar routineOwner,
             Vector2Int origin,
             Vector2Int finalDestination,
@@ -1363,6 +1497,15 @@ namespace CityFlow.Sim
                 return false;
             }
 
+            // 방문 차급(M1-2): 여정 시드 재사용(TryCreateSpecialJourney의 owner 선택과
+            // 같은 해시) — 같은 요청이면 같은 차급. ReleaseTransient가 60으로 복원한다.
+            vehicle.SetSpeedNumerator(
+                IsTruckByHash(
+                    StableHash(TripScheduler.CreateJourneyId(request)),
+                    _cfg.TruckCommuterRatio)
+                    ? 40
+                    : 60);
+
             var journey = new SpecialTripJourney(
                 request,
                 vehicle,
@@ -1371,7 +1514,8 @@ namespace CityFlow.Sim
                 finalDestination,
                 finalRoutineState,
                 firstRoute,
-                secondRoute);
+                secondRoute,
+                startAbsoluteHour);
             if (!_tripScheduler.TryActivate(journey))
             {
                 _scheduler.ReleaseTransient(vehicle);

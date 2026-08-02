@@ -30,6 +30,20 @@ namespace CityFlow.Bootstrap
 
         private void Awake()
         {
+            EnsureServices();
+        }
+
+        // Awake 본문 분리. 도메인 리로드 백업-복원(AwakeInstancesAfterBackupRestoration)은
+        // Awake를 다시 부르지 않으면서 비직렬화 상태(Services·simEngine)를 증발시킨다 —
+        // 리로드와 플레이 진입이 경합하면 예외 없이 빈 껍데기가 된다(2026-08-02 실측).
+        // Update의 복구 경로가 이 메서드를 재호출한다.
+        private void EnsureServices()
+        {
+            if (Services != null)
+            {
+                return;
+            }
+
             FindWorldGridService();
 
             if (useFakeServices)
@@ -152,6 +166,18 @@ namespace CityFlow.Bootstrap
 
         private void Update()
         {
+            if (Services == null)
+            {
+                // 복원 오염 세션 자가 치유: 서비스 재구축 + 전 소비자 재주입.
+                // 정상 경로 비용은 null 체크 1회뿐.
+                Debug.LogWarning(
+                    "[CityBootstrap] Services 유실 감지" +
+                    "(도메인 리로드 복원 추정) — 재초기화");
+                EnsureServices();
+                servicesInstalled = false;
+                InstallServices();
+            }
+
             if (useFakeServices)
             {
                 fakeFlowReader?.Tick(Time.time, Services.Events);

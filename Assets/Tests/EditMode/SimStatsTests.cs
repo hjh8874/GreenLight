@@ -20,5 +20,17 @@ namespace CityFlow.Sim.Tests
             stats.UpdateCarSim(gameHour: 9f, arrivals: 7, carCount: 4, jumped: false, jamRatio: 0f, in cfg);
             Assert.AreEqual(5, stats.LastDayArrivalCount, "오늘 누적은 어제 값을 건드리지 않는다");
         }
+
+        [Test]
+        public void UpdateCarSim_ReturnsOnlyWhenGameDayWraps()
+        {
+            var stats = new SimStats();
+            SimConfig cfg = SimConfig.Default();
+
+            Assert.IsFalse(stats.UpdateCarSim(8f, 0, 1, false, 0f, in cfg));
+            Assert.IsFalse(stats.UpdateCarSim(20f, 0, 1, false, 0f, in cfg));
+            Assert.IsTrue(stats.UpdateCarSim(1f, 0, 1, false, 0f, in cfg));
+            Assert.IsFalse(stats.UpdateCarSim(2f, 0, 1, false, 0f, in cfg));
+        }
     }
 }

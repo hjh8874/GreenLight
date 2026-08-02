@@ -165,11 +165,13 @@ namespace CityFlow.Buildings
             }
 
             int rewardCoins = 0;
+            VisitTimeProfile profile = VisitTimeProfile.AllDay;
             if (buildings != null &&
                 buildings.TryGetBuildOption(statistics.BuildingId,
                     out SpecialBuildingBuildOption option))
             {
                 rewardCoins = option.CoinPerVisit;
+                profile = option.VisitTimeProfile;
             }
 
             int tripCount = maximumVisualTripsPerBuildingPerDay <= 0
@@ -181,8 +183,8 @@ namespace CityFlow.Buildings
             int eligibleCount = 0;
             for (int visitIndex = 0; visitIndex < tripCount; visitIndex++)
             {
-                float scheduledHour = 24f * (visitIndex + 0.5f) /
-                    Mathf.Max(1, tripCount);
+                float scheduledHour = VisitTimeProfileSampler.SampleHour(
+                    profile, visitIndex, tripCount);
                 if (scheduledHour <= earliestHourExclusive)
                 {
                     continue;

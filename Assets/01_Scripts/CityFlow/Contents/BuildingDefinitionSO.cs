@@ -139,6 +139,10 @@ namespace CityFlow.Content
         [Min(0)]
         private int coinPerVisit;
 
+        [SerializeField]
+        [Tooltip("방문 차량이 몰리는 시간대. AllDay = 24시간 균등(기존 동작).")]
+        private VisitTimeProfile visitTimeProfile = VisitTimeProfile.AllDay;
+
         [Header("Future Happiness")]
 
         [SerializeField]
@@ -161,6 +165,7 @@ namespace CityFlow.Content
         public int VisitorCapacity => Mathf.Max(0, visitorCapacity);
         public float AttractionWeight => Mathf.Max(0f, attractionWeight);
         public int CoinPerVisit => Mathf.Max(0, coinPerVisit);
+        public VisitTimeProfile VisitTimeProfile => visitTimeProfile;
         public string HappinessEffectKey => happinessEffectKey;
 
         [Header("학교 기능")]

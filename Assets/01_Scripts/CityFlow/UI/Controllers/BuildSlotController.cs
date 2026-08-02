@@ -94,6 +94,8 @@ namespace CityFlow.UI
             ApplyPresentation();
         }
 
+        public void RefreshAvailability() => ApplyPresentation();
+
         private void ResolveReferences()
         {
             Transform iconTransform = transform.Find("Icon");
@@ -163,6 +165,11 @@ namespace CityFlow.UI
                 return;
             }
 
+            bool isUnlocked =
+                _placementController == null ||
+                _placementController.IsTileTypeUnlocked(
+                    tileData.Category);
+
             if (iconImage != null)
             {
                 iconImage.sprite = tileData.BuildingIcon;
@@ -171,17 +178,21 @@ namespace CityFlow.UI
 
             if (costText != null)
             {
-                costText.text = tileData.BuildCost.ToString();
+                costText.text = isUnlocked
+                    ? tileData.BuildCost.ToString()
+                    : "잠김";
             }
 
             if (btnBuy != null)
             {
-                btnBuy.interactable = true;
+                btnBuy.interactable = isUnlocked;
             }
 
-            if (_buyText != null && _defaultBuyText != null)
+            if (_buyText != null)
             {
-                _buyText.text = _defaultBuyText;
+                _buyText.text = isUnlocked
+                    ? (_defaultBuyText ?? "건설")
+                    : "연구 필요";
             }
         }
 
@@ -257,6 +268,15 @@ namespace CityFlow.UI
             }
             else if (_placementController != null && tileData != null)
             {
+                if (!_placementController.IsTileTypeUnlocked(
+                        tileData.Category))
+                {
+                    Debug.LogWarning(
+                        $"[BuildSlot] {tileData.BuildingName}은 연구 완료 후 건설할 수 있습니다.",
+                        this);
+                    return;
+                }
+
                 _placementController.SetBuildType(tileData);
                 Debug.Log($"[BuildSlot] {tileData.BuildingName} 건설 모드 활성화");
             }
