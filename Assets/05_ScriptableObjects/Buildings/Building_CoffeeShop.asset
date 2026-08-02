@@ -37,7 +37,7 @@ MonoBehaviour:
   canReceiveVisitors: 1
   visitCadence:
     visitsPerPeriod: 1
-    periodDays: 7
+    periodDays: 2
   visitorCapacity: 0
   attractionWeight: 1
   coinPerVisit: 10

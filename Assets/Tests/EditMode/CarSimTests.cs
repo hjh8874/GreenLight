@@ -1079,6 +1079,7 @@ namespace CityFlow.Sim.Tests
             }
 
             Assert.AreEqual(CarState.ParkedWork, sim.GetCar(0).State);
+            completed.Clear();
             Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
                 new SpecialBuildingVisitTripRequest(
                     "coffee-shop", V(6, 0), 1L, 0, 12f, rewardCoins: 0)));
@@ -1126,6 +1127,7 @@ namespace CityFlow.Sim.Tests
                 events.Drain();
             }
 
+            completed.Clear();
             Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
                 new SpecialBuildingVisitTripRequest(
                     "coffee-shop", V(6, 0), 1L, 0, 16.9f, rewardCoins: 0)));
