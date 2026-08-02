@@ -401,8 +401,12 @@ namespace CityFlow.Sim.Tests
                     null,
                     null,
                     engine);
-                ((CityFlow.Bootstrap.CityFlowServices)services)
-                    .RegisterGameCalendar(new TestGameCalendar());
+                MethodInfo registerCalendar =
+                    servicesType.GetMethod("RegisterGameCalendar");
+                Assert.That(registerCalendar, Is.Not.Null);
+                registerCalendar.Invoke(
+                    services,
+                    new object[] { new TestGameCalendar() });
                 MonoBehaviour[] consumers =
                     instance.GetComponents<MonoBehaviour>();
 
