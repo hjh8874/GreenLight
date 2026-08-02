@@ -9,6 +9,7 @@ namespace CityFlow.Sim
     // 엔진의 유일한 public 창구(파사드). Bootstrap이 생성하고 매 프레임 Tick(dt) 호출.
     // 내부 클래스(grid·network·demand·solver)는 전부 internal — 외부는 이 인터페이스들만 봄.
     public sealed class SimEngine : IPlacementService, IReadOnlyTileData,
+        ICongestionHistory,
         IReadOnlyCityStats, ISimSaveSource, ISignalControl,
         IIntersectionFacilityService, ITrafficRuleService,
         IRouteDistanceProvider, IHighwayService,
@@ -30,6 +31,7 @@ namespace CityFlow.Sim
         readonly DeviceStateAdapter _deviceState;
         readonly SignalGateAdapter _signalGate;
         readonly CongestionLevel[] _carCongestion;
+        readonly CongestionLedger _congestionLedger;
         readonly SignalMap _signals = new SignalMap();
         // 배치 모드(AutoDetectSignals=false) 소유 상태: flat 정렬 유지 = SignalMap 순회 순서(결정론).
         readonly List<Vector2Int> _placedSignals = new();
@@ -72,6 +74,8 @@ namespace CityFlow.Sim
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
         float _gameHour;
+        float _lastCongestionHour;
+        bool _hasLastCongestionHour;
         long _gameDay;
         int _lastStepArrivals;
         bool _demandRebalancePending;
@@ -124,7 +128,15 @@ namespace CityFlow.Sim
             _deviceState = new DeviceStateAdapter(this);
             _signalGate = new SignalGateAdapter(this);
             _carCongestion = new CongestionLevel[config.GridWidth * config.GridHeight];
+            _congestionLedger = new CongestionLedger();
+            _congestionLedger.Configure(config.GridWidth, config.GridHeight);
             _events = new SimEventBuffer(hub);   // 계산 중 발행 금지 — 큐/Drain으로 재진입 차단
+        }
+
+        public float LastDayJamRatio01(Vector2Int tile)
+        {
+            int index = tile.x + tile.y * _grid.Width;
+            return _congestionLedger.LastDayJamRatio01(index);
         }
 
         private sealed class DeviceStateAdapter : IDeviceState
@@ -304,6 +316,22 @@ namespace CityFlow.Sim
 
         private float ScanCarCongestion()
         {
+            bool wrapped = _hasLastCongestionHour && _gameHour < _lastCongestionHour;
+            if (wrapped && !_carSim.LastStepJumped)
+            {
+                _congestionLedger.OnDayWrap();
+            }
+
+            float stepGameHours = 0f;
+            if (_hasLastCongestionHour && !_carSim.LastStepJumped)
+            {
+                stepGameHours = wrapped
+                    ? (24f - _lastCongestionHour) + _gameHour
+                    : Mathf.Max(0f, _gameHour - _lastCongestionHour);
+                // A calendar jump is not a period for which a road state was observed.
+                if (stepGameHours > 1f) stepGameHours = 0f;
+            }
+
             int jammed = 0;
             int roads = _grid.RoadTileCount;
             for (int i = 0; i < roads; i++)
@@ -314,6 +342,7 @@ namespace CityFlow.Sim
                     index / _grid.Width);
                 float occupancy = _roadQueues.MaxOccupancy01(tile);
                 CongestionLevel level = CongestionForOccupancy(occupancy, _config);
+                _congestionLedger.Record(index, level, stepGameHours);
                 if (_carCongestion[index] != level)
                 {
                     _carCongestion[index] = level;
@@ -321,6 +350,8 @@ namespace CityFlow.Sim
                 }
                 if (level == CongestionLevel.Jam) jammed++;
             }
+            _lastCongestionHour = _gameHour;
+            _hasLastCongestionHour = true;
             return roads <= 0 ? 0f : (float)jammed / roads;
         }
 
@@ -344,6 +375,8 @@ namespace CityFlow.Sim
             }
 
             Array.Clear(_carCongestion, 0, _carCongestion.Length);
+            _congestionLedger.Clear();
+            _hasLastCongestionHour = false;
         }
 
         private struct GreenWaveSegment : System.IEquatable<GreenWaveSegment>
