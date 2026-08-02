@@ -68,6 +68,9 @@ namespace CityFlow.Sim
         private readonly List<Vector2Int>[] _rescueRoutes;
         private readonly int[] _rescueViewRouteIndices;
         private readonly byte[] _rescueStages;
+        // 속도 크레딧 적립은 틱당 1회 — _servicePerTick > 1이어도 라운드당 재질의에
+        // 이중 적립되지 않도록 Step 진입 시 Clear한다.
+        private readonly bool[] _creditAccrued;
         private readonly int[] _offNetworkBlockedTicks;
         private readonly List<Vector2Int> _originAccessRoads = new(8);
         private readonly List<Vector2Int> _destinationAccessRoads = new(8);
@@ -211,6 +214,7 @@ namespace CityFlow.Sim
             _rescueStages = new byte[_runtimeVehicleCapacity];
             _offNetworkBlockedTicks =
                 new int[_runtimeVehicleCapacity];
+            _creditAccrued = new bool[_runtimeVehicleCapacity];
             Array.Fill(_queueSlots, -1);
             Array.Clear(_queueOffsets, 0, _queueOffsets.Length);
             Array.Fill(_intersectionProgress, -1f);
@@ -682,6 +686,7 @@ namespace CityFlow.Sim
             if (net == null) throw new ArgumentNullException(nameof(net));
             if (events == null) throw new ArgumentNullException(nameof(events));
             _net = net;
+            Array.Clear(_creditAccrued, 0, _creditAccrued.Length);
 
             bool jumped = _hasLastHour
                 && Mathf.Repeat(gameHour - _lastHour, 24f) > JumpThresholdHours;
@@ -908,6 +913,24 @@ namespace CityFlow.Sim
             TryRoute(carId, out List<Vector2Int> route)
             && route.Count > 0
             && route[route.Count - 1] == tile;
+
+        // 정수 크레딧 게이트(설계 Q1·Q4): 틱당 분자 적립, 60 도달 시 허가 후 차감.
+        // 허가 시 소비(이동 성공 여부 무관) — 캡 120이 신호 대기 후 폭주를 최대
+        // 1회 연속 전진으로 상한한다.
+        public bool TryConsumeAdvanceCredit(int carId, int tick)
+        {
+            if (carId < 0 || carId >= CarCount) return true; // 버스 등 외부 에이전트
+            CommuteCar car = _scheduler.Cars[carId];
+            if (car.SpeedFactorNumerator >= 60) return true; // 표준 = 무비용 경로(기존 비트 동일)
+            if (!_creditAccrued[carId])
+            {
+                car.SpeedCredit = Math.Min(120, car.SpeedCredit + car.SpeedFactorNumerator);
+                _creditAccrued[carId] = true;
+            }
+            if (car.SpeedCredit < 60) return false;
+            car.SpeedCredit -= 60;
+            return true;
+        }
 
         private void TryEnqueueDepartures(RoadQueueNetwork net)
         {

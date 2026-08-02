@@ -32,6 +32,9 @@ namespace CityFlow.Sim
         // 리빌드로 새로 생긴 배정은 생성 시각이 이미 지난 출근 창을 소급하지 않는다.
         // 다음 날 출발 시각 이전 구간을 관측한 뒤에만 정상 출발 전이를 허용한다.
         public bool AwaitingNextWave;
+        // 속도 크레딧 분모는 60 고정(정수 연산만 — 부동소수 누적은 도착 틱 단정을 깨뜨린다).
+        public int SpeedFactorNumerator { get; private set; } = 60; // 60=표준 1.0, 40=트럭 0.67
+        internal int SpeedCredit;
         public VehicleTripPurpose RoutinePurpose { get; private set; } =
             VehicleTripPurpose.Commute;
         public bool IsTransient { get; private set; }
@@ -55,6 +58,8 @@ namespace CityFlow.Sim
             IsTransient = true;
             SpecialTripReserved = false;
             IsVisible = true;
+            SpeedFactorNumerator = 60;
+            SpeedCredit = 0;
         }
 
         internal void ReleaseTransient()
@@ -66,6 +71,14 @@ namespace CityFlow.Sim
             HasResume = false;
             SpecialTripReserved = false;
             IsVisible = false;
+            SpeedFactorNumerator = 60;
+            SpeedCredit = 0;
+        }
+
+        internal void SetSpeedNumerator(int numerator)
+        {
+            SpeedFactorNumerator = Mathf.Clamp(numerator, 20, 60);
+            SpeedCredit = 0;
         }
 
         public void ApplyViewVisibility(bool isVisible)
