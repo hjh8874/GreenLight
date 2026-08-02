@@ -134,6 +134,7 @@ namespace CityFlow.Sim
             _infrastructureEffectTracker = new InfrastructureEffectTracker(_congestionLedger);
             hub.InfrastructureChanged += OnInfrastructureChanged;
             _events = new SimEventBuffer(hub);   // 계산 중 발행 금지 — 큐/Drain으로 재진입 차단
+            RefreshBusCoverageReduction();
         }
 
         private void OnInfrastructureChanged(InfrastructureChangedEvent e)
@@ -215,6 +216,7 @@ namespace CityFlow.Sim
 
             _config = merged;
             _demand.ApplyConfig(_config);
+            RefreshBusCoverageReduction();
             MarkRoutingChangePending();   // 다음 틱에 Reassign+Plan 강제(즉시 재계산은 안 함 — 파이프라인 순서 보존)
             return true;
         }
@@ -1669,7 +1671,14 @@ namespace CityFlow.Sim
 
         public bool TryPlaceBusStop(Vector2Int tile)
         {
-            return TryRegisterBusStop(tile, requireUnlockedTile: true);
+            if (!TryRegisterBusStop(tile, requireUnlockedTile: true))
+            {
+                return false;
+            }
+
+            RefreshBusCoverageReduction();
+            _grid.MarkTopologyDirty();
+            return true;
         }
 
         private bool TryRestoreBusStop(Vector2Int tile)
@@ -1690,6 +1699,7 @@ namespace CityFlow.Sim
 
             RegisterBusStopPlatforms(tile);
             InsertSorted(_placedBusStops, tile);
+            RefreshBusCoverageReduction();
             return true;
         }
 
@@ -1741,7 +1751,33 @@ namespace CityFlow.Sim
             }
 
             _placedBusStops.Remove(tile);
+            RefreshBusCoverageReduction();
+            _grid.MarkTopologyDirty();
             return true;
+        }
+
+        void RefreshBusCoverageReduction()
+        {
+            int radius = _config.BusCoverageRadius;
+            if (radius <= 0 || _placedBusStops.Count < 2)
+            {
+                _demand.SetCommuterReduction(null);
+                return;
+            }
+
+            _demand.SetCommuterReduction(home =>
+            {
+                for (int i = 0; i < _placedBusStops.Count; i++)
+                {
+                    Vector2Int stop = _placedBusStops[i];
+                    int distance = Mathf.Max(
+                        Mathf.Abs(home.x - stop.x),
+                        Mathf.Abs(home.y - stop.y));
+                    if (distance <= radius) return 1;
+                }
+
+                return 0;
+            });
         }
 
         private bool WouldOrphanBusStopIfRoadRemoved(
