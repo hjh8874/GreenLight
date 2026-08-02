@@ -22,6 +22,9 @@ namespace CityFlow.Sim
         public float IntersectionProgress01 { get; internal set; }
         public float LinkProgress01;
         public float RoundaboutProgress01 { get; internal set; }
+        // 뷰 mirror(SyncCarSimMirrors)는 CommuteCar 원본이 아닌 스냅샷 복사본을 읽는다 —
+        // 심·뷰가 SpeedFactor 하나를 공유하려면 차급이 스냅샷에 실려야 한다(분모 60 고정).
+        public int SpeedFactorNumerator;
     }
 
     internal sealed class CarSim : ICarRouteProvider
@@ -467,6 +470,7 @@ namespace CityFlow.Sim
                 purposes: _routinePurposes,
                 transientStorageCapacity: _specialTransientCapacity);
             _populationInitialized = true;
+            ApplyCommuterVehicleClasses();
             _commuteTripSource.Prune(_scheduler.Cars);
             _tripScheduler.AllowImmediateRetry();
             Array.Clear(_enqueued, 0, _enqueued.Length);
@@ -860,7 +864,8 @@ namespace CityFlow.Sim
                     AwaitingNextWave = false,
                     IntersectionProgress01 = _intersectionProgress[index],
                     LinkProgress01 = _linkProgress[index],
-                    RoundaboutProgress01 = _roundaboutProgress[index]
+                    RoundaboutProgress01 = _roundaboutProgress[index],
+                    SpeedFactorNumerator = car.SpeedFactorNumerator
                 };
             }
 
@@ -890,7 +895,8 @@ namespace CityFlow.Sim
                 AwaitingNextWave = car.AwaitingNextWave,
                 IntersectionProgress01 = _intersectionProgress[index],
                 LinkProgress01 = _linkProgress[index],
-                RoundaboutProgress01 = _roundaboutProgress[index]
+                RoundaboutProgress01 = _roundaboutProgress[index],
+                SpeedFactorNumerator = car.SpeedFactorNumerator
             };
         }
 
@@ -913,6 +919,30 @@ namespace CityFlow.Sim
             TryRoute(carId, out List<Vector2Int> route)
             && route.Count > 0
             && route[route.Count - 1] == tile;
+
+        // 차급 배정(M1-2): (home, slot) 결정론 해시 — 같은 도시·같은 설정이면
+        // 리빌드·재실행마다 동일하다. ratio 0(기본) = 전원 표준 60 = 기존 비트 동일.
+        private void ApplyCommuterVehicleClasses()
+        {
+            IReadOnlyList<CommuteCar> cars = _scheduler.Cars;
+            for (int i = 0; i < cars.Count; i++)
+            {
+                CommuteCar car = cars[i];
+                if (car == null || car.IsTransient) continue;
+                int seed = StableHash(
+                    $"{car.Home.x}:{car.Home.y}:{car.HomeSlot}");
+                car.SetSpeedNumerator(
+                    IsTruckByHash(seed, _cfg.TruckCommuterRatio) ? 40 : 60);
+            }
+        }
+
+        // 해시 하위 분포를 [0,1)로 사상해 ratio 미만이면 트럭.
+        private static bool IsTruckByHash(int seed, float ratio)
+        {
+            if (ratio <= 0f) return false;
+            if (ratio >= 1f) return true;
+            return seed % 10000 / 10000f < ratio;
+        }
 
         // 정수 크레딧 게이트(설계 Q1·Q4): 틱당 분자 적립, 60 도달 시 허가 후 차감.
         // 허가 시 소비(이동 성공 여부 무관) — 캡 120이 신호 대기 후 폭주를 최대
@@ -1455,6 +1485,15 @@ namespace CityFlow.Sim
                 failure = SpecialTripStartFailure.VehicleCapacity;
                 return false;
             }
+
+            // 방문 차급(M1-2): 여정 시드 재사용(TryCreateSpecialJourney의 owner 선택과
+            // 같은 해시) — 같은 요청이면 같은 차급. ReleaseTransient가 60으로 복원한다.
+            vehicle.SetSpeedNumerator(
+                IsTruckByHash(
+                    StableHash(TripScheduler.CreateJourneyId(request)),
+                    _cfg.TruckCommuterRatio)
+                    ? 40
+                    : 60);
 
             var journey = new SpecialTripJourney(
                 request,

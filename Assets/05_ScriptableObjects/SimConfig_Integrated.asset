@@ -30,6 +30,7 @@ MonoBehaviour:
     EveningEndHour: 21
     MaxSimCars: 96
     MaxConcurrentSpecialTrips: 16
+    TruckCommuterRatio: 0
     QueueSlowRatio: 0.5
     QueueJamRatio: 0.99
     SlowRatio: 0.7
