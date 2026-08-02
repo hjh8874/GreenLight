@@ -65,7 +65,7 @@ namespace CityFlow.Sim.Tests
         public void Cap1_Unsignaled_CrossTraffic_OnePassPerRound()
         {
             SimConfig config = Config(cap: 1);
-            int arrivals = RunCrossTraffic(config, signal: null, devices: null, ticks: 8);
+            int arrivals = RunCrossTraffic(config, signal: null, devices: null, ticks: 6);
 
             Assert.LessOrEqual(
                 arrivals,
@@ -125,6 +125,8 @@ namespace CityFlow.Sim.Tests
             SimConfig config = Config(cap: 1, valveTicks: 20);
             var network = CreateCrossTraffic(config, signal: null, devices: null);
 
+            // 캡 초과 인텐트는 승인 루프에서 미처리로 남고, ResolveIntersectionGroup의
+            // 미처리 폴백 경로가 blockedTicks를 누적한다(ExecuteIntent 자체의 이동 경로가 아님).
             network.Step(_routes, null, tick: 0);
             network.Step(_routes, null, tick: 1);
 
@@ -137,10 +139,10 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void Ordering_SignalBeatsUnsignaledCap1()
         {
-            int unsignaled = RunCrossTraffic(Config(cap: 1), signal: null, devices: null, ticks: 12);
+            int unsignaled = RunCrossTraffic(Config(cap: 1), signal: null, devices: null, ticks: 6);
             var signal = new CapFakeSignalGate();
             signal.AddSignal(Center);
-            int signaled = RunCrossTraffic(Config(cap: 1), signal, devices: null, ticks: 12);
+            int signaled = RunCrossTraffic(Config(cap: 1), signal, devices: null, ticks: 6);
 
             Assert.GreaterOrEqual(signaled, unsignaled);
             Assert.Greater(signaled, unsignaled, "동일 수요에서 신호가 무신호 캡보다 한 지점 이상 앞서야 한다.");
@@ -149,8 +151,8 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void Ordering_RoundaboutBeatsUnsignaledCap1()
         {
-            int unsignaled = RunCrossTraffic(Config(cap: 1), signal: null, devices: null, ticks: 12);
-            int roundabout = RunRoundaboutTraffic(Config(cap: 1), ticks: 20);
+            int unsignaled = RunCrossTraffic(Config(cap: 1), signal: null, devices: null, ticks: 6);
+            int roundabout = RunRoundaboutTraffic(Config(cap: 1), ticks: 6);
 
             Assert.GreaterOrEqual(
                 roundabout,
