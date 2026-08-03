@@ -971,9 +971,9 @@ namespace Tests.EditMode
             var coordinator = go.AddComponent<InfrastructurePlacementCoordinator>();
             var data = ScriptableObject.CreateInstance<InfrastructureDataSO>();
             data.Kind = InfrastructureKind.Signal;
-            
+
             coordinator.StartPlacement(data);
-            
+
             var mouse = InputSystem.AddDevice<Mouse>();
             try
             {
@@ -983,20 +983,21 @@ namespace Tests.EditMode
                     InputSystem.QueueEvent(eventPtr);
                 }
                 InputSystem.Update();
-                
+
                 // Reflection to call private Update method
                 var updateMethod = typeof(InfrastructurePlacementCoordinator).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
                 updateMethod.Invoke(coordinator, null);
-                
+
                 // Verify placement is cancelled (IsPlacing property or something)
                 var isPlacingField = typeof(InfrastructurePlacementCoordinator).GetField("_isBuildingMode", BindingFlags.NonPublic | BindingFlags.Instance);
                 bool isPlacing = (bool)isPlacingField.GetValue(coordinator);
-                
+
                 Assert.IsFalse(isPlacing, "Right click should cancel placement.");
             }
             finally
             {
                 InputSystem.RemoveDevice(mouse);
+                Object.DestroyImmediate(data);
                 Object.DestroyImmediate(go);
             }
         }
@@ -1006,10 +1007,10 @@ namespace Tests.EditMode
         {
             var go = new GameObject("Coordinator");
             var coordinator = go.AddComponent<InfrastructurePlacementCoordinator>();
-            
+
             bool isMenuOpen = true;
             coordinator.IsBuildMenuOpen = () => isMenuOpen;
-            
+
             var mouse = InputSystem.AddDevice<Mouse>();
             try
             {
@@ -1017,22 +1018,22 @@ namespace Tests.EditMode
                 SetPrivateField(coordinator, "_isBuildingMode", true); // Required for Update to not return immediately
                 SetPrivateField(coordinator, "_isDemolishMode", true);
                 SetPrivateField(coordinator, "_rightClickStartCoord", new Vector2Int(0, 0));
-                
+
                 using (StateEvent.From(mouse, out var eventPtr))
                 {
                     mouse.rightButton.WriteValueIntoEvent(1f, eventPtr);
                     InputSystem.QueueEvent(eventPtr);
                 }
                 InputSystem.Update();
-                
+
                 isMenuOpen = false; // Simulate menu closing during drag
-                
+
                 var updateMethod = typeof(InfrastructurePlacementCoordinator).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
                 updateMethod.Invoke(coordinator, null);
-                
+
                 var startCoordField = typeof(InfrastructurePlacementCoordinator).GetField("_rightClickStartCoord", BindingFlags.NonPublic | BindingFlags.Instance);
                 var startCoord = startCoordField.GetValue(coordinator);
-                
+
                 Assert.IsNull(startCoord, "Demolition drag should stop and reset when menu closes.");
             }
             finally
