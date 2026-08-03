@@ -540,20 +540,6 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
 
 ---
 
-> ## ⚠️ Task 3·4는 아직 수정 중이다 — 착수 금지
->
-> 2차 계획서 리뷰가 Task 3·4에서 P0 결함을 찾았고 감독이 수정 중이다.
-> **Task 2 워커는 여기서 멈춰라.** 아래 내용은 지금 신뢰할 수 없다.
->
-> 알려진 결함(감독이 고치는 중):
-> - `sim.Step(cfg.TickInterval, ...)` — 첫 인자는 delta 가 아니라 **게임시각**이다
->   (`CarSim.cs:710` → `UpdateDepartures(gameHour)` L785). 출근 창(기본 6~10시) 밖의
->   0.25시를 계속 넘겨 차가 영원히 `ParkedHome` 이다 → **거짓 RED, GREEN 불가**
-> - "프론티지가 전부 교차로" 형상이 거짓이다. `CollectAccessRoads` 는 8방 수집이라
->   `(1,4)·(4,4)` 도 프론티지고 둘 다 일반 타일이다 → 교차로 분기를 아예 안 탄다
-> - T4 대각 폴백 테스트가 실제 `route[0]` 을 검사하지 않아 공허하다
-> - `DepartureBuilding` 의 `default` 센티널 `(0,0)` 은 유효 좌표라 잘못된 entry 를 만들 수 있다
-
 ### Task 3: 출발 경로에 연결
 
 설계 D4. 신규 출발이고 `route[0]`이 교차로일 때만 Task 2를 쓴다.
@@ -578,17 +564,34 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
             SimConfig cfg = Cfg();
             cfg.GridWidth = 10;
             cfg.GridHeight = 10;
+            // 2차 리뷰 P0: Step 의 첫 인자는 delta 가 아니라 게임시각이다
+            // (CarSim.cs:710 -> UpdateDepartures(gameHour) L785). 출근 창을 명시해
+            // 아래 루프가 넘기는 시각이 확실히 창 안에 들도록 한다.
+            cfg.MorningStartHour = 6f;
+            cfg.MorningEndHour = 10f;
             var grid = new CityGrid(10, 10);
 
             // y=4 간선 + y=5 우회 → (2,4)(3,4) 가 모두 교차로가 된다.
             for (int x = 1; x <= 8; x++) Assert.IsTrue(grid.Place(V(x, 4), TileType.Road));
             Assert.IsTrue(grid.Place(V(2, 5), TileType.Road));
             Assert.IsTrue(grid.Place(V(3, 5), TileType.Road));
-            // 집 (2,2) 2x2 → 프론티지는 (2,4)(3,4) 뿐이고 둘 다 교차로다.
-            Assert.IsTrue(grid.Place(V(2, 2), TileType.House));
+            // 2차 리뷰 P0: 기본 North 배치면 CollectAccessRoads 가 8방을 전부 모아
+            // (1,4)·(4,4) 같은 일반 타일까지 프론티지가 된다 → "전부 교차로"가 거짓이 되고
+            // 교차로 스폰 분기를 아예 안 탄다. 명시 방향(South)으로 두어
+            // HasExplicitPlacementDirection 경로를 타게 하면 앞면만 수집된다.
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.House, PlacementDirection.South));
             Assert.IsTrue(grid.Place(V(7, 2), TileType.Office));
-            Assert.IsTrue(grid.IsIntersection(V(2, 4)), "전제: 프론티지가 교차로");
-            Assert.IsTrue(grid.IsIntersection(V(3, 4)), "전제: 나머지 프론티지도 교차로");
+
+            // 전제를 형상 가정이 아니라 실제 수집 결과로 단정한다.
+            var roadPre = new RoadNetwork(grid);
+            var frontages = new System.Collections.Generic.List<Vector2Int>();
+            roadPre.CollectAccessRoads(V(2, 2), frontages);
+            Assert.Greater(frontages.Count, 0, "전제: 프론티지가 있어야 한다");
+            foreach (Vector2Int f in frontages)
+            {
+                Assert.IsTrue(grid.IsIntersection(f),
+                    $"전제: 수집된 프론티지 {f} 가 전부 교차로여야 이 테스트가 의미 있다");
+            }
 
             var road = new RoadNetwork(grid);
             var demands = new DemandMap(cfg);
@@ -604,62 +607,60 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
             sim.Rebuild(demands, planner, net, roadNetwork: road);
             var events = new SimEventBuffer(new SimEventHub());
 
+            // 출근 창 안의 시각을 넘긴다. cfg.TickInterval(0.25시)을 넘기면 창 밖이라
+            // 차가 영원히 ParkedHome 이다 — 2차 리뷰가 잡은 거짓 RED 의 원인.
+            const float DepartureHour = 7f;
             bool departed = false;
+            Dir observedEntry = Dir.N;
             for (int tick = 0; tick < 40 && !departed; tick++)
             {
-                sim.Step(cfg.TickInterval, net, events);
-                departed = net.TryLocateCar(0, out _, out Dir entryDir, out int slot)
+                sim.Step(DepartureHour, net, events);
+                departed = net.TryLocateCar(0, out _, out observedEntry, out int slot)
                     && slot >= 0;
-                if (departed)
-                {
-                    // 집 (2,2) 은 진입로 (2,4) 의 남쪽이므로 차고 진출 방향은 북(N)이다.
-                    // exit 는 회사(7,2) 쪽이라 동(E) — 둘이 다르므로, 폴백(entry=exit)을
-                    // 탔다면 이 단정이 깨진다. D2-1 접착이 실제로 동작하는지 검사한다.
-                    Assert.AreEqual(Dir.N, entryDir,
-                        "직교 인접이 있으면 exit 폴백이 아니라 차고 진출 방향으로 진입해야 한다");
-                }
             }
 
+            Assert.AreEqual(CarState.Outbound, sim.GetCar(0).State,
+                "전제: 출근 창 안이라 차가 출발 상태여야 한다");
             Assert.IsTrue(departed,
                 "프론티지가 전부 교차로여도 통근차는 유한 틱 안에 네트워크에 진입해야 한다");
+            // 집 (2,2) 은 진입로의 남쪽이므로 차고 진출 방향은 북(N)이다. exit 는 회사(7,2)
+            // 쪽이라 동(E) — 둘이 다르므로 폴백(entry=exit)을 탔다면 이 단정이 깨진다.
+            // D2-1 접착이 실제로 동작하는지 검사한다(2차 리뷰 P1).
+            Assert.AreEqual(Dir.N, observedEntry,
+                "직교 인접이 있으면 exit 폴백이 아니라 차고 진출 방향으로 진입해야 한다");
         }
 
-        // 설계 §6 T4 통합판(리뷰 P1). 대각으로만 닿은 건물은 exit 폴백으로 진입한다.
+        // 설계 §6 T4 (2차 리뷰 P1 반영). 대각으로만 닿은 건물은 exit 폴백으로 진입한다.
+        //
+        // DemandMap 통합으로 쓰면 공허해진다 — 그 형상에서는 일반 직교 프론티지가 먼저
+        // 수집돼 DemandMap 이 그걸 고르므로, 폴백 배선이 빠져도 테스트가 통과한다.
+        // 그래서 TryEnqueueRouteStart 를 직접 호출해 route[0] 을 교차로로 못 박는다.
         [Test]
-        public void CommuteCar_DiagonalOnlyFrontage_UsesExitFallbackAndDeparts()
+        public void Departure_DiagonalOnlyFrontage_UsesExitDirectionAsEntry()
         {
             SimConfig cfg = Cfg();
-            cfg.GridWidth = 10;
-            cfg.GridHeight = 10;
-            var grid = new CityGrid(10, 10);
-            for (int x = 1; x <= 8; x++) Assert.IsTrue(grid.Place(V(x, 4), TileType.Road));
-            Assert.IsTrue(grid.Place(V(2, 5), TileType.Road));
-            Assert.IsTrue(grid.Place(V(3, 5), TileType.Road));
-            // 집 (0,2) 2x2 → (0,2)(1,2)(0,3)(1,3). (2,4) 는 (1,3) 과 대각으로만 닿는다.
-            Assert.IsTrue(grid.Place(V(0, 2), TileType.House));
-            Assert.IsTrue(grid.Place(V(7, 2), TileType.Office));
-
-            var road = new RoadNetwork(grid);
-            Assert.IsFalse(road.TryGetDepartureEntryDir(V(0, 2), V(2, 4), out _),
-                "전제: 대각으로만 닿아 직교 진출 방향이 없다");
-
-            var demands = new DemandMap(cfg);
-            demands.Reassign(grid, road);
-            var planner = new RoutePlanner(grid.Width, grid.Height);
-            planner.Plan(demands, road, grid, cfg);
+            var grid = CrossGrid();
+            // 집 (2,2) 2x2 → (2,2)(3,2)(2,3)(3,3). 교차로 (4,4) 는 (3,3) 과 대각으로만 닿는다.
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.House));
             var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
             net.RebuildTopology(grid);
-            var sim = new CarSim(cfg);
-            sim.Rebuild(demands, planner, net, roadNetwork: road);
-            var events = new SimEventBuffer(new SimEventHub());
+            var road = new RoadNetwork(grid);
 
-            bool departed = false;
-            for (int tick = 0; tick < 40 && !departed; tick++)
-            {
-                sim.Step(cfg.TickInterval, net, events);
-                departed = net.TryLocateCar(0, out _, out _, out int slot) && slot >= 0;
-            }
-            Assert.IsTrue(departed, "대각 프론티지도 exit 폴백으로 출발해야 한다");
+            Assert.IsFalse(road.TryGetDepartureEntryDir(V(2, 2), V(4, 4), out _),
+                "전제: 대각으로만 닿아 직교 진출 방향이 없다");
+
+            // route[0] = 교차로 (4,4), route[1] = (5,4) → exit 는 동(E)
+            var route = new System.Collections.Generic.List<Vector2Int> { V(4, 4), V(5, 4) };
+            bool hasResume = false;
+            Assert.IsTrue(CarSim.TryEnqueueRouteStart(
+                route, default, ref hasResume, net, 30, out int start,
+                road, V(2, 2)));
+            Assert.AreEqual(0, start, "출발은 경로 원점에서 시작한다");
+
+            Assert.IsTrue(net.TryLocateCar(30, out Vector2Int at, out Dir entryDir, out _));
+            Assert.AreEqual(V(4, 4), at);
+            Assert.AreEqual(Dir.E, entryDir,
+                "직교 진출 방향이 없으면 exit 방향(E)을 entry 로 쓴다 — D2-2 폴백");
         }
 ```
 
@@ -679,9 +680,12 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
                 if (!TryRouteDirection(route[1] - route[0], out Dir spawnExit)) return false;
                 // 기본은 exit 폴백(설계 D2-2). 건물 정보가 주어졌고 직교 인접이면 그 방향을 쓴다.
                 Dir spawnEntry = spawnExit;
+                // originBuilding 이 null 이면 조회 자체를 건너뛴다. default 좌표 (0,0) 은
+                // 유효 좌표라 그 옆이 route[0] 이면 엉뚱한 entry 가 나온다(2차 리뷰 P1).
                 if (roadNetwork != null
+                    && originBuilding.HasValue
                     && roadNetwork.TryGetDepartureEntryDir(
-                        originBuilding, route[0], out Dir fromBuilding))
+                        originBuilding.Value, route[0], out Dir fromBuilding))
                 {
                     spawnEntry = fromBuilding;
                 }
@@ -719,7 +723,7 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
             int carId,
             out int start,
             RoadNetwork roadNetwork = null,
-            Vector2Int originBuilding = default)
+            Vector2Int? originBuilding = null)
 ```
 
 3-c. `RoadQueueNetwork`에 판정 헬퍼를 추가한다(`IsSafeResumeTile` 은 건드리지 않는다).
@@ -741,13 +745,13 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
         // 특수 방문(transient) 차는 RouteIndex 가 -1 이라(CommuteScheduler.cs:50-65)
         // 여기서 default 를 돌려주고, 호출부는 exit 폴백을 쓴다. 특수 트립의 정확한
         // 차고 방향은 이번 범위 밖이다 — 리뷰 P1 지적을 의도적 축소로 수용한다.
-        private Vector2Int DepartureBuilding(int carId)
+        private Vector2Int? DepartureBuilding(int carId)
         {
             CommuteCar car = _scheduler.Cars[carId];
             int ri = car.RouteIndex;
-            if (ri < 0) return default;                 // transient — exit 폴백
+            if (ri < 0) return null;                    // transient — exit 폴백
             var list = car.State == CarState.Outbound ? _sources : _sinks;
-            return ri < list.Count ? list[ri] : default;
+            return ri < list.Count ? list[ri] : (Vector2Int?)null;
         }
 ```
 
