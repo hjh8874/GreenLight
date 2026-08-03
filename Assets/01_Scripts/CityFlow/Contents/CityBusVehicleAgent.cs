@@ -93,8 +93,17 @@ namespace CityFlow.Content
         {
             if (!prepared ||
                 busRoute == null ||
-                owner?.BusLines == null ||
-                !owner.BusLines.TryBuildDirectionalRoute(
+                owner?.BusLines == null)
+            {
+                return false;
+            }
+
+            if (busRoute.IsStopPresentationPending)
+            {
+                busRoute.ConfirmStopPresentationReached();
+            }
+
+            if (!owner.BusLines.TryBuildDirectionalRoute(
                     RouteId,
                     Direction,
                     out BusDirectionalRoute sourceRoute) ||
@@ -196,6 +205,7 @@ namespace CityFlow.Content
             }
 
             worldView?.SetAgentVisible(false);
+            worldView?.DetachCityBusAgent();
             Runtime?.ResetPassengers();
             Runtime?.SetState(
                 BusOperatingState.OutOfService);

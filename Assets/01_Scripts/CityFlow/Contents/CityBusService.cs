@@ -578,6 +578,11 @@ namespace CityFlow.Content
             CityBusVehicleAgent agent,
             RoadRoutePlan roadRoute)
         {
+            if (!verboseLogging)
+            {
+                return;
+            }
+
             string trafficState = "snapshot=missing";
             if (agent.Route.TryGetRoadTrafficSnapshot(
                     out RoadTrafficSnapshot snapshot))
@@ -785,6 +790,13 @@ namespace CityFlow.Content
             if (vehicleObject == null)
             {
                 return;
+            }
+
+            BusWorldView worldView =
+                vehicleObject.GetComponent<BusWorldView>();
+            if (worldView != null)
+            {
+                worldView.enabled = false;
             }
 
             if (Application.isPlaying)

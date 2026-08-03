@@ -137,6 +137,16 @@ namespace CityFlow.View
             LogCityBusPresentationState("agent visibility enabled");
         }
 
+        public void DetachCityBusAgent()
+        {
+            DisableStopPresentationGate();
+            Unsubscribe();
+            IsAgentVisible = false;
+            HideCityBusVisual();
+            cityBusService = null;
+            busRoute = null;
+        }
+
         protected virtual void Awake()
         {
             ResolveReferences();
@@ -248,15 +258,18 @@ namespace CityFlow.View
 
         private void Unsubscribe()
         {
-            if (!subscribed || busRoute == null)
+            if (!subscribed)
             {
                 return;
             }
 
-            busRoute.TileChanged -= HandleTileChanged;
-            busRoute.RouteUnavailable -= HandleRouteUnavailable;
-            busRoute.StopPresentationRequested -=
-                HandleStopPresentationRequested;
+            if (busRoute != null)
+            {
+                busRoute.TileChanged -= HandleTileChanged;
+                busRoute.RouteUnavailable -= HandleRouteUnavailable;
+                busRoute.StopPresentationRequested -=
+                    HandleStopPresentationRequested;
+            }
             if (cityBusService != null)
             {
                 cityBusService.VehicleVisibilityChanged -=
@@ -1009,7 +1022,10 @@ namespace CityFlow.View
 
         private void DisableStopPresentationGate()
         {
-            if (busRoute != null)
+            ResetStopPresentationTarget();
+
+            if (busRoute != null &&
+                !busRoute.IsStopPresentationPending)
             {
                 busRoute.RequireStopPresentationConfirmation =
                     false;

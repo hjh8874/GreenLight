@@ -397,6 +397,103 @@ namespace CityFlow.View.Tests
         }
 
         [Test]
+        public void PendingStopPresentation_ReplanCompletesStopBeforeReset()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceTwoSidedLoop(engine);
+            GameObject root = new("CityBusPendingReplanTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine);
+                Assert.That(service.StartService(), Is.True);
+                CityBusVehicleAgent vehicle =
+                    service.ActiveVehicles[0];
+                BusRoute route = vehicle.Route;
+                route.RequireStopPresentationConfirmation =
+                    true;
+                int arrivalCount = 0;
+                route.StopArrived += (_, _) =>
+                    arrivalCount++;
+
+                InvokePrivate(route, "UpdateMoving", 100f);
+
+                Assert.That(
+                    route.IsStopPresentationPending,
+                    Is.True);
+                Assert.That(arrivalCount, Is.Zero);
+                Assert.That(
+                    vehicle.TryReplanFromCurrentPosition(),
+                    Is.True);
+                Assert.That(
+                    route.IsStopPresentationPending,
+                    Is.False);
+                Assert.That(
+                    arrivalCount,
+                    Is.EqualTo(1),
+                    "Replanning must not discard a stop already reached by the simulation.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void PendingStopPresentation_ViewDisableDoesNotConfirmArrival()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceTwoSidedLoop(engine);
+            GameObject root = new("CityBusDisabledViewGateTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine);
+                Assert.That(service.StartService(), Is.True);
+                CityBusVehicleAgent vehicle =
+                    service.ActiveVehicles[0];
+                BusRoute route = vehicle.Route;
+                BusWorldView view =
+                    vehicle.GetComponent<BusWorldView>();
+                Assert.That(view, Is.Not.Null);
+
+                route.RequireStopPresentationConfirmation =
+                    true;
+                int arrivalCount = 0;
+                route.StopArrived += (_, _) =>
+                    arrivalCount++;
+                InvokePrivate(route, "UpdateMoving", 100f);
+
+                Assert.That(
+                    route.IsStopPresentationPending,
+                    Is.True);
+                InvokePrivate(view, "OnDisable");
+                Assert.That(
+                    route.IsStopPresentationPending,
+                    Is.True,
+                    "Disabling only the view must preserve the pending presentation gate.");
+                Assert.That(arrivalCount, Is.Zero);
+
+                InvokePrivate(view, "OnEnable");
+                Assert.That(
+                    route.IsStopPresentationPending,
+                    Is.True);
+                Assert.That(
+                    route.ConfirmStopPresentationReached(),
+                    Is.True);
+                Assert.That(arrivalCount, Is.EqualTo(1));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
         public void StopPresentationGate_RequiresConfirmationAtEveryStop()
         {
             SimEngine engine = CreateEngine();
@@ -597,15 +694,6 @@ namespace CityFlow.View.Tests
                     root,
                     engine);
 
-                LogAssert.Expect(
-                    LogType.Warning,
-                    new System.Text.RegularExpressions.Regex(
-                        "skipped 1 unreachable stop"));
-                LogAssert.Expect(
-                    LogType.Warning,
-                    new System.Text.RegularExpressions.Regex(
-                        "skipped 1 unreachable stop"));
-
                 Assert.That(service.StartService(), Is.True);
                 Assert.That(
                     service.ActiveVehicles.Count,
@@ -691,15 +779,6 @@ namespace CityFlow.View.Tests
 
             try
             {
-                LogAssert.Expect(
-                    LogType.Warning,
-                    new System.Text.RegularExpressions.Regex(
-                        "skipped 1 unreachable stop"));
-                LogAssert.Expect(
-                    LogType.Warning,
-                    new System.Text.RegularExpressions.Regex(
-                        "skipped 1 unreachable stop"));
-
                 CityBusService service = CreateService(
                     root,
                     engine,
