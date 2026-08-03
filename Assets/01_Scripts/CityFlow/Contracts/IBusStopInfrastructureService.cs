@@ -109,6 +109,37 @@ namespace CityFlow.Contracts
             return false;
         }
 
+        public static bool TryResolveLogicalStop(
+            Vector2Int platformTile,
+            IReadOnlyList<Vector2Int> logicalStops,
+            Func<Vector2Int, bool> isRoad,
+            out Vector2Int logicalStop)
+        {
+            logicalStop = default;
+            if (logicalStops == null || isRoad == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < logicalStops.Count; i++)
+            {
+                Vector2Int candidate = logicalStops[i];
+                if (candidate == platformTile ||
+                    (TryGetPlatformPair(
+                         candidate,
+                         isRoad,
+                         out _,
+                         out Vector2Int oppositePlatform) &&
+                     oppositePlatform == platformTile))
+                {
+                    logicalStop = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public static bool HasAdjacentRoad(
             Vector2Int stopTile,
             Func<Vector2Int, bool> isRoad)

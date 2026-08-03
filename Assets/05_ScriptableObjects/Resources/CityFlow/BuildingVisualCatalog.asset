@@ -14,5 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.BuildingVisualCatalogSO
   housePrefab: {fileID: 2874247465224187778, guid: a7cf585e865d7ef4987b15ea83272688, type: 3}
   officePrefab: {fileID: 993947101769435463, guid: d89769901b2d0d145b3abd35877a0f04, type: 3}
-  schoolPrefab: {fileID: 4456922772749407549, guid: e23d1d7da2ef0ba4a9d0b5125dc10b87, type: 3}
+  schoolPrefab: {fileID: 1295220564887911823, guid: 06986f4c1d9e4d6ca8d1b1e63e0a513b, type: 3}
+  hospitalPrefab: {fileID: 363025940278517486, guid: b678bb05adcf47b2989b38e12b723444, type: 3}
   foundationPrefab: {fileID: 3418894503983071408, guid: e3f52782efeb3634fb555ac1b3da91ae, type: 3}

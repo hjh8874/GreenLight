@@ -242,6 +242,7 @@ namespace CityFlow.View
             RoundaboutTransitionSpan();
         public float VehicleGroundZ =>
             GetRoadSurfaceZ() - tileSize * 0.05f;
+        public float RoadSurfaceZ => GetRoadSurfaceZ();
         public float FieldTileZ => fieldTileZ;
         public GameObject FieldTilePrefab => fieldTilePrefab;
         public float GridLineThickness => gridLineThickness;
@@ -1941,10 +1942,13 @@ namespace CityFlow.View
         private static void FitSimpleTownPrefab(
             Transform model,
             Transform relativeTo,
-            Vector2 targetSize)
+            Vector2 targetSize,
+            float modelYawDegrees = 0f)
         {
             model.localPosition = Vector3.zero;
-            model.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            model.localRotation =
+                Quaternion.Euler(-90f, 0f, 0f) *
+                Quaternion.Euler(0f, modelYawDegrees, 0f);
             model.localScale = Vector3.one;
 
             if (!TryGetRendererBounds(
@@ -2270,7 +2274,8 @@ namespace CityFlow.View
             bool usesAuthoredVisual = prefab != null &&
                                       (type == TileType.House ||
                                        type == TileType.Office ||
-                                       type == TileType.School);
+                                       type == TileType.School ||
+                                       type == TileType.Hospital);
             Renderer renderer;
             if (usesAuthoredVisual)
             {
@@ -2279,7 +2284,10 @@ namespace CityFlow.View
                 FitSimpleTownPrefab(
                     body.transform,
                     root.transform,
-                    footprintSize);
+                    footprintSize,
+                    type == TileType.Hospital
+                        ? 180f
+                        : 0f);
                 body.transform.localPosition +=
                     new Vector3(
                         0f,
@@ -3202,7 +3210,10 @@ namespace CityFlow.View
                     buildingCatalog?.SchoolPrefab != null
                         ? buildingCatalog.SchoolPrefab
                         : schoolPrefab,
-                TileType.Hospital => hospitalPrefab,
+                TileType.Hospital =>
+                    buildingCatalog?.HospitalPrefab != null
+                        ? buildingCatalog.HospitalPrefab
+                        : hospitalPrefab,
                 _ => null
             };
         }

@@ -44,6 +44,8 @@ namespace CityFlow.UI.Controllers
         private Material _placementPreviewMaterial;
         private Renderer[] _placementPreviewRenderers =
             Array.Empty<Renderer>();
+        private Quaternion _placementPreviewLocalRotation =
+            Quaternion.identity;
         private readonly UIRaycastBlocker _uiRaycastBlocker = new UIRaycastBlocker();
         
         // Configuration Constants (Balancing Defaults)
@@ -211,9 +213,12 @@ namespace CityFlow.UI.Controllers
             }
 
             Vector2Int gridCoord = GetMouseGridCoordinate();
-            if (_currentData != null &&
-                _currentData.Kind == InfrastructureKind.Highway &&
-                _pendingHighwayStart.HasValue &&
+            bool previewDependsOnCursor =
+                _currentData != null &&
+                (_currentData.Kind == InfrastructureKind.BusStop ||
+                 (_currentData.Kind == InfrastructureKind.Highway &&
+                  _pendingHighwayStart.HasValue));
+            if (previewDependsOnCursor &&
                 (!_lastPreviewCursor.HasValue ||
                  _lastPreviewCursor.Value != gridCoord))
             {
@@ -381,7 +386,8 @@ namespace CityFlow.UI.Controllers
             _placementPreview.transform
                 .SetPositionAndRotation(
                     position,
-                    rotation);
+                    rotation *
+                    _placementPreviewLocalRotation);
         }
 
         private void ResolvePreviewSources()
@@ -431,6 +437,8 @@ namespace CityFlow.UI.Controllers
             }
 
             _placementPreview = preview;
+            _placementPreviewLocalRotation =
+                preview.transform.localRotation;
             _placementPreviewMaterial ??=
                 PlacementVisualManager
                     .CreateLightingIndependentPreviewMaterial(
@@ -476,6 +484,8 @@ namespace CityFlow.UI.Controllers
             }
 
             _placementPreview = null;
+            _placementPreviewLocalRotation =
+                Quaternion.identity;
             _placementPreviewRenderers =
                 Array.Empty<Renderer>();
             _lastPreviewCursor = null;
@@ -707,29 +717,35 @@ namespace CityFlow.UI.Controllers
             if (_facilityService == null || _trafficRuleService == null || _highwayService == null) return false;
 
             if (_busStopService != null &&
-                _busStopService.BusStopTiles.Contains(coord))
+                BusStopInfrastructurePolicy.TryResolveLogicalStop(
+                    coord,
+                    _busStopService.BusStopTiles,
+                    IsRoad,
+                    out Vector2Int logicalBusStop))
             {
                 if (!TryResolveBusStopRegistry())
                 {
                     Debug.LogError(
                         "[InfrastructurePlacementCoordinator] " +
-                        $"Cannot remove bus stop at {coord} without an active BusStopRegistry.");
+                        $"Cannot remove bus stop at {logicalBusStop} without an active BusStopRegistry.");
                     return false;
                 }
 
-                if (!_busStopService.TryRemoveBusStop(coord))
+                if (!_busStopService.TryRemoveBusStop(logicalBusStop))
                 {
                     return false;
                 }
 
-                if (!_busStopRegistry.RemoveBusStop(coord))
+                if (!_busStopRegistry.RemoveBusStop(logicalBusStop))
                 {
                     Debug.LogWarning(
                         "[InfrastructurePlacementCoordinator] " +
-                        $"Bus stop at {coord} was removed from placement data but was missing from BusStopRegistry.");
+                        $"Bus stop at {logicalBusStop} was removed from placement data but was missing from BusStopRegistry.");
                 }
 
-                ProcessRefundAndEvent(InfrastructureKind.BusStop, coord);
+                ProcessRefundAndEvent(
+                    InfrastructureKind.BusStop,
+                    logicalBusStop);
                 return true;
             }
 
@@ -806,6 +822,9 @@ namespace CityFlow.UI.Controllers
 
             return false;
         }
+
+        private bool IsRoad(Vector2Int tile) =>
+            _services?.TileData?.GetTileType(tile) == TileType.Road;
 
         private void ProcessRefundAndEvent(InfrastructureKind kind, Vector2Int coord)
         {

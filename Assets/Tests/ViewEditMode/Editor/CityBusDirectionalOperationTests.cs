@@ -53,8 +53,10 @@ namespace CityFlow.View.Tests
             }
         }
 
-        [Test]
-        public void LogicalStop_ReservesPlatformsOnBothSidesOfRoad()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void LogicalStop_CanBeRemovedFromEitherPlatform(
+            bool removeOppositePlatform)
         {
             SimEngine engine = CreateEngine();
             Vector2Int road = new(4, 4);
@@ -71,7 +73,13 @@ namespace CityFlow.View.Tests
                 engine.CanPlace(oppositePlatform, TileType.Road),
                 Is.False);
 
-            Assert.That(engine.TryRemoveBusStop(stop), Is.True);
+            Assert.That(
+                engine.TryRemoveBusStop(
+                    removeOppositePlatform
+                        ? oppositePlatform
+                        : stop),
+                Is.True);
+            Assert.That(engine.BusStopTiles, Is.Empty);
             Assert.That(
                 engine.CanPlace(oppositePlatform, TileType.Road),
                 Is.True);

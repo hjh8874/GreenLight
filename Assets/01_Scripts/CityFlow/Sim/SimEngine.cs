@@ -1810,14 +1810,19 @@ namespace CityFlow.Sim
 
         public bool TryRemoveBusStop(Vector2Int tile)
         {
-            if (!_busStopSet.Remove(tile))
+            if (!BusStopInfrastructurePolicy.TryResolveLogicalStop(
+                    tile,
+                    _placedBusStops,
+                    IsRoad,
+                    out Vector2Int logicalStop) ||
+                !_busStopSet.Remove(logicalStop))
             {
                 return false;
             }
 
-            _busStopPlatformSet.Remove(tile);
+            _busStopPlatformSet.Remove(logicalStop);
             if (BusStopInfrastructurePolicy.TryGetPlatformPair(
-                    tile,
+                    logicalStop,
                     IsRoad,
                     out _,
                     out Vector2Int oppositePlatform))
@@ -1825,7 +1830,7 @@ namespace CityFlow.Sim
                 _busStopPlatformSet.Remove(oppositePlatform);
             }
 
-            _placedBusStops.Remove(tile);
+            _placedBusStops.Remove(logicalStop);
             RefreshBusCoverageReduction();
             _grid.MarkTopologyDirty();
             return true;
