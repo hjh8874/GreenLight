@@ -21,5 +21,6 @@ namespace CityFlow.Contracts.Save
         public WorldGridSaveData WorldGrid;
         public SpecialBuildingSaveData SpecialBuildings;
         public SpecialBuildingVisitSaveData SpecialBuildingVisits;
+        public EmergencyIncidentSaveData EmergencyIncidents;
     }
 }

@@ -122,6 +122,10 @@ namespace CityFlow.Contracts
         public event Action<JobChangedEvent> JobChanged;
         public event Action<bool> HeatmapViewToggled;
         public event Action<bool> CongestionViewToggled;
+        public event Action<EmergencyIncidentAlertEvent>
+            EmergencyIncidentAlerted;
+        public event Action<EmergencyIncidentOutcomeEvent>
+            EmergencyIncidentOutcomeReported;
 
         public bool IsCongestionViewEnabled { get; private set; } = false;
         public bool IsHeatmapViewEnabled { get; private set; } = false;
@@ -151,6 +155,12 @@ namespace CityFlow.Contracts
                 HeatmapViewToggled?.Invoke(isOn);
             }
         }
+
+        public void Publish(EmergencyIncidentAlertEvent e) =>
+            EmergencyIncidentAlerted?.Invoke(e);
+
+        public void Publish(EmergencyIncidentOutcomeEvent e) =>
+            EmergencyIncidentOutcomeReported?.Invoke(e);
 
         public void PublishCongestionViewToggled(bool isOn)
         {

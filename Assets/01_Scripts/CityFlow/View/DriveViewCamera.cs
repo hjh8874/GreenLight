@@ -13,6 +13,8 @@ namespace CityFlow.View
 
         private Transform viewRoot;
         private Transform followTarget;
+        private Vector3 followLocalTravelAxis =
+            Vector3.right;
         private Camera mainCamera;
         private Camera driveCamera;
         private Vector3 positionVelocity;
@@ -47,12 +49,23 @@ namespace CityFlow.View
 
         public void Follow(Transform target)
         {
+            Follow(target, Vector3.right);
+        }
+
+        public void Follow(
+            Transform target,
+            Vector3 localTravelAxis)
+        {
             if (target == null || driveCamera == null)
             {
                 return;
             }
 
             followTarget = target;
+            followLocalTravelAxis =
+                localTravelAxis.sqrMagnitude > 0.0001f
+                    ? localTravelAxis.normalized
+                    : Vector3.right;
             positionVelocity = Vector3.zero;
             SnapToTarget();
 
@@ -67,6 +80,7 @@ namespace CityFlow.View
         public void StopFollowing()
         {
             followTarget = null;
+            followLocalTravelAxis = Vector3.right;
             positionVelocity = Vector3.zero;
 
             if (driveCamera != null)
@@ -130,7 +144,10 @@ namespace CityFlow.View
         private void GetTargetPose(out Vector3 position, out Quaternion rotation)
         {
             Vector3 targetPosition = viewRoot.InverseTransformPoint(followTarget.position);
-            Vector3 direction = viewRoot.InverseTransformDirection(followTarget.right);
+            Vector3 direction =
+                viewRoot.InverseTransformDirection(
+                    followTarget.TransformDirection(
+                        followLocalTravelAxis));
             direction.z = 0f;
             direction = direction.sqrMagnitude > 0.0001f ? direction.normalized : Vector3.up;
 

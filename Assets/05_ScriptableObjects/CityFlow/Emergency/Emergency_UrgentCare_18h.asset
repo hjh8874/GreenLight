@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8459043cce844ec8bbab5a202274bfd0, type: 3}
+  m_Name: Emergency_UrgentCare_18h
+  m_EditorClassIdentifier: CityFlow.Content::CityFlow.Content.EmergencyIncidentDefinitionSO
+  incidentId: urgent_care
+  title: 긴급 진료 요청
+  description: 상태가 악화되기 전에 환자를 이송하세요.
+  responseDeadlineHours: 18
+  selectionWeight: 1.1
+  successMessage: 환자가 병원에 안전하게 도착했습니다.
+  timeoutMessage: 제때 치료받지 못해 환자가 사망했습니다.
+  unreachableMessage: 구급차가 환자에게 도착하지 못했습니다.
+  failureHappinessPenalty: 1
+  icon: {fileID: 0}

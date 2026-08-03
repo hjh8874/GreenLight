@@ -201,6 +201,8 @@ namespace CityFlow.Contracts
         bool TryStartAgent(RoadTrafficAgentId agentId);
         bool TrySetAgentPaused(RoadTrafficAgentId agentId, bool paused);
 
+        bool IsSafeHoldTile(Vector2Int tile);
+
         bool TryGetSnapshot(
             RoadTrafficAgentId agentId,
             out RoadTrafficSnapshot snapshot);

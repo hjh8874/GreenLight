@@ -532,8 +532,23 @@ namespace CityFlow.View
             }
         }
 
-        private RoutePolyline BakeCommuteRoute(IReadOnlyList<Vector2Int> tiles, Vector3 startAnchor, Vector3 endAnchor)
+        /// <summary>
+        /// Builds the same right-hand traffic geometry used by commute cars.
+        /// Feature vehicles use this seam instead of duplicating lane and
+        /// corner calculations.
+        /// </summary>
+        public RoutePolyline BakeTrafficRoute(
+            IReadOnlyList<Vector2Int> tiles,
+            float z,
+            Vector3? startAnchor = null,
+            Vector3? endAnchor = null,
+            bool clampAnchorSpurOvershoot = false)
         {
+            if (tiles == null || tiles.Count == 0)
+            {
+                return null;
+            }
+
             return RoutePolyline.Bake(new BakeInput
             {
                 Tiles = tiles,
@@ -544,12 +559,26 @@ namespace CityFlow.View
                 OrbitRadius = roundaboutOrbitRadius,
                 EntryExitOffsetRad = roundaboutEntryExitDeg * Mathf.Deg2Rad,   // α (QA G)
                 TransitionLength = roundaboutTransitionTiles,
-                Z = vehicleZ,
+                Z = z,
                 IsRoundabout = IsRoundaboutTile,   // 항상 non-null(리뷰 #6)
                 StartAnchor = startAnchor,
                 EndAnchor = endAnchor,
+                ClampAnchorSpurOvershoot =
+                    clampAnchorSpurOvershoot,
                 SamplesPerSegment = 8,
             });
+        }
+
+        private RoutePolyline BakeCommuteRoute(
+            IReadOnlyList<Vector2Int> tiles,
+            Vector3 startAnchor,
+            Vector3 endAnchor)
+        {
+            return BakeTrafficRoute(
+                tiles,
+                vehicleZ,
+                startAnchor,
+                endAnchor);
         }
 
         // 건물 프리팹에 "ParkingSlot_N" 자식이 있으면 그 위치(뷰 로컬), 없으면 절차 폴백.
@@ -788,7 +817,8 @@ namespace CityFlow.View
             // 비활성화 직후 같은 풀 오브젝트가 TakeFreeVehicle()로 신규 통근차에 재사용되면
             // DriveViewCamera가 볼 때 대상이 다시 active라 자동 종료 조건도 통과하지 못해,
             // 카메라가 엉뚱한 차를 계속 추적하게 된다.
-            if (selectedVehicle == vehicle)
+            if (selectedVehicleTarget ==
+                vehicle.Object.transform)
             {
                 ExitDriveView();
             }

@@ -178,6 +178,9 @@ namespace CityFlow.Sim
             return true;
         }
 
+        public bool IsSafeHoldTile(Vector2Int tile) =>
+            network.IsSafeResumeTile(tile);
+
         public bool TryGetSnapshot(
             RoadTrafficAgentId agentId,
             out RoadTrafficSnapshot snapshot)

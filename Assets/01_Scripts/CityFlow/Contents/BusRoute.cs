@@ -1705,11 +1705,106 @@ namespace CityFlow.Content.Transit
                             continue;
                         }
 
-                        int setback = Mathf.Min(
-                            roadsideStopSetbackTiles,
-                            candidateRoadPath.Count - 1);
                         int candidateCount =
-                            candidateRoadPath.Count - setback;
+                            GetRoadsidePathCount(
+                                candidateRoadPath);
+                        if (candidateCount <= 0)
+                        {
+                            continue;
+                        }
+
+                        if (!found ||
+                            candidateCount < result.Count)
+                        {
+                            CopyRoadsidePathWithSetback(
+                                candidateRoadPath,
+                                result,
+                                out selectedAccessRoad);
+                            found = true;
+                        }
+                    }
+                }
+            }
+
+            if (found)
+            {
+                return true;
+            }
+
+            return TryFindFallbackRoadsidePath(
+                startRoad,
+                destinationStop,
+                result,
+                preventImmediateReverse,
+                forbiddenFirstStep,
+                out selectedAccessRoad);
+        }
+
+        private bool TryFindFallbackRoadsidePath(
+            Vector2Int startRoad,
+            Vector2Int destinationStop,
+            List<Vector2Int> result,
+            bool preventImmediateReverse,
+            Vector2Int forbiddenFirstStep,
+            out Vector2Int selectedAccessRoad)
+        {
+            bool found = false;
+            selectedAccessRoad = default;
+            TileType stopType =
+                tileData.GetTileType(destinationStop);
+            Vector2Int footprint =
+                TileFootprint.IsBuilding(stopType)
+                    ? tileData.GetFootprintSize(stopType)
+                    : Vector2Int.one;
+
+            for (int y = 0; y < footprint.y; y++)
+            {
+                for (int x = 0; x < footprint.x; x++)
+                {
+                    Vector2Int footprintTile =
+                        destinationStop +
+                        new Vector2Int(x, y);
+
+                    for (int i = 0;
+                         i < Directions.Length;
+                         i++)
+                    {
+                        Vector2Int accessRoad =
+                            footprintTile + Directions[i];
+                        if (!IsRoad(accessRoad))
+                        {
+                            continue;
+                        }
+
+                        bool pathFound;
+                        if (startRoad == accessRoad)
+                        {
+                            candidateRoadPath.Clear();
+                            candidateRoadPath.Add(startRoad);
+                            pathFound = true;
+                        }
+                        else
+                        {
+                            pathFound = TryBuildRoadPath(
+                                startRoad,
+                                accessRoad,
+                                candidateRoadPath,
+                                preventImmediateReverse,
+                                forbiddenFirstStep);
+                        }
+
+                        if (!pathFound)
+                        {
+                            continue;
+                        }
+
+                        int candidateCount =
+                            GetRoadsidePathCount(
+                                candidateRoadPath);
+                        if (candidateCount <= 0)
+                        {
+                            continue;
+                        }
 
                         if (!found ||
                             candidateCount < result.Count)
@@ -1733,10 +1828,7 @@ namespace CityFlow.Content.Transit
             out Vector2Int selectedAccessRoad)
         {
             destination.Clear();
-            int setback = Mathf.Min(
-                roadsideStopSetbackTiles,
-                source.Count - 1);
-            int count = source.Count - setback;
+            int count = GetRoadsidePathCount(source);
 
             for (int index = 0; index < count; index++)
             {
@@ -1746,6 +1838,36 @@ namespace CityFlow.Content.Transit
             selectedAccessRoad = destination.Count > 0
                 ? destination[destination.Count - 1]
                 : default;
+        }
+
+        private int GetRoadsidePathCount(
+            IReadOnlyList<Vector2Int> source)
+        {
+            if (source == null || source.Count == 0)
+            {
+                return 0;
+            }
+
+            int setback = Mathf.Min(
+                roadsideStopSetbackTiles,
+                source.Count - 1);
+            int count = source.Count - setback;
+
+            if (!roadTrafficConfigured ||
+                !holdRoadTrafficAtDestination ||
+                roadTraffic == null)
+            {
+                return count;
+            }
+
+            while (count > 0 &&
+                   !roadTraffic.IsSafeHoldTile(
+                       source[count - 1]))
+            {
+                count--;
+            }
+
+            return count;
         }
 
         private bool TryBuildRoadsideApproachPath(

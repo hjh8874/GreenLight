@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using CityFlow.Bootstrap;
+using CityFlow.Contracts;
 using CityFlow.Gameplay.Quests;
 using TMPro;
 using UnityEngine;
@@ -11,12 +15,25 @@ namespace CityFlow.UI.Quests
         private static readonly Color AccentColor = new(0.25f, 0.76f, 0.70f, 1f);
 
         private CityQuestSystem questSystem;
+        private CityFlowServices services;
+        private IGameCalendarService calendar;
+        private readonly Dictionary<
+            int,
+            EmergencyIncidentAlertEvent>
+            emergencyAlerts = new();
+        private CityQuestViewState questViewState;
+        private EmergencyIncidentOutcomeEvent latestOutcome;
+        private bool hasLatestOutcome;
+        private bool emergencyMinimized;
+        private float outcomeDisplayRemaining;
         private GameObject bubble;
         private GameObject minimizedButtonObject;
         private Button closeButton;
         private Button minimizedButton;
         private TextMeshProUGUI titleText;
         private TextMeshProUGUI messageText;
+        private TextMeshProUGUI categoryText;
+        private TextMeshProUGUI minimizedLabel;
 
         public static QuestBubbleUI Create(Transform canvasTransform)
         {
@@ -35,22 +52,48 @@ namespace CityFlow.UI.Quests
 
         public void Bind(CityQuestSystem system)
         {
+            Bind(system, null);
+        }
+
+        public void Bind(
+            CityQuestSystem system,
+            CityFlowServices cityServices)
+        {
             if (questSystem != null)
             {
-                questSystem.ViewStateChanged -= Refresh;
+                questSystem.ViewStateChanged -=
+                    OnQuestViewStateChanged;
             }
 
+            UnbindServices();
             questSystem = system;
+            services = cityServices;
 
             if (questSystem != null)
             {
-                questSystem.ViewStateChanged += Refresh;
-                Refresh(questSystem.CurrentViewState);
+                questSystem.ViewStateChanged +=
+                    OnQuestViewStateChanged;
+                questViewState =
+                    questSystem.CurrentViewState;
             }
             else
             {
-                Refresh(default);
+                questViewState = default;
             }
+
+            if (services?.Events != null)
+            {
+                services.Events.EmergencyIncidentAlerted +=
+                    OnEmergencyIncidentAlerted;
+                services.Events
+                    .EmergencyIncidentOutcomeReported +=
+                    OnEmergencyIncidentOutcome;
+                services.GameCalendarRegistered +=
+                    OnGameCalendarRegistered;
+                BindCalendar(services.GameCalendar);
+            }
+
+            Render();
         }
 
         private void BuildVisuals(TMP_FontAsset font)
@@ -102,7 +145,7 @@ namespace CityFlow.UI.Quests
             tailRect.localRotation = Quaternion.Euler(0f, 0f, 45f);
             tail.GetComponent<Image>().color = BubbleColor;
 
-            TextMeshProUGUI category = CreateText(
+            categoryText = CreateText(
                 "Category",
                 panel.transform,
                 font,
@@ -112,7 +155,8 @@ namespace CityFlow.UI.Quests
                 13f,
                 FontStyles.Bold,
                 AccentColor);
-            category.alignment = TextAlignmentOptions.Left;
+            categoryText.alignment =
+                TextAlignmentOptions.Left;
 
             titleText = CreateText(
                 "Title",
@@ -182,35 +226,227 @@ namespace CityFlow.UI.Quests
 
             minimizedButton = buttonObject.GetComponent<Button>();
             minimizedButton.targetGraphic = image;
-            TextMeshProUGUI label = CreateCenteredText("Label", buttonObject.transform, font, "!", 30f, Color.white);
-            label.fontStyle = FontStyles.Bold;
-            label.raycastTarget = false;
+            minimizedLabel = CreateCenteredText(
+                "Label",
+                buttonObject.transform,
+                font,
+                "!",
+                30f,
+                Color.white);
+            minimizedLabel.fontStyle = FontStyles.Bold;
+            minimizedLabel.raycastTarget = false;
             return buttonObject;
         }
 
-        private void Refresh(CityQuestViewState state)
+        private void Update()
         {
-            bool hasQuest = state.Quest != null;
-            bubble?.SetActive(hasQuest && !state.IsMinimized);
-            minimizedButtonObject?.SetActive(hasQuest && state.IsMinimized);
+            if (!hasLatestOutcome)
+            {
+                return;
+            }
+
+            outcomeDisplayRemaining -=
+                Time.unscaledDeltaTime;
+            if (outcomeDisplayRemaining <= 0f)
+            {
+                hasLatestOutcome = false;
+                Render();
+            }
+        }
+
+        private void OnQuestViewStateChanged(
+            CityQuestViewState state)
+        {
+            questViewState = state;
+            Render();
+        }
+
+        private void OnEmergencyIncidentAlerted(
+            EmergencyIncidentAlertEvent alert)
+        {
+            emergencyAlerts[alert.IncidentId] = alert;
+            emergencyMinimized = false;
+            Render();
+        }
+
+        private void OnEmergencyIncidentOutcome(
+            EmergencyIncidentOutcomeEvent outcome)
+        {
+            emergencyAlerts.Remove(outcome.IncidentId);
+            latestOutcome = outcome;
+            hasLatestOutcome = true;
+            outcomeDisplayRemaining = 5f;
+            emergencyMinimized = false;
+            Render();
+        }
+
+        private void OnGameCalendarRegistered(
+            IGameCalendarService gameCalendar)
+        {
+            BindCalendar(gameCalendar);
+            Render();
+        }
+
+        private void BindCalendar(
+            IGameCalendarService gameCalendar)
+        {
+            if (ReferenceEquals(calendar, gameCalendar))
+            {
+                return;
+            }
+
+            if (calendar != null)
+            {
+                calendar.HourChanged -= OnCalendarChanged;
+            }
+
+            calendar = gameCalendar;
+
+            if (calendar != null)
+            {
+                calendar.HourChanged += OnCalendarChanged;
+            }
+        }
+
+        private void OnCalendarChanged(int _)
+        {
+            Render();
+        }
+
+        private void Render()
+        {
+            if (hasLatestOutcome)
+            {
+                SetVisible(
+                    visible: true,
+                    minimized: false);
+                categoryText.text =
+                    latestOutcome.Outcome ==
+                    EmergencyIncidentOutcome.Resolved
+                        ? "응급 구조 성공"
+                        : "응급 구조 실패";
+                titleText.text = latestOutcome.Title;
+                messageText.text = latestOutcome.Message;
+                return;
+            }
+
+            if (TryGetUrgentAlert(
+                    out EmergencyIncidentAlertEvent
+                        alert))
+            {
+                SetVisible(
+                    visible: true,
+                    minimized: emergencyMinimized);
+                categoryText.text = "긴급 출동 요청";
+                titleText.text = alert.Title;
+                messageText.text =
+                    BuildEmergencyMessage(alert);
+                minimizedLabel.text =
+                    emergencyAlerts.Count > 1
+                        ? emergencyAlerts.Count.ToString()
+                        : "!";
+                return;
+            }
+
+            bool hasQuest = questViewState.Quest != null;
+            SetVisible(
+                hasQuest,
+                hasQuest && questViewState.IsMinimized);
 
             if (!hasQuest)
             {
                 return;
             }
 
-            titleText.text = state.Quest.Title;
-            messageText.text = state.Quest.Message;
+            categoryText.text = "도시 요청";
+            titleText.text = questViewState.Quest.Title;
+            messageText.text =
+                questViewState.Quest.Message;
+            minimizedLabel.text = "!";
+        }
+
+        private void SetVisible(
+            bool visible,
+            bool minimized)
+        {
+            bubble?.SetActive(visible && !minimized);
+            minimizedButtonObject?.SetActive(
+                visible && minimized);
+        }
+
+        private bool TryGetUrgentAlert(
+            out EmergencyIncidentAlertEvent result)
+        {
+            result = default;
+            bool found = false;
+
+            foreach (EmergencyIncidentAlertEvent alert
+                     in emergencyAlerts.Values)
+            {
+                if (!found ||
+                    alert.DeadlineAbsoluteHour <
+                    result.DeadlineAbsoluteHour)
+                {
+                    result = alert;
+                    found = true;
+                }
+            }
+
+            return found;
+        }
+
+        private string BuildEmergencyMessage(
+            EmergencyIncidentAlertEvent alert)
+        {
+            if (calendar == null)
+            {
+                return alert.Message;
+            }
+
+            long currentHour =
+                calendar.TotalDays *
+                Math.Max(1, calendar.HoursPerDay) +
+                Math.Max(0, calendar.Hour);
+            long remaining = Math.Max(
+                0L,
+                alert.DeadlineAbsoluteHour -
+                currentHour);
+            string suffix =
+                $"제한 시간: {remaining}시간 남음";
+            return string.IsNullOrWhiteSpace(alert.Message)
+                ? suffix
+                : $"{alert.Message}\n{suffix}";
         }
 
         private void OnCloseClicked()
         {
-            questSystem?.MinimizeCurrentQuest();
+            if (hasLatestOutcome)
+            {
+                hasLatestOutcome = false;
+                Render();
+            }
+            else if (emergencyAlerts.Count > 0)
+            {
+                emergencyMinimized = true;
+                Render();
+            }
+            else
+            {
+                questSystem?.MinimizeCurrentQuest();
+            }
         }
 
         private void OnMinimizedButtonClicked()
         {
-            questSystem?.RestoreCurrentQuest();
+            if (emergencyAlerts.Count > 0)
+            {
+                emergencyMinimized = false;
+                Render();
+            }
+            else
+            {
+                questSystem?.RestoreCurrentQuest();
+            }
         }
 
         private void OnDestroy()
@@ -220,8 +456,29 @@ namespace CityFlow.UI.Quests
 
             if (questSystem != null)
             {
-                questSystem.ViewStateChanged -= Refresh;
+                questSystem.ViewStateChanged -=
+                    OnQuestViewStateChanged;
             }
+
+            UnbindServices();
+        }
+
+        private void UnbindServices()
+        {
+            if (services?.Events != null)
+            {
+                services.Events.EmergencyIncidentAlerted -=
+                    OnEmergencyIncidentAlerted;
+                services.Events
+                    .EmergencyIncidentOutcomeReported -=
+                    OnEmergencyIncidentOutcome;
+                services.GameCalendarRegistered -=
+                    OnGameCalendarRegistered;
+            }
+
+            BindCalendar(null);
+            services = null;
+            emergencyAlerts.Clear();
         }
 
         private static TextMeshProUGUI CreateText(
