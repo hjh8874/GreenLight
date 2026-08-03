@@ -25,6 +25,8 @@ namespace CityFlow.Sim
 
         // Region flood-fill 선할당 버퍼 — 매 계산 재사용(틱 중 new 0).
         readonly int[] _queue;
+        // TryGetAccessRoad도 CollectAccessRoads와 같은 우선순위를 쓰기 위한 재사용 버퍼.
+        readonly List<Vector2Int> _accessRoadBuffer = new(16);
 
         // 연결 요소(Region) 캐시: 같은 섬의 도로는 같은 id. 수요 배정이 "도달 가능한가"를
         // BFS 없이 O(1)로 묻는 용도. topology 버전이 바뀐 뒤 첫 조회 때만 flood fill(O(n)).
@@ -117,37 +119,16 @@ namespace CityFlow.Sim
         // 구버전 저장의 기본 North만 기존 자동 정렬과 8방 스캔 폴백을 유지한다.
         public bool TryGetAccessRoad(Vector2Int building, out Vector2Int road)
         {
-            Vector2Int size = GetBuildingFootprintSize(building);
-            if (TryGetPreferredFrontRoad(building, size, out road))
-            {
-                return true;
-            }
-
-            if (HasExplicitPlacementDirection(building))
+            _accessRoadBuffer.Clear();
+            CollectAccessRoads(building, _accessRoadBuffer);
+            if (_accessRoadBuffer.Count <= 0)
             {
                 road = default;
                 return false;
             }
 
-            if (TryGetFallbackFacingRoad(building, size, out road))
-            {
-                return true;
-            }
-
-            for (int y = 0; y < size.y; y++)
-            {
-                for (int x = 0; x < size.x; x++)
-                {
-                    Vector2Int occupied = building + new Vector2Int(x, y);
-                    for (int d = 0; d < DX.Length; d++)
-                    {
-                        var v = new Vector2Int(occupied.x + DX[d], occupied.y + DY[d]);
-                        if (IsRoad(v)) { road = v; return true; }
-                    }
-                }
-            }
-            road = default;
-            return false;
+            road = _accessRoadBuffer[0];
+            return true;
         }
 
         // 건물의 선택 앞면 프론티지를 먼저 buffer에 누적한다. 비기본 회전 방향은 앞면만 허용한다.
@@ -159,27 +140,28 @@ namespace CityFlow.Sim
         // TryGetAccessRoad 하나만 보면 도달 가능한 프론티지를 놓칠 수 있음 → 전수 수집으로 대응.
         public void CollectAccessRoads(Vector2Int building, List<Vector2Int> buffer)
         {
+            int firstAdded = buffer.Count;
             Vector2Int size = GetBuildingFootprintSize(building);
             CollectPreferredFrontRoads(building, size, buffer);
-            if (HasExplicitPlacementDirection(building))
+            if (!HasExplicitPlacementDirection(building))
             {
-                return;
-            }
+                CollectFallbackFacingRoads(building, size, buffer);
 
-            CollectFallbackFacingRoads(building, size, buffer);
-
-            for (int y = 0; y < size.y; y++)
-            {
-                for (int x = 0; x < size.x; x++)
+                for (int y = 0; y < size.y; y++)
                 {
-                    Vector2Int occupied = building + new Vector2Int(x, y);
-                    for (int d = 0; d < DX.Length; d++)
+                    for (int x = 0; x < size.x; x++)
                     {
-                        var v = new Vector2Int(occupied.x + DX[d], occupied.y + DY[d]);
-                        AddRoadIfPresent(v, buffer);
+                        Vector2Int occupied = building + new Vector2Int(x, y);
+                        for (int d = 0; d < DX.Length; d++)
+                        {
+                            var v = new Vector2Int(occupied.x + DX[d], occupied.y + DY[d]);
+                            AddRoadIfPresent(v, buffer);
+                        }
                     }
                 }
             }
+
+            StablePrioritizeOrdinaryRoads(buffer, firstAdded);
         }
 
         private Vector2Int GetBuildingFootprintSize(Vector2Int building)
@@ -194,47 +176,6 @@ namespace CityFlow.Sim
             Vector2Int building) =>
             TileFootprint.IsBuilding(_grid.GetTile(building)) &&
             _grid.GetDirection(building) != PlacementDirection.North;
-
-        private bool TryGetPreferredFrontRoad(
-            Vector2Int building,
-            Vector2Int size,
-            out Vector2Int road)
-        {
-            TileType type = _grid.GetTile(building);
-            if (!TileFootprint.IsBuilding(type))
-            {
-                road = default;
-                return false;
-            }
-
-            return TryGetRoadAlongFront(
-                building,
-                size,
-                _grid.GetDirection(building),
-                out road);
-        }
-
-        private bool TryGetFallbackFacingRoad(
-            Vector2Int building,
-            Vector2Int size,
-            out Vector2Int road)
-        {
-            if (!TileFootprint.IsBuilding(_grid.GetTile(building)) ||
-                !TryGetFallbackFacingDirection(
-                    building,
-                    size,
-                    out PlacementDirection direction))
-            {
-                road = default;
-                return false;
-            }
-
-            return TryGetRoadAlongFront(
-                building,
-                size,
-                direction,
-                out road);
-        }
 
         private void CollectPreferredFrontRoads(
             Vector2Int building,
@@ -426,6 +367,27 @@ namespace CityFlow.Sim
             if (IsRoad(tile) && !buffer.Contains(tile))
             {
                 buffer.Add(tile);
+            }
+        }
+
+        private void StablePrioritizeOrdinaryRoads(
+            List<Vector2Int> buffer,
+            int firstAdded)
+        {
+            // 새로 수집한 구간만 안정 분할한다. 같은 등급 안의 발견 순서와 호출자 소유
+            // prefix는 그대로 두며, 전부 교차로면 아무 이동도 일어나지 않는다.
+            int insertAt = firstAdded;
+            for (int i = firstAdded; i < buffer.Count; i++)
+            {
+                Vector2Int candidate = buffer[i];
+                if (_grid.IsIntersection(candidate)) continue;
+
+                if (i != insertAt)
+                {
+                    buffer.RemoveAt(i);
+                    buffer.Insert(insertAt, candidate);
+                }
+                insertAt++;
             }
         }
 
