@@ -1,4 +1,4 @@
-using CityFlow.Bootstrap;
+﻿using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.View;
 using UnityEngine;
@@ -119,6 +119,11 @@ namespace CityFlow.Gameplay.Save
 
         private void TryLoadInitialSave()
         {
+            if (CityBootstrap.IsTitlePreviewMode)
+            {
+                return;
+            }
+
             if (initialLoadAttempted)
             {
                 return;

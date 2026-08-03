@@ -68,6 +68,15 @@ namespace CityFlow.UI
                     var raycasters = root.GetComponentsInChildren<UnityEngine.UI.GraphicRaycaster>(true);
                     foreach (var r in raycasters) r.enabled = false;
                 }
+
+                // 백그라운드 씬의 EventSystem 비활성화 (TitleScene과 충돌 방지)
+                var eventSystems = root.GetComponentsInChildren<UnityEngine.EventSystems.EventSystem>(true);
+                foreach (var es in eventSystems)
+                {
+                    es.enabled = false;
+                    var inputModule = es.GetComponent<UnityEngine.EventSystems.BaseInputModule>();
+                    if (inputModule != null) inputModule.enabled = false;
+                }
             }
 
             // 게임이 라이브로 돌아가면서 자동 저장되는 것을 방지하기 위해 AutoSaveService 파괴
@@ -78,11 +87,14 @@ namespace CityFlow.UI
             }
 
             // TitleScene에 기존 카메라가 남아있다면 충돌 방지를 위해 제거합니다.
+            // [리뷰 반영] 다른 씬의 모든 카메라를 파괴하지 않고 카메라 컴포넌트만 끕니다.
             foreach (var cam in FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {
-                if (cam.gameObject.scene != scene)
+                if (cam.gameObject.scene != scene && cam.name != "UI Camera" && cam.name != "UICamera")
                 {
-                    Destroy(cam.gameObject);
+                    cam.enabled = false;
+                    var audioListener = cam.GetComponent<AudioListener>();
+                    if (audioListener != null) audioListener.enabled = false;
                 }
             }
 
@@ -124,30 +136,9 @@ namespace CityFlow.UI
         {
             if (forcedCamera == null) return;
 
+            // [리뷰 반영] MainCityView의 위치/회전 제어와 경합하지 않도록 줌인(orthographicSize)만 덮어씁니다.
             forcedCamera.orthographic = true;
             forcedCamera.orthographicSize = 6f; // 기존 12f에서 6f로 변경하여 50% 줌 인
-
-            // WorldCoordinateProfile에 의해 MainCityView가 X축으로 90도 회전하므로, 
-            // 맵은 실제 월드의 XZ 평면(바닥)에 깔리게 됩니다.
-            // 로컬 (10, 10, 0)의 월드 좌표는 (10, 0, 10)이 됩니다.
-            Vector3 cameraTarget = new Vector3(10f, 0f, 10f); // 20x20 그리드의 중앙
-
-            // 회전된 MainCityView의 월드 방향 벡터들
-            Vector3 transformRight = new Vector3(1f, 0f, 0f);
-            Vector3 transformUp = new Vector3(0f, 0f, 1f);
-            Vector3 transformForward = new Vector3(0f, -1f, 0f);
-
-            Vector3 cameraUpDirection = (transformUp - transformRight).normalized;
-            Vector3 southEastDirection = (transformRight - transformUp).normalized;
-            
-            float angleRadians = 35.264f * Mathf.Deg2Rad;
-            Vector3 angledOffsetDirection = southEastDirection * Mathf.Cos(angleRadians)
-                  - transformForward * Mathf.Sin(angleRadians);
-            Vector3 cameraForward = -angledOffsetDirection;
-
-            float distance = 25f; // 카메라를 위로 띄우고 뒤로 뺌
-            forcedCamera.transform.position = cameraTarget + angledOffsetDirection * distance;
-            forcedCamera.transform.rotation = Quaternion.LookRotation(cameraForward, cameraUpDirection);
         }
 
         // 새 게임 — 기존 저장과 백업을 제거해 게임 씬의 자동 불러오기 대상에서 제외한다.

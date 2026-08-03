@@ -18,7 +18,7 @@ namespace CityFlow.UI.Tests
 
             // Assert
             Assert.IsNotNull(prefab, $"Prefab should exist at path: {expectedPath}");
-            Assert.IsNotNull(prefab.GetComponent<CityFlow.UI.Panels.SignalControlPanelView>(), "Prefab should have SignalControlPanelView attached.");
+            Assert.IsNotNull(prefab.GetComponent<CityFlow.UI.SignalControlPanelView>(), "Prefab should have SignalControlPanelView attached.");
         }
     }
 }

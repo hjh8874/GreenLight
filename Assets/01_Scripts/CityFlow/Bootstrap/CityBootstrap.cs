@@ -28,6 +28,12 @@ namespace CityFlow.Bootstrap
         private ICityFlowServiceConsumer worldGridConsumer;
         private bool servicesInstalled;
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            IsTitlePreviewMode = false;
+        }
+        
         public static bool IsTitlePreviewMode { get; set; } = false;
         private float previewTickAccumulator = 0f;
         private const float PreviewTickInterval = 3f;
@@ -198,7 +204,17 @@ namespace CityFlow.Bootstrap
                     previewTickAccumulator += Time.deltaTime;
                     if (previewTickAccumulator >= PreviewTickInterval)
                     {
-                        simEngine?.Tick(previewTickAccumulator);
+                        if (simEngine != null)
+                        {
+                            float remaining = previewTickAccumulator;
+                            float step = 0.1f; // 안전한 시뮬레이션 고정 dt
+                            while (remaining > 0)
+                            {
+                                float currentStep = Mathf.Min(step, remaining);
+                                simEngine.Tick(currentStep);
+                                remaining -= currentStep;
+                            }
+                        }
                         previewTickAccumulator = 0f;
                     }
                 }
@@ -243,6 +259,11 @@ namespace CityFlow.Bootstrap
                 new JsonSaveRepository(),
                 new SystemSaveClock(),
                 worldGridAccess: worldGridAccess);
+
+            if (IsTitlePreviewMode)
+            {
+                saveService.SetSavingEnabled(false);
+            }
 
             return saveService;
         }

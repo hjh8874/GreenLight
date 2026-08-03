@@ -13,6 +13,10 @@ namespace CityFlow.UI
         [SerializeField] private Button btnYes;
         [SerializeField] private Button btnNo;
 
+        [Header("Layout Override (Title Scene Only)")]
+        [Tooltip("타이틀 씬 등에서 팝업 크기를 강제 고정해야 할 경우 체크하세요. (체크 시 다른 씬 팝업이 깨질 수 있음)")]
+        [SerializeField] private bool forceTitleLayout = false;
+
         private Action _onYes;
         private Action _onNo;
 
@@ -21,9 +25,11 @@ namespace CityFlow.UI
             if (btnYes != null) btnYes.onClick.AddListener(OnYesClicked);
             if (btnNo != null) btnNo.onClick.AddListener(OnNoClicked);
 
-            // 텍스트가 팝업 바깥으로 나가는(Overflow) 문제를 해결하기 위해 줄바꿈 및 레이아웃 강제 지정
-            if (txtMessage != null)
+            bool isTitleScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "TitleScene";
+
+            if ((forceTitleLayout || isTitleScene) && txtMessage != null)
             {
+                // 텍스트가 팝업 바깥으로 나가는(Overflow) 문제를 해결하기 위해 줄바꿈 및 레이아웃 강제 지정
                 txtMessage.enableWordWrapping = true;
                 txtMessage.alignment = TextAlignmentOptions.Center;
 
@@ -32,7 +38,6 @@ namespace CityFlow.UI
                 if (csf != null) Destroy(csf);
 
                 // 팝업 패널 내부에 맞게 텍스트의 앵커와 여백(offset)을 코드로 강제 고정합니다.
-                // (모든 씬의 ConfirmPopup 일괄 수정 효과)
                 var rect = txtMessage.GetComponent<RectTransform>();
                 if (rect != null)
                 {
