@@ -291,6 +291,7 @@ namespace CityFlow.UI
             Vector2Int gridCoord = _inputHandler.GetMouseGridCoordinate(
                 useXYPlane,
                 coordinateSpace);
+            _currentDirection = ResolvePlacementDirection(gridCoord);
             bool canPlace = _actionDispatcher.CheckCanPlace(
                 gridCoord,
                 _currentType,
@@ -362,13 +363,8 @@ namespace CityFlow.UI
                 return;
             }
 
-            _currentDirection = TileFootprint.RotateClockwise(_currentDirection);
-            _visualManager.UpdateGhostFootprint(_currentType, _currentDirection);
-            _visualManager.SyncPlacementRotation(
-                TileFootprint.ToAngle(_currentDirection),
-                useXYPlane,
-                _services?.WorldCoordinates);
-            _costLabelManager.ResetState();
+            // 건물 방향은 현재 마우스 타일의 인접 도로를 향해 Sim 계층에서 결정한다.
+            // 도로·일방통행 등 인프라 도구의 회전 동작은 이 분기와 무관하게 유지한다.
         }
 
         private bool HandleDemolish(Vector2Int coord)
@@ -381,7 +377,7 @@ namespace CityFlow.UI
             _actionDispatcher.PlaceInfrastructure(
                 coord,
                 _currentType,
-                _currentDirection,
+                ResolvePlacementDirection(coord),
                 _services,
                 _currentSpecialBuildingId,
                 _currentCompanyTypeId);
@@ -406,21 +402,78 @@ namespace CityFlow.UI
 
         private void TryPlaceDragTile(Vector2Int coord)
         {
+            PlacementDirection direction = ResolvePlacementDirection(coord);
             if (_actionDispatcher.CheckCanPlace(
                     coord,
                     _currentType,
-                    _currentDirection,
+                    direction,
                     _services,
                     _currentSpecialBuildingId))
             {
                 _actionDispatcher.PlaceInfrastructure(
                     coord,
                     _currentType,
-                    _currentDirection,
+                    direction,
                     _services,
                     _currentSpecialBuildingId,
                     _currentCompanyTypeId);
             }
+        }
+
+        private PlacementDirection ResolvePlacementDirection(Vector2Int coord)
+        {
+            if (!TileFootprint.IsBuilding(_currentType))
+            {
+                return _currentDirection;
+            }
+
+            if (_services?.Placement != null &&
+                _services.Placement.TryResolveAutoDirection(
+                    coord,
+                    _currentType,
+                    out PlacementDirection direction,
+                    CameraAutoDirectionOrder()))
+            {
+                return direction;
+            }
+
+            return PlacementDirection.North;
+        }
+
+        // 여러 면이 도로일 때의 타이브레이크(환 결정 2026-07-31): 기본 카메라에서
+        // 건물 정면이 플레이어 쪽(화면 아래)으로 보이는 방향을 우선한다 — 포켓시티 감.
+        // 카메라·좌표계가 없으면 null 반환 → Sim 기본 순서(N→E→S→W).
+        private readonly PlacementDirection[] _cameraOrderBuffer =
+        {
+            PlacementDirection.North, PlacementDirection.East,
+            PlacementDirection.South, PlacementDirection.West,
+        };
+
+        private System.Collections.Generic.IReadOnlyList<PlacementDirection> CameraAutoDirectionOrder()
+        {
+            Camera cam = Camera.main;
+            IWorldCoordinateSpace space = _services?.WorldCoordinates;
+            if (cam == null || space == null) return null;
+
+            Vector3 origin = space.GridToWorld(Vector2Int.zero);
+            System.Array.Sort(_cameraOrderBuffer, (a, b) =>
+            {
+                int byScore = CameraFacingScore(b, cam, space, origin)
+                    .CompareTo(CameraFacingScore(a, cam, space, origin));
+                return byScore != 0 ? byScore : ((int)a).CompareTo((int)b);   // 동점 = 결정론 유지
+            });
+            return _cameraOrderBuffer;
+        }
+
+        private static float CameraFacingScore(
+            PlacementDirection dir, Camera cam, IWorldCoordinateSpace space, Vector3 origin)
+        {
+            Vector2Int front = TileFootprint.GetFrontOffset(dir);
+            Vector3 world = space.GridXAxis * front.x + space.GridYAxis * front.y;
+            Vector3 screen = cam.WorldToScreenPoint(origin + world) - cam.WorldToScreenPoint(origin);
+            var flat = new Vector2(screen.x, screen.y);
+            if (flat.sqrMagnitude < 1e-6f) return float.MinValue;
+            return Vector2.Dot(flat.normalized, Vector2.down);
         }
 
         public bool TryDemolishAt(Vector2Int coord)

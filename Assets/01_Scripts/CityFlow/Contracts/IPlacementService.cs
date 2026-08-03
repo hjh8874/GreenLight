@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace CityFlow.Contracts
@@ -16,6 +17,16 @@ namespace CityFlow.Contracts
             PlacementDirection direction,
             string companyTypeId
         ) => Place(tile, type, direction);
+
+        bool TryResolveAutoDirection(
+            Vector2Int tile,
+            TileType type,
+            out PlacementDirection direction,
+            IReadOnlyList<PlacementDirection> priority = null)
+        {
+            direction = PlacementDirection.North;
+            return false;
+        }
 
         bool Remove(Vector2Int tile);
     }

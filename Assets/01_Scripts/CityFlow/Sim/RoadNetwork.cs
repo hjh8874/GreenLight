@@ -12,6 +12,13 @@ namespace CityFlow.Sim
         // 코너컷 허용(A): 두 도로 타일이 대각으로만 붙어도(사이 직각 칸 비어도) 연결로 침 — "대각 연결 당연히".
         static readonly int[] DX = { 0, 1, 0, -1, 1, 1, -1, -1 };
         static readonly int[] DY = { 1, 0, -1, 0, 1, -1, -1, 1 };
+        static readonly PlacementDirection[] AutoDirectionOrder =
+        {
+            PlacementDirection.North,
+            PlacementDirection.East,
+            PlacementDirection.South,
+            PlacementDirection.West
+        };
 
         readonly CityGrid _grid;
         readonly int _w, _h;
@@ -32,6 +39,33 @@ namespace CityFlow.Sim
             int n = _w * _h;
             _queue = new int[n];   // 각 칸 최대 1번 인큐 → n칸이면 충분
             _region = new int[n];
+        }
+
+        // 배치 프리뷰와 실제 배치가 공유하는 자동 방향 결정 규칙.
+        // 주차면(frontage)에 도로가 있는 첫 방향을 우선순위 순으로 고른다.
+        // priority 미지정이면 North→East→South→West. 1면 접촉이면 순서와 무관하게 그 면이 뽑힌다 —
+        // 순서는 여러 면이 도로일 때의 타이브레이크다(UI가 카메라 기준 순서를 넘길 수 있게 인자화).
+        public bool TryResolveAutoDirection(
+            Vector2Int tile,
+            TileType type,
+            out PlacementDirection direction,
+            IReadOnlyList<PlacementDirection> priority = null)
+        {
+            direction = PlacementDirection.North;
+            if (!TileFootprint.IsBuilding(type)) return false;
+
+            IReadOnlyList<PlacementDirection> order = priority ?? AutoDirectionOrder;
+            for (int i = 0; i < order.Count; i++)
+            {
+                PlacementDirection candidate = order[i];
+                Vector2Int size = TileFootprint.GetRotatedSize(type, candidate);
+                if (!TryGetRoadAlongFront(tile, size, candidate, out _)) continue;
+
+                direction = candidate;
+                return true;
+            }
+
+            return false;
         }
 
         // 이 도로 타일이 속한 섬 id(-1 = 도로 아님). RoutePlanner와 같은 8방 연결 규칙 →
