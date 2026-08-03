@@ -993,6 +993,7 @@ namespace Tests.EditMode
             try
             {
                 // Reflection to set internal state
+                SetPrivateField(coordinator, "_isBuildingMode", true); // Required for Update to not return immediately
                 SetPrivateField(coordinator, "_isDemolishMode", true);
                 SetPrivateField(coordinator, "_rightClickStartCoord", new Vector2Int(0, 0));
                 
@@ -1022,7 +1023,7 @@ namespace Tests.EditMode
 
         private sealed class TestTileData : IReadOnlyTileData
         {
-            public CongestionLevel GetCongestion(Vector2Int tile) => CongestionLevel.Low;
+            public CongestionLevel GetCongestion(Vector2Int tile) => CongestionLevel.Free;
             public float GetDensity01(Vector2Int tile) => 0f;
             public int GetQueueCount(Vector2Int tile, Dir entryDir) => 0;
             public TileType GetTileType(Vector2Int tile) => TileType.Empty;
@@ -1072,6 +1073,16 @@ namespace Tests.EditMode
                     null,
                     economy
                 );
+
+                // Ensure the controller uses a tile with actual cost > 0
+                var fakeTileObj = ScriptableObject.CreateInstance<CityFlow.Configs.TileDataSO>();
+                // We need reflection to set buildCost because it's private serialized field
+                SetPrivateField(fakeTileObj, "buildCost", 100);
+                SetPrivateField(fakeTileObj, "category", TileType.Hospital);
+                SetPrivateField(controller, "availableTiles", new CityFlow.Configs.TileDataSO[] { fakeTileObj });
+                
+                // Set fake mode to avoid needing to mock everything else
+                controller.SetFakeMode(true);
 
                 controller.Initialize(services);
 
