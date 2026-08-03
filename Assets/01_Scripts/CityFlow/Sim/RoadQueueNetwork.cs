@@ -532,6 +532,13 @@ namespace CityFlow.Sim
                 && !IsRoundaboutArm(tileIndex);
         }
 
+        // 신규 출발 스폰이 가능한 교차로 타일인가. 로터리는 중심도 팔도 예약 모델이
+        // 달라 제외한다(설계 D5). UsesSharedBudget 은 팔을 제외하지 않으므로 따로 건다.
+        internal bool IsIntersectionSpawnTile(Vector2Int tile) =>
+            InBounds(tile)
+            && UsesSharedBudget(TileIndex(tile))
+            && !IsRoundaboutArm(TileIndex(tile));
+
         internal bool TryLocateCar(int carId, out Vector2Int tile, out Dir direction, out int slot)
             => TryLocateCar(carId, out tile, out direction, out slot, out _, out _);
 
