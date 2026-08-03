@@ -26,7 +26,7 @@ namespace CityFlow.Sim.Tests
             for (int i = 0; i < 100; i++)
             {
                 var s = CarStyle.FromHash(new Vector2Int(i % 20, i / 20), i % 3);
-                Assert.That(s.LengthScale, Is.InRange(0.85f, 1.15f));
+                Assert.That(s.LengthScale, Is.EqualTo(1f));
                 Assert.That(s.WidthScale, Is.InRange(0.9f, 1.1f));
                 Assert.That(s.SpeedMul, Is.InRange(0.9f, 1.1f));
                 Assert.That(s.AccelMul, Is.InRange(0.9f, 1.1f));

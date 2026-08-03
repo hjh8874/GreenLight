@@ -45,14 +45,15 @@ namespace CityFlow.ViewKit
             uint h1 = (uint)(home.x * 73856093) ^ (uint)(home.y * 19349663) ^ (uint)(slot * 83492791);
             uint h2 = h1 * 2654435761u;
 
-            float t0 = (h1 & 0xFFu) / 255f;
             float t1 = ((h1 >> 8) & 0xFFu) / 255f;
             float t2 = ((h1 >> 16) & 0xFFu) / 255f;
             float t3 = ((h1 >> 24) & 0xFFu) / 255f;
             float t4 = (h2 & 0xFFu) / 255f;
             int colorByte = (int)((h2 >> 8) & 0xFFu);
 
-            float lengthScale = Mathf.Lerp(0.85f, 1.15f, t0);
+            // 일반 차량의 길이는 차간 거리·정지선 계산의 공통 기준과 같아야 한다.
+            // 외형 다양성은 에셋과 폭으로 표현하고 진행축 길이는 고정한다.
+            float lengthScale = 1f;
             float widthScale = Mathf.Lerp(0.9f, 1.1f, t1);
             // ±7%로 압축(M1-2): 차급 SpeedFactor(0.67)가 속도 차이의 주역이 되고,
             // 개성은 순항 위에 미세 편차만 얹는다(설계 Q4 — 교차로 권한 속도 미적용).

@@ -65,6 +65,58 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1f, Vector3.Dot(s.Dir, Vector3.right), 0.01f);
         }
 
+        [TestCase(1, 0, 0f, -0.25f)]
+        [TestCase(-1, 0, 0f, 0.25f)]
+        [TestCase(0, 1, 0.25f, 0f)]
+        [TestCase(0, -1, -0.25f, 0f)]
+        public void StraightRoute_EveryDirectionUsesRightLaneCenter(
+            int directionX,
+            int directionY,
+            float expectedOffsetX,
+            float expectedOffsetY)
+        {
+            Vector2Int direction =
+                new Vector2Int(directionX, directionY);
+            var input = Straight3();
+            input.Tiles = new List<Vector2Int>
+            {
+                Vector2Int.zero,
+                direction,
+                direction * 2
+            };
+
+            RoutePolyline polyline =
+                RoutePolyline.Bake(input);
+            Sample sample =
+                polyline.SampleAt(input.TileSize);
+            Vector3 tileCenter =
+                new Vector3(
+                    direction.x * input.TileSize +
+                    input.TileSize * 0.5f,
+                    direction.y * input.TileSize +
+                    input.TileSize * 0.5f,
+                    input.Z);
+            Vector3 laneOffset =
+                sample.Pos - tileCenter;
+
+            Assert.That(
+                laneOffset.x,
+                Is.EqualTo(expectedOffsetX)
+                    .Within(0.02f));
+            Assert.That(
+                laneOffset.y,
+                Is.EqualTo(expectedOffsetY)
+                    .Within(0.02f));
+            Assert.That(
+                Vector3.Dot(
+                    sample.Dir,
+                    new Vector3(
+                        direction.x,
+                        direction.y,
+                        0f)),
+                Is.EqualTo(1f).Within(0.01f));
+        }
+
         // L자 코너: 인접 샘플 방향 각차 < 25° (급꺾임 없음 = C1 근사).
         [Test]
         public void CornerRoute_TangentContinuity()

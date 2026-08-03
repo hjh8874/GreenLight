@@ -509,6 +509,8 @@ namespace Tests.EditMode
                 null);
             GameObject preview =
                 GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Material sourceMaterial =
+                preview.GetComponent<Renderer>().sharedMaterial;
 
             try
             {
@@ -549,10 +551,10 @@ namespace Tests.EditMode
 
                 var previewRenderer =
                     preview.GetComponent<Renderer>();
-                Assert.That(
-                    previewRenderer.sharedMaterial.shader.name,
-                    Does.Contain("Unlit"),
-                    "건물 미리보기는 시간대 조명의 영향을 받지 않는 셰이더를 사용해야 한다.");
+                Assert.AreSame(
+                    sourceMaterial,
+                    previewRenderer.sharedMaterial,
+                    "실제 설치 모델의 재질과 형태가 미리보기에서도 유지되어야 한다.");
 
                 var properties =
                     new MaterialPropertyBlock();
@@ -592,6 +594,10 @@ namespace Tests.EditMode
                     renderer.color,
                     Is.EqualTo(new Color(1f, 0f, 0f, 1f)),
                     "바닥 고스트도 설치 불가능할 때 불투명 빨간색이어야 한다.");
+                Assert.That(
+                    renderer.gameObject.activeSelf,
+                    Is.False,
+                    "실제 모델 미리보기가 있으면 기존 바닥 사각형은 겹쳐 보이면 안 된다.");
             }
             finally
             {
@@ -630,13 +636,26 @@ namespace Tests.EditMode
                     Is.Not.Null,
                     "도로 선택 시 범용 박스 대신 실제 도로 형태 미리보기가 생성되어야 한다.");
                 Assert.That(
-                    preview.transform.localScale,
-                    Is.EqualTo(
-                        new Vector3(
-                            GridUtil.TileSize,
-                            GridUtil.TileSize,
-                            0.08f)),
-                    "도로 미리보기는 실제 도로와 같은 납작한 두께를 사용해야 한다.");
+                    preview.transform.Find("RoadModel"),
+                    Is.Not.Null,
+                    "도로 미리보기는 실제 설치와 같은 도로 모델을 포함해야 한다.");
+                Assert.That(
+                    preview.transform.Find("RoadPerimeter"),
+                    Is.Not.Null,
+                    "도로 미리보기는 실제 설치와 같은 연결 테두리를 포함해야 한다.");
+                Renderer roadRenderer =
+                    preview.transform
+                        .Find("RoadModel")
+                        ?.GetComponentInChildren<Renderer>();
+                Assert.That(roadRenderer, Is.Not.Null);
+                Assert.That(
+                    roadRenderer.bounds.size.x,
+                    Is.EqualTo(1f).Within(0.01f),
+                    "도로는 그리드 경계선 중심부터 반대편 경계선 중심까지 한 칸 폭만 차지해야 한다.");
+                Assert.That(
+                    roadRenderer.bounds.size.y,
+                    Is.EqualTo(1f).Within(0.01f),
+                    "도로는 그리드 선 두께를 실제 설치 면적에 더하지 않아야 한다.");
 
                 GameObject volume =
                     ReadPrivateField<GameObject>(
@@ -655,7 +674,88 @@ namespace Tests.EditMode
             }
         }
 
-        [TestCase(TileType.Road, "roadPrefab")]
+        [Test]
+        public void RoadPreview_OffsetsOnlyWhenItOverlapsInstalledTiles()
+        {
+            var cityObject =
+                new GameObject("OverlapPreviewCityView");
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
+            var controllerObject =
+                new GameObject("OverlapPreviewController");
+            PlacementController controller =
+                controllerObject.AddComponent<PlacementController>();
+            var tileData =
+                new CityFlow.Fakes.FakeFlowReader(10, 10);
+            var services =
+                new CityFlow.Bootstrap.CityFlowServices(
+                    new SimEventHub(),
+                    tileData,
+                    null);
+            MethodInfo getPreviewPosition =
+                typeof(PlacementController).GetMethod(
+                    "GetBuildingPreviewPosition",
+                    BindingFlags.NonPublic |
+                    BindingFlags.Instance);
+
+            try
+            {
+                controller.Initialize(services);
+                controller.SetBuildType(TileType.Road);
+                SetPrivateField(
+                    controller,
+                    "_cityView",
+                    cityView);
+
+                var emptyTile = new Vector2Int(1, 1);
+                Vector3 emptyPreview =
+                    (Vector3)getPreviewPosition.Invoke(
+                        controller,
+                        new object[]
+                        {
+                            emptyTile,
+                            Vector2Int.one
+                        });
+                Vector3 emptyInstalled =
+                    cityView.GetPlacementPreviewWorldPosition(
+                        emptyTile,
+                        TileType.Road);
+                Assert.That(
+                    emptyPreview,
+                    Is.EqualTo(emptyInstalled),
+                    "빈 타일 미리보기는 실제 설치 위치와 정확히 같아야 한다.");
+
+                var occupiedRoadTile =
+                    new Vector2Int(5, 1);
+                Vector3 overlappingPreview =
+                    (Vector3)getPreviewPosition.Invoke(
+                        controller,
+                        new object[]
+                        {
+                            occupiedRoadTile,
+                            Vector2Int.one
+                        });
+                Vector3 overlappingInstalled =
+                    cityView.GetPlacementPreviewWorldPosition(
+                        occupiedRoadTile,
+                        TileType.Road);
+                Assert.That(
+                    Vector3.Distance(
+                        overlappingPreview,
+                        overlappingInstalled),
+                    Is.EqualTo(
+                        PlacementController
+                            .OverlappingPreviewOffset)
+                        .Within(0.0001f),
+                    "기존 표면과 겹치는 미리보기만 Z-fighting 방지 간격을 가져야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(controllerObject);
+                Object.DestroyImmediate(cityObject);
+            }
+        }
+
         [TestCase(TileType.House, "housePrefab")]
         [TestCase(TileType.Office, "officePrefab")]
         [TestCase(TileType.School, "schoolPrefab")]
@@ -707,6 +807,328 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void BuildingDriveway_RotatesLaneTowardRoadAccess()
+        {
+            var cityObject =
+                new GameObject("DrivewayOrientationCityView");
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
+            GameObject preview = null;
+            GameObject roadPreview = null;
+
+            try
+            {
+                Assert.That(
+                    cityView.TryCreatePlacementPreview(
+                        TileType.House,
+                        out preview),
+                    Is.True);
+                Transform driveway =
+                    preview.transform.Find("Driveway_0");
+                Assert.That(
+                    driveway,
+                    Is.Not.Null,
+                    "복사한 SimpleTown 주차장 프리팹이 건물 미리보기에 포함되어야 한다.");
+                Assert.That(
+                    Mathf.DeltaAngle(
+                        driveway.localEulerAngles.z,
+                        90f),
+                    Is.EqualTo(0f).Within(0.01f),
+                    "주차장 차선은 건물 출입 방향과 나란해지도록 평면상 90도 회전해야 한다.");
+
+                Transform body =
+                    preview.transform.Find("BuildingBody");
+                Transform foundation =
+                    preview.transform.Find(
+                        "BuildingFoundation");
+                Transform buildingLot =
+                    preview.transform.Find("BuildingLot");
+                Assert.That(body, Is.Not.Null);
+                Assert.That(
+                    foundation,
+                    Is.Not.Null,
+                    "SimpleTown 보도 에셋 기반 건물 바닥이 포함되어야 한다.");
+                Assert.That(
+                    buildingLot,
+                    Is.Null,
+                    "건물 아래에 별도 바닥판을 생성하지 않아야 한다.");
+
+                Renderer[] bodyRenderers =
+                    body.GetComponentsInChildren<Renderer>(true);
+                Assert.That(bodyRenderers, Is.Not.Empty);
+                float bodyBaseZ = float.NegativeInfinity;
+                for (int index = 0;
+                     index < bodyRenderers.Length;
+                     index++)
+                {
+                    bodyBaseZ = Mathf.Max(
+                        bodyBaseZ,
+                        bodyRenderers[index].bounds.max.z);
+                }
+
+                Renderer[] foundationRenderers =
+                    foundation.GetComponentsInChildren<
+                        Renderer>(true);
+                Assert.That(
+                    foundationRenderers,
+                    Is.Not.Empty);
+                Bounds foundationBounds =
+                    foundationRenderers[0].bounds;
+                float foundationTopZ =
+                    float.PositiveInfinity;
+                for (int index = 0;
+                     index < foundationRenderers.Length;
+                     index++)
+                {
+                    foundationBounds.Encapsulate(
+                        foundationRenderers[index].bounds);
+                    foundationTopZ = Mathf.Min(
+                        foundationTopZ,
+                        foundationRenderers[index]
+                            .bounds.min.z);
+                }
+                Assert.That(
+                    foundationBounds.size.x,
+                    Is.EqualTo(2f).Within(0.01f),
+                    "건물 바닥은 건물 구역의 2그리드 폭을 경계선 중심까지 정확히 채워야 한다.");
+                Assert.That(
+                    foundationBounds.size.y,
+                    Is.EqualTo(1f).Within(0.01f),
+                    "건물 바닥은 건물 본체가 놓이는 1그리드 깊이를 경계선 중심까지 정확히 채워야 한다.");
+                Assert.That(
+                    bodyBaseZ,
+                    Is.EqualTo(foundationTopZ)
+                        .Within(0.0001f),
+                    "건물 밑면은 바닥 프리팹 윗면에 놓여야 한다.");
+
+                Renderer drivewayRenderer =
+                    driveway.GetComponentInChildren<Renderer>();
+                Assert.That(drivewayRenderer, Is.Not.Null);
+                Assert.That(
+                    drivewayRenderer.bounds.min.z,
+                    Is.EqualTo(foundationTopZ)
+                        .Within(0.0001f),
+                    "주차장과 건물 바닥의 윗면 높이가 같아야 한다.");
+
+                Assert.That(
+                    cityView.TryCreatePlacementPreview(
+                        TileType.Road,
+                        out roadPreview),
+                    Is.True);
+                roadPreview.transform.position =
+                    cityView
+                        .GetPlacementPreviewWorldPosition(
+                            Vector2Int.zero,
+                            TileType.Road);
+                Renderer roadRenderer =
+                    roadPreview.transform
+                        .Find("RoadModel")
+                        ?.GetComponentInChildren<Renderer>();
+                Assert.That(roadRenderer, Is.Not.Null);
+                Assert.That(
+                    roadRenderer.bounds.min.z,
+                    Is.EqualTo(
+                            drivewayRenderer.bounds.min.z)
+                        .Within(0.0001f),
+                    "도로와 주차장의 윗면 높이가 같아야 한다.");
+                Assert.That(
+                    drivewayRenderer.bounds.size.x,
+                    Is.EqualTo(1f).Within(0.01f),
+                    "주거지 주차장 하나는 그리드 한 칸 폭과 정확히 같아야 한다.");
+                Assert.That(
+                    drivewayRenderer.bounds.size.y,
+                    Is.EqualTo(1f).Within(0.01f),
+                    "주거지 주차장 하나는 그리드 한 칸 깊이와 정확히 같아야 한다.");
+
+                Transform secondDriveway =
+                    preview.transform.Find("Driveway_1");
+                Assert.That(
+                    secondDriveway,
+                    Is.Not.Null,
+                    "주거지는 2칸짜리 주차장 프리팹 두 개를 사용해야 한다.");
+                Renderer secondRenderer =
+                    secondDriveway.GetComponentInChildren<Renderer>();
+                Assert.That(secondRenderer, Is.Not.Null);
+                Bounds houseParkingBounds =
+                    drivewayRenderer.bounds;
+                houseParkingBounds.Encapsulate(
+                    secondRenderer.bounds);
+                Assert.That(
+                    houseParkingBounds.size.x,
+                    Is.EqualTo(2f).Within(0.01f),
+                    "주거지 주차장 두 개는 건물 전면의 2그리드 폭을 채워야 한다.");
+                Assert.That(
+                    houseParkingBounds.center.x,
+                    Is.EqualTo(0f).Within(0.01f),
+                    "주거지 주차장은 건물 전면 중앙에 정렬되어야 한다.");
+                Assert.That(
+                    preview.transform.Find("Driveway_2"),
+                    Is.Null,
+                    "주거지에는 주차장 프리팹이 정확히 두 개만 있어야 한다.");
+
+                Transform drivewayBoundary =
+                    preview.transform.Find(
+                        "DrivewayBoundary_1");
+                Assert.That(
+                    drivewayBoundary,
+                    Is.Not.Null,
+                    "주거지 주차장 프리팹 사이에 내부 선과 같은 구분선이 필요하다.");
+                Assert.That(
+                    drivewayBoundary.localPosition.x,
+                    Is.EqualTo(0f).Within(0.0001f));
+                Assert.That(
+                    drivewayBoundary.localScale.x,
+                    Is.EqualTo(0.015f)
+                        .Within(0.0001f));
+                Assert.That(
+                    drivewayBoundary.localScale.y,
+                    Is.EqualTo(0.9f).Within(0.0001f));
+                Renderer boundaryRenderer =
+                    drivewayBoundary.GetComponent<Renderer>();
+                Assert.That(boundaryRenderer, Is.Not.Null);
+                MeshFilter boundaryMesh =
+                    drivewayBoundary.GetComponent<MeshFilter>();
+                Assert.That(boundaryMesh, Is.Not.Null);
+                Assert.That(
+                    boundaryMesh.sharedMesh.bounds.size.z,
+                    Is.EqualTo(0f).Within(0.0001f),
+                    "주차장 경계선은 아이소메트릭 시점에서도 옆면이 보이지 않는 평면이어야 한다.");
+                float drivewayFrontZ = Mathf.Min(
+                    drivewayRenderer.bounds.min.z,
+                    secondRenderer.bounds.min.z);
+                Assert.That(
+                    boundaryRenderer.bounds.max.z,
+                    Is.LessThanOrEqualTo(
+                        drivewayFrontZ + 0.0001f));
+                Assert.That(
+                    boundaryRenderer.bounds.min.z,
+                    Is.LessThan(drivewayFrontZ));
+
+                Transform firstSlot =
+                    preview.transform.Find("ParkingSlot_0");
+                Transform secondSlot =
+                    preview.transform.Find("ParkingSlot_1");
+                Assert.That(firstSlot, Is.Not.Null);
+                Assert.That(secondSlot, Is.Not.Null);
+                Assert.That(
+                    firstSlot.localPosition.x,
+                    Is.EqualTo(0.75f).Within(0.0001f),
+                    "첫 차량은 가장 오른쪽 주차 칸을 사용해야 한다.");
+                Assert.That(
+                    secondSlot.localPosition.x,
+                    Is.EqualTo(0.25f).Within(0.0001f),
+                    "두 번째 차량은 오른쪽에서 두 번째 주차 칸을 사용해야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(roadPreview);
+                Object.DestroyImmediate(preview);
+                Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
+        public void OfficeParking_UsesThreeDrivewaysAcrossTwoGridCells()
+        {
+            var cityObject =
+                new GameObject("OfficeParkingLayoutCityView");
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
+            GameObject preview = null;
+
+            try
+            {
+                Assert.That(
+                    cityView.TryCreatePlacementPreview(
+                        TileType.Office,
+                        out preview),
+                    Is.True);
+
+                Bounds combinedBounds = default;
+                for (int index = 0; index < 3; index++)
+                {
+                    Transform driveway =
+                        preview.transform.Find(
+                            $"Driveway_{index}");
+                    Assert.That(
+                        driveway,
+                        Is.Not.Null,
+                        "차량 여섯 대인 회사에는 2칸짜리 주차장 프리팹 세 개가 필요하다.");
+
+                    Renderer renderer =
+                        driveway.GetComponentInChildren<Renderer>();
+                    Assert.That(renderer, Is.Not.Null);
+                    Assert.That(
+                        renderer.bounds.size.x,
+                        Is.EqualTo(2f / 3f)
+                            .Within(0.01f),
+                        "회사 주차장 각 프리팹 폭은 2그리드 폭의 1/3이어야 한다.");
+                    Assert.That(
+                        renderer.bounds.size.y,
+                        Is.EqualTo(1f).Within(0.01f),
+                        "회사 주차장 깊이는 그리드 한 칸과 정확히 같아야 한다.");
+
+                    if (index == 0)
+                    {
+                        combinedBounds = renderer.bounds;
+                    }
+                    else
+                    {
+                        combinedBounds.Encapsulate(
+                            renderer.bounds);
+                    }
+                }
+
+                Assert.That(
+                    preview.transform.Find("Driveway_3"),
+                    Is.Null);
+                Assert.That(
+                    combinedBounds.size.x,
+                    Is.EqualTo(2f).Within(0.01f),
+                    "세 프리팹을 합친 회사 주차장 폭은 정확히 2그리드여야 한다.");
+                Assert.That(
+                    combinedBounds.size.y,
+                    Is.EqualTo(1f).Within(0.01f),
+                    "회사 주차장 깊이는 정확히 1그리드여야 한다.");
+                Assert.That(
+                    combinedBounds.center.x,
+                    Is.EqualTo(0f).Within(0.01f),
+                    "회사 주차장 세 개는 건물 전면 중앙에 정렬되어야 한다.");
+                Assert.That(
+                    combinedBounds.center.y,
+                    Is.EqualTo(-0.5f).Within(0.01f),
+                    "회사 주차장은 건물 바로 앞 1그리드 영역에 배치되어야 한다.");
+
+                Transform firstBoundary =
+                    preview.transform.Find(
+                        "DrivewayBoundary_1");
+                Transform secondBoundary =
+                    preview.transform.Find(
+                        "DrivewayBoundary_2");
+                Assert.That(firstBoundary, Is.Not.Null);
+                Assert.That(secondBoundary, Is.Not.Null);
+                Assert.That(
+                    firstBoundary.localPosition.x,
+                    Is.EqualTo(1f / 3f)
+                        .Within(0.0001f));
+                Assert.That(
+                    secondBoundary.localPosition.x,
+                    Is.EqualTo(-1f / 3f)
+                        .Within(0.0001f));
+                Assert.That(
+                    firstBoundary.localScale.x,
+                    Is.EqualTo(0.015f)
+                        .Within(0.0001f),
+                    "회사 프리팹 경계선 폭은 내부 선과 같은 비율로 축소되어야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(preview);
+                Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
         public void SignalPlacementPreview_UsesInstalledRuntimePrefab()
         {
             var cityObject =
@@ -751,6 +1173,11 @@ namespace Tests.EditMode
                         "Signal_0_0/FutureSignalMarker"),
                     Is.Not.Null,
                     "실제 신호등 프리팹을 바꾸면 인프라 미리보기도 같은 프리팹을 사용해야 한다.");
+                Assert.That(
+                    preview.transform.Find(
+                        "Signal_0_0/Selection"),
+                    Is.Null,
+                    "신호등 아래에 흰색 선택판을 생성하지 않아야 한다.");
             }
             finally
             {
