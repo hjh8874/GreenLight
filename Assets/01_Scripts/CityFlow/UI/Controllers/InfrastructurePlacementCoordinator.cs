@@ -306,6 +306,12 @@ namespace CityFlow.UI.Controllers
                 return false;
             }
 
+            if (!IsBuildMenuOpen?.Invoke() ?? true)
+            {
+                _rightClickStartCoord = null;
+                return false;
+            }
+
             Vector2Int currentCoord = GetMouseGridCoordinate();
             UpdateGhostPosition(currentCoord);
 
