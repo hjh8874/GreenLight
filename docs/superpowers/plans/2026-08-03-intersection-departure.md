@@ -43,7 +43,7 @@
 
 **설계 근거(구현자가 고민하지 말 것):** 직교 인접 셀은 **최대 1개**다. 풋프린트가 직사각형(`TileFootprint.GetRotatedSize`)이고 `road`는 풋프린트 밖이므로, `road`의 4방 이웃 중 풋프린트 셀이 둘이면 그 사이 칸까지 풋프린트가 덮어야 해 모순이다. 다중 후보 처리 로직 불필요.
 
-- [ ] **Step 1: 실패 테스트 작성**
+- [x] **Step 1: 실패 테스트 작성**
 
 ```csharp
 using NUnit.Framework;
@@ -87,12 +87,12 @@ namespace CityFlow.Sim.Tests
 }
 ```
 
-- [ ] **Step 2: RED 확인 요청**
+- [x] **Step 2: RED 확인 요청**
 
 감독에게 보고한다. 기대: `error CS1061 TryGetDepartureEntryDir` (메서드 없음).
 **직접 Unity를 실행하지 말 것.**
 
-- [ ] **Step 3: 최소 구현**
+- [x] **Step 3: 최소 구현**
 
 `RoadNetwork.cs`의 `CollectAccessRoads` 아래에 추가한다. 기존 `DX`/`DY`의 **앞 4개만** 직교다(`RoadNetwork.cs:13-14`).
 
@@ -125,7 +125,7 @@ namespace CityFlow.Sim.Tests
 
 - [ ] **Step 4: GREEN 확인 요청** — 감독이 게이트를 돌린다.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add Assets/01_Scripts/CityFlow/Sim/RoadNetwork.cs \
