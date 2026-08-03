@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using CityFlow.Bootstrap;
 using System.Collections.Generic;
 using System.Reflection;
@@ -1020,14 +1020,80 @@ namespace Tests.EditMode
             }
         }
 
+        private sealed class TestTileData : IReadOnlyTileData
+        {
+            public CongestionLevel GetCongestion(Vector2Int tile) => CongestionLevel.Low;
+            public float GetDensity01(Vector2Int tile) => 0f;
+            public int GetQueueCount(Vector2Int tile, Dir entryDir) => 0;
+            public TileType GetTileType(Vector2Int tile) => TileType.Empty;
+            public PlacementDirection GetDirection(Vector2Int tile) => PlacementDirection.North;
+            public Vector2Int GetFootprintSize(TileType type) => Vector2Int.one;
+            public bool TryGetFootprintAnchor(Vector2Int tile, out Vector2Int anchor) { anchor = tile; return false; }
+            public bool IsFootprintAnchor(Vector2Int tile) => false;
+            public bool TryGetConstructionProgress01(Vector2Int tile, out float progress01) { progress01 = 0f; return false; }
+            public bool TryGetConstructionTargetType(Vector2Int tile, out TileType targetType) { targetType = TileType.Empty; return false; }
+        }
+
+        private sealed class TestEconomyService : IEconomyService
+        {
+            public long Coins { get; set; }
+            public event Action<long> CoinsChanged;
+            public bool TrySpend(long amount)
+            {
+                if (Coins >= amount)
+                {
+                    Coins -= amount;
+                    CoinsChanged?.Invoke(Coins);
+                    return true;
+                }
+                return false;
+            }
+            public void AddCoins(long amount, string reason)
+            {
+                Coins += amount;
+                CoinsChanged?.Invoke(Coins);
+            }
+        }
+
         [Test]
         public void HandlePlace_SinglePlacement_CancelsOnSuccess_MaintainsOnFailure()
         {
             var go = new GameObject("Controller");
             var controller = go.AddComponent<PlacementController>();
-            
-            // We can't easily mock action dispatcher without an interface, but we can verify CancelPlacement behavior.
-            // If we can't test internal logic easily without interfaces, we may just leave a placeholder or basic check.
+
+            try
+            {
+                // Economy with 0 coins
+                var economy = new TestEconomyService { Coins = 0 };
+                var services = new CityFlowServices(
+                    new SimEventHub(),
+                    new TestTileData(),
+                    new DefaultAutoDirectionPlacementService(),
+                    null,
+                    economy
+                );
+
+                controller.Initialize(services);
+
+                // Set up placement mode for an expensive building (e.g. Hospital)
+                controller.ToggleBuildMode(true);
+                controller.SetBuildType(TileType.Hospital);
+
+                // Simulate clicking on the grid
+                var updateMethod = typeof(PlacementController).GetMethod("HandlePlace", BindingFlags.NonPublic | BindingFlags.Instance);
+                updateMethod.Invoke(controller, new object[] { new Vector2Int(0, 0) });
+
+                // Since we have 0 coins, PlaceInfrastructure should fail and return false.
+                // Thus, CancelPlacement shouldn't be called, and _isBuildingMode should still be true.
+                var isPlacingField = typeof(PlacementController).GetField("_isBuildingMode", BindingFlags.NonPublic | BindingFlags.Instance);
+                bool isPlacing = (bool)isPlacingField.GetValue(controller);
+
+                Assert.IsTrue(isPlacing, "Build mode should remain active if placement fails due to insufficient funds.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
         }
         private static void SetPrivateField<TTarget, TValue>(
             TTarget target,

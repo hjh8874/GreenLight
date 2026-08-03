@@ -292,7 +292,7 @@ namespace CityFlow.UI.Controllers
                     return true;
                 }
 
-                if (!IsBuildMenuOpen?.Invoke() ?? true)
+                if (IsBuildMenuOpen?.Invoke() == false)
                 {
                     _rightClickStartCoord = null;
                     return false;
@@ -306,7 +306,7 @@ namespace CityFlow.UI.Controllers
                 return false;
             }
 
-            if (!IsBuildMenuOpen?.Invoke() ?? true)
+            if (IsBuildMenuOpen?.Invoke() == false)
             {
                 _rightClickStartCoord = null;
                 return false;

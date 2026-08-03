@@ -109,7 +109,7 @@ namespace CityFlow.UI.Controllers.Placement
             return false;
         }
 
-        public void PlaceInfrastructure(
+        public bool PlaceInfrastructure(
             Vector2Int coord,
             TileType currentType,
             PlacementDirection direction,
@@ -120,7 +120,7 @@ namespace CityFlow.UI.Controllers.Placement
             if (_useFakeMode)
             {
                 Debug.Log($"[UI Fake Mode] 타일 {currentType} 적용 성공! 위치: {coord}");
-                return;
+                return true;
             }
 
             if (services != null && services.Placement != null && services.TileData != null)
@@ -148,7 +148,9 @@ namespace CityFlow.UI.Controllers.Placement
                             services.Economy.AddCoins(refundCost, "Demolish Refund");
 
                         Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 철거 명령 전달 (환불 {refundCost}).");
+                        return true;
                     }
+                    return false;
                 }
                 else
                 {
@@ -156,7 +158,7 @@ namespace CityFlow.UI.Controllers.Placement
                     {
                         Debug.LogWarning(
                             $"[UI] {currentType} 건물은 연구 완료 후 건설할 수 있습니다.");
-                        return;
+                        return false;
                     }
 
                     long buildCost = GetTileCost(
@@ -167,13 +169,13 @@ namespace CityFlow.UI.Controllers.Placement
                     if (previousType != TileType.Empty)
                     {
                         Debug.LogWarning("[UI] 기존 건물이나 도로가 있는 위치에는 새 건물을 지을 수 없습니다.");
-                        return;
+                        return false;
                     }
 
                     if (services.Economy != null && buildCost > 0 && services.Economy.Coins < buildCost)
                     {
                         Debug.LogWarning("[UI] 코인이 부족하여 건설할 수 없습니다!");
-                        return;
+                        return false;
                     }
 
                     bool placed = currentType == TileType.SpecialBuilding
@@ -196,9 +198,12 @@ namespace CityFlow.UI.Controllers.Placement
                             services.Economy.TrySpend(buildCost);
 
                         Debug.Log($"[Real Mode] 코어 엔진에 {coord} 위치 {currentType} 건설 명령 전달 (비용 {buildCost}).");
+                        return true;
                     }
+                    return false;
                 }
             }
+            return false;
         }
 
         public bool TryDemolishAt(Vector2Int coord, CityFlowServices services)
