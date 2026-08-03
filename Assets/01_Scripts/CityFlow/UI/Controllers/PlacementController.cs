@@ -51,6 +51,9 @@ namespace CityFlow.UI
         public bool IsBuildingMode => _isBuildingMode;
         public CityFlow.Content.PopulationConfigSO PopulationConfig => populationConfig;
         public CityFlow.Content.BuildingDefinitionSO HospitalDefinition => hospitalDefinition;
+        public event Action PlacementSucceeded;
+        public event Action PlacementRejected;
+        public event Action DemolitionSucceeded;
 
         private CityFlowServices _services;
         private bool _isBuildingMode = false;
@@ -99,6 +102,7 @@ namespace CityFlow.UI
             _inputHandler.OnDemolishRequested += HandleDemolish;
             _inputHandler.OnPlaceRequested += HandlePlace;
             _inputHandler.OnDragPlaceRequested += HandleDragPlace;
+            _inputHandler.OnPlacementRejected += HandlePlacementRejected;
             _inputHandler.OnCancelPlacementRequested += CancelPlacement;
 
             _managersInitialized = true;
@@ -391,7 +395,13 @@ namespace CityFlow.UI
 
         private bool HandleDemolish(Vector2Int coord)
         {
-            return _actionDispatcher.TryDemolishAt(coord, _services);
+            bool removed = _actionDispatcher.TryDemolishAt(coord, _services);
+            if (removed)
+            {
+                DemolitionSucceeded?.Invoke();
+            }
+
+            return removed;
         }
 
         private void HandlePlace(Vector2Int coord)
@@ -405,6 +415,16 @@ namespace CityFlow.UI
                 _currentSpecialBuildingId,
                 _currentCompanyTypeId);
             _lastModelPreviewCoord = null;
+
+            if (placed)
+            {
+                PlacementSucceeded?.Invoke();
+            }
+            else
+            {
+                PlacementRejected?.Invoke();
+            }
+
             if (placed && _currentType != TileType.Road)
             {
                 CancelPlacement();
@@ -440,14 +460,23 @@ namespace CityFlow.UI
                     _services,
                     _currentSpecialBuildingId))
             {
-                _actionDispatcher.PlaceInfrastructure(
+                bool placed = _actionDispatcher.PlaceInfrastructure(
                     coord,
                     _currentType,
                     direction,
                     _services,
                     _currentSpecialBuildingId,
                     _currentCompanyTypeId);
+                if (placed)
+                {
+                    PlacementSucceeded?.Invoke();
+                }
             }
+        }
+
+        private void HandlePlacementRejected()
+        {
+            PlacementRejected?.Invoke();
         }
 
         private PlacementDirection ResolvePlacementDirection(Vector2Int coord)
@@ -508,7 +537,7 @@ namespace CityFlow.UI
 
         public bool TryDemolishAt(Vector2Int coord)
         {
-            return _actionDispatcher.TryDemolishAt(coord, _services);
+            return HandleDemolish(coord);
         }
 
         private void UpdateGhostSprite()

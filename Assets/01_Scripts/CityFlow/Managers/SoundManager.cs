@@ -1,5 +1,6 @@
-using System.Threading.Tasks;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Audio;
 
 namespace CityFlow.Managers
 {
@@ -8,14 +9,14 @@ namespace CityFlow.Managers
         public static SoundManager Instance { get; private set; }
 
         [Header("Audio Sources")]
-        [Tooltip("BGM 재생용 AudioSource. 비워두면 자동 생성됩니다.")]
         [SerializeField] private AudioSource bgmSource;
-        [Tooltip("SFX 재생용 AudioSource. 비워두면 자동 생성됩니다.")]
         [SerializeField] private AudioSource sfxSource;
+        [SerializeField] private AudioMixerGroup bgmOutput;
+        [SerializeField] private AudioMixerGroup sfxOutput;
 
         [Header("Catalog")]
         [SerializeField] private SoundCatalog soundCatalog;
-        [SerializeField] private bool playOnStart = true;
+        [SerializeField] private bool playOnStart;
         [SerializeField] private string startBgmId;
 
         [Header("Volume")]
@@ -24,24 +25,35 @@ namespace CityFlow.Managers
         [Range(0f, 1f)]
         [SerializeField] private float sfxVolume = 1f;
 
-        private readonly SoundHandleCache handleCache = new();
+        private readonly Dictionary<string, float> lastPlayedAt = new();
         private bool isMuted;
         private string currentBgmId;
-        private int bgmRequestVersion;
 
         public float BgmVolume => bgmVolume;
         public float SfxVolume => sfxVolume;
         public bool IsMuted => isMuted;
+        public bool IsConfigured => soundCatalog != null;
 
         private void Awake()
         {
             if (Instance != null && Instance != this)
             {
-                Destroy(gameObject);
-                return;
+                if (!Instance.IsConfigured && IsConfigured)
+                {
+                    SoundManager previous = Instance;
+                    Instance = this;
+                    Destroy(previous.gameObject);
+                }
+                else
+                {
+                    Destroy(gameObject);
+                    return;
+                }
             }
-
-            Instance = this;
+            else
+            {
+                Instance = this;
+            }
 
             if (transform.parent != null)
             {
@@ -52,14 +64,13 @@ namespace CityFlow.Managers
 
             bgmSource = EnsureAudioSource(bgmSource, "BGM Source", true);
             sfxSource = EnsureAudioSource(sfxSource, "SFX Source", false);
-
+            bgmSource.outputAudioMixerGroup = bgmOutput;
+            sfxSource.outputAudioMixerGroup = sfxOutput;
             ApplyVolume();
         }
 
         private void Start()
         {
-            PreloadMarkedSounds();
-
             if (playOnStart)
             {
                 PlayBgm(startBgmId);
@@ -68,31 +79,23 @@ namespace CityFlow.Managers
 
         private void OnDestroy()
         {
-            if (Instance != this)
+            if (Instance == this)
             {
-                return;
+                Instance = null;
             }
-
-            handleCache.ReleaseAll();
-            Instance = null;
         }
 
-        public async void PlayBgm(string soundId)
+        public void PlayBgm(string soundId)
         {
-            if (!TryGetSound(soundId, SoundType.Bgm, out SoundCatalog.SoundEntry sound))
+            if (!TryGetSound(
+                    soundId,
+                    SoundType.Bgm,
+                    out SoundCatalog.SoundEntry sound))
             {
                 return;
             }
 
-            int requestVersion = ++bgmRequestVersion;
-            AudioClip clip = await LoadClipAsync(sound);
-
-            if (clip == null || requestVersion != bgmRequestVersion)
-            {
-                return;
-            }
-
-            PlayBgm(clip);
+            PlayBgm(sound.Clip);
             currentBgmId = sound.Id;
         }
 
@@ -114,8 +117,6 @@ namespace CityFlow.Managers
 
         public void StopBgm()
         {
-            bgmRequestVersion++;
-
             if (bgmSource == null)
             {
                 return;
@@ -128,40 +129,30 @@ namespace CityFlow.Managers
         public void ReleaseCurrentBgm()
         {
             StopBgm();
-            handleCache.Release(currentBgmId);
             currentBgmId = null;
         }
 
-        public void PauseBgm()
-        {
-            bgmSource?.Pause();
-        }
+        public void PauseBgm() => bgmSource?.Pause();
 
-        public void ResumeBgm()
-        {
-            bgmSource?.UnPause();
-        }
+        public void ResumeBgm() => bgmSource?.UnPause();
 
         public void PlaySfx(string soundId)
         {
             PlaySfx(soundId, 1f);
         }
 
-        public async void PlaySfx(string soundId, float volumeScale)
+        public void PlaySfx(string soundId, float volumeScale)
         {
-            if (!TryGetSound(soundId, SoundType.Sfx, out SoundCatalog.SoundEntry sound))
+            if (!TryGetSound(
+                    soundId,
+                    SoundType.Sfx,
+                    out SoundCatalog.SoundEntry sound) ||
+                !CanPlay(sound))
             {
                 return;
             }
 
-            AudioClip clip = await LoadClipAsync(sound);
-
-            if (clip == null)
-            {
-                return;
-            }
-
-            PlaySfx(clip, volumeScale * sound.VolumeScale);
+            PlaySfx(sound.Clip, volumeScale * sound.VolumeScale);
         }
 
         public void PlaySfx(AudioClip clip)
@@ -184,26 +175,54 @@ namespace CityFlow.Managers
             PlaySfxAtPoint(clip, position, 1f);
         }
 
-        public void PlaySfxAtPoint(AudioClip clip, Vector3 position, float volumeScale)
+        public void PlaySfxAtPoint(
+            AudioClip clip,
+            Vector3 position,
+            float volumeScale)
         {
             if (clip == null || isMuted)
             {
                 return;
             }
 
-            AudioSource.PlayClipAtPoint(clip, position, sfxVolume * Mathf.Clamp01(volumeScale));
+            AudioSource.PlayClipAtPoint(
+                clip,
+                position,
+                sfxVolume * Mathf.Clamp01(volumeScale));
+        }
+
+        public bool TryGetSfx(
+            string soundId,
+            out AudioClip clip,
+            out float volumeScale)
+        {
+            clip = null;
+            volumeScale = 0f;
+
+            if (!TryGetSound(
+                    soundId,
+                    SoundType.Sfx,
+                    out SoundCatalog.SoundEntry sound) ||
+                sound.Clip == null)
+            {
+                return false;
+            }
+
+            clip = sound.Clip;
+            volumeScale = sound.VolumeScale;
+            return true;
         }
 
         public void ReleaseSound(string soundId)
         {
-            handleCache.Release(soundId);
+            lastPlayedAt.Remove(soundId);
         }
 
         public void ReleaseAllLoadedSounds()
         {
             StopBgm();
             currentBgmId = null;
-            handleCache.ReleaseAll();
+            lastPlayedAt.Clear();
         }
 
         public void SetBgmVolume(float volume)
@@ -229,7 +248,10 @@ namespace CityFlow.Managers
             SetMute(!isMuted);
         }
 
-        private AudioSource EnsureAudioSource(AudioSource source, string sourceName, bool loop)
+        private AudioSource EnsureAudioSource(
+            AudioSource source,
+            string sourceName,
+            bool loop)
         {
             if (source == null)
             {
@@ -240,41 +262,39 @@ namespace CityFlow.Managers
 
             source.playOnAwake = false;
             source.loop = loop;
+            source.spatialBlend = 0f;
             return source;
         }
 
-        private async void PreloadMarkedSounds()
-        {
-            if (soundCatalog == null)
-            {
-                return;
-            }
-
-            for (int i = 0; i < soundCatalog.Sounds.Count; i++)
-            {
-                SoundCatalog.SoundEntry sound = soundCatalog.Sounds[i];
-
-                if (sound == null || !sound.Preload)
-                {
-                    continue;
-                }
-
-                await LoadClipAsync(sound);
-            }
-        }
-
-        private bool TryGetSound(string soundId, SoundType expectedType, out SoundCatalog.SoundEntry sound)
+        private bool TryGetSound(
+            string soundId,
+            SoundType expectedType,
+            out SoundCatalog.SoundEntry sound)
         {
             sound = null;
 
-            return soundCatalog != null
-                && soundCatalog.TryGetSound(soundId, out sound)
-                && sound.Type == expectedType;
+            return soundCatalog != null &&
+                   soundCatalog.TryGetSound(soundId, out sound) &&
+                   sound.Type == expectedType &&
+                   sound.Clip != null;
         }
 
-        private Task<AudioClip> LoadClipAsync(SoundCatalog.SoundEntry sound)
+        private bool CanPlay(SoundCatalog.SoundEntry sound)
         {
-            return handleCache.LoadAsync(sound);
+            if (sound == null || sound.Clip == null)
+            {
+                return false;
+            }
+
+            float now = Time.unscaledTime;
+            if (lastPlayedAt.TryGetValue(sound.Id, out float previous) &&
+                now - previous < sound.CooldownSeconds)
+            {
+                return false;
+            }
+
+            lastPlayedAt[sound.Id] = now;
+            return true;
         }
 
         private void ApplyVolume()
@@ -289,5 +309,22 @@ namespace CityFlow.Managers
                 sfxSource.volume = isMuted ? 0f : sfxVolume;
             }
         }
+
+#if UNITY_EDITOR
+        public void EditorConfigure(
+            SoundCatalog catalog,
+            AudioMixerGroup musicGroup,
+            AudioMixerGroup effectsGroup)
+        {
+            soundCatalog = catalog;
+            bgmOutput = musicGroup;
+            sfxOutput = effectsGroup;
+            playOnStart = false;
+        }
+#endif
+
+        // Unity setup:
+        // Place the baked SoundSystem prefab in a CityFlow scene.
+        // The configured instance replaces legacy empty SoundManager objects.
     }
 }

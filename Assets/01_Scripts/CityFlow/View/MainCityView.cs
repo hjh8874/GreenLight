@@ -251,6 +251,15 @@ namespace CityFlow.View
         public float FlowBurstSeconds => burstSeconds;
         public Color FlowBurstColor => flowBurstColor;
         public bool IsDriveViewActive => driveViewCamera != null && driveViewCamera.IsFollowing;
+        public float NormalizedZoom01 => IsDriveViewActive
+            ? 1f
+            : 1f - Mathf.InverseLerp(
+                minimumZoomDistance,
+                minimumZoomDistance + zoomDistanceRange,
+                zoomDistance);
+        public Camera ActiveViewCamera => IsDriveViewActive
+            ? driveViewCamera.ViewCamera
+            : mainCamera;
         public event System.Action GridCellsBuilt;
 
         public bool IsRoundaboutRoadTile(Vector2Int tile) =>

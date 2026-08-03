@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9f09071fb9018e5479e870e8fb71d639, type: 3}
+  m_Name: BgmPlaylist
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Audio.BgmPlaylistSO
+  tracks:
+  - {fileID: 8300000, guid: be38a87c1a284834ba7bbccb40b094a5, type: 3}
+  - {fileID: 8300000, guid: 301be5893e6c8054d95f38fd9b72f1dc, type: 3}
+  - {fileID: 8300000, guid: 4ec29af9584c1d54caae212d152773d8, type: 3}
+  - {fileID: 8300000, guid: 39b9684141501de469be9855a8e45a4d, type: 3}
+  - {fileID: 8300000, guid: d9dc9571cd2430e4eb876f8af45bf460, type: 3}
+  - {fileID: 8300000, guid: e88d9c024bb52864f9b5d394486dc79e, type: 3}
+  - {fileID: 8300000, guid: 7bcdcfd98e1de6f4f9fe74edb0b3db35, type: 3}
+  - {fileID: 8300000, guid: 4975cd3d1ceeedc43bfaffdc226468dc, type: 3}
+  - {fileID: 8300000, guid: 764ee659609b7fd408b810a3c0aa224f, type: 3}
+  shuffle: 1
+  crossfadeSeconds: 2
+  musicVolume: 0.75
+  musicByZoom:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.5
+      value: 0.8
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4

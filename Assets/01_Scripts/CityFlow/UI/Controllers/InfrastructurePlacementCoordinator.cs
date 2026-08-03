@@ -55,6 +55,9 @@ namespace CityFlow.UI.Controllers
         public Func<bool> IsBuildMenuOpen { get; set; }
 
         public bool IsBuildingMode => _isBuildingMode;
+        public event System.Action PlacementSucceeded;
+        public event System.Action PlacementRejected;
+        public event System.Action DemolitionSucceeded;
 
         public void Initialize(CityFlowServices services)
         {
@@ -579,6 +582,7 @@ namespace CityFlow.UI.Controllers
             if (!CheckCanPlace(coord, _currentData))
             {
                 Debug.Log($"[InfrastructurePlacementCoordinator] Cannot place {_currentData.InfrastructureName} at {coord}");
+                PlacementRejected?.Invoke();
                 return;
             }
 
@@ -601,12 +605,14 @@ namespace CityFlow.UI.Controllers
                 if (_economy == null)
                 {
                     Debug.LogWarning("[InfrastructurePlacementCoordinator] EconomyService is null, but cost > 0. Placement blocked to prevent free placement.");
+                    PlacementRejected?.Invoke();
                     return;
                 }
 
                 if (!_economy.TrySpend(cost))
                 {
                     Debug.LogWarning("[InfrastructurePlacementCoordinator] Not enough coins.");
+                    PlacementRejected?.Invoke();
                     return;
                 }
             }
@@ -635,6 +641,7 @@ namespace CityFlow.UI.Controllers
                     _economy.AddCoins(cost, "Placement Rollback Refund");
                     Debug.Log($"[InfrastructurePlacementCoordinator] Placement failed. Refunded {cost} coins.");
                 }
+                PlacementRejected?.Invoke();
                 return;
             }
 
@@ -658,6 +665,7 @@ namespace CityFlow.UI.Controllers
             }
 
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
+            PlacementSucceeded?.Invoke();
             CompletePlacement();
         }
 
@@ -855,6 +863,8 @@ namespace CityFlow.UI.Controllers
             {
                 _services.Events.Publish(new InfrastructureChangedEvent(coord, true));
             }
+
+            DemolitionSucceeded?.Invoke();
             
             Debug.Log($"[InfrastructurePlacementCoordinator] Demolished {kind}. Refunded {refundAmount} coins (Original Cost: {originalCost}, Rate: {DEMOLISH_REFUND_RATE}).");
         }
