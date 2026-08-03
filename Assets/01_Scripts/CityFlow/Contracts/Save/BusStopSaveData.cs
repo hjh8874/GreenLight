@@ -7,5 +7,8 @@ namespace CityFlow.Contracts.Save
     {
         public int X;
         public int Y;
+        public bool HasOppositePlatform;
+        public int OppositeX;
+        public int OppositeY;
     }
 }

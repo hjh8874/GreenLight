@@ -1689,6 +1689,56 @@ namespace Tests.EditMode
                 Object.DestroyImmediate(go);
             }
         }
+
+        [Test]
+        public void HandlePlace_RoadPlacement_KeepsPlacementModeOnSuccess()
+        {
+            var go = new GameObject("Controller");
+            var controller = go.AddComponent<PlacementController>();
+            CityFlow.Configs.TileDataSO tileData = null;
+
+            try
+            {
+                var economy = new TestEconomyService { Coins = 100 };
+                var services = new CityFlowServices(
+                    new SimEventHub(),
+                    new TestTileData(),
+                    new DefaultAutoDirectionPlacementService(),
+                    null,
+                    economy
+                );
+
+                tileData = ScriptableObject.CreateInstance<
+                    CityFlow.Configs.TileDataSO>();
+                SetPrivateField(tileData, "buildCost", 0);
+                SetPrivateField(tileData, "category", TileType.Road);
+                SetPrivateField(
+                    controller,
+                    "availableTiles",
+                    new[] { tileData });
+                controller.SetFakeMode(false);
+
+                controller.Initialize(services);
+                controller.ToggleBuildMode(true);
+                controller.SetBuildType(TileType.Road);
+
+                MethodInfo updateMethod = typeof(PlacementController).GetMethod(
+                    "HandlePlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                updateMethod.Invoke(
+                    controller,
+                    new object[] { new Vector2Int(0, 0) });
+
+                Assert.IsTrue(
+                    controller.IsBuildingMode,
+                    "Road placement must remain selected for continuous building.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(tileData);
+                Object.DestroyImmediate(go);
+            }
+        }
         private static void SetPrivateField<TTarget, TValue>(
             TTarget target,
             string fieldName,

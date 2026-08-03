@@ -156,6 +156,41 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void VisualCatalogs_ReferenceProjectOwnedPrefabCopies()
+        {
+            BuildingVisualCatalogSO buildingCatalog =
+                AssetDatabase.LoadAssetAtPath<BuildingVisualCatalogSO>(
+                    "Assets/05_ScriptableObjects/Resources/CityFlow/" +
+                    "BuildingVisualCatalog.asset");
+            VehicleVisualCatalogSO vehicleCatalog =
+                AssetDatabase.LoadAssetAtPath<VehicleVisualCatalogSO>(
+                    "Assets/05_ScriptableObjects/Resources/CityFlow/" +
+                    "VehicleVisualCatalog.asset");
+
+            Assert.That(buildingCatalog, Is.Not.Null);
+            Assert.That(vehicleCatalog, Is.Not.Null);
+
+            AssertProjectOwnedPrefab(buildingCatalog.HousePrefab);
+            AssertProjectOwnedPrefab(buildingCatalog.OfficePrefab);
+            AssertProjectOwnedPrefab(buildingCatalog.SchoolPrefab);
+            AssertProjectOwnedPrefab(buildingCatalog.HospitalPrefab);
+            AssertProjectOwnedPrefab(buildingCatalog.FoundationPrefab);
+
+            foreach (GameObject prefab in
+                     vehicleCatalog.NormalVehiclePrefabs)
+            {
+                AssertProjectOwnedPrefab(prefab);
+            }
+
+            AssertProjectOwnedPrefab(vehicleCatalog.SchoolBusPrefab);
+            AssertProjectOwnedPrefab(vehicleCatalog.AmbulancePrefab);
+            foreach (GameObject prefab in vehicleCatalog.CityBusPrefabs)
+            {
+                AssertProjectOwnedPrefab(prefab);
+            }
+        }
+
+        [Test]
         public void BusStopUi_IsUnavailableWithoutRegistry()
         {
             InfrastructureDataSO busStopData =
@@ -433,6 +468,41 @@ namespace Tests.EditMode
             }
         }
 
+        [TestCase(InfrastructureKind.Signal)]
+        [TestCase(InfrastructureKind.Roundabout)]
+        [TestCase(InfrastructureKind.Overpass)]
+        [TestCase(InfrastructureKind.Oneway)]
+        [TestCase(InfrastructureKind.TurnRestriction)]
+        [TestCase(InfrastructureKind.PriorityRoad)]
+        [TestCase(InfrastructureKind.Highway)]
+        public void InfrastructurePlacement_SuccessCompletionEndsMode(
+            InfrastructureKind kind)
+        {
+            GameObject coordinatorObject =
+                new("InfrastructurePlacementCoordinator");
+            InfrastructureDataSO data = CreateInfrastructureData(kind);
+
+            try
+            {
+                InfrastructurePlacementCoordinator coordinator =
+                    coordinatorObject.AddComponent<
+                        InfrastructurePlacementCoordinator>();
+                coordinator.StartPlacement(data);
+
+                InvokePrivate(coordinator, "CompletePlacement");
+
+                Assert.That(
+                    coordinator.IsBuildingMode,
+                    Is.False,
+                    $"Successful {kind} placement must clear its selection.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(coordinatorObject);
+                Object.DestroyImmediate(data);
+            }
+        }
+
         [Test]
         public void BusStopDemolition_IsBlockedWithoutRegistry()
         {
@@ -547,6 +617,77 @@ namespace Tests.EditMode
                 Object.DestroyImmediate(coordinatorObject);
                 Object.DestroyImmediate(registryObject);
             }
+        }
+
+        [Test]
+        public void BusStopDemolition_UsesInstalledPlatformPairAfterRoadChanges()
+        {
+            SimEventHub events = new();
+            SimEngine engine = new(SimConfig.Default(), events);
+            Vector2Int stop = new(2, 3);
+            Vector2Int originalOppositePlatform = new(2, 1);
+
+            Assert.That(
+                engine.Place(new Vector2Int(2, 2), TileType.Road),
+                Is.True);
+            Assert.That(
+                engine.Place(new Vector2Int(3, 2), TileType.Road),
+                Is.True);
+            Assert.That(engine.TryPlaceBusStop(stop), Is.True);
+
+            Assert.That(
+                engine.Place(new Vector2Int(2, 4), TileType.Road),
+                Is.True);
+            Assert.That(
+                engine.Place(new Vector2Int(3, 4), TileType.Road),
+                Is.True);
+
+            Assert.That(
+                engine.TryRemoveBusStop(originalOppositePlatform),
+                Is.True,
+                "Either platform must remove the pair chosen at installation time.");
+            Assert.That(engine.BusStopTiles, Is.Empty);
+            Assert.That(
+                engine.Place(originalOppositePlatform, TileType.Road),
+                Is.True,
+                "Demolition must release the originally reserved opposite platform.");
+        }
+
+        [Test]
+        public void BusStopSave_RestoresInstalledPlatformPairAfterRoadChanges()
+        {
+            SimEventHub events = new();
+            SimEngine source = new(SimConfig.Default(), events);
+            Vector2Int stop = new(2, 3);
+            Vector2Int originalOppositePlatform = new(2, 1);
+
+            Assert.That(
+                source.Place(new Vector2Int(2, 2), TileType.Road),
+                Is.True);
+            Assert.That(
+                source.Place(new Vector2Int(3, 2), TileType.Road),
+                Is.True);
+            Assert.That(source.TryPlaceBusStop(stop), Is.True);
+            Assert.That(
+                source.Place(new Vector2Int(2, 4), TileType.Road),
+                Is.True);
+            Assert.That(
+                source.Place(new Vector2Int(3, 4), TileType.Road),
+                Is.True);
+
+            var snapshot = source.CreateSnapshot();
+            Assert.That(snapshot.BusStops, Has.Length.EqualTo(1));
+            Assert.That(snapshot.BusStops[0].HasOppositePlatform, Is.True);
+            Assert.That(snapshot.BusStops[0].OppositeX, Is.EqualTo(2));
+            Assert.That(snapshot.BusStops[0].OppositeY, Is.EqualTo(1));
+
+            SimEngine restored = new(SimConfig.Default(), new SimEventHub());
+            restored.RestoreSnapshot(snapshot);
+
+            Assert.That(
+                restored.TryRemoveBusStop(originalOppositePlatform),
+                Is.True,
+                "Save restore must preserve the pair chosen at installation time.");
         }
 
         [Test]
@@ -1226,6 +1367,16 @@ namespace Tests.EditMode
                 Is.Not.Null,
                 $"Field {fieldName} was not found.");
             field.SetValue(target, value);
+        }
+
+        private static void AssertProjectOwnedPrefab(GameObject prefab)
+        {
+            Assert.That(prefab, Is.Not.Null);
+            string path = AssetDatabase.GetAssetPath(prefab);
+            Assert.That(
+                path.Replace('\\', '/'),
+                Does.StartWith("Assets/02_Prefabs/"),
+                $"Catalogs must reference a project-owned prefab copy, not {path}.");
         }
 
         private static void InvokePrivate(
