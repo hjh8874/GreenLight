@@ -240,6 +240,66 @@ namespace CityFlow.Tests.EditMode
         }
 
         [Test]
+        public void RouteStartingInRoundabout_EntersAtFirstSafeRoadTile()
+        {
+            SimConfig config = SimConfig.Default();
+            config.GridWidth = 7;
+            config.GridHeight = 3;
+            config.AutoDetectSignals = false;
+            var engine = new SimEngine(config, new SimEventHub());
+
+            for (int x = 0; x < config.GridWidth; x++)
+            {
+                Assert.IsTrue(engine.Place(
+                    new Vector2Int(x, 1),
+                    TileType.Road));
+            }
+
+            Assert.IsTrue(engine.Place(
+                new Vector2Int(3, 0),
+                TileType.Road));
+            Assert.IsTrue(engine.Place(
+                new Vector2Int(3, 2),
+                TileType.Road));
+            Assert.IsTrue(engine.TryPlaceRoundabout(
+                new Vector2Int(3, 1)));
+
+            IRoadTrafficService traffic = engine.RoadTraffic;
+            Assert.IsTrue(traffic.TryRegisterAgent(
+                new RoadTrafficAgentRegistration(
+                    RoadTrafficAgentKind.CityBus,
+                    new VehicleFootprint(
+                        VehicleSizeClass.Large,
+                        0.8f,
+                        0.24f,
+                        0.11f)),
+                out RoadTrafficAgentId busId));
+            Assert.IsTrue(traffic.TryAssignRoute(
+                new RoadTrafficRouteRequest(
+                    busId,
+                    new RoadRoutePlan(new[]
+                    {
+                        new Vector2Int(3, 1),
+                        new Vector2Int(4, 1),
+                        new Vector2Int(5, 1),
+                        new Vector2Int(6, 1)
+                    }),
+                    false)));
+            Assert.IsTrue(traffic.TryStartAgent(busId));
+
+            engine.Tick(config.TickInterval);
+
+            Assert.IsTrue(traffic.TryGetSnapshot(
+                busId,
+                out RoadTrafficSnapshot snapshot));
+            Assert.AreNotEqual(
+                RoadTrafficAgentState.RouteUnavailable,
+                snapshot.State);
+            Assert.IsTrue(snapshot.IsVisible);
+            Assert.GreaterOrEqual(snapshot.RouteTileIndex, 2);
+        }
+
+        [Test]
         public void HoldingBus_PreservesQueueFootprintAcrossRouteChange()
         {
             SimConfig config = SimConfig.Default();

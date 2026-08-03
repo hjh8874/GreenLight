@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Content.Transit;
 using CityFlow.Contracts;
@@ -77,6 +78,7 @@ namespace CityFlow.Content
                 definition.VehicleFootprint,
                 true);
             busRoute.Initialize(services);
+            TryApplyRoadStopOrder(directionalRoute);
 
             Runtime = new BusRuntime(
                 definition.PassengerCapacity);
@@ -84,6 +86,45 @@ namespace CityFlow.Content
             prepared = true;
             Subscribe();
             SynchronizeRuntime();
+            return true;
+        }
+
+        public bool TryReplanFromCurrentPosition()
+        {
+            if (!prepared ||
+                busRoute == null ||
+                owner?.BusLines == null)
+            {
+                return false;
+            }
+
+            if (busRoute.IsStopPresentationPending)
+            {
+                busRoute.ConfirmStopPresentationReached();
+            }
+
+            if (!owner.BusLines.TryBuildDirectionalRoute(
+                    RouteId,
+                    Direction,
+                    out BusDirectionalRoute sourceRoute) ||
+                !TryApplyRoadStopOrder(sourceRoute))
+            {
+                return false;
+            }
+
+            Vector2Int currentPosition =
+                busRoute.CurrentTile;
+            if (!busRoute.ReconfigureLoopFromCurrentPosition(
+                    currentPosition,
+                    directionalRoute.OrderedStops) ||
+                !busRoute.StartRoute())
+            {
+                return false;
+            }
+
+            IsOperating = true;
+            observedRouteState = busRoute.State;
+            ApplyRouteState(observedRouteState);
             return true;
         }
 
@@ -143,9 +184,11 @@ namespace CityFlow.Content
 
             if (!busRoute.StartRoute())
             {
+                worldView.SetAgentVisible(false);
                 return false;
             }
 
+            worldView.SetAgentVisible(true);
             IsOperating = true;
             observedRouteState = busRoute.State;
             ApplyRouteState(observedRouteState);
@@ -161,6 +204,8 @@ namespace CityFlow.Content
                 busRoute.StopRoute();
             }
 
+            worldView?.SetAgentVisible(false);
+            worldView?.DetachCityBusAgent();
             Runtime?.ResetPassengers();
             Runtime?.SetState(
                 BusOperatingState.OutOfService);
@@ -270,6 +315,34 @@ namespace CityFlow.Content
             Runtime.SetRoutePosition(
                 busRoute.CurrentTile,
                 busRoute.NextStop);
+        }
+
+        private bool TryApplyRoadStopOrder(
+            BusDirectionalRoute sourceRoute)
+        {
+            if (!busRoute.TryOrderRoadsideLoopStops(
+                    sourceRoute.OrderedStops,
+                    out IReadOnlyList<Vector2Int> roadOrderedStops))
+            {
+                return false;
+            }
+
+            if (roadOrderedStops.Count <
+                sourceRoute.OrderedStops.Count)
+            {
+                Debug.LogWarning(
+                    $"[CityBusVehicleAgent] Route {RouteId} " +
+                    $"{Direction} skipped " +
+                    $"{sourceRoute.OrderedStops.Count - roadOrderedStops.Count} " +
+                    "unreachable stop(s).",
+                    this);
+            }
+
+            directionalRoute = new BusDirectionalRoute(
+                sourceRoute.RouteId,
+                sourceRoute.Direction,
+                roadOrderedStops);
+            return directionalRoute.IsValid;
         }
 
         private void OnDestroy()

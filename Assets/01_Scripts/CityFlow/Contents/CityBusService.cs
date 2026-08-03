@@ -48,6 +48,14 @@ namespace CityFlow.Content
         private const string StopRevenueReason =
             "city bus stop";
         private const int LegacyDefaultRouteId = 1;
+        private static readonly Vector2Int[] RoundaboutFootprintOffsets =
+        {
+            Vector2Int.zero,
+            Vector2Int.up,
+            Vector2Int.right,
+            Vector2Int.down,
+            Vector2Int.left
+        };
 
         [Header("Configuration")]
         [SerializeField] private BusDefinitionSO definition;
@@ -63,6 +71,8 @@ namespace CityFlow.Content
 
         private readonly List<Vector2Int> routeStops = new();
         private readonly List<CityBusVehicleAgent> activeVehicles = new();
+        private readonly List<CityBusVehicleAgent>
+            vehiclesReadyToRetire = new();
         private readonly Dictionary<
             int,
             BusLineDirectionAvailability> availabilityByRoute = new();
@@ -80,7 +90,9 @@ namespace CityFlow.Content
         private bool rebuildPending;
         private bool recoveryPending;
         private bool rebuildInProgress;
+        private bool topologyRefreshInProgress;
         private bool vehicleVisible;
+        private bool serviceStopPending;
         private bool ownsLegacyDefaultLine;
         private bool synchronizingLegacyLine;
 
@@ -94,6 +106,7 @@ namespace CityFlow.Content
         public BusDefinitionSO Definition => definition;
         public CityBusScheduleSO Schedule => schedule;
         public bool IsVehicleVisible => vehicleVisible;
+        public bool IsStoppingAtNextStop => serviceStopPending;
 
         public event Action ServiceStarted;
         public event Action ServiceStopped;
@@ -213,6 +226,12 @@ namespace CityFlow.Content
                 return;
             }
 
+            if (serviceStopPending)
+            {
+                ProcessVehiclesReadyToRetire();
+                return;
+            }
+
             if (recoveryPending && IsInsideOperatingWindow())
             {
                 recoveryPending = false;
@@ -236,11 +255,13 @@ namespace CityFlow.Content
                 return true;
             }
 
-            return primaryAgent.Route.State is
-                BusRouteState.Idle or
-                BusRouteState.WaitingAtStop or
-                BusRouteState.RouteUnavailable or
-                BusRouteState.Completed;
+            return !primaryAgent.Route
+                    .IsStopPresentationPending &&
+                (primaryAgent.Route.State is
+                    BusRouteState.Idle or
+                    BusRouteState.WaitingAtStop or
+                    BusRouteState.RouteUnavailable or
+                    BusRouteState.Completed);
         }
 
         private void OnEnable()
@@ -277,21 +298,86 @@ namespace CityFlow.Content
                 return false;
             }
 
+            if (serviceStopPending)
+            {
+                StopService();
+            }
+
             if (vehicleVisible && activeVehicles.Count > 0)
             {
                 return true;
             }
 
             serviceRequested = true;
+            serviceStopPending = false;
+            vehiclesReadyToRetire.Clear();
             rebuildPending = false;
             recoveryPending = false;
             return RebuildVehicles(true);
+        }
+
+        public bool RequestServiceStopAtNextStop()
+        {
+            if (!initialized)
+            {
+                return false;
+            }
+
+            serviceRequested = false;
+            rebuildPending = false;
+            recoveryPending = false;
+
+            if (!vehicleVisible || activeVehicles.Count == 0)
+            {
+                StopService();
+                return false;
+            }
+
+            if (serviceStopPending)
+            {
+                return true;
+            }
+
+            serviceStopPending = true;
+            vehiclesReadyToRetire.Clear();
+
+            for (int index = 0;
+                 index < activeVehicles.Count;
+                 index++)
+            {
+                CityBusVehicleAgent agent =
+                    activeVehicles[index];
+                BusRouteState routeState =
+                    agent?.Route != null
+                        ? agent.Route.State
+                        : BusRouteState.Idle;
+
+                if (agent == null ||
+                    !agent.IsOperating ||
+                    (routeState != BusRouteState.Moving &&
+                     !agent.Route.IsStopPresentationPending))
+                {
+                    QueueVehicleRetirement(agent);
+                }
+            }
+
+            if (verboseLogging)
+            {
+                Debug.Log(
+                    "[CityBusService] Service end requested. " +
+                    "Each bus will retire at its next stop.",
+                    this);
+            }
+
+            return true;
         }
 
         public void StopService()
         {
             bool wasOperating = vehicleVisible;
             serviceRequested = false;
+            serviceStopPending = false;
+            vehiclesReadyToRetire.Clear();
             rebuildPending = false;
             recoveryPending = false;
             SetVehicleVisible(false);
@@ -328,6 +414,8 @@ namespace CityFlow.Content
 
             try
             {
+                serviceStopPending = false;
+                vehiclesReadyToRetire.Clear();
                 SetVehicleVisible(false);
                 ClearVehicleAgents();
                 primaryAgent = null;
@@ -433,23 +521,36 @@ namespace CityFlow.Content
                 : null;
 
             bool prepared = agent.Prepare(
-                    services,
-                    definition,
-                    this,
-                    directionalRoute,
-                    candidateRoute) &&
+                services,
+                definition,
+                this,
+                directionalRoute,
+                candidateRoute);
+            bool routeBuilt = prepared &&
                 agent.TryBuildLoopRoadRoute(
-                    out _,
-                    out roadRoute);
-            bool started = prepared &&
+                    out roadRoute,
+                    out _);
+            bool directionAccepted = routeBuilt &&
                 (!requireOppositeDirection ||
                  UsesOppositeRoadDirection(
                      comparisonRoute,
-                     roadRoute)) &&
+                     roadRoute,
+                     (services.Placement as
+                         IIntersectionFacilityService)?.RoundaboutTiles));
+            bool started = directionAccepted &&
                 agent.StartOperating(rootView);
 
             if (!started)
             {
+                Debug.LogWarning(
+                    $"[CityBusService] Route {line.RouteId} " +
+                    $"{direction} was not started: " +
+                    GetDirectionStartFailure(
+                        prepared,
+                        routeBuilt,
+                        directionAccepted) +
+                    ".",
+                    this);
                 DiscardVehicleAgent(agent, usesRoot);
                 roadRoute = default;
                 return false;
@@ -461,30 +562,76 @@ namespace CityFlow.Content
             availability |= direction == BusTravelDirection.Forward
                 ? BusLineDirectionAvailability.Forward
                 : BusLineDirectionAvailability.Reverse;
+            LogDirectionStarted(
+                line.RouteId,
+                direction,
+                usesRoot,
+                agent,
+                roadRoute);
             return true;
+        }
+
+        private void LogDirectionStarted(
+            int routeId,
+            BusTravelDirection direction,
+            bool usesRoot,
+            CityBusVehicleAgent agent,
+            RoadRoutePlan roadRoute)
+        {
+            if (!verboseLogging)
+            {
+                return;
+            }
+
+            string trafficState = "snapshot=missing";
+            if (agent.Route.TryGetRoadTrafficSnapshot(
+                    out RoadTrafficSnapshot snapshot))
+            {
+                trafficState =
+                    $"state={snapshot.State}, " +
+                    $"snapshotVisible={snapshot.IsVisible}, " +
+                    $"tile={snapshot.CurrentTile}";
+            }
+
+            Debug.Log(
+                $"[CityBusService] Route {routeId} {direction} " +
+                $"started. agent={agent.gameObject.name}, " +
+                $"agentEntity={agent.GetEntityId()}, " +
+                $"usesRoot={usesRoot}, " +
+                $"pathOrigin={roadRoute.Origin}, " +
+                $"pathTiles={roadRoute.TileCount}, " +
+                trafficState,
+                agent);
         }
 
         private static bool UsesOppositeRoadDirection(
             RoadRoutePlan forward,
-            RoadRoutePlan reverse)
+            RoadRoutePlan reverse,
+            IReadOnlyList<Vector2Int> roundaboutCenters)
         {
             if (!forward.IsValid || !reverse.IsValid)
             {
                 return false;
             }
 
-            int sameDirectionEdges = 0;
             int oppositeDirectionEdges = 0;
             var forwardEdges = new HashSet<DirectedRoadEdge>();
+            HashSet<Vector2Int> roundaboutFootprint =
+                BuildRoundaboutFootprint(roundaboutCenters);
 
             for (int forwardIndex = 0;
                  forwardIndex < forward.TileCount - 1;
                  forwardIndex++)
             {
-                forwardEdges.Add(
-                    new DirectedRoadEdge(
-                        forward.Tiles[forwardIndex],
-                        forward.Tiles[forwardIndex + 1]));
+                var forwardEdge = new DirectedRoadEdge(
+                    forward.Tiles[forwardIndex],
+                    forward.Tiles[forwardIndex + 1]);
+                if (!TouchesRoundabout(
+                        forwardEdge,
+                        roundaboutFootprint))
+                {
+                    forwardEdges.Add(forwardEdge);
+                }
             }
 
             for (int reverseIndex = 0;
@@ -494,9 +641,12 @@ namespace CityFlow.Content
                 var reverseEdge = new DirectedRoadEdge(
                     reverse.Tiles[reverseIndex],
                     reverse.Tiles[reverseIndex + 1]);
-                if (forwardEdges.Contains(reverseEdge))
+                // Both services must use the roundabout's legal circulation.
+                if (TouchesRoundabout(
+                        reverseEdge,
+                        roundaboutFootprint))
                 {
-                    sameDirectionEdges++;
+                    continue;
                 }
 
                 var oppositeEdge = new DirectedRoadEdge(
@@ -508,9 +658,63 @@ namespace CityFlow.Content
                 }
             }
 
-            return oppositeDirectionEdges > 0 &&
-                sameDirectionEdges == 0;
+            // Stop approaches and constrained corridors may be shared even
+            // when the loop has a genuine opposite-running section.
+            return oppositeDirectionEdges > 0;
         }
+
+        private static string GetDirectionStartFailure(
+            bool prepared,
+            bool routeBuilt,
+            bool directionAccepted)
+        {
+            if (!prepared)
+            {
+                return "agent preparation failed";
+            }
+
+            if (!routeBuilt)
+            {
+                return "loop route could not be built";
+            }
+
+            return !directionAccepted
+                ? "no opposite road segment was found"
+                : "route start failed";
+        }
+
+        private static HashSet<Vector2Int> BuildRoundaboutFootprint(
+            IReadOnlyList<Vector2Int> roundaboutCenters)
+        {
+            var footprint = new HashSet<Vector2Int>();
+            if (roundaboutCenters == null)
+            {
+                return footprint;
+            }
+
+            for (int centerIndex = 0;
+                 centerIndex < roundaboutCenters.Count;
+                 centerIndex++)
+            {
+                Vector2Int center = roundaboutCenters[centerIndex];
+                for (int offsetIndex = 0;
+                     offsetIndex < RoundaboutFootprintOffsets.Length;
+                     offsetIndex++)
+                {
+                    footprint.Add(
+                        center +
+                        RoundaboutFootprintOffsets[offsetIndex]);
+                }
+            }
+
+            return footprint;
+        }
+
+        private static bool TouchesRoundabout(
+            DirectedRoadEdge edge,
+            HashSet<Vector2Int> roundaboutFootprint) =>
+            roundaboutFootprint.Contains(edge.Start) ||
+            roundaboutFootprint.Contains(edge.End);
 
         private CityBusVehicleAgent CreateVehicleAgent(
             int routeId,
@@ -588,6 +792,13 @@ namespace CityFlow.Content
                 return;
             }
 
+            BusWorldView worldView =
+                vehicleObject.GetComponent<BusWorldView>();
+            if (worldView != null)
+            {
+                worldView.enabled = false;
+            }
+
             if (Application.isPlaying)
             {
                 Destroy(vehicleObject);
@@ -613,7 +824,7 @@ namespace CityFlow.Content
         }
 
         private void OnAgentStopServed(
-            CityBusVehicleAgent _,
+            CityBusVehicleAgent agent,
             Vector2Int tile,
             int boarded,
             int left)
@@ -623,11 +834,34 @@ namespace CityFlow.Content
                 tile,
                 boarded,
                 left);
+
+            if (serviceStopPending)
+            {
+                QueueVehicleRetirement(agent);
+            }
         }
 
         private void OnAgentRouteUnavailable(
             CityBusVehicleAgent failedAgent)
         {
+            Debug.LogWarning(
+                $"[CityBusService] Route {failedAgent.RouteId} " +
+                $"{failedAgent.Direction} became unavailable " +
+                $"after startup. agentEntity=" +
+                $"{failedAgent.GetEntityId()}.",
+                failedAgent);
+
+            if (topologyRefreshInProgress)
+            {
+                return;
+            }
+
+            if (serviceStopPending)
+            {
+                QueueVehicleRetirement(failedAgent);
+                return;
+            }
+
             recoveryPending = serviceRequested &&
                 IsInsideOperatingWindow();
 
@@ -825,6 +1059,7 @@ namespace CityFlow.Content
 
             if (services != null)
             {
+                services.Events.Placed += OnPlaced;
                 services.GameCalendarRegistered +=
                     OnGameCalendarRegistered;
             }
@@ -861,6 +1096,7 @@ namespace CityFlow.Content
 
             if (services != null)
             {
+                services.Events.Placed -= OnPlaced;
                 services.GameCalendarRegistered -=
                     OnGameCalendarRegistered;
             }
@@ -883,6 +1119,65 @@ namespace CityFlow.Content
 
             SynchronizeLegacyDefaultLine();
             RequestServiceRebuild();
+        }
+
+        private void OnPlaced(PlacedEvent placedEvent)
+        {
+            if (placedEvent.Type != TileType.Road)
+            {
+                return;
+            }
+
+            RefreshRoutesAfterRoadTopologyChanged(
+                placedEvent.Tile);
+        }
+
+        private void RefreshRoutesAfterRoadTopologyChanged(
+            Vector2Int changedTile)
+        {
+            if (!initialized ||
+                !serviceRequested ||
+                !IsInsideOperatingWindow())
+            {
+                return;
+            }
+
+            topologyRefreshInProgress = true;
+            try
+            {
+                bool replanned = activeVehicles.Count > 0;
+                for (int index = 0;
+                     index < activeVehicles.Count;
+                     index++)
+                {
+                    if (!activeVehicles[index]
+                            .TryReplanFromCurrentPosition())
+                    {
+                        replanned = false;
+                        break;
+                    }
+                }
+
+                rebuildPending = false;
+                recoveryPending = false;
+
+                if (!replanned)
+                {
+                    RebuildVehicles(false);
+                }
+
+                if (verboseLogging)
+                {
+                    Debug.Log(
+                        "[CityBusService] Refreshed routes after " +
+                        $"road topology changed at {changedTile}.",
+                        this);
+                }
+            }
+            finally
+            {
+                topologyRefreshInProgress = false;
+            }
         }
 
         private void OnLineChanged(BusLineData _)
@@ -920,8 +1215,13 @@ namespace CityFlow.Content
 
             if (!IsInsideOperatingWindow())
             {
-                StopService();
+                RequestServiceStopAtNextStop();
                 return;
+            }
+
+            if (serviceStopPending)
+            {
+                StopService();
             }
 
             if (vehicleVisible && activeVehicles.Count > 0)
@@ -1004,6 +1304,80 @@ namespace CityFlow.Content
                 Debug.Log(
                     $"[CityBusService] Vehicle visibility: {vehicleVisible}.",
                     this);
+            }
+        }
+
+        private void QueueVehicleRetirement(
+            CityBusVehicleAgent agent)
+        {
+            if (agent == null ||
+                vehiclesReadyToRetire.Contains(agent))
+            {
+                return;
+            }
+
+            vehiclesReadyToRetire.Add(agent);
+        }
+
+        private void ProcessVehiclesReadyToRetire()
+        {
+            if (vehiclesReadyToRetire.Count == 0)
+            {
+                return;
+            }
+
+            for (int index =
+                     vehiclesReadyToRetire.Count - 1;
+                 index >= 0;
+                 index--)
+            {
+                RetireVehicleAtStop(
+                    vehiclesReadyToRetire[index]);
+            }
+
+            vehiclesReadyToRetire.Clear();
+
+            if (activeVehicles.Count == 0)
+            {
+                CompletePendingServiceStop();
+            }
+        }
+
+        private void RetireVehicleAtStop(
+            CityBusVehicleAgent agent)
+        {
+            if (agent == null ||
+                !activeVehicles.Remove(agent))
+            {
+                return;
+            }
+
+            UnsubscribeAgent(agent);
+            agent.Shutdown();
+
+            if (agent.gameObject != gameObject)
+            {
+                DestroyVehicleObject(agent.gameObject);
+            }
+
+            primaryAgent = activeVehicles.Count > 0
+                ? activeVehicles[0]
+                : null;
+        }
+
+        private void CompletePendingServiceStop()
+        {
+            bool wasOperating = vehicleVisible;
+            serviceStopPending = false;
+            primaryAgent = null;
+            SetVehicleVisible(false);
+            fallbackRuntime?.ResetPassengers();
+            fallbackRuntime?.SetState(
+                BusOperatingState.OutOfService);
+
+            if (wasOperating)
+            {
+                ServiceStopped?.Invoke();
             }
         }
 
