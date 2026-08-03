@@ -89,7 +89,7 @@ namespace CityFlow.Gameplay.Progression
 
         private void Update()
         {
-            if (!initialized)
+            if (!initialized || CityBootstrap.IsTitlePreviewMode)
             {
                 return;
             }

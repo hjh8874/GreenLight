@@ -28,6 +28,14 @@ namespace CityFlow.Bootstrap
         private ICityFlowServiceConsumer worldGridConsumer;
         private bool servicesInstalled;
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticState()
+        {
+            IsTitlePreviewMode = false;
+        }
+        
+        public static bool IsTitlePreviewMode { get; set; } = false;
+
         private void Awake()
         {
             EnsureServices();
@@ -178,6 +186,11 @@ namespace CityFlow.Bootstrap
                 InstallServices();
             }
 
+            if (IsTitlePreviewMode)
+            {
+                return;
+            }
+
             if (useFakeServices)
             {
                 fakeFlowReader?.Tick(Time.time, Services.Events);
@@ -188,6 +201,7 @@ namespace CityFlow.Bootstrap
                     simEngine.SetGameTime(
                         Services.GameCalendar.TotalDays,
                         Services.GameCalendar.Hour);
+                
                 simEngine?.Tick(Time.deltaTime);
             }
         }
@@ -226,6 +240,11 @@ namespace CityFlow.Bootstrap
                 new JsonSaveRepository(),
                 new SystemSaveClock(),
                 worldGridAccess: worldGridAccess);
+
+            if (IsTitlePreviewMode)
+            {
+                saveService.SetSavingEnabled(false);
+            }
 
             return saveService;
         }
