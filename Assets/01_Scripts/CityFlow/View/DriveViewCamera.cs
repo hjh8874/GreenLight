@@ -20,6 +20,7 @@ namespace CityFlow.View
         private Vector3 positionVelocity;
 
         public bool IsFollowing => driveCamera != null && driveCamera.enabled;
+        public Camera ViewCamera => driveCamera;
 
         public void Init(Transform root, Camera sourceCamera)
         {

@@ -1,0 +1,69 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 736b2bb0f4544a959ad4e8c4e8202213, type: 3}
+  m_Name: SoundCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Managers.SoundCatalog
+  sounds:
+  - id: placement_success
+    type: 1
+    clip: {fileID: 8300000, guid: f91028fbc7be34d3bb1c4f9fc681564a, type: 3}
+    volumeScale: 0.7
+    cooldownSeconds: 0.06
+    preload: 1
+  - id: placement_rejected
+    type: 1
+    clip: {fileID: 8300000, guid: 1b3d19bac52a84d989e805a8868c916e, type: 3}
+    volumeScale: 0.7
+    cooldownSeconds: 0.15
+    preload: 1
+  - id: demolition_success
+    type: 1
+    clip: {fileID: 8300000, guid: 9540d2cf9ace544428d329b0874ce954, type: 3}
+    volumeScale: 0.8
+    cooldownSeconds: 0.08
+    preload: 1
+  - id: coin_transaction
+    type: 1
+    clip: {fileID: 8300000, guid: fb1ce6d47e1b36a4586293eb74519c1b, type: 3}
+    volumeScale: 0.7
+    cooldownSeconds: 0.08
+    preload: 1
+  - id: ui_click
+    type: 1
+    clip: {fileID: 8300000, guid: 5ae86940e1dc84a4ba6a475f30b48236, type: 3}
+    volumeScale: 0.45
+    cooldownSeconds: 0.03
+    preload: 1
+  - id: positive_notification
+    type: 1
+    clip: {fileID: 8300000, guid: c3f0b74869b4342af910f8fb30b1f7ae, type: 3}
+    volumeScale: 0.75
+    cooldownSeconds: 1
+    preload: 1
+  - id: flow_burst
+    type: 1
+    clip: {fileID: 8300000, guid: c3f0b74869b4342af910f8fb30b1f7ae, type: 3}
+    volumeScale: 0.65
+    cooldownSeconds: 0.5
+    preload: 1
+  - id: hospital_preview
+    type: 1
+    clip: {fileID: 8300000, guid: 04820e39aae9c0d4bb6bdb097b5a5a39, type: 3}
+    volumeScale: 0.4
+    cooldownSeconds: 2
+    preload: 1
+  - id: school_preview
+    type: 1
+    clip: {fileID: 8300000, guid: 97ad5678f617b104daf762caeacc9fdc, type: 3}
+    volumeScale: 0.35
+    cooldownSeconds: 5
+    preload: 1

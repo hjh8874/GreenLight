@@ -1,0 +1,155 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &8420525772465999715
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6883484303539535620}
+  - component: {fileID: 5817850918565057909}
+  - component: {fileID: 7657521594040660546}
+  - component: {fileID: 3597604628365775532}
+  - component: {fileID: 8167550667821873988}
+  - component: {fileID: 5414044214303942973}
+  - component: {fileID: 1834781756122591480}
+  - component: {fileID: 6995221664093510036}
+  - component: {fileID: 2816966710958775910}
+  m_Layer: 0
+  m_Name: SoundSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6883484303539535620
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8420525772465999715}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5817850918565057909
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8420525772465999715}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e0137aa97ee84f59afbfae60ec54258e, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Managers.SoundManager
+  bgmSource: {fileID: 0}
+  sfxSource: {fileID: 0}
+  bgmOutput: {fileID: -6592188410435160789, guid: 1f8828438f65e15488cc2c2ab28e81d7, type: 2}
+  sfxOutput: {fileID: 6697757591307232412, guid: 1f8828438f65e15488cc2c2ab28e81d7, type: 2}
+  soundCatalog: {fileID: 11400000, guid: 149c6a4199b5cd240b6b34947ac36ba6, type: 2}
+  playOnStart: 0
+  startBgmId:
+  bgmVolume: 0.6
+  sfxVolume: 1
+--- !u!81 &7657521594040660546
+AudioListener:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8420525772465999715}
+  m_Enabled: 1
+--- !u!114 &3597604628365775532
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8420525772465999715}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d0c7aa90bff10242965dd052e60bbf3, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Audio.AudioListenerFollower
+  managedListener: {fileID: 7657521594040660546}
+--- !u!114 &8167550667821873988
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8420525772465999715}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c38fb97c291d37c458be25743a859f14, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Audio.CityAmbienceController
+  profile: {fileID: 11400000, guid: d89886c9df940f4449f9acaaa7953bf6, type: 2}
+  ambienceOutput: {fileID: -4583965086086507330, guid: 1f8828438f65e15488cc2c2ab28e81d7, type: 2}
+  congestionOutput: {fileID: 4419260348382110120, guid: 1f8828438f65e15488cc2c2ab28e81d7, type: 2}
+--- !u!114 &5414044214303942973
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8420525772465999715}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35f53d7cd46d11f4895b292334bb0b12, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Audio.BgmPlaylistController
+  playlist: {fileID: 11400000, guid: 98b115e0cad5a3c4ca0236ebaec8ee33, type: 2}
+  musicOutput: {fileID: -6592188410435160789, guid: 1f8828438f65e15488cc2c2ab28e81d7, type: 2}
+--- !u!114 &1834781756122591480
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8420525772465999715}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1da41b8f5d54034caf8cab35b083a95, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Audio.GameplaySoundController
+  soundManager: {fileID: 5817850918565057909}
+--- !u!114 &6995221664093510036
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8420525772465999715}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0313255e68d808444994130c50adfe9c, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Audio.UiSoundController
+  soundManager: {fileID: 5817850918565057909}
+  uiOutput: {fileID: -8453273723654130404, guid: 1f8828438f65e15488cc2c2ab28e81d7, type: 2}
+--- !u!114 &2816966710958775910
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8420525772465999715}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6032fb97f3959d74e85e55be81dcfe39, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Audio.FacilitySoundController
+  soundManager: {fileID: 5817850918565057909}
+  facilityOutput: {fileID: 9029856555565852733, guid: 1f8828438f65e15488cc2c2ab28e81d7, type: 2}
+  hospitalPreviewSeconds: 4.8
+  schoolPreviewSeconds: 6

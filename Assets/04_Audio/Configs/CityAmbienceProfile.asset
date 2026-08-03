@@ -1,0 +1,66 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8b97bf7d70cd1424984f4a449850d645, type: 3}
+  m_Name: CityAmbienceProfile
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Audio.CityAmbienceProfileSO
+  dayClips:
+  - {fileID: 8300000, guid: 88c770cd03fac834fbb39f2bc3ee05f2, type: 3}
+  - {fileID: 8300000, guid: dfe2cfd698f96684581e2445dd64500c, type: 3}
+  - {fileID: 8300000, guid: a29e490f985f6654fbeb6f6ab6d04ed2, type: 3}
+  - {fileID: 8300000, guid: 6b0432a7950ee6e42b1aa3b944248675, type: 3}
+  nightClips:
+  - {fileID: 8300000, guid: da844226d34b6dd4f8a6b16ed34a78a7, type: 3}
+  - {fileID: 8300000, guid: 2a4cb878a7d4d7a4a9dcc5f9492608a2, type: 3}
+  dayStartHour: 6
+  nightStartHour: 22
+  ambienceByZoom:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.5
+      value: 0.2
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  ambienceVolume: 1
+  fadeSeconds: 1.5
+  driveRoomTone: {fileID: 8300000, guid: 4c037da9b7ba27e4b87adca176c08836, type: 3}
+  driveRoomToneVolume: 0.5
+  congestionClip: {fileID: 8300000, guid: bdf9110f5d1b43b40a793f694f4ad2a6, type: 3}
+  congestionStartZoom: 0.7
+  jamTilesForMinimumVolume: 3
+  jamTilesForFullVolume: 12
+  congestionVolume: 0.7

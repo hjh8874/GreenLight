@@ -11,6 +11,7 @@ namespace CityFlow.UI.Controllers.Placement
         public event Func<Vector2Int, bool> OnDemolishRequested;
         public event Action<Vector2Int> OnPlaceRequested;
         public event Action<Vector2Int, Vector2Int> OnDragPlaceRequested;
+        public event Action OnPlacementRejected;
         public event Action OnCancelPlacementRequested;
 
         private readonly UIRaycastBlocker _uiRaycastBlocker;
@@ -145,6 +146,10 @@ namespace CityFlow.UI.Controllers.Placement
                         if (canPlace)
                         {
                             OnPlaceRequested?.Invoke(gridCoord);
+                        }
+                        else
+                        {
+                            OnPlacementRejected?.Invoke();
                         }
                         _lastPlacedCoord = gridCoord;
                     }
