@@ -239,6 +239,67 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void BusStopPlacement_SuccessEndsInfrastructurePlacementMode()
+        {
+            GameObject registryObject =
+                new("BusStopRegistry");
+            GameObject coordinatorObject =
+                new("InfrastructurePlacementCoordinator");
+            InfrastructureDataSO busStopData =
+                CreateInfrastructureData(
+                    InfrastructureKind.BusStop);
+
+            try
+            {
+                SimEventHub events = new();
+                SimEngine engine =
+                    new(SimConfig.Default(), events);
+                Vector2Int road = new(2, 2);
+                Vector2Int stop = new(2, 3);
+                Assert.That(
+                    engine.Place(road, TileType.Road),
+                    Is.True);
+                Assert.That(
+                    engine.Place(new Vector2Int(3, 2), TileType.Road),
+                    Is.True);
+
+                BusStopRegistry registry =
+                    registryObject.AddComponent<BusStopRegistry>();
+                CityFlowServices services =
+                    new(
+                        events,
+                        engine,
+                        engine);
+                registry.Initialize(services);
+
+                InfrastructurePlacementCoordinator coordinator =
+                    coordinatorObject.AddComponent<
+                        InfrastructurePlacementCoordinator>();
+                coordinator.Initialize(services);
+                coordinator.StartPlacement(busStopData);
+
+                InvokePrivate(
+                    coordinator,
+                    "TryPurchaseAndPlace",
+                    stop);
+
+                Assert.That(
+                    engine.BusStopTiles,
+                    Does.Contain(stop));
+                Assert.That(
+                    coordinator.IsBuildingMode,
+                    Is.False,
+                    "A successful bus-stop purchase must not consume the next right click just to cancel placement mode.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(coordinatorObject);
+                Object.DestroyImmediate(registryObject);
+                Object.DestroyImmediate(busStopData);
+            }
+        }
+
+        [Test]
         public void BusStopDemolition_IsBlockedWithoutRegistry()
         {
             GameObject coordinatorObject =
@@ -287,8 +348,10 @@ namespace Tests.EditMode
             }
         }
 
-        [Test]
-        public void BusStopDemolition_RemovesPlacementAndRegistryState()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void BusStopDemolition_RemovesPlacementAndRegistryState(
+            bool demolishOppositePlatform)
         {
             GameObject registryObject =
                 new("BusStopRegistry");
@@ -333,7 +396,10 @@ namespace Tests.EditMode
                         engine));
 
                 Assert.That(
-                    coordinator.TryDemolishInfrastructureAt(stop),
+                    coordinator.TryDemolishInfrastructureAt(
+                        demolishOppositePlatform
+                            ? new Vector2Int(2, 1)
+                            : stop),
                     Is.True);
                 Assert.That(
                     engine.BusStopTiles.Count,

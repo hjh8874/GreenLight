@@ -129,6 +129,52 @@ namespace CityFlow.View.Tests
         }
 
         [Test]
+        public void IntegratedSaveRoadLoop_StartsCityBus()
+        {
+            SimEngine engine = CreateEngine();
+            Vector2Int[] roads =
+            {
+                new(1, 6), new(2, 6), new(3, 6), new(4, 6),
+                new(5, 6), new(6, 6), new(7, 6), new(8, 6),
+                new(9, 6), new(10, 6), new(11, 6), new(12, 6),
+                new(13, 6),
+                new(1, 7), new(13, 7),
+                new(1, 8), new(13, 8),
+                new(1, 9), new(2, 9), new(3, 9), new(4, 9),
+                new(5, 9), new(6, 9), new(7, 9), new(8, 9),
+                new(9, 9), new(10, 9), new(11, 9), new(12, 9),
+                new(13, 9)
+            };
+
+            for (int index = 0; index < roads.Length; index++)
+            {
+                Assert.That(
+                    engine.Place(roads[index], TileType.Road),
+                    Is.True);
+            }
+
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(5, 7)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(4, 8)),
+                Is.True);
+
+            GameObject root = new("IntegratedSaveCityBusTest");
+            try
+            {
+                CityBusService service = CreateService(root, engine);
+
+                Assert.That(service.StartService(), Is.True);
+                Assert.That(service.ActiveVehicles, Is.Not.Empty);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
         public void DirectionalLoop_UsesLongerApproachInsteadOfUTurn()
         {
             SimEngine engine = CreateEngine();

@@ -658,7 +658,13 @@ namespace CityFlow.UI.Controllers
             }
 
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
-            
+            CompletePlacement();
+        }
+
+        private void CompletePlacement()
+        {
+            _wasOriginalBuildingMode = false;
+            CancelPlacement();
         }
 
         private bool TryCommitBusStopRegistration(
