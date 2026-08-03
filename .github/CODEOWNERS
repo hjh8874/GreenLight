@@ -1,0 +1,46 @@
+# GreenLight 코드 소유자 — PR 리뷰어 자동 요청
+#
+# 왜 만들었나: 지금까지 열린 PR·머지된 PR 전부 reviewRequests 가 비어 있었다.
+# assignee 는 작성자가 자기 자신으로 달고 있었지만 리뷰어를 아무도 지정하지 않아,
+# PR 이 "누가 봐야 하는지 모르는 상태"로 며칠씩 방치됐다(#190·#193 이 대표 사례).
+# 이 파일이 있으면 GitHub 이 변경 경로에 맞는 사람에게 리뷰를 자동 요청한다.
+#
+# 동작 범위: 이 저장소에는 브랜치 보호가 없으므로 CODEOWNERS 는 **리뷰어 요청만** 하고
+# 머지를 막지 않는다. 기존 워크플로가 느려지지 않는다.
+# GitHub 은 PR 작성자에게는 리뷰를 요청하지 않는다(자기 PR 은 자동 요청 대상 밖).
+#
+# 규칙: 아래로 갈수록 우선. 마지막에 매칭된 줄이 이긴다.
+#
+# 근거: docs/2026-07-21-parallel-work-ownership.md(팀 합의) + 실제 git 작성자 통계
+#       (2026-08-03 측정, 머지 커밋 제외)
+
+# ── 기본값: 머지 담당이 모든 PR 을 본다 ────────────────────────────────
+# 머지 정책상 실질 게이트가 "머지 담당 코드 검증"이므로 catch-all 로 둔다.
+*                                                @kanghwani
+
+# ── 영역별 담당 (해당 영역 담당 + 머지 담당 둘 다 요청) ─────────────────
+
+# 건물 시스템 — Contents 전체. git 작성자 lijinwoo 20커밋 최다, 소유권 표 "진우"와 일치
+/Assets/01_Scripts/CityFlow/Contents/            @lijinwoo @kanghwani
+
+# UI 전반 — git 작성자 kim geon 66커밋 최다
+/Assets/01_Scripts/CityFlow/UI/                  @kimgeon-3seven @kanghwani
+
+# 로터리 기하 — 소유권 표 "환" 전담. git 작성자 kanghwankim 24커밋 최다
+/Assets/01_Scripts/CityFlow/ViewKit/             @kanghwani
+
+# 신호 수학·맵 — git 작성자 kanghwankim 15커밋으로 단독
+# (소유권 표는 "준희"로 적혀 있으나 실제 커밋 이력과 다르다. 표 갱신 필요)
+/Assets/01_Scripts/CityFlow/Sim/SignalMath.cs    @kanghwani
+/Assets/01_Scripts/CityFlow/Sim/SignalMap.cs     @kanghwani
+
+# ── 확정 필요 (일부러 비워둠) ──────────────────────────────────────────
+#
+# View/CarMotion.cs — 소유권 표는 "주석 전담"이라고 하는데 GitHub 계정 매핑이 불확실하다.
+#   실제 커밋(머지 제외): hjh8874 8 / kanghwankim 5 / abicodue 2 / Leejinwoo 1
+#   추측으로 넣으면 엉뚱한 사람에게 매 PR 리뷰 요청이 간다. 담당자 확인 후 아래 주석을 푼다.
+# /Assets/01_Scripts/CityFlow/View/CarMotion.cs  @<주석-github-id> @kanghwani
+#
+# catch-all 보조 리뷰어 — 지금은 @kanghwani 혼자라, kanghwani 본인 PR 은
+#   (작성자 제외 규칙 때문에) 영역 규칙에 안 걸리면 리뷰어가 0명이 된다.
+#   두 번째 이름을 넣으면 그 구멍이 막힌다. 누구를 넣을지는 팀 결정 사항.
