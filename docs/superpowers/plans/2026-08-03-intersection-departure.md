@@ -223,31 +223,66 @@ namespace CityFlow.Sim.Tests
                 "셀이 비면 반드시 진입한다 — 이것이 수렴 보장이다");
         }
 
-        // 설계 §6 T2. 좌회전은 MovementMask 상 대각 두 칸을 쓴다
-        // (entry=N, exit=W → SouthEast|NorthWest). 그 대각을 요구하는 횡단 차량과
-        // 동시에 진입하면 안 된다.
+        // 설계 §6 T2. 스테이지별 점유 범위가 실제 계약대로인지 고정한다.
+        //   회전 스폰 = Entry  → OccupancyMask = StageMask = EntryCell(entry) 한 칸
+        //   직진 스폰 = Exit   → OccupancyMask = MovementMask(entry, exit) 두 칸
+        // (IntersectionMicroGrid.cs:41-47,107-125)
+        // 최초 계획서는 회전 스폰이 MovementMask 두 칸을 잡는다고 잘못 적었다. 리뷰가 잡았다.
         [Test]
-        public void SpawnAtIntersection_LeftTurn_ReservesDiagonalAndBlocksCrossing()
+        public void SpawnAtIntersection_TurnHoldsEntryCellOnly()
         {
             SimConfig cfg = Cfg();
             var grid = CrossGrid();
             var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
             net.RebuildTopology(grid);
 
-            // 북진 좌회전: SouthEast | NorthWest 예약
+            // 북진 좌회전 = Entry 스테이지 → EntryCell(N) = SouthEast 한 칸만 예약
             Assert.IsTrue(
                 net.TryEnqueueAtIntersection(V(4, 4), Dir.N, Dir.W, 1, 1),
                 "빈 교차로에서 좌회전 스폰은 성공한다");
 
-            // 동진 직진: SouthWest | SouthEast — SouthEast 가 겹친다
+            // 동진 직진 = Exit 스테이지 → MovementMask(E,E) = SouthWest|SouthEast.
+            // SouthEast 가 겹치므로 막힌다.
             Assert.IsFalse(
                 net.TryEnqueueAtIntersection(V(4, 4), Dir.E, Dir.E, 2, 1),
-                "좌회전이 예약한 대각 셀과 겹치는 횡단은 동시에 진입할 수 없다");
+                "Entry 가 쥔 SouthEast 를 요구하는 직진은 동시에 진입할 수 없다");
 
-            // 남진 직진: NorthWest | SouthWest — NorthWest 가 겹친다
+            // 서진 직진 = MovementMask(W,W) = NorthEast|NorthWest. SouthEast 와 안 겹친다.
+            Assert.IsTrue(
+                net.TryEnqueueAtIntersection(V(4, 4), Dir.W, Dir.W, 3, 1),
+                "Entry 는 한 칸만 쥔다 — 겹치지 않는 경로는 통과한다");
+        }
+
+        // 설계 §6 T2 후반 + 리뷰 P0-3. 앞차가 출구 타일로 넘어갔어도 뒤꽁무니가 교차로에
+        // 남아 있는 동안에는 충돌 경로 스폰을 승인하면 안 된다.
+        [Test]
+        public void SpawnAtIntersection_RearClearanceBlocksConflictingSpawn()
+        {
+            SimConfig cfg = Cfg();
+            var grid = CrossGrid();
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+
+            var routes = new ResumeRouteProvider();
+            // 북진 직진: (4,3) → (4,4) 교차로 → (4,5) 출구
+            routes.Add(10, V(4, 3), V(4, 4), V(4, 5));
+            Assert.IsTrue(net.TryEnqueue(V(4, 3), Dir.N, 10));
+
+            // 차가 교차로를 지나 출구 타일에 올라설 때까지 진행시킨다.
+            bool reachedExitTile = false;
+            for (int tick = 0; tick < 8 && !reachedExitTile; tick++)
+            {
+                net.Step(routes);
+                reachedExitTile =
+                    net.TryLocateCar(10, out Vector2Int at, out _, out _)
+                    && at == V(4, 5);
+            }
+            Assert.IsTrue(reachedExitTile, "전제: 차가 출구 타일까지 전진했다");
+
+            // 뒤꽁무니가 아직 교차로 안이다. 같은 경로를 요구하는 스폰은 막혀야 한다.
             Assert.IsFalse(
-                net.TryEnqueueAtIntersection(V(4, 4), Dir.S, Dir.S, 3, 1),
-                "좌회전의 반대쪽 대각 셀과 겹치는 횡단도 막혀야 한다");
+                net.TryEnqueueAtIntersection(V(4, 4), Dir.N, Dir.N, 11, 1),
+                "출구로 넘어간 앞차의 rear clearance 를 무시하고 스폰하면 안 된다");
         }
 
         [Test]
@@ -352,12 +387,14 @@ namespace CityFlow.Sim.Tests
             return true;
         }
 
-        // 그 교차로 타일이 지금 실제로 점유 중인 셀. 누적 패스(L1075)와 같은 규칙이되
+        // 그 교차로 타일이 지금 실제로 점유 중인 셀. 누적 패스(L1070-1128)와 같은 규칙이되
         // routes 없이 부르므로, 스테이지가 없는 노드는 보수적으로 All 로 본다
         // (스폰을 막고 다음 틱 재시도 — 안전한 방향).
         private IntersectionCell CurrentIntersectionOccupancy(int tileIndex)
         {
             IntersectionCell occupied = IntersectionCell.None;
+
+            // (1) 그 타일 위에 있는 노드들
             int firstQueue = tileIndex * DirectionCount;
             for (int direction = 0; direction < DirectionCount; direction++)
             {
@@ -371,14 +408,37 @@ namespace CityFlow.Sim.Tests
                             (Dir)direction,
                             _intersectionMovementExits[node],
                             stage);
-                    node = _next[node];
+                    node = _nextNodes[node];
                 }
             }
+
+            // (2) 이미 출구 타일로 넘어갔지만 뒤꽁무니가 아직 교차로 안에 있는 노드들.
+            // 기존 누적 패스의 두 번째 루프(L1108-1131)와 같은 규칙이다. 이걸 빠뜨리면
+            // 앞차가 빠져나가는 중인데 충돌 경로로 스폰을 승인한다.
+            for (int queue = 0; queue < _heads.Length; queue++)
+            {
+                int node = _heads[queue];
+                while (node != NoNode)
+                {
+                    if (TryDecodeClearingIntersection(
+                            _clearingIntersection[node],
+                            out int clearingTile,
+                            out Dir movementEntry)
+                        && clearingTile == tileIndex)
+                    {
+                        occupied |= IntersectionMicroGrid.MovementMask(
+                            movementEntry,
+                            _intersectionMovementExits[node]);
+                    }
+                    node = _nextNodes[node];
+                }
+            }
+
             return occupied;
         }
 ```
 
-**`_next[node]`가 연결 리스트 다음 노드 필드가 맞는지 먼저 확인하라.** `AppendNode`/`MoveHead` 구현을 읽고, 이름이 다르면 **고치지 말고 감독에게 보고**할 것.
+연결 리스트 다음 노드 필드는 **`_nextNodes`** 다(`RoadQueueNetwork.cs:104,229,1129`). `_next`라는 필드는 없다.
 
 - [ ] **Step 4: GREEN 확인 요청**
 
@@ -437,7 +497,59 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
             var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
             net.RebuildTopology(grid);
             var sim = new CarSim(cfg);
-            sim.Rebuild(demands, planner, net);
+            // 리뷰 P1: roadNetwork 를 넘기지 않으면 _roadNetwork 가 null 이라(CarSim.cs:279)
+            // D2-1 방향 조회를 통째로 건너뛰어도 테스트가 GREEN 이 된다 — 공허한 테스트다.
+            // Rebuild 시그니처가 roadNetwork 를 받지 않으면 고치지 말고 감독에게 보고하라.
+            sim.Rebuild(demands, planner, net, roadNetwork: road);
+            var events = new SimEventBuffer(new SimEventHub());
+
+            bool departed = false;
+            for (int tick = 0; tick < 40 && !departed; tick++)
+            {
+                sim.Step(cfg.TickInterval, net, events);
+                departed = net.TryLocateCar(0, out _, out Dir entryDir, out int slot)
+                    && slot >= 0;
+                if (departed)
+                {
+                    // 집 (2,2) 은 진입로 (2,4) 의 남쪽이므로 차고 진출 방향은 북(N)이다.
+                    // exit 는 회사(7,2) 쪽이라 동(E) — 둘이 다르므로, 폴백(entry=exit)을
+                    // 탔다면 이 단정이 깨진다. D2-1 접착이 실제로 동작하는지 검사한다.
+                    Assert.AreEqual(Dir.N, entryDir,
+                        "직교 인접이 있으면 exit 폴백이 아니라 차고 진출 방향으로 진입해야 한다");
+                }
+            }
+
+            Assert.IsTrue(departed,
+                "프론티지가 전부 교차로여도 통근차는 유한 틱 안에 네트워크에 진입해야 한다");
+        }
+
+        // 설계 §6 T4 통합판(리뷰 P1). 대각으로만 닿은 건물은 exit 폴백으로 진입한다.
+        [Test]
+        public void CommuteCar_DiagonalOnlyFrontage_UsesExitFallbackAndDeparts()
+        {
+            SimConfig cfg = Cfg();
+            cfg.GridWidth = 10;
+            cfg.GridHeight = 10;
+            var grid = new CityGrid(10, 10);
+            for (int x = 1; x <= 8; x++) Assert.IsTrue(grid.Place(V(x, 4), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 5), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 5), TileType.Road));
+            // 집 (0,2) 2x2 → (0,2)(1,2)(0,3)(1,3). (2,4) 는 (1,3) 과 대각으로만 닿는다.
+            Assert.IsTrue(grid.Place(V(0, 2), TileType.House));
+            Assert.IsTrue(grid.Place(V(7, 2), TileType.Office));
+
+            var road = new RoadNetwork(grid);
+            Assert.IsFalse(road.TryGetDepartureEntryDir(V(0, 2), V(2, 4), out _),
+                "전제: 대각으로만 닿아 직교 진출 방향이 없다");
+
+            var demands = new DemandMap(cfg);
+            demands.Reassign(grid, road);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, road, grid, cfg);
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var sim = new CarSim(cfg);
+            sim.Rebuild(demands, planner, net, roadNetwork: road);
             var events = new SimEventBuffer(new SimEventHub());
 
             bool departed = false;
@@ -446,9 +558,7 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
                 sim.Step(cfg.TickInterval, net, events);
                 departed = net.TryLocateCar(0, out _, out _, out int slot) && slot >= 0;
             }
-
-            Assert.IsTrue(departed,
-                "프론티지가 전부 교차로여도 통근차는 유한 틱 안에 네트워크에 진입해야 한다");
+            Assert.IsTrue(departed, "대각 프론티지도 exit 폴백으로 출발해야 한다");
         }
 ```
 
@@ -462,7 +572,7 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
             // 신규 출발이고 원점이 교차로면 스테이지를 부여해 정식 진입한다(설계 D1·D4).
             // 재개(retryingResume)는 여기 오지 않는다 — 경로상 위치가 모호해 위험하다.
             // route 가 1칸이면 exit 방향을 못 구하므로 오늘 동작(오프네트워크)을 유지한다.
-            if (!retryingResume && start == 0 && route.Count > 1
+            if (!wasResumeRequest && start == 0 && route.Count > 1
                 && net.IsIntersectionSpawnTile(route[0]))
             {
                 if (!TryRouteDirection(route[1] - route[0], out Dir spawnExit)) return false;
@@ -482,6 +592,17 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
                 hasResume = false;
                 return true;
             }
+```
+
+3-a-2. **`retryingResume`을 조건에 쓰면 안 된다 (리뷰 P0-4).** `CarSim.cs:1269-1276`은 재개가
+안전한 이전 타일을 못 찾으면 **`hasResume=false; retryingResume=false; start=0`** 으로 되돌린다.
+그 상태를 신규 출발로 오인하면 **재개가 교차로 스폰을 타서 설계 D4가 깨진다.**
+메서드 진입 시점의 요청 종류를 따로 캡처해 그걸로 판정한다.
+
+```csharp
+            start = 0;
+            bool wasResumeRequest = hasResume;   // 리뷰 P0-4: 폴백으로 꺼지기 전 원래 요청
+            bool retryingResume = hasResume;
 ```
 
 3-b. **`TryEnqueueRouteStart`는 `internal static`이라 인스턴스 필드에 접근할 수 없다.** 선택적
@@ -513,22 +634,24 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
 
 ```csharp
         // 이 차의 이번 여정 출발 건물. 진출 방향 산출용(설계 D2-1).
+        // 특수 방문(transient) 차는 RouteIndex 가 -1 이라(CommuteScheduler.cs:50-65)
+        // 여기서 default 를 돌려주고, 호출부는 exit 폴백을 쓴다. 특수 트립의 정확한
+        // 차고 방향은 이번 범위 밖이다 — 리뷰 P1 지적을 의도적 축소로 수용한다.
         private Vector2Int DepartureBuilding(int carId)
         {
             CommuteCar car = _scheduler.Cars[carId];
             int ri = car.RouteIndex;
-            bool outbound = car.State == CarState.Outbound;
-            var list = outbound ? _sources : _sinks;
-            return ri >= 0 && ri < list.Count ? list[ri] : default;
+            if (ri < 0) return default;                 // transient — exit 폴백
+            var list = car.State == CarState.Outbound ? _sources : _sinks;
+            return ri < list.Count ? list[ri] : default;
         }
 ```
 
 호출부는 기존 인자 뒤에 `, _roadNetwork, DepartureBuilding(carId)`를 붙인다. 대상 3곳:
-초기 인큐(`CarSim.cs:1024-1033` 부근), 워치독 재시작(`L1107-1114`), 레스큐(`L1145-1150`).
+초기 인큐(`CarSim.cs:1027`), 워치독 재시작(`L1108`), 레스큐(`L1145`).
 
-**`_sinks`의 원소가 회사 앵커가 맞는지 먼저 확인하라.** 2026-08-03 라이브에서
-`_sources[8] = (2,8)`이 집 앵커임은 확인됐으나 `_sinks`는 미확인이다. 다르면 **고치지 말고
-감독에게 보고**할 것.
+`_sources`/`_sinks`가 Home/Work 앵커라는 것은 리뷰가 `CarSim.cs:675-676,700-701`에서
+확인했다(라이브에서도 `_sources[8] = (2,8)` = 집 앵커).
 
 - [ ] **Step 4: GREEN 확인 요청**
 
@@ -586,6 +709,45 @@ git commit -m "[Feat] 신규 출발 경로에서 교차로 스폰 사용 — 영
             Assert.AreEqual(0, start, "출발은 경로 원점에서 시작한다 — 앞 타일로 밀지 않는다");
             Assert.AreEqual(1, TotalQueued(net, grid.Width, grid.Height),
                 "교차로 원점에서도 스테이지를 부여해 네트워크에 올라간다");
+        }
+```
+
+- [ ] **Step 1-b: 삭제되는 회귀 증거를 별도 테스트로 보존한다 (리뷰 P0-4)**
+
+옛 테스트의 **전반부**(`hasResume = true`로 부르는 첫 호출)는 "재개는 교차로 원점을 쓰지
+않는다"는 D4 계약의 유일한 증거다. Step 1의 교체본이 이걸 지우므로 별도로 남긴다.
+
+```csharp
+        // D4 회귀 방지: 재개(resume)는 교차로 출발 스폰 경로를 타지 않는다.
+        // CarSim.cs:1269-1276 이 안전한 이전 타일이 없으면 retryingResume 을 끄고 start=0 으로
+        // 되돌리는데, 그 상태를 신규 출발로 오인하면 재개가 교차로에 앉는다(리뷰 P0-4).
+        [Test]
+        public void RebuildResume_IntersectionOrigin_DoesNotUseDepartureSpawn()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(5, 5);
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 3), TileType.Road));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+
+            var routes = new ResumeRouteProvider();
+            routes.Add(12, V(2, 2), V(3, 2));
+            bool hasResume = true;   // 재개 요청
+
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(12),
+                V(2, 2),
+                ref hasResume,
+                net,
+                12,
+                out _));
+            Assert.IsFalse(hasResume, "안전한 이전 타일이 없으면 중간 재개를 포기한다");
+            Assert.AreEqual(0, TotalQueued(net, grid.Width, grid.Height),
+                "재개는 교차로 스폰을 쓰지 않는다 — 출발 경로와 분리돼 있어야 한다");
         }
 ```
 
