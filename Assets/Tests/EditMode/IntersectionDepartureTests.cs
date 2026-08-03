@@ -214,6 +214,21 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void SpawnAtIntersection_RoundaboutTile_StillRejected()
+        {
+            SimConfig cfg = Cfg();
+            var grid = CrossGrid();
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(V(4, 4));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid, devices);
+
+            Assert.IsFalse(
+                net.TryEnqueueAtIntersection(V(4, 4), Dir.N, Dir.N, 5, 1),
+                "로터리는 링 예약 모델이 달라 이번 범위 밖이다(설계 D5)");
+        }
+
+        [Test]
         public void SpawnAtIntersection_NonIntersectionTile_Rejected()
         {
             SimConfig cfg = Cfg();

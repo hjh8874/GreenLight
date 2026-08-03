@@ -348,8 +348,11 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(arrived, "재개 큐가 비면 정상 교차로 중재로 진입해 유한 틱 안에 도착한다");
         }
 
+        // 설계 변경 2026-08-03: 교차로 원점에서도 스테이지를 부여해 정식 진입한다.
+        // 옛 계약("신규 출발도 오프네트워크 대기")은 진입로가 교차로뿐인 건물의 통근차를
+        // 영구 스톨시켰다. 재개(resume) 경로는 그대로 보수적이다 — RebuildResume_* 참조.
         [Test]
-        public void Departure_SpecialRouteOrigin_StaysOffNetwork()
+        public void Departure_IntersectionRouteOrigin_EntersWithStage()
         {
             SimConfig cfg = Cfg();
             var grid = new CityGrid(5, 5);
@@ -363,7 +366,39 @@ namespace CityFlow.Sim.Tests
 
             var routes = new ResumeRouteProvider();
             routes.Add(12, V(2, 2), V(3, 2));
-            bool hasResume = true;
+            bool hasResume = false;
+
+            Assert.IsTrue(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(12),
+                default,
+                ref hasResume,
+                net,
+                12,
+                out int start));
+            Assert.AreEqual(0, start, "출발은 경로 원점에서 시작한다 — 앞 타일로 밀지 않는다");
+            Assert.AreEqual(1, TotalQueued(net, grid.Width, grid.Height),
+                "교차로 원점에서도 스테이지를 부여해 네트워크에 올라간다");
+        }
+
+        // D4 회귀 방지: 재개(resume)는 교차로 출발 스폰 경로를 타지 않는다.
+        // CarSim.cs:1269-1276 이 안전한 이전 타일이 없으면 retryingResume 을 끄고 start=0 으로
+        // 되돌리는데, 그 상태를 신규 출발로 오인하면 재개가 교차로에 앉는다(리뷰 P0-4).
+        [Test]
+        public void RebuildResume_IntersectionOrigin_DoesNotUseDepartureSpawn()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(5, 5);
+            Assert.IsTrue(grid.Place(V(2, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 3), TileType.Road));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+
+            var routes = new ResumeRouteProvider();
+            routes.Add(12, V(2, 2), V(3, 2));
+            bool hasResume = true;   // 재개 요청
 
             Assert.IsFalse(CarSim.TryEnqueueRouteStart(
                 routes.RouteFor(12),
@@ -371,19 +406,10 @@ namespace CityFlow.Sim.Tests
                 ref hasResume,
                 net,
                 12,
-                out int start));
-            Assert.IsFalse(hasResume, "안전한 이전 타일이 없으면 중간 재개를 명시적으로 포기한다");
-            Assert.AreEqual(0, start);
-
-            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
-                routes.RouteFor(12),
-                default,
-                ref hasResume,
-                net,
-                12,
-                out start));
+                out _));
+            Assert.IsFalse(hasResume, "안전한 이전 타일이 없으면 중간 재개를 포기한다");
             Assert.AreEqual(0, TotalQueued(net, grid.Width, grid.Height),
-                "신규 출발도 특수 route[0]에 stage 없는 차를 앉히지 않고 오프네트워크 대기한다");
+                "재개는 교차로 스폰을 쓰지 않는다 — 출발 경로와 분리돼 있어야 한다");
         }
 
         [Test]
