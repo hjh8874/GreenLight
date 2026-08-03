@@ -362,12 +362,22 @@ namespace CityFlow.Sim
             Dir entryDir,
             int carId,
             int occupancyUnits,
-            VehicleFootprint footprint)
+            VehicleFootprint footprint) =>
+            TryEnqueue(tile, entryDir, carId, occupancyUnits, footprint, out _);
+
+        private bool TryEnqueue(
+            Vector2Int tile,
+            Dir entryDir,
+            int carId,
+            int occupancyUnits,
+            VehicleFootprint footprint,
+            out int node)
         {
+            node = NoNode;
             int safeOccupancyUnits = Math.Max(1, occupancyUnits);
             if (carId < 0 || !TryQueueIndex(tile, entryDir, out int queue)
                 || !CanAcceptNormally(queue, safeOccupancyUnits)
-                || !TryAllocateNode(out int node)) return false;
+                || !TryAllocateNode(out node)) return false;
             _cars[node] = carId;
             _occupancyUnits[node] = safeOccupancyUnits;
             _lengthTiles[node] = footprint.LengthTiles;
@@ -376,6 +386,103 @@ namespace CityFlow.Sim
             _blockedTicks[node] = 0;
             AppendNode(queue, node);
             return true;
+        }
+
+        // 신규 출발 전용: 건물 진입로가 교차로일 때 스테이지·exit를 명시해 스폰한다.
+        // 재개(resume) 경로는 여기를 쓰지 않는다 — IsSafeResumeTile 은 그대로다(설계 D4).
+        // 셀이 겹치면 false 를 돌려 호출자가 다음 틱에 재시도한다. 새 우선권 규칙 없음(D3).
+        internal bool TryEnqueueAtIntersection(
+            Vector2Int tile,
+            Dir entryDir,
+            Dir exitDir,
+            int carId,
+            int occupancyUnits)
+        {
+            if (!InBounds(tile)) return false;
+            int tileIndex = TileIndex(tile);
+            // UsesSharedBudget 은 로터리 "중심"만 제외하고 "팔"은 제외하지 않는다
+            // (L1642-1643). 팔이 3방 도로를 가져 grid intersection 이 되면 링 상태기계를
+            // 우회하게 되므로 여기서 명시적으로 막는다(설계 D5, 2차 리뷰 P0).
+            if (!UsesSharedBudget(tileIndex) || IsRoundaboutArm(tileIndex)) return false;
+
+            IntersectionStage stage = entryDir == exitDir
+                ? IntersectionStage.Exit
+                : IntersectionStage.Entry;
+            IntersectionCell requested = IntersectionMicroGrid.OccupancyMask(
+                entryDir, exitDir, stage);
+            // 캐시(_intersectionOccupancy)를 쓰지 않고 그 타일의 4개 큐를 직접 훑는다.
+            // 캐시는 틱 누적 패스(L1075)에서만 갱신돼, 같은 틱에 차가 빠져도 비트가 남는다.
+            // 라이브 계산이면 스폰·제거가 같은 틱에 섞여도 항상 정확하다.
+            if (IntersectionMicroGrid.Conflicts(
+                    CurrentIntersectionOccupancy(tileIndex), requested)) return false;
+
+            int safeUnits = Math.Max(1, occupancyUnits);
+            float effectiveLength = Mathf.Max(
+                _standardFootprint.LengthTiles,
+                safeUnits * _standardHeadwayTiles -
+                _standardFootprint.MinimumGapTiles);
+            var footprint = new VehicleFootprint(
+                safeUnits > 1 ? VehicleSizeClass.Large : _standardFootprint.SizeClass,
+                effectiveLength,
+                _standardFootprint.WidthTiles,
+                _standardFootprint.MinimumGapTiles);
+
+            if (!TryEnqueue(tile, entryDir, carId, safeUnits, footprint, out int node))
+                return false;
+
+            _intersectionStages[node] = stage;
+            _intersectionMovementExits[node] = exitDir;
+            return true;
+        }
+
+        // 그 교차로 타일이 지금 실제로 점유 중인 셀. 누적 패스(L1070-1128)와 같은 규칙이되
+        // routes 없이 부르므로, 스테이지가 없는 노드는 보수적으로 All 로 본다
+        // (스폰을 막고 다음 틱 재시도 — 안전한 방향).
+        private IntersectionCell CurrentIntersectionOccupancy(int tileIndex)
+        {
+            IntersectionCell occupied = IntersectionCell.None;
+
+            // (1) 그 타일 위에 있는 노드들
+            int firstQueue = tileIndex * DirectionCount;
+            for (int direction = 0; direction < DirectionCount; direction++)
+            {
+                int node = _heads[firstQueue + direction];
+                while (node != NoNode)
+                {
+                    IntersectionStage stage = _intersectionStages[node];
+                    occupied |= stage == IntersectionStage.None
+                        ? IntersectionCell.All
+                        : IntersectionMicroGrid.OccupancyMask(
+                            (Dir)direction,
+                            _intersectionMovementExits[node],
+                            stage);
+                    node = _nextNodes[node];
+                }
+            }
+
+            // (2) 이미 출구 타일로 넘어갔지만 뒤꽁무니가 아직 교차로 안에 있는 노드들.
+            // 기존 누적 패스의 두 번째 루프(L1108-1131)와 같은 규칙이다. 이걸 빠뜨리면
+            // 앞차가 빠져나가는 중인데 충돌 경로로 스폰을 승인한다.
+            for (int queue = 0; queue < _heads.Length; queue++)
+            {
+                int node = _heads[queue];
+                while (node != NoNode)
+                {
+                    if (TryDecodeClearingIntersection(
+                            _clearingIntersection[node],
+                            out int clearingTile,
+                            out Dir movementEntry)
+                        && clearingTile == tileIndex)
+                    {
+                        occupied |= IntersectionMicroGrid.MovementMask(
+                            movementEntry,
+                            _intersectionMovementExits[node]);
+                    }
+                    node = _nextNodes[node];
+                }
+            }
+
+            return occupied;
         }
 
         public int QueueCount(Vector2Int tile, Dir entryDir) =>
