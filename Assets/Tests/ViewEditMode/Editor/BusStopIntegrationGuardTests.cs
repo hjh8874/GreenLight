@@ -22,6 +22,140 @@ namespace Tests.EditMode
     public sealed class BusStopIntegrationGuardTests
     {
         [Test]
+        public void BuildMenu_OpensWithoutSelectingDefaultRoadPiece()
+        {
+            GameObject controllerObject =
+                new("PlacementController");
+            GameObject dockObject = new("UIDockController");
+            GameObject buildPanel = new("BuildPanel");
+            try
+            {
+                PlacementController placementController =
+                    controllerObject.AddComponent<PlacementController>();
+                placementController.ToggleBuildMode(true);
+
+                UIDockController dock =
+                    dockObject.AddComponent<UIDockController>();
+                SetPrivateField(
+                    dock,
+                    "panelBuild",
+                    buildPanel);
+                SetPrivateField(
+                    dock,
+                    "placementController",
+                    placementController);
+
+                dock.ToggleMenu(UIDockController.MenuType.Build);
+
+                Assert.That(buildPanel.activeSelf, Is.True);
+                Assert.That(
+                    placementController.IsBuildingMode,
+                    Is.False,
+                    "Opening Build must not auto-select the default road piece.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(buildPanel);
+                Object.DestroyImmediate(dockObject);
+                Object.DestroyImmediate(controllerObject);
+            }
+        }
+
+        [Test]
+        public void CityBusPresentation_AlignsGroundContactToRoadSurface()
+        {
+            const string contentPath =
+                "Assets/02_Prefabs/Vehicles/CityBusContent.prefab";
+            GameObject contentPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(contentPath);
+            Assert.That(contentPrefab, Is.Not.Null);
+
+            GameObject cityObject = new("MainCityView");
+            GameObject contentObject = null;
+            try
+            {
+                MainCityView cityView =
+                    cityObject.AddComponent<MainCityView>();
+                contentObject = Object.Instantiate(contentPrefab);
+                BusWorldView worldView =
+                    contentObject.GetComponent<BusWorldView>();
+                Assert.That(worldView, Is.Not.Null);
+
+                SetPrivateField(worldView, "cityView", cityView);
+                InvokePrivate(worldView, "EnsureVisual");
+
+                float depth = (float)typeof(BusWorldView)
+                    .GetMethod(
+                        "GetVisualSurfaceDepth",
+                        BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(worldView, null);
+
+                Assert.That(
+                    depth,
+                    Is.EqualTo(cityView.VehicleGroundZ).Within(0.0001f));
+            }
+            finally
+            {
+                if (contentObject != null)
+                {
+                    Object.DestroyImmediate(contentObject);
+                }
+
+                Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
+        public void CityBusPresentation_UsesProjectOwnedVisualMaterials()
+        {
+            const string contentPath =
+                "Assets/02_Prefabs/Vehicles/CityBusContent.prefab";
+            const string visualPath =
+                "Assets/02_Prefabs/Vehicles/CityBus_Blue.prefab";
+            const string definitionPath =
+                "Assets/05_ScriptableObjects/CityFlow/Transit/" +
+                "CityBusDefinition.asset";
+
+            GameObject content =
+                AssetDatabase.LoadAssetAtPath<GameObject>(contentPath);
+            GameObject expectedVisual =
+                AssetDatabase.LoadAssetAtPath<GameObject>(visualPath);
+            BusDefinitionSO definition =
+                AssetDatabase.LoadAssetAtPath<BusDefinitionSO>(
+                    definitionPath);
+
+            Assert.That(content, Is.Not.Null);
+            Assert.That(expectedVisual, Is.Not.Null);
+            Assert.That(definition, Is.Not.Null);
+
+            BusWorldView worldView =
+                content.GetComponent<BusWorldView>();
+            Assert.That(worldView, Is.Not.Null);
+
+            SerializedObject serializedView =
+                new(worldView);
+            Assert.That(
+                serializedView
+                    .FindProperty("busVisualPrefab")
+                    .objectReferenceValue,
+                Is.SameAs(expectedVisual));
+            Assert.That(
+                serializedView
+                    .FindProperty("busMaterial")
+                    .objectReferenceValue,
+                Is.Null,
+                "The city-bus wrapper must keep its authored materials.");
+            Assert.That(
+                serializedView
+                    .FindProperty("visualScale")
+                    .floatValue,
+                Is.EqualTo(1f));
+            Assert.That(
+                definition.VehicleVisualPrefab,
+                Is.SameAs(expectedVisual));
+        }
+
+        [Test]
         public void BusStopUi_IsUnavailableWithoutRegistry()
         {
             InfrastructureDataSO busStopData =

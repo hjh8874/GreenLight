@@ -18,6 +18,41 @@ namespace CityFlow.View.Tests
     {
         private static int playModeStopArrivalCount;
 
+        [TestCase(1f, 0f)]
+        [TestCase(0f, 1f)]
+        [TestCase(-1f, 0f)]
+        [TestCase(0f, -1f)]
+        public void BusPresentationRotation_AlignsWithTravelDirection(
+            float directionX,
+            float directionY)
+        {
+            MethodInfo method = typeof(BusWorldView).GetMethod(
+                "CreateRotation",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+
+            Vector2 direction =
+                new(directionX, directionY);
+            Quaternion rotation = (Quaternion)method.Invoke(
+                null,
+                new object[] { direction });
+            Vector3 actualForward =
+                rotation * Vector3.right;
+
+            Assert.That(
+                actualForward.x,
+                Is.EqualTo(direction.x).Within(0.0001f));
+            Assert.That(
+                actualForward.y,
+                Is.EqualTo(direction.y).Within(0.0001f));
+            Assert.That(
+                actualForward.z,
+                Is.EqualTo(0f).Within(0.0001f));
+            Assert.That(
+                rotation * Vector3.back,
+                Is.EqualTo(Vector3.back));
+        }
+
         [Test]
         public void SingleSidedStopTiles_StartBothDirections()
         {
