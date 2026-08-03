@@ -229,14 +229,9 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void CommuteCar_AllFrontagesAreIntersections_DepartsWithinFiniteTicks()
         {
-            SimConfig cfg = Cfg();
+            SimConfig cfg = CarSimTests.Cfg();
             cfg.GridWidth = 10;
             cfg.GridHeight = 10;
-            // 2차 리뷰 P0: Step 의 첫 인자는 delta 가 아니라 게임시각이다
-            // (CarSim.cs:710 -> UpdateDepartures(gameHour) L785). 출근 창을 명시해
-            // 아래 루프가 넘기는 시각이 확실히 창 안에 들도록 한다.
-            cfg.MorningStartHour = 6f;
-            cfg.MorningEndHour = 10f;
             var grid = new CityGrid(10, 10);
 
             // y=4 간선 + y=5 우회 → (2,4)(3,4) 가 모두 교차로가 된다.
@@ -306,7 +301,7 @@ namespace CityFlow.Sim.Tests
         [Test]
         public void Departure_DiagonalOnlyFrontage_UsesExitDirectionAsEntry()
         {
-            SimConfig cfg = Cfg();
+            SimConfig cfg = CarSimTests.Cfg();
             var grid = CrossGrid();
             // 집 (2,2) 2x2 → (2,2)(3,2)(2,3)(3,3). 교차로 (4,4) 는 (3,3) 과 대각으로만 닿는다.
             Assert.IsTrue(grid.Place(V(2, 2), TileType.House));
