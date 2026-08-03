@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using CityFlow.Bootstrap;
@@ -15,6 +16,8 @@ namespace CityFlow.View.Tests
 {
     public sealed class CityBusDirectionalOperationTests
     {
+        private static int playModeStopArrivalCount;
+
         [Test]
         public void SingleSidedStopTiles_StartBothDirections()
         {
@@ -543,6 +546,98 @@ namespace CityFlow.View.Tests
             {
                 UnityEngine.Object.DestroyImmediate(root);
             }
+        }
+
+        [UnityTest]
+        public IEnumerator StopPresentation_PlayModeFramesCompleteArrivalOnce()
+        {
+            yield return new EnterPlayMode();
+
+            SimEngine engine = CreateEngine();
+            PlaceTwoSidedLoop(engine);
+            GameObject cityViewObject =
+                new("CityBusPresentationPlayModeCityView");
+            cityViewObject.AddComponent<MainCityView>();
+            GameObject root =
+                new("CityBusPresentationPlayModeTest");
+
+            CityBusService service = CreateService(
+                root,
+                engine,
+                registerRoadTraffic: true);
+            Assert.That(service.StartService(), Is.True);
+            Assert.That(service.ActiveVehicles, Is.Not.Empty);
+            CityBusVehicleAgent vehicle =
+                service.ActiveVehicles[0];
+            Assert.That(vehicle, Is.Not.Null);
+            BusRoute route = vehicle.Route;
+            Assert.That(route, Is.Not.Null);
+            BusWorldView view =
+                vehicle.GetComponent<BusWorldView>();
+            Assert.That(view, Is.Not.Null);
+
+            playModeStopArrivalCount = 0;
+            route.StopArrived += CountPlayModeStopArrival;
+
+            bool observedPending = false;
+            const int maxSimulationFrames = 240;
+            for (int frame = 0;
+                 frame < maxSimulationFrames;
+                 frame++)
+            {
+                engine.Tick(engine.TickInterval);
+
+                yield return null;
+                if (route.IsStopPresentationPending)
+                {
+                    observedPending = true;
+                    break;
+                }
+            }
+
+            Assert.That(
+                observedPending,
+                Is.True,
+                "The simulation must wait for the visible bus to reach the stop.");
+
+            const int maxPresentationFrames = 30;
+            float originalCaptureDeltaTime =
+                Time.captureDeltaTime;
+            Time.captureDeltaTime = 0.02f;
+            for (int frame = 0;
+                 frame < maxPresentationFrames &&
+                 route.IsStopPresentationPending;
+                 frame++)
+            {
+                yield return null;
+                InvokePrivate(
+                    view,
+                    "RefreshVisiblePresentation");
+            }
+            Time.captureDeltaTime = originalCaptureDeltaTime;
+
+            Assert.That(view.HasVisibleBus, Is.True);
+            Assert.That(
+                route.IsStopPresentationPending,
+                Is.False,
+                "The visual must release the presentation wait after reaching the stop.");
+            Assert.That(
+                playModeStopArrivalCount,
+                Is.EqualTo(1),
+                "The visual handshake must complete the stop exactly once.");
+
+            route.StopArrived -= CountPlayModeStopArrival;
+            UnityEngine.Object.Destroy(root);
+            UnityEngine.Object.Destroy(cityViewObject);
+            yield return null;
+            yield return new ExitPlayMode();
+        }
+
+        private static void CountPlayModeStopArrival(
+            Vector2Int _,
+            int __)
+        {
+            playModeStopArrivalCount++;
         }
 
         [Test]
