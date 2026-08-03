@@ -186,6 +186,12 @@ namespace CityFlow.Gameplay.Save
 
         private bool TrySave(string reason)
         {
+            if (CityBootstrap.IsTitlePreviewMode)
+            {
+                Debug.Log($"[GameSaveLifecycleService] Save skipped because we are in Title Preview Mode. Reason: {reason}");
+                return false;
+            }
+
             if (services?.Save == null)
             {
                 Debug.LogWarning($"[GameSaveLifecycleService] Save skipped because SaveService is not connected. Reason: {reason}.");

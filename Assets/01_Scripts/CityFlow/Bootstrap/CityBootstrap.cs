@@ -28,6 +28,10 @@ namespace CityFlow.Bootstrap
         private ICityFlowServiceConsumer worldGridConsumer;
         private bool servicesInstalled;
 
+        public static bool IsTitlePreviewMode { get; set; } = false;
+        private float previewTickAccumulator = 0f;
+        private const float PreviewTickInterval = 3f;
+
         private void Awake()
         {
             EnsureServices();
@@ -188,7 +192,20 @@ namespace CityFlow.Bootstrap
                     simEngine.SetGameTime(
                         Services.GameCalendar.TotalDays,
                         Services.GameCalendar.Hour);
-                simEngine?.Tick(Time.deltaTime);
+                
+                if (IsTitlePreviewMode)
+                {
+                    previewTickAccumulator += Time.deltaTime;
+                    if (previewTickAccumulator >= PreviewTickInterval)
+                    {
+                        simEngine?.Tick(previewTickAccumulator);
+                        previewTickAccumulator = 0f;
+                    }
+                }
+                else
+                {
+                    simEngine?.Tick(Time.deltaTime);
+                }
             }
         }
 

@@ -128,38 +128,39 @@ namespace CityFlow.UI.Editor
             var sHlg = startBtnRow.gameObject.AddComponent<HorizontalLayoutGroup>();
             sHlg.childControlWidth = true; sHlg.childControlHeight = true;
             sHlg.childForceExpandWidth = true; sHlg.childForceExpandHeight = false;
-            var startBtn = MakeButton("StartButton", startBtnRow.transform, "▶ START GAME", BtnGreen, Color.white, btnSolidSprite, 42f, customFont, 100f);
+            var newGameBtn = MakeButton("Btn_NewGame", startBtnRow.transform, "새 게임", BtnGreen, Color.white, btnSolidSprite, 42f, customFont, 100f);
 
-            // Row 2: Play Game, Load City
+            // Row 2: Play Game, Settings
             var row2 = new GameObject("Row2").AddComponent<RectTransform>();
             row2.SetParent(menuContainer.transform, false);
             var r2Hlg = row2.gameObject.AddComponent<HorizontalLayoutGroup>();
             r2Hlg.spacing = 15f;
             r2Hlg.childControlWidth = true; r2Hlg.childControlHeight = true;
             r2Hlg.childForceExpandWidth = true; r2Hlg.childForceExpandHeight = false;
-            var continueBtn = MakeButton("PlayButton", row2.transform, "PLAY GAME", BtnGreen, Color.white, btnSolidSprite, 32f, customFont, 80f);
-            var dummyLoadBtn = MakeButton("LoadButton", row2.transform, "LOAD CITY", BtnBlue, Color.white, btnSolidSprite, 32f, customFont, 80f);
+            var playGameBtn = MakeButton("Btn_PlayGame", row2.transform, "게임 플레이", BtnGreen, Color.white, btnSolidSprite, 32f, customFont, 80f);
+            var settingsBtn = MakeButton("Btn_Settings", row2.transform, "설정", BtnOrange, Color.white, btnSolidSprite, 32f, customFont, 80f);
 
-            // Row 3: Settings, About
+            // Row 3: Language, Quit
             var row3 = new GameObject("Row3").AddComponent<RectTransform>();
             row3.SetParent(menuContainer.transform, false);
             var r3Hlg = row3.gameObject.AddComponent<HorizontalLayoutGroup>();
             r3Hlg.spacing = 15f;
             r3Hlg.childControlWidth = true; r3Hlg.childControlHeight = true;
             r3Hlg.childForceExpandWidth = true; r3Hlg.childForceExpandHeight = false;
-            var settingsBtn = MakeButton("SettingsButton", row3.transform, "SETTINGS", BtnOrange, Color.white, btnSolidSprite, 32f, customFont, 80f);
-            var quitBtn = MakeButton("AboutQuitButton", row3.transform, "ABOUT", BtnPurple, Color.white, btnSolidSprite, 32f, customFont, 80f);
+            var languageBtn = MakeButton("Btn_Language", row3.transform, "언어 설정", BtnBlue, Color.white, btnSolidSprite, 32f, customFont, 80f);
+            var quitBtn = MakeButton("Btn_Quit", row3.transform, "종료", BtnPurple, Color.white, btnSolidSprite, 32f, customFont, 80f);
 
             // --- 배선 ---
-            UnityEventTools.AddPersistentListener(startBtn.onClick, ctrl.OnStartNewGame);
-            UnityEventTools.AddPersistentListener(continueBtn.onClick, ctrl.OnPlayGameClicked);
+            UnityEventTools.AddPersistentListener(newGameBtn.onClick, ctrl.OnStartNewGame);
+            UnityEventTools.AddPersistentListener(playGameBtn.onClick, ctrl.OnPlayGameClicked);
             UnityEventTools.AddPersistentListener(settingsBtn.onClick, ctrl.OnSettings);
+            UnityEventTools.AddPersistentListener(languageBtn.onClick, ctrl.OnLanguageClicked);
             UnityEventTools.AddPersistentListener(quitBtn.onClick, ctrl.OnQuit);
 
             var confirmPopup = MakeConfirmPopup(canvasGo.transform, Color.white, BtnBlue, TextDark, btnSolidSprite, customFont);
 
             var so = new SerializedObject(ctrl);
-            so.FindProperty("continueButton").objectReferenceValue = continueBtn;
+            so.FindProperty("continueButton").objectReferenceValue = playGameBtn;
             so.FindProperty("confirmPopup").objectReferenceValue = confirmPopup;
             so.ApplyModifiedProperties();
 
@@ -272,15 +273,6 @@ namespace CityFlow.UI.Editor
             tr.anchorMin = Vector2.zero; tr.anchorMax = Vector2.one;
             tr.offsetMin = Vector2.zero; tr.offsetMax = Vector2.zero;
             return btn;
-        }
-
-        static void SafeSet(this Object obj, Vector3 pos, float rotY)
-        {
-            if (obj is GameObject go)
-            {
-                go.transform.position = pos;
-                go.transform.rotation = Quaternion.Euler(0, rotY, 0);
-            }
         }
     }
 }

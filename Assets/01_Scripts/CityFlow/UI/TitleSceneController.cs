@@ -24,6 +24,8 @@ namespace CityFlow.UI
 
         private System.Collections.IEnumerator Start()
         {
+            Bootstrap.CityBootstrap.IsTitlePreviewMode = true;
+
             // 백그라운드 씬(실제 게임) 로드 및 설정 (UI 숨김, 자동저장 방지)
             yield return StartCoroutine(LoadBackgroundSceneRoutine());
 
@@ -69,14 +71,14 @@ namespace CityFlow.UI
             }
 
             // 게임이 라이브로 돌아가면서 자동 저장되는 것을 방지하기 위해 AutoSaveService 파괴
-            var autoSave = FindObjectOfType<CityFlow.Gameplay.Save.AutoSaveService>();
+            var autoSave = FindAnyObjectByType<CityFlow.Gameplay.Save.AutoSaveService>(FindObjectsInactive.Include);
             if (autoSave != null)
             {
                 Destroy(autoSave);
             }
 
             // TitleScene에 기존 카메라가 남아있다면 충돌 방지를 위해 제거합니다.
-            foreach (var cam in FindObjectsOfType<Camera>())
+            foreach (var cam in FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {
                 if (cam.gameObject.scene != scene)
                 {
@@ -185,10 +187,9 @@ namespace CityFlow.UI
             LoadGame();
         }
 
-        public void OnAboutClicked()
+        public void OnLanguageClicked()
         {
-            Debug.Log("[TitleScene] 어바웃(크레딧) 클릭");
-            // 크레딧 팝업 띄우기 (미구현)
+            Debug.Log("[TitleScene] 언어 설정 클릭 (미구현)");
         }
 
         public void OnPlayGameClicked()
@@ -233,6 +234,8 @@ namespace CityFlow.UI
         }
         private void LoadGame()
         {
+            Bootstrap.CityBootstrap.IsTitlePreviewMode = false;
+
             if (string.IsNullOrEmpty(gameSceneName))
             {
                 Debug.LogWarning("[TitleScene] gameSceneName이 비어 있어 로드할 수 없습니다.");
