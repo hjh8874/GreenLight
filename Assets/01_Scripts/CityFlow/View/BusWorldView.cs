@@ -875,6 +875,8 @@ namespace CityFlow.View
 
         private void HandleVehicleVisibilityChanged(bool visible)
         {
+            UpdateStopPresentationGate();
+
             if (!visible)
             {
                 HideCityBusVisual();
@@ -1009,13 +1011,9 @@ namespace CityFlow.View
                 visual != null &&
                 cityView != null &&
                 roadTraffic != null &&
+                (cityBusService == null ||
+                 cityBusService.IsVehicleVisible) &&
                 busRoute.UsesRoadTraffic;
-            if (busRoute.IsStopPresentationPending &&
-                !shouldRequireConfirmation)
-            {
-                return;
-            }
-
             busRoute.RequireStopPresentationConfirmation =
                 shouldRequireConfirmation;
         }
@@ -1024,8 +1022,7 @@ namespace CityFlow.View
         {
             ResetStopPresentationTarget();
 
-            if (busRoute != null &&
-                !busRoute.IsStopPresentationPending)
+            if (busRoute != null)
             {
                 busRoute.RequireStopPresentationConfirmation =
                     false;

@@ -442,7 +442,7 @@ namespace CityFlow.View.Tests
         }
 
         [Test]
-        public void PendingStopPresentation_ViewDisableDoesNotConfirmArrival()
+        public void PendingStopPresentation_ViewDisableReleasesWaitOnce()
         {
             SimEngine engine = CreateEngine();
             PlaceTwoSidedLoop(engine);
@@ -474,17 +474,69 @@ namespace CityFlow.View.Tests
                 InvokePrivate(view, "OnDisable");
                 Assert.That(
                     route.IsStopPresentationPending,
-                    Is.True,
-                    "Disabling only the view must preserve the pending presentation gate.");
-                Assert.That(arrivalCount, Is.Zero);
+                    Is.False,
+                    "A hidden view cannot confirm presentation and must not block the route.");
+                Assert.That(arrivalCount, Is.EqualTo(1));
+
+                InvokePrivate(view, "OnDisable");
+                Assert.That(
+                    arrivalCount,
+                    Is.EqualTo(1),
+                    "Releasing the presentation gate must complete the logical stop exactly once.");
 
                 InvokePrivate(view, "OnEnable");
                 Assert.That(
                     route.IsStopPresentationPending,
-                    Is.True);
+                    Is.False);
+                Assert.That(arrivalCount, Is.EqualTo(1));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void PendingStopPresentation_ServiceHiddenReleasesWaitOnce()
+        {
+            SimEngine engine = CreateEngine();
+            PlaceTwoSidedLoop(engine);
+            GameObject root = new("CityBusHiddenServiceGateTest");
+
+            try
+            {
+                CityBusService service = CreateService(
+                    root,
+                    engine);
+                Assert.That(service.StartService(), Is.True);
+                BusRoute route =
+                    service.ActiveVehicles[0].Route;
+                route.RequireStopPresentationConfirmation =
+                    true;
+                int arrivalCount = 0;
+                route.StopArrived += (_, _) =>
+                    arrivalCount++;
+
+                InvokePrivate(route, "UpdateMoving", 100f);
+
                 Assert.That(
-                    route.ConfirmStopPresentationReached(),
+                    route.IsStopPresentationPending,
                     Is.True);
+                InvokePrivate(
+                    service,
+                    "SetVehicleVisible",
+                    false);
+
+                Assert.That(
+                    route.IsStopPresentationPending,
+                    Is.False,
+                    "A hidden service must release any presentation wait immediately.");
+                Assert.That(arrivalCount, Is.EqualTo(1));
+
+                InvokePrivate(
+                    service,
+                    "SetVehicleVisible",
+                    false);
                 Assert.That(arrivalCount, Is.EqualTo(1));
             }
             finally
