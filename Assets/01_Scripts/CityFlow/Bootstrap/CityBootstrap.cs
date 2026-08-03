@@ -35,8 +35,6 @@ namespace CityFlow.Bootstrap
         }
         
         public static bool IsTitlePreviewMode { get; set; } = false;
-        private float previewTickAccumulator = 0f;
-        private const float PreviewTickInterval = 3f;
 
         private void Awake()
         {
@@ -188,6 +186,11 @@ namespace CityFlow.Bootstrap
                 InstallServices();
             }
 
+            if (IsTitlePreviewMode)
+            {
+                return;
+            }
+
             if (useFakeServices)
             {
                 fakeFlowReader?.Tick(Time.time, Services.Events);
@@ -199,29 +202,7 @@ namespace CityFlow.Bootstrap
                         Services.GameCalendar.TotalDays,
                         Services.GameCalendar.Hour);
                 
-                if (IsTitlePreviewMode)
-                {
-                    previewTickAccumulator += Time.deltaTime;
-                    if (previewTickAccumulator >= PreviewTickInterval)
-                    {
-                        if (simEngine != null)
-                        {
-                            float remaining = previewTickAccumulator;
-                            float step = 0.1f; // 안전한 시뮬레이션 고정 dt
-                            while (remaining > 0)
-                            {
-                                float currentStep = Mathf.Min(step, remaining);
-                                simEngine.Tick(currentStep);
-                                remaining -= currentStep;
-                            }
-                        }
-                        previewTickAccumulator = 0f;
-                    }
-                }
-                else
-                {
-                    simEngine?.Tick(Time.deltaTime);
-                }
+                simEngine?.Tick(Time.deltaTime);
             }
         }
 

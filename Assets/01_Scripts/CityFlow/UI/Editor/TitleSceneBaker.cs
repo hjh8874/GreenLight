@@ -1,3 +1,4 @@
+using CityFlow.EditorTools;
 using TMPro;
 using UnityEditor;
 using UnityEditor.Events;
@@ -23,8 +24,7 @@ namespace CityFlow.UI.Editor
             var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
             // Layer Lab 에셋 로드
-            string fontPath = "Assets/99_Download/Layer Lab/GUI-MonoRound/ResourcesData/Fonts/UbuntuTitling-Bold SDF.asset";
-            var customFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(fontPath);
+            TMP_FontAsset customFont = ExternalKoreanFontAsset.LoadConfigured();
 
             string btnWhitePath = "Assets/99_Download/Layer Lab/GUI-MonoRound/ResourcesData/Sprites/Components/Button/Btn_Rectangle02_White.png";
             var btnSolidSprite = AssetDatabase.LoadAssetAtPath<Sprite>(btnWhitePath);
