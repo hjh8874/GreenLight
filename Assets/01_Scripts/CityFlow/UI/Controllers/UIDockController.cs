@@ -29,6 +29,7 @@ namespace CityFlow.UI
         private MenuType _currentMenu = MenuType.None;
         private bool _isBound;
 
+        public MenuType CurrentMenu => _currentMenu;
         public bool IsAnyMenuOpen => _currentMenu != MenuType.None;
 
         public void Configure(
