@@ -5,12 +5,48 @@ using CityFlow.Gameplay.Research;
 using CityFlow.UI;
 using NUnit.Framework;
 using TMPro;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 public class ResearchUnlockCatalogTests
 {
+    [Test]
+    public void BalanceCatalog_CategoriesMatchRuntimeCatalog()
+    {
+        const string runtimePath =
+            "Assets/05_ScriptableObjects/Resources/CityFlow/ResearchCatalog.asset";
+        const string balancePath =
+            "Assets/05_ScriptableObjects/Balance/Editor/ResearchCatalog_Balance.asset";
+        ResearchCatalogSO runtimeCatalog =
+            AssetDatabase.LoadAssetAtPath<ResearchCatalogSO>(runtimePath);
+        ResearchCatalogSO balanceCatalog =
+            AssetDatabase.LoadAssetAtPath<ResearchCatalogSO>(balancePath);
+
+        Assert.NotNull(runtimeCatalog, $"Missing runtime catalog: {runtimePath}");
+        Assert.NotNull(balanceCatalog, $"Missing balance catalog: {balancePath}");
+
+        var runtimeEntries = runtimeCatalog.ValidEntries();
+        var balanceEntries = balanceCatalog.ValidEntries();
+        Assert.AreEqual(
+            runtimeEntries.Count,
+            balanceEntries.Count,
+            "Balance publishing copies the whole catalog, so both catalogs must contain the same entries.");
+
+        for (int index = 0; index < runtimeEntries.Count; index++)
+        {
+            Assert.AreEqual(
+                runtimeEntries[index].researchId,
+                balanceEntries[index].researchId,
+                $"Research entry order differs at index {index}.");
+            Assert.AreEqual(
+                runtimeEntries[index].category,
+                balanceEntries[index].category,
+                $"Publishing balance values would overwrite the category for {runtimeEntries[index].researchId}.");
+        }
+    }
+
     [Test]
     public void ExistingYesterdayArrivalsHeader_IsHidden()
     {
