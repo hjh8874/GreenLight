@@ -432,7 +432,7 @@ namespace CityFlow.Sim.Tests
                 out SimEventBuffer events);
 
             sim.Step(7f, net, events);
-            Assert.AreEqual(1, sim.GetCar(0).TileIndex, "전제: 교차로 직전 타일까지 전진");
+            Assert.AreEqual(1, sim.GetCar(0).TileIndex, "전제: 차단 타일 상류까지 전진");
             Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 90));
             Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
 
@@ -1410,22 +1410,38 @@ namespace CityFlow.Sim.Tests
                 Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
             for (int x = 1; x <= 4; x++)
                 Assert.IsTrue(grid.Place(V(x, 3), TileType.Road));
-            // The upper detour already makes (2,2) an intersection. A south spur at
-            // (2,1) would also become the 2x2 house's first frontage and bypass the
-            // intended ordinary approach tiles before the watchdog blockade.
+            // The upper detour already makes (2,2) an intersection. Keep the south
+            // spur at (2,1) absent so the 2x2 house has no extra ordinary access
+            // candidate beside the intended approach before the watchdog blockade.
+            // The office frontages are intersection (4,2) and ordinary (5,2), so the
+            // ordinary endpoint must also be the return route's safe departure origin.
             Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
             Assert.IsTrue(grid.Place(V(4, 0), TileType.Office));
-            Assert.IsTrue(grid.IsIntersection(V(2, 2)));
+            Assert.IsTrue(grid.IsIntersection(V(2, 2)),
+                "전제: 직선 경로 중간의 (2,2)는 교차로");
+            Assert.IsTrue(grid.IsIntersection(V(3, 2)),
+                "전제: 워치독 차단 타일 (3,2)는 최초 경로 위 교차로");
+            Assert.IsTrue(grid.IsIntersection(V(4, 2)),
+                "전제: 회사의 기존 첫 프론티지는 교차로");
+            Assert.IsFalse(grid.IsIntersection(V(5, 2)),
+                "전제: 회사에는 퇴근 출발도 가능한 일반 프론티지가 존재");
 
             road = new RoadNetwork(grid);
             demands = new DemandMap(cfg);
             demands.Reassign(grid, road);
+            Assert.AreEqual(1, demands.Demands.Count);
+            Assert.AreEqual(V(0, 2), demands.Demands[0].SourceRoad,
+                "전제: 집의 일반 진입로와 최초 경로 prefix는 유지");
+            Assert.AreEqual(V(5, 2), demands.Demands[0].SinkRoad,
+                "전제: 회사는 교차로 (4,2) 대신 일반 진입로 (5,2)를 선택");
             planner = new RoutePlanner(grid.Width, grid.Height);
             planner.Plan(demands, road, grid, cfg);
             CollectionAssert.AreEqual(
-                new[] { V(0, 2), V(1, 2), V(2, 2), V(3, 2), V(4, 2) },
+                new[] { V(0, 2), V(1, 2), V(2, 2), V(3, 2), V(4, 2), V(5, 2) },
                 planner.CarRoutes[0],
-                "전제: 최초 경로는 짧은 직선 교차로 경로");
+                "전제: 최초 경로는 차단 타일을 지나 일반 회사 진입로까지 잇는 직선 경로");
+            Assert.AreEqual(V(5, 2), planner.ReturnRoutes[0][0],
+                "전제: 회사의 일반 진입로가 퇴근 경로의 안전한 원점");
 
             net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
             net.RebuildTopology(grid);
