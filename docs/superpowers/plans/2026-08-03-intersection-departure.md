@@ -151,7 +151,7 @@ git commit -m "[Feat] 건물→진입로 직교 진출 방향 조회 추가"
 
 **주의 — 기존 private `TryEnqueue`에 `out int node`를 추가해야 한다.** 노드 번호를 알아야 스테이지를 채운다. 기존 public 오버로드 시그니처는 **바꾸지 말 것**(호출자 다수).
 
-- [ ] **Step 1: 실패 테스트 작성**
+- [x] **Step 1: 실패 테스트 작성**
 
 ```csharp
 using NUnit.Framework;
@@ -385,9 +385,9 @@ namespace CityFlow.Sim.Tests
 }
 ```
 
-- [ ] **Step 2: RED 확인 요청** — 기대: `error CS1061 TryEnqueueAtIntersection`.
+- [x] **Step 2: RED 확인 요청** — 기대: `error CS1061 TryEnqueueAtIntersection`.
 
-- [ ] **Step 3: 최소 구현**
+- [x] **Step 3: 최소 구현**
 
 3-a. 기존 private `TryEnqueue`(`RoadQueueNetwork.cs:360` 부근)에 노드 출력을 추가한다.
 
@@ -529,7 +529,7 @@ namespace CityFlow.Sim.Tests
 
 - [ ] **Step 4: GREEN 확인 요청**
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add Assets/01_Scripts/CityFlow/Sim/RoadQueueNetwork.cs \
@@ -553,7 +553,7 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
 
 **핵심 제약:** `hasResume == true`(재개)일 때는 **절대** 새 경로로 가지 않는다. `route.Count == 1`이면 exit 방향이 없으므로 스폰하지 않는다(설계 §3 경계조건).
 
-- [ ] **Step 1: 실패 테스트 작성 (통합 — 라이브 증상 재현)**
+- [x] **Step 1: 실패 테스트 작성 (통합 — 라이브 증상 재현)**
 
 `IntersectionDepartureTests.cs`에 추가한다. 집의 **모든** 프론티지가 교차로인 형상을 만든다.
 
@@ -664,9 +664,9 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
         }
 ```
 
-- [ ] **Step 2: RED 확인 요청** — 기대: `departed` 가 false 로 남아 `Assert.IsTrue` 실패.
+- [x] **Step 2: RED 확인 요청** — 기대: `departed` 가 false 로 남아 `Assert.IsTrue` 실패.
 
-- [ ] **Step 3: 최소 구현**
+- [x] **Step 3: 최소 구현**
 
 `CarSim.TryEnqueueRouteStart`의 `IsSafeResumeTile` 게이트(`CarSim.cs:1282` 부근) **직전**에 신규 출발 분기를 넣는다. 기존 게이트와 그 아래 로직은 그대로 둔다.
 
@@ -763,7 +763,7 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
 
 - [ ] **Step 4: GREEN 확인 요청**
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add Assets/01_Scripts/CityFlow/Sim/CarSim.cs \
@@ -782,7 +782,7 @@ git commit -m "[Feat] 신규 출발 경로에서 교차로 스폰 사용 — 영
 - Modify: `Assets/Tests/EditMode/CarSimTests.cs` (`Departure_SpecialRouteOrigin_StaysOffNetwork`, L352 부근)
 - Test: `Assets/Tests/EditMode/IntersectionDepartureTests.cs` (T5·T6 추가)
 
-- [ ] **Step 1: 기존 테스트를 새 계약으로 다시 쓴다**
+- [x] **Step 1: 기존 테스트를 새 계약으로 다시 쓴다**
 
 `Departure_SpecialRouteOrigin_StaysOffNetwork`를 아래로 교체한다. **이름도 바꾼다** — 옛 이름이 남으면 계약이 뒤집힌 걸 아무도 모른다.
 
@@ -820,7 +820,7 @@ git commit -m "[Feat] 신규 출발 경로에서 교차로 스폰 사용 — 영
         }
 ```
 
-- [ ] **Step 1-b: 삭제되는 회귀 증거를 별도 테스트로 보존한다 (리뷰 P0-4)**
+- [x] **Step 1-b: 삭제되는 회귀 증거를 별도 테스트로 보존한다 (리뷰 P0-4)**
 
 옛 테스트의 **전반부**(`hasResume = true`로 부르는 첫 호출)는 "재개는 교차로 원점을 쓰지
 않는다"는 D4 계약의 유일한 증거다. Step 1의 교체본이 이걸 지우므로 별도로 남긴다.
@@ -859,7 +859,7 @@ git commit -m "[Feat] 신규 출발 경로에서 교차로 스폰 사용 — 영
         }
 ```
 
-- [ ] **Step 2: 범위 고정 테스트 추가 (D5)**
+- [x] **Step 2: 범위 고정 테스트 추가 (D5)**
 
 `IntersectionDepartureTests.cs`에 추가한다.
 
@@ -884,13 +884,13 @@ git commit -m "[Feat] 신규 출발 경로에서 교차로 스폰 사용 — 영
 `AddRoundabout(Vector2Int)`도 있다(`L19`). 같은 어셈블리(`CityFlow.Sim.Tests`)라 그대로 쓴다.
 새로 만들지 말 것.
 
-- [ ] **Step 3: 재개 불변 확인**
+- [x] **Step 3: 재개 불변 확인**
 
 `RebuildResume_*` 계열과 `Departure_WhenAccessRoadIsRamp_EntersHighway`를 **수정하지 않는다.** 그대로 통과해야 한다. 깨지면 재개 경로까지 번진 것이므로 **멈추고 보고**하라.
 
 - [ ] **Step 4: GREEN 확인 요청** — 감독이 전체 스위트를 기준선과 대조한다.
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add Assets/Tests/EditMode/CarSimTests.cs \
