@@ -988,7 +988,10 @@ namespace CityFlow.Sim.Tests
         {
             var cfg = Cfg();
             cfg.AutoDetectSignals = false; // 필수 설정
-            var engine = new SimEngine(cfg, new SimEventHub(), new TestWorldGridAccess());
+            // TestWorldGridAccess 는 놀이영역을 (90,90)~(110,110)으로 잠근다. 아래 배치는
+            // 전부 저좌표라 그 하네스에서는 Place 가 조용히 실패하고, 도로가 없어
+            // TryPlaceSignal 이 false 가 된다. 이 파일의 다른 테스트와 같은 2인자 생성자를 쓴다.
+            var engine = new SimEngine(cfg, new SimEventHub());
             Vector2Int t = V(1, 1);
             
             // 실제 교차로 구성 (십자 도로)
