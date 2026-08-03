@@ -164,6 +164,38 @@ namespace CityFlow.Sim.Tests
     {
         static Vector2Int V(int x, int y) => new Vector2Int(x, y);
 
+        // CarSimTests 의 ResumeRouteProvider 는 private 중첩 클래스라 여기서 못 쓴다
+        // (2차 리뷰 P0). 이 파일 전용으로 최소 구현을 둔다.
+        private sealed class RouteProvider : ICarRouteProvider
+        {
+            private readonly System.Collections.Generic.Dictionary<int, Vector2Int[]> _routes = new();
+
+            public void Add(int carId, params Vector2Int[] route) => _routes[carId] = route;
+
+            public bool IsDestination(int carId, Vector2Int tile) =>
+                _routes.TryGetValue(carId, out var r) && r.Length > 0 && r[r.Length - 1] == tile;
+
+            public bool TryGetNextTile(int carId, Vector2Int from, out Vector2Int next, out Dir exit)
+            {
+                next = default;
+                exit = Dir.N;
+                if (!_routes.TryGetValue(carId, out var r)) return false;
+                for (int i = 0; i < r.Length - 1; i++)
+                {
+                    if (r[i] != from) continue;
+                    next = r[i + 1];
+                    Vector2Int d = next - from;
+                    if (d == new Vector2Int(0, 1)) exit = Dir.N;
+                    else if (d == new Vector2Int(1, 0)) exit = Dir.E;
+                    else if (d == new Vector2Int(0, -1)) exit = Dir.S;
+                    else if (d == new Vector2Int(-1, 0)) exit = Dir.W;
+                    else return false;
+                    return true;
+                }
+                return false;
+            }
+        }
+
         static SimConfig Cfg()
         {
             SimConfig cfg = SimConfig.Default();
@@ -263,7 +295,7 @@ namespace CityFlow.Sim.Tests
             var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
             net.RebuildTopology(grid);
 
-            var routes = new ResumeRouteProvider();
+            var routes = new RouteProvider();
             // 북진 직진: (4,3) → (4,4) 교차로 → (4,5) 출구
             routes.Add(10, V(4, 3), V(4, 4), V(4, 5));
             Assert.IsTrue(net.TryEnqueue(V(4, 3), Dir.N, 10));
@@ -283,6 +315,58 @@ namespace CityFlow.Sim.Tests
             Assert.IsFalse(
                 net.TryEnqueueAtIntersection(V(4, 4), Dir.N, Dir.N, 11, 1),
                 "출구로 넘어간 앞차의 rear clearance 를 무시하고 스폰하면 안 된다");
+        }
+
+        // 2차 리뷰 P1 — 이 설계의 핵심 주장("수렴한다")을 잠그는 테스트.
+        // Entry 로 앉힌 차가 실제로 Entry→Exit→출구타일로 전진하지 않으면
+        // 스톨 위치만 옮긴 것이다. 이 단정이 없으면 전진 배선이 빠진 구현도 통과한다.
+        [Test]
+        public void SpawnedTurn_AdvancesOutWithinFiniteTicks()
+        {
+            SimConfig cfg = Cfg();
+            var grid = CrossGrid();
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+
+            var routes = new RouteProvider();
+            // 북진 진입 → 동쪽으로 우회전해서 (5,4) 로 빠진다.
+            routes.Add(21, V(4, 4), V(5, 4));
+            Assert.IsTrue(net.TryEnqueueAtIntersection(V(4, 4), Dir.N, Dir.E, 21, 1),
+                "전제: 회전 스폰 성공");
+
+            bool left = false;
+            for (int tick = 0; tick < 10 && !left; tick++)
+            {
+                net.Step(routes);
+                left = !net.TryLocateCar(21, out Vector2Int at, out _, out _) || at != V(4, 4);
+            }
+            Assert.IsTrue(left,
+                "Entry 로 스폰한 차는 유한 틱 안에 교차로를 빠져나가야 한다 — 이게 수렴 보장이다");
+        }
+
+        // 설계 D5 + 2차 리뷰 P0. 로터리는 중심뿐 아니라 "팔"도 범위 밖이다.
+        // UsesSharedBudget 이 팔을 제외하지 않으므로 별도 가드가 필요하다.
+        [Test]
+        public void SpawnAtIntersection_RoundaboutCenterAndArm_BothRejected()
+        {
+            SimConfig cfg = Cfg();
+            var grid = CrossGrid();
+            // 팔이 교차로가 되도록 (5,4) 에 세 번째 도로 가지를 붙인다.
+            Assert.IsTrue(grid.Place(V(5, 5), TileType.Road));
+            Assert.IsTrue(grid.Place(V(5, 3), TileType.Road));
+            Assert.IsTrue(grid.IsIntersection(V(5, 4)), "전제: 팔 타일이 grid 교차로다");
+
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(V(4, 4));           // 중심 (4,4), 팔은 상하좌우
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid, devices);
+
+            Assert.IsFalse(
+                net.TryEnqueueAtIntersection(V(4, 4), Dir.N, Dir.N, 5, 1),
+                "로터리 중심은 링 예약 모델이라 범위 밖이다");
+            Assert.IsFalse(
+                net.TryEnqueueAtIntersection(V(5, 4), Dir.E, Dir.E, 6, 1),
+                "로터리 팔도 범위 밖이다 — 팔이 교차로여도 링 상태기계를 우회하면 안 된다");
         }
 
         [Test]
@@ -355,7 +439,10 @@ namespace CityFlow.Sim.Tests
         {
             if (!InBounds(tile)) return false;
             int tileIndex = TileIndex(tile);
-            if (!UsesSharedBudget(tileIndex)) return false;
+            // UsesSharedBudget 은 로터리 "중심"만 제외하고 "팔"은 제외하지 않는다
+            // (L1642-1643). 팔이 3방 도로를 가져 grid intersection 이 되면 링 상태기계를
+            // 우회하게 되므로 여기서 명시적으로 막는다(설계 D5, 2차 리뷰 P0).
+            if (!UsesSharedBudget(tileIndex) || IsRoundaboutArm(tileIndex)) return false;
 
             IntersectionStage stage = entryDir == exitDir
                 ? IntersectionStage.Exit
@@ -452,6 +539,20 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
 ```
 
 ---
+
+> ## ⚠️ Task 3·4는 아직 수정 중이다 — 착수 금지
+>
+> 2차 계획서 리뷰가 Task 3·4에서 P0 결함을 찾았고 감독이 수정 중이다.
+> **Task 2 워커는 여기서 멈춰라.** 아래 내용은 지금 신뢰할 수 없다.
+>
+> 알려진 결함(감독이 고치는 중):
+> - `sim.Step(cfg.TickInterval, ...)` — 첫 인자는 delta 가 아니라 **게임시각**이다
+>   (`CarSim.cs:710` → `UpdateDepartures(gameHour)` L785). 출근 창(기본 6~10시) 밖의
+>   0.25시를 계속 넘겨 차가 영원히 `ParkedHome` 이다 → **거짓 RED, GREEN 불가**
+> - "프론티지가 전부 교차로" 형상이 거짓이다. `CollectAccessRoads` 는 8방 수집이라
+>   `(1,4)·(4,4)` 도 프론티지고 둘 다 일반 타일이다 → 교차로 분기를 아예 안 탄다
+> - T4 대각 폴백 테스트가 실제 `route[0]` 을 검사하지 않아 공허하다
+> - `DepartureBuilding` 의 `default` 센티널 `(0,0)` 은 유효 좌표라 잘못된 entry 를 만들 수 있다
 
 ### Task 3: 출발 경로에 연결
 
@@ -624,9 +725,12 @@ git commit -m "[Feat] 교차로 스폰 진입점 — 스테이지·셀 예약을
 3-c. `RoadQueueNetwork`에 판정 헬퍼를 추가한다(`IsSafeResumeTile` 은 건드리지 않는다).
 
 ```csharp
-        // 신규 출발 스폰이 가능한 교차로 타일인가. 로터리는 예약 모델이 달라 제외(설계 D5).
+        // 신규 출발 스폰이 가능한 교차로 타일인가. 로터리는 중심도 팔도 예약 모델이
+        // 달라 제외한다(설계 D5). UsesSharedBudget 은 팔을 제외하지 않으므로 따로 건다.
         internal bool IsIntersectionSpawnTile(Vector2Int tile) =>
-            InBounds(tile) && UsesSharedBudget(TileIndex(tile));
+            InBounds(tile)
+            && UsesSharedBudget(TileIndex(tile))
+            && !IsRoundaboutArm(TileIndex(tile));
 ```
 
 3-d. 인스턴스 호출자 3곳에서 새 인자를 넘긴다. **출발 건물은 진행 방향에 따라 다르다** —
