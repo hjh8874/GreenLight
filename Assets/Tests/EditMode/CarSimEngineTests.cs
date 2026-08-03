@@ -983,6 +983,80 @@ namespace CityFlow.Sim.Tests
             Assert.IsFalse(restored.CanPlaceBusStop(V(110, 99)));
         }
 
+        [Test]
+        public void SignalCycleProgress_ReturnsExpectedBoundaries_AndHandlesOverride()
+        {
+            var cfg = Cfg();
+            cfg.AutoDetectSignals = false; // 필수 설정
+            var engine = new SimEngine(cfg, new SimEventHub(), new TestWorldGridAccess());
+            Vector2Int t = V(1, 1);
+            
+            // 실제 교차로 구성 (십자 도로)
+            engine.Place(t, TileType.Road);
+            engine.Place(V(1, 0), TileType.Road);
+            engine.Place(V(1, 2), TileType.Road);
+            engine.Place(V(0, 1), TileType.Road);
+            engine.Place(V(2, 1), TileType.Road);
+
+            Assert.IsTrue(engine.TryPlaceSignal(t, 8)); // 8 = green slots
+
+            int cycleSlots = engine.GetSignalCycleSlots(t);
+            float slotSeconds = engine.GetSlotSeconds();
+            float cycleDuration = cycleSlots * slotSeconds; // e.g. 16 * 0.5 = 8.0s
+
+            // 1. Boundary checks (no offset)
+            engine.TrySetSignalOffsetSlots(t, 0);
+            
+            // SimTime starts at 0.0f
+            Assert.AreEqual(0.0f, engine.GetCurrentCycleProgress(t), 0.001f);
+            
+            // Tick up to just before cycle end (cycleDuration - TickInterval)
+            float targetTime = cycleDuration - cfg.TickInterval;
+            int ticks = Mathf.RoundToInt(targetTime / cfg.TickInterval);
+            for (int i = 0; i < ticks; i++) engine.Tick(cfg.TickInterval);
+            
+            Assert.AreEqual(targetTime / cycleDuration, engine.GetCurrentCycleProgress(t), 0.001f);
+            
+            // Cycle reset
+            engine.Tick(cfg.TickInterval);
+            Assert.AreEqual(0.0f, engine.GetCurrentCycleProgress(t), 0.001f);
+
+            // 2. Positive Offset Wraparound
+            // Offset 2 slots
+            engine.TrySetSignalOffsetSlots(t, 2);
+            float offsetSeconds = 2 * slotSeconds;
+            // Current SimTime = cycleDuration. LocalTime = (cycleDuration - offset) % cycleDuration.
+            Assert.AreEqual((cycleDuration - offsetSeconds) / cycleDuration, engine.GetCurrentCycleProgress(t), 0.001f);
+            
+            // Tick to make LocalTime = 0 -> requires offsetSeconds more
+            int offsetTicks = Mathf.RoundToInt(offsetSeconds / cfg.TickInterval);
+            for (int i = 0; i < offsetTicks; i++) engine.Tick(cfg.TickInterval);
+            Assert.AreEqual(0.0f, engine.GetCurrentCycleProgress(t), 0.001f);
+
+            // 3. Negative Offset Wraparound
+            // Offset -2 slots
+            engine.TrySetSignalOffsetSlots(t, -2);
+            // Current SimTime = cycleDuration + offsetSeconds. Open time = -offsetSeconds.
+            // LocalTime = (Current + offsetSeconds) % cycleDuration.
+            float expectedLocalTime = (cycleDuration + offsetSeconds + offsetSeconds) % cycleDuration;
+            Assert.AreEqual(expectedLocalTime / cycleDuration, engine.GetCurrentCycleProgress(t), 0.001f);
+            
+            // Reset state to avoid confusion, just check override next
+            
+            // 4. Override Sentinel (-1f)
+            engine.TryOverrideSignal(t, true);
+            Assert.AreEqual(-1f, engine.GetCurrentCycleProgress(t));
+            
+            // Tick until OverrideDurationSeconds expires
+            float duration = cfg.OverrideDurationSeconds;
+            int durationTicks = Mathf.CeilToInt(duration / cfg.TickInterval) + 1;
+            for (int i = 0; i < durationTicks; i++) engine.Tick(cfg.TickInterval);
+            
+            // Progress should return to normal [0.0, 1.0)
+            float progress = engine.GetCurrentCycleProgress(t);
+            Assert.IsTrue(progress >= 0f && progress < 1.0f);
+        }
+
         private sealed class TestWorldGridAccess : IWorldGridAccess
         {
             public int WorldWidth => 200;

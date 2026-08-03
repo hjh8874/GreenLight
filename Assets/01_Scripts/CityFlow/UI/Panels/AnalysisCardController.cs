@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using DG.Tweening;
 
+
 namespace CityFlow.UI
 {
     public class AnalysisCardController : MonoBehaviour, ICityFlowServiceConsumer
@@ -24,18 +25,20 @@ namespace CityFlow.UI
         [Header("Containers")]
         [SerializeField] private GameObject normalInfoContainer;
         [SerializeField] private GameObject signalControlContainer;
+        [SerializeField] private SignalControlPanelView signalControlPanel;
 
-        [Header("Signal Control Elements")]
-        [SerializeField] private Slider sliderOffset;
-        [SerializeField] private Slider sliderGreen;
-        [SerializeField] private Button btnOverrideH;
-        [SerializeField] private Button btnOverrideV;
+        private SignalControlPanelView SafeSignalPanel
+        {
+            get
+            {
+                if (signalControlPanel == null)
+                {
+                    signalControlPanel = GetComponentInChildren<SignalControlPanelView>(true);
+                }
+                return signalControlPanel;
+            }
+        }
 
-        [Header("Cooldown Overlay")]
-        [SerializeField] private Image imgCooldownH;
-        [SerializeField] private Image imgCooldownV;
-        [SerializeField] private TMP_Text txtCooldownH;
-        [SerializeField] private TMP_Text txtCooldownV;
         [Header("Footer Buttons")]
         [SerializeField] private Button btnResolveJam;
         [SerializeField] private Button btnUpgrade;
@@ -56,6 +59,11 @@ namespace CityFlow.UI
         private bool _isClosing = false;
         private PopulationSystem _populationSystem;
         private PlacementController _placementController;
+
+        // ── Minimap 내부 상태 ──
+        private Camera _minimapCamera;
+        private RenderTexture _minimapRT;
+        private int _minimapFrameCounter;
 
         public void Configure(
             TMP_Text title,
@@ -89,15 +97,34 @@ namespace CityFlow.UI
 
         private void Start()
         {
-            NormalizeSignalControlLayout();
+            if (signalControlPanel == null)
+            {
+                signalControlPanel = GetComponentInChildren<SignalControlPanelView>(true);
+            }
+
+            // 호환성 유지: 기존 씬에서 Inspector 수동 조립을 요구하지 않도록,
+            // 씬에 신호 제어 패널 프리팹이 없다면 Resources 폴더에서 동적 로드하여 자동 연동합니다.
+            if (signalControlPanel == null && signalControlContainer != null)
+            {
+                var prefab = Resources.Load<GameObject>("CityFlow/UI/UI_SignalControlPanel");
+                if (prefab != null)
+                {
+                    var instance = Instantiate(prefab, signalControlContainer.transform);
+                    signalControlPanel = instance.GetComponent<SignalControlPanelView>();
+                    Debug.Log($"[AnalysisCardController] UI_SignalControlPanel auto-loaded from Resources in scene {gameObject.scene.name}");
+                }
+            }
 
             if (btnResolveJam != null) btnResolveJam.onClick.AddListener(OnResolveJamClicked);
             if (btnUpgrade != null) btnUpgrade.onClick.AddListener(OnUpgradeClicked);
-            
-            if (sliderOffset != null) sliderOffset.onValueChanged.AddListener(OnOffsetChanged);
-            if (sliderGreen != null) sliderGreen.onValueChanged.AddListener(OnGreenChanged);
-            if (btnOverrideH != null) btnOverrideH.onClick.AddListener(() => OnOverrideClicked(true));
-            if (btnOverrideV != null) btnOverrideV.onClick.AddListener(() => OnOverrideClicked(false));
+
+            if (SafeSignalPanel != null)
+            {
+                if (SafeSignalPanel.sliderOffset != null) SafeSignalPanel.sliderOffset.onValueChanged.AddListener(OnOffsetChanged);
+                if (SafeSignalPanel.sliderGreen != null) SafeSignalPanel.sliderGreen.onValueChanged.AddListener(OnGreenChanged);
+                if (SafeSignalPanel.btnOverrideH != null) SafeSignalPanel.btnOverrideH.onClick.AddListener(() => OnOverrideClicked(true));
+                if (SafeSignalPanel.btnOverrideV != null) SafeSignalPanel.btnOverrideV.onClick.AddListener(() => OnOverrideClicked(false));
+            }
         }
 
         private void OnOffsetChanged(float value)
@@ -132,8 +159,7 @@ namespace CityFlow.UI
         {
             if (gameObject.activeSelf && _currentTile == tile && !_isClosing) return; // 이미 열려있으면 무시
 
-            NormalizeSignalControlLayout();
-            
+
             _isClosing = false;
             _currentTile = tile;
             gameObject.SetActive(true);
@@ -142,7 +168,7 @@ namespace CityFlow.UI
             transform.DOKill();
             transform.localScale = Vector3.zero;
             transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
-            
+
             // 모드 전환 전 기존 갱신 코루틴 정리 (신호 제어 타일로 넘어갈 때의 누수 방지)
             if (_updateRoutine != null)
             {
@@ -154,27 +180,36 @@ namespace CityFlow.UI
                 StopCoroutine(_signalCooldownRoutine);
                 _signalCooldownRoutine = null;
             }
-            
+
             var signalControl = _services?.Placement as ISignalControl;
             if (signalControl != null && signalControl.SignalTiles.Contains(tile))
             {
+                if (SafeSignalPanel == null)
+                {
+                    Debug.LogWarning("[CityFlow] SignalControlPanelView not found! Please run 'CityFlow/UI/Assemble Signal Control UI'.");
+                    return;
+                }
+
                 // 신호 제어 모드
                 if (normalInfoContainer != null) normalInfoContainer.SetActive(false);
                 if (signalControlContainer != null) signalControlContainer.SetActive(true);
-                
+
                 if (txtTitle != null) txtTitle.text = "교차로 신호 제어";
-                
+
+                // 미니맵 카메라를 교차로 위치로 이동 및 활성화
+                PositionMinimapCamera(tile);
+
                 int cycle = signalControl.GetSignalCycleSlots(tile);
-                if (sliderOffset != null)
+                if (SafeSignalPanel.sliderOffset != null)
                 {
-                    sliderOffset.maxValue = Mathf.Max(0, cycle - 1);
-                    sliderOffset.SetValueWithoutNotify(signalControl.GetSignalOffsetSlots(tile));
+                    SafeSignalPanel.sliderOffset.maxValue = Mathf.Max(0, cycle - 1);
+                    SafeSignalPanel.sliderOffset.SetValueWithoutNotify(signalControl.GetSignalOffsetSlots(tile));
                 }
-                if (sliderGreen != null)
+                if (SafeSignalPanel.sliderGreen != null)
                 {
-                    sliderGreen.minValue = 1;
-                    sliderGreen.maxValue = Mathf.Max(1, cycle - 1);
-                    sliderGreen.SetValueWithoutNotify(signalControl.GetSignalGreenSlots(tile));
+                    SafeSignalPanel.sliderGreen.minValue = 1;
+                    SafeSignalPanel.sliderGreen.maxValue = Mathf.Max(1, cycle - 1);
+                    SafeSignalPanel.sliderGreen.SetValueWithoutNotify(signalControl.GetSignalGreenSlots(tile));
                 }
 
                 // 쿨다운 상태 즉시 반영 후 갱신 코루틴 시작
@@ -197,162 +232,8 @@ namespace CityFlow.UI
             }
         }
 
-        private void NormalizeSignalControlLayout()
-        {
-            RectTransform cardRect = transform as RectTransform;
-            if (cardRect != null)
-            {
-                cardRect.anchorMin = Vector2.zero;
-                cardRect.anchorMax = Vector2.zero;
-                cardRect.pivot = Vector2.zero;
-                cardRect.anchoredPosition = new Vector2(20f, 20f);
-                cardRect.sizeDelta = new Vector2(460f, 280f);
-            }
 
-            if (txtTitle != null)
-            {
-                RectTransform titleRect = txtTitle.rectTransform;
-                titleRect.anchorMin = new Vector2(0.5f, 1f);
-                titleRect.anchorMax = new Vector2(0.5f, 1f);
-                titleRect.pivot = new Vector2(0.5f, 1f);
-                titleRect.anchoredPosition = new Vector2(0f, -14f);
-                titleRect.sizeDelta = new Vector2(420f, 36f);
-                txtTitle.fontSize = 22f;
-                txtTitle.alignment = TextAlignmentOptions.TopLeft;
-                txtTitle.textWrappingMode = TextWrappingModes.NoWrap;
-            }
 
-            if (signalControlContainer == null)
-            {
-                return;
-            }
-
-            RectTransform containerRect = signalControlContainer.transform as RectTransform;
-            if (containerRect != null)
-            {
-                containerRect.anchorMin = Vector2.zero;
-                containerRect.anchorMax = Vector2.one;
-                containerRect.anchoredPosition = Vector2.zero;
-                containerRect.sizeDelta = Vector2.zero;
-            }
-
-            NormalizeSignalLabel("LblOffset", new Vector2(-150f, 48f));
-            NormalizeSignalLabel("LblGreen", new Vector2(-150f, -8f));
-            NormalizeSlider(sliderOffset, new Vector2(35f, 48f));
-            NormalizeSlider(sliderGreen, new Vector2(35f, -8f));
-            NormalizeSignalButton(btnOverrideH, new Vector2(-65f, -82f));
-            NormalizeSignalButton(btnOverrideV, new Vector2(65f, -82f));
-        }
-
-        private void NormalizeSignalLabel(string childName, Vector2 position)
-        {
-            Transform labelTransform = signalControlContainer.transform.Find(childName);
-            if (labelTransform == null)
-            {
-                return;
-            }
-
-            RectTransform labelRect = labelTransform as RectTransform;
-            if (labelRect != null)
-            {
-                labelRect.anchorMin = new Vector2(0.5f, 0.5f);
-                labelRect.anchorMax = new Vector2(0.5f, 0.5f);
-                labelRect.pivot = new Vector2(0.5f, 0.5f);
-                labelRect.anchoredPosition = position;
-                labelRect.sizeDelta = new Vector2(110f, 24f);
-            }
-
-            TMP_Text label = labelTransform.GetComponent<TMP_Text>();
-            if (label != null)
-            {
-                label.fontSize = 16f;
-                label.alignment = TextAlignmentOptions.MidlineLeft;
-                label.textWrappingMode = TextWrappingModes.NoWrap;
-            }
-        }
-
-        private static void NormalizeSlider(Slider slider, Vector2 position)
-        {
-            if (slider == null)
-            {
-                return;
-            }
-
-            RectTransform sliderRect = slider.transform as RectTransform;
-            if (sliderRect != null)
-            {
-                sliderRect.anchorMin = new Vector2(0.5f, 0.5f);
-                sliderRect.anchorMax = new Vector2(0.5f, 0.5f);
-                sliderRect.pivot = new Vector2(0.5f, 0.5f);
-                sliderRect.anchoredPosition = position;
-                sliderRect.sizeDelta = new Vector2(220f, 20f);
-            }
-
-            RectTransform background = slider.transform.Find("Background") as RectTransform;
-            if (background != null)
-            {
-                background.anchorMin = new Vector2(0f, 0.3f);
-                background.anchorMax = new Vector2(1f, 0.7f);
-                background.offsetMin = Vector2.zero;
-                background.offsetMax = Vector2.zero;
-            }
-
-            RectTransform fillArea = slider.transform.Find("Fill Area") as RectTransform;
-            if (fillArea != null)
-            {
-                fillArea.anchorMin = new Vector2(0f, 0.25f);
-                fillArea.anchorMax = new Vector2(1f, 0.75f);
-                fillArea.offsetMin = new Vector2(10f, 0f);
-                fillArea.offsetMax = new Vector2(-10f, 0f);
-            }
-
-            RectTransform handleArea = slider.transform.Find("Handle Slide Area") as RectTransform;
-            if (handleArea != null)
-            {
-                handleArea.anchorMin = Vector2.zero;
-                handleArea.anchorMax = Vector2.one;
-                handleArea.offsetMin = new Vector2(10f, 0f);
-                handleArea.offsetMax = new Vector2(-10f, 0f);
-            }
-        }
-
-        private static void NormalizeSignalButton(Button button, Vector2 position)
-        {
-            if (button == null)
-            {
-                return;
-            }
-
-            RectTransform buttonRect = button.transform as RectTransform;
-            if (buttonRect != null)
-            {
-                buttonRect.anchorMin = new Vector2(0.5f, 0.5f);
-                buttonRect.anchorMax = new Vector2(0.5f, 0.5f);
-                buttonRect.pivot = new Vector2(0.5f, 0.5f);
-                buttonRect.anchoredPosition = position;
-                buttonRect.sizeDelta = new Vector2(110f, 40f);
-            }
-
-            Transform labelTransform = button.transform.Find("Text");
-            TMP_Text label = labelTransform != null ? labelTransform.GetComponent<TMP_Text>() : null;
-            if (label != null)
-            {
-                label.fontSize = 16f;
-                label.alignment = TextAlignmentOptions.Center;
-                label.textWrappingMode = TextWrappingModes.NoWrap;
-            }
-
-            Transform cooldownTextTransform = button.transform.Find("CooldownOverlay/CooldownText");
-            TMP_Text cooldownText = cooldownTextTransform != null
-                ? cooldownTextTransform.GetComponent<TMP_Text>()
-                : null;
-            if (cooldownText != null)
-            {
-                cooldownText.fontSize = 16f;
-                cooldownText.alignment = TextAlignmentOptions.Center;
-                cooldownText.textWrappingMode = TextWrappingModes.NoWrap;
-            }
-        }
 
         public void CloseCard()
         {
@@ -361,7 +242,14 @@ namespace CityFlow.UI
 
             if (_updateRoutine != null) { StopCoroutine(_updateRoutine); _updateRoutine = null; }
             if (_signalCooldownRoutine != null) { StopCoroutine(_signalCooldownRoutine); _signalCooldownRoutine = null; }
-            
+
+            // 미니맵 카메라 비활성화 (메모리 유지, 렌더링만 중단)
+            if (_minimapCamera != null)
+            {
+                _minimapCamera.enabled = false;
+                _minimapCamera.gameObject.SetActive(false);
+            }
+
             // DOTween 닫기 애니메이션
             transform.DOKill();
             transform.DOScale(Vector3.zero, 0.2f).SetEase(Ease.InBack).OnComplete(() => {
@@ -379,23 +267,23 @@ namespace CityFlow.UI
                 type = _services.TileData.GetTileType(tile);
                 tileName = type.ToString();
             }
-            
+
             // 피그마 기획 반영: 헤더 텍스트
             if (txtTitle != null) txtTitle.text = $"{tileName} (Lv.1)";
 
             // 같은 타일을 누르면 항상 같은 가짜 차량이 나오도록 Random Seed 고정
             Random.InitState(tile.x * 1000 + tile.y);
-            
+
             if (txtTileCoord != null) txtTileCoord.text = $"타일: {tile.x}, {tile.y}";
 
             if (TryRefreshBuildingDetails(type))
             {
                 return;
             }
-            
+
             string[] types = { "세단", "SUV", "트럭", "버스", "스포츠카" };
             if (txtVehicleType != null) txtVehicleType.text = types[Random.Range(0, types.Length)];
-            
+
             int idPrefix = Random.Range(10, 99);
             char idChar = (char)Random.Range(65, 90);
             int idSuffix = Random.Range(1000, 9999);
@@ -572,7 +460,7 @@ namespace CityFlow.UI
                 if (txtWaitTime != null)
                 {
                     string timeText = _currentWaitTime.ToString("F1") + "초";
-                    
+
                     // 70% 돌파 시 크리티컬 경고 처리
                     if (density > 0.7f)
                     {
@@ -593,7 +481,7 @@ namespace CityFlow.UI
         private float GetTileDensity()
         {
             if (useFakeMode) return fakeDensity;
-            
+
             if (_services != null && _services.TileData != null)
             {
                 // 실제 코어 엔진에서 타일 혼잡도 수신
@@ -605,7 +493,7 @@ namespace CityFlow.UI
         // ─── 신호 제어 쿨다운 애니메이션 ───────────────────────────
         private IEnumerator UpdateSignalCooldownRoutine()
         {
-            WaitForSeconds wait = new WaitForSeconds(0.2f); // 200ms 주기 스로틀링
+            WaitForSeconds wait = new WaitForSeconds(0.05f); // 20fps for smooth gauge animation
 
             while (true)
             {
@@ -613,13 +501,139 @@ namespace CityFlow.UI
                 if (signalControl != null)
                 {
                     ApplyCooldownVisuals(signalControl);
+                    UpdateRealtimeGauge(signalControl);
+                    UpdateRealtimeWaitCounts();
                 }
+
+                // 미니맵: 카메라 enabled=true로 URP가 자동 렌더 (Camera.Render()는 SRP 비호환)
+                // 별도 수동 렌더 호출 불필요 — URP 파이프라인이 매 프레임 처리
+
                 yield return wait;
+            }
+        }
+
+        private void UpdateRealtimeGauge(ISignalControl signalControl)
+        {
+            if (SafeSignalPanel == null || SafeSignalPanel.cycleGaugeCursor == null) return;
+
+            // 1. 커서 위치 (진행도) 업데이트 — 오버라이드 중이면 커서 숨김
+            float fillRatio = signalControl.GetCurrentCycleProgress(_currentTile);
+            if (fillRatio < 0f)
+            {
+                // 오버라이드(양축 강제 초록) 중 — 커서를 숨겨 혼란 방지
+                SafeSignalPanel.cycleGaugeCursor.gameObject.SetActive(false);
+                return;
+            }
+            SafeSignalPanel.cycleGaugeCursor.gameObject.SetActive(true);
+            SafeSignalPanel.cycleGaugeCursor.anchorMin = new Vector2(fillRatio, 0f);
+            SafeSignalPanel.cycleGaugeCursor.anchorMax = new Vector2(fillRatio, 1f);
+
+            int cycleSlots = signalControl.GetSignalCycleSlots(_currentTile);
+            if (cycleSlots <= 0) return;
+
+            // SignalMath 단일 진실원에서 파생된 값 사용 — 하드코딩 금지
+            float slotSec = signalControl.GetSlotSeconds();
+            float yellowFrac = signalControl.GetYellowFraction();
+            float clearFrac = signalControl.GetClearFraction();
+            float greenFrac = 1f - yellowFrac - clearFrac;
+
+            float cycle = cycleSlots * slotSec;
+            int greenSlots = signalControl.GetSignalGreenSlots(_currentTile);
+
+            // 게이지 세그먼트 폭 비율(FlexibleWidth) 업데이트
+            if (SafeSignalPanel.leHG != null && SafeSignalPanel.leHY != null && SafeSignalPanel.leHC != null &&
+                SafeSignalPanel.leVG != null && SafeSignalPanel.leVY != null && SafeSignalPanel.leVC != null)
+            {
+                float hSpan = greenSlots * slotSec;
+                float vSpan = cycle - hSpan;
+
+                SafeSignalPanel.leHG.flexibleWidth = hSpan * greenFrac;
+                SafeSignalPanel.leHY.flexibleWidth = hSpan * yellowFrac;
+                SafeSignalPanel.leHC.flexibleWidth = hSpan * clearFrac;
+                SafeSignalPanel.leVG.flexibleWidth = vSpan * greenFrac;
+                SafeSignalPanel.leVY.flexibleWidth = vSpan * yellowFrac;
+                SafeSignalPanel.leVC.flexibleWidth = vSpan * clearFrac;
+            }
+        }
+
+        private void UpdateRealtimeWaitCounts()
+        {
+            if (_services?.TileData == null || _minimapCamera == null) return;
+            if (SafeSignalPanel == null) return;
+
+            UpdateWaitText(SafeSignalPanel.txtWaitN, Dir.N);
+            UpdateWaitText(SafeSignalPanel.txtWaitS, Dir.S);
+            UpdateWaitText(SafeSignalPanel.txtWaitE, Dir.E);
+            UpdateWaitText(SafeSignalPanel.txtWaitW, Dir.W);
+        }
+
+        private void UpdateWaitText(TMP_Text txtWait, Dir dir)
+        {
+            if (txtWait == null || txtWait.transform.parent == null) return;
+
+            GameObject wrapperObj = txtWait.transform.parent.gameObject;
+            RectTransform wrapperRT = wrapperObj.GetComponent<RectTransform>();
+
+            // 텍스트 내용 업데이트
+            int count = _services.TileData.GetQueueCount(_currentTile, dir);
+            txtWait.text = count.ToString();
+
+            // 대기 차량이 없으면 오버레이 숨기기 (옵션)
+            if (count == 0)
+            {
+                wrapperObj.SetActive(false);
+                return;
+            }
+
+            // --- AR Overlay (3D World to 2D UI) 추적 로직 ---
+            Vector3 worldPos = GetRoadWorldPos(_currentTile, dir);
+            Vector3 viewportPos = _minimapCamera.WorldToViewportPoint(worldPos);
+
+            // 카메라 뒤에 있거나 시야 바깥이면 숨김
+            if (viewportPos.z < 0 || viewportPos.x < -0.2f || viewportPos.x > 1.2f || viewportPos.y < -0.2f || viewportPos.y > 1.2f)
+            {
+                wrapperObj.SetActive(false);
+                return;
+            }
+
+            wrapperObj.SetActive(true);
+
+            // RawImage를 꽉 채우고 있는 RectTransform 내부에서의 Viewport(0~1) 비율을 Anchor로 설정하여 완벽히 추적
+            wrapperRT.anchorMin = new Vector2(viewportPos.x, viewportPos.y);
+            wrapperRT.anchorMax = new Vector2(viewportPos.x, viewportPos.y);
+            wrapperRT.anchoredPosition = Vector2.zero;
+        }
+
+        private Vector3 GetRoadWorldPos(Vector2Int tile, Dir dir)
+        {
+            // 각 도로 끝 지점의 로컬 좌표 오프셋 (기본값: SafeSignalPanel.arRoadOffset = 0.4f)
+            float dx = 0f, dy = 0f;
+            float offset = SafeSignalPanel != null ? SafeSignalPanel.arRoadOffset : 0.4f;
+            switch (dir)
+            {
+                case Dir.N: dy = offset; break;
+                case Dir.S: dy = -offset; break;
+                case Dir.E: dx = offset; break;
+                case Dir.W: dx = -offset; break;
+            }
+
+            if (_services?.WorldCoordinates != null)
+            {
+                // 월드 좌표계 서비스가 존재하면 정확한 3D 투영 좌표 사용
+                return _services.WorldCoordinates.GridPointToWorld(
+                    new Vector2(tile.x + 0.5f + dx, tile.y + 0.5f + dy), 0f);
+            }
+            else
+            {
+                // Fallback: GridUtil 사용 (Z=0 평면)
+                return GridUtil.GridToWorld(tile) + new Vector3(dx, dy, 0f);
             }
         }
 
         private void ApplyCooldownVisuals(ISignalControl signalControl)
         {
+            if (SafeSignalPanel == null) return;
+
             float cooldownLeft = signalControl.GetOverrideCooldownLeft(_currentTile);
             bool onCooldown = cooldownLeft > 0f;
 
@@ -629,31 +643,31 @@ namespace CityFlow.UI
             string timeLabel = onCooldown ? Mathf.CeilToInt(cooldownLeft) + "초" : "";
 
             // 가로 오버라이드 버튼
-            if (btnOverrideH != null) btnOverrideH.interactable = !onCooldown;
-            SetButtonLabelVisible(btnOverrideH, !onCooldown);
-            if (imgCooldownH != null)
+            if (SafeSignalPanel.btnOverrideH != null) SafeSignalPanel.btnOverrideH.interactable = !onCooldown;
+            SetButtonLabelVisible(SafeSignalPanel.btnOverrideH, !onCooldown);
+            if (SafeSignalPanel.imgCooldownH != null)
             {
-                imgCooldownH.gameObject.SetActive(onCooldown);
-                imgCooldownH.fillAmount = fillRatio;
+                SafeSignalPanel.imgCooldownH.gameObject.SetActive(onCooldown);
+                SafeSignalPanel.imgCooldownH.fillAmount = fillRatio;
             }
-            if (txtCooldownH != null)
+            if (SafeSignalPanel.txtCooldownH != null)
             {
-                txtCooldownH.gameObject.SetActive(onCooldown);
-                txtCooldownH.text = timeLabel;
+                SafeSignalPanel.txtCooldownH.gameObject.SetActive(onCooldown);
+                SafeSignalPanel.txtCooldownH.text = timeLabel;
             }
 
             // 세로 오버라이드 버튼
-            if (btnOverrideV != null) btnOverrideV.interactable = !onCooldown;
-            SetButtonLabelVisible(btnOverrideV, !onCooldown);
-            if (imgCooldownV != null)
+            if (SafeSignalPanel.btnOverrideV != null) SafeSignalPanel.btnOverrideV.interactable = !onCooldown;
+            SetButtonLabelVisible(SafeSignalPanel.btnOverrideV, !onCooldown);
+            if (SafeSignalPanel.imgCooldownV != null)
             {
-                imgCooldownV.gameObject.SetActive(onCooldown);
-                imgCooldownV.fillAmount = fillRatio;
+                SafeSignalPanel.imgCooldownV.gameObject.SetActive(onCooldown);
+                SafeSignalPanel.imgCooldownV.fillAmount = fillRatio;
             }
-            if (txtCooldownV != null)
+            if (SafeSignalPanel.txtCooldownV != null)
             {
-                txtCooldownV.gameObject.SetActive(onCooldown);
-                txtCooldownV.text = timeLabel;
+                SafeSignalPanel.txtCooldownV.gameObject.SetActive(onCooldown);
+                SafeSignalPanel.txtCooldownV.text = timeLabel;
             }
         }
 
@@ -728,6 +742,98 @@ namespace CityFlow.UI
                 sb.Append($" 외 {homes.Count - shown}곳");
             }
             return sb.ToString();
+        }
+
+        // ─── Minimap Camera 관리 ─────────────────────────────────
+
+        /// <summary>
+        /// 미니맵 카메라를 교차로 타일 월드 좌표 위에 배치하고 RenderTexture를 연결합니다.
+        /// 카메라는 enabled=false로 두고, 코루틴에서 수동으로 Render()를 호출합니다.
+        /// </summary>
+        private void PositionMinimapCamera(Vector2Int tile)
+        {
+            if (SafeSignalPanel == null || SafeSignalPanel.minimapRawImage == null) return;
+
+            // RenderTexture 생성 (최초 1회)
+            if (_minimapRT == null)
+            {
+                _minimapRT = new RenderTexture(SafeSignalPanel.minimapResolution, SafeSignalPanel.minimapResolution, 16, RenderTextureFormat.ARGB32);
+                _minimapRT.antiAliasing = 1; // MSAA 끄기 (최적화)
+                _minimapRT.name = "SignalMinimapRT";
+            }
+
+            // 카메라 생성 (최초 1회)
+            if (_minimapCamera == null)
+            {
+                GameObject camObj = new GameObject("[MinimapCamera_Signal]");
+                camObj.transform.SetParent(null, false); // Canvas 스케일 영향을 받지 않도록 씬 루트에 배치
+                _minimapCamera = camObj.AddComponent<Camera>();
+                _minimapCamera.enabled = false; // 카드 열릴 때 활성화
+                _minimapCamera.orthographic = true;
+                _minimapCamera.orthographicSize = SafeSignalPanel.minimapZoomSize;
+                _minimapCamera.cullingMask = SafeSignalPanel.minimapCullingMask;
+                _minimapCamera.clearFlags = CameraClearFlags.SolidColor;
+                _minimapCamera.backgroundColor = SafeSignalPanel.minimapBackgroundColor;
+                _minimapCamera.targetTexture = _minimapRT;
+                _minimapCamera.depth = -10;
+            }
+
+            // 교차로 월드 좌표 계산 (GridUtil 규약 준수)
+            Vector3 tileWorldPos;
+            if (_services?.WorldCoordinates != null)
+            {
+                tileWorldPos = _services.WorldCoordinates.GridToWorld(tile, 0f);
+            }
+            else
+            {
+                tileWorldPos = GridUtil.GridToWorld(tile);
+            }
+
+            // 카메라를 교차로 바라보게 배치 (Main Camera와 동일한 각도 유지)
+            if (Camera.main != null)
+            {
+                _minimapCamera.transform.rotation = Camera.main.transform.rotation;
+                _minimapCamera.transform.position = tileWorldPos - Camera.main.transform.forward * SafeSignalPanel.minimapCameraHeight;
+                _minimapCamera.orthographic = Camera.main.orthographic;
+                if (_minimapCamera.orthographic)
+                {
+                    _minimapCamera.orthographicSize = SafeSignalPanel.minimapZoomSize;
+                }
+                else
+                {
+                    _minimapCamera.fieldOfView = SafeSignalPanel.minimapFov;
+                }
+            }
+            else
+            {
+                _minimapCamera.transform.position = tileWorldPos + Vector3.up * SafeSignalPanel.minimapCameraHeight;
+                _minimapCamera.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            }
+
+            _minimapCamera.gameObject.SetActive(true);
+            _minimapCamera.enabled = true; // URP 호환: enabled=true로 파이프라인이 자동 렌더
+
+            // RawImage에 RenderTexture 연결
+            SafeSignalPanel.minimapRawImage.texture = _minimapRT;
+            SafeSignalPanel.minimapRawImage.enabled = true;
+
+            _minimapFrameCounter = 0;
+        }
+
+        private void OnDestroy()
+        {
+            // RenderTexture 메모리 해제
+            if (_minimapCamera != null)
+            {
+                Destroy(_minimapCamera.gameObject);
+                _minimapCamera = null;
+            }
+            if (_minimapRT != null)
+            {
+                _minimapRT.Release();
+                Destroy(_minimapRT);
+                _minimapRT = null;
+            }
         }
     }
 }
