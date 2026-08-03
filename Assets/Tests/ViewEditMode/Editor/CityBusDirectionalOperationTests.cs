@@ -18,6 +18,41 @@ namespace CityFlow.View.Tests
     {
         private static int playModeStopArrivalCount;
 
+        [TestCase(1f, 0f)]
+        [TestCase(0f, 1f)]
+        [TestCase(-1f, 0f)]
+        [TestCase(0f, -1f)]
+        public void BusPresentationRotation_AlignsWithTravelDirection(
+            float directionX,
+            float directionY)
+        {
+            MethodInfo method = typeof(BusWorldView).GetMethod(
+                "CreateRotation",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+
+            Vector2 direction =
+                new(directionX, directionY);
+            Quaternion rotation = (Quaternion)method.Invoke(
+                null,
+                new object[] { direction });
+            Vector3 actualForward =
+                rotation * Vector3.right;
+
+            Assert.That(
+                actualForward.x,
+                Is.EqualTo(direction.x).Within(0.0001f));
+            Assert.That(
+                actualForward.y,
+                Is.EqualTo(direction.y).Within(0.0001f));
+            Assert.That(
+                actualForward.z,
+                Is.EqualTo(0f).Within(0.0001f));
+            Assert.That(
+                rotation * Vector3.back,
+                Is.EqualTo(Vector3.back));
+        }
+
         [Test]
         public void SingleSidedStopTiles_StartBothDirections()
         {
@@ -53,8 +88,10 @@ namespace CityFlow.View.Tests
             }
         }
 
-        [Test]
-        public void LogicalStop_ReservesPlatformsOnBothSidesOfRoad()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void LogicalStop_CanBeRemovedFromEitherPlatform(
+            bool removeOppositePlatform)
         {
             SimEngine engine = CreateEngine();
             Vector2Int road = new(4, 4);
@@ -71,7 +108,13 @@ namespace CityFlow.View.Tests
                 engine.CanPlace(oppositePlatform, TileType.Road),
                 Is.False);
 
-            Assert.That(engine.TryRemoveBusStop(stop), Is.True);
+            Assert.That(
+                engine.TryRemoveBusStop(
+                    removeOppositePlatform
+                        ? oppositePlatform
+                        : stop),
+                Is.True);
+            Assert.That(engine.BusStopTiles, Is.Empty);
             Assert.That(
                 engine.CanPlace(oppositePlatform, TileType.Road),
                 Is.True);
@@ -113,6 +156,52 @@ namespace CityFlow.View.Tests
                     service.ActiveVehicles[0].Direction,
                     Is.Not.EqualTo(
                         service.ActiveVehicles[1].Direction));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void IntegratedSaveRoadLoop_StartsCityBus()
+        {
+            SimEngine engine = CreateEngine();
+            Vector2Int[] roads =
+            {
+                new(1, 6), new(2, 6), new(3, 6), new(4, 6),
+                new(5, 6), new(6, 6), new(7, 6), new(8, 6),
+                new(9, 6), new(10, 6), new(11, 6), new(12, 6),
+                new(13, 6),
+                new(1, 7), new(13, 7),
+                new(1, 8), new(13, 8),
+                new(1, 9), new(2, 9), new(3, 9), new(4, 9),
+                new(5, 9), new(6, 9), new(7, 9), new(8, 9),
+                new(9, 9), new(10, 9), new(11, 9), new(12, 9),
+                new(13, 9)
+            };
+
+            for (int index = 0; index < roads.Length; index++)
+            {
+                Assert.That(
+                    engine.Place(roads[index], TileType.Road),
+                    Is.True);
+            }
+
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(5, 7)),
+                Is.True);
+            Assert.That(
+                engine.TryPlaceBusStop(new Vector2Int(4, 8)),
+                Is.True);
+
+            GameObject root = new("IntegratedSaveCityBusTest");
+            try
+            {
+                CityBusService service = CreateService(root, engine);
+
+                Assert.That(service.StartService(), Is.True);
+                Assert.That(service.ActiveVehicles, Is.Not.Empty);
             }
             finally
             {

@@ -28,11 +28,14 @@ namespace CityFlow.View
 
         [Header("Optional Prefabs")]
         [SerializeField] private GameObject roadPrefab;
+        [SerializeField] private SimpleTownRoadVisualSetSO simpleTownRoadVisualSet;
+        [SerializeField] private BuildingVisualCatalogSO buildingVisualCatalog;
         [SerializeField] private GameObject housePrefab;
         [SerializeField] private GameObject officePrefab;
         [SerializeField] private GameObject schoolPrefab;
         [SerializeField] private GameObject hospitalPrefab;
         [SerializeField] private GameObject vehiclePrefab;
+        [SerializeField] private VehicleVisualCatalogSO vehicleVisualCatalog;
         [SerializeField] private GameObject signalPrefab;
         [SerializeField] private GameObject burstPrefab;
         [SerializeField] private GameObject fieldTilePrefab;
@@ -123,12 +126,13 @@ namespace CityFlow.View
         [SerializeField] private Color roadFreeColor = new Color(0.32f, 0.36f, 0.43f);
         [SerializeField] private Color roadSlowColor = new Color(0.95f, 0.72f, 0.25f);
         [SerializeField] private Color roadJamColor = new Color(0.9f, 0.22f, 0.18f);
+        [SerializeField] private Color roadPerimeterColor = new Color(0.72f, 0.72f, 0.7f);
+        [SerializeField] private Color roadCenterLineColor = new Color(0.82f, 0.82f, 0.8f);
         [SerializeField] private Color houseColor = new Color(0.35f, 0.6f, 0.86f);
         [SerializeField] private Color officeColor = new Color(0.92f, 0.59f, 0.24f);
         [SerializeField] private Color schoolColor = new Color(0.66f, 0.42f, 0.82f);
         [SerializeField] private Color hospitalColor = new Color(0.88f, 0.3f, 0.34f);
         [SerializeField] private Color vehicleColor = new Color(0.12f, 0.12f, 0.16f);
-        [SerializeField] private Color selectedSignalColor = Color.white;
         [SerializeField] private Color flowBurstColor = new Color(1f, 0.78f, 0.12f);
         [SerializeField] private Color roundaboutColor = new Color(0.35f, 0.78f, 0.45f);
         [SerializeField] private Color overpassColor = new Color(0.55f, 0.62f, 0.75f);
@@ -236,6 +240,9 @@ namespace CityFlow.View
             roundaboutEntryExitDeg * Mathf.Deg2Rad;
         public float RoundaboutTransitionSpanTiles =>
             RoundaboutTransitionSpan();
+        public float VehicleGroundZ =>
+            GetRoadSurfaceZ() - tileSize * 0.05f;
+        public float RoadSurfaceZ => GetRoadSurfaceZ();
         public float FieldTileZ => fieldTileZ;
         public GameObject FieldTilePrefab => fieldTilePrefab;
         public float GridLineThickness => gridLineThickness;
@@ -341,6 +348,9 @@ namespace CityFlow.View
             public Renderer Renderer;
             public MaterialPropertyBlock Block;
             public TileType Type;
+            public bool UsesAuthoredLayout;
+            public bool UsesAuthoredMaterial;
+            public Quaternion LocalRotation = Quaternion.identity;
         }
 
         private sealed class SignalVisual
@@ -348,11 +358,10 @@ namespace CityFlow.View
             public GameObject Root;
             public Renderer HorizontalRenderer;
             public Renderer VerticalRenderer;
-            public Renderer SelectionRenderer;
             public TrafficLightLensView[] LensViews;
             public MaterialPropertyBlock HorizontalBlock;
             public MaterialPropertyBlock VerticalBlock;
-            public MaterialPropertyBlock SelectionBlock;
+            public float GroundedZ;
         }
 
         // 턴 제한 표지판 마커: 몸통 바(Shaft) + 꺾인 촉(Tip) — Tip의 위치/회전만 모드에 따라 매 폴링 갱신
@@ -367,7 +376,9 @@ namespace CityFlow.View
         {
             public GameObject Object;
             public Renderer Renderer;
+            public Renderer[] Renderers;
             public Renderer DetailRenderer;
+            public bool UsesAuthoredVisual;
             public float CurrentSpeed;
             public float TargetDistance;
             public int TargetTileIndex;
@@ -441,6 +452,7 @@ namespace CityFlow.View
             intersectionFacility = services.Placement as IIntersectionFacilityService;
             trafficRule = services.Placement as ITrafficRuleService;
             highwayService = services.Placement as IHighwayService;
+            ResolveSimpleTownRoadVisualSet();
 
             services.Events.Placed += OnPlaced;
             services.Events.Arrival += OnArrival;
@@ -455,6 +467,10 @@ namespace CityFlow.View
             BuildBoard();
             BuildGridLines();
             RefreshAllTiles();
+            HospitalAmbulanceParkingView ambulanceView =
+                GetComponent<HospitalAmbulanceParkingView>() ??
+                gameObject.AddComponent<HospitalAmbulanceParkingView>();
+            ambulanceView.Initialize(services);
             RefreshSignals();
             RefreshRoundabouts();
             RefreshOverpasses();
@@ -1245,7 +1261,8 @@ namespace CityFlow.View
             Vector3 localScale,
             Material sharedMaterial)
         {
-            GameObject line = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            GameObject line =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
             line.name = lineName;
             line.transform.SetParent(gridRoot, false);
             line.transform.localPosition = localPosition;
@@ -1254,7 +1271,14 @@ namespace CityFlow.View
             Collider collider = line.GetComponent<Collider>();
             if (collider != null)
             {
-                Destroy(collider);
+                if (Application.isPlaying)
+                {
+                    Destroy(collider);
+                }
+                else
+                {
+                    DestroyImmediate(collider);
+                }
             }
 
             Renderer renderer = line.GetComponent<Renderer>();
@@ -1372,11 +1396,21 @@ namespace CityFlow.View
 
             visual.Type = type;
             Vector3 tileScale = GetTileScale(type);
-            float tileZ = type == TileType.Road ? 0f : -tileScale.z * 0.5f;
+            float tileZ = type == TileType.Road
+                ? visual.UsesAuthoredLayout
+                    ? fieldTileZ
+                    : 0f
+                : -tileScale.z * 0.5f;
             visual.Object.SetActive(true);
-            visual.Renderer.enabled = true;
-            visual.Renderer.forceRenderingOff = false;
-            visual.Renderer.allowOcclusionWhenDynamic = false;
+            Renderer[] renderers = visual.UsesAuthoredLayout
+                ? visual.Object.GetComponentsInChildren<Renderer>(true)
+                : new[] { visual.Renderer };
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                renderers[i].enabled = true;
+                renderers[i].forceRenderingOff = false;
+                renderers[i].allowOcclusionWhenDynamic = false;
+            }
             if (TileFootprint.IsBuilding(type))
             {
                 visual.Object.transform.localPosition = FootprintToLocal(tile, type);
@@ -1387,8 +1421,14 @@ namespace CityFlow.View
             else
             {
                 visual.Object.transform.localPosition = GridToLocal(tile, tileZ);
-                visual.Object.transform.localRotation = Quaternion.identity;
-                visual.Object.transform.localScale = tileScale;
+                visual.Object.transform.localRotation =
+                    visual.UsesAuthoredLayout
+                        ? visual.LocalRotation
+                        : Quaternion.identity;
+                visual.Object.transform.localScale =
+                    visual.UsesAuthoredLayout
+                        ? Vector3.one
+                        : tileScale;
             }
             ApplyTileColor(tile, visual);
             ConfigureRoadCongestionView(tile, visual);
@@ -1396,24 +1436,53 @@ namespace CityFlow.View
 
         private void ConfigureRoadCongestionView(Vector2Int tile, TileVisual visual)
         {
-            RoadCongestionView congestionView = visual.Object.GetComponent<RoadCongestionView>();
+            RoadCongestionView[] congestionViews =
+                visual.Object.GetComponentsInChildren<RoadCongestionView>(true);
 
             if (visual.Type != TileType.Road)
             {
-                if (congestionView != null)
+                for (int i = 0; i < congestionViews.Length; i++)
                 {
-                    Destroy(congestionView);
+                    Destroy(congestionViews[i]);
                 }
                 return;
             }
 
-            if (congestionView == null)
+            Renderer[] renderers = visual.UsesAuthoredLayout
+                ? visual.Object.GetComponentsInChildren<Renderer>(true)
+                : new[] { visual.Renderer };
+            for (int i = 0; i < renderers.Length; i++)
             {
-                congestionView = visual.Object.AddComponent<RoadCongestionView>();
-            }
+                Renderer renderer = renderers[i];
+                if (IsGeneratedRoadDecoration(renderer))
+                {
+                    RoadCongestionView decorationView =
+                        renderer.GetComponent<RoadCongestionView>();
+                    if (decorationView != null)
+                    {
+                        Destroy(decorationView);
+                    }
+                    continue;
+                }
 
-            congestionView.Configure(tile, visual.Renderer, roadFreeColor, roadSlowColor, roadJamColor);
-            congestionView.Initialize(services);
+                RoadCongestionView congestionView =
+                    renderer.GetComponent<RoadCongestionView>();
+                if (congestionView == null)
+                {
+                    congestionView =
+                        renderer.gameObject.AddComponent<RoadCongestionView>();
+                }
+
+                congestionView.Configure(
+                    tile,
+                    renderer,
+                    visual.UsesAuthoredMaterial
+                        ? Color.white
+                        : roadFreeColor,
+                    roadSlowColor,
+                    roadJamColor);
+                congestionView.Initialize(services);
+            }
         }
 
         private TileVisual CreateTileVisual(
@@ -1425,6 +1494,16 @@ namespace CityFlow.View
             if (TileFootprint.IsBuilding(type))
             {
                 return CreateBuildingVisual(tile, type, parent);
+            }
+
+            if (type == TileType.Road &&
+                TryCreateSimpleTownRoadVisual(
+                    tile,
+                    parent,
+                    includeRoadNetworkDetails,
+                    out TileVisual roadVisual))
+            {
+                return roadVisual;
             }
 
             GameObject prefab = GetPrefab(type);
@@ -1452,7 +1531,557 @@ namespace CityFlow.View
             };
         }
 
+        private bool TryCreateSimpleTownRoadVisual(
+            Vector2Int tile,
+            Transform parent,
+            bool includeRoadNetworkDetails,
+            out TileVisual visual)
+        {
+            visual = null;
+            SimpleTownRoadVisualSetSO visualSet =
+                ResolveSimpleTownRoadVisualSet();
+            if (visualSet == null)
+            {
+                return false;
+            }
+
+            SimpleTownRoadConnections connections =
+                includeRoadNetworkDetails
+                    ? GetRoadConnections(tile)
+                    : SimpleTownRoadConnections.None;
+            SimpleTownRoadSelection selection =
+                SimpleTownRoadTopology.Resolve(connections);
+            GameObject prefab =
+                visualSet.GetRoadPrefab(selection.Shape);
+            if (prefab == null)
+            {
+                return false;
+            }
+
+            GameObject root =
+                new GameObject($"Road_{tile.x}_{tile.y}");
+            root.transform.SetParent(parent, false);
+
+            GameObject model = Instantiate(prefab, root.transform, false);
+            model.name = "RoadModel";
+            float roadVisualSize = tileSize;
+            FitSimpleTownPrefab(
+                model.transform,
+                root.transform,
+                new Vector2(roadVisualSize, roadVisualSize));
+            AlignRendererTopToSurface(
+                model.transform,
+                root.transform,
+                GetRoadSurfaceZ() - fieldTileZ);
+
+            Renderer renderer =
+                PrepareAuthoredRenderers(model);
+            AddConnectedRoadDetails(
+                root.transform,
+                tile,
+                connections,
+                roadVisualSize);
+
+            visual = new TileVisual
+            {
+                Object = root,
+                Renderer = renderer,
+                Block = new MaterialPropertyBlock(),
+                Type = TileType.Road,
+                UsesAuthoredLayout = true,
+                UsesAuthoredMaterial = true,
+                LocalRotation = Quaternion.identity
+            };
+            return true;
+        }
+
+        private void AddConnectedRoadDetails(
+            Transform road,
+            Vector2Int tile,
+            SimpleTownRoadConnections connections,
+            float roadVisualSize)
+        {
+            GameObject perimeter =
+                new GameObject("RoadPerimeter");
+            perimeter.transform.SetParent(road, false);
+
+            SimpleTownRoadConnections perimeterSides =
+                SimpleTownRoadTopology.GetPerimeterSides(connections);
+            float borderWidth = roadVisualSize * 0.075f;
+            float borderOffset =
+                roadVisualSize * 0.5f - borderWidth * 0.5f;
+            float detailDepth = roadVisualSize * 0.018f;
+            float roadSurfaceZ = -roadVisualSize * 0.01f;
+            float detailZ =
+                roadSurfaceZ - detailDepth * 0.5f;
+
+            AddRoadPerimeterSide(
+                perimeter.transform,
+                perimeterSides,
+                SimpleTownRoadConnections.North,
+                new Vector3(0f, borderOffset, detailZ),
+                new Vector3(
+                    roadVisualSize,
+                    borderWidth,
+                    detailDepth));
+            AddRoadPerimeterSide(
+                perimeter.transform,
+                perimeterSides,
+                SimpleTownRoadConnections.East,
+                new Vector3(borderOffset, 0f, detailZ),
+                new Vector3(
+                    borderWidth,
+                    roadVisualSize,
+                    detailDepth));
+            AddRoadPerimeterCorner(
+                perimeter.transform,
+                tile,
+                connections,
+                SimpleTownRoadConnections.North,
+                SimpleTownRoadConnections.East,
+                Vector2Int.up + Vector2Int.right,
+                new Vector3(
+                    borderOffset,
+                    borderOffset,
+                    detailZ),
+                borderWidth,
+                detailDepth);
+            AddRoadPerimeterCorner(
+                perimeter.transform,
+                tile,
+                connections,
+                SimpleTownRoadConnections.East,
+                SimpleTownRoadConnections.South,
+                Vector2Int.right + Vector2Int.down,
+                new Vector3(
+                    borderOffset,
+                    -borderOffset,
+                    detailZ),
+                borderWidth,
+                detailDepth);
+            AddRoadPerimeterCorner(
+                perimeter.transform,
+                tile,
+                connections,
+                SimpleTownRoadConnections.South,
+                SimpleTownRoadConnections.West,
+                Vector2Int.down + Vector2Int.left,
+                new Vector3(
+                    -borderOffset,
+                    -borderOffset,
+                    detailZ),
+                borderWidth,
+                detailDepth);
+            AddRoadPerimeterCorner(
+                perimeter.transform,
+                tile,
+                connections,
+                SimpleTownRoadConnections.West,
+                SimpleTownRoadConnections.North,
+                Vector2Int.left + Vector2Int.up,
+                new Vector3(
+                    -borderOffset,
+                    borderOffset,
+                    detailZ),
+                borderWidth,
+                detailDepth);
+            AddRoadPerimeterSide(
+                perimeter.transform,
+                perimeterSides,
+                SimpleTownRoadConnections.South,
+                new Vector3(0f, -borderOffset, detailZ),
+                new Vector3(
+                    roadVisualSize,
+                    borderWidth,
+                    detailDepth));
+            AddRoadPerimeterSide(
+                perimeter.transform,
+                perimeterSides,
+                SimpleTownRoadConnections.West,
+                new Vector3(-borderOffset, 0f, detailZ),
+                new Vector3(
+                    borderWidth,
+                    roadVisualSize,
+                    detailDepth));
+
+            GameObject centerLines =
+                new GameObject("RoadCenterLines");
+            centerLines.transform.SetParent(road, false);
+            if (!SimpleTownRoadTopology.ShouldDrawCenterLines(
+                    connections))
+            {
+                return;
+            }
+
+            AddCenteredRoadLine(
+                centerLines.transform,
+                connections,
+                roadVisualSize);
+        }
+
+        private void AddRoadPerimeterSide(
+            Transform parent,
+            SimpleTownRoadConnections perimeterSides,
+            SimpleTownRoadConnections side,
+            Vector3 position,
+            Vector3 scale)
+        {
+            if ((perimeterSides & side) == 0)
+            {
+                return;
+            }
+
+            Renderer border = CreateRoadDecoration(
+                parent,
+                $"Perimeter_{side}",
+                position,
+                scale);
+            ApplyRendererColor(border, roadPerimeterColor);
+        }
+
+        private void AddRoadPerimeterCorner(
+            Transform parent,
+            Vector2Int tile,
+            SimpleTownRoadConnections connections,
+            SimpleTownRoadConnections firstSide,
+            SimpleTownRoadConnections secondSide,
+            Vector2Int diagonalDirection,
+            Vector3 position,
+            float borderWidth,
+            float detailDepth)
+        {
+            if (!SimpleTownRoadTopology.ShouldDrawPerimeterCorner(
+                    connections,
+                    firstSide,
+                    secondSide,
+                    IsRoadTile(tile + diagonalDirection)))
+            {
+                return;
+            }
+
+            Renderer corner = CreateRoadDecoration(
+                parent,
+                $"PerimeterCorner_{firstSide}_{secondSide}",
+                position,
+                new Vector3(
+                    borderWidth,
+                    borderWidth,
+                    detailDepth));
+            ApplyRendererColor(corner, roadPerimeterColor);
+        }
+
+        private void AddCenteredRoadLine(
+            Transform parent,
+            SimpleTownRoadConnections connections,
+            float roadVisualSize)
+        {
+            bool horizontal =
+                SimpleTownRoadTopology
+                    .IsCenterLineHorizontal(connections);
+            float lineLength = roadVisualSize * 0.22f;
+            float lineWidth = roadVisualSize * 0.025f;
+            float lineDepth = roadVisualSize * 0.012f;
+            float roadSurfaceZ = -roadVisualSize * 0.01f;
+            Vector3 scale = horizontal
+                ? new Vector3(lineLength, lineWidth, lineDepth)
+                : new Vector3(lineWidth, lineLength, lineDepth);
+            Vector3 position = new Vector3(
+                0f,
+                0f,
+                roadSurfaceZ - lineDepth * 0.5f);
+            Renderer line = CreateRoadDecoration(
+                parent,
+                "CenterLine",
+                position,
+                scale);
+            ApplyRendererColor(line, roadCenterLineColor);
+        }
+
+        private static Renderer CreateRoadDecoration(
+            Transform parent,
+            string name,
+            Vector3 position,
+            Vector3 scale)
+        {
+            GameObject decoration =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            decoration.name = name;
+            decoration.transform.SetParent(parent, false);
+            decoration.transform.localPosition = position;
+            decoration.transform.localScale = scale;
+
+            Collider collider = decoration.GetComponent<Collider>();
+            if (collider != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(collider);
+                }
+                else
+                {
+                    DestroyImmediate(collider);
+                }
+            }
+
+            Renderer renderer =
+                PrepareRenderer(decoration.GetComponent<Renderer>());
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            return renderer;
+        }
+
+        private static Renderer CreateFlatRoadDecoration(
+            Transform parent,
+            string name,
+            Vector3 position,
+            Vector2 size)
+        {
+            GameObject decoration =
+                GameObject.CreatePrimitive(PrimitiveType.Quad);
+            decoration.name = name;
+            decoration.transform.SetParent(parent, false);
+            decoration.transform.localPosition = position;
+            decoration.transform.localScale =
+                new Vector3(size.x, size.y, 1f);
+
+            Collider collider = decoration.GetComponent<Collider>();
+            if (collider != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(collider);
+                }
+                else
+                {
+                    DestroyImmediate(collider);
+                }
+            }
+
+            Renderer renderer =
+                PrepareRenderer(decoration.GetComponent<Renderer>());
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            return renderer;
+        }
+
+        private static bool IsGeneratedRoadDecoration(
+            Renderer renderer)
+        {
+            Transform current = renderer != null
+                ? renderer.transform
+                : null;
+            while (current != null)
+            {
+                if (current.name == "RoadPerimeter" ||
+                    current.name == "RoadCenterLines")
+                {
+                    return true;
+                }
+                current = current.parent;
+            }
+
+            return false;
+        }
+
+        private SimpleTownRoadVisualSetSO
+            ResolveSimpleTownRoadVisualSet()
+        {
+            simpleTownRoadVisualSet ??=
+                Resources.Load<SimpleTownRoadVisualSetSO>(
+                    "CityFlow/SimpleTownRoadVisualSet");
+            return simpleTownRoadVisualSet;
+        }
+
+        private SimpleTownRoadConnections GetRoadConnections(
+            Vector2Int tile)
+        {
+            SimpleTownRoadConnections connections =
+                SimpleTownRoadConnections.None;
+
+            if (IsRoadTile(tile + Vector2Int.up))
+            {
+                connections |= SimpleTownRoadConnections.North;
+            }
+            if (IsRoadTile(tile + Vector2Int.right))
+            {
+                connections |= SimpleTownRoadConnections.East;
+            }
+            if (IsRoadTile(tile + Vector2Int.down))
+            {
+                connections |= SimpleTownRoadConnections.South;
+            }
+            if (IsRoadTile(tile + Vector2Int.left))
+            {
+                connections |= SimpleTownRoadConnections.West;
+            }
+
+            return connections;
+        }
+
+        private static Renderer PrepareAuthoredRenderers(
+            GameObject root)
+        {
+            Renderer[] renderers =
+                root.GetComponentsInChildren<Renderer>(true);
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                renderer.enabled = true;
+                renderer.forceRenderingOff = false;
+                renderer.allowOcclusionWhenDynamic = false;
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+            }
+
+            return renderers.Length > 0
+                ? renderers[0]
+                : null;
+        }
+
+        private static void FitSimpleTownPrefab(
+            Transform model,
+            Transform relativeTo,
+            Vector2 targetSize,
+            float modelYawDegrees = 0f)
+        {
+            model.localPosition = Vector3.zero;
+            model.localRotation =
+                Quaternion.Euler(-90f, 0f, 0f) *
+                Quaternion.Euler(0f, modelYawDegrees, 0f);
+            model.localScale = Vector3.one;
+
+            if (!TryGetRendererBounds(
+                    model.gameObject,
+                    relativeTo,
+                    out Bounds sourceBounds))
+            {
+                return;
+            }
+
+            float scaleX =
+                targetSize.x /
+                Mathf.Max(0.0001f, sourceBounds.size.x);
+            float scaleY =
+                targetSize.y /
+                Mathf.Max(0.0001f, sourceBounds.size.y);
+            model.localScale = new Vector3(
+                scaleX,
+                Mathf.Min(scaleX, scaleY),
+                scaleY);
+
+            if (!TryGetRendererBounds(
+                    model.gameObject,
+                    relativeTo,
+                    out Bounds fittedBounds))
+            {
+                return;
+            }
+
+            model.localPosition = new Vector3(
+                -fittedBounds.center.x,
+                -fittedBounds.center.y,
+                -fittedBounds.max.z - targetSize.y * 0.01f);
+        }
+
+        private static bool TryGetRendererBounds(
+            GameObject root,
+            Transform relativeTo,
+            out Bounds bounds)
+        {
+            bounds = default;
+            bool hasBounds = false;
+            Renderer[] renderers =
+                root.GetComponentsInChildren<Renderer>(true);
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                Bounds localBounds = renderer.localBounds;
+                Vector3 min = localBounds.min;
+                Vector3 max = localBounds.max;
+
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 point = new Vector3(
+                        (corner & 1) == 0 ? min.x : max.x,
+                        (corner & 2) == 0 ? min.y : max.y,
+                        (corner & 4) == 0 ? min.z : max.z);
+                    Vector3 worldPoint =
+                        renderer.transform.TransformPoint(
+                            point);
+                    Vector3 relativePoint =
+                        relativeTo != null
+                            ? relativeTo
+                                .InverseTransformPoint(
+                                    worldPoint)
+                            : worldPoint;
+
+                    if (!hasBounds)
+                    {
+                        bounds = new Bounds(
+                            relativePoint,
+                            Vector3.zero);
+                        hasBounds = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(relativePoint);
+                    }
+                }
+            }
+
+            return hasBounds;
+        }
+
+        private static void AlignRendererBaseToSurface(
+            Transform model,
+            Transform relativeTo,
+            float surfaceZ)
+        {
+            if (!TryGetRendererBounds(
+                    model.gameObject,
+                    relativeTo,
+                    out Bounds bounds))
+            {
+                return;
+            }
+
+            Vector3 position = model.localPosition;
+            position.z += surfaceZ - bounds.max.z;
+            model.localPosition = position;
+        }
+
+        private static void AlignRendererTopToSurface(
+            Transform model,
+            Transform relativeTo,
+            float surfaceZ)
+        {
+            if (!TryGetRendererBounds(
+                    model.gameObject,
+                    relativeTo,
+                    out Bounds bounds))
+            {
+                return;
+            }
+
+            Vector3 position = model.localPosition;
+            position.z += surfaceZ - bounds.min.z;
+            model.localPosition = position;
+        }
+
         public bool TryCreatePlacementPreview(
+            TileType type,
+            out GameObject preview)
+        {
+            return TryCreatePlacementPreview(
+                Vector2Int.zero,
+                type,
+                out preview);
+        }
+
+        public bool TryCreatePlacementPreview(
+            Vector2Int tile,
             TileType type,
             out GameObject preview)
         {
@@ -1465,19 +2094,61 @@ namespace CityFlow.View
 
             TileVisual visual =
                 CreateTileVisual(
-                    Vector2Int.zero,
+                    tile,
                     type,
                     null,
-                    includeRoadNetworkDetails: false);
+                    includeRoadNetworkDetails: true);
             preview = visual.Object;
             preview.name = $"PlacementPreview_{type}";
             if (!TileFootprint.IsBuilding(type))
             {
                 preview.transform.localPosition = Vector3.zero;
-                preview.transform.localRotation = Quaternion.identity;
-                preview.transform.localScale = GetTileScale(type);
+                preview.transform.localRotation =
+                    visual.UsesAuthoredLayout
+                        ? visual.LocalRotation
+                        : Quaternion.identity;
+                preview.transform.localScale =
+                    visual.UsesAuthoredLayout
+                        ? Vector3.one
+                        : GetTileScale(type);
             }
             return true;
+        }
+
+        public Vector3 GetPlacementPreviewWorldPosition(
+            Vector2Int tile,
+            TileType type)
+        {
+            Vector3 localPosition;
+            if (TileFootprint.IsBuilding(type))
+            {
+                localPosition = FootprintToLocal(tile, type);
+            }
+            else
+            {
+                float localZ =
+                    type == TileType.Road
+                        ? fieldTileZ
+                        : 0f;
+                localPosition = GridToLocal(tile, localZ);
+            }
+
+            return transform.TransformPoint(localPosition);
+        }
+
+        public Quaternion GetPlacementPreviewWorldRotation(
+            Vector2Int tile,
+            TileType type,
+            PlacementDirection direction)
+        {
+            Quaternion localRotation =
+                TileFootprint.IsBuilding(type)
+                    ? GetBuildingRotation(
+                        tile,
+                        type,
+                        direction)
+                    : Quaternion.identity;
+            return transform.rotation * localRotation;
         }
 
         public bool TryCreateInfrastructurePlacementPreview(
@@ -1591,18 +2262,64 @@ namespace CityFlow.View
         {
             GameObject root = new GameObject($"{type}_{tile.x}_{tile.y}");
             root.transform.SetParent(parent, false);
+            float buildingSurfaceZ =
+                AddBuildingFoundation(
+                    root.transform,
+                    type);
 
             GameObject prefab = GetPrefab(type);
             GameObject body = InstantiatePrefabOrPrimitive(prefab, PrimitiveType.Cube);
             body.name = "BuildingBody";
             body.transform.SetParent(root.transform, false);
-            body.transform.localScale = GetBuildingBodyScale(type);
-            body.transform.localPosition = GetBuildingBodyPosition(type);
-
-            Renderer renderer = PrepareRenderer(body.GetComponentInChildren<Renderer>());
-            if (prefab == null)
+            bool usesAuthoredVisual = prefab != null &&
+                                      (type == TileType.House ||
+                                       type == TileType.Office ||
+                                       type == TileType.School ||
+                                       type == TileType.Hospital);
+            Renderer renderer;
+            if (usesAuthoredVisual)
             {
-                AddFallbackBuildingDetails(body.transform, type);
+                Vector2 footprintSize =
+                    GetBuildingBodyFootprintSize(type);
+                FitSimpleTownPrefab(
+                    body.transform,
+                    root.transform,
+                    footprintSize,
+                    type == TileType.Hospital
+                        ? 180f
+                        : 0f);
+                body.transform.localPosition +=
+                    new Vector3(
+                        0f,
+                        tileSize * 0.5f,
+                        0f);
+                AlignRendererBaseToSurface(
+                    body.transform,
+                    root.transform,
+                    buildingSurfaceZ);
+                VehicleVisualUtility.PrepareUnlit(
+                    body,
+                    (int)RenderQueue.Geometry);
+                renderer =
+                    PrepareAuthoredRenderers(body);
+            }
+            else
+            {
+                body.transform.localScale =
+                    GetBuildingBodyScale(type);
+                body.transform.localPosition =
+                    GetBuildingBodyPosition(type);
+                renderer =
+                    PrepareRenderer(
+                        body.GetComponentInChildren<Renderer>());
+                if (prefab == null)
+                {
+                    AddFallbackBuildingDetails(body.transform, type);
+                }
+                AlignRendererBaseToSurface(
+                    body.transform,
+                    root.transform,
+                    buildingSurfaceZ);
             }
 
             // 공사장에는 주차 자리를 만들지 않는다. 차가 여기로 배정되지는 않지만
@@ -1611,7 +2328,7 @@ namespace CityFlow.View
             // 에러 없이 조용히 폴백하므로 애초에 만들지 않는 편이 안전하다.
             if (type != TileType.UnderConstruction)
             {
-                AddParkingLotDetails(root.transform, type);
+                AddParkingDetails(root.transform, type);
             }
 
             return new TileVisual
@@ -1619,8 +2336,73 @@ namespace CityFlow.View
                 Object = root,
                 Renderer = renderer,
                 Block = new MaterialPropertyBlock(),
-                Type = type
+                Type = type,
+                UsesAuthoredMaterial = usesAuthoredVisual
             };
+        }
+
+        private float AddBuildingFoundation(
+            Transform root,
+            TileType type)
+        {
+            GameObject foundationPrefab =
+                ResolveBuildingVisualCatalog()
+                    ?.FoundationPrefab;
+            float surfaceZ = GetRoadSurfaceZ();
+            if (foundationPrefab == null)
+            {
+                return surfaceZ;
+            }
+
+            GameObject foundation =
+                Instantiate(
+                    foundationPrefab,
+                    root,
+                    false);
+            foundation.name = "BuildingFoundation";
+            FitSimpleTownPrefab(
+                foundation.transform,
+                root,
+                GetBuildingFoundationFootprintSize(type));
+            foundation.transform.localPosition +=
+                new Vector3(
+                    0f,
+                    tileSize * 0.5f,
+                    0f);
+            AlignRendererTopToSurface(
+                foundation.transform,
+                root,
+                surfaceZ);
+            PrepareAuthoredRenderers(foundation);
+            return surfaceZ;
+        }
+
+        private Vector2 GetBuildingBodyFootprintSize(
+            TileType type)
+        {
+            return type switch
+            {
+                TileType.House or
+                TileType.Office or
+                TileType.School or
+                TileType.Hospital =>
+                    new Vector2(
+                        tileSize * 1.9f,
+                        tileSize * 0.9f),
+                _ => new Vector2(
+                    tileSize * 1.5f,
+                    tileSize * 1.05f)
+            };
+        }
+
+        private Vector2 GetBuildingFoundationFootprintSize(
+            TileType type)
+        {
+            Vector2Int footprint =
+                TileFootprint.GetSize(type);
+            return new Vector2(
+                footprint.x * tileSize,
+                tileSize);
         }
 
         private Vector3 GetBuildingBodyScale(TileType type)
@@ -1635,12 +2417,21 @@ namespace CityFlow.View
                 _ => tileSize * 0.8f
             };
 
-            return type switch
+            if (type == TileType.House ||
+                type == TileType.Office ||
+                type == TileType.School ||
+                type == TileType.Hospital)
             {
-                TileType.House => new Vector3(tileSize * 1.9f, tileSize * 0.9f, height),
-                TileType.Office => new Vector3(tileSize * 1.9f, tileSize * 0.9f, height),
-                _ => new Vector3(tileSize * 1.5f, tileSize * 1.05f, height)
-            };
+                return new Vector3(
+                    tileSize * 1.9f,
+                    tileSize * 0.9f,
+                    height);
+            }
+
+            return new Vector3(
+                tileSize * 1.5f,
+                tileSize * 1.05f,
+                height);
         }
 
         private Vector3 GetBuildingBodyPosition(TileType type)
@@ -1650,39 +2441,79 @@ namespace CityFlow.View
             {
                 TileType.House => tileSize * 0.5f,
                 TileType.Office => tileSize * 0.5f,
+                TileType.School => tileSize * 0.5f,
+                TileType.Hospital => tileSize * 0.5f,
                 _ => tileSize * 0.32f
             };
-            return new Vector3(0f, forwardOffset, -height * 0.5f);
+            return new Vector3(
+                0f,
+                forwardOffset,
+                GetRoadSurfaceZ() - height * 0.5f);
         }
 
-        private void AddParkingLotDetails(Transform root, TileType type)
+        private void AddParkingDetails(Transform root, TileType type)
         {
-            if (type == TileType.House || type == TileType.Office)
+            if (type == TileType.House ||
+                type == TileType.Office ||
+                type == TileType.School ||
+                type == TileType.Hospital)
             {
-                Renderer buildingBase = CreateDetailCube(
-                    root,
-                    "BuildingLot",
-                    new Vector3(tileSize * 1.9f, tileSize * 0.9f, tileSize * 0.04f),
-                    new Vector3(0f, tileSize * 0.5f, tileSize * 0.02f));
-                ApplyRendererColor(buildingBase, Color.Lerp(boardColor, Color.white, 0.08f));
-
                 if (type == TileType.House)
                 {
-                    AddHouseParkingDetails(root, GetHomeParkingSlotCount());
+                    int parkingSlotCount =
+                        GetHomeParkingSlotCount();
+                    if (!TryAddDrivewayParkingDetails(
+                            root,
+                            TileType.House,
+                            parkingSlotCount))
+                    {
+                        AddHouseParkingDetails(
+                            root,
+                            parkingSlotCount);
+                    }
+                }
+                else if (type == TileType.Office)
+                {
+                    int parkingSlotCount =
+                        GetOfficeParkingSlotCount();
+                    if (!TryAddDrivewayParkingDetails(
+                            root,
+                            TileType.Office,
+                            parkingSlotCount))
+                    {
+                        AddOfficeParkingDetails(
+                            root,
+                            parkingSlotCount);
+                    }
+                }
+                else if (type == TileType.School)
+                {
+                    const int schoolParkingSlotCount = 6;
+                    if (!TryAddDrivewayParkingDetails(
+                            root,
+                            TileType.School,
+                            schoolParkingSlotCount))
+                    {
+                        AddOfficeParkingDetails(
+                            root,
+                            schoolParkingSlotCount);
+                    }
                 }
                 else
                 {
-                    AddOfficeParkingDetails(root, GetOfficeParkingSlotCount());
+                    const int hospitalParkingSlotCount = 4;
+                    if (!TryAddDrivewayParkingDetails(
+                            root,
+                            TileType.Hospital,
+                            hospitalParkingSlotCount))
+                    {
+                        AddOfficeParkingDetails(
+                            root,
+                            hospitalParkingSlotCount);
+                    }
                 }
                 return;
             }
-
-            Renderer lotBase = CreateDetailCube(
-                root,
-                "BuildingLot",
-                new Vector3(tileSize * 1.9f, tileSize * 1.9f, tileSize * 0.04f),
-                new Vector3(0f, 0f, tileSize * 0.02f));
-            ApplyRendererColor(lotBase, Color.Lerp(boardColor, Color.white, 0.08f));
 
             AddSurfaceParkingDetails(root);
         }
@@ -1697,23 +2528,182 @@ namespace CityFlow.View
                 ? simEngine.CarSimOfficeParkingSlots
                 : Mathf.Max(1, SimConfig.Default().OfficeCapacity);
 
+        private bool TryAddDrivewayParkingDetails(
+            Transform root,
+            TileType buildingType,
+            int parkingSlotCount)
+        {
+            GameObject drivewayPrefab =
+                ResolveSimpleTownRoadVisualSet()?.DrivewayPrefab;
+            if (drivewayPrefab == null || parkingSlotCount <= 0)
+            {
+                return false;
+            }
+
+            const int parkingSlotsPerPrefab = 2;
+            int drivewayCount = buildingType == TileType.House
+                ? 2
+                : Mathf.CeilToInt(
+                    parkingSlotCount /
+                    (float)parkingSlotsPerPrefab);
+            float lotWidth = tileSize * 2f;
+            float drivewayWidth =
+                lotWidth / drivewayCount;
+            int visibleParkingSlotCount =
+                drivewayCount * parkingSlotsPerPrefab;
+            float slotWidth =
+                lotWidth / visibleParkingSlotCount;
+            float drivewayFrontZ =
+                float.PositiveInfinity;
+
+            for (int drivewayIndex = 0;
+                 drivewayIndex < drivewayCount;
+                 drivewayIndex++)
+            {
+                float drivewayX =
+                    lotWidth * 0.5f -
+                    drivewayWidth *
+                    (drivewayIndex + 0.5f);
+                GameObject drivewayRoot =
+                    new GameObject(
+                        $"Driveway_{drivewayIndex}");
+                drivewayRoot.transform.SetParent(root, false);
+                drivewayRoot.transform.localPosition =
+                    new Vector3(
+                        drivewayX,
+                        tileSize * -0.5f,
+                        GetRoadSurfaceZ());
+                drivewayRoot.transform.localRotation =
+                    Quaternion.Euler(0f, 0f, 90f);
+
+                GameObject driveway = Instantiate(
+                    drivewayPrefab,
+                    drivewayRoot.transform,
+                    false);
+                driveway.name = "PathDriveway";
+                FitSimpleTownPrefab(
+                    driveway.transform,
+                    drivewayRoot.transform,
+                    new Vector2(
+                        tileSize,
+                        drivewayWidth));
+                AlignRendererTopToSurface(
+                    driveway.transform,
+                    root,
+                    GetRoadSurfaceZ());
+                PrepareAuthoredRenderers(driveway);
+
+                if (TryGetRendererBounds(
+                        driveway,
+                        root,
+                        out Bounds drivewayBounds))
+                {
+                    drivewayFrontZ = Mathf.Min(
+                        drivewayFrontZ,
+                        drivewayBounds.min.z);
+                }
+            }
+
+            AddDrivewayPrefabBoundaries(
+                root,
+                drivewayCount,
+                lotWidth,
+                drivewayWidth,
+                drivewayFrontZ);
+
+            for (int slot = 0; slot < parkingSlotCount; slot++)
+            {
+                float slotX =
+                    lotWidth * 0.5f -
+                    slotWidth * (slot + 0.5f);
+                GameObject anchor =
+                    new GameObject($"ParkingSlot_{slot}");
+                anchor.transform.SetParent(root, false);
+                anchor.transform.localPosition =
+                    new Vector3(
+                        slotX,
+                        tileSize * -0.5f,
+                        VehicleGroundZ);
+            }
+
+            return true;
+        }
+
+        private void AddDrivewayPrefabBoundaries(
+            Transform root,
+            int drivewayCount,
+            float lotWidth,
+            float drivewayWidth,
+            float drivewayFrontZ)
+        {
+            if (drivewayCount <= 1)
+            {
+                return;
+            }
+
+            float dividerWidth =
+                tileSize * 0.015f;
+            float dividerLength =
+                tileSize * 0.9f;
+            if (float.IsPositiveInfinity(
+                    drivewayFrontZ))
+            {
+                drivewayFrontZ =
+                    GetRoadSurfaceZ() -
+                    tileSize * 0.02f;
+            }
+            Color dividerColor =
+                new Color32(122, 118, 113, 255);
+
+            for (int boundary = 1;
+                 boundary < drivewayCount;
+                 boundary++)
+            {
+                float boundaryX =
+                    lotWidth * 0.5f -
+                    drivewayWidth * boundary;
+                Renderer divider =
+                    CreateFlatRoadDecoration(
+                        root,
+                        $"DrivewayBoundary_{boundary}",
+                        new Vector3(
+                            boundaryX,
+                            tileSize * -0.5f,
+                            drivewayFrontZ -
+                            tileSize * 0.001f),
+                        new Vector2(
+                            dividerWidth,
+                            dividerLength));
+                ApplyRendererColor(
+                    divider,
+                    dividerColor);
+            }
+        }
+
         private void AddHouseParkingDetails(Transform root, int parkingSlotCount)
         {
             Color lotColor = Color.Lerp(roadFreeColor, Color.black, 0.08f);
             Color lineColor = Color.Lerp(Color.white, roadFreeColor, 0.15f);
+            float surfaceZ = GetRoadSurfaceZ();
 
             Renderer parking = CreateDetailCube(
                 root,
                 "ParkingLot",
                 new Vector3(tileSize * 0.9f, tileSize * 0.9f, tileSize * 0.05f),
-                new Vector3(tileSize * -0.5f, tileSize * -0.5f, tileSize * -0.015f));
+                new Vector3(
+                    tileSize * -0.5f,
+                    tileSize * -0.5f,
+                    surfaceZ - tileSize * 0.025f));
             ApplyRendererColor(parking, lotColor);
 
             Renderer divider = CreateDetailCube(
                 root,
                 "ParkingLine_Center",
                 new Vector3(tileSize * 0.045f, tileSize * 0.78f, tileSize * 0.018f),
-                new Vector3(tileSize * -0.5f, tileSize * -0.5f, tileSize * -0.05f));
+                new Vector3(
+                    tileSize * -0.5f,
+                    tileSize * -0.5f,
+                    surfaceZ - tileSize * 0.059f));
             ApplyRendererColor(divider, lineColor);
 
             float slotSpacing = parkingSlotCount > 1
@@ -1728,7 +2718,7 @@ namespace CityFlow.View
                 anchor.transform.localPosition = new Vector3(
                     tileSize * (firstSlotX - slotSpacing * slot),
                     tileSize * -0.5f,
-                    vehicleZ);
+                    VehicleGroundZ);
             }
         }
 
@@ -1738,12 +2728,16 @@ namespace CityFlow.View
             Color lineColor = Color.Lerp(Color.white, roadFreeColor, 0.15f);
             float lotWidth = tileSize * 1.8f;
             float slotWidth = lotWidth / parkingSlotCount;
+            float surfaceZ = GetRoadSurfaceZ();
 
             Renderer parking = CreateDetailCube(
                 root,
                 "ParkingLot",
                 new Vector3(lotWidth, tileSize * 0.9f, tileSize * 0.05f),
-                new Vector3(0f, tileSize * -0.5f, tileSize * -0.015f));
+                new Vector3(
+                    0f,
+                    tileSize * -0.5f,
+                    surfaceZ - tileSize * 0.025f));
             ApplyRendererColor(parking, lotColor);
 
             for (int line = 1; line < parkingSlotCount; line++)
@@ -1753,7 +2747,10 @@ namespace CityFlow.View
                     root,
                     $"ParkingLine_{line}",
                     new Vector3(tileSize * 0.025f, tileSize * 0.78f, tileSize * 0.018f),
-                    new Vector3(x, tileSize * -0.5f, tileSize * -0.05f));
+                    new Vector3(
+                        x,
+                        tileSize * -0.5f,
+                        surfaceZ - tileSize * 0.059f));
                 ApplyRendererColor(divider, lineColor);
             }
 
@@ -1764,7 +2761,7 @@ namespace CityFlow.View
                 anchor.transform.localPosition = new Vector3(
                     lotWidth * 0.5f - slotWidth * (slot + 0.5f),
                     tileSize * -0.5f,
-                    vehicleZ);
+                    VehicleGroundZ);
             }
         }
 
@@ -1772,12 +2769,16 @@ namespace CityFlow.View
         {
             Color lotColor = Color.Lerp(roadFreeColor, Color.black, 0.08f);
             Color lineColor = Color.Lerp(Color.white, roadFreeColor, 0.15f);
+            float surfaceZ = GetRoadSurfaceZ();
 
             Renderer parking = CreateDetailCube(
                 root,
                 "ParkingLot",
                 new Vector3(tileSize * 1.8f, tileSize * 0.68f, tileSize * 0.05f),
-                new Vector3(0f, tileSize * -0.61f, tileSize * -0.015f));
+                new Vector3(
+                    0f,
+                    tileSize * -0.61f,
+                    surfaceZ - tileSize * 0.025f));
             ApplyRendererColor(parking, lotColor);
 
             for (int i = -1; i <= 1; i++)
@@ -1786,21 +2787,24 @@ namespace CityFlow.View
                     root,
                     $"ParkingLine_{i + 1}",
                     new Vector3(tileSize * 0.045f, tileSize * 0.52f, tileSize * 0.018f),
-                    new Vector3(tileSize * i * 0.58f, tileSize * -0.61f, tileSize * -0.05f));
+                    new Vector3(
+                        tileSize * i * 0.58f,
+                        tileSize * -0.61f,
+                        surfaceZ - tileSize * 0.059f));
                 ApplyRendererColor(line, lineColor);
             }
 
             const int parkingSlotCount = 6;
             for (int slot = 0; slot < parkingSlotCount; slot++)
             {
-                int column = slot % 3;
+                int column = 2 - slot % 3;
                 int row = slot / 3;
                 GameObject anchor = new GameObject($"ParkingSlot_{slot}");
                 anchor.transform.SetParent(root, false);
                 anchor.transform.localPosition = new Vector3(
                     tileSize * (column - 1) * 0.58f,
                     tileSize * (-0.76f + row * 0.3f),
-                    vehicleZ);
+                    VehicleGroundZ);
             }
         }
 
@@ -1821,9 +2825,20 @@ namespace CityFlow.View
 
         private void ApplyTileColor(Vector2Int tile, TileVisual visual)
         {
+            if (visual.UsesAuthoredMaterial &&
+                TileFootprint.IsBuilding(visual.Type))
+            {
+                return;
+            }
+
             Color color = visual.Type switch
             {
-                TileType.Road => GetRoadColor(tileData.GetCongestion(tile)),
+                TileType.Road when visual.UsesAuthoredMaterial &&
+                                   tileData.GetCongestion(tile) ==
+                                   CongestionLevel.Free =>
+                    Color.white,
+                TileType.Road => GetRoadColor(
+                    tileData.GetCongestion(tile)),
                 TileType.House => houseColor,
                 TileType.Office => officeColor,
                 TileType.School => schoolColor,
@@ -1832,7 +2847,19 @@ namespace CityFlow.View
                 _ => Color.clear
             };
 
-            ApplyRendererColor(visual.Renderer, color, visual.Block);
+            Renderer[] renderers = visual.Type == TileType.Road &&
+                                   visual.UsesAuthoredLayout
+                ? visual.Object.GetComponentsInChildren<Renderer>(true)
+                : new[] { visual.Renderer };
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (IsGeneratedRoadDecoration(renderers[i]))
+                {
+                    continue;
+                }
+
+                ApplyRendererColor(renderers[i], color, visual.Block);
+            }
         }
 
         // 공사장 색. houseColor 등과 달리 [SerializeField]가 아니다 — MainCityView 에
@@ -1861,6 +2888,11 @@ namespace CityFlow.View
                 TileType.Hospital => new Vector3(tileSize * 0.78f, tileSize * 0.68f, tileSize * 0.8f),
                 _ => Vector3.one * tileSize
             };
+        }
+
+        private float GetRoadSurfaceZ()
+        {
+            return fieldTileZ - tileSize * 0.02f;
         }
 
         private Vector3 FootprintToLocal(Vector2Int tile, TileType type)
@@ -1903,6 +2935,17 @@ namespace CityFlow.View
             TileType type)
         {
             PlacementDirection direction = tileData.GetDirection(tile);
+            return GetBuildingRotation(
+                tile,
+                type,
+                direction);
+        }
+
+        private Quaternion GetBuildingRotation(
+            Vector2Int tile,
+            TileType type,
+            PlacementDirection direction)
+        {
             Vector2Int size = TileFootprint.GetRotatedSize(type, direction);
             if (direction != PlacementDirection.North ||
                 CountRoadsAlongFront(tile, size, direction) > 0)
@@ -2057,7 +3100,9 @@ namespace CityFlow.View
             return PrepareRenderer(detail.GetComponent<Renderer>());
         }
 
-        private void AddRoadCenterLines(Transform road, Vector2Int tile)
+        private void AddRoadCenterLines(
+            Transform road,
+            Vector2Int tile)
         {
             Transform existing = road.Find("RoadCenterLines");
             if (existing != null)
@@ -2068,32 +3113,39 @@ namespace CityFlow.View
             GameObject root = new GameObject("RoadCenterLines");
             root.transform.SetParent(road, false);
 
-            AddRoadCenterLineSegment(root.transform, tile, Vector2Int.right);
-            AddRoadCenterLineSegment(root.transform, tile, Vector2Int.left);
-            AddRoadCenterLineSegment(root.transform, tile, Vector2Int.up);
-            AddRoadCenterLineSegment(root.transform, tile, Vector2Int.down);
-        }
-
-        private void AddRoadCenterLineSegment(Transform root, Vector2Int tile, Vector2Int direction)
-        {
-            if (!IsRoadTile(tile + direction))
+            SimpleTownRoadConnections connections =
+                GetRoadConnections(tile);
+            if (!SimpleTownRoadTopology.ShouldDrawCenterLines(
+                    connections))
             {
                 return;
             }
 
-            float thickness = Mathf.Max(0.025f, gridLineThickness * 0.65f / tileSize);
-            bool horizontal = direction.x != 0;
+            float thickness =
+                Mathf.Max(
+                    0.025f,
+                    gridLineThickness * 0.65f / tileSize);
+            bool horizontal =
+                SimpleTownRoadTopology
+                    .IsCenterLineHorizontal(connections);
             Vector3 scale = horizontal
-                ? new Vector3(0.5f, thickness, 0.2f)
-                : new Vector3(thickness, 0.5f, 0.2f);
-            Vector3 position = new Vector3(direction.x * 0.25f, direction.y * 0.25f, -0.65f);
-            Renderer line = CreateDetailCube(root, $"CenterLine_{direction.x}_{direction.y}", scale, position);
+                ? new Vector3(0.22f, thickness, 0.2f)
+                : new Vector3(thickness, 0.22f, 0.2f);
+            Vector3 position =
+                new Vector3(0f, 0f, -0.65f);
+            Renderer line = CreateDetailCube(
+                root.transform,
+                "CenterLine",
+                scale,
+                position);
             Collider collider = line.GetComponent<Collider>();
             if (collider != null)
             {
                 Destroy(collider);
             }
-            ApplyRendererColor(line, Color.Lerp(Color.yellow, Color.white, 0.15f));
+            ApplyRendererColor(
+                line,
+                Color.Lerp(Color.yellow, Color.white, 0.15f));
         }
 
         private void RefreshRoadCenterLinesAround(Vector2Int tile)
@@ -2113,17 +3165,70 @@ namespace CityFlow.View
             }
         }
 
+        private void RefreshRoadVisualsAround(Vector2Int tile)
+        {
+            if (ResolveSimpleTownRoadVisualSet() == null)
+            {
+                RefreshRoadCenterLinesAround(tile);
+                return;
+            }
+
+            RefreshRoadVisual(tile);
+            RefreshRoadVisual(tile + Vector2Int.right);
+            RefreshRoadVisual(tile + Vector2Int.left);
+            RefreshRoadVisual(tile + Vector2Int.up);
+            RefreshRoadVisual(tile + Vector2Int.down);
+        }
+
+        private void RefreshRoadVisual(Vector2Int tile)
+        {
+            if (!IsRoadTile(tile))
+            {
+                return;
+            }
+
+            RemoveTileVisual(tile);
+            RefreshTile(tile, TileType.Road);
+        }
+
         private GameObject GetPrefab(TileType type)
         {
+            BuildingVisualCatalogSO buildingCatalog =
+                ResolveBuildingVisualCatalog();
             return type switch
             {
                 TileType.Road => roadPrefab,
-                TileType.House => housePrefab,
-                TileType.Office => officePrefab,
-                TileType.School => schoolPrefab,
-                TileType.Hospital => hospitalPrefab,
+                TileType.House =>
+                    buildingCatalog?.HousePrefab != null
+                        ? buildingCatalog.HousePrefab
+                        : housePrefab,
+                TileType.Office =>
+                    buildingCatalog?.OfficePrefab != null
+                        ? buildingCatalog.OfficePrefab
+                        : officePrefab,
+                TileType.School =>
+                    buildingCatalog?.SchoolPrefab != null
+                        ? buildingCatalog.SchoolPrefab
+                        : schoolPrefab,
+                TileType.Hospital =>
+                    buildingCatalog?.HospitalPrefab != null
+                        ? buildingCatalog.HospitalPrefab
+                        : hospitalPrefab,
                 _ => null
             };
+        }
+
+        private BuildingVisualCatalogSO
+            ResolveBuildingVisualCatalog()
+        {
+            if (buildingVisualCatalog == null)
+            {
+                buildingVisualCatalog =
+                    Resources.Load<BuildingVisualCatalogSO>(
+                        "CityFlow/BuildingVisualCatalog");
+            }
+
+            return buildingVisualCatalog;
         }
 
         private void RefreshSignals()
@@ -2145,7 +3250,7 @@ namespace CityFlow.View
                     signalVisuals.Add(tile, visual);
                 }
 
-                ApplySignalState(tile, visual, i == selectedSignalIndex);
+                ApplySignalState(tile, visual);
             }
 
             foreach (Vector2Int tile in new List<Vector2Int>(signalVisuals.Keys))
@@ -2526,22 +3631,20 @@ namespace CityFlow.View
                     new Vector3(tileSize * 0.1f, tileSize * 0.42f, tileSize * 0.14f), new Vector3(0f, 0f, -tileSize * 0.18f));
             }
 
-            float selectionZ = lensViews.Length > 0
-                ? -0.03f
-                : tileSize * 0.42f;
-            Renderer selection = CreateSignalBar(root.transform, "Selection",
-                new Vector3(tileSize * 0.72f, tileSize * 0.72f, 0.03f), new Vector3(0f, 0f, selectionZ));
+            AlignRendererBaseToSurface(
+                root.transform,
+                signalRoot,
+                GetRoadSurfaceZ());
 
             return new SignalVisual
             {
                 Root = root,
                 HorizontalRenderer = horizontal,
                 VerticalRenderer = vertical,
-                SelectionRenderer = selection,
                 LensViews = lensViews,
                 HorizontalBlock = new MaterialPropertyBlock(),
                 VerticalBlock = new MaterialPropertyBlock(),
-                SelectionBlock = new MaterialPropertyBlock()
+                GroundedZ = root.transform.localPosition.z
             };
         }
 
@@ -2572,15 +3675,16 @@ namespace CityFlow.View
             return go;
         }
 
-        private void ApplySignalState(Vector2Int tile, SignalVisual visual, bool selected)
+        private void ApplySignalState(
+            Vector2Int tile,
+            SignalVisual visual)
         {
             Color horizontal = GetSignalColor(tile, horizontal: true);
             Color vertical = GetSignalColor(tile, horizontal: false);
 
-            bool usesPrefab = visual.LensViews != null && visual.LensViews.Length > 0;
             visual.Root.transform.localPosition = GridToLocal(
                 tile,
-                usesPrefab ? 0f : signalZ);
+                visual.GroundedZ);
             ApplyRendererColor(visual.HorizontalRenderer, horizontal, visual.HorizontalBlock);
             ApplyRendererColor(visual.VerticalRenderer, vertical, visual.VerticalBlock);
 
@@ -2597,12 +3701,6 @@ namespace CityFlow.View
                 {
                     lensView.ApplyPhases(horizontalPhase, verticalPhase);
                 }
-            }
-
-            if (visual.SelectionRenderer != null)
-            {
-                visual.SelectionRenderer.gameObject.SetActive(selected);
-                ApplyRendererColor(visual.SelectionRenderer, selectedSignalColor, visual.SelectionBlock);
             }
 
             // 오버라이드 특수효과: 코리도어 신호를 초록 방향으로 스케일 펄스(폴링 — 뷰가 매 프레임 갱신).
@@ -2650,23 +3748,56 @@ namespace CityFlow.View
         {
             while (vehicles.Count < targetCount)
             {
-                GameObject vehicle = InstantiatePrefabOrPrimitive(vehiclePrefab, PrimitiveType.Cube);
+                GameObject selectedPrefab = GetRandomNormalVehiclePrefab();
+                GameObject vehicle = InstantiatePrefabOrPrimitive(
+                    selectedPrefab,
+                    PrimitiveType.Cube);
                 vehicle.name = $"Vehicle_{vehicles.Count + 1}";
                 vehicle.transform.SetParent(vehicleRoot, false);
-                vehicle.transform.localScale = new Vector3(tileSize * 0.38f, tileSize * 0.2f, tileSize * 0.28f);
+                bool usesAuthoredVisual = selectedPrefab != null;
+                vehicle.transform.localScale = usesAuthoredVisual
+                    ? Vector3.one * (tileSize * VehicleBodyLengthTiles)
+                    : new Vector3(
+                        tileSize * VehicleBodyLengthTiles,
+                        tileSize * VehicleBodyWidthTiles,
+                        tileSize * VehicleBodyHeightTiles);
 
                 if (vehicle.GetComponentInChildren<Collider>() == null)
                 {
                     vehicle.AddComponent<BoxCollider>();
                 }
 
-                Renderer renderer = vehicle.GetComponentInChildren<Renderer>();
-                PrepareRenderer(renderer, VehicleRenderQueue);
-                ApplyRendererColor(renderer, vehicleColor);
+                Renderer[] renderers =
+                    vehicle.GetComponentsInChildren<Renderer>(true);
+                for (int rendererIndex = 0;
+                     rendererIndex < renderers.Length;
+                     rendererIndex++)
+                {
+                    if (!usesAuthoredVisual)
+                    {
+                        PrepareRenderer(
+                            renderers[rendererIndex],
+                            VehicleRenderQueue);
+                    }
+                }
+                if (usesAuthoredVisual)
+                {
+                    VehicleVisualUtility.PrepareUnlit(
+                        vehicle,
+                        VehicleRenderQueue);
+                }
+                Renderer renderer =
+                    renderers.Length > 0
+                        ? renderers[0]
+                        : null;
+                if (!usesAuthoredVisual)
+                {
+                    ApplyRendererColor(renderer, vehicleColor);
+                }
 
                 Renderer detailRenderer = null;
                 GameObject brakeLight = null;
-                if (vehiclePrefab == null)
+                if (!usesAuthoredVisual)
                 {
                     detailRenderer = CreateDetailCube(vehicle.transform, "Cabin",
                         new Vector3(0.55f, 0.72f, 0.42f), new Vector3(-0.05f, 0f, -0.65f));
@@ -2687,10 +3818,37 @@ namespace CityFlow.View
                 {
                     Object = vehicle,
                     Renderer = renderer,
+                    Renderers = renderers,
                     DetailRenderer = detailRenderer,
-                    BrakeLight = brakeLight
+                    BrakeLight = brakeLight,
+                    UsesAuthoredVisual = usesAuthoredVisual
                 });
             }
+        }
+
+        private GameObject GetRandomNormalVehiclePrefab()
+        {
+            VehicleVisualCatalogSO catalog =
+                vehicleVisualCatalog != null
+                    ? vehicleVisualCatalog
+                    : Resources.Load<VehicleVisualCatalogSO>(
+                        "CityFlow/VehicleVisualCatalog");
+            GameObject[] prefabs = catalog?.NormalVehiclePrefabs;
+            if (prefabs != null && prefabs.Length > 0)
+            {
+                int start = Random.Range(0, prefabs.Length);
+                for (int offset = 0; offset < prefabs.Length; offset++)
+                {
+                    GameObject candidate =
+                        prefabs[(start + offset) % prefabs.Length];
+                    if (candidate != null)
+                    {
+                        return candidate;
+                    }
+                }
+            }
+
+            return vehiclePrefab;
         }
 
         private void AlignTextMarkPerpendicularToGround(Transform textMark)
@@ -2764,13 +3922,23 @@ namespace CityFlow.View
             CarStyle style = CarStyle.FromHash(car.Home, car.HomeSlot);
             vehicle.Style = style;
 
-            vehicle.Object.transform.localScale = new Vector3(
-                tileSize * VehicleBodyLengthTiles * style.LengthScale,
-                tileSize * VehicleBodyWidthTiles * style.WidthScale,
-                tileSize * VehicleBodyHeightTiles);
+            vehicle.Object.transform.localScale =
+                vehicle.UsesAuthoredVisual
+                    ? Vector3.one *
+                      (tileSize *
+                       VehicleBodyLengthTiles)
+                    : new Vector3(
+                        tileSize *
+                        VehicleBodyLengthTiles,
+                        tileSize *
+                        VehicleBodyWidthTiles *
+                        style.WidthScale,
+                        tileSize *
+                        VehicleBodyHeightTiles);
 
             Color body = CarStyle.Palette[style.ColorIndex];
-            if (vehicle.Renderer != null)
+            if (!vehicle.UsesAuthoredVisual &&
+                vehicle.Renderer != null)
             {
                 ApplyRendererColor(vehicle.Renderer, body);
             }
@@ -2795,6 +3963,18 @@ namespace CityFlow.View
 
         private static void SetVehicleRenderersEnabled(RouteVehicle vehicle, bool enabled)
         {
+            if (vehicle.Renderers != null)
+            {
+                for (int i = 0; i < vehicle.Renderers.Length; i++)
+                {
+                    if (vehicle.Renderers[i] != null)
+                    {
+                        vehicle.Renderers[i].enabled = enabled;
+                    }
+                }
+                return;
+            }
+
             if (vehicle.Renderer != null)
             {
                 vehicle.Renderer.enabled = enabled;
@@ -2990,7 +4170,7 @@ namespace CityFlow.View
             if (e.Type == TileType.Road)
             {
                 RefreshBuildingOrientations();
-                RefreshRoadCenterLinesAround(e.Tile);
+                RefreshRoadVisualsAround(e.Tile);
             }
             RefreshSignals();
         }
@@ -3035,7 +4215,7 @@ namespace CityFlow.View
             for (int i = 0; i < coinPopFlushBuffer.Count; i++)
             {
                 Vector2Int tile = coinPopFlushBuffer[i];
-                FlushPendingCoinPop(tile, transform.TransformPoint(GridToLocal(tile, vehicleZ)));
+                FlushPendingCoinPop(tile, transform.TransformPoint(GridToLocal(tile, VehicleGroundZ)));
             }
         }
 
@@ -3054,7 +4234,7 @@ namespace CityFlow.View
             for (int i = 0; i < coinPopFlushBuffer.Count; i++)
             {
                 Vector2Int tile = coinPopFlushBuffer[i];
-                FlushPendingCoinPop(tile, transform.TransformPoint(GridToLocal(tile, vehicleZ)));
+                FlushPendingCoinPop(tile, transform.TransformPoint(GridToLocal(tile, VehicleGroundZ)));
             }
         }
 
@@ -3148,7 +4328,7 @@ namespace CityFlow.View
 
         public Vector3 GetFlowBurstAnchor(Vector2Int tile, out Transform targetVehicle)
         {
-            Vector3 tileCenter = transform.TransformPoint(GridToLocal(tile, vehicleZ));
+            Vector3 tileCenter = transform.TransformPoint(GridToLocal(tile, VehicleGroundZ));
             RouteVehicle bestVehicle = null;
             int bestPriority = int.MaxValue;
             float bestDistanceSqr = float.MaxValue;
@@ -3198,6 +4378,47 @@ namespace CityFlow.View
                 (localTile.x + 0.5f) * tileSize,
                 (localTile.y + 0.5f) * tileSize,
                 z);
+        }
+
+        public Vector3 GetSpecialBuildingParkingPosition(
+            Vector2Int building,
+            float groundZ)
+        {
+            if (tileVisuals.TryGetValue(
+                    building,
+                    out TileVisual visual))
+            {
+                Transform slot =
+                    visual.Object.transform.Find("ParkingSlot_0");
+                if (slot != null)
+                {
+                    Vector3 local =
+                        transform.InverseTransformPoint(
+                            slot.position);
+                    local.z = groundZ;
+                    return local;
+                }
+            }
+
+            Vector3 center =
+                FootprintToLocal(
+                    building,
+                    TileType.Hospital);
+            Vector3 forward =
+                GetSpecialBuildingParkingRotation(building) *
+                Vector3.right;
+            center += forward * (tileSize * 0.28f);
+            center.z = groundZ;
+            return center;
+        }
+
+        public Quaternion GetSpecialBuildingParkingRotation(
+            Vector2Int building)
+        {
+            return GetRoadFacingRotation(
+                       building,
+                       TileType.Hospital) *
+                   Quaternion.Euler(0f, 0f, 90f);
         }
 
         private Vector2Int WorldToGrid(Vector3 world)

@@ -98,7 +98,14 @@ namespace CityFlow.UI.Controllers.Placement
         public void SetGhostActive(bool active)
         {
             _ghostActive = active;
-            if (_ghostRenderer != null) _ghostRenderer.gameObject.SetActive(active);
+            bool footprintGhostActive =
+                active &&
+                _buildingPreviewObject == null;
+            if (_ghostRenderer != null)
+            {
+                _ghostRenderer.gameObject.SetActive(
+                    footprintGhostActive);
+            }
             bool volumeActive =
                 active &&
                 _buildingPreviewObject == null;
@@ -134,7 +141,8 @@ namespace CityFlow.UI.Controllers.Placement
             _buildingPreviewRenderers =
                 ConfigurePreviewObject(
                     _buildingPreviewObject,
-                    previewMaterial);
+                    previewMaterial,
+                    preserveSourceMaterials: true);
 
             UpdateBuildingPreviewColor(canPlace: true);
             _buildingPreviewObject.SetActive(_ghostActive);
@@ -219,7 +227,8 @@ namespace CityFlow.UI.Controllers.Placement
             float angle,
             bool useXYPlane,
             IWorldCoordinateSpace coordinateSpace = null,
-            Vector3? buildingPreviewPosition = null)
+            Vector3? buildingPreviewPosition = null,
+            Quaternion? buildingPreviewRotation = null)
         {
             if (_ghostRenderer != null)
             {
@@ -261,13 +270,15 @@ namespace CityFlow.UI.Controllers.Placement
             SyncPlacementRotation(
                 angle,
                 useXYPlane,
-                coordinateSpace);
+                coordinateSpace,
+                buildingPreviewRotation);
         }
 
         public void SyncPlacementRotation(
             float angle,
             bool useXYPlane,
-            IWorldCoordinateSpace coordinateSpace = null)
+            IWorldCoordinateSpace coordinateSpace = null,
+            Quaternion? buildingPreviewRotation = null)
         {
             Quaternion placementRotation =
                 GetPlacementRotation(
@@ -283,6 +294,7 @@ namespace CityFlow.UI.Controllers.Placement
             if (_buildingPreviewObject != null)
             {
                 _buildingPreviewObject.transform.rotation =
+                    buildingPreviewRotation ??
                     placementRotation;
             }
 
@@ -500,7 +512,8 @@ namespace CityFlow.UI.Controllers.Placement
 
         internal static Renderer[] ConfigurePreviewObject(
             GameObject preview,
-            Material previewMaterial)
+            Material previewMaterial,
+            bool preserveSourceMaterials = false)
         {
             if (preview == null)
             {
@@ -544,6 +557,11 @@ namespace CityFlow.UI.Controllers.Placement
                 renderer.shadowCastingMode =
                     ShadowCastingMode.Off;
                 renderer.receiveShadows = false;
+
+                if (preserveSourceMaterials)
+                {
+                    continue;
+                }
 
                 Material[] materials =
                     renderer.sharedMaterials;

@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b388cf987884895b609ddd2d78798c7, type: 3}
+  m_Name: VehicleVisualCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.VehicleVisualCatalogSO
+  normalVehiclePrefabs:
+  - {fileID: 8919059357614715841, guid: b72cdee0c64e7b0478d5b0f379e07620, type: 3}
+  - {fileID: 3589972243127033167, guid: 79bc17b738cfc7248a2b102c078302bf, type: 3}
+  - {fileID: 1657705100251747273, guid: cd346628aace1144da864340a2cbe309, type: 3}
+  - {fileID: 781651440220308794, guid: 54d568a8610bd8f4598b3647bc5a27a6, type: 3}
+  - {fileID: 7188634673893658010, guid: 580e5819e7fba9a449b79cc3780d8f6c, type: 3}
+  - {fileID: 8193615858807720791, guid: b852d6291fd602d49996b3a1ab0f2c74, type: 3}
+  - {fileID: 7089760379820861134, guid: 15a55154e87330942b68360564910f2c, type: 3}
+  - {fileID: 7479497751801279423, guid: 97da9a8a1cb153c478388c24eb4b842d, type: 3}
+  - {fileID: 3021570576943108497, guid: 44814d20080806a4d88a00f8345cdc0d, type: 3}
+  - {fileID: 5717443973268886694, guid: aa79c029560c7eb488faea1fb652a808, type: 3}
+  schoolBusPrefab: {fileID: 507465280799779415, guid: b9cde52db3d85b44899e2599988b0cd0, type: 3}
+  ambulancePrefab: {fileID: 2694572219059838977, guid: c3328895cefea8f4b9cc2ffaf5dba78a, type: 3}
+  cityBusPrefabs:
+  - {fileID: 6580392121705665235, guid: 2983ffe6c0f97e145981eb258a71bbe9, type: 3}
+  - {fileID: 3289534361220667574, guid: b3383e08a46f0f843afe03e1798682fb, type: 3}
+  - {fileID: 202566429398366645, guid: 073b93a2d64f93942ac11f81e7d40cda, type: 3}
+  generatedVersion: 2

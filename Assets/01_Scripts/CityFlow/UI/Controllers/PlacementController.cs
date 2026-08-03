@@ -62,6 +62,8 @@ namespace CityFlow.UI
         private PlacementInputHandler _inputHandler;
         private PlacementVisualManager _visualManager;
         private PlacementCostLabelManager _costLabelManager;
+        private MainCityView _cityView;
+        private Vector2Int? _lastModelPreviewCoord;
 
         public Func<bool> IsBuildMenuOpen { get; set; }
 
@@ -128,6 +130,7 @@ namespace CityFlow.UI
             _currentSpecialBuildingId = string.Empty;
             _currentCompanyTypeId = string.Empty;
             _currentDirection = PlacementDirection.North;
+            _lastModelPreviewCoord = null;
 
             _costLabelManager.ResetState();
             _visualManager.HideBenefitHighlights();
@@ -170,6 +173,7 @@ namespace CityFlow.UI
             _currentSpecialBuildingId = normalizedId;
             _currentCompanyTypeId = string.Empty;
             _currentDirection = PlacementDirection.North;
+            _lastModelPreviewCoord = null;
             _visualManager.SetBuildingPreview(null);
 
             if (normalizedId.Length == 0 ||
@@ -329,6 +333,12 @@ namespace CityFlow.UI
                 return;
             }
 
+            if (!_lastModelPreviewCoord.HasValue ||
+                _lastModelPreviewCoord.Value != gridCoord)
+            {
+                UpdateBuildingModelPreview(gridCoord);
+            }
+
             _inputHandler.UpdatePlacementInput(canPlace, gridCoord);
 
             _visualManager.SetGhostActive(true);
@@ -341,13 +351,16 @@ namespace CityFlow.UI
                 GetBuildingPreviewPosition(
                     gridCoord,
                     rotatedSize);
+            Quaternion? buildingPreviewRotation =
+                GetBuildingPreviewRotation(gridCoord);
 
             _visualManager.SyncGhostPosition(
                 ghostPos,
                 TileFootprint.ToAngle(_currentDirection),
                 useXYPlane,
                 coordinateSpace,
-                buildingPreviewPos);
+                buildingPreviewPos,
+                buildingPreviewRotation);
             _visualManager.UpdateColors(canPlace);
             _visualManager.UpdateBenefitPreview(gridCoord, _currentType, useXYPlane, _services);
 
@@ -391,7 +404,7 @@ namespace CityFlow.UI
                 _services,
                 _currentSpecialBuildingId,
                 _currentCompanyTypeId);
-
+            _lastModelPreviewCoord = null;
             if (placed && _currentType != TileType.Road)
             {
                 CancelPlacement();
@@ -413,6 +426,8 @@ namespace CityFlow.UI
                 cursor.y += Math.Sign(to.y - cursor.y);
                 TryPlaceDragTile(cursor);
             }
+
+            _lastModelPreviewCoord = null;
         }
 
         private void TryPlaceDragTile(Vector2Int coord)
@@ -514,7 +529,8 @@ namespace CityFlow.UI
                 overrideSprite);
         }
 
-        private void UpdateBuildingModelPreview()
+        private void UpdateBuildingModelPreview(
+            Vector2Int? previewTile = null)
         {
             if (_visualManager == null ||
                 (!TileFootprint.IsBuilding(_currentType) &&
@@ -536,19 +552,31 @@ namespace CityFlow.UI
             }
             else
             {
-                MainCityView cityView =
+                _cityView ??=
                     FindAnyObjectByType<MainCityView>(
                         FindObjectsInactive.Include);
-                cityView?.TryCreatePlacementPreview(
-                    _currentType,
-                    out preview);
+                if (previewTile.HasValue)
+                {
+                    _cityView?.TryCreatePlacementPreview(
+                        previewTile.Value,
+                        _currentType,
+                        out preview);
+                }
+                else
+                {
+                    _cityView?.TryCreatePlacementPreview(
+                        _currentType,
+                        out preview);
+                }
             }
 
             _visualManager.SetBuildingPreview(preview);
+            _lastModelPreviewCoord = previewTile;
         }
 
         public const float EmptyGroundMarkerZ = 0.12f;
         public const float RoadSurfaceMarkerZ = -0.05f;
+        public const float OverlappingPreviewOffset = 0.01f;
 
         public float GetSurfaceMarkerZ(Vector2Int gridCoord)
         {
@@ -594,6 +622,36 @@ namespace CityFlow.UI
             Vector2Int gridCoord,
             Vector2Int footprintSize)
         {
+            if (_currentType != TileType.SpecialBuilding)
+            {
+                _cityView ??=
+                    FindAnyObjectByType<MainCityView>(
+                        FindObjectsInactive.Include);
+                if (_cityView != null)
+                {
+                    Vector3 position = _cityView
+                        .GetPlacementPreviewWorldPosition(
+                            gridCoord,
+                            _currentType);
+                    if (DoesPreviewOverlapExistingTiles(
+                            gridCoord,
+                            footprintSize))
+                    {
+                        Vector3 surfaceNormal =
+                            _services?.WorldCoordinates
+                                ?.GroundNormal ??
+                            (useXYPlane
+                                ? Vector3.back
+                                : Vector3.up);
+                        position +=
+                            surfaceNormal.normalized *
+                            OverlappingPreviewOffset;
+                    }
+
+                    return position;
+                }
+            }
+
             Vector2Int size = new Vector2Int(
                 Mathf.Max(1, footprintSize.x),
                 Mathf.Max(1, footprintSize.y));
@@ -614,6 +672,53 @@ namespace CityFlow.UI
             return useXYPlane
                 ? new Vector3(centerX, centerY, -0.02f)
                 : new Vector3(centerX, 0.02f, centerY);
+        }
+
+        private bool DoesPreviewOverlapExistingTiles(
+            Vector2Int gridCoord,
+            Vector2Int footprintSize)
+        {
+            if (_services?.TileData == null)
+            {
+                return false;
+            }
+
+            int width = Mathf.Max(1, footprintSize.x);
+            int height = Mathf.Max(1, footprintSize.y);
+            for (int x = 0; x < width; x++)
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    if (_services.TileData.GetTileType(
+                            gridCoord +
+                            new Vector2Int(x, y)) !=
+                        TileType.Empty)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private Quaternion? GetBuildingPreviewRotation(
+            Vector2Int gridCoord)
+        {
+            if (_currentType == TileType.SpecialBuilding)
+            {
+                return null;
+            }
+
+            _cityView ??=
+                FindAnyObjectByType<MainCityView>(
+                    FindObjectsInactive.Include);
+            return _cityView != null
+                ? _cityView.GetPlacementPreviewWorldRotation(
+                    gridCoord,
+                    _currentType,
+                    _currentDirection)
+                : null;
         }
     }
 }

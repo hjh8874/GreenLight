@@ -576,7 +576,7 @@ namespace CityFlow.View
         {
             return BakeTrafficRoute(
                 tiles,
-                vehicleZ,
+                VehicleGroundZ,
                 startAnchor,
                 endAnchor);
         }
@@ -595,8 +595,8 @@ namespace CityFlow.View
                 }
             }
 
-            Vector3 center = GridToLocal(building, vehicleZ);
-            Vector3 toRoad = (GridToLocal(frontageRoad, vehicleZ) - center).normalized;
+            Vector3 center = GridToLocal(building, VehicleGroundZ);
+            Vector3 toRoad = (GridToLocal(frontageRoad, VehicleGroundZ) - center).normalized;
             Vector3 side = new Vector3(toRoad.y, -toRoad.x, 0f);
             Vector2 offset = PolylineMath.ParkingSlotOffset(slotIndex, slotCount, parkingSlotInset);
             return center + toRoad * (tileSize * offset.x)
@@ -797,15 +797,7 @@ namespace CityFlow.View
                 vehicle.BrakeLight.SetActive(false);   // 하드 리셋(캐시 가드 우회) — 풀 재사용 desync 방지
             }
             HideJamMarks(vehicle);
-            if (vehicle.Renderer != null)
-            {
-                vehicle.Renderer.enabled = true;
-            }
-
-            if (vehicle.DetailRenderer != null)
-            {
-                vehicle.DetailRenderer.enabled = true;
-            }
+            SetVehicleRenderersEnabled(vehicle, true);
 
             vehicle.Object.SetActive(true);
         }

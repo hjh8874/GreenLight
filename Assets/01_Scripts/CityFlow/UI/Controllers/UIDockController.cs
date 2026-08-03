@@ -225,19 +225,16 @@ namespace CityFlow.UI
             if (panelStats != null) panelStats.SetActive(_currentMenu == MenuType.Stats);
             if (panelSettings != null) panelSettings.SetActive(_currentMenu == MenuType.Settings);
             if (panelFloating != null) panelFloating.SetActive(_currentMenu == MenuType.Floating);
-            if (_currentMenu != MenuType.Build)
+            var infraCoord = UnityEngine.Object.FindFirstObjectByType<CityFlow.UI.Controllers.InfrastructurePlacementCoordinator>();
+            if (infraCoord != null)
             {
-                var infraCoord = UnityEngine.Object.FindFirstObjectByType<CityFlow.UI.Controllers.InfrastructurePlacementCoordinator>();
-                if (infraCoord != null)
-                {
-                    infraCoord.CancelPlacement();
-                }
+                infraCoord.CancelPlacement();
             }
 
-            // 건설 패널이 열렸을 때만 고스트 모드를 켜고, 닫히면 고스트 모드도 강제 종료(Sync)합니다.
+            // 메뉴 전환 시 선택을 비우고, 실제 배치 모드는 건설 피스를 누를 때 시작합니다.
             if (placementController != null)
             {
-                placementController.ToggleBuildMode(_currentMenu == MenuType.Build);
+                placementController.ToggleBuildMode(false);
             }
         }
     }

@@ -319,6 +319,13 @@ namespace CityFlow.View
             }
         }
 
+        private float GetVisualSurfaceDepth()
+        {
+            return cityView != null
+                ? cityView.VehicleGroundZ
+                : visualDepth;
+        }
+
         private void ApplyFeatureMaterial(GameObject instance)
         {
             if (busMaterial == null)
@@ -583,6 +590,7 @@ namespace CityFlow.View
                 return roadPolyline != null;
             }
 
+            float surfaceDepth = GetVisualSurfaceDepth();
             int hash = 17;
             int roadCount = 0;
             bool foundRoad = false;
@@ -610,7 +618,7 @@ namespace CityFlow.View
             {
                 hash = hash * 31 + cityView.TileSize.GetHashCode();
                 hash = hash * 31 + cityView.LaneOffset.GetHashCode();
-                hash = hash * 31 + visualDepth.GetHashCode();
+                hash = hash * 31 + surfaceDepth.GetHashCode();
                 hash = hash * 31 +
                        cityView.CornerTurnRadiusFraction.GetHashCode();
                 hash = hash * 31 +
@@ -672,7 +680,7 @@ namespace CityFlow.View
                 OrbitRadius = cityView.RoundaboutOrbitRadiusTiles,
                 EntryExitOffsetRad = cityView.RoundaboutEntryExitRadians,
                 TransitionLength = cityView.RoundaboutTransitionSpanTiles,
-                Z = visualDepth,
+                Z = surfaceDepth,
                 IsRoundabout = cityView.IsRoundaboutRoadTile,
                 SamplesPerSegment = 8
             });
@@ -783,7 +791,7 @@ namespace CityFlow.View
                 return false;
             }
 
-            localPosition.z = visualDepth;
+            localPosition.z = GetVisualSurfaceDepth();
             forward = new Vector2(
                 localForward.x,
                 localForward.y).normalized;
@@ -827,8 +835,7 @@ namespace CityFlow.View
         {
             float angle = Mathf.Atan2(direction.y, direction.x) *
                           Mathf.Rad2Deg;
-            return Quaternion.Euler(0f, 0f, angle + 90f) *
-                   Quaternion.Euler(90f, 0f, 0f);
+            return Quaternion.Euler(0f, 0f, angle);
         }
 
         private static Vector3 EvaluateQuadraticPoint(

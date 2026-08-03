@@ -20,6 +20,8 @@ namespace CityFlow.DebugTools
         [SerializeField] private GameObject stationPrefab;
         [SerializeField] private Material stationMaterial;
         [SerializeField] private float visualDepth = -0.24f;
+        [SerializeField] private Vector2 stationFootprint =
+            new(0.65f, 0.32f);
 
         private Transform markerRoot;
         private IReadOnlyTileData tileData;
@@ -125,26 +127,35 @@ namespace CityFlow.DebugTools
 
         private void CreateMarkerPair(Vector2Int tile, int number)
         {
-            CreateMarker(
-                tile,
-                $"BusStop_{number:00}_A_{tile.x}_{tile.y}");
-
             if (tileData != null &&
                 BusStopInfrastructurePolicy.TryGetPlatformPair(
                     tile,
                     IsRoad,
-                    out _,
+                    out Vector2Int accessRoad,
                     out Vector2Int oppositePlatform))
             {
                 CreateMarker(
+                    tile,
+                    accessRoad,
+                    $"BusStop_{number:00}_A_{tile.x}_{tile.y}");
+
+                CreateMarker(
                     oppositePlatform,
+                    accessRoad,
                     $"BusStop_{number:00}_B_" +
                     $"{oppositePlatform.x}_{oppositePlatform.y}");
+                return;
             }
+
+            CreateMarker(
+                tile,
+                tile + Vector2Int.up,
+                $"BusStop_{number:00}_A_{tile.x}_{tile.y}");
         }
 
         private void CreateMarker(
             Vector2Int tile,
+            Vector2Int accessRoad,
             string objectName)
         {
             GameObject station = CreateStationVisual(
@@ -155,18 +166,27 @@ namespace CityFlow.DebugTools
             stationTransform.localPosition = new Vector3(
                 localTile.x + 0.5f,
                 localTile.y + 0.5f,
-                visualDepth);
+                cityView != null
+                    ? cityView.RoadSurfaceZ
+                    : visualDepth);
+            stationTransform.localRotation =
+                GetStationFacingRotation(
+                    tile,
+                    accessRoad);
         }
 
         public bool TryCreatePlacementPreview(
             out GameObject preview)
         {
-            preview = CreateStationVisual(
-                null,
+            preview = new GameObject(
                 "PlacementPreview_BusStop");
-            preview.transform.localPosition =
+            GameObject primaryVisual =
+                CreateStationVisual(
+                    preview.transform,
+                    "PrimaryPlatform");
+            primaryVisual.transform.localPosition =
                 Vector3.zero;
-            preview.transform.localRotation =
+            primaryVisual.transform.localRotation =
                 Quaternion.identity;
             return true;
         }
@@ -180,10 +200,21 @@ namespace CityFlow.DebugTools
                 !BusStopInfrastructurePolicy.TryGetPlatformPair(
                     tile,
                     IsRoad,
-                    out _,
+                    out Vector2Int accessRoad,
                     out Vector2Int oppositePlatform))
             {
                 return preview != null;
+            }
+
+            Quaternion previewRotation =
+                GetStationFacingRotation(
+                    tile,
+                    accessRoad);
+            Transform primaryVisual =
+                preview.transform.Find("PrimaryPlatform");
+            if (primaryVisual != null)
+            {
+                primaryVisual.localRotation = previewRotation;
             }
 
             GameObject oppositeVisual = CreateStationVisual(
@@ -197,7 +228,28 @@ namespace CityFlow.DebugTools
                 offset.x * tileSize,
                 offset.y * tileSize,
                 0f);
+            oppositeVisual.transform.localRotation =
+                GetStationFacingRotation(
+                    oppositePlatform,
+                    accessRoad);
             return true;
+        }
+
+        private static Quaternion GetStationFacingRotation(
+            Vector2Int platform,
+            Vector2Int accessRoad)
+        {
+            Vector2Int towardRoad = accessRoad - platform;
+            if (towardRoad == Vector2Int.zero)
+            {
+                return Quaternion.identity;
+            }
+
+            float angle = Mathf.Atan2(
+                              towardRoad.y,
+                              towardRoad.x) *
+                          Mathf.Rad2Deg - 90f;
+            return Quaternion.Euler(0f, 0f, angle);
         }
 
         private bool IsRoad(Vector2Int tile) =>
@@ -210,10 +262,18 @@ namespace CityFlow.DebugTools
         {
             if (stationPrefab != null)
             {
-                GameObject instance =
-                    Instantiate(stationPrefab, parent);
-                instance.name = objectName;
-                return instance;
+                var authoredStation = new GameObject(objectName);
+                authoredStation.transform.SetParent(parent, false);
+
+                GameObject model =
+                    Instantiate(
+                        stationPrefab,
+                        authoredStation.transform);
+                model.name = "BusStopModel";
+                FitStationPrefab(
+                    model.transform,
+                    authoredStation.transform);
+                return authoredStation;
             }
 
             var station = new GameObject(objectName);
@@ -237,6 +297,84 @@ namespace CityFlow.DebugTools
                 new Vector3(0f, 0f, 0.02f),
                 new Vector3(0.52f, 0.34f, 0.04f));
             return station;
+        }
+
+        private void FitStationPrefab(
+            Transform model,
+            Transform relativeTo)
+        {
+            model.localPosition = Vector3.zero;
+            model.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            model.localScale = Vector3.one;
+
+            if (!TryGetRendererBounds(
+                    model.gameObject,
+                    relativeTo,
+                    out Bounds sourceBounds))
+            {
+                return;
+            }
+
+            float scale = Mathf.Min(
+                stationFootprint.x /
+                    Mathf.Max(0.0001f, sourceBounds.size.x),
+                stationFootprint.y /
+                    Mathf.Max(0.0001f, sourceBounds.size.y));
+            model.localScale = Vector3.one * scale;
+
+            if (!TryGetRendererBounds(
+                    model.gameObject,
+                    relativeTo,
+                    out Bounds fittedBounds))
+            {
+                return;
+            }
+
+            model.localPosition = new Vector3(
+                -fittedBounds.center.x,
+                -fittedBounds.center.y,
+                -fittedBounds.max.z);
+        }
+
+        private static bool TryGetRendererBounds(
+            GameObject root,
+            Transform relativeTo,
+            out Bounds bounds)
+        {
+            bounds = default;
+            bool hasBounds = false;
+            Renderer[] renderers =
+                root.GetComponentsInChildren<Renderer>(true);
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                Bounds localBounds = renderer.localBounds;
+                Vector3 min = localBounds.min;
+                Vector3 max = localBounds.max;
+
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 point = new Vector3(
+                        (corner & 1) == 0 ? min.x : max.x,
+                        (corner & 2) == 0 ? min.y : max.y,
+                        (corner & 4) == 0 ? min.z : max.z);
+                    point = relativeTo.InverseTransformPoint(
+                        renderer.transform.TransformPoint(point));
+
+                    if (!hasBounds)
+                    {
+                        bounds = new Bounds(point, Vector3.zero);
+                        hasBounds = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(point);
+                    }
+                }
+            }
+
+            return hasBounds;
         }
 
         private void CreatePart(
