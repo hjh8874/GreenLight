@@ -11,16 +11,16 @@ using UnityEngine.UI;
 
 namespace CityFlow.UI
 {
-    // 연구 패널 — 전제 깊이를 열, 루트 갈래를 행으로 하는 좌→우 트리.
-    public sealed class ResearchPanelController : MonoBehaviour, ICityFlowServiceConsumer
+    // 연구 패널 — 카테고리를 열, 연구 순서를 행으로 하는 상→하 목록.
+    public sealed partial class ResearchPanelController : MonoBehaviour, ICityFlowServiceConsumer
     {
-        private const float CellWidth = 220f;
-        private const float CellHeight = 72f;
-        private const float ColumnGap = 54f;
-        private const float RowGap = 18f;
-        private const float ConnectorThickness = 3f;
-        private const float HeaderHeight = 96f;
-        private const float PanelPadding = 24f;
+        private const float CellWidth = 226f;
+        private const float CellHeight = 88f;
+        private const float ColumnGap = 18f;
+        private const float RowGap = 12f;
+        private const float ConnectorThickness = 4f;
+        private const float HeaderHeight = 148f;
+        private const float PanelPadding = 20f;
 
         [SerializeField] private ResearchCatalogSO catalog;
         [SerializeField] private GameObject rowTemplate;
@@ -35,6 +35,9 @@ namespace CityFlow.UI
             public TMP_Text NameText;
             public TMP_Text ProgressText;
             public TMP_Text StateText;
+            public TMP_Text CategoryText;
+            public Image AccentImage;
+            public Image StateBadgeImage;
             public bool IsUnlocked;
             public bool IsReady;
             public bool IsResearching;
@@ -58,6 +61,7 @@ namespace CityFlow.UI
             services = cityServices;
             if (services == null) return;
             if (catalog == null) catalog = ResearchCatalogSO.LoadDefault();
+            EnsureCatalogPresentation();
 
             BindResearch(services.Research);
             BindEconomy(services.Economy);
@@ -72,6 +76,7 @@ namespace CityFlow.UI
             }
 
             BuildRows();
+            InitializeCatalogPresentation();
             RefreshAll();
         }
 
@@ -81,15 +86,14 @@ namespace CityFlow.UI
             // 해당 패널이 bootstrap 초기화 순서에서 새 연결을 되돌리지 않게 건너뛴다.
             if (catalog == null || rowTemplate == null) return;
 
-            UIDockController dock = FindFirstObjectByType<UIDockController>(FindObjectsInactive.Include);
+            UIDockController dock = FindAnyObjectByType<UIDockController>(FindObjectsInactive.Include);
             if (dock != null)
             {
                 dock.RebindResearchPanel(gameObject);
             }
 
             ResearchPanelController[] panels = FindObjectsByType<ResearchPanelController>(
-                FindObjectsInactive.Include,
-                FindObjectsSortMode.None);
+                FindObjectsInactive.Include);
             int disabledCount = 0;
             for (int i = 0; i < panels.Length; i++)
             {
@@ -108,7 +112,11 @@ namespace CityFlow.UI
         }
 
         private void OnEnable() => RefreshAll();
-        private void OnDestroy() => Unbind();
+        private void OnDestroy()
+        {
+            ReleaseCatalogPresentation();
+            Unbind();
+        }
 
         private void Unbind()
         {
@@ -192,6 +200,11 @@ namespace CityFlow.UI
                 Image card = instance.GetComponent<Image>() ?? instance.AddComponent<Image>();
                 Button button = instance.GetComponent<Button>() ?? instance.AddComponent<Button>();
                 button.targetGraphic = card;
+                Outline outline = instance.GetComponent<Outline>() ?? instance.AddComponent<Outline>();
+                outline.effectColor = new Color(0.55f, 0.62f, 0.72f, 0.85f);
+                outline.effectDistance = new Vector2(2f, -2f);
+                outline.useGraphicAlpha = true;
+                ConfigureResearchCard(row);
                 string id = entries[i].researchId;
                 button.onClick.RemoveAllListeners();
                 button.onClick.AddListener(() =>
@@ -205,6 +218,7 @@ namespace CityFlow.UI
                 rows.Add(row);
             }
             LayoutRows(byId);
+            ApplyCatalogSelection();
         }
 
         private void RefreshAll()
@@ -227,18 +241,31 @@ namespace CityFlow.UI
                     row.ProgressText.text = CreateProgressText(row, inputs);
                 if (row.StateText != null)
                     row.StateText.text = CreateStateText(row);
+                ApplyReadableTextColors(row);
+                RefreshResearchCardVisual(row);
                 CanvasGroup group = row.Instance.GetComponent<CanvasGroup>();
                 if (group == null) group = row.Instance.AddComponent<CanvasGroup>();
                 group.alpha =
                     row.IsUnlocked || row.IsReady || row.IsResearching
                         ? 1f
-                        : 0.85f;
+                        : 0.92f;
                 Image card = row.Instance.GetComponent<Image>();
                 if (card != null)
-                    card.color = row.IsUnlocked ? new Color(0.13f, 0.27f, 0.17f)     // 완료 = 녹색톤
-                        : row.IsResearching ? new Color(0.10f, 0.24f, 0.38f)         // 연구 중 = 청색톤
-                        : row.IsReady ? new Color(0.36f, 0.31f, 0.12f)               // 해금 가능 = 황색톤
-                        : new Color(0.21f, 0.22f, 0.26f);                            // 잠김 = 밝은 회색톤(배경과 구분)
+                    card.color = row.IsUnlocked ? new Color(0.16f, 0.38f, 0.22f)     // 완료 = 녹색톤
+                        : row.IsResearching ? new Color(0.14f, 0.34f, 0.54f)         // 연구 중 = 청색톤
+                        : row.IsReady ? new Color(0.58f, 0.43f, 0.10f)               // 해금 가능 = 황색톤
+                        : new Color(0.22f, 0.27f, 0.35f);                            // 잠김 = 배경과 구분되는 회색톤
+                Outline outline = row.Instance.GetComponent<Outline>();
+                if (outline != null)
+                {
+                    outline.effectColor = row.IsUnlocked
+                        ? new Color(0.32f, 0.84f, 0.44f, 0.90f)
+                        : row.IsResearching
+                            ? new Color(0.28f, 0.70f, 1f, 0.90f)
+                            : row.IsReady
+                                ? new Color(1f, 0.78f, 0.18f, 0.95f)
+                                : new Color(0.58f, 0.65f, 0.76f, 0.80f);
+                }
                 Button button = row.Instance.GetComponent<Button>();
                 if (button != null)
                 {
@@ -248,10 +275,27 @@ namespace CityFlow.UI
                         CanAfford(row.Entry);
                 }
             }
+            RefreshCatalogPresentation();
             UpdateConnectorColors();
             if (yesterdayArrivalsText != null) yesterdayArrivalsText.text = $"어제 도착 {arrivals}";
-            if (populationText != null) populationText.text = $"인구 {population}";
-            if (unlockProgressText != null) unlockProgressText.text = $"해금 {unlockedCount}/{rows.Count}";
+            RefreshCatalogSummary(unlockedCount, population);
+        }
+
+        private static void ApplyReadableTextColors(Row row)
+        {
+            if (row.NameText != null)
+                row.NameText.color = Color.white;
+            if (row.ProgressText != null)
+                row.ProgressText.color = new Color(0.86f, 0.90f, 0.96f, 1f);
+            if (row.StateText == null) return;
+
+            row.StateText.color = row.IsUnlocked
+                ? new Color(0.48f, 1f, 0.60f, 1f)
+                : row.IsResearching
+                    ? new Color(0.48f, 0.84f, 1f, 1f)
+                    : row.IsReady
+                        ? new Color(1f, 0.88f, 0.34f, 1f)
+                        : new Color(0.76f, 0.80f, 0.88f, 1f);
         }
 
         private string CreateProgressText(
@@ -260,7 +304,7 @@ namespace CityFlow.UI
         {
             if (row.IsUnlocked)
             {
-                return string.Empty;
+                return "연구 완료 · 건설 가능";
             }
 
             if (row.IsResearching)
@@ -313,10 +357,10 @@ namespace CityFlow.UI
                 row.Entry.researchDurationHours);
             if (cost == 0 && duration == 0)
             {
-                return "즉시 해금";
+                return "연구 가능";
             }
 
-            return $"연구 시작 · {cost:N0} · {duration}시간";
+            return $"연구 가능 · {cost:N0} · {duration}시간";
         }
 
         private bool CanAfford(ResearchEntry entry)
@@ -354,10 +398,14 @@ namespace CityFlow.UI
                 rect.anchorMax = new Vector2(0f, 1f);
                 rect.pivot = new Vector2(0f, 1f);
                 rect.sizeDelta = new Vector2(CellWidth, CellHeight);
-                // 패널 좌상단 기준: 좌우 패딩 + 헤더 아래부터 그린다
+                // 패널 좌상단 기준: 카테고리는 가로, 연구 순서는 아래로 배치한다.
                 rect.anchoredPosition = new Vector2(
-                    PanelPadding + rows[i].Depth * (CellWidth + ColumnGap),
-                    -(HeaderHeight + PanelPadding) - rows[i].Branch * (CellHeight + RowGap));
+                    PanelPadding +
+                    GetOverallCategoryColumn(rows[i].Entry.category) *
+                    (CellWidth + ColumnGap),
+                    -(HeaderHeight + PanelPadding) -
+                    GetOverallCategoryListIndex(rows[i]) *
+                    (CellHeight + RowGap));
             }
 
             var rowById = new Dictionary<string, Row>(StringComparer.Ordinal);
@@ -386,18 +434,22 @@ namespace CityFlow.UI
             RectTransform panel = GetComponent<RectTransform>();
             if (panel == null) return;
 
-            int columnCount = 0;
-            int branchCount = 0;
+            int columnCount = rows.Count > 0 ? 3 : 0;
+            int[] categoryCounts = new int[3];
             for (int i = 0; i < rows.Count; i++)
             {
-                columnCount = Mathf.Max(columnCount, rows[i].Depth + 1);
-                branchCount = Mathf.Max(branchCount, rows[i].Branch + 1);
+                int categoryColumn =
+                    GetOverallCategoryColumn(rows[i].Entry.category);
+                categoryCounts[categoryColumn]++;
             }
+            int rowCount = Mathf.Max(
+                categoryCounts[0],
+                Mathf.Max(categoryCounts[1], categoryCounts[2]));
             float gridWidth = columnCount * CellWidth + Mathf.Max(0, columnCount - 1) * ColumnGap;
-            float gridHeight = branchCount * CellHeight + Mathf.Max(0, branchCount - 1) * RowGap;
+            float gridHeight = rowCount * CellHeight + Mathf.Max(0, rowCount - 1) * RowGap;
             panel.pivot = new Vector2(0.5f, 0.5f);
             panel.sizeDelta = new Vector2(
-                gridWidth + PanelPadding * 2f,
+                Mathf.Max(756f, gridWidth + PanelPadding * 2f),
                 HeaderHeight + gridHeight + PanelPadding * 2f);
             // 부모(우측 독 서브패널)가 어디에 있든 화면 중앙 — 오버레이 캔버스는 픽셀 좌표
             panel.position = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f);
@@ -421,22 +473,12 @@ namespace CityFlow.UI
             EnsureBackground(panel);
         }
 
-        // 헤더 3줄(어제 도착·인구·해금)을 패널 좌상단 패딩 안에 고정한다.
+        // 기존 프리팹 헤더를 새 카탈로그 요약 헤더 안에 재배치한다.
         private void LayoutHeader(RectTransform panel)
         {
-            TMP_Text[] headers = { yesterdayArrivalsText, populationText, unlockProgressText };
-            for (int i = 0; i < headers.Length; i++)
-            {
-                if (headers[i] == null) continue;
-                var rect = headers[i].rectTransform;
-                rect.SetParent(panel, false);
-                rect.anchorMin = new Vector2(0f, 1f);
-                rect.anchorMax = new Vector2(0f, 1f);
-                rect.pivot = new Vector2(0f, 1f);
-                rect.sizeDelta = new Vector2(320f, 26f);
-                rect.anchoredPosition = new Vector2(PanelPadding, -PanelPadding - i * 26f);
-                headers[i].alignment = TextAlignmentOptions.TopLeft;
-            }
+            if (yesterdayArrivalsText != null)
+                yesterdayArrivalsText.gameObject.SetActive(false);
+            LayoutCatalogHeader(panel);
         }
 
         // 패널 루트에는 프리팹상 배경 Image가 없다 — 맵 위에 텍스트가 떠 보이는 원인.
@@ -467,15 +509,55 @@ namespace CityFlow.UI
             RectTransform rect = line.GetComponent<RectTransform>();
             rect.anchorMin = new Vector2(0f, 1f);
             rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            Vector2 start = GetRect(parent.Instance).anchoredPosition + new Vector2(CellWidth, -CellHeight * 0.5f);
-            Vector2 end = GetRect(child.Instance).anchoredPosition + new Vector2(0f, -CellHeight * 0.5f);
-            Vector2 delta = end - start;
-            rect.anchoredPosition = start + new Vector2(0f, ConnectorThickness * 0.5f);
-            rect.sizeDelta = new Vector2(delta.magnitude, ConnectorThickness);
-            rect.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
+            rect.pivot = new Vector2(0f, 0.5f);
+            PositionConnector(rect, parent, child);
             connectors.Add(line);
             UpdateConnectorColor(line, parent);
+        }
+
+        private static void PositionConnector(
+            RectTransform rect,
+            Row parent,
+            Row child)
+        {
+            RectTransform parentRect = GetRect(parent.Instance);
+            RectTransform childRect = GetRect(child.Instance);
+            Vector2 start = parentRect.anchoredPosition +
+                            new Vector2(
+                                parentRect.rect.width * 0.5f,
+                                -parentRect.rect.height);
+            Vector2 end = childRect.anchoredPosition +
+                          new Vector2(childRect.rect.width * 0.5f, 0f);
+            Vector2 delta = end - start;
+            rect.anchoredPosition = start;
+            rect.sizeDelta = new Vector2(delta.magnitude, ConnectorThickness);
+            rect.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
+        }
+
+        private void UpdateConnectorGeometry()
+        {
+            int connectorIndex = 0;
+            var rowById = new Dictionary<string, Row>(StringComparer.Ordinal);
+            for (int index = 0; index < rows.Count; index++)
+            {
+                rowById[Normalize(rows[index].Entry.researchId)] = rows[index];
+            }
+
+            for (int index = 0; index < rows.Count; index++)
+            {
+                Row child = rows[index];
+                string prerequisite = Normalize(child.Entry.prerequisiteId);
+                if (prerequisite.Length == 0 ||
+                    !rowById.TryGetValue(prerequisite, out Row parent))
+                {
+                    continue;
+                }
+
+                if (connectorIndex >= connectors.Count) break;
+                RectTransform connector =
+                    connectors[connectorIndex++].GetComponent<RectTransform>();
+                PositionConnector(connector, parent, child);
+            }
         }
 
         private void UpdateConnectorColors()
@@ -494,7 +576,12 @@ namespace CityFlow.UI
         private void UpdateConnectorColor(GameObject line, Row parent)
         {
             Image image = line.GetComponent<Image>();
-            if (image != null) image.color = parent.IsUnlocked ? new Color(0.25f, 0.75f, 0.35f) : Color.gray;
+            if (image != null)
+            {
+                image.color = parent.IsUnlocked
+                    ? new Color(0.30f, 0.88f, 0.52f, 1f)
+                    : new Color(0.42f, 0.50f, 0.62f, 1f);
+            }
         }
 
         private static int GetBranch(ResearchEntry entry, Dictionary<string, ResearchEntry> byId, Dictionary<string, int> roots)

@@ -1,0 +1,1080 @@
+using System;
+using System.Collections.Generic;
+using CityFlow.Gameplay.Research;
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace CityFlow.UI
+{
+    public sealed partial class ResearchPanelController
+    {
+        private readonly struct CategoryTab
+        {
+            public CategoryTab(ResearchCategory? category, Button button)
+            {
+                Category = category;
+                Button = button;
+            }
+
+            public ResearchCategory? Category { get; }
+            public Button Button { get; }
+        }
+
+        private readonly List<CategoryTab> categoryTabs = new();
+        private readonly List<TMP_Text> laneHeaderLabels = new();
+        private const float CategoryListWidth = 520f;
+        private const float CategoryCellHeight = 88f;
+        private const float CategoryRowGap = 12f;
+        private Button unlockMenuButton;
+        private RectTransform categoryBar;
+        private RectTransform laneHeaderBar;
+        private RectTransform headerSurface;
+        private TMP_Text catalogTitleText;
+        private TMP_Text catalogSubtitleText;
+        private TMP_Text activeResearchText;
+        private ResearchCategory? selectedCategory;
+        private bool catalogVisible;
+        private bool catalogPresentationReady;
+        private bool startsCollapsed;
+
+        internal Button UnlockMenuButtonForTest => unlockMenuButton;
+        internal bool IsCatalogVisibleForTest => catalogVisible;
+
+        private void EnsureCatalogPresentation()
+        {
+            if (catalogPresentationReady)
+            {
+                BindUnlockMenuButton();
+                return;
+            }
+
+            unlockMenuButton = FindMenuButton();
+            startsCollapsed = unlockMenuButton != null;
+            TMP_Text styleSource = unlockMenuButton != null
+                ? unlockMenuButton.GetComponentInChildren<TMP_Text>(true)
+                : FindTemplateText();
+
+            if (rowTemplate == null)
+            {
+                CreateFallbackCatalogView(styleSource);
+                styleSource = FindTemplateText() ?? styleSource;
+            }
+
+            if (unlockMenuButton == null)
+            {
+                unlockMenuButton = CreateButton(
+                    "Unlock",
+                    transform,
+                    "해금",
+                    styleSource,
+                    new Color(0.08f, 0.43f, 0.36f, 1f));
+            }
+
+            unlockMenuButton.name = "Unlock";
+            SetButtonLabel(unlockMenuButton, "해금");
+            PositionUnlockButton(unlockMenuButton);
+            EnsureCategoryBar(styleSource);
+            EnsureCatalogHeader(styleSource);
+            BindUnlockMenuButton();
+            catalogPresentationReady = true;
+        }
+
+        private void InitializeCatalogPresentation()
+        {
+            catalogVisible = !startsCollapsed;
+            selectedCategory = null;
+            ApplyCatalogSelection();
+        }
+
+        private void ReleaseCatalogPresentation()
+        {
+            if (unlockMenuButton != null)
+            {
+                unlockMenuButton.onClick.RemoveListener(
+                    ToggleUnlockCatalog);
+            }
+        }
+
+        private void BindUnlockMenuButton()
+        {
+            if (unlockMenuButton == null)
+            {
+                return;
+            }
+
+            unlockMenuButton.onClick.RemoveListener(
+                ToggleUnlockCatalog);
+            unlockMenuButton.onClick.AddListener(
+                ToggleUnlockCatalog);
+            unlockMenuButton.interactable = true;
+        }
+
+        private void ToggleUnlockCatalog()
+        {
+            catalogVisible = !catalogVisible;
+            ApplyCatalogSelection();
+        }
+
+        private void SelectCategory(ResearchCategory? category)
+        {
+            selectedCategory = category;
+            ApplyCatalogSelection();
+        }
+
+        private void RefreshCatalogPresentation()
+        {
+            if (!catalogPresentationReady)
+            {
+                return;
+            }
+
+            ApplyCatalogSelection();
+        }
+
+        private void ApplyCatalogSelection()
+        {
+            if (!catalogPresentationReady)
+            {
+                return;
+            }
+
+            if (categoryBar != null)
+            {
+                categoryBar.gameObject.SetActive(catalogVisible);
+            }
+            RefreshLaneHeaders();
+
+            SetHeaderVisible(yesterdayArrivalsText, false);
+            SetHeaderVisible(populationText, catalogVisible);
+            SetHeaderVisible(unlockProgressText, catalogVisible);
+
+            int visibleIndex = 0;
+            for (int index = 0; index < rows.Count; index++)
+            {
+                Row row = rows[index];
+                bool matches =
+                    !selectedCategory.HasValue ||
+                    row.Entry.category == selectedCategory.Value;
+                bool visible = catalogVisible && matches;
+                row.Instance.SetActive(visible);
+                if (!visible)
+                {
+                    continue;
+                }
+
+                RectTransform rect = GetRect(row.Instance);
+                int column = selectedCategory.HasValue
+                    ? 0
+                    : GetOverallCategoryColumn(row.Entry.category);
+                int line = selectedCategory.HasValue
+                    ? GetVerticalListIndex(row)
+                    : GetOverallCategoryListIndex(row);
+                RectTransform panel = GetComponent<RectTransform>();
+                float panelWidth = panel != null
+                    ? Mathf.Max(756f, panel.rect.width)
+                    : 756f;
+                float cardWidth = selectedCategory.HasValue
+                    ? Mathf.Min(
+                        CategoryListWidth,
+                        Mathf.Max(CellWidth, panelWidth - PanelPadding * 2f))
+                    : CellWidth;
+                float cardHeight = selectedCategory.HasValue
+                    ? CategoryCellHeight
+                    : CellHeight;
+                float rowGap = selectedCategory.HasValue
+                    ? CategoryRowGap
+                    : RowGap;
+                float horizontalPosition = selectedCategory.HasValue
+                    ? Mathf.Max(PanelPadding, (panelWidth - cardWidth) * 0.5f)
+                    : PanelPadding + column * (CellWidth + ColumnGap);
+                rect.sizeDelta = new Vector2(cardWidth, cardHeight);
+                LayoutResearchCardContent(row, cardHeight);
+                rect.anchoredPosition = new Vector2(
+                    horizontalPosition,
+                    -(HeaderHeight + PanelPadding) -
+                    line * (cardHeight + rowGap));
+
+                visibleIndex++;
+            }
+
+            UpdateConnectorGeometry();
+
+            for (int index = 0; index < connectors.Count; index++)
+            {
+                connectors[index].SetActive(
+                    catalogVisible &&
+                    !selectedCategory.HasValue);
+            }
+
+            UpdateCategoryTabColors();
+            UpdateUnlockButtonColor();
+        }
+
+        private int GetVerticalListIndex(Row target)
+        {
+            int line = 0;
+            int targetIndex = rows.IndexOf(target);
+            for (int index = 0; index < rows.Count; index++)
+            {
+                Row candidate = rows[index];
+                if (candidate == target ||
+                    !selectedCategory.HasValue ||
+                    candidate.Entry.category != selectedCategory.Value)
+                {
+                    continue;
+                }
+
+                bool comesBefore = candidate.Branch < target.Branch ||
+                    (candidate.Branch == target.Branch &&
+                     (candidate.Depth < target.Depth ||
+                      (candidate.Depth == target.Depth &&
+                       index < targetIndex)));
+                if (comesBefore)
+                {
+                    line++;
+                }
+            }
+            return line;
+        }
+
+        private static int GetOverallCategoryColumn(
+            ResearchCategory category) =>
+            category switch
+            {
+                ResearchCategory.Commercial => 0,
+                ResearchCategory.Infrastructure => 1,
+                ResearchCategory.PublicService => 2,
+                _ => 2
+            };
+
+        private int GetOverallCategoryListIndex(Row target)
+        {
+            int line = 0;
+            int targetIndex = rows.IndexOf(target);
+            for (int index = 0; index < rows.Count; index++)
+            {
+                Row candidate = rows[index];
+                if (candidate == target ||
+                    candidate.Entry.category != target.Entry.category)
+                {
+                    continue;
+                }
+
+                bool comesBefore = candidate.Branch < target.Branch ||
+                    (candidate.Branch == target.Branch &&
+                     (candidate.Depth < target.Depth ||
+                      (candidate.Depth == target.Depth &&
+                       index < targetIndex)));
+                if (comesBefore) line++;
+            }
+            return line;
+        }
+
+        private void RefreshLaneHeaders()
+        {
+            bool visible = catalogVisible && !selectedCategory.HasValue;
+            if (laneHeaderBar == null)
+            {
+                Transform existing = transform.Find("ResearchLaneHeaders");
+                if (existing != null)
+                {
+                    laneHeaderBar = existing as RectTransform;
+                    TMP_Text[] existingLabels =
+                        laneHeaderBar.GetComponentsInChildren<TMP_Text>(true);
+                    for (int index = 0;
+                         index < existingLabels.Length;
+                         index++)
+                    {
+                        laneHeaderLabels.Add(existingLabels[index]);
+                    }
+                }
+                else
+                {
+                    var headers = new GameObject(
+                        "ResearchLaneHeaders",
+                        typeof(RectTransform));
+                    headers.transform.SetParent(transform, false);
+                    laneHeaderBar = headers.GetComponent<RectTransform>();
+                }
+            }
+
+            laneHeaderBar.gameObject.SetActive(visible);
+            if (!visible) return;
+
+            laneHeaderBar.anchorMin = new Vector2(0f, 1f);
+            laneHeaderBar.anchorMax = new Vector2(0f, 1f);
+            laneHeaderBar.pivot = new Vector2(0f, 1f);
+            laneHeaderBar.anchoredPosition =
+                new Vector2(PanelPadding, -140f);
+            laneHeaderBar.sizeDelta = new Vector2(716f, 24f);
+
+            const int categoryCount = 3;
+            while (laneHeaderLabels.Count < categoryCount)
+            {
+                int index = laneHeaderLabels.Count;
+                TMP_Text label = CreateText(
+                    $"Lane_{index}",
+                    laneHeaderBar,
+                    string.Empty,
+                    FindTemplateText(),
+                    TextAlignmentOptions.Center,
+                    12f);
+                label.fontStyle = FontStyles.Bold;
+                label.color = new Color(0.75f, 0.84f, 0.94f, 1f);
+                laneHeaderLabels.Add(label);
+            }
+
+            string[] labels = { "상업", "인프라", "공공" };
+            for (int category = 0;
+                 category < laneHeaderLabels.Count;
+                 category++)
+            {
+                TMP_Text label = laneHeaderLabels[category];
+                bool categoryExists = category < categoryCount;
+                label.gameObject.SetActive(categoryExists);
+                if (!categoryExists) continue;
+
+                label.text = labels[category];
+                RectTransform rect = label.rectTransform;
+                rect.anchorMin = new Vector2(0f, 1f);
+                rect.anchorMax = new Vector2(0f, 1f);
+                rect.pivot = new Vector2(0f, 1f);
+                rect.anchoredPosition =
+                    new Vector2(category * (CellWidth + ColumnGap), 0f);
+                rect.sizeDelta = new Vector2(CellWidth, 24f);
+            }
+        }
+
+        private void EnsureCategoryBar(TMP_Text styleSource)
+        {
+            Transform existing = transform.Find("CategoryTabs");
+            if (existing != null)
+            {
+                categoryBar = existing as RectTransform;
+            }
+            else
+            {
+                var tabs = new GameObject(
+                    "CategoryTabs",
+                    typeof(RectTransform));
+                tabs.transform.SetParent(transform, false);
+                categoryBar = tabs.GetComponent<RectTransform>();
+                categoryBar.anchorMin = new Vector2(0f, 1f);
+                categoryBar.anchorMax = new Vector2(0f, 1f);
+                categoryBar.pivot = new Vector2(0f, 1f);
+                categoryBar.anchoredPosition =
+                    new Vector2(PanelPadding, -108f);
+                categoryBar.sizeDelta = new Vector2(604f, 36f);
+            }
+
+            if (categoryTabs.Count > 0)
+            {
+                return;
+            }
+
+            CreateCategoryTab(null, "전체", styleSource, 0);
+            CreateCategoryTab(
+                ResearchCategory.Commercial,
+                "상업",
+                styleSource,
+                1);
+            CreateCategoryTab(
+                ResearchCategory.Infrastructure,
+                "인프라",
+                styleSource,
+                2);
+            CreateCategoryTab(
+                ResearchCategory.PublicService,
+                "공공",
+                styleSource,
+                3);
+        }
+
+        private void CreateCategoryTab(
+            ResearchCategory? category,
+            string label,
+            TMP_Text styleSource,
+            int index)
+        {
+            Button button = CreateButton(
+                $"Category_{label}",
+                categoryBar,
+                label,
+                styleSource,
+                new Color(0.14f, 0.16f, 0.19f, 1f));
+            RectTransform rect =
+                button.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 0.5f);
+            rect.anchorMax = new Vector2(0f, 0.5f);
+            rect.pivot = new Vector2(0f, 0.5f);
+            rect.anchoredPosition = new Vector2(index * 148f, 0f);
+            rect.sizeDelta = new Vector2(138f, 34f);
+            button.onClick.AddListener(
+                () => SelectCategory(category));
+            categoryTabs.Add(new CategoryTab(category, button));
+        }
+
+        private void CreateFallbackCatalogView(TMP_Text styleSource)
+        {
+            var rowsObject = new GameObject(
+                "Rows",
+                typeof(RectTransform));
+            rowsObject.transform.SetParent(transform, false);
+            RectTransform rowsRect =
+                rowsObject.GetComponent<RectTransform>();
+            rowsRect.anchorMin = Vector2.zero;
+            rowsRect.anchorMax = Vector2.one;
+            rowsRect.offsetMin = Vector2.zero;
+            rowsRect.offsetMax = Vector2.zero;
+
+            rowTemplate = new GameObject(
+                "RowTemplate",
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(Image),
+                typeof(Button),
+                typeof(CanvasGroup));
+            rowTemplate.transform.SetParent(rowsObject.transform, false);
+            RectTransform templateRect =
+                rowTemplate.GetComponent<RectTransform>();
+            templateRect.sizeDelta =
+                new Vector2(CellWidth, CellHeight);
+            Image templateImage = rowTemplate.GetComponent<Image>();
+            templateImage.color =
+                new Color(0.21f, 0.22f, 0.26f, 1f);
+            rowTemplate.GetComponent<Button>().targetGraphic =
+                templateImage;
+
+            CreateCardText(
+                rowTemplate.transform,
+                "Name",
+                "건물",
+                styleSource,
+                new Vector2(14f, -38f),
+                new Vector2(-14f, -12f),
+                TextAlignmentOptions.TopLeft,
+                16f);
+            CreateCardText(
+                rowTemplate.transform,
+                "Progress",
+                "조건",
+                styleSource,
+                new Vector2(14f, -67f),
+                new Vector2(-14f, -42f),
+                TextAlignmentOptions.TopLeft,
+                12f);
+            CreateCardText(
+                rowTemplate.transform,
+                "State",
+                "잠김",
+                styleSource,
+                new Vector2(14f, -91f),
+                new Vector2(-14f, -70f),
+                TextAlignmentOptions.BottomRight,
+                12f);
+            rowTemplate.SetActive(false);
+
+            yesterdayArrivalsText = null;
+            populationText = CreateHeaderText(
+                "Population",
+                "인구 0",
+                styleSource);
+            unlockProgressText = CreateHeaderText(
+                "UnlockProgress",
+                "해금 0/0",
+                styleSource);
+        }
+
+        private TMP_Text CreateHeaderText(
+            string name,
+            string value,
+            TMP_Text styleSource)
+        {
+            return CreateText(
+                name,
+                transform,
+                value,
+                styleSource,
+                TextAlignmentOptions.TopLeft,
+                13f);
+        }
+
+        private static TMP_Text CreateCardText(
+            Transform parent,
+            string name,
+            string value,
+            TMP_Text styleSource,
+            Vector2 offsetMin,
+            Vector2 offsetMax,
+            TextAlignmentOptions alignment,
+            float fontSize)
+        {
+            TMP_Text text = CreateText(
+                name,
+                parent,
+                value,
+                styleSource,
+                alignment,
+                fontSize);
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.offsetMin = offsetMin;
+            rect.offsetMax = offsetMax;
+            return text;
+        }
+
+        private static Button CreateButton(
+            string name,
+            Transform parent,
+            string label,
+            TMP_Text styleSource,
+            Color color)
+        {
+            var buttonObject = new GameObject(
+                name,
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(Image),
+                typeof(Button));
+            buttonObject.transform.SetParent(parent, false);
+            Image image = buttonObject.GetComponent<Image>();
+            image.color = color;
+            Button button = buttonObject.GetComponent<Button>();
+            button.targetGraphic = image;
+
+            TMP_Text text = CreateText(
+                "Label",
+                buttonObject.transform,
+                label,
+                styleSource,
+                TextAlignmentOptions.Center,
+                14f);
+            RectTransform textRect = text.rectTransform;
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = new Vector2(8f, 2f);
+            textRect.offsetMax = new Vector2(-8f, -2f);
+            return button;
+        }
+
+        private static TMP_Text CreateText(
+            string name,
+            Transform parent,
+            string value,
+            TMP_Text styleSource,
+            TextAlignmentOptions alignment,
+            float fontSize)
+        {
+            var textObject = new GameObject(
+                name,
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(TextMeshProUGUI));
+            textObject.transform.SetParent(parent, false);
+            TMP_Text text = textObject.GetComponent<TMP_Text>();
+            if (styleSource != null)
+            {
+                text.font = styleSource.font;
+                text.fontSharedMaterial =
+                    styleSource.fontSharedMaterial;
+            }
+            text.color = Color.white;
+            text.text = value;
+            text.fontSize = fontSize;
+            text.enableAutoSizing = false;
+            text.alignment = alignment;
+            text.raycastTarget = false;
+            return text;
+        }
+
+        private Button FindMenuButton()
+        {
+            Button[] buttons =
+                GetComponentsInChildren<Button>(true);
+            for (int index = 0; index < buttons.Length; index++)
+            {
+                string objectName = buttons[index].name.Trim();
+                if (objectName.Equals(
+                        "Upgrade",
+                        StringComparison.OrdinalIgnoreCase) ||
+                    objectName.Equals(
+                        "Unlock",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return buttons[index];
+                }
+            }
+
+            return null;
+        }
+
+        private TMP_Text FindTemplateText()
+        {
+            return rowTemplate != null
+                ? rowTemplate.GetComponentInChildren<TMP_Text>(true)
+                : null;
+        }
+
+        private static void SetButtonLabel(
+            Button button,
+            string label)
+        {
+            TMP_Text text =
+                button?.GetComponentInChildren<TMP_Text>(true);
+            if (text != null)
+            {
+                text.text = label;
+                text.color = Color.white;
+                text.fontStyle = FontStyles.Bold;
+                text.fontSize = 15f;
+            }
+        }
+
+        private static void PositionUnlockButton(Button button)
+        {
+            RectTransform rect =
+                button.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.anchoredPosition = new Vector2(-20f, -18f);
+            rect.sizeDelta = new Vector2(108f, 38f);
+        }
+
+        private static void SetHeaderVisible(
+            TMP_Text header,
+            bool visible)
+        {
+            if (header != null)
+            {
+                header.gameObject.SetActive(visible);
+            }
+        }
+
+        private void UpdateCategoryTabColors()
+        {
+            for (int index = 0;
+                 index < categoryTabs.Count;
+                 index++)
+            {
+                CategoryTab tab = categoryTabs[index];
+                bool selected = tab.Category == selectedCategory;
+                Image image = tab.Button != null
+                    ? tab.Button.targetGraphic as Image
+                    : null;
+                if (image != null)
+                {
+                    image.color = selected
+                        ? new Color(0.08f, 0.52f, 0.42f, 1f)
+                        : new Color(0.14f, 0.16f, 0.19f, 1f);
+                }
+            }
+        }
+
+        private void UpdateUnlockButtonColor()
+        {
+            SetButtonLabel(
+                unlockMenuButton,
+                catalogVisible ? "닫기" : "해금");
+
+            Image image = unlockMenuButton != null
+                ? unlockMenuButton.targetGraphic as Image
+                : null;
+            if (image != null)
+            {
+                image.color = catalogVisible
+                    ? new Color(0.10f, 0.62f, 0.50f, 1f)
+                    : new Color(0.08f, 0.48f, 0.40f, 1f);
+            }
+        }
+
+        private void EnsureCatalogHeader(TMP_Text styleSource)
+        {
+            Transform existing = transform.Find("CatalogHeader");
+            if (existing != null)
+            {
+                headerSurface = existing as RectTransform;
+            }
+            else
+            {
+                var header = new GameObject(
+                    "CatalogHeader",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image));
+                header.transform.SetParent(transform, false);
+                headerSurface = header.GetComponent<RectTransform>();
+                Image image = header.GetComponent<Image>();
+                image.color = new Color(0.10f, 0.13f, 0.16f, 0.98f);
+                image.raycastTarget = false;
+            }
+
+            catalogTitleText = FindOrCreateHeaderText(
+                "Title",
+                "건물 해금 연구",
+                styleSource,
+                18f,
+                FontStyles.Bold);
+            catalogSubtitleText = FindOrCreateHeaderText(
+                "Subtitle",
+                "조건을 충족한 뒤 비용을 지불하면 건설 항목이 해금됩니다.",
+                styleSource,
+                11f,
+                FontStyles.Normal);
+            activeResearchText = FindOrCreateHeaderText(
+                "ActiveResearch",
+                "진행 중인 연구 없음",
+                styleSource,
+                12f,
+                FontStyles.Normal);
+        }
+
+        private TMP_Text FindOrCreateHeaderText(
+            string name,
+            string value,
+            TMP_Text styleSource,
+            float fontSize,
+            FontStyles fontStyle)
+        {
+            Transform existing = headerSurface.Find(name);
+            TMP_Text text = existing != null
+                ? existing.GetComponent<TMP_Text>()
+                : CreateText(
+                    name,
+                    headerSurface,
+                    value,
+                    styleSource,
+                    TextAlignmentOptions.TopLeft,
+                    fontSize);
+            text.text = value;
+            text.fontSize = fontSize;
+            text.fontStyle = fontStyle;
+            return text;
+        }
+
+        private void LayoutCatalogHeader(RectTransform panel)
+        {
+            if (headerSurface == null)
+            {
+                EnsureCatalogHeader(FindTemplateText());
+            }
+
+            headerSurface.SetParent(panel, false);
+            headerSurface.SetAsFirstSibling();
+            headerSurface.anchorMin = new Vector2(0f, 1f);
+            headerSurface.anchorMax = new Vector2(1f, 1f);
+            headerSurface.pivot = new Vector2(0.5f, 1f);
+            headerSurface.offsetMin = new Vector2(10f, -100f);
+            headerSurface.offsetMax = new Vector2(-10f, -8f);
+
+            LayoutHeaderText(
+                catalogTitleText,
+                new Vector2(14f, -12f),
+                new Vector2(360f, 26f),
+                TextAlignmentOptions.TopLeft);
+            LayoutHeaderText(
+                catalogSubtitleText,
+                new Vector2(14f, -39f),
+                new Vector2(520f, 22f),
+                TextAlignmentOptions.TopLeft);
+            LayoutHeaderText(
+                activeResearchText,
+                new Vector2(318f, -65f),
+                new Vector2(330f, 24f),
+                TextAlignmentOptions.MidlineRight);
+
+            if (populationText != null &&
+                populationText.transform.parent != headerSurface)
+            {
+                populationText.rectTransform.SetParent(headerSurface, false);
+            }
+            if (unlockProgressText != null &&
+                unlockProgressText.transform.parent != headerSurface)
+            {
+                unlockProgressText.rectTransform.SetParent(headerSurface, false);
+            }
+            LayoutHeaderText(
+                populationText,
+                new Vector2(14f, -65f),
+                new Vector2(126f, 24f),
+                TextAlignmentOptions.MidlineLeft);
+            LayoutHeaderText(
+                unlockProgressText,
+                new Vector2(148f, -65f),
+                new Vector2(142f, 24f),
+                TextAlignmentOptions.MidlineLeft);
+
+            if (categoryBar != null)
+            {
+                categoryBar.SetParent(panel, false);
+                categoryBar.SetAsLastSibling();
+                categoryBar.anchoredPosition =
+                    new Vector2(PanelPadding, -108f);
+            }
+            if (unlockMenuButton != null)
+            {
+                unlockMenuButton.transform.SetAsLastSibling();
+            }
+        }
+
+        private static void LayoutHeaderText(
+            TMP_Text text,
+            Vector2 position,
+            Vector2 size,
+            TextAlignmentOptions alignment)
+        {
+            if (text == null) return;
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+            text.alignment = alignment;
+            text.enableWordWrapping = false;
+            text.overflowMode = TextOverflowModes.Ellipsis;
+        }
+
+        private void ConfigureResearchCard(Row row)
+        {
+            RectTransform cardRect = GetRect(row.Instance);
+            cardRect.sizeDelta = new Vector2(CellWidth, CellHeight);
+            LayoutResearchCardContent(row, CellHeight);
+
+            Transform accent = row.Instance.transform.Find("Accent");
+            if (accent == null)
+            {
+                var accentObject = new GameObject(
+                    "Accent",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image));
+                accentObject.transform.SetParent(
+                    row.Instance.transform,
+                    false);
+                accent = accentObject.transform;
+            }
+            row.AccentImage = accent.GetComponent<Image>();
+            row.AccentImage.raycastTarget = false;
+            RectTransform accentRect = accent as RectTransform;
+            accentRect.anchorMin = new Vector2(0f, 1f);
+            accentRect.anchorMax = new Vector2(1f, 1f);
+            accentRect.pivot = new Vector2(0.5f, 1f);
+            accentRect.offsetMin = new Vector2(0f, -4f);
+            accentRect.offsetMax = Vector2.zero;
+
+            Transform badge = row.Instance.transform.Find("Category");
+            row.CategoryText = badge != null
+                ? badge.GetComponent<TMP_Text>()
+                : CreateText(
+                    "Category",
+                    row.Instance.transform,
+                    GetCategoryLabel(row.Entry.category),
+                    row.NameText,
+                    TextAlignmentOptions.TopRight,
+                    10.5f);
+            RectTransform badgeRect = row.CategoryText.rectTransform;
+            badgeRect.anchorMin = new Vector2(1f, 1f);
+            badgeRect.anchorMax = new Vector2(1f, 1f);
+            badgeRect.pivot = new Vector2(1f, 1f);
+            badgeRect.anchoredPosition = new Vector2(-12f, -14f);
+            badgeRect.sizeDelta = new Vector2(72f, 20f);
+            row.CategoryText.gameObject.SetActive(false);
+
+            Transform stateBadge = row.Instance.transform.Find("StateBadge");
+            if (stateBadge == null)
+            {
+                var badgeObject = new GameObject(
+                    "StateBadge",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image));
+                badgeObject.transform.SetParent(row.Instance.transform, false);
+                stateBadge = badgeObject.transform;
+            }
+            row.StateBadgeImage = stateBadge.GetComponent<Image>();
+            row.StateBadgeImage.raycastTarget = false;
+            if (row.StateText != null)
+            {
+                stateBadge.SetSiblingIndex(
+                    Mathf.Max(0, row.StateText.transform.GetSiblingIndex()));
+            }
+            LayoutStateBadge(row, CellHeight);
+
+            Shadow shadow = row.Instance.GetComponent<Shadow>() ??
+                            row.Instance.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.32f);
+            shadow.effectDistance = new Vector2(0f, -3f);
+            shadow.useGraphicAlpha = true;
+
+            Button button = row.Instance.GetComponent<Button>();
+            if (button != null)
+            {
+                ColorBlock colors = button.colors;
+                colors.normalColor = Color.white;
+                colors.highlightedColor = new Color(1f, 1f, 1f, 1f);
+                colors.pressedColor = new Color(0.86f, 0.90f, 0.94f, 1f);
+                colors.disabledColor = new Color(0.78f, 0.80f, 0.84f, 1f);
+                colors.colorMultiplier = 1.08f;
+                colors.fadeDuration = 0.10f;
+                button.colors = colors;
+            }
+        }
+
+        private static void LayoutResearchCardContent(
+            Row row,
+            float cardHeight)
+        {
+            bool compact = cardHeight <= 90f;
+            float nameTop = compact ? 10f : 14f;
+            float nameBottom = compact ? 32f : 42f;
+            float progressTop = compact ? 34f : 46f;
+            float progressBottom = compact ? 56f : 70f;
+            float stateTop = compact ? 60f : cardHeight - 30f;
+            float stateBottom = cardHeight - 6f;
+            LayoutCardLabel(
+                row.NameText,
+                new Vector2(14f, -nameTop),
+                new Vector2(-14f, -nameBottom),
+                compact ? 15f : 16f,
+                TextAlignmentOptions.TopLeft);
+            LayoutCardLabel(
+                row.ProgressText,
+                new Vector2(14f, -progressTop),
+                new Vector2(-14f, -progressBottom),
+                compact ? 11f : 11.5f,
+                TextAlignmentOptions.TopLeft);
+            LayoutCardLabel(
+                row.StateText,
+                new Vector2(14f, -stateTop),
+                new Vector2(-14f, -stateBottom),
+                compact ? 11f : 11.5f,
+                TextAlignmentOptions.MidlineRight);
+            LayoutStateBadge(row, cardHeight);
+        }
+
+        private static void LayoutStateBadge(Row row, float cardHeight)
+        {
+            if (row.StateBadgeImage == null) return;
+            RectTransform rect = row.StateBadgeImage.rectTransform;
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            float top = cardHeight <= 90f ? 60f : cardHeight - 30f;
+            rect.anchoredPosition = new Vector2(-10f, -top);
+            rect.sizeDelta = new Vector2(86f, 24f);
+        }
+
+        private static void LayoutCardLabel(
+            TMP_Text text,
+            Vector2 offsetMin,
+            Vector2 offsetMax,
+            float fontSize,
+            TextAlignmentOptions alignment)
+        {
+            if (text == null) return;
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            // With both Y anchors at the top, offsetMin is the bottom edge and
+            // offsetMax is the top edge. Call sites describe the more readable
+            // top-left and bottom-right bounds, so convert them here instead of
+            // creating a negative-height text rectangle.
+            rect.offsetMin = new Vector2(offsetMin.x, offsetMax.y);
+            rect.offsetMax = new Vector2(offsetMax.x, offsetMin.y);
+            text.fontSize = fontSize;
+            text.alignment = alignment;
+            text.enableWordWrapping = false;
+            text.overflowMode = TextOverflowModes.Ellipsis;
+        }
+
+        private void RefreshResearchCardVisual(Row row)
+        {
+            Color accent = row.IsUnlocked
+                ? new Color(0.30f, 0.88f, 0.52f, 1f)
+                : row.IsResearching
+                    ? new Color(0.25f, 0.70f, 1f, 1f)
+                    : row.IsReady
+                        ? new Color(1f, 0.78f, 0.20f, 1f)
+                        : new Color(0.52f, 0.59f, 0.68f, 1f);
+            if (row.AccentImage != null)
+            {
+                row.AccentImage.color = accent;
+            }
+            if (row.CategoryText != null)
+            {
+                row.CategoryText.text = GetCategoryLabel(row.Entry.category);
+                row.CategoryText.color = new Color(
+                    accent.r,
+                    accent.g,
+                    accent.b,
+                    0.94f);
+            }
+            if (row.StateBadgeImage != null)
+            {
+                row.StateBadgeImage.color = new Color(
+                    accent.r,
+                    accent.g,
+                    accent.b,
+                    row.IsUnlocked || row.IsReady || row.IsResearching
+                        ? 0.28f
+                        : 0.18f);
+            }
+        }
+
+        private void RefreshCatalogSummary(
+            int unlockedCount,
+            int population)
+        {
+            if (populationText != null)
+            {
+                populationText.text = $"인구  {population:N0}";
+                populationText.color = new Color(0.86f, 0.91f, 0.97f, 1f);
+            }
+            if (unlockProgressText != null)
+            {
+                unlockProgressText.text = $"해금  {unlockedCount}/{rows.Count}";
+                unlockProgressText.color = new Color(0.86f, 0.91f, 0.97f, 1f);
+            }
+            if (activeResearchText == null) return;
+
+            string activeId = research?.ActiveResearchId;
+            if (string.IsNullOrEmpty(activeId))
+            {
+                activeResearchText.text = "진행 중인 연구 없음";
+                activeResearchText.color = new Color(0.65f, 0.71f, 0.78f, 1f);
+                return;
+            }
+
+            Row activeRow = null;
+            for (int index = 0; index < rows.Count; index++)
+            {
+                if (Normalize(rows[index].Entry.researchId) ==
+                    Normalize(activeId))
+                {
+                    activeRow = rows[index];
+                    break;
+                }
+            }
+            string displayName = activeRow?.Entry.displayName ?? activeId;
+            int remaining = research.GetRemainingResearchHours(activeId);
+            activeResearchText.text =
+                $"진행 중  {displayName} · {remaining}시간";
+            activeResearchText.color = new Color(0.45f, 0.82f, 1f, 1f);
+        }
+
+        private static string GetCategoryLabel(
+            ResearchCategory category) =>
+            category switch
+            {
+                ResearchCategory.Commercial => "상업",
+                ResearchCategory.Infrastructure => "인프라",
+                ResearchCategory.PublicService => "공공",
+                _ => "기타"
+            };
+    }
+}

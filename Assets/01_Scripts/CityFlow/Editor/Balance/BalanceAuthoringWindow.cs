@@ -874,6 +874,12 @@ namespace CityFlow.EditorTools.Balance
                     "화면 표시 이름",
                     "게임 연구 화면에 보이는 이름입니다."));
 
+            EditorGUILayout.PropertyField(
+                selectedEntry.FindPropertyRelative("category"),
+                new GUIContent(
+                    "해금 카테고리",
+                    "게임 연구 화면에서 이 건물이 표시될 카테고리입니다."));
+
             DrawPrerequisitePopup(entries, selectedEntry);
         }
 

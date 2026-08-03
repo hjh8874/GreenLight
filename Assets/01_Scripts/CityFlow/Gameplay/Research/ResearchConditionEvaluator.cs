@@ -7,6 +7,16 @@ namespace CityFlow.Gameplay.Research
 {
     public enum ResearchConditionKind { DailyArrivals, Population, BuildingCount }
 
+    public enum ResearchCategory
+    {
+        [InspectorName("상업")]
+        Commercial,
+        [InspectorName("인프라")]
+        Infrastructure,
+        [InspectorName("공공")]
+        PublicService
+    }
+
     [Serializable]
     public sealed class ResearchRequirement
     {
@@ -36,6 +46,10 @@ namespace CityFlow.Gameplay.Research
 
         [InspectorName("표시 이름")]
         public string displayName;
+
+        [InspectorName("해금 카테고리")]
+        [Tooltip("연구 화면에서 이 건물이 표시될 카테고리입니다.")]
+        public ResearchCategory category;
 
         [InspectorName("단일 조건 종류")]
         [Tooltip("아래 조건 목록이 비어 있을 때 사용하는 호환용 단일 조건입니다.")]
