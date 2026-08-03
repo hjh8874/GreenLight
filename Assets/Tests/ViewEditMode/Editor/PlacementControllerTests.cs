@@ -62,6 +62,27 @@ namespace Tests.EditMode
             public bool Remove(Vector2Int tile) => true;
         }
 
+        private sealed class CountingPlacementService : IPlacementService
+        {
+            public int RemoveCalls { get; private set; }
+
+            public bool CanPlace(
+                Vector2Int tile,
+                TileType type,
+                PlacementDirection direction = PlacementDirection.North) => true;
+
+            public bool Place(
+                Vector2Int tile,
+                TileType type,
+                PlacementDirection direction = PlacementDirection.North) => true;
+
+            public bool Remove(Vector2Int tile)
+            {
+                RemoveCalls++;
+                return true;
+            }
+        }
+
         [SetUp]
         public void Setup()
         {
@@ -1021,6 +1042,93 @@ namespace Tests.EditMode
             }
         }
 
+        [Test]
+        public void RightClickDemolition_IsBlockedWhenMenuStateUnavailable()
+        {
+            var go = new GameObject("Controller");
+            var controller = go.AddComponent<PlacementController>();
+            var placement = new CountingPlacementService();
+            var mouse = InputSystem.AddDevice<Mouse>();
+
+            try
+            {
+                controller.SetFakeMode(false);
+                controller.Initialize(new CityFlowServices(
+                    new SimEventHub(),
+                    new TestTileData(),
+                    placement));
+
+                using (StateEvent.From(mouse, out var eventPtr))
+                {
+                    mouse.rightButton.WriteValueIntoEvent(1f, eventPtr);
+                    InputSystem.QueueEvent(eventPtr);
+                }
+                InputSystem.Update();
+
+                MethodInfo updateMethod = typeof(PlacementController).GetMethod(
+                    "Update",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                updateMethod.Invoke(controller, null);
+
+                Assert.AreEqual(
+                    0,
+                    placement.RemoveCalls,
+                    "메뉴 상태를 확인할 수 없으면 철거를 실행하면 안 된다.");
+            }
+            finally
+            {
+                InputSystem.RemoveDevice(mouse);
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void RightClickDragDemolition_StopsWhenMenuStateUnavailable()
+        {
+            var go = new GameObject("Coordinator");
+            var coordinator =
+                go.AddComponent<InfrastructurePlacementCoordinator>();
+            var mouse = InputSystem.AddDevice<Mouse>();
+
+            try
+            {
+                SetPrivateField(coordinator, "_isBuildingMode", true);
+                SetPrivateField(coordinator, "_isDemolishMode", true);
+                SetPrivateField(
+                    coordinator,
+                    "_rightClickStartCoord",
+                    new Vector2Int(0, 0));
+
+                using (StateEvent.From(mouse, out var eventPtr))
+                {
+                    mouse.rightButton.WriteValueIntoEvent(1f, eventPtr);
+                    InputSystem.QueueEvent(eventPtr);
+                }
+                InputSystem.Update();
+
+                MethodInfo updateMethod = typeof(
+                    InfrastructurePlacementCoordinator).GetMethod(
+                    "Update",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                updateMethod.Invoke(coordinator, null);
+
+                object startCoord = typeof(
+                    InfrastructurePlacementCoordinator).GetField(
+                    "_rightClickStartCoord",
+                    BindingFlags.NonPublic | BindingFlags.Instance)
+                    .GetValue(coordinator);
+
+                Assert.IsNull(
+                    startCoord,
+                    "메뉴 상태를 확인할 수 없으면 철거 드래그를 중단해야 한다.");
+            }
+            finally
+            {
+                InputSystem.RemoveDevice(mouse);
+                Object.DestroyImmediate(go);
+            }
+        }
+
         private sealed class TestTileData : IReadOnlyTileData
         {
             public CongestionLevel GetCongestion(Vector2Int tile) => CongestionLevel.Free;
@@ -1057,14 +1165,62 @@ namespace Tests.EditMode
         }
 
         [Test]
-        public void HandlePlace_SinglePlacement_CancelsOnSuccess_MaintainsOnFailure()
+        public void HandlePlace_SinglePlacement_CancelsOnSuccess()
         {
             var go = new GameObject("Controller");
             var controller = go.AddComponent<PlacementController>();
+            CityFlow.Configs.TileDataSO tileData = null;
 
             try
             {
-                // Economy with 0 coins
+                var economy = new TestEconomyService { Coins = 100 };
+                var services = new CityFlowServices(
+                    new SimEventHub(),
+                    new TestTileData(),
+                    new DefaultAutoDirectionPlacementService(),
+                    null,
+                    economy
+                );
+
+                tileData = ScriptableObject.CreateInstance<
+                    CityFlow.Configs.TileDataSO>();
+                SetPrivateField(tileData, "buildCost", 100);
+                SetPrivateField(tileData, "category", TileType.Hospital);
+                SetPrivateField(
+                    controller,
+                    "availableTiles",
+                    new[] { tileData });
+                controller.SetFakeMode(false);
+
+                controller.Initialize(services);
+                controller.ToggleBuildMode(true);
+                controller.SetBuildType(TileType.Hospital);
+
+                MethodInfo updateMethod = typeof(PlacementController).GetMethod(
+                    "HandlePlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                updateMethod.Invoke(controller, new object[] { new Vector2Int(0, 0) });
+
+                Assert.IsFalse(
+                    controller.IsBuildingMode,
+                    "성공한 단발 건물 배치 뒤에는 배치 모드를 종료해야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(tileData);
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void HandlePlace_SinglePlacement_MaintainsModeOnFailure()
+        {
+            var go = new GameObject("Controller");
+            var controller = go.AddComponent<PlacementController>();
+            CityFlow.Configs.TileDataSO tileData = null;
+
+            try
+            {
                 var economy = new TestEconomyService { Coins = 0 };
                 var services = new CityFlowServices(
                     new SimEventHub(),
@@ -1074,35 +1230,34 @@ namespace Tests.EditMode
                     economy
                 );
 
-                // Ensure the controller uses a tile with actual cost > 0
-                var fakeTileObj = ScriptableObject.CreateInstance<CityFlow.Configs.TileDataSO>();
-                // We need reflection to set buildCost because it's private serialized field
-                SetPrivateField(fakeTileObj, "buildCost", 100);
-                SetPrivateField(fakeTileObj, "category", TileType.Hospital);
-                SetPrivateField(controller, "availableTiles", new CityFlow.Configs.TileDataSO[] { fakeTileObj });
-                
-                // Set fake mode to avoid needing to mock everything else
-                controller.SetFakeMode(true);
+                tileData = ScriptableObject.CreateInstance<
+                    CityFlow.Configs.TileDataSO>();
+                SetPrivateField(tileData, "buildCost", 100);
+                SetPrivateField(tileData, "category", TileType.Hospital);
+                SetPrivateField(
+                    controller,
+                    "availableTiles",
+                    new[] { tileData });
+                controller.SetFakeMode(false);
 
                 controller.Initialize(services);
-
-                // Set up placement mode for an expensive building (e.g. Hospital)
                 controller.ToggleBuildMode(true);
                 controller.SetBuildType(TileType.Hospital);
 
-                // Simulate clicking on the grid
-                var updateMethod = typeof(PlacementController).GetMethod("HandlePlace", BindingFlags.NonPublic | BindingFlags.Instance);
-                updateMethod.Invoke(controller, new object[] { new Vector2Int(0, 0) });
+                MethodInfo updateMethod = typeof(PlacementController).GetMethod(
+                    "HandlePlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                updateMethod.Invoke(
+                    controller,
+                    new object[] { new Vector2Int(0, 0) });
 
-                // Since we have 0 coins, PlaceInfrastructure should fail and return false.
-                // Thus, CancelPlacement shouldn't be called, and _isBuildingMode should still be true.
-                var isPlacingField = typeof(PlacementController).GetField("_isBuildingMode", BindingFlags.NonPublic | BindingFlags.Instance);
-                bool isPlacing = (bool)isPlacingField.GetValue(controller);
-
-                Assert.IsTrue(isPlacing, "Build mode should remain active if placement fails due to insufficient funds.");
+                Assert.IsTrue(
+                    controller.IsBuildingMode,
+                    "자금 부족으로 배치가 실패하면 배치 모드를 유지해야 한다.");
             }
             finally
             {
+                Object.DestroyImmediate(tileData);
                 Object.DestroyImmediate(go);
             }
         }

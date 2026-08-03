@@ -308,7 +308,7 @@ namespace CityFlow.UI
                 _currentSpecialBuildingId);
             bool isBuildingType = TileFootprint.IsBuilding(_currentType);
 
-            bool isBuildMenuOpen = IsBuildMenuOpen?.Invoke() ?? true;
+            bool isBuildMenuOpen = IsBuildMenuOpen?.Invoke() ?? false;
             _inputHandler.UpdateGlobalInput(_isBuildingMode, isBuildingType, gridCoord, isBuildMenuOpen);
 
             if (_inputHandler.IsPointerOverBlockingUI())
@@ -418,13 +418,21 @@ namespace CityFlow.UI
         private void TryPlaceDragTile(Vector2Int coord)
         {
             PlacementDirection direction = ResolvePlacementDirection(coord);
-            _actionDispatcher.PlaceInfrastructure(
-                coord,
-                _currentType,
-                direction,
-                _services,
-                _currentSpecialBuildingId,
-                _currentCompanyTypeId);
+            if (_actionDispatcher.CheckCanPlace(
+                    coord,
+                    _currentType,
+                    direction,
+                    _services,
+                    _currentSpecialBuildingId))
+            {
+                _actionDispatcher.PlaceInfrastructure(
+                    coord,
+                    _currentType,
+                    direction,
+                    _services,
+                    _currentSpecialBuildingId,
+                    _currentCompanyTypeId);
+            }
         }
 
         private PlacementDirection ResolvePlacementDirection(Vector2Int coord)
