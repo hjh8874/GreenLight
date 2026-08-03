@@ -12,11 +12,56 @@ using NUnit.Framework;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace CityFlow.Tests.ViewEditMode
 {
     public sealed class AmbulanceFeatureTests
     {
+        [Test]
+        public void IncidentSystem_RejectsMissingEventHubWithoutThrowing()
+        {
+            var engineEvents = new SimEventHub();
+            var engine = new SimEngine(
+                SimConfig.Default(),
+                engineEvents);
+            var services = new CityFlowServices(
+                events: null,
+                tileData: engine,
+                placement: engine,
+                stats: engine);
+            GameObject owner =
+                new("Emergency Incident Missing Events Test");
+
+            try
+            {
+                EmergencyIncidentConfigSO config =
+                    AssetDatabase.LoadAssetAtPath<
+                        EmergencyIncidentConfigSO>(
+                        "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset");
+                Assert.That(config, Is.Not.Null);
+
+                EmergencyIncidentSystem system =
+                    owner.AddComponent<
+                        EmergencyIncidentSystem>();
+                SerializedObject values = new(system);
+                values.FindProperty("config")
+                    .objectReferenceValue = config;
+                values.ApplyModifiedPropertiesWithoutUndo();
+
+                LogAssert.Expect(
+                    LogType.Error,
+                    "[EmergencyIncidentSystem] Services, Events, TileData, and config are required.");
+                Assert.DoesNotThrow(
+                    () => system.Initialize(services));
+                Assert.That(system.IsInitialized, Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+            }
+        }
+
         [Test]
         public void RuntimeAssets_UseEmergencyVehicleSpeed()
         {
@@ -1127,6 +1172,9 @@ namespace CityFlow.Tests.ViewEditMode
                     Is.True);
                 Assert.That(route.StartRoute(), Is.True);
                 Assert.That(
+                    engine.RoadTraffic.RegisteredAgentCount,
+                    Is.EqualTo(1));
+                Assert.That(
                     route.CurrentRoadPath,
                     Is.Not.Empty);
 
@@ -1140,10 +1188,24 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     engine.RoadTraffic.IsSafeHoldTile(holdTile),
                     Is.True);
+
+                route.StopRoute();
+                Assert.That(
+                    engine.RoadTraffic.RegisteredAgentCount,
+                    Is.Zero,
+                    "Stopping an ambulance route must release its shared traffic reservation.");
+                Assert.That(route.StartRoute(), Is.True);
+                Assert.That(
+                    engine.RoadTraffic.RegisteredAgentCount,
+                    Is.EqualTo(1));
             }
             finally
             {
                 Object.DestroyImmediate(owner);
+                Assert.That(
+                    engine.RoadTraffic.RegisteredAgentCount,
+                    Is.Zero,
+                    "Destroying an ambulance route must release its shared traffic reservation.");
             }
         }
 
@@ -1363,6 +1425,22 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     dispatch.ActiveVehicleCount,
                     Is.Zero);
+
+                dispatch.enabled = false;
+                Assert.That(
+                    dispatch.TotalVehicleCount,
+                    Is.Zero,
+                    "Disabling the service must tear down the hospital fleet.");
+                dispatch.enabled = true;
+                Assert.That(
+                    dispatch.TotalVehicleCount,
+                    Is.EqualTo(
+                        config.AmbulancesPerHospital),
+                    "Re-enabling the service must rebuild parked ambulances before synchronizing incidents.");
+                Assert.That(
+                    dispatch.ParkedVehicleCount,
+                    Is.EqualTo(
+                        config.AmbulancesPerHospital));
 
                 AmbulanceVehicleAgent parkedAgent =
                     owner.GetComponentInChildren<

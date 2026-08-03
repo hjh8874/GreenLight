@@ -83,11 +83,12 @@ namespace CityFlow.Content
                 return;
             }
 
-            if (cityServices?.TileData == null ||
+            if (cityServices?.Events == null ||
+                cityServices.TileData == null ||
                 config == null)
             {
                 Debug.LogError(
-                    "[EmergencyIncidentSystem] Services, TileData, and config are required.",
+                    "[EmergencyIncidentSystem] Services, Events, TileData, and config are required.",
                     this);
                 return;
             }
