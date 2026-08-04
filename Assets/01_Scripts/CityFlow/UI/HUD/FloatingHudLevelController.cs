@@ -85,16 +85,22 @@ namespace CityFlow.UI
                 return;
             }
 
-            // Visible HUD controls keep their normal click behavior. A click
-            // outside UI is the map reveal/hide gesture.
-            if (_isRevealed && EventSystem.current != null &&
-                EventSystem.current.IsPointerOverGameObject())
+            // HUD controls keep their normal click behavior in both hidden and
+            // revealed states; only a click outside UI reveals/toggles the map.
+            bool pointerOverUi = EventSystem.current != null &&
+                EventSystem.current.IsPointerOverGameObject();
+            if (!ShouldToggleOnClick(pointerOverUi))
             {
                 return;
             }
 
             _isRevealed = !_isRevealed;
             Apply();
+        }
+
+        public static bool ShouldToggleOnClick(bool pointerOverUi)
+        {
+            return !pointerOverUi;
         }
 
         private void OnFloatingStateChanged(bool floating)
