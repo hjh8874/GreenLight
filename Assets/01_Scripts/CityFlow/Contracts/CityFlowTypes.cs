@@ -80,6 +80,26 @@ namespace CityFlow.Contracts
                 PlacementDirection.West => Vector2Int.left,
                 _ => Vector2Int.down
             };
+
+        /// <summary>
+        /// 마우스로 가리킨 전면 주차장 타일을 기준으로 건물 풋프린트 앵커를 구합니다.
+        /// 전면이 여러 칸이면 커서 타일을 전면 행/열의 첫 칸으로 사용합니다.
+        /// </summary>
+        public static Vector2Int GetAnchorFromFrontTile(
+            Vector2Int frontTile,
+            TileType type,
+            PlacementDirection direction)
+        {
+            Vector2Int size = GetRotatedSize(type, direction);
+            return direction switch
+            {
+                PlacementDirection.East =>
+                    frontTile - new Vector2Int(size.x - 1, 0),
+                PlacementDirection.South =>
+                    frontTile - new Vector2Int(0, size.y - 1),
+                _ => frontTile
+            };
+        }
     }
 
     public enum CongestionLevel

@@ -28,6 +28,21 @@ namespace CityFlow.View
 
         public int VisualCount => visuals.Count;
 
+        public bool TryGetVisualRenderers(
+            Vector2Int anchor,
+            out Renderer[] renderers)
+        {
+            renderers = System.Array.Empty<Renderer>();
+            if (!visuals.TryGetValue(anchor, out GameObject visual) ||
+                visual == null)
+            {
+                return false;
+            }
+
+            renderers = visual.GetComponentsInChildren<Renderer>(true);
+            return renderers.Length > 0;
+        }
+
         public bool TryCreatePlacementPreview(
             string buildingId,
             out GameObject preview)
@@ -242,6 +257,16 @@ namespace CityFlow.View
                 presenter.Configure(
                     definition,
                     tileSize);
+            }
+
+            if (!usesFallback &&
+                (definition.category == BuildingCategory.Medical ||
+                 definition.category == BuildingCategory.Civic))
+            {
+                BuildingNightLighting.Attach(
+                    instance,
+                    services,
+                    BuildingNightLightProfile.StudioHorizonCivic);
             }
 
             return instance;

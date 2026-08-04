@@ -106,7 +106,7 @@ MonoBehaviour:
   cityView: {fileID: 0}
   busVisualPrefab: {fileID: 6580392121705665235, guid: 2983ffe6c0f97e145981eb258a71bbe9, type: 3}
   busMaterial: {fileID: 0}
-  visualScale: 1
+  visualScale: 0.75
   visualDepth: -0.38
   movementDuration: 0.65
 --- !u!114 &1183233741817494639

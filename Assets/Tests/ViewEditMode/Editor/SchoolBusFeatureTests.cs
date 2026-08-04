@@ -108,8 +108,8 @@ namespace CityFlow.Sim.Tests
                 worldViewSerialized
                     .FindProperty("visualScale")
                     .floatValue,
-                Is.EqualTo(1f).Within(0.0001f),
-                "The normalized school bus visual must use unit scale.");
+                Is.EqualTo(0.75f).Within(0.0001f),
+                "The school bus visual must match the reduced bus scale.");
             Assert.That(
                 worldViewSerialized
                     .FindProperty("laneOffset"),

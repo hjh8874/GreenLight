@@ -30,7 +30,7 @@ namespace CityFlow.View
 
         [Header("Presentation")]
         [SerializeField, Min(0.01f)]
-        private float visualScale = 0.085f;
+        private float visualScale = 0.75f;
         [SerializeField]
         private float visualDepth = -0.38f;
         [SerializeField, Min(0.01f)]
@@ -44,9 +44,11 @@ namespace CityFlow.View
 
         private readonly List<Vector2Int> bakedRoadTiles = new();
         private IReadOnlyTileData tileData;
+        private CityFlowServices services;
         private IRoadTrafficService roadTraffic;
         private IIntersectionFacilityService intersectionFacilities;
         private Transform visual;
+        private VehicleNightLighting nightLighting;
         private RoutePolyline roadPolyline;
         private int roadPathHash;
         private bool hasRoadPathHash;
@@ -136,12 +138,16 @@ namespace CityFlow.View
 
         public void Initialize(CityFlowServices services)
         {
+            this.services = services;
             tileData = services?.TileData;
             roadTraffic = services?.RoadTraffic;
             intersectionFacilities =
                 services?.Placement as IIntersectionFacilityService;
             ResolveReferences();
             EnsureVisual();
+            nightLighting = VehicleNightLighting.Attach(
+                visual != null ? visual.gameObject : null,
+                services);
             UpdateStopPresentationGate();
             Subscribe();
             HandleTileChanged(busRoute != null
@@ -237,11 +243,13 @@ namespace CityFlow.View
 
             if (offRoadTransitionActive)
             {
+                nightLighting?.SetMoving(true);
                 UpdateOffRoadTransition();
                 UpdateSchoolBusVisibilityDiagnostics();
                 return;
             }
 
+            nightLighting?.SetMoving(!isParkedOffRoad);
             UpdateRoadPose();
             TryBeginPendingOffRoadExit();
             UpdateSchoolBusVisibilityDiagnostics();
@@ -455,6 +463,8 @@ namespace CityFlow.View
             visual = instance.transform;
             visual.localScale = Vector3.one * visualScale;
             ApplyFeatureMaterial(instance);
+            nightLighting =
+                VehicleNightLighting.Attach(instance, services);
             instance.SetActive(false);
 
             CityBusVehicleAgent agent =
@@ -1647,6 +1657,7 @@ namespace CityFlow.View
             hasObservedTrafficSnapshot = false;
             snapshotMissingLogged = false;
             ResetStopPresentationTarget();
+            nightLighting?.SetMoving(false);
             visual.gameObject.SetActive(false);
         }
 

@@ -835,6 +835,7 @@ namespace CityFlow.View
             vehicle.TravelSpeed = 0f;
             vehicle.HasLastState = false;
             vehicle.BrakeOn = false;
+            vehicle.NightLighting?.SetMoving(false);
             if (vehicle.BrakeLight != null)
             {
                 vehicle.BrakeLight.SetActive(false);   // 하드 리셋(캐시 가드 우회) — 풀 재사용 desync 방지
@@ -869,6 +870,7 @@ namespace CityFlow.View
             vehicle.TravelSpeed = 0f;
             vehicle.HasLastState = false;
             vehicle.BrakeOn = false;
+            vehicle.NightLighting?.SetMoving(false);
             if (vehicle.BrakeLight != null)
             {
                 vehicle.BrakeLight.SetActive(false);
@@ -989,6 +991,8 @@ namespace CityFlow.View
                 vehicle.CurrentSpeed =
                     parkingTravelSpeed /
                     Mathf.Max(0.0001f, tileSize);
+                vehicle.NightLighting?.SetMoving(
+                    vehicle.Settling);
                 if (followingParkingPath && parked.Dir.sqrMagnitude > 0.001f)
                 {
                     float angle = Mathf.Atan2(parked.Dir.y, parked.Dir.x) * Mathf.Rad2Deg;
@@ -1036,6 +1040,7 @@ namespace CityFlow.View
 
             vehicle.Settling = false;
             vehicle.SettleRate = 0f;
+            vehicle.NightLighting?.SetMoving(true);
             RoutePolyline poly = inbound ? pair.Inbound : pair.Outbound;
             int tileIndex = Mathf.Clamp(snapshot.TileIndex, 0, poly.TileCount - 1);
             Vector2Int simTile = poly.TileAt(tileIndex);

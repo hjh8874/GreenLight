@@ -2,6 +2,7 @@ using System;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.Environment;
+using CityFlow.View;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -100,6 +101,219 @@ namespace CityFlow.Tests.ViewEditMode
             Assert.That(midnight.IsSun, Is.False);
             Assert.That(midnight.Progress, Is.EqualTo(0.5f));
             Assert.That(midnight.Altitude, Is.EqualTo(1f).Within(0.0001f));
+        }
+
+        [Test]
+        public void GridLineBrightness_DimsAtNightAndRestoresAtNoon()
+        {
+            float midnightBrightness =
+                TimeOfDaySkyController.CalculateGridLineBrightness(
+                    TimeOfDaySkyController.EvaluateCelestialCycle(0f));
+            float noonBrightness =
+                TimeOfDaySkyController.CalculateGridLineBrightness(
+                    TimeOfDaySkyController.EvaluateCelestialCycle(12f));
+
+            Assert.That(
+                midnightBrightness,
+                Is.EqualTo(0.32f).Within(0.0001f));
+            Assert.That(
+                noonBrightness,
+                Is.EqualTo(1f).Within(0.0001f));
+        }
+
+        [Test]
+        public void VehicleHeadlights_RequireNightAndMovingState()
+        {
+            var vehicle =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var calendar = new TestGameCalendar(17);
+            var services = new CityFlowServices(
+                new SimEventHub(),
+                null,
+                null);
+            services.RegisterGameCalendar(calendar);
+
+            try
+            {
+                VehicleNightLighting lighting =
+                    VehicleNightLighting.Attach(vehicle, services);
+                Light[] headlights =
+                    vehicle.GetComponentsInChildren<Light>(true);
+
+                Assert.That(headlights.Length, Is.EqualTo(2));
+                Assert.That(headlights[0].type, Is.EqualTo(LightType.Spot));
+                Assert.That(headlights[0].enabled, Is.False);
+                Assert.That(
+                    headlights[0].transform.localPosition.z,
+                    Is.GreaterThan(0f));
+
+                calendar.SetHour(18);
+                Assert.That(headlights[0].enabled, Is.False);
+
+                lighting.SetMoving(true);
+                Assert.That(headlights[0].enabled, Is.True);
+                Assert.That(headlights[1].enabled, Is.True);
+
+                calendar.SetHour(5);
+                Assert.That(headlights[0].enabled, Is.True);
+
+                calendar.SetHour(6);
+                Assert.That(headlights[0].enabled, Is.False);
+
+                calendar.SetHour(23);
+                lighting.SetMoving(false);
+                Assert.That(headlights[0].enabled, Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(vehicle);
+            }
+        }
+
+        [Test]
+        public void BuildingWindowLights_DoNotChangeBodyMaterial()
+        {
+            var building =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Renderer renderer = building.GetComponent<Renderer>();
+            Shader shader = Shader.Find(
+                "Universal Render Pipeline/Lit");
+            shader ??= Shader.Find("Standard");
+            Assert.That(shader, Is.Not.Null);
+            var originalMaterial = new Material(shader);
+            renderer.sharedMaterial = originalMaterial;
+
+            var facadeDetail = new GameObject("FacadeDetail");
+            facadeDetail.transform.SetParent(
+                building.transform,
+                false);
+            Mesh facadeMesh = new()
+            {
+                vertices = new[]
+                {
+                    new Vector3(-0.1f, 0.51f, 0.35f),
+                    new Vector3(0.1f, 0.51f, 0.35f),
+                    new Vector3(-0.1f, 0.51f, 0.55f),
+                    new Vector3(0.1f, 0.51f, 0.55f)
+                },
+                normals = new[]
+                {
+                    Vector3.up,
+                    Vector3.up,
+                    Vector3.up,
+                    Vector3.up
+                },
+                uv = new[]
+                {
+                    Vector2.zero,
+                    Vector2.right,
+                    Vector2.up,
+                    Vector2.one
+                },
+                triangles = new[] { 0, 2, 1, 1, 2, 3 }
+            };
+            facadeMesh.RecalculateBounds();
+            facadeMesh.UploadMeshData(true);
+            facadeDetail.AddComponent<MeshFilter>()
+                .sharedMesh = facadeMesh;
+            MeshRenderer facadeRenderer =
+                facadeDetail.AddComponent<MeshRenderer>();
+            var atlasTexture = new Texture2D(4, 4);
+            var atlasPixels = new Color[16];
+            for (int index = 0;
+                 index < atlasPixels.Length;
+                 index++)
+            {
+                atlasPixels[index] = Color.white;
+            }
+            atlasPixels[0] = new Color(0.12f, 0.12f, 0.12f);
+            atlasTexture.SetPixels(atlasPixels);
+            atlasTexture.Apply();
+            var facadeMaterial = new Material(shader)
+            {
+                mainTexture = atlasTexture
+            };
+            facadeRenderer.sharedMaterial = facadeMaterial;
+
+            var calendar = new TestGameCalendar(17);
+            var services = new CityFlowServices(
+                new SimEventHub(),
+                null,
+                null);
+            services.RegisterGameCalendar(calendar);
+
+            try
+            {
+                BuildingNightLighting.Attach(
+                    building,
+                    services,
+                    BuildingNightLightProfile.House);
+                Assert.That(
+                    renderer.sharedMaterial,
+                    Is.SameAs(originalMaterial));
+                Assert.That(
+                    facadeRenderer.sharedMaterials.Length,
+                    Is.EqualTo(1));
+                Assert.That(
+                    facadeRenderer.sharedMaterials[0],
+                    Is.SameAs(facadeMaterial));
+                Transform overlayObject = facadeDetail.transform.Find(
+                    "FacadeDetail_NightWindowOverlay");
+                Assert.That(overlayObject, Is.Not.Null);
+                Assert.That(
+                    overlayObject.gameObject.activeSelf,
+                    Is.False);
+                Material windowMaterial = overlayObject
+                    .GetComponent<MeshRenderer>()
+                    .sharedMaterial;
+                Assert.That(
+                    windowMaterial.GetFloat("_Enabled"),
+                    Is.EqualTo(0f));
+                Assert.That(
+                    windowMaterial.GetFloat("_WindowMaskProfile"),
+                    Is.EqualTo(1f));
+                string colorProperty = windowMaterial.HasProperty(
+                    "_BaseColor")
+                    ? "_BaseColor"
+                    : "_Color";
+                Color windowColor =
+                    windowMaterial.GetColor(colorProperty);
+                Assert.That(windowColor.r, Is.EqualTo(1f).Within(0.001f));
+                Assert.That(windowColor.g, Is.EqualTo(0.9f).Within(0.001f));
+                Assert.That(windowColor.b, Is.EqualTo(0.72f).Within(0.001f));
+
+                calendar.SetHour(18);
+                Assert.That(
+                    windowMaterial.GetFloat("_Enabled"),
+                    Is.EqualTo(1f));
+                Assert.That(
+                    overlayObject.gameObject.activeSelf,
+                    Is.True);
+                Assert.That(
+                    renderer.sharedMaterial,
+                    Is.SameAs(originalMaterial));
+
+                calendar.SetHour(23);
+                Assert.That(
+                    windowMaterial.GetFloat("_Enabled"),
+                    Is.EqualTo(1f));
+
+                calendar.SetHour(0);
+                Assert.That(
+                    windowMaterial.GetFloat("_Enabled"),
+                    Is.EqualTo(0f));
+                Assert.That(
+                    overlayObject.gameObject.activeSelf,
+                    Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(building);
+                UnityEngine.Object.DestroyImmediate(originalMaterial);
+                UnityEngine.Object.DestroyImmediate(facadeMaterial);
+                UnityEngine.Object.DestroyImmediate(atlasTexture);
+                UnityEngine.Object.DestroyImmediate(facadeMesh);
+            }
         }
 
         [Test]
@@ -277,6 +491,7 @@ namespace CityFlow.Tests.ViewEditMode
             Assert.That(
                 controller.CelestialOverlayTemplate.shader.name,
                 Is.EqualTo("CityFlow/Celestial Overlay"));
+            Assert.That(controller.ShowCelestialVisual, Is.False);
             Assert.That(controller.KeyLight, Is.Not.Null);
             Assert.That(
                 controller.KeyLight.type,
@@ -394,17 +609,7 @@ namespace CityFlow.Tests.ViewEditMode
                 Transform celestialBody =
                     instance.transform.Find(
                         "TimeOfDayCelestialBody");
-                Assert.That(celestialBody, Is.Not.Null);
-                Assert.That(
-                    celestialBody.gameObject.activeSelf,
-                    Is.True);
-                Color noonBodyColor = celestialBody
-                    .GetComponent<MeshRenderer>()
-                    .sharedMaterial
-                    .GetColor("_Color");
-                Assert.That(
-                    noonBodyColor.r,
-                    Is.GreaterThan(noonBodyColor.b));
+                Assert.That(celestialBody, Is.Null);
                 Assert.That(
                     controller.KeyLight.intensity,
                     Is.EqualTo(1.15f).Within(0.001f));
@@ -431,13 +636,6 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     RenderSettings.skybox.GetFloat("_ExposureA"),
                     Is.EqualTo(0.9f).Within(0.001f));
-                Color moonBodyColor = celestialBody
-                    .GetComponent<MeshRenderer>()
-                    .sharedMaterial
-                    .GetColor("_Color");
-                Assert.That(
-                    moonBodyColor.b,
-                    Is.GreaterThan(moonBodyColor.r));
                 calendar.SetHour(0);
                 Assert.That(
                     controller.KeyLight.intensity,

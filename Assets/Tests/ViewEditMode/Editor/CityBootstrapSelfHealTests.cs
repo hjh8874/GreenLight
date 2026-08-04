@@ -4,6 +4,9 @@ using UnityEngine;
 using UnityEngine.TestTools;
 using System.Text.RegularExpressions;
 using CityFlow.Bootstrap;
+using CityFlow.Contracts;
+using CityFlow.WorldGrid;
+using UnityEditor;
 
 namespace CityFlow.Tests
 {
@@ -17,6 +20,7 @@ namespace CityFlow.Tests
             BindingFlags.NonPublic | BindingFlags.Instance;
 
         private GameObject _go;
+        private GameObject _worldGridGo;
 
         [TearDown]
         public void TearDown()
@@ -24,6 +28,11 @@ namespace CityFlow.Tests
             if (_go != null)
             {
                 Object.DestroyImmediate(_go);
+            }
+
+            if (_worldGridGo != null)
+            {
+                Object.DestroyImmediate(_worldGridGo);
             }
         }
 
@@ -70,6 +79,43 @@ namespace CityFlow.Tests
             update.Invoke(boot, null); // 두 번째 호출: 경고 없이 같은 인스턴스 유지
             Assert.AreSame(first, boot.Services);
             LogAssert.NoUnexpectedReceived();
+        }
+
+        [Test]
+        public void Start_WhenWorldGridIsAvailable_UsesWorldDimensions()
+        {
+            _go = new GameObject("~BootstrapWorldGridTimingTest");
+            _go.SetActive(false);
+            CityBootstrap bootstrap = _go.AddComponent<CityBootstrap>();
+            typeof(CityBootstrap)
+                .GetField("useFakeServices", Flags)
+                .SetValue(bootstrap, false);
+
+            _worldGridGo = new GameObject("~WorldGridTimingTest");
+            WorldGridService worldGrid =
+                _worldGridGo.AddComponent<WorldGridService>();
+            WorldGridConfigSO config =
+                AssetDatabase.LoadAssetAtPath<WorldGridConfigSO>(
+                    "Assets/05_ScriptableObjects/WorldGridConfig.asset");
+            Assert.IsNotNull(config, "월드 그리드 설정 에셋이 필요하다");
+            typeof(WorldGridService)
+                .GetField("config", Flags)
+                .SetValue(worldGrid, config);
+
+            typeof(CityBootstrap)
+                .GetMethod("Start", Flags)
+                .Invoke(bootstrap, null);
+
+            Assert.IsNotNull(bootstrap.Services);
+            Assert.AreSame(worldGrid, bootstrap.Services.WorldGrid);
+            Assert.AreEqual(
+                config.WorldWidth,
+                bootstrap.Services.Save.CreateSnapshot().GridWidth);
+            Assert.IsTrue(
+                bootstrap.Services.Placement.CanPlace(
+                    config.InitialPlayableOrigin,
+                    TileType.Road),
+                "초기 해금 영역의 전역 좌표에 도로를 설치할 수 있어야 한다");
         }
     }
 }

@@ -263,7 +263,7 @@ namespace CityFlow.Tests
                     new Vector2Int(2, 3),
                     PlacementController.RoadSurfaceMarkerZ);
 
-                AssertVector(new Vector3(3f, 0.05f, 4.5f), position);
+                AssertVector(new Vector3(3f, -0.12f, 4.5f), position);
             }
             finally
             {

@@ -26,6 +26,7 @@ namespace CityFlow.Environment
         private const float SunriseHour = 6f;
         private const float SunsetHour = 18f;
         private const float HalfDayHours = 12f;
+        private const float NightGridBrightness = 0.32f;
 
         private static TimeOfDaySkyController activeOwner;
 
@@ -38,6 +39,7 @@ namespace CityFlow.Environment
         [SerializeField] private Light keyLight;
 
         [Header("Celestial Cycle")]
+        [SerializeField] private bool showCelestialVisual = true;
         [SerializeField, Range(0f, 1f)] private float horizonViewportY =
             0.5f;
         [SerializeField, Min(0.01f)] private float celestialCameraDepth = 10f;
@@ -86,6 +88,7 @@ namespace CityFlow.Environment
         public Material CelestialOverlayTemplate =>
             celestialOverlayTemplate;
         public Light KeyLight => keyLight;
+        public bool ShowCelestialVisual => showCelestialVisual;
 
         public void Initialize(CityFlowServices newServices)
         {
@@ -232,7 +235,8 @@ namespace CityFlow.Environment
                 return false;
             }
 
-            if (!EnsureCelestialVisual())
+            if (showCelestialVisual &&
+                !EnsureCelestialVisual())
             {
                 enabled = false;
                 return false;
@@ -422,6 +426,7 @@ namespace CityFlow.Environment
             }
 
             ApplyLighting(cycle);
+            ApplyGridLineBrightness(cycle);
 
             if (forceEnvironmentUpdate)
             {
@@ -462,7 +467,8 @@ namespace CityFlow.Environment
             CelestialCycleState cycle,
             Camera targetCamera)
         {
-            if (runtimeCelestialObject == null ||
+            if (!showCelestialVisual ||
+                runtimeCelestialObject == null ||
                 runtimeCelestialMaterial == null ||
                 targetCamera == null)
             {
@@ -852,6 +858,39 @@ namespace CityFlow.Environment
             RenderSettings.sun = keyLight;
         }
 
+        private void ApplyGridLineBrightness(
+            CelestialCycleState cycle)
+        {
+            mainCityView ??=
+                FindAnyObjectByType<MainCityView>(
+                    FindObjectsInactive.Include);
+            if (mainCityView == null)
+            {
+                return;
+            }
+
+            mainCityView.SetGridLineBrightness(
+                CalculateGridLineBrightness(cycle));
+        }
+
+        internal static float CalculateGridLineBrightness(
+            CelestialCycleState cycle)
+        {
+            float daylight = cycle.IsSun
+                ? Mathf.SmoothStep(
+                    0f,
+                    1f,
+                    Mathf.InverseLerp(
+                        0f,
+                        0.35f,
+                        cycle.Altitude))
+                : 0f;
+            return Mathf.Lerp(
+                NightGridBrightness,
+                1f,
+                daylight);
+        }
+
         private bool TryGetLightingKeyframes(
             out TimeOfDaySkyKeyframe midnight,
             out TimeOfDaySkyKeyframe dawn,
@@ -918,6 +957,11 @@ namespace CityFlow.Environment
             if (activeOwner == this)
             {
                 activeOwner = null;
+            }
+
+            if (mainCityView != null)
+            {
+                mainCityView.SetGridLineBrightness(1f);
             }
 
             ownsRenderSettings = false;

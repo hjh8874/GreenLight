@@ -30,8 +30,10 @@ namespace CityFlow.View
         private readonly BufferedRouteFollower routeFollower = new();
 
         private IReadOnlyTileData tileData;
+        private CityFlowServices services;
         private IRoadTrafficService roadTraffic;
         private Transform visual;
+        private VehicleNightLighting nightLighting;
         private RoutePolyline movementPath;
         private float movementStartDistance;
         private float targetMovementDistance;
@@ -84,10 +86,14 @@ namespace CityFlow.View
 
         public void Initialize(CityFlowServices services)
         {
+            this.services = services;
             tileData = services?.TileData;
             roadTraffic = services?.RoadTraffic;
             ResolveReferences();
             EnsureVisual();
+            nightLighting = VehicleNightLighting.Attach(
+                visual != null ? visual.gameObject : null,
+                services);
             Subscribe();
         }
 
@@ -125,6 +131,12 @@ namespace CityFlow.View
 
         private void Update()
         {
+            nightLighting?.SetMoving(
+                parkingTransitionActive ||
+                (hasTarget &&
+                 routeFollower.HasPath &&
+                 !isParkedOffRoad));
+
             if (parkingTransitionActive)
             {
                 cityView?.RemoveVehiclePresentation(this);
@@ -284,6 +296,8 @@ namespace CityFlow.View
                     visual,
                     config,
                     cityView.TileSize);
+            nightLighting =
+                VehicleNightLighting.Attach(instance, services);
             instance.SetActive(false);
             previousVisualPosition =
                 visual.localPosition;
@@ -645,6 +659,7 @@ namespace CityFlow.View
             }
             parkingTransitionActive = true;
             isParkedOffRoad = false;
+            nightLighting?.SetMoving(true);
         }
 
         private void UpdateParkingTransition()
@@ -726,6 +741,8 @@ namespace CityFlow.View
                 cityView?.RemoveVehiclePresentation(this);
             }
 
+            nightLighting?.SetMoving(
+                !parkingTransitionEndsParked);
             Action callback = parkingCompleted;
             parkingCompleted = null;
             callback?.Invoke();

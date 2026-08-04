@@ -757,6 +757,156 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void PlacementGhost_UsesUnifiedRoadSurfaceHeight()
+        {
+            var cityObject =
+                new GameObject("GhostSurfaceCityView");
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
+            var controllerObject =
+                new GameObject("GhostSurfaceController");
+            PlacementController controller =
+                controllerObject.AddComponent<PlacementController>();
+
+            try
+            {
+                SetPrivateField(
+                    controller,
+                    "_cityView",
+                    cityView);
+
+                Assert.That(
+                    controller.GetSurfaceMarkerZ(Vector2Int.zero),
+                    Is.EqualTo(cityView.RoadSurfaceZ)
+                        .Within(0.0001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(controllerObject);
+                Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
+        public void HouseGhostFootprint_FollowsResolvedAutoDirection()
+        {
+            var controllerObject =
+                new GameObject("DirectionalHouseGhostController");
+            PlacementController controller =
+                controllerObject.AddComponent<PlacementController>();
+            var ghostObject =
+                new GameObject("DirectionalHouseGhost");
+            SpriteRenderer ghostRenderer =
+                ghostObject.AddComponent<SpriteRenderer>();
+            var placement = new AutoDirectionPlacementService();
+
+            try
+            {
+                controller.ConfigureGhost(ghostRenderer);
+                controller.Initialize(
+                    new CityFlow.Bootstrap.CityFlowServices(
+                        new SimEventHub(),
+                        null,
+                        placement));
+                controller.SetBuildType(TileType.House);
+
+                Assert.That(
+                    ghostRenderer.transform.localScale,
+                    Is.EqualTo(new Vector3(1f, 2f, 1f)));
+
+                MethodInfo updateDirectionMethod =
+                    typeof(PlacementController).GetMethod(
+                        "UpdatePlacementDirection",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                Assert.That(updateDirectionMethod, Is.Not.Null);
+                updateDirectionMethod.Invoke(
+                    controller,
+                    new object[] { Vector2Int.zero });
+
+                Assert.That(
+                    ghostRenderer.transform.localScale,
+                    Is.EqualTo(new Vector3(2f, 1f, 1f)),
+                    "1x2 거주지 고스트는 자동 방향이 East면 2x1로 바뀌어야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(controllerObject);
+                Object.DestroyImmediate(ghostObject);
+            }
+        }
+
+        [Test]
+        public void HousePlacement_UsesCursorTileAsFrontParkingTile()
+        {
+            var controllerObject =
+                new GameObject("ParkingCursorPlacementController");
+            PlacementController controller =
+                controllerObject.AddComponent<PlacementController>();
+            Vector2Int cursor = new Vector2Int(10, 20);
+            var tileData = new ParkingCursorTileData(
+                cursor + Vector2Int.right);
+
+            try
+            {
+                SetPrivateField(
+                    controller,
+                    "_services",
+                    new CityFlowServices(
+                        new SimEventHub(),
+                        tileData,
+                        new DefaultAutoDirectionPlacementService()));
+                SetPrivateField(
+                    controller,
+                    "_currentType",
+                    TileType.House);
+
+                MethodInfo directionMethod =
+                    typeof(PlacementController).GetMethod(
+                        "ResolvePlacementDirection",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                MethodInfo anchorMethod =
+                    typeof(PlacementController).GetMethod(
+                        "ResolvePlacementAnchor",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Static);
+                Assert.That(directionMethod, Is.Not.Null);
+                Assert.That(anchorMethod, Is.Not.Null);
+
+                PlacementDirection direction =
+                    (PlacementDirection)directionMethod.Invoke(
+                        controller,
+                        new object[] { cursor });
+                Vector2Int anchor =
+                    (Vector2Int)anchorMethod.Invoke(
+                        null,
+                        new object[]
+                        {
+                            cursor,
+                            TileType.House,
+                            direction
+                        });
+
+                Assert.That(
+                    direction,
+                    Is.EqualTo(PlacementDirection.East));
+                Assert.That(
+                    anchor,
+                    Is.EqualTo(new Vector2Int(9, 20)),
+                    "동쪽 도로 옆 커서 칸이 주차장이고 건물 앵커는 그 뒤로 이동해야 한다.");
+                Assert.That(
+                    anchor + Vector2Int.right,
+                    Is.EqualTo(cursor),
+                    "커서가 가리킨 칸은 회전된 2x1 거주지의 동쪽 주차장 칸이어야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(controllerObject);
+            }
+        }
+
+        [Test]
         public void HousePreviewPosition_UsesRotatedFootprintCenter()
         {
             var cityObject =
@@ -790,6 +940,243 @@ namespace Tests.EditMode
             finally
             {
                 Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
+        public void HouseConstructionVisual_UsesOneByTwoTargetFootprint()
+        {
+            var cityObject =
+                new GameObject("HouseConstructionFootprintCityView");
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
+
+            try
+            {
+                MethodInfo scaleMethod =
+                    typeof(MainCityView).GetMethod(
+                        "GetBuildingBodyScale",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                MethodInfo positionMethod =
+                    typeof(MainCityView).GetMethod(
+                        "GetBuildingBodyPosition",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                Assert.That(scaleMethod, Is.Not.Null);
+                Assert.That(positionMethod, Is.Not.Null);
+
+                Vector3 scale =
+                    (Vector3)scaleMethod.Invoke(
+                        cityView,
+                        new object[]
+                        {
+                            TileType.UnderConstruction,
+                            TileType.House
+                        });
+                Vector3 position =
+                    (Vector3)positionMethod.Invoke(
+                        cityView,
+                        new object[]
+                        {
+                            TileType.UnderConstruction,
+                            TileType.House
+                        });
+
+                Assert.That(
+                    scale.x,
+                    Is.EqualTo(1f).Within(0.0001f));
+                Assert.That(
+                    scale.y,
+                    Is.EqualTo(2f).Within(0.0001f));
+                Assert.That(
+                    position.x,
+                    Is.EqualTo(0f).Within(0.0001f));
+                Assert.That(
+                    position.y,
+                    Is.EqualTo(0f).Within(0.0001f),
+                    "공사 중 비주얼은 1x2 점유 범위 중앙에서 벗어나면 안 된다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
+        public void SelectedStructure_UsesLowAlphaOverlayAndPreservesOriginal()
+        {
+            var selectionObject =
+                new GameObject("HouseSelectionController");
+            TileSelectionController selection =
+                selectionObject.AddComponent<TileSelectionController>();
+            var highlightObject =
+                new GameObject("HouseSelectionHighlight");
+            highlightObject.AddComponent<SpriteRenderer>();
+            GameObject structure =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Renderer structureRenderer =
+                structure.GetComponent<Renderer>();
+            Material originalMaterial =
+                structureRenderer.sharedMaterial;
+
+            try
+            {
+                selection.Configure(
+                    null,
+                    null,
+                    highlightObject);
+
+                MethodInfo applyMethod =
+                    typeof(TileSelectionController).GetMethod(
+                        "ApplySelectedRenderer",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                MethodInfo overlayColorMethod =
+                    typeof(TileSelectionController).GetMethod(
+                        "GetSelectionOverlayColor",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Static);
+                MethodInfo deselectMethod =
+                    typeof(TileSelectionController).GetMethod(
+                        "DeselectTile",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                Assert.That(applyMethod, Is.Not.Null);
+                Assert.That(overlayColorMethod, Is.Not.Null);
+                Assert.That(deselectMethod, Is.Not.Null);
+                applyMethod.Invoke(
+                    selection,
+                    new object[] { structureRenderer });
+
+                Color overlayColor =
+                    (Color)overlayColorMethod.Invoke(null, null);
+                Transform overlay = structure.transform.Find(
+                    "Cube (Selection Overlay)");
+
+                Assert.That(
+                    highlightObject.activeSelf,
+                    Is.False,
+                    "별도 바닥 고스트는 표시하지 않아야 한다.");
+                Assert.That(
+                    structureRenderer.sharedMaterial,
+                    Is.SameAs(originalMaterial),
+                    "선택 중에도 원본 구조물 재질은 교체하면 안 된다.");
+                Assert.That(
+                    overlay,
+                    Is.Not.Null,
+                    "선택 표시는 실제 형상을 복제한 투명 레이어여야 한다.");
+                Assert.That(
+                    overlay.GetComponent<Renderer>(),
+                    Is.Not.Null);
+                Assert.That(
+                    overlayColor.a,
+                    Is.EqualTo(0.08f).Within(0.0001f),
+                    "선택 레이어는 원본을 가리지 않는 낮은 알파를 유지해야 한다.");
+
+                deselectMethod.Invoke(selection, null);
+                Assert.That(
+                    structureRenderer.sharedMaterial,
+                    Is.SameAs(originalMaterial),
+                    "선택 해제 시 원본 재질을 복원해야 한다.");
+                Assert.That(
+                    structure.transform.Find(
+                        "Cube (Selection Overlay)"),
+                    Is.Null,
+                    "선택 해제 시 투명 레이어를 제거해야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(selectionObject);
+                Object.DestroyImmediate(highlightObject);
+                Object.DestroyImmediate(structure);
+            }
+        }
+
+        [Test]
+        public void SelectedHouseHighlight_HidesAfterBuildingIsRemoved()
+        {
+            var selectionObject =
+                new GameObject("RemovedHouseSelectionController");
+            TileSelectionController selection =
+                selectionObject.AddComponent<TileSelectionController>();
+            var highlightObject =
+                new GameObject("RemovedHouseSelectionHighlight");
+            highlightObject.AddComponent<SpriteRenderer>();
+            GameObject structure =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Renderer structureRenderer =
+                structure.GetComponent<Renderer>();
+            Material originalMaterial =
+                structureRenderer.sharedMaterial;
+            var tileData = new EastFacingHouseTileData();
+
+            try
+            {
+                selection.Configure(
+                    null,
+                    null,
+                    highlightObject);
+                selection.Initialize(
+                    new CityFlowServices(
+                        new SimEventHub(),
+                        tileData,
+                        null));
+
+                MethodInfo selectMethod =
+                    typeof(TileSelectionController).GetMethod(
+                        "SelectTile",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                MethodInfo clearMethod =
+                    typeof(TileSelectionController).GetMethod(
+                        "ClearSelectionIfRemoved",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                Assert.That(selectMethod, Is.Not.Null);
+                Assert.That(clearMethod, Is.Not.Null);
+                selectMethod.Invoke(
+                    selection,
+                    new object[] { new Vector2Int(10, 20) });
+                MethodInfo applyMethod =
+                    typeof(TileSelectionController).GetMethod(
+                        "ApplySelectedRenderer",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                Assert.That(applyMethod, Is.Not.Null);
+                applyMethod.Invoke(
+                    selection,
+                    new object[] { structureRenderer });
+                Assert.That(
+                    structureRenderer.sharedMaterial,
+                    Is.SameAs(originalMaterial));
+                Assert.That(
+                    structure.transform.Find(
+                        "Cube (Selection Overlay)"),
+                    Is.Not.Null);
+
+                tileData.Type = TileType.Empty;
+                clearMethod.Invoke(selection, null);
+
+                Assert.That(
+                    highlightObject.activeSelf,
+                    Is.False,
+                    "선택한 건물이 해체되면 별도 고스트는 비활성 상태여야 한다.");
+                Assert.That(
+                    structureRenderer.sharedMaterial,
+                    Is.SameAs(originalMaterial),
+                    "해체 시 실제 구조물 선택 표시도 정리되어야 한다.");
+                Assert.That(
+                    structure.transform.Find(
+                        "Cube (Selection Overlay)"),
+                    Is.Null,
+                    "해체 시 투명 선택 레이어도 제거되어야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(selectionObject);
+                Object.DestroyImmediate(highlightObject);
+                Object.DestroyImmediate(structure);
             }
         }
 
@@ -1561,6 +1948,86 @@ namespace Tests.EditMode
             public bool IsFootprintAnchor(Vector2Int tile) => false;
             public bool TryGetConstructionProgress01(Vector2Int tile, out float progress01) { progress01 = 0f; return false; }
             public bool TryGetConstructionTargetType(Vector2Int tile, out TileType targetType) { targetType = TileType.Empty; return false; }
+        }
+
+        private sealed class EastFacingHouseTileData : IReadOnlyTileData
+        {
+            public TileType Type { get; set; } = TileType.House;
+
+            public CongestionLevel GetCongestion(Vector2Int tile) =>
+                CongestionLevel.Free;
+            public float GetDensity01(Vector2Int tile) => 0f;
+            public int GetQueueCount(Vector2Int tile, Dir entryDir) => 0;
+            public TileType GetTileType(Vector2Int tile) => Type;
+            public PlacementDirection GetDirection(Vector2Int tile) =>
+                PlacementDirection.East;
+            public Vector2Int GetFootprintSize(TileType type) =>
+                TileFootprint.GetSize(type);
+            public bool TryGetFootprintAnchor(
+                Vector2Int tile,
+                out Vector2Int anchor)
+            {
+                anchor = tile;
+                return true;
+            }
+            public bool IsFootprintAnchor(Vector2Int tile) => true;
+            public bool TryGetConstructionProgress01(
+                Vector2Int tile,
+                out float progress01)
+            {
+                progress01 = 0f;
+                return false;
+            }
+            public bool TryGetConstructionTargetType(
+                Vector2Int tile,
+                out TileType targetType)
+            {
+                targetType = TileType.Empty;
+                return false;
+            }
+        }
+
+        private sealed class ParkingCursorTileData : IReadOnlyTileData
+        {
+            private readonly Vector2Int roadTile;
+
+            public ParkingCursorTileData(Vector2Int roadTile)
+            {
+                this.roadTile = roadTile;
+            }
+
+            public CongestionLevel GetCongestion(Vector2Int tile) =>
+                CongestionLevel.Free;
+            public float GetDensity01(Vector2Int tile) => 0f;
+            public int GetQueueCount(Vector2Int tile, Dir entryDir) => 0;
+            public TileType GetTileType(Vector2Int tile) =>
+                tile == roadTile ? TileType.Road : TileType.Empty;
+            public PlacementDirection GetDirection(Vector2Int tile) =>
+                PlacementDirection.North;
+            public Vector2Int GetFootprintSize(TileType type) =>
+                TileFootprint.GetSize(type);
+            public bool TryGetFootprintAnchor(
+                Vector2Int tile,
+                out Vector2Int anchor)
+            {
+                anchor = tile;
+                return false;
+            }
+            public bool IsFootprintAnchor(Vector2Int tile) => false;
+            public bool TryGetConstructionProgress01(
+                Vector2Int tile,
+                out float progress01)
+            {
+                progress01 = 0f;
+                return false;
+            }
+            public bool TryGetConstructionTargetType(
+                Vector2Int tile,
+                out TileType targetType)
+            {
+                targetType = TileType.Empty;
+                return false;
+            }
         }
 
         private sealed class TestEconomyService : IEconomyService
