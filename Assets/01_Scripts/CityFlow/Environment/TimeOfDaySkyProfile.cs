@@ -88,6 +88,33 @@ namespace CityFlow.Environment
 
         public IReadOnlyList<TimeOfDaySkyKeyframe> Keyframes => keyframes;
 
+        public bool TryGetKeyframe(
+            float hour,
+            out TimeOfDaySkyKeyframe keyframe)
+        {
+            keyframe = null;
+            if (keyframes == null)
+            {
+                return false;
+            }
+
+            float normalizedHour = Mathf.Repeat(hour, HoursPerDay);
+            for (int i = 0; i < keyframes.Count; i++)
+            {
+                TimeOfDaySkyKeyframe candidate = keyframes[i];
+                if (candidate != null &&
+                    Mathf.Approximately(
+                        candidate.Hour,
+                        normalizedHour))
+                {
+                    keyframe = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public bool TryEvaluate(
             float gameHour,
             out TimeOfDaySkyEvaluation evaluation)

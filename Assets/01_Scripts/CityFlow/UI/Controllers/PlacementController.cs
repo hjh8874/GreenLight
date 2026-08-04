@@ -661,7 +661,8 @@ namespace CityFlow.UI
                     Vector3 position = _cityView
                         .GetPlacementPreviewWorldPosition(
                             gridCoord,
-                            _currentType);
+                            _currentType,
+                            _currentDirection);
                     if (DoesPreviewOverlapExistingTiles(
                             gridCoord,
                             footprintSize))

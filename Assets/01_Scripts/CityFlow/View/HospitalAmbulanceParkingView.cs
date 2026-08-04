@@ -126,7 +126,7 @@ namespace CityFlow.View
                     cityView.VehicleGroundZ);
             instance.transform.localRotation =
                 cityView.GetSpecialBuildingParkingRotation(hospital);
-            VehicleVisualUtility.PrepareUnlit(instance);
+            VehicleVisualUtility.PrepareLit(instance);
             visuals.Add(hospital, instance);
         }
     }

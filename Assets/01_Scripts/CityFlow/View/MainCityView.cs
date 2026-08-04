@@ -224,6 +224,11 @@ namespace CityFlow.View
         public int GridHeight => height;
         public Vector2Int GridOrigin => gridOrigin;
         public float TileSize => tileSize;
+        public float MaximumOrthographicSize =>
+            Mathf.Max(
+                0.1f,
+                (minimumZoomDistance + zoomDistanceRange) *
+                OrthographicSizePerDistance);
         public float LaneOffset => Mathf.Max(0f, laneOffset);
         public float IntersectionQueueInsetTiles =>
             Mathf.Max(0f, intersectionQueueInset);
@@ -1417,9 +1422,20 @@ namespace CityFlow.View
             }
             if (TileFootprint.IsBuilding(type))
             {
-                visual.Object.transform.localPosition = FootprintToLocal(tile, type);
+                TileType footprintType =
+                    ResolveVisualFootprintType(tile, type);
+                PlacementDirection direction =
+                    tileData.GetDirection(tile);
+                visual.Object.transform.localPosition =
+                    FootprintToLocal(
+                        tile,
+                        footprintType,
+                        direction);
                 visual.Object.transform.localRotation =
-                    GetBuildingRotation(tile, type);
+                    GetBuildingRotation(
+                        tile,
+                        footprintType,
+                        direction);
                 visual.Object.transform.localScale = Vector3.one;
             }
             else
@@ -1925,6 +1941,7 @@ namespace CityFlow.View
         private static Renderer PrepareAuthoredRenderers(
             GameObject root)
         {
+            VehicleVisualUtility.PrepareLit(root);
             Renderer[] renderers =
                 root.GetComponentsInChildren<Renderer>(true);
 
@@ -1934,8 +1951,8 @@ namespace CityFlow.View
                 renderer.enabled = true;
                 renderer.forceRenderingOff = false;
                 renderer.allowOcclusionWhenDynamic = false;
-                renderer.shadowCastingMode = ShadowCastingMode.Off;
-                renderer.receiveShadows = false;
+                renderer.shadowCastingMode = ShadowCastingMode.On;
+                renderer.receiveShadows = true;
             }
 
             return renderers.Length > 0
@@ -2123,10 +2140,24 @@ namespace CityFlow.View
             Vector2Int tile,
             TileType type)
         {
+            return GetPlacementPreviewWorldPosition(
+                tile,
+                type,
+                PlacementDirection.North);
+        }
+
+        public Vector3 GetPlacementPreviewWorldPosition(
+            Vector2Int tile,
+            TileType type,
+            PlacementDirection direction)
+        {
             Vector3 localPosition;
             if (TileFootprint.IsBuilding(type))
             {
-                localPosition = FootprintToLocal(tile, type);
+                localPosition = FootprintToLocal(
+                    tile,
+                    type,
+                    direction);
             }
             else
             {
@@ -2266,10 +2297,12 @@ namespace CityFlow.View
         {
             GameObject root = new GameObject($"{type}_{tile.x}_{tile.y}");
             root.transform.SetParent(parent, false);
+            TileType footprintType =
+                ResolveVisualFootprintType(tile, type);
             float buildingSurfaceZ =
                 AddBuildingFoundation(
                     root.transform,
-                    type);
+                    footprintType);
 
             GameObject prefab = GetPrefab(type);
             GameObject body = InstantiatePrefabOrPrimitive(prefab, PrimitiveType.Cube);
@@ -2301,9 +2334,6 @@ namespace CityFlow.View
                     body.transform,
                     root.transform,
                     buildingSurfaceZ);
-                VehicleVisualUtility.PrepareUnlit(
-                    body,
-                    (int)RenderQueue.Geometry);
                 renderer =
                     PrepareAuthoredRenderers(body);
             }
@@ -2386,7 +2416,10 @@ namespace CityFlow.View
         {
             return type switch
             {
-                TileType.House or
+                TileType.House =>
+                    new Vector2(
+                        tileSize * 0.9f,
+                        tileSize * 0.9f),
                 TileType.Office or
                 TileType.School or
                 TileType.Hospital =>
@@ -2546,11 +2579,13 @@ namespace CityFlow.View
 
             const int parkingSlotsPerPrefab = 2;
             int drivewayCount = buildingType == TileType.House
-                ? 2
+                ? 1
                 : Mathf.CeilToInt(
                     parkingSlotCount /
                     (float)parkingSlotsPerPrefab);
-            float lotWidth = tileSize * 2f;
+            float lotWidth = buildingType == TileType.House
+                ? tileSize
+                : tileSize * 2f;
             float drivewayWidth =
                 lotWidth / drivewayCount;
             int visibleParkingSlotCount =
@@ -2901,12 +2936,42 @@ namespace CityFlow.View
 
         private Vector3 FootprintToLocal(Vector2Int tile, TileType type)
         {
-            Vector2Int size = TileFootprint.GetSize(type);
+            return FootprintToLocal(
+                tile,
+                type,
+                PlacementDirection.North);
+        }
+
+        private Vector3 FootprintToLocal(
+            Vector2Int tile,
+            TileType type,
+            PlacementDirection direction)
+        {
+            Vector2Int size =
+                TileFootprint.GetRotatedSize(
+                    type,
+                    direction);
             Vector2Int localTile = tile - gridOrigin;
             return new Vector3(
                 (localTile.x + size.x * 0.5f) * tileSize,
                 (localTile.y + size.y * 0.5f) * tileSize,
                 0f);
+        }
+
+        private TileType ResolveVisualFootprintType(
+            Vector2Int tile,
+            TileType type)
+        {
+            if (type == TileType.UnderConstruction &&
+                tileData != null &&
+                tileData.TryGetConstructionTargetType(
+                    tile,
+                    out TileType targetType))
+            {
+                return targetType;
+            }
+
+            return type;
         }
 
         private Quaternion GetRoadFacingRotation(Vector2Int tile, TileType type)
@@ -3057,8 +3122,14 @@ namespace CityFlow.View
             foreach (KeyValuePair<Vector2Int, TileVisual> pair in tileVisuals)
             {
                 if (!TileFootprint.IsBuilding(pair.Value.Type)) continue;
+                TileType footprintType =
+                    ResolveVisualFootprintType(
+                        pair.Key,
+                        pair.Value.Type);
                 pair.Value.Object.transform.localRotation =
-                    GetBuildingRotation(pair.Key, pair.Value.Type);
+                    GetBuildingRotation(
+                        pair.Key,
+                        footprintType);
             }
         }
 
@@ -3786,7 +3857,7 @@ namespace CityFlow.View
                 }
                 if (usesAuthoredVisual)
                 {
-                    VehicleVisualUtility.PrepareUnlit(
+                    VehicleVisualUtility.PrepareLit(
                         vehicle,
                         VehicleRenderQueue);
                 }
@@ -4444,10 +4515,15 @@ namespace CityFlow.View
         {
             if (renderer != null)
             {
-                renderer.sharedMaterial = CreateUnlitMaterial(renderer.sharedMaterial, renderQueue);
+                renderer.sharedMaterial =
+                    CreateLitMaterial(
+                        renderer.sharedMaterial,
+                        renderQueue);
                 renderer.enabled = true;
                 renderer.forceRenderingOff = false;
                 renderer.allowOcclusionWhenDynamic = false;
+                renderer.shadowCastingMode = ShadowCastingMode.On;
+                renderer.receiveShadows = true;
             }
 
             return renderer;
@@ -4468,6 +4544,29 @@ namespace CityFlow.View
             Material material = shader != null
                 ? new Material(shader)
                 : new Material(fallbackMaterial);
+            ConfigureOpaqueMaterial(material, renderQueue);
+            return material;
+        }
+
+        private static Material CreateLitMaterial(
+            Material fallbackMaterial = null,
+            int renderQueue = (int)RenderQueue.Geometry)
+        {
+            Shader shader =
+                Shader.Find("Universal Render Pipeline/Lit") ??
+                Shader.Find("Universal Render Pipeline/Simple Lit") ??
+                Shader.Find("Standard") ??
+                fallbackMaterial?.shader;
+            Material material = shader != null
+                ? new Material(shader)
+                : new Material(fallbackMaterial);
+
+            if (fallbackMaterial != null)
+            {
+                material.mainTexture = fallbackMaterial.mainTexture;
+                material.color = fallbackMaterial.color;
+            }
+
             ConfigureOpaqueMaterial(material, renderQueue);
             return material;
         }

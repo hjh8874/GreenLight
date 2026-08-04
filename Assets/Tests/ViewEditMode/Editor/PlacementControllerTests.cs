@@ -756,6 +756,43 @@ namespace Tests.EditMode
             }
         }
 
+        [Test]
+        public void HousePreviewPosition_UsesRotatedFootprintCenter()
+        {
+            var cityObject =
+                new GameObject("RotatedHousePreviewCityView");
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
+
+            try
+            {
+                Vector2Int anchor = new Vector2Int(2, 3);
+                Vector3 north =
+                    cityView.GetPlacementPreviewWorldPosition(
+                        anchor,
+                        TileType.House,
+                        PlacementDirection.North);
+                Vector3 east =
+                    cityView.GetPlacementPreviewWorldPosition(
+                        anchor,
+                        TileType.House,
+                        PlacementDirection.East);
+
+                Assert.That(
+                    north,
+                    Is.EqualTo(new Vector3(2.5f, 4f, 0f)),
+                    "1x2 거주지의 North 미리보기는 세로 풋프린트 중앙에 있어야 한다.");
+                Assert.That(
+                    east,
+                    Is.EqualTo(new Vector3(3f, 3.5f, 0f)),
+                    "2x1로 회전한 거주지 미리보기는 가로 풋프린트 중앙에 있어야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(cityObject);
+            }
+        }
+
         [TestCase(TileType.House, "housePrefab")]
         [TestCase(TileType.Office, "officePrefab")]
         [TestCase(TileType.School, "schoolPrefab")]
@@ -889,8 +926,8 @@ namespace Tests.EditMode
                 }
                 Assert.That(
                     foundationBounds.size.x,
-                    Is.EqualTo(2f).Within(0.01f),
-                    "건물 바닥은 건물 구역의 2그리드 폭을 경계선 중심까지 정확히 채워야 한다.");
+                    Is.EqualTo(1f).Within(0.01f),
+                    "거주지 건물 바닥은 1그리드 폭을 경계선 중심까지 정확히 채워야 한다.");
                 Assert.That(
                     foundationBounds.size.y,
                     Is.EqualTo(1f).Within(0.01f),
@@ -944,65 +981,20 @@ namespace Tests.EditMode
                     preview.transform.Find("Driveway_1");
                 Assert.That(
                     secondDriveway,
-                    Is.Not.Null,
-                    "주거지는 2칸짜리 주차장 프리팹 두 개를 사용해야 한다.");
-                Renderer secondRenderer =
-                    secondDriveway.GetComponentInChildren<Renderer>();
-                Assert.That(secondRenderer, Is.Not.Null);
-                Bounds houseParkingBounds =
-                    drivewayRenderer.bounds;
-                houseParkingBounds.Encapsulate(
-                    secondRenderer.bounds);
+                    Is.Null,
+                    "주거지는 주차장 프리팹 하나만 사용해야 한다.");
                 Assert.That(
-                    houseParkingBounds.size.x,
-                    Is.EqualTo(2f).Within(0.01f),
-                    "주거지 주차장 두 개는 건물 전면의 2그리드 폭을 채워야 한다.");
-                Assert.That(
-                    houseParkingBounds.center.x,
+                    drivewayRenderer.bounds.center.x,
                     Is.EqualTo(0f).Within(0.01f),
                     "주거지 주차장은 건물 전면 중앙에 정렬되어야 한다.");
-                Assert.That(
-                    preview.transform.Find("Driveway_2"),
-                    Is.Null,
-                    "주거지에는 주차장 프리팹이 정확히 두 개만 있어야 한다.");
 
                 Transform drivewayBoundary =
                     preview.transform.Find(
                         "DrivewayBoundary_1");
                 Assert.That(
                     drivewayBoundary,
-                    Is.Not.Null,
-                    "주거지 주차장 프리팹 사이에 내부 선과 같은 구분선이 필요하다.");
-                Assert.That(
-                    drivewayBoundary.localPosition.x,
-                    Is.EqualTo(0f).Within(0.0001f));
-                Assert.That(
-                    drivewayBoundary.localScale.x,
-                    Is.EqualTo(0.015f)
-                        .Within(0.0001f));
-                Assert.That(
-                    drivewayBoundary.localScale.y,
-                    Is.EqualTo(0.9f).Within(0.0001f));
-                Renderer boundaryRenderer =
-                    drivewayBoundary.GetComponent<Renderer>();
-                Assert.That(boundaryRenderer, Is.Not.Null);
-                MeshFilter boundaryMesh =
-                    drivewayBoundary.GetComponent<MeshFilter>();
-                Assert.That(boundaryMesh, Is.Not.Null);
-                Assert.That(
-                    boundaryMesh.sharedMesh.bounds.size.z,
-                    Is.EqualTo(0f).Within(0.0001f),
-                    "주차장 경계선은 아이소메트릭 시점에서도 옆면이 보이지 않는 평면이어야 한다.");
-                float drivewayFrontZ = Mathf.Min(
-                    drivewayRenderer.bounds.min.z,
-                    secondRenderer.bounds.min.z);
-                Assert.That(
-                    boundaryRenderer.bounds.max.z,
-                    Is.LessThanOrEqualTo(
-                        drivewayFrontZ + 0.0001f));
-                Assert.That(
-                    boundaryRenderer.bounds.min.z,
-                    Is.LessThan(drivewayFrontZ));
+                    Is.Null,
+                    "주차장 프리팹이 하나면 프리팹 사이 경계선을 만들지 않아야 한다.");
 
                 Transform firstSlot =
                     preview.transform.Find("ParkingSlot_0");
@@ -1012,12 +1004,12 @@ namespace Tests.EditMode
                 Assert.That(secondSlot, Is.Not.Null);
                 Assert.That(
                     firstSlot.localPosition.x,
-                    Is.EqualTo(0.75f).Within(0.0001f),
-                    "첫 차량은 가장 오른쪽 주차 칸을 사용해야 한다.");
+                    Is.EqualTo(0.25f).Within(0.0001f),
+                    "첫 차량은 한 칸 주차장의 오른쪽 슬롯을 사용해야 한다.");
                 Assert.That(
                     secondSlot.localPosition.x,
-                    Is.EqualTo(0.25f).Within(0.0001f),
-                    "두 번째 차량은 오른쪽에서 두 번째 주차 칸을 사용해야 한다.");
+                    Is.EqualTo(-0.25f).Within(0.0001f),
+                    "두 번째 차량은 한 칸 주차장의 왼쪽 슬롯을 사용해야 한다.");
             }
             finally
             {

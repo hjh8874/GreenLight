@@ -12,7 +12,7 @@ namespace CityFlow.Contracts
         Hospital,
         SpecialBuilding,
         // 공사 중. 완성 시 CityGrid.Promote()가 실제 타입으로 교체한다.
-        // IsBuilding()이 true라 2x2 풋프린트 예약이 그대로 유지된다(겹침 방지 공짜).
+        // 실제 점유 크기는 공사 대상 건물의 풋프린트를 그대로 유지한다.
         UnderConstruction
     }
 
@@ -30,13 +30,19 @@ namespace CityFlow.Contracts
     public static class TileFootprint
     {
         private static readonly Vector2Int SingleTile = Vector2Int.one;
+        private static readonly Vector2Int ResidentialBuilding =
+            new Vector2Int(1, 2);
         private static readonly Vector2Int StandardBuilding = new Vector2Int(2, 2);
 
         public static bool IsBuilding(TileType type) =>
             type != TileType.Empty && type != TileType.Road;
 
         public static Vector2Int GetSize(TileType type) =>
-            IsBuilding(type) ? StandardBuilding : SingleTile;
+            type == TileType.House
+                ? ResidentialBuilding
+                : IsBuilding(type)
+                    ? StandardBuilding
+                    : SingleTile;
 
         /// <summary>
         /// 회전 방향을 고려한 풋프린트 크기를 반환합니다.

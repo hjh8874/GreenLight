@@ -62,7 +62,7 @@ namespace CityFlow.UI
                     var tile = new Vector2Int(x, y);
                     if (_labels.ContainsKey(tile)) continue;
                     // 앵커에만 라벨 하나. 진행도 조회는 풋프린트 어느 타일로 물어도 답하므로
-                    // 앵커 필터가 없으면 2x2 건물에 라벨이 4개 생긴다.
+                    // 앵커 필터가 없으면 여러 칸 건물에 라벨이 칸마다 생긴다.
                     if (!tiles.IsFootprintAnchor(tile)) continue;
                     if (!tiles.TryGetConstructionProgress01(tile, out _)) continue;
 

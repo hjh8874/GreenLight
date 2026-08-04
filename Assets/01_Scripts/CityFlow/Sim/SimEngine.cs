@@ -631,7 +631,8 @@ namespace CityFlow.Sim
                 : 0d;
             if (constructionSeconds > 0d)
             {
-                // 현재는 둘 다 2x2 건물이라 실패할 수 없지만, 타입별 풋프린트 분화에 대비해 원자적으로 되돌린다.
+                // 공사 타입으로 바꿀 때도 대상 건물의 실제 풋프린트를 유지한다.
+                // 실패 시에는 일부 점유가 남지 않도록 원자적으로 되돌린다.
                 if (!_grid.Promote(tile, TileType.UnderConstruction))
                 {
                     _grid.TryRemove(tile, out _, out _);
@@ -1475,7 +1476,38 @@ namespace CityFlow.Sim
                 foreach (var t in snapshot.PlacedTiles)
                 {
                     var tile = RestoreTile(t.X, t.Y, restoreOffset);
-                    if (!_grid.Place(tile, t.Type, t.Direction)) continue;   // OOB·중복은 Place가 거름(무사고)
+                    TileType placementType = t.Type;
+                    if (t.Type == TileType.UnderConstruction &&
+                        snapshot.Constructions != null)
+                    {
+                        for (int i = 0;
+                             i < snapshot.Constructions.Length;
+                             i++)
+                        {
+                            var construction =
+                                snapshot.Constructions[i];
+                            if (construction.X != t.X ||
+                                construction.Y != t.Y)
+                            {
+                                continue;
+                            }
+
+                            placementType =
+                                construction.TargetType;
+                            break;
+                        }
+                    }
+
+                    if (!_grid.Place(tile, placementType, t.Direction)) continue;   // OOB·중복은 Place가 거름(무사고)
+                    if (t.Type == TileType.UnderConstruction &&
+                        placementType != TileType.UnderConstruction &&
+                        !_grid.Promote(
+                            tile,
+                            TileType.UnderConstruction))
+                    {
+                        _grid.TryRemove(tile, out _, out _);
+                        continue;
+                    }
                     if (t.Type == TileType.Office || t.Type == TileType.School)
                         _demand.RegisterRestoredCompany(
                             tile, t.Type, CompanyTypeOrNull(t.CompanyTypeId));

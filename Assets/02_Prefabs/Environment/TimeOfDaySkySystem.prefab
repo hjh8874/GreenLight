@@ -47,7 +47,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Environment.TimeOfDaySkyController
   profile: {fileID: 11400000, guid: 148baff3fe5e4594a12de8ecf1169ba3, type: 2}
   blendSkyboxTemplate: {fileID: 2100000, guid: 047b450daacd43f190b9af9ef4e59b1c, type: 2}
+  celestialOverlayTemplate: {fileID: 2100000, guid: c2a90476bf1c49a28bbef5b633e0b2fd, type: 2}
   keyLight: {fileID: 10800000}
+  horizonViewportY: 0.5
+  celestialCameraDepth: 10
+  sunVisualColor: {r: 1, g: 0.82, b: 0.32, a: 1}
+  moonVisualColor: {r: 0.82, g: 0.9, b: 1, a: 1}
+  sunWorldDiameter: 2.3
+  moonWorldDiameter: 2.1
+  minimumScreenSizeRatio: 0.7
+  moonHorizonIntensity: 0.1
   restoreRenderSettingsOnDisable: 1
 --- !u!1 &100001
 GameObject:

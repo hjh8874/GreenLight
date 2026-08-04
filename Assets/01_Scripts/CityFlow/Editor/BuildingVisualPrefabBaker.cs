@@ -399,21 +399,18 @@ namespace CityFlow.Editor
                 AssetDatabase.LoadAssetAtPath<Material>(
                     SchoolRepairMaterialPath);
             Shader shader =
-                Resources.Load<Shader>(
-                    "CityFlowOpaqueUnlit");
+                Shader.Find(
+                    "Universal Render Pipeline/Lit");
             shader ??=
                 Shader.Find(
-                    "GreenLight/CityFlow Opaque Unlit");
-            shader ??=
-                Shader.Find(
-                    "Universal Render Pipeline/Unlit");
-            shader ??= Shader.Find("Unlit/Color");
+                    "Universal Render Pipeline/Simple Lit");
+            shader ??= Shader.Find("Standard");
 
             if (material == null)
             {
                 material = new Material(shader)
                 {
-                    name = "SchoolRepair_URP_Unlit"
+                    name = "SchoolRepair_URP_Lit"
                 };
                 AssetDatabase.CreateAsset(
                     material,

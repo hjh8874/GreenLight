@@ -27,7 +27,7 @@ namespace CityFlow.Tests.ViewEditMode
             "Assets/00_Scenes/CityFlowIntegrated_cmt.unity";
 
         [Test]
-        public void Profile_UsesCompleteSortedDayCycle()
+        public void Profile_UsesCompleteSortedLightingCycle()
         {
             TimeOfDaySkyProfile profile =
                 AssetDatabase.LoadAssetAtPath<
@@ -49,71 +49,185 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     keyframe.Hour,
                     Is.GreaterThan(previousHour));
-                Assert.That(keyframe.SkyRotation, Is.EqualTo(0f));
-                Assert.That(keyframe.TransitionHours, Is.EqualTo(0f));
-                Assert.That(
-                    keyframe.LightEuler,
-                    Is.EqualTo(new Vector3(50f, -30f, 0f)));
-                Assert.That(
-                    keyframe.SkyboxMaterial,
-                    Is.Not.Null,
-                    $"Sky material is missing at {keyframe.Hour:0.##}:00.");
-                Assert.That(
-                    keyframe.SkyboxMaterial.HasProperty("_Tex"),
-                    Is.True,
-                    $"{keyframe.SkyboxMaterial.name} is not an AllSky cubemap material.");
-                Assert.That(
-                    keyframe.SkyboxMaterial.GetTexture("_Tex"),
-                    Is.TypeOf<Cubemap>(),
-                    $"{keyframe.SkyboxMaterial.name} has no generated cubemap texture.");
                 previousHour = keyframe.Hour;
             }
         }
 
         [Test]
-        public void Profile_EvaluatesMidnightWrap()
+        public void Profile_MidnightIsTheDarkestLightingKeyframe()
         {
             TimeOfDaySkyProfile profile =
                 AssetDatabase.LoadAssetAtPath<
                     TimeOfDaySkyProfile>(ProfilePath);
+            TimeOfDaySkyKeyframe midnight = profile.Keyframes[0];
 
-            Assert.That(
-                profile.TryEvaluate(
-                    23f,
-                    out TimeOfDaySkyEvaluation evaluation),
-                Is.True);
-            Assert.That(evaluation.Current.Hour, Is.EqualTo(18f));
-            Assert.That(evaluation.Next.Hour, Is.EqualTo(0f));
-            Assert.That(
-                evaluation.SegmentProgress,
-                Is.GreaterThan(0f));
-            Assert.That(evaluation.SkyBlend, Is.EqualTo(0f));
-
-            Assert.That(
-                profile.TryEvaluate(
-                    23.75f,
-                    out evaluation),
-                Is.True);
-            Assert.That(evaluation.Current.Hour, Is.EqualTo(18f));
-            Assert.That(evaluation.Next.Hour, Is.EqualTo(0f));
-            Assert.That(evaluation.SkyBlend, Is.EqualTo(0f));
+            for (int i = 1; i < profile.Keyframes.Count; i++)
+            {
+                Assert.That(
+                    midnight.LightIntensity,
+                    Is.LessThan(profile.Keyframes[i].LightIntensity));
+                Assert.That(
+                    midnight.AmbientIntensity,
+                    Is.LessThan(profile.Keyframes[i].AmbientIntensity));
+                Assert.That(
+                    midnight.SkyExposure,
+                    Is.LessThan(profile.Keyframes[i].SkyExposure));
+            }
         }
 
         [Test]
-        public void Profile_UsesFourStaticSixHourPhases()
+        public void CelestialCycle_UsesTwelveHourSunAndMoonArcs()
         {
-            TimeOfDaySkyProfile profile =
-                AssetDatabase.LoadAssetAtPath<
-                    TimeOfDaySkyProfile>(ProfilePath);
+            TimeOfDaySkyController.CelestialCycleState sunrise =
+                TimeOfDaySkyController.EvaluateCelestialCycle(6f);
+            TimeOfDaySkyController.CelestialCycleState noon =
+                TimeOfDaySkyController.EvaluateCelestialCycle(12f);
+            TimeOfDaySkyController.CelestialCycleState sunset =
+                TimeOfDaySkyController.EvaluateCelestialCycle(18f);
+            TimeOfDaySkyController.CelestialCycleState midnight =
+                TimeOfDaySkyController.EvaluateCelestialCycle(0f);
 
-            AssertStaticPhase(profile, 0f, 0f);
-            AssertStaticPhase(profile, 5.99f, 0f);
-            AssertStaticPhase(profile, 6f, 6f);
-            AssertStaticPhase(profile, 11.99f, 6f);
-            AssertStaticPhase(profile, 12f, 12f);
-            AssertStaticPhase(profile, 17.99f, 12f);
-            AssertStaticPhase(profile, 18f, 18f);
-            AssertStaticPhase(profile, 23.99f, 18f);
+            Assert.That(sunrise.IsSun, Is.True);
+            Assert.That(sunrise.Progress, Is.EqualTo(0f));
+            Assert.That(sunrise.Altitude, Is.EqualTo(0f).Within(0.0001f));
+            Assert.That(sunrise.EastWeight, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(noon.IsSun, Is.True);
+            Assert.That(noon.Progress, Is.EqualTo(0.5f));
+            Assert.That(noon.Altitude, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(noon.EastWeight, Is.EqualTo(0f).Within(0.0001f));
+            Assert.That(sunset.IsSun, Is.False);
+            Assert.That(sunset.Progress, Is.EqualTo(0f));
+            Assert.That(midnight.IsSun, Is.False);
+            Assert.That(midnight.Progress, Is.EqualTo(0.5f));
+            Assert.That(midnight.Altitude, Is.EqualTo(1f).Within(0.0001f));
+        }
+
+        [Test]
+        public void CelestialScreenPosition_KeepsBodyTangentToScreenEdges()
+        {
+            GameObject cameraObject = new("Celestial Orbit Test Camera");
+            try
+            {
+                Camera camera = cameraObject.AddComponent<Camera>();
+                camera.orthographic = true;
+                camera.orthographicSize = 12.1875f;
+                camera.aspect = 16f / 9f;
+
+                TimeOfDaySkyController.CelestialCycleState sunrise =
+                    TimeOfDaySkyController.EvaluateCelestialCycle(6f);
+                TimeOfDaySkyController.CelestialCycleState noon =
+                    TimeOfDaySkyController.EvaluateCelestialCycle(12f);
+                Vector3 sunrisePosition =
+                    TimeOfDaySkyController.CalculateCelestialCameraPosition(
+                        camera,
+                        0.5f,
+                        10f,
+                        1.6f,
+                        sunrise);
+                Vector3 noonPosition =
+                    TimeOfDaySkyController.CalculateCelestialCameraPosition(
+                        camera,
+                        0.5f,
+                        10f,
+                        1.6f,
+                        noon);
+
+                Vector3 sunriseViewport =
+                    camera.WorldToViewportPoint(sunrisePosition);
+                Vector3 noonViewport =
+                    camera.WorldToViewportPoint(noonPosition);
+                float verticalRadius = 1.6f / (4f * 12.1875f);
+                float horizontalRadius = verticalRadius / camera.aspect;
+                Assert.That(
+                    sunriseViewport.x + horizontalRadius,
+                    Is.EqualTo(1f).Within(0.001f));
+                Assert.That(sunriseViewport.y, Is.EqualTo(0.5f).Within(0.001f));
+                Assert.That(noonViewport.x, Is.EqualTo(0.5f).Within(0.001f));
+                Assert.That(
+                    noonViewport.y + verticalRadius,
+                    Is.EqualTo(1f).Within(0.001f));
+
+                camera.transform.rotation = Quaternion.Euler(35f, 90f, 12f);
+                noonPosition =
+                    TimeOfDaySkyController.CalculateCelestialCameraPosition(
+                        camera,
+                        0.5f,
+                        10f,
+                        1.6f,
+                        noon);
+                noonViewport = camera.WorldToViewportPoint(noonPosition);
+                Assert.That(noonViewport.x, Is.EqualTo(0.5f).Within(0.001f));
+                Assert.That(
+                    noonViewport.y + verticalRadius,
+                    Is.EqualTo(1f).Within(0.001f));
+
+                camera.orthographicSize = 6.09375f;
+                noonPosition =
+                    TimeOfDaySkyController.CalculateCelestialCameraPosition(
+                        camera,
+                        0.5f,
+                        10f,
+                        1.6f,
+                        noon);
+                noonViewport = camera.WorldToViewportPoint(noonPosition);
+                verticalRadius = 1.6f / (4f * 6.09375f);
+                Assert.That(
+                    noonViewport.y + verticalRadius,
+                    Is.EqualTo(1f).Within(0.001f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(cameraObject);
+            }
+        }
+
+        [Test]
+        public void CelestialDisplayDiameter_GetsSmallerWhenZoomingIn()
+        {
+            float maximumDiameter =
+                TimeOfDaySkyController.CalculateCelestialDisplayDiameter(
+                    1.6f,
+                    16f,
+                    16f,
+                    0.7f);
+            float zoomedInDiameter =
+                TimeOfDaySkyController.CalculateCelestialDisplayDiameter(
+                    1.6f,
+                    8f,
+                    16f,
+                    0.7f);
+            float maximumScreenDiameter =
+                maximumDiameter / (2f * 16f);
+            float zoomedInScreenDiameter =
+                zoomedInDiameter / (2f * 8f);
+
+            Assert.That(maximumDiameter, Is.EqualTo(1.6f));
+            Assert.That(zoomedInDiameter, Is.EqualTo(0.68f).Within(0.001f));
+            Assert.That(
+                zoomedInScreenDiameter,
+                Is.LessThan(maximumScreenDiameter));
+        }
+
+        [Test]
+        public void CelestialCycle_ReappearsOnOppositeSideAtSixAndEighteen()
+        {
+            TimeOfDaySkyController.CelestialCycleState beforeSunrise =
+                TimeOfDaySkyController.EvaluateCelestialCycle(5.999f);
+            TimeOfDaySkyController.CelestialCycleState sunrise =
+                TimeOfDaySkyController.EvaluateCelestialCycle(6f);
+            TimeOfDaySkyController.CelestialCycleState beforeSunset =
+                TimeOfDaySkyController.EvaluateCelestialCycle(17.999f);
+            TimeOfDaySkyController.CelestialCycleState sunset =
+                TimeOfDaySkyController.EvaluateCelestialCycle(18f);
+
+            Assert.That(beforeSunrise.IsSun, Is.False);
+            Assert.That(beforeSunrise.EastWeight, Is.LessThan(-0.999f));
+            Assert.That(sunrise.IsSun, Is.True);
+            Assert.That(sunrise.EastWeight, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(beforeSunset.IsSun, Is.True);
+            Assert.That(beforeSunset.EastWeight, Is.LessThan(-0.999f));
+            Assert.That(sunset.IsSun, Is.False);
+            Assert.That(sunset.EastWeight, Is.EqualTo(1f).Within(0.001f));
         }
 
         [Test]
@@ -150,6 +264,19 @@ namespace CityFlow.Tests.ViewEditMode
                 controller.BlendSkyboxTemplate.HasProperty(
                     "_HorizonRotation"),
                 Is.True);
+            Assert.That(
+                controller.BlendSkyboxTemplate.GetTexture("_TexA"),
+                Is.TypeOf<Cubemap>());
+            Assert.That(
+                controller.BlendSkyboxTemplate.GetTexture("_TexB"),
+                Is.SameAs(
+                    controller.BlendSkyboxTemplate.GetTexture("_TexA")));
+            Assert.That(
+                controller.CelestialOverlayTemplate,
+                Is.Not.Null);
+            Assert.That(
+                controller.CelestialOverlayTemplate.shader.name,
+                Is.EqualTo("CityFlow/Celestial Overlay"));
             Assert.That(controller.KeyLight, Is.Not.Null);
             Assert.That(
                 controller.KeyLight.type,
@@ -211,6 +338,14 @@ namespace CityFlow.Tests.ViewEditMode
 
             try
             {
+                cameraObject =
+                    new GameObject("Sky Horizon Test Camera");
+                cameraObject.tag = "MainCamera";
+                Camera testCamera =
+                    cameraObject.AddComponent<Camera>();
+                testCamera.orthographic = true;
+                testCamera.orthographicSize = 10f;
+
                 instance = UnityEngine.Object.Instantiate(prefab);
                 controller =
                     instance.GetComponent<
@@ -241,46 +376,82 @@ namespace CityFlow.Tests.ViewEditMode
                     RenderSettings.ambientMode,
                     Is.EqualTo(AmbientMode.Trilight));
 
-                Quaternion fixedLightRotation =
-                    controller.KeyLight.transform.rotation;
+                Texture fixedSkyTexture =
+                    RenderSettings.skybox.GetTexture("_TexA");
                 calendar.SetHour(12);
-                TimeOfDaySkyKeyframe noon =
-                    controller.Profile.Keyframes[2];
-                Assert.That(noon.Hour, Is.EqualTo(12f));
                 Assert.That(
                     RenderSettings.skybox.GetTexture("_TexA"),
-                    Is.SameAs(
-                        noon.SkyboxMaterial.GetTexture("_Tex")));
+                    Is.SameAs(fixedSkyTexture));
                 Assert.That(
                     RenderSettings.skybox.GetTexture("_TexB"),
-                    Is.SameAs(
-                        noon.SkyboxMaterial.GetTexture("_Tex")));
+                    Is.SameAs(fixedSkyTexture));
                 Assert.That(
                     RenderSettings.skybox.GetFloat("_Blend"),
                     Is.EqualTo(0f));
                 Assert.That(
-                    RenderSettings.skybox.GetFloat("_RotationA"),
-                    Is.EqualTo(0f));
+                    RenderSettings.skybox.GetFloat("_ExposureA"),
+                    Is.EqualTo(1f).Within(0.001f));
+                Transform celestialBody =
+                    instance.transform.Find(
+                        "TimeOfDayCelestialBody");
+                Assert.That(celestialBody, Is.Not.Null);
                 Assert.That(
-                    RenderSettings.skybox.GetFloat("_RotationB"),
-                    Is.EqualTo(0f));
+                    celestialBody.gameObject.activeSelf,
+                    Is.True);
+                Color noonBodyColor = celestialBody
+                    .GetComponent<MeshRenderer>()
+                    .sharedMaterial
+                    .GetColor("_Color");
                 Assert.That(
-                    controller.KeyLight.transform.rotation,
-                    Is.EqualTo(fixedLightRotation));
+                    noonBodyColor.r,
+                    Is.GreaterThan(noonBodyColor.b));
+                Assert.That(
+                    controller.KeyLight.intensity,
+                    Is.EqualTo(1.15f).Within(0.001f));
+                Quaternion noonLightRotation =
+                    controller.KeyLight.transform.rotation;
 
                 calendar.SetHour(6);
                 Assert.That(
-                    controller.KeyLight.transform.rotation,
-                    Is.EqualTo(fixedLightRotation));
-                calendar.SetHour(18);
+                    RenderSettings.skybox.GetTexture("_TexA"),
+                    Is.SameAs(fixedSkyTexture));
+                Assert.That(
+                    controller.KeyLight.intensity,
+                    Is.EqualTo(0.12f).Within(0.001f));
                 Assert.That(
                     controller.KeyLight.transform.rotation,
-                    Is.EqualTo(fixedLightRotation));
+                    Is.Not.EqualTo(noonLightRotation));
+                calendar.SetHour(18);
+                Assert.That(
+                    RenderSettings.skybox.GetTexture("_TexA"),
+                    Is.SameAs(fixedSkyTexture));
+                Assert.That(
+                    controller.KeyLight.intensity,
+                    Is.EqualTo(0.1f).Within(0.001f));
+                Assert.That(
+                    RenderSettings.skybox.GetFloat("_ExposureA"),
+                    Is.EqualTo(0.9f).Within(0.001f));
+                Color moonBodyColor = celestialBody
+                    .GetComponent<MeshRenderer>()
+                    .sharedMaterial
+                    .GetColor("_Color");
+                Assert.That(
+                    moonBodyColor.b,
+                    Is.GreaterThan(moonBodyColor.r));
+                calendar.SetHour(0);
+                Assert.That(
+                    controller.KeyLight.intensity,
+                    Is.EqualTo(0.01f).Within(0.001f));
+                Assert.That(
+                    RenderSettings.skybox.GetFloat("_ExposureA"),
+                    Is.EqualTo(0.035f).Within(0.001f));
+                Assert.That(
+                    RenderSettings.ambientIntensity,
+                    Is.EqualTo(0.05f).Within(0.001f));
+                Assert.That(
+                    controller.KeyLight.color.b,
+                    Is.GreaterThan(controller.KeyLight.color.r));
 
-                cameraObject =
-                    new GameObject("Sky Horizon Test Camera");
-                Camera testCamera =
-                    cameraObject.AddComponent<Camera>();
                 testCamera.transform.rotation =
                     Quaternion.LookRotation(
                         new Vector3(-0.58f, 0.58f, 0.57f),
@@ -335,22 +506,6 @@ namespace CityFlow.Tests.ViewEditMode
             Assert.That(
                 RenderSettings.ambientMode,
                 Is.EqualTo(originalAmbientMode));
-        }
-
-        private static void AssertStaticPhase(
-            TimeOfDaySkyProfile profile,
-            float gameHour,
-            float expectedCurrentHour)
-        {
-            Assert.That(
-                profile.TryEvaluate(
-                    gameHour,
-                    out TimeOfDaySkyEvaluation evaluation),
-                Is.True);
-            Assert.That(
-                evaluation.Current.Hour,
-                Is.EqualTo(expectedCurrentHour));
-            Assert.That(evaluation.SkyBlend, Is.EqualTo(0f));
         }
 
         private sealed class TestGameCalendar
