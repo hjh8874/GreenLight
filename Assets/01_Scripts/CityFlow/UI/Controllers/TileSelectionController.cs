@@ -336,6 +336,7 @@ namespace CityFlow.UI
             Vector2Int coord,
             TileType type)
         {
+            Vector2Int visualAnchor = ResolveVisualAnchor(coord);
             Renderer[] renderers = null;
             if (type == TileType.SpecialBuilding)
             {
@@ -343,7 +344,7 @@ namespace CityFlow.UI
                     FindAnyObjectByType<SpecialBuildingView>(
                         FindObjectsInactive.Include);
                 specialView?.TryGetVisualRenderers(
-                    coord,
+                    visualAnchor,
                     out renderers);
             }
 
@@ -353,7 +354,7 @@ namespace CityFlow.UI
                     FindAnyObjectByType<MainCityView>(
                         FindObjectsInactive.Include);
                 cityView?.TryGetTileVisualRenderers(
-                    coord,
+                    visualAnchor,
                     out renderers);
             }
 
@@ -366,6 +367,16 @@ namespace CityFlow.UI
             {
                 ApplySelectedRenderer(renderers[index]);
             }
+        }
+
+        private Vector2Int ResolveVisualAnchor(Vector2Int coord)
+        {
+            return _services?.TileData != null &&
+                   _services.TileData.TryGetFootprintAnchor(
+                       coord,
+                       out Vector2Int anchor)
+                ? anchor
+                : coord;
         }
 
         private void ApplySelectedRenderer(Renderer renderer)

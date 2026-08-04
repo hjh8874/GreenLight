@@ -1094,6 +1094,49 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void SelectedFootprintTile_ResolvesVisualAnchor()
+        {
+            var selectionObject =
+                new GameObject("FootprintSelectionController");
+            Vector2Int anchor = new Vector2Int(10, 20);
+            Vector2Int occupiedTile = anchor + Vector2Int.up;
+            var tileData = new FootprintAnchorTileData(anchor);
+
+            try
+            {
+                TileSelectionController selection =
+                    selectionObject.AddComponent<
+                        TileSelectionController>();
+                selection.Initialize(
+                    new CityFlowServices(
+                        new SimEventHub(),
+                        tileData,
+                        null));
+
+                MethodInfo resolveMethod =
+                    typeof(TileSelectionController).GetMethod(
+                        "ResolveVisualAnchor",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                Assert.That(resolveMethod, Is.Not.Null);
+
+                Vector2Int resolved =
+                    (Vector2Int)resolveMethod.Invoke(
+                        selection,
+                        new object[] { occupiedTile });
+
+                Assert.That(
+                    resolved,
+                    Is.EqualTo(anchor),
+                    "풋프린트의 비앵커 타일을 선택해도 실제 건물 시각 오브젝트의 앵커를 사용해야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(selectionObject);
+            }
+        }
+
+        [Test]
         public void SelectedHouseHighlight_HidesAfterBuildingIsRemoved()
         {
             var selectionObject =
@@ -2014,6 +2057,48 @@ namespace Tests.EditMode
                 return false;
             }
             public bool IsFootprintAnchor(Vector2Int tile) => false;
+            public bool TryGetConstructionProgress01(
+                Vector2Int tile,
+                out float progress01)
+            {
+                progress01 = 0f;
+                return false;
+            }
+            public bool TryGetConstructionTargetType(
+                Vector2Int tile,
+                out TileType targetType)
+            {
+                targetType = TileType.Empty;
+                return false;
+            }
+        }
+
+        private sealed class FootprintAnchorTileData : IReadOnlyTileData
+        {
+            private readonly Vector2Int anchor;
+
+            public FootprintAnchorTileData(Vector2Int anchor)
+            {
+                this.anchor = anchor;
+            }
+
+            public CongestionLevel GetCongestion(Vector2Int tile) =>
+                CongestionLevel.Free;
+            public float GetDensity01(Vector2Int tile) => 0f;
+            public int GetQueueCount(Vector2Int tile, Dir entryDir) => 0;
+            public TileType GetTileType(Vector2Int tile) => TileType.House;
+            public PlacementDirection GetDirection(Vector2Int tile) =>
+                PlacementDirection.North;
+            public Vector2Int GetFootprintSize(TileType type) =>
+                TileFootprint.GetSize(type);
+            public bool TryGetFootprintAnchor(
+                Vector2Int tile,
+                out Vector2Int footprintAnchor)
+            {
+                footprintAnchor = anchor;
+                return true;
+            }
+            public bool IsFootprintAnchor(Vector2Int tile) => tile == anchor;
             public bool TryGetConstructionProgress01(
                 Vector2Int tile,
                 out float progress01)
