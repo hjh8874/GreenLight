@@ -1,12 +1,16 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
 using CityFlow.Gameplay.Research;
+using CityFlow.Save;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using Object = UnityEngine.Object;
 
 // 기본 에디터 어셈블리. 실행: run_tests(group_names=[".*ResearchConditionTests.*"])
 public class ResearchConditionTests
@@ -420,6 +424,139 @@ public class ResearchConditionTests
         }
     }
 
+    [Test]
+    public void SaveServiceReload_RestoresExpansionAfterResearchRegisters()
+    {
+        string id = Guid.NewGuid().ToString("N");
+        string savePath = Path.Combine(
+            Path.GetTempPath(), $"research_expansion_{id}.json");
+        string backupPath = Path.Combine(
+            Path.GetTempPath(), $"research_expansion_{id}.backup");
+        var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+        var sourceOwner = new GameObject("source_research");
+        var restoredOwner = new GameObject("restored_research");
+        try
+        {
+            ConfigureExpansionCatalog(
+                catalog,
+                "research_expansion_center_040",
+                "center_040");
+            var repository = new JsonSaveRepository(savePath, backupPath);
+
+            var sourceSave = new SaveService(
+                new FakeSimSaveSource(),
+                repository,
+                new FakeSaveClock());
+            var sourceServices = new CityFlowServices(
+                new SimEventHub(), null, null, sourceSave);
+            var sourceExpansion = new FakeWorldGridExpansion();
+            Assert.IsTrue(
+                sourceServices.RegisterWorldGridExpansion(sourceExpansion));
+            var sourceResearch =
+                sourceOwner.AddComponent<ResearchUnlockService>();
+            SetPrivateField(sourceResearch, "catalog", catalog);
+            sourceResearch.Initialize(sourceServices);
+            SetTestInputs(sourceResearch, population: 10, arrivals: 0);
+            sourceResearch.EvaluatePendingResearch();
+            Assert.IsTrue(sourceResearch.TryStartResearch(
+                "research_expansion_center_040"));
+            Assert.IsTrue(sourceSave.Save());
+
+            var restoredSave = new SaveService(
+                new FakeSimSaveSource(),
+                repository,
+                new FakeSaveClock());
+            var restoredServices = new CityFlowServices(
+                new SimEventHub(), null, null, restoredSave);
+            var restoredExpansion = new FakeWorldGridExpansion();
+            Assert.IsTrue(restoredServices.RegisterWorldGridExpansion(
+                restoredExpansion));
+
+            Assert.IsTrue(restoredSave.TryLoadAndRestore());
+            var restoredResearch =
+                restoredOwner.AddComponent<ResearchUnlockService>();
+            SetPrivateField(restoredResearch, "catalog", catalog);
+            restoredResearch.Initialize(restoredServices);
+
+            Assert.IsTrue(restoredResearch.IsUnlocked(
+                "research_expansion_center_040"));
+            Assert.IsTrue(restoredExpansion.IsStageUnlocked("center_040"));
+            CollectionAssert.AreEqual(
+                new[] { "center_040" },
+                restoredExpansion.RequestedStages);
+        }
+        finally
+        {
+            Object.DestroyImmediate(sourceOwner);
+            Object.DestroyImmediate(restoredOwner);
+            Object.DestroyImmediate(catalog);
+            DeleteTemporarySave(savePath);
+            DeleteTemporarySave(backupPath);
+            DeleteTemporarySave($"{savePath}.tmp");
+            DeleteTemporarySave($"{backupPath}.fallback");
+        }
+    }
+
+    [Test]
+    public void SaveServiceReload_LegacyMissingResearchFieldsUseSafeDefaults()
+    {
+        string id = Guid.NewGuid().ToString("N");
+        string savePath = Path.Combine(
+            Path.GetTempPath(), $"legacy_research_{id}.json");
+        string backupPath = Path.Combine(
+            Path.GetTempPath(), $"legacy_research_{id}.backup");
+        var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+        var owner = new GameObject("legacy_restored_research");
+        try
+        {
+            ConfigureExpansionCatalog(
+                catalog,
+                "research_expansion_center_040",
+                "center_040");
+            var repository = new JsonSaveRepository(savePath, backupPath);
+            Assert.IsTrue(repository.TrySave(new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                Simulation = new SimSaveData(),
+                Research = new ResearchSaveData()
+            }));
+
+            var save = new SaveService(
+                new FakeSimSaveSource(),
+                repository,
+                new FakeSaveClock());
+            var services = new CityFlowServices(
+                new SimEventHub(), null, null, save);
+            Assert.IsTrue(save.TryLoadAndRestore());
+
+            var research = owner.AddComponent<ResearchUnlockService>();
+            SetPrivateField(research, "catalog", catalog);
+            Assert.DoesNotThrow(() => research.Initialize(services));
+            Assert.AreEqual(0, research.UnlockedCount);
+            Assert.AreEqual(string.Empty, research.ActiveResearchId);
+            Assert.AreEqual(
+                0L,
+                research.CreateSnapshot().ResearchCompletionGameHour);
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(catalog);
+            DeleteTemporarySave(savePath);
+            DeleteTemporarySave(backupPath);
+            DeleteTemporarySave($"{savePath}.tmp");
+            DeleteTemporarySave($"{backupPath}.fallback");
+        }
+    }
+
+    static void DeleteTemporarySave(string path)
+    {
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+    }
+
     static void ConfigureExpansionCatalog(
         ResearchCatalogSO catalog,
         string researchId,
@@ -551,5 +688,19 @@ public class ResearchConditionTests
         }
 
         public bool TryResetToInitialStage() => false;
+    }
+
+    sealed class FakeSimSaveSource : ISimSaveSource
+    {
+        public int GridWidth => 20;
+        public int GridHeight => 20;
+        public SimSaveData CreateSnapshot() => new();
+        public void RestoreSnapshot(SimSaveData snapshot) { }
+    }
+
+    sealed class FakeSaveClock : ISaveClock
+    {
+        public DateTime UtcNow =>
+            new(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
     }
 }
