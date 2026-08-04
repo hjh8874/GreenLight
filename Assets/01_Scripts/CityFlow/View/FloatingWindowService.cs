@@ -80,6 +80,7 @@ namespace CityFlow.View
         public int PresetIndex => presetIndex;
 
         public event System.Action<bool> OnFloatingStateChanged;
+        public event System.Action<int> OnPresetChanged;
 
         public void Init(float width, float height, bool fitBoardToScreen = true)
         {
@@ -268,10 +269,16 @@ namespace CityFlow.View
 
         public void SetPreset(int index)
         {
-            presetIndex = Mathf.Clamp(index, 0, ContentPresets.Length - 1);
+            int nextPresetIndex = Mathf.Clamp(index, 0, ContentPresets.Length - 1);
+            bool changed = presetIndex != nextPresetIndex;
+            presetIndex = nextPresetIndex;
             isMaximized = false;
             ApplyPerformanceMode();
             SavePrefs();
+            if (changed)
+            {
+                OnPresetChanged?.Invoke(presetIndex);
+            }
 
             if (Application.isEditor || state == FloatingState.Entering)
             {

@@ -75,6 +75,7 @@ namespace CityFlow.Sim
         double _simTime;   // 시뮬 누적 시간(초) — 신호 초록/빨강 판정용(뷰)
         public double SimTime => _simTime;
         readonly SimStats _stats = new SimStats();
+        float _cityJamRatio01;
         readonly SimEventBuffer _events;
         float _acc;   // 아직 소비되지 않고 저금된 시간
         float _gameHour;
@@ -256,6 +257,7 @@ namespace CityFlow.Sim
             ? Mathf.Clamp01(_acc / _config.TickInterval)
             : 1f;
         public float TickInterval => _config.TickInterval;
+        public float CityJamRatio01 => _cityJamRatio01;
 
         public void SetGameHour(float gameHour) =>
             _gameHour = Mathf.Repeat(gameHour, 24f);
@@ -330,6 +332,7 @@ namespace CityFlow.Sim
             }
             _lastStepArrivals = carResult.Arrivals;
             float jamRatio = ScanCarCongestion();
+            _cityJamRatio01 = jamRatio;
             bool gameDayWrapped = _stats.UpdateCarSim(
                 _gameHour,
                 carResult.Arrivals,
