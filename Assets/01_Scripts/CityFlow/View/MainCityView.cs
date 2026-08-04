@@ -71,7 +71,6 @@ namespace CityFlow.View
         // 사이클(=데드락)을 만들 수 없다(계획서 2026-07-20-mm-continuous-motion §2).
         // 교차 차선 차량은 절대 정지 사유가 되지 않는다 — 겹침은 기하로만 막는다(dev-log-17).
         [SerializeField, Range(0f, 2f)] private float vehicleCorridorTiles = 1.0f;   // Sim 위치보다 얼마나 앞설 수 있나
-        [SerializeField, Range(0.3f, 1f)] private float vehicleMinHeadway = 0.55f;   // 앞차와 유지할 최소 간격(타일). 최대 차 길이 0.437 + 여유
         [SerializeField] private float parkingApproachSpeedRatio = 0.9f;   // 주차 진입 속도 상한(순항 대비)
         // 교차로 정지선 후퇴량. 이 값은 '틱 목표'에서 빼지므로 통과 차의 틱당 이동거리를
         // 진입 1-inset / 이탈 1+inset 으로 갈라 속도 계단을 만든다(0.25면 1.66배).
@@ -226,10 +225,6 @@ namespace CityFlow.View
         public Vector2Int GridOrigin => gridOrigin;
         public float TileSize => tileSize;
         public float LaneOffset => Mathf.Max(0f, laneOffset);
-        public float VehicleMinHeadway =>
-            simEngine != null
-                ? simEngine.StandardVehicleFootprint.HeadwayTiles
-                : Mathf.Max(0.05f, vehicleMinHeadway);
         public float IntersectionQueueInsetTiles =>
             Mathf.Max(0f, intersectionQueueInset);
         public float CornerTurnRadiusFraction =>
