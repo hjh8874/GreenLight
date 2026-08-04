@@ -151,7 +151,7 @@ namespace CityFlow.Gameplay.Save
 
             bool loaded = services.Save.TryLoadAndRestore();
             Debug.Log(loaded
-                ? "[GameSaveLifecycleService] Initial save loaded and offline progress settled."
+                ? "[GameSaveLifecycleService] Initial save loaded and restored."
                 : "[GameSaveLifecycleService] Initial save could not be loaded.");
         }
 

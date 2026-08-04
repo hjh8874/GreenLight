@@ -9,6 +9,7 @@ namespace CityFlow.UI
 {
     public sealed class WeeklySettlementPopup : MonoBehaviour, ICityFlowServiceConsumer
     {
+        public static bool IsInteractionBlocked { get; private set; }
         [Header("UI References")]
         [SerializeField] private CanvasGroup canvasGroup;
         [SerializeField] private RectTransform settlementCard;
@@ -193,6 +194,7 @@ namespace CityFlow.UI
 
         private void SetInteractionEnabled(bool enabled)
         {
+            IsInteractionBlocked = enabled;
             canvasGroup.interactable = enabled;
             canvasGroup.blocksRaycasts = enabled;
         }

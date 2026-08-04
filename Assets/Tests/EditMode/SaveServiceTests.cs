@@ -609,6 +609,7 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(10L, loaded.SavedAtUtcTicks);
         }
 
+        #if false // Offline settlement was removed; retained only as historical test context.
         [Test]
         public void TryLoadAndRestore_ClampsOfflineProgressAndSavesSettlement()
         {
@@ -861,6 +862,8 @@ namespace CityFlow.Sim.Tests
                     incomePercent));
         }
 
+        #endif
+
         static void DeleteTestPath(string path)
         {
             if (File.Exists(path))
@@ -900,19 +903,11 @@ namespace CityFlow.Sim.Tests
         }
 
         sealed class FakeWeekly :
-            IWeeklySettlementSaveSource,
-            IOfflineSettlementSource
+            IWeeklySettlementSaveSource
         {
             readonly List<string> calls;
             public WeeklySettlementSaveData Current = new WeeklySettlementSaveData();
             public WeeklySettlementSaveData Restored { get; private set; }
-            public double OfflineMaximumSeconds { get; set; } =
-                8.0 * 3600.0;
-            public long CoinsPerOfflineHour { get; set; }
-            public double LastOfflineSeconds { get; private set; }
-            public int OfflineSettlementCalls { get; private set; }
-            public double MaximumOfflineSeconds =>
-                OfflineMaximumSeconds;
 
             public FakeWeekly(List<string> calls) => this.calls = calls;
             public WeeklySettlementSaveData CreateSnapshot() => Current;
@@ -936,18 +931,6 @@ namespace CityFlow.Sim.Tests
                 calls.Add("weekly");
             }
 
-            public long SettleOffline(double elapsedSeconds)
-            {
-                OfflineSettlementCalls++;
-                LastOfflineSeconds = elapsedSeconds;
-                long reward = (long)Math.Floor(
-                    elapsedSeconds /
-                    3600.0 *
-                    CoinsPerOfflineHour);
-                Current.PendingCoins += reward;
-                calls.Add("offline");
-                return reward;
-            }
         }
 
         sealed class FakeProgression : IProgressionSaveSource

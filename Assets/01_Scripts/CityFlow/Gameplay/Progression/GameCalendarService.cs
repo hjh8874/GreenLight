@@ -10,8 +10,7 @@ namespace CityFlow.Gameplay.Progression
         MonoBehaviour,
         ICityFlowServiceConsumer,
         IGameCalendarService,
-        IGameCalendarSaveSource,
-        IOfflineCalendarProgressionSource
+        IGameCalendarSaveSource
     {
         [Header("Time Balance")]
         [Tooltip("Optional scene override. When empty, the default Resources game time settings are used.")]
@@ -153,61 +152,6 @@ namespace CityFlow.Gameplay.Progression
 
             PublishRestoredDate();
             Debug.Log($"[GameCalendarService] Calendar restored to Y{Year} M{Month} D{Day} {Hour:00}:00.");
-        }
-
-        public void AdvanceOffline(double settledRealSeconds)
-        {
-            if (settledRealSeconds <= 0.0)
-            {
-                return;
-            }
-
-            double secondsPerHour = Math.Max(0.01, realSecondsPerGameHour);
-            double totalRealSeconds = accumulatedRealSeconds + settledRealSeconds;
-            long gameHours = (long)Math.Floor(totalRealSeconds / secondsPerHour);
-            accumulatedRealSeconds = (float)(totalRealSeconds - (gameHours * secondsPerHour));
-
-            if (gameHours <= 0L)
-            {
-                return;
-            }
-
-            AdvanceHoursWithoutIntermediateEvents(gameHours);
-            Debug.Log($"[GameCalendarService] Offline calendar advanced by {gameHours} game hours to Y{Year} M{Month} D{Day} {Hour:00}:00.");
-        }
-
-        private void AdvanceHoursWithoutIntermediateEvents(long gameHours)
-        {
-            int validHoursPerDay = HoursPerDay;
-            int validDaysPerMonth = Mathf.Max(1, daysPerMonth);
-            int validMonthsPerYear = Mathf.Max(1, monthsPerYear);
-
-            long totalHours = Hour + gameHours;
-            long addedDays = totalHours / validHoursPerDay;
-            Hour = (int)(totalHours % validHoursPerDay);
-
-            long totalDays = (Day - 1L) + addedDays;
-            long addedMonths = totalDays / validDaysPerMonth;
-            Day = (int)(totalDays % validDaysPerMonth) + 1;
-
-            long totalMonthIndex = (Month - 1L) + addedMonths;
-            long addedYears = totalMonthIndex / validMonthsPerYear;
-            Month = (int)(totalMonthIndex % validMonthsPerYear) + 1;
-            Year = ClampToPositiveInt((long)Year + addedYears);
-            TotalMonths = ClampToPositiveInt((long)TotalMonths + addedMonths);
-            TotalDays = Math.Max(0L, TotalDays + addedDays);
-
-            HourChanged?.Invoke(Hour);
-
-            if (addedDays > 0L)
-            {
-                DayChanged?.Invoke(Day);
-            }
-
-            if (addedMonths > 0L)
-            {
-                MonthChanged?.Invoke(TotalMonths);
-            }
         }
 
         private void PublishRestoredDate()

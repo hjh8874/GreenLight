@@ -154,7 +154,7 @@ namespace Tests.EditMode
             inputHandler.OnDragPlaceRequested += (start, end) => dragRequested = true;
 
             var updateMethod = typeof(PlacementController).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
-            var blockedProp = typeof(OfflineSettlementPopup).GetProperty("IsInteractionBlocked", BindingFlags.Public | BindingFlags.Static);
+            var blockedProp = typeof(WeeklySettlementPopup).GetProperty("IsInteractionBlocked", BindingFlags.Public | BindingFlags.Static);
 
             var mouse = InputSystem.AddDevice<Mouse>();
             try

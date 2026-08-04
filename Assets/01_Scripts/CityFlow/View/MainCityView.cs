@@ -733,7 +733,7 @@ namespace CityFlow.View
             }
 
             bool cameraViewChanged = false;
-            if (!OfflineSettlementPopup.IsInteractionBlocked)
+            if (!WeeklySettlementPopup.IsInteractionBlocked)
             {
                 HandleVehicleSelectionInput();
                 if (!IsDriveViewActive)
@@ -756,7 +756,7 @@ namespace CityFlow.View
                 return;
             }
 
-            if (!IsDriveViewActive && !OfflineSettlementPopup.IsInteractionBlocked)
+            if (!IsDriveViewActive && !WeeklySettlementPopup.IsInteractionBlocked)
             {
                 HandleSignalInput();
             }

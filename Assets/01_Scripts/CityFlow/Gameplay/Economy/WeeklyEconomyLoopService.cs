@@ -11,8 +11,7 @@ namespace CityFlow.Gameplay.Economy
         MonoBehaviour,
         ICityFlowServiceConsumer,
         IWeeklyEconomyService,
-        IWeeklySettlementSaveSource,
-        IOfflineSettlementSource
+        IWeeklySettlementSaveSource
     {
         [Header("Dependencies")]
         [SerializeField] private BasicEconomySystem economySystem;
@@ -23,19 +22,10 @@ namespace CityFlow.Gameplay.Economy
         private int daysIntoCurrentWeek;
         private long lastProcessedTotalDays = -1L;
         private bool awaitingLegacyCalendarBaseline;
-        private long observedOnlineIncomeCoins;
-        private double observedOnlineSeconds;
 
         public long PendingCoins => economySystem?.WeeklyAccumulatedCoin ?? 0L;
         public int DaysIntoCurrentWeek => daysIntoCurrentWeek;
         public int SettlementDays => Mathf.Max(1, economyConfig?.SettlementDays ?? 7);
-        public double MaximumOfflineSeconds =>
-            Math.Max(0.0, economyConfig?.OfflineMaximumRealHours ?? 8f) *
-            3600.0;
-        public double AverageOnlineIncomePerSecond =>
-            observedOnlineSeconds > 0.0
-                ? observedOnlineIncomeCoins / observedOnlineSeconds
-                : 0.0;
 
         public event Action<long> PendingCoinsChanged;
         public event Action<WeeklySettlementCompletedEvent> SettlementCompleted;
@@ -87,29 +77,6 @@ namespace CityFlow.Gameplay.Economy
             }
         }
 
-        private void Update()
-        {
-            if (services == null ||
-                services.Save?.IsRestoring == true ||
-                Time.timeScale <= 0f)
-            {
-                return;
-            }
-
-            double elapsedSeconds = Time.unscaledDeltaTime;
-
-            if (elapsedSeconds <= 0.0 ||
-                double.IsNaN(elapsedSeconds) ||
-                double.IsInfinity(elapsedSeconds))
-            {
-                return;
-            }
-
-            observedOnlineSeconds = Math.Min(
-                double.MaxValue,
-                observedOnlineSeconds + elapsedSeconds);
-        }
-
         public WeeklySettlementSaveData CreateSnapshot()
         {
             return new WeeklySettlementSaveData
@@ -117,9 +84,7 @@ namespace CityFlow.Gameplay.Economy
                 PendingCoins = PendingCoins,
                 DaysIntoCurrentWeek = daysIntoCurrentWeek,
                 LastProcessedTotalDays = lastProcessedTotalDays,
-                HasCycleProgress = true,
-                ObservedOnlineIncomeCoins = observedOnlineIncomeCoins,
-                ObservedOnlineSeconds = observedOnlineSeconds
+                HasCycleProgress = true
             };
         }
 
@@ -131,16 +96,6 @@ namespace CityFlow.Gameplay.Economy
             }
 
             economySystem.RestoreWeeklyAccumulatedCoin(snapshot.PendingCoins);
-            observedOnlineIncomeCoins = Math.Max(
-                0L,
-                snapshot.ObservedOnlineIncomeCoins);
-            observedOnlineSeconds =
-                snapshot.ObservedOnlineSeconds > 0.0 &&
-                !double.IsNaN(snapshot.ObservedOnlineSeconds) &&
-                !double.IsInfinity(snapshot.ObservedOnlineSeconds)
-                    ? snapshot.ObservedOnlineSeconds
-                    : 0.0;
-
             if (snapshot.HasCycleProgress)
             {
                 daysIntoCurrentWeek = Mathf.Clamp(
@@ -166,37 +121,12 @@ namespace CityFlow.Gameplay.Economy
             long amount,
             string reason = "weekly income")
         {
-            AddPendingCoinsInternal(amount, reason, true);
-        }
-
-        public long SettleOffline(double elapsedSeconds)
-        {
-            double safeElapsedSeconds = Math.Max(
-                0.0,
-                Math.Min(elapsedSeconds, MaximumOfflineSeconds));
-            int incomePercent = Mathf.Clamp(
-                economyConfig?.OfflineIncomePercent ?? 100,
-                0,
-                100);
-
-            long reward = OfflineSettlementMath.CalculateIncome(
-                observedOnlineIncomeCoins,
-                observedOnlineSeconds,
-                safeElapsedSeconds,
-                incomePercent);
-
-            AddPendingCoinsInternal(
-                reward,
-                "offline average income",
-                false);
-
-            return reward;
+            AddPendingCoinsInternal(amount, reason);
         }
 
         private void AddPendingCoinsInternal(
             long amount,
-            string reason,
-            bool trackAsOnlineIncome)
+            string reason)
         {
             if (amount <= 0L)
             {
@@ -219,15 +149,6 @@ namespace CityFlow.Gameplay.Economy
                 int chunk = (int)Math.Min(remaining, int.MaxValue);
                 economySystem.AddWeeklyIncome(chunk, reason);
                 remaining -= chunk;
-            }
-
-            if (trackAsOnlineIncome && acceptedAmount > 0L)
-            {
-                observedOnlineIncomeCoins =
-                    observedOnlineIncomeCoins >
-                    long.MaxValue - acceptedAmount
-                        ? long.MaxValue
-                        : observedOnlineIncomeCoins + acceptedAmount;
             }
 
             PublishPendingCoins();
@@ -309,26 +230,11 @@ namespace CityFlow.Gameplay.Economy
             ProcessCalendarProgress();
         }
 
-        private void OnRestoreCompleted(RestoreCompletedEvent restoreEvent)
+        private void OnRestoreCompleted(RestoreCompletedEvent _)
         {
             CaptureLegacyCalendarBaseline();
 
-            if (!restoreEvent.IncludesOfflineProgression)
-            {
-                PublishPendingCoins();
-                return;
-            }
-
-            bool claimedRestoredPending =
-                TryClaimPendingCoins(false, out long claimedAmount);
-            ProcessCalendarProgress();
-
-            if (claimedRestoredPending)
-            {
-                Debug.Log(
-                    $"[WeeklyEconomyLoopService] Restored pending coins were " +
-                    $"included in the startup settlement. Amount: {claimedAmount}.");
-            }
+            PublishPendingCoins();
         }
 
         private bool TryClaimPendingCoins(
