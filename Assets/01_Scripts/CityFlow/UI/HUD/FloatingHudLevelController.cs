@@ -22,6 +22,16 @@ namespace CityFlow.UI
         private bool _isRevealed;
         private int _presetIndex;
 
+        public void Configure(
+            CanvasGroup minimal,
+            GameObject[] mLevel,
+            GameObject[] lLevel)
+        {
+            minimalOverlay = minimal;
+            mLevelObjects = mLevel;
+            lLevelObjects = lLevel;
+        }
+
         private void Start()
         {
             FindAndSubscribeService();

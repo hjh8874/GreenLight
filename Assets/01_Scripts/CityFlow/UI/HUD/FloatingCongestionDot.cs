@@ -15,6 +15,11 @@ namespace CityFlow.UI
 
         private ICongestionHistory _history;
 
+        public void Configure(Image image)
+        {
+            dotImage = image;
+        }
+
         public void Initialize(CityFlowServices services)
         {
             _history = services?.Placement as ICongestionHistory;
