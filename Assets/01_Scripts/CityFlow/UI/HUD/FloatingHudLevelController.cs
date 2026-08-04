@@ -7,43 +7,51 @@ namespace CityFlow.UI
 {
     /// <summary>
     /// Maps floating-window presets to the already-baked HUD hierarchy.
-    /// Wire chromeRoot to build/menu chrome, minimalOverlay to coin/dot/[+],
-    /// and levelDeltas to [0]=M-only and [1]=L-only content in the scene.
+    /// Wire minimalOverlay to HUD_TopBar (coin/dot/[+]), mLevelObjects to
+    /// [AnalysisCard_BottomLeft, SubPanels_Right], and lLevelObjects to
+    /// [Build_Panel, Dock_Right] (scene names are illustrative only).
     /// </summary>
     public sealed class FloatingHudLevelController : MonoBehaviour
     {
-        [SerializeField] private CanvasGroup chromeRoot;
         [SerializeField] private CanvasGroup minimalOverlay;
-        [SerializeField] private GameObject[] levelDeltas;
+        [SerializeField] private GameObject[] mLevelObjects;
+        [SerializeField] private GameObject[] lLevelObjects;
 
         private FloatingWindowService _floatingWindow;
         private bool _isFloating;
         private bool _isRevealed;
         private int _presetIndex;
 
-        private void Awake()
+        private void Start()
         {
-            if (chromeRoot == null) chromeRoot = GetComponent<CanvasGroup>();
-        }
-
-        private void OnEnable()
-        {
-            _floatingWindow = FindAnyObjectByType<FloatingWindowService>();
+            FindAndSubscribeService();
             if (_floatingWindow == null)
             {
                 ApplyNormalState();
                 return;
             }
-
-            _floatingWindow.OnFloatingStateChanged += OnFloatingStateChanged;
-            _floatingWindow.OnPresetChanged += OnPresetChanged;
-            _isFloating = _floatingWindow.IsFloating;
-            _isRevealed = !_isFloating;
-            _presetIndex = _floatingWindow.PresetIndex;
-            Apply();
         }
 
-        private void OnDisable()
+        private void FindAndSubscribeService()
+        {
+            if (_floatingWindow != null)
+            {
+                return;
+            }
+
+            _floatingWindow = FindAnyObjectByType<FloatingWindowService>();
+            if (_floatingWindow != null)
+            {
+                _floatingWindow.OnFloatingStateChanged += OnFloatingStateChanged;
+                _floatingWindow.OnPresetChanged += OnPresetChanged;
+                _isFloating = _floatingWindow.IsFloating;
+                _isRevealed = !_isFloating;
+                _presetIndex = _floatingWindow.PresetIndex;
+                Apply();
+            }
+        }
+
+        private void OnDestroy()
         {
             if (_floatingWindow == null)
             {
@@ -52,11 +60,15 @@ namespace CityFlow.UI
 
             _floatingWindow.OnFloatingStateChanged -= OnFloatingStateChanged;
             _floatingWindow.OnPresetChanged -= OnPresetChanged;
-            _floatingWindow = null;
         }
 
         private void Update()
         {
+            if (_floatingWindow == null)
+            {
+                FindAndSubscribeService();
+            }
+
             if (!_isFloating || Mouse.current == null ||
                 !Mouse.current.leftButton.wasPressedThisFrame)
             {
@@ -98,27 +110,20 @@ namespace CityFlow.UI
 
         private void Apply()
         {
-            bool chromeVisible = !_isFloating || _isRevealed;
-            SetCanvasGroup(chromeRoot, chromeVisible);
             SetCanvasGroup(minimalOverlay, true);
-            if (levelDeltas == null)
-            {
-                return;
-            }
+            bool mVisible = !_isFloating || (_isRevealed && _presetIndex >= 1);
+            bool lVisible = !_isFloating || (_isRevealed && _presetIndex >= 2);
+            ApplyObjects(mLevelObjects, mVisible);
+            ApplyObjects(lLevelObjects, lVisible);
+        }
 
-            for (int i = 0; i < levelDeltas.Length; i++)
+        private static void ApplyObjects(GameObject[] objects, bool visible)
+        {
+            if (objects == null) return;
+            for (int i = 0; i < objects.Length; i++)
             {
-                if (levelDeltas[i] != null)
-                {
-                    CanvasGroup group = GetDeltaGroup(levelDeltas[i]);
-                    if (group != null)
-                    {
-                        bool visible = chromeVisible && _presetIndex > i;
-                        group.alpha = visible ? 1f : 0f;
-                        group.interactable = visible;
-                        group.blocksRaycasts = visible;
-                    }
-                }
+                CanvasGroup group = GetDeltaGroup(objects[i]);
+                SetCanvasGroup(group, visible);
             }
         }
 
@@ -137,8 +142,13 @@ namespace CityFlow.UI
                 return null;
             }
 
-            return delta.GetComponent<CanvasGroup>() ??
-                delta.AddComponent<CanvasGroup>();
+            CanvasGroup group = delta.GetComponent<CanvasGroup>();
+            if (group == null)
+            {
+                group = delta.AddComponent<CanvasGroup>();
+            }
+
+            return group;
         }
     }
 }
