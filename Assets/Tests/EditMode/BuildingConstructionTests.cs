@@ -27,13 +27,13 @@ namespace CityFlow.Sim.Tests
             var grid = new CityGrid(8, 4);
             Assert.IsTrue(grid.Place(V(0, 0), TileType.UnderConstruction, PlacementDirection.East));
 
-            Assert.IsTrue(grid.Promote(V(0, 0), TileType.House));
+            Assert.IsTrue(grid.Promote(V(0, 0), TileType.Office));
 
             // 2x2 풋프린트 전체가 교체된다
-            Assert.AreEqual(TileType.House, grid.GetTile(V(0, 0)));
-            Assert.AreEqual(TileType.House, grid.GetTile(V(1, 0)));
-            Assert.AreEqual(TileType.House, grid.GetTile(V(0, 1)));
-            Assert.AreEqual(TileType.House, grid.GetTile(V(1, 1)));
+            Assert.AreEqual(TileType.Office, grid.GetTile(V(0, 0)));
+            Assert.AreEqual(TileType.Office, grid.GetTile(V(1, 0)));
+            Assert.AreEqual(TileType.Office, grid.GetTile(V(0, 1)));
+            Assert.AreEqual(TileType.Office, grid.GetTile(V(1, 1)));
             // 방향과 앵커는 보존된다
             Assert.AreEqual(PlacementDirection.East, grid.GetDirection(V(1, 1)));
             Assert.IsTrue(grid.TryGetFootprintAnchor(V(1, 1), out Vector2Int anchor));
@@ -93,6 +93,10 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
             Assert.AreEqual(TileType.UnderConstruction, engine.GetTileType(V(0, 0)),
                 "배치 직후는 공사 중");
+            Assert.AreEqual(TileType.UnderConstruction, engine.GetTileType(V(0, 1)),
+                "공사 중에도 거주지의 1x2 풋프린트를 유지");
+            Assert.AreEqual(TileType.Empty, engine.GetTileType(V(1, 0)),
+                "기존 2x2 폭을 예약하지 않음");
 
             for (int i = 0; i < 7; i++) engine.Tick(0.25f);
             Assert.AreEqual(TileType.UnderConstruction, engine.GetTileType(V(0, 0)),
@@ -142,7 +146,7 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
 
             Assert.IsFalse(engine.Place(V(0, 0), TileType.Office), "같은 앵커 중복 배치 불가");
-            Assert.IsFalse(engine.Place(V(1, 1), TileType.Office), "2x2 풋프린트 겹침도 불가");
+            Assert.IsFalse(engine.Place(V(0, 1), TileType.House), "1x2 풋프린트 겹침도 불가");
         }
 
         [Test]
@@ -211,7 +215,7 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(engine.Place(V(0, 0), TileType.House));
             Assert.AreEqual(1, engine.ConstructionSiteCountForTest, "배치 직후 공사 사이트 1건");
 
-            Assert.IsTrue(engine.Remove(V(1, 1)), "풋프린트 비앵커 타일 철거도 앵커 사이트를 지워야 한다");
+            Assert.IsTrue(engine.Remove(V(0, 1)), "풋프린트 비앵커 타일 철거도 앵커 사이트를 지워야 한다");
             Assert.AreEqual(0, engine.ConstructionSiteCountForTest, "철거 시 사이트가 즉시 제거된다");
             Assert.AreEqual(TileType.Empty, engine.GetTileType(V(0, 0)));
 
@@ -239,6 +243,9 @@ namespace CityFlow.Sim.Tests
             var restored = new SimEngine(cfg, new SimEventHub());
             restored.RestoreSnapshot(snap);
             Assert.AreEqual(TileType.UnderConstruction, restored.GetTileType(V(0, 0)));
+            Assert.AreEqual(TileType.UnderConstruction, restored.GetTileType(V(0, 1)));
+            Assert.AreEqual(TileType.Empty, restored.GetTileType(V(1, 0)),
+                "저장 복원 뒤에도 거주지 공사장의 1x2 풋프린트를 유지");
 
             for (int i = 0; i < 7; i++) restored.Tick(0.25f);
             Assert.AreEqual(TileType.UnderConstruction, restored.GetTileType(V(0, 0)),
@@ -280,7 +287,7 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(0.5f, half, 0.01f);
 
             // 풋프린트 비앵커 타일로 물어도 같은 값
-            Assert.IsTrue(engine.TryGetConstructionProgress01(V(1, 1), out float halfAtNonAnchor));
+            Assert.IsTrue(engine.TryGetConstructionProgress01(V(0, 1), out float halfAtNonAnchor));
             Assert.AreEqual(0.5f, halfAtNonAnchor, 0.01f);
 
             for (int i = 0; i < 8; i++) engine.Tick(0.25f);

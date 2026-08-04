@@ -12,7 +12,7 @@ namespace CityFlow.Contracts
         Hospital,
         SpecialBuilding,
         // 공사 중. 완성 시 CityGrid.Promote()가 실제 타입으로 교체한다.
-        // IsBuilding()이 true라 2x2 풋프린트 예약이 그대로 유지된다(겹침 방지 공짜).
+        // 실제 점유 크기는 공사 대상 건물의 풋프린트를 그대로 유지한다.
         UnderConstruction
     }
 
@@ -30,13 +30,19 @@ namespace CityFlow.Contracts
     public static class TileFootprint
     {
         private static readonly Vector2Int SingleTile = Vector2Int.one;
+        private static readonly Vector2Int ResidentialBuilding =
+            new Vector2Int(1, 2);
         private static readonly Vector2Int StandardBuilding = new Vector2Int(2, 2);
 
         public static bool IsBuilding(TileType type) =>
             type != TileType.Empty && type != TileType.Road;
 
         public static Vector2Int GetSize(TileType type) =>
-            IsBuilding(type) ? StandardBuilding : SingleTile;
+            type == TileType.House
+                ? ResidentialBuilding
+                : IsBuilding(type)
+                    ? StandardBuilding
+                    : SingleTile;
 
         /// <summary>
         /// 회전 방향을 고려한 풋프린트 크기를 반환합니다.
@@ -74,6 +80,26 @@ namespace CityFlow.Contracts
                 PlacementDirection.West => Vector2Int.left,
                 _ => Vector2Int.down
             };
+
+        /// <summary>
+        /// 마우스로 가리킨 전면 주차장 타일을 기준으로 건물 풋프린트 앵커를 구합니다.
+        /// 전면이 여러 칸이면 커서 타일을 전면 행/열의 첫 칸으로 사용합니다.
+        /// </summary>
+        public static Vector2Int GetAnchorFromFrontTile(
+            Vector2Int frontTile,
+            TileType type,
+            PlacementDirection direction)
+        {
+            Vector2Int size = GetRotatedSize(type, direction);
+            return direction switch
+            {
+                PlacementDirection.East =>
+                    frontTile - new Vector2Int(size.x - 1, 0),
+                PlacementDirection.South =>
+                    frontTile - new Vector2Int(0, size.y - 1),
+                _ => frontTile
+            };
+        }
     }
 
     public enum CongestionLevel

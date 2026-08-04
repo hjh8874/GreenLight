@@ -56,6 +56,17 @@ namespace CityFlow.View
         public GameObject FieldTilePrefab => fieldTilePrefab;
         public TerrainDecorationCatalogSO DecorationCatalog => decorationCatalog;
 
+        public void SetGridLineColor(Color color)
+        {
+            if (gridLineProperties == null)
+            {
+                gridLineProperties = new MaterialPropertyBlock();
+            }
+
+            gridLineProperties.SetColor("_BaseColor", color);
+            gridLineProperties.SetColor("_Color", color);
+        }
+
         private sealed class DecorationRenderSource
         {
             public readonly List<DecorationRenderPart> Parts = new();

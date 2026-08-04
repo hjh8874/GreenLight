@@ -36,12 +36,9 @@ namespace CityFlow.Bootstrap
         
         public static bool IsTitlePreviewMode { get; set; } = false;
 
-        private void Awake()
-        {
-            EnsureServices();
-        }
-
-        // Awake 본문 분리. 도메인 리로드 백업-복원(AwakeInstancesAfterBackupRestoration)은
+        // 초기 씬 로드 중에는 뒤쪽 루트 오브젝트가 아직 검색되지 않을 수 있으므로
+        // 서비스 구성은 모든 Awake가 끝난 Start에서 시작한다.
+        // 도메인 리로드 백업-복원(AwakeInstancesAfterBackupRestoration)은
         // Awake를 다시 부르지 않으면서 비직렬화 상태(Services·simEngine)를 증발시킨다 —
         // 리로드와 플레이 진입이 경합하면 예외 없이 빈 껍데기가 된다(2026-08-02 실측).
         // Update의 복구 경로가 이 메서드를 재호출한다.
@@ -122,6 +119,7 @@ namespace CityFlow.Bootstrap
 
         private void Start()
         {
+            EnsureServices();
             InstallServices();
             SyncSimDayLengthToCalendar();
         }

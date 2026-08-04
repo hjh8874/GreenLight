@@ -304,10 +304,14 @@ namespace CityFlow.UI
 
             IWorldCoordinateSpace coordinateSpace =
                 _services?.WorldCoordinates;
-            Vector2Int gridCoord = _inputHandler.GetMouseGridCoordinate(
+            Vector2Int cursorCoord = _inputHandler.GetMouseGridCoordinate(
                 useXYPlane,
                 coordinateSpace);
-            _currentDirection = ResolvePlacementDirection(gridCoord);
+            UpdatePlacementDirection(cursorCoord);
+            Vector2Int gridCoord = ResolvePlacementAnchor(
+                cursorCoord,
+                _currentType,
+                _currentDirection);
             bool canPlace = _actionDispatcher.CheckCanPlace(
                 gridCoord,
                 _currentType,
@@ -317,7 +321,11 @@ namespace CityFlow.UI
             bool isBuildingType = TileFootprint.IsBuilding(_currentType);
 
             bool isBuildMenuOpen = IsBuildMenuOpen?.Invoke() ?? false;
-            _inputHandler.UpdateGlobalInput(_isBuildingMode, isBuildingType, gridCoord, isBuildMenuOpen);
+            _inputHandler.UpdateGlobalInput(
+                _isBuildingMode,
+                isBuildingType,
+                _isBuildingMode ? gridCoord : cursorCoord,
+                isBuildMenuOpen);
 
             if (_inputHandler.IsPointerOverBlockingUI())
             {
@@ -406,11 +414,10 @@ namespace CityFlow.UI
 
         private void HandlePlace(Vector2Int coord)
         {
-            PlacementDirection direction = ResolvePlacementDirection(coord);
             bool placed = _actionDispatcher.PlaceInfrastructure(
                 coord,
                 _currentType,
-                direction,
+                _currentDirection,
                 _services,
                 _currentSpecialBuildingId,
                 _currentCompanyTypeId);
@@ -486,6 +493,31 @@ namespace CityFlow.UI
                 return _currentDirection;
             }
 
+            if (UsesFrontParkingTile(_currentType) &&
+                _services?.TileData != null)
+            {
+                System.Collections.Generic.IReadOnlyList<
+                    PlacementDirection> order =
+                    CameraAutoDirectionOrder() ??
+                    _cameraOrderBuffer;
+                for (int index = 0;
+                     index < order.Count;
+                     index++)
+                {
+                    PlacementDirection candidate = order[index];
+                    Vector2Int roadTile =
+                        coord +
+                        TileFootprint.GetFrontOffset(candidate);
+                    if (_services.TileData.GetTileType(roadTile) ==
+                        TileType.Road)
+                    {
+                        return candidate;
+                    }
+                }
+
+                return PlacementDirection.North;
+            }
+
             if (_services?.Placement != null &&
                 _services.Placement.TryResolveAutoDirection(
                     coord,
@@ -497,6 +529,40 @@ namespace CityFlow.UI
             }
 
             return PlacementDirection.North;
+        }
+
+        private static bool UsesFrontParkingTile(TileType type) =>
+            type == TileType.House ||
+            type == TileType.Office ||
+            type == TileType.School ||
+            type == TileType.Hospital;
+
+        private static Vector2Int ResolvePlacementAnchor(
+            Vector2Int cursorCoord,
+            TileType type,
+            PlacementDirection direction)
+        {
+            return UsesFrontParkingTile(type)
+                ? TileFootprint.GetAnchorFromFrontTile(
+                    cursorCoord,
+                    type,
+                    direction)
+                : cursorCoord;
+        }
+
+        private void UpdatePlacementDirection(Vector2Int coord)
+        {
+            PlacementDirection resolvedDirection =
+                ResolvePlacementDirection(coord);
+            if (_currentDirection == resolvedDirection)
+            {
+                return;
+            }
+
+            _currentDirection = resolvedDirection;
+            _visualManager.UpdateGhostFootprint(
+                _currentType,
+                _currentDirection);
         }
 
         // 여러 면이 도로일 때의 타이브레이크(환 결정 2026-07-31): 기본 카메라에서
@@ -604,16 +670,19 @@ namespace CityFlow.UI
         }
 
         public const float EmptyGroundMarkerZ = 0.12f;
-        public const float RoadSurfaceMarkerZ = -0.05f;
+        public const float RoadSurfaceMarkerZ = 0.12f;
         public const float OverlappingPreviewOffset = 0.01f;
 
         public float GetSurfaceMarkerZ(Vector2Int gridCoord)
         {
-            if (_services != null && _services.TileData != null
-                && _services.TileData.GetTileType(gridCoord) == TileType.Empty)
+            _cityView ??=
+                FindAnyObjectByType<MainCityView>(
+                    FindObjectsInactive.Include);
+            if (_cityView != null)
             {
-                return EmptyGroundMarkerZ;
+                return _cityView.RoadSurfaceZ;
             }
+
             return RoadSurfaceMarkerZ;
         }
 
@@ -661,7 +730,8 @@ namespace CityFlow.UI
                     Vector3 position = _cityView
                         .GetPlacementPreviewWorldPosition(
                             gridCoord,
-                            _currentType);
+                            _currentType,
+                            _currentDirection);
                     if (DoesPreviewOverlapExistingTiles(
                             gridCoord,
                             footprintSize))

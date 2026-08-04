@@ -149,7 +149,7 @@ namespace Tests.EditMode
                 serializedView
                     .FindProperty("visualScale")
                     .floatValue,
-                Is.EqualTo(1f));
+                Is.EqualTo(0.75f).Within(0.0001f));
             Assert.That(
                 definition.VehicleVisualPrefab,
                 Is.SameAs(expectedVisual));

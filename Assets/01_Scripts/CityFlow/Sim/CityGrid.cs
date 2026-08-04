@@ -118,15 +118,43 @@ namespace CityFlow.Sim
             if (_tiles[anchorIndex] == TileType.Road || targetType == TileType.Road) return false;
 
             PlacementDirection direction = _directions[anchorIndex];
-            Vector2Int sourceSize = TileFootprint.GetRotatedSize(_tiles[anchorIndex], direction);
+            TileType sourceType = _tiles[anchorIndex];
             Vector2Int targetSize = TileFootprint.GetRotatedSize(targetType, direction);
-            if (sourceSize != targetSize) return false;
+            Vector2Int sourceSize = sourceType == TileType.UnderConstruction
+                ? targetSize
+                : TileFootprint.GetRotatedSize(sourceType, direction);
+            if (targetType != TileType.UnderConstruction &&
+                sourceSize != targetSize)
+            {
+                return false;
+            }
+
+            if (sourceType == TileType.UnderConstruction)
+            {
+                int occupiedCount = 0;
+                for (int i = 0; i < _footprintAnchors.Length; i++)
+                {
+                    if (_footprintAnchors[i] == anchor)
+                    {
+                        occupiedCount++;
+                    }
+                }
+
+                if (occupiedCount != targetSize.x * targetSize.y)
+                {
+                    return false;
+                }
+            }
+
+            Vector2Int promotedSize = targetType == TileType.UnderConstruction
+                ? sourceSize
+                : targetSize;
 
             // 승격은 재배치가 아니므로 원본 풋프린트를 벗어날 수 없다.
             // 검증과 쓰기를 분리해 실패 시 일부 타일만 바뀌는 비원자 경로를 막는다.
-            for (int y = 0; y < targetSize.y; y++)
+            for (int y = 0; y < promotedSize.y; y++)
             {
-                for (int x = 0; x < targetSize.x; x++)
+                for (int x = 0; x < promotedSize.x; x++)
                 {
                     Vector2Int occupied = anchor + new Vector2Int(x, y);
                     if (!InBounds(occupied)) return false;
@@ -134,9 +162,9 @@ namespace CityFlow.Sim
                 }
             }
 
-            for (int y = 0; y < targetSize.y; y++)
+            for (int y = 0; y < promotedSize.y; y++)
             {
-                for (int x = 0; x < targetSize.x; x++)
+                for (int x = 0; x < promotedSize.x; x++)
                 {
                     Vector2Int occupied = anchor + new Vector2Int(x, y);
                     _tiles[Index(occupied)] = targetType;

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -25,13 +26,21 @@ namespace CityFlow.UI
 
         private float _searchTimer = 0f;
         private Vector2Int? _lastHoveredBuildingCoord;
+        private Vector2Int? _selectedCoord;
 
         [Header("Visuals")]
         [Tooltip("타일을 선택했을 때 바닥에 표시될 강조(하이라이트) 박스")]
         [SerializeField] private GameObject highlightBox; 
         [SerializeField] private bool useXYPlane = false;
-        private Vector3 _highlightBaseScale = Vector3.one;
-        private bool _highlightScaleInitialized;
+        private readonly List<GameObject> _selectionOverlayObjects =
+            new();
+        private Material _selectionOverlayMaterial;
+
+        private static readonly int BaseColorId =
+            Shader.PropertyToID("_BaseColor");
+        private static readonly int ColorId =
+            Shader.PropertyToID("_Color");
+        private const float SelectionOverlayAlpha = 0.08f;
 
         public void Configure(
             AnalysisCardController analysis,
@@ -40,9 +49,9 @@ namespace CityFlow.UI
         {
             analysisCard = analysis;
             placementController = placement;
+            ClearSelectedVisual();
             highlightBox = highlight;
-            _highlightScaleInitialized = false;
-            CacheHighlightScale();
+            DisableLegacyHighlight();
         }
 
         public void SetUseXYPlane(bool isOn)
@@ -65,12 +74,19 @@ namespace CityFlow.UI
                 buildingInfoCard = FindAnyObjectByType<BuildingInfoCardController>(FindObjectsInactive.Include);
             }
             // 시작 시 상세 카드와 하이라이트 박스는 숨겨둡니다.
-            CacheHighlightScale();
+            DisableLegacyHighlight();
             DeselectTile();
+        }
+
+        private void OnDestroy()
+        {
+            ClearSelectedVisual();
         }
 
         private void Update()
         {
+            ClearSelectionIfRemoved();
+
             if (WeeklySettlementPopup.IsInteractionBlocked)
             {
                 return;
@@ -249,52 +265,11 @@ namespace CityFlow.UI
                 ? _services.TileData.GetTileType(coord)
                 : TileType.Empty;
 
-            // 하이라이트 박스 이동
-            if (highlightBox != null)
-            {
-                highlightBox.SetActive(true);
-                Vector2Int size = TileFootprint.GetSize(selectedType);
-                float offsetX = (size.x - 1) * 0.5f;
-                float offsetY = (size.y - 1) * 0.5f;
-                float markerZ = placementController != null
-                    ? placementController.GetSurfaceMarkerZ(coord)
-                    : -0.05f;
-                IWorldCoordinateSpace coordinateSpace =
-                    _services?.WorldCoordinates;
-                if (coordinateSpace != null)
-                {
-                    highlightBox.transform.position =
-                        coordinateSpace.GridPointToWorld(
-                            new Vector2(
-                                coord.x + 0.5f + offsetX,
-                                coord.y + 0.5f + offsetY),
-                            -markerZ);
-                    highlightBox.transform.rotation =
-                        coordinateSpace.CoordinateRotation;
-                    highlightBox.transform.localScale = Vector3.Scale(
-                        _highlightBaseScale,
-                        new Vector3(size.x, size.y, 1f));
-                }
-                else
-                {
-                    highlightBox.transform.position = useXYPlane
-                        ? new Vector3(
-                            coord.x + 0.5f + offsetX,
-                            coord.y + 0.5f + offsetY,
-                            markerZ)
-                        : new Vector3(
-                            coord.x + offsetX,
-                            0,
-                            coord.y + offsetY);
-                    highlightBox.transform.localScale = useXYPlane
-                        ? Vector3.Scale(
-                            _highlightBaseScale,
-                            new Vector3(size.x, size.y, 1f))
-                        : Vector3.Scale(
-                            _highlightBaseScale,
-                            new Vector3(size.x, 1f, size.y));
-                }
-            }
+            ClearSelectedVisual();
+            _selectedCoord = coord;
+
+            DisableLegacyHighlight();
+            ApplySelectedVisual(coord, selectedType);
 
             // 상세 분석 카드 열기
             if (analysisCard != null)
@@ -324,19 +299,276 @@ namespace CityFlow.UI
 
         private void DeselectTile()
         {
+            _selectedCoord = null;
+            ClearSelectedVisual();
             if (highlightBox != null) highlightBox.SetActive(false);
             if (analysisCard != null) analysisCard.CloseCard();
         }
 
-        private void CacheHighlightScale()
+        private void ClearSelectionIfRemoved()
         {
-            if (highlightBox == null || _highlightScaleInitialized)
+            if (!_selectedCoord.HasValue ||
+                _services?.TileData == null ||
+                _services.TileData.GetTileType(
+                    _selectedCoord.Value) != TileType.Empty)
             {
                 return;
             }
 
-            _highlightBaseScale = highlightBox.transform.localScale;
-            _highlightScaleInitialized = true;
+            DeselectTile();
+            if (buildingInfoCard != null &&
+                buildingInfoCard.IsOpen)
+            {
+                buildingInfoCard.CloseCard();
+            }
+            _lastHoveredBuildingCoord = null;
+        }
+
+        private void DisableLegacyHighlight()
+        {
+            if (highlightBox != null)
+            {
+                highlightBox.SetActive(false);
+            }
+        }
+
+        private void ApplySelectedVisual(
+            Vector2Int coord,
+            TileType type)
+        {
+            Vector2Int visualAnchor = ResolveVisualAnchor(coord);
+            Renderer[] renderers = null;
+            if (type == TileType.SpecialBuilding)
+            {
+                SpecialBuildingView specialView =
+                    FindAnyObjectByType<SpecialBuildingView>(
+                        FindObjectsInactive.Include);
+                specialView?.TryGetVisualRenderers(
+                    visualAnchor,
+                    out renderers);
+            }
+
+            if (renderers == null || renderers.Length == 0)
+            {
+                MainCityView cityView =
+                    FindAnyObjectByType<MainCityView>(
+                        FindObjectsInactive.Include);
+                cityView?.TryGetTileVisualRenderers(
+                    visualAnchor,
+                    out renderers);
+            }
+
+            if (renderers == null)
+            {
+                return;
+            }
+
+            for (int index = 0; index < renderers.Length; index++)
+            {
+                ApplySelectedRenderer(renderers[index]);
+            }
+        }
+
+        private Vector2Int ResolveVisualAnchor(Vector2Int coord)
+        {
+            return _services?.TileData != null &&
+                   _services.TileData.TryGetFootprintAnchor(
+                       coord,
+                       out Vector2Int anchor)
+                ? anchor
+                : coord;
+        }
+
+        private void ApplySelectedRenderer(Renderer renderer)
+        {
+            if (renderer == null)
+            {
+                return;
+            }
+
+            CreateSelectionOverlayMaterial();
+            if (_selectionOverlayMaterial == null)
+            {
+                return;
+            }
+
+            var overlayObject = new GameObject(
+                renderer.gameObject.name + " (Selection Overlay)");
+            overlayObject.hideFlags = HideFlags.HideAndDontSave;
+            overlayObject.layer = renderer.gameObject.layer;
+            overlayObject.transform.SetParent(
+                renderer.transform,
+                false);
+
+            Renderer overlayRenderer = null;
+            Mesh mesh = null;
+            if (renderer is SkinnedMeshRenderer sourceSkinned &&
+                sourceSkinned.sharedMesh != null)
+            {
+                var overlaySkinned =
+                    overlayObject.AddComponent<SkinnedMeshRenderer>();
+                overlaySkinned.sharedMesh = sourceSkinned.sharedMesh;
+                overlaySkinned.bones = sourceSkinned.bones;
+                overlaySkinned.rootBone = sourceSkinned.rootBone;
+                overlaySkinned.localBounds = sourceSkinned.localBounds;
+                overlaySkinned.updateWhenOffscreen =
+                    sourceSkinned.updateWhenOffscreen;
+                overlayRenderer = overlaySkinned;
+                mesh = sourceSkinned.sharedMesh;
+            }
+            else if (renderer is MeshRenderer &&
+                     renderer.TryGetComponent(
+                         out MeshFilter sourceFilter) &&
+                     sourceFilter.sharedMesh != null)
+            {
+                var overlayFilter =
+                    overlayObject.AddComponent<MeshFilter>();
+                overlayFilter.sharedMesh = sourceFilter.sharedMesh;
+                overlayRenderer =
+                    overlayObject.AddComponent<MeshRenderer>();
+                mesh = sourceFilter.sharedMesh;
+            }
+
+            if (overlayRenderer == null || mesh == null)
+            {
+                DestroySelectionObject(overlayObject);
+                return;
+            }
+
+            int materialCount = Mathf.Max(1, mesh.subMeshCount);
+            var materials = new Material[materialCount];
+            for (int index = 0; index < materials.Length; index++)
+            {
+                materials[index] = _selectionOverlayMaterial;
+            }
+
+            overlayRenderer.sharedMaterials = materials;
+            overlayRenderer.shadowCastingMode =
+                UnityEngine.Rendering.ShadowCastingMode.Off;
+            overlayRenderer.receiveShadows = false;
+            overlayRenderer.lightProbeUsage =
+                UnityEngine.Rendering.LightProbeUsage.Off;
+            overlayRenderer.reflectionProbeUsage =
+                UnityEngine.Rendering.ReflectionProbeUsage.Off;
+            overlayRenderer.sortingLayerID = renderer.sortingLayerID;
+            overlayRenderer.sortingOrder = renderer.sortingOrder + 1;
+            _selectionOverlayObjects.Add(overlayObject);
+        }
+
+        private void CreateSelectionOverlayMaterial()
+        {
+            if (_selectionOverlayMaterial != null)
+            {
+                return;
+            }
+
+            Shader shader = Shader.Find(
+                "Universal Render Pipeline/Unlit");
+            shader ??= Shader.Find("Sprites/Default");
+            if (shader == null)
+            {
+                return;
+            }
+
+            Color overlayColor = GetSelectionOverlayColor();
+            _selectionOverlayMaterial = new Material(shader)
+            {
+                name = "Tile Selection Overlay (Runtime)",
+                hideFlags = HideFlags.HideAndDontSave,
+                renderQueue = 3000
+            };
+            _selectionOverlayMaterial.SetOverrideTag(
+                "RenderType",
+                "Transparent");
+            if (_selectionOverlayMaterial.HasProperty(BaseColorId))
+            {
+                _selectionOverlayMaterial.SetColor(
+                    BaseColorId,
+                    overlayColor);
+            }
+            if (_selectionOverlayMaterial.HasProperty(ColorId))
+            {
+                _selectionOverlayMaterial.SetColor(
+                    ColorId,
+                    overlayColor);
+            }
+            SetMaterialFloatIfPresent(
+                _selectionOverlayMaterial,
+                "_Surface",
+                1f);
+            SetMaterialFloatIfPresent(
+                _selectionOverlayMaterial,
+                "_Blend",
+                0f);
+            SetMaterialFloatIfPresent(
+                _selectionOverlayMaterial,
+                "_SrcBlend",
+                (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            SetMaterialFloatIfPresent(
+                _selectionOverlayMaterial,
+                "_DstBlend",
+                (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            SetMaterialFloatIfPresent(
+                _selectionOverlayMaterial,
+                "_ZWrite",
+                0f);
+            _selectionOverlayMaterial.EnableKeyword(
+                "_SURFACE_TYPE_TRANSPARENT");
+            _selectionOverlayMaterial.SetShaderPassEnabled(
+                "ShadowCaster",
+                false);
+        }
+
+        private static void SetMaterialFloatIfPresent(
+            Material material,
+            string propertyName,
+            float value)
+        {
+            if (material.HasProperty(propertyName))
+            {
+                material.SetFloat(propertyName, value);
+            }
+        }
+
+        private static Color GetSelectionOverlayColor() =>
+            new Color(
+                0.55f,
+                0.82f,
+                1f,
+                SelectionOverlayAlpha);
+
+        private static void DestroySelectionObject(
+            Object target)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(target);
+            }
+            else
+            {
+                DestroyImmediate(target);
+            }
+        }
+
+        private void ClearSelectedVisual()
+        {
+            for (int index =
+                     _selectionOverlayObjects.Count - 1;
+                 index >= 0;
+                 index--)
+            {
+                DestroySelectionObject(
+                    _selectionOverlayObjects[index]);
+            }
+
+            _selectionOverlayObjects.Clear();
+            DestroySelectionObject(_selectionOverlayMaterial);
+            _selectionOverlayMaterial = null;
         }
     }
 }

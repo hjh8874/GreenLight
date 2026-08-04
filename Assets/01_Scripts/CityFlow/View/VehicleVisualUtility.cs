@@ -7,9 +7,9 @@ namespace CityFlow.View
     public static class VehicleVisualUtility
     {
         private static readonly Dictionary<Material, Material>
-            UnlitMaterials = new();
+            LitMaterials = new();
 
-        public static void PrepareUnlit(
+        public static void PrepareLit(
             GameObject root,
             int renderQueue =
                 (int)RenderQueue.Geometry + 10)
@@ -28,35 +28,35 @@ namespace CityFlow.View
                 Renderer renderer = renderers[rendererIndex];
                 Material[] sourceMaterials =
                     renderer.sharedMaterials;
-                var unlitMaterials =
+                var litMaterials =
                     new Material[sourceMaterials.Length];
 
                 for (int materialIndex = 0;
                      materialIndex < sourceMaterials.Length;
                      materialIndex++)
                 {
-                    unlitMaterials[materialIndex] =
-                        GetOrCreateUnlitMaterial(
+                    litMaterials[materialIndex] =
+                        GetOrCreateLitMaterial(
                             sourceMaterials[materialIndex],
                             renderQueue);
                 }
 
-                renderer.sharedMaterials = unlitMaterials;
+                renderer.sharedMaterials = litMaterials;
                 renderer.enabled = true;
                 renderer.forceRenderingOff = false;
                 renderer.allowOcclusionWhenDynamic = false;
                 renderer.shadowCastingMode =
-                    ShadowCastingMode.Off;
-                renderer.receiveShadows = false;
+                    ShadowCastingMode.On;
+                renderer.receiveShadows = true;
             }
         }
 
-        private static Material GetOrCreateUnlitMaterial(
+        private static Material GetOrCreateLitMaterial(
             Material source,
             int renderQueue)
         {
             if (source != null &&
-                UnlitMaterials.TryGetValue(
+                LitMaterials.TryGetValue(
                     source,
                     out Material cached))
             {
@@ -64,16 +64,12 @@ namespace CityFlow.View
             }
 
             Shader shader =
-                Resources.Load<Shader>(
-                    "CityFlowOpaqueUnlit");
+                Shader.Find(
+                    "Universal Render Pipeline/Lit");
             shader ??=
                 Shader.Find(
-                    "GreenLight/CityFlow Opaque Unlit");
-            shader ??=
-                Shader.Find(
-                    "Universal Render Pipeline/Unlit");
-            shader ??= Shader.Find("Unlit/Texture");
-            shader ??= Shader.Find("Unlit/Color");
+                    "Universal Render Pipeline/Simple Lit");
+            shader ??= Shader.Find("Standard");
             shader ??= source != null
                 ? source.shader
                 : Shader.Find("Hidden/InternalErrorShader");
@@ -82,8 +78,8 @@ namespace CityFlow.View
             {
                 name =
                     source != null
-                        ? $"{source.name}_VehicleUnlit"
-                        : "VehicleUnlit",
+                        ? $"{source.name}_Lit"
+                        : "VehicleLit",
                 renderQueue = renderQueue
             };
 
@@ -115,6 +111,24 @@ namespace CityFlow.View
             {
                 material.SetFloat("_AlphaClip", 0f);
             }
+            if (material.HasProperty("_Metallic"))
+            {
+                material.SetFloat(
+                    "_Metallic",
+                    source != null &&
+                    source.HasProperty("_Metallic")
+                        ? source.GetFloat("_Metallic")
+                        : 0f);
+            }
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat(
+                    "_Smoothness",
+                    source != null &&
+                    source.HasProperty("_Smoothness")
+                        ? source.GetFloat("_Smoothness")
+                        : 0.25f);
+            }
             if (material.HasProperty("_ZWrite"))
             {
                 material.SetFloat("_ZWrite", 1f);
@@ -143,7 +157,7 @@ namespace CityFlow.View
 
             if (source != null)
             {
-                UnlitMaterials.Add(source, material);
+                LitMaterials.Add(source, material);
             }
 
             return material;

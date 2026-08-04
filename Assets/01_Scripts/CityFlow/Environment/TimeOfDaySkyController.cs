@@ -1,5 +1,6 @@
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.View;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -13,25 +14,44 @@ namespace CityFlow.Environment
         private static readonly int TexAId = Shader.PropertyToID("_TexA");
         private static readonly int TexBId = Shader.PropertyToID("_TexB");
         private static readonly int BlendId = Shader.PropertyToID("_Blend");
-        private static readonly int RotationAId =
-            Shader.PropertyToID("_RotationA");
-        private static readonly int RotationBId =
-            Shader.PropertyToID("_RotationB");
         private static readonly int ExposureAId =
             Shader.PropertyToID("_ExposureA");
         private static readonly int ExposureBId =
             Shader.PropertyToID("_ExposureB");
         private static readonly int HorizonRotationId =
             Shader.PropertyToID("_HorizonRotation");
+        private static readonly int ColorId =
+            Shader.PropertyToID("_Color");
+
+        private const float SunriseHour = 6f;
+        private const float SunsetHour = 18f;
+        private const float HalfDayHours = 12f;
+        private const float NightGridBrightness = 0.32f;
 
         private static TimeOfDaySkyController activeOwner;
 
         [Header("Sky Cycle")]
         [SerializeField] private TimeOfDaySkyProfile profile;
         [SerializeField] private Material blendSkyboxTemplate;
+        [SerializeField] private Material celestialOverlayTemplate;
 
         [Header("Lighting")]
         [SerializeField] private Light keyLight;
+
+        [Header("Celestial Cycle")]
+        [SerializeField] private bool showCelestialVisual = true;
+        [SerializeField, Range(0f, 1f)] private float horizonViewportY =
+            0.5f;
+        [SerializeField, Min(0.01f)] private float celestialCameraDepth = 10f;
+        [SerializeField] private Color sunVisualColor =
+            new(1f, 0.82f, 0.32f, 1f);
+        [SerializeField] private Color moonVisualColor =
+            new(0.82f, 0.9f, 1f, 1f);
+        [SerializeField, Min(0.1f)] private float sunWorldDiameter = 2.3f;
+        [SerializeField, Min(0.1f)] private float moonWorldDiameter = 2.1f;
+        [SerializeField, Range(0.1f, 1f)] private float minimumScreenSizeRatio =
+            0.7f;
+        [SerializeField, Min(0f)] private float moonHorizonIntensity = 0.1f;
 
         [Header("Lifecycle")]
         [SerializeField] private bool restoreRenderSettingsOnDisable = true;
@@ -39,6 +59,9 @@ namespace CityFlow.Environment
         private CityFlowServices services;
         private IGameCalendarService gameCalendar;
         private Material runtimeSkybox;
+        private Material runtimeCelestialMaterial;
+        private Mesh runtimeCelestialMesh;
+        private GameObject runtimeCelestialObject;
         private bool ownsRenderSettings;
         private bool renderSettingsCaptured;
         private bool lightStateCaptured;
@@ -55,12 +78,17 @@ namespace CityFlow.Environment
         private float previousLightIntensity;
         private float previousShadowStrength;
         private Quaternion previousLightRotation;
-        private Material lastCurrentSource;
         private bool cameraRenderingSubscribed;
+        private bool hasCurrentCycle;
+        private CelestialCycleState currentCycle;
+        private MainCityView mainCityView;
 
         public TimeOfDaySkyProfile Profile => profile;
         public Material BlendSkyboxTemplate => blendSkyboxTemplate;
+        public Material CelestialOverlayTemplate =>
+            celestialOverlayTemplate;
         public Light KeyLight => keyLight;
+        public bool ShowCelestialVisual => showCelestialVisual;
 
         public void Initialize(CityFlowServices newServices)
         {
@@ -88,6 +116,19 @@ namespace CityFlow.Environment
         private void OnEnable()
         {
             ActivateRenderSettings();
+        }
+
+        private void Update()
+        {
+            if (!ownsRenderSettings || gameCalendar == null)
+            {
+                return;
+            }
+
+            ApplyGameHour(
+                gameCalendar.TimeOfDay01 *
+                gameCalendar.HoursPerDay,
+                false);
         }
 
         internal void ActivateRenderSettings()
@@ -158,7 +199,7 @@ namespace CityFlow.Environment
         {
             if (isActiveAndEnabled && ownsRenderSettings)
             {
-                ApplyGameHour(hour, false);
+                ApplyGameHour(hour, true);
             }
         }
 
@@ -189,6 +230,13 @@ namespace CityFlow.Environment
             }
 
             if (!EnsureRuntimeMaterial())
+            {
+                enabled = false;
+                return false;
+            }
+
+            if (showCelestialVisual &&
+                !EnsureCelestialVisual())
             {
                 enabled = false;
                 return false;
@@ -231,7 +279,92 @@ namespace CityFlow.Environment
                 name = $"{blendSkyboxTemplate.name} (Runtime)",
                 hideFlags = HideFlags.DontSave
             };
+
+            if (runtimeSkybox.GetTexture(TexAId) == null ||
+                runtimeSkybox.GetTexture(TexBId) == null)
+            {
+                Debug.LogError(
+                    "[TimeOfDaySkyController] The fixed skybox material must contain a cubemap.",
+                    this);
+                DestroyRuntimeSkybox();
+                return false;
+            }
+
             return true;
+        }
+
+        private bool EnsureCelestialVisual()
+        {
+            if (runtimeCelestialObject != null)
+            {
+                return true;
+            }
+
+            if (celestialOverlayTemplate == null ||
+                celestialOverlayTemplate.shader == null ||
+                !celestialOverlayTemplate.HasProperty(ColorId))
+            {
+                Debug.LogError(
+                    "[TimeOfDaySkyController] A valid celestial overlay material is required.",
+                    this);
+                return false;
+            }
+
+            runtimeCelestialMaterial =
+                new Material(celestialOverlayTemplate)
+                {
+                    name = $"{celestialOverlayTemplate.name} (Runtime)",
+                    hideFlags = HideFlags.DontSave
+                };
+            runtimeCelestialMesh = CreateCelestialQuad();
+            runtimeCelestialObject =
+                new GameObject("TimeOfDayCelestialBody")
+                {
+                    hideFlags = HideFlags.DontSave
+                };
+            runtimeCelestialObject.transform.SetParent(
+                transform,
+                false);
+            MeshFilter filter =
+                runtimeCelestialObject.AddComponent<MeshFilter>();
+            filter.sharedMesh = runtimeCelestialMesh;
+            MeshRenderer renderer =
+                runtimeCelestialObject.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = runtimeCelestialMaterial;
+            renderer.shadowCastingMode =
+                ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.lightProbeUsage = LightProbeUsage.Off;
+            renderer.reflectionProbeUsage =
+                ReflectionProbeUsage.Off;
+            runtimeCelestialObject.SetActive(false);
+            return true;
+        }
+
+        private static Mesh CreateCelestialQuad()
+        {
+            Mesh mesh = new()
+            {
+                name = "Time Of Day Celestial Quad",
+                hideFlags = HideFlags.DontSave,
+                vertices = new[]
+                {
+                    new Vector3(-0.5f, -0.5f, 0f),
+                    new Vector3(0.5f, -0.5f, 0f),
+                    new Vector3(0.5f, 0.5f, 0f),
+                    new Vector3(-0.5f, 0.5f, 0f)
+                },
+                uv = new[]
+                {
+                    new Vector2(0f, 0f),
+                    new Vector2(1f, 0f),
+                    new Vector2(1f, 1f),
+                    new Vector2(0f, 1f)
+                },
+                triangles = new[] { 0, 2, 1, 0, 3, 2 }
+            };
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         private void CaptureRenderSettings()
@@ -270,61 +403,240 @@ namespace CityFlow.Environment
             bool forceEnvironmentUpdate)
         {
             if (profile == null ||
-                runtimeSkybox == null ||
-                !profile.TryEvaluate(
-                    gameHour,
-                    out TimeOfDaySkyEvaluation evaluation))
+                runtimeSkybox == null)
             {
                 return;
             }
 
-            Material currentSource =
-                evaluation.Current.SkyboxMaterial;
-            if (!TryGetCubemap(
-                    currentSource,
-                    out Cubemap currentTexture))
-            {
-                if (!missingMaterialLogged)
-                {
-                    Debug.LogError(
-                        "[TimeOfDaySkyController] Every keyframe must reference an AllSky cubemap material with a _Tex property.",
-                        this);
-                    missingMaterialLogged = true;
-                }
-
-                return;
-            }
-
-            runtimeSkybox.SetTexture(TexAId, currentTexture);
-            runtimeSkybox.SetTexture(TexBId, currentTexture);
-            float exposure =
-                SourceExposure(currentSource) *
-                evaluation.Current.SkyExposure;
-            runtimeSkybox.SetFloat(ExposureAId, exposure);
-            runtimeSkybox.SetFloat(ExposureBId, exposure);
-            runtimeSkybox.SetFloat(
-                RotationAId,
-                evaluation.Current.SkyRotation);
-            runtimeSkybox.SetFloat(
-                RotationBId,
-                evaluation.Current.SkyRotation);
             runtimeSkybox.SetFloat(BlendId, 0f);
             ApplyHorizonCorrection(Camera.main);
+
+            CelestialCycleState cycle =
+                EvaluateCelestialCycle(gameHour);
+            currentCycle = cycle;
+            hasCurrentCycle = true;
+            ApplySkyExposure(cycle);
+            ApplyCelestialVisual(
+                cycle,
+                Camera.main);
 
             if (RenderSettings.skybox != runtimeSkybox)
             {
                 RenderSettings.skybox = runtimeSkybox;
             }
 
-            ApplyLighting(evaluation);
+            ApplyLighting(cycle);
+            ApplyGridLineBrightness(cycle);
 
-            bool sourceChanged =
-                lastCurrentSource != currentSource;
-            if (forceEnvironmentUpdate || sourceChanged)
+            if (forceEnvironmentUpdate)
             {
                 DynamicGI.UpdateEnvironment();
-                lastCurrentSource = currentSource;
             }
+        }
+
+        internal static CelestialCycleState EvaluateCelestialCycle(
+            float gameHour)
+        {
+            float normalizedHour = Mathf.Repeat(
+                gameHour,
+                TimeOfDaySkyProfile.HoursPerDay);
+            bool isSun =
+                normalizedHour >= SunriseHour &&
+                normalizedHour < SunsetHour;
+            float elapsedHours = isSun
+                ? normalizedHour - SunriseHour
+                : Mathf.Repeat(
+                    normalizedHour - SunsetHour,
+                    TimeOfDaySkyProfile.HoursPerDay);
+            float progress = Mathf.Clamp01(
+                elapsedHours / HalfDayHours);
+            float altitude = Mathf.Max(
+                0f,
+                Mathf.Sin(progress * Mathf.PI));
+            float eastWeight = Mathf.Cos(
+                progress * Mathf.PI);
+
+            return new CelestialCycleState(
+                isSun,
+                progress,
+                altitude,
+                eastWeight);
+        }
+
+        private void ApplyCelestialVisual(
+            CelestialCycleState cycle,
+            Camera targetCamera)
+        {
+            if (!showCelestialVisual ||
+                runtimeCelestialObject == null ||
+                runtimeCelestialMaterial == null ||
+                targetCamera == null)
+            {
+                if (runtimeCelestialObject != null)
+                {
+                    runtimeCelestialObject.SetActive(false);
+                }
+
+                return;
+            }
+
+            Transform bodyTransform =
+                runtimeCelestialObject.transform;
+            float baseWorldDiameter = cycle.IsSun
+                ? sunWorldDiameter
+                : moonWorldDiameter;
+            float worldDiameter = CalculateCelestialDisplayDiameter(
+                baseWorldDiameter,
+                targetCamera.orthographicSize,
+                ResolveMaximumOrthographicSize(targetCamera),
+                minimumScreenSizeRatio);
+            bodyTransform.position =
+                CalculateCelestialCameraPosition(
+                    targetCamera,
+                    horizonViewportY,
+                    celestialCameraDepth,
+                    worldDiameter,
+                    cycle);
+            bodyTransform.rotation =
+                targetCamera.transform.rotation;
+            bodyTransform.localScale =
+                new Vector3(
+                    worldDiameter,
+                    worldDiameter,
+                    1f);
+            runtimeCelestialMaterial.SetColor(
+                ColorId,
+                cycle.IsSun
+                    ? sunVisualColor
+                    : moonVisualColor);
+            runtimeCelestialObject.SetActive(true);
+        }
+
+        private float ResolveMaximumOrthographicSize(
+            Camera targetCamera)
+        {
+            if (mainCityView == null)
+            {
+                mainCityView = FindAnyObjectByType<MainCityView>();
+            }
+
+            float currentSize = Mathf.Max(
+                0.1f,
+                targetCamera.orthographicSize);
+            return mainCityView != null
+                ? Mathf.Max(
+                    currentSize,
+                    mainCityView.MaximumOrthographicSize)
+                : currentSize;
+        }
+
+        internal static float CalculateCelestialDisplayDiameter(
+            float baseWorldDiameter,
+            float currentOrthographicSize,
+            float maximumOrthographicSize,
+            float minimumScreenRatio)
+        {
+            float safeMaximumSize = Mathf.Max(
+                0.1f,
+                maximumOrthographicSize);
+            float zoomRatio = Mathf.Clamp01(
+                Mathf.Max(0.1f, currentOrthographicSize) /
+                safeMaximumSize);
+            float screenSizeRatio = Mathf.Lerp(
+                Mathf.Clamp01(minimumScreenRatio),
+                1f,
+                zoomRatio);
+            return Mathf.Max(0f, baseWorldDiameter) *
+                   zoomRatio * screenSizeRatio;
+        }
+
+        private void ResolveLightDirections(
+            out Vector3 eastDirection,
+            out Vector3 upDirection)
+        {
+            IWorldCoordinateSpace coordinates =
+                services?.WorldCoordinates;
+            if (coordinates == null)
+            {
+                eastDirection =
+                    (Vector3.right + Vector3.forward).normalized;
+                upDirection = Vector3.up;
+                return;
+            }
+
+            eastDirection =
+                (coordinates.GridXAxis +
+                 coordinates.GridYAxis).normalized;
+            upDirection = coordinates.GroundNormal.normalized;
+        }
+
+        internal static Vector3 CalculateCelestialCameraPosition(
+            Camera targetCamera,
+            float horizonY,
+            float cameraDepth,
+            float bodyWorldDiameter,
+            CelestialCycleState cycle)
+        {
+            if (targetCamera == null)
+            {
+                return Vector3.zero;
+            }
+
+            float verticalRadius = targetCamera.orthographic
+                ? Mathf.Max(0f, bodyWorldDiameter) /
+                  (4f * Mathf.Max(0.1f, targetCamera.orthographicSize))
+                : 0f;
+            float horizontalRadius = verticalRadius /
+                Mathf.Max(0.01f, targetCamera.aspect);
+            float viewportX =
+                0.5f + cycle.EastWeight *
+                (0.5f - horizontalRadius);
+            float safeHorizonY = Mathf.Clamp01(horizonY);
+            float viewportY = Mathf.Lerp(
+                safeHorizonY,
+                1f - verticalRadius,
+                cycle.Altitude);
+            float depth = Mathf.Clamp(
+                cameraDepth,
+                targetCamera.nearClipPlane + 0.01f,
+                targetCamera.farClipPlane - 0.01f);
+
+            return targetCamera.ViewportToWorldPoint(
+                new Vector3(viewportX, viewportY, depth));
+        }
+
+        private void ApplySkyExposure(
+            CelestialCycleState cycle)
+        {
+            if (runtimeSkybox == null ||
+                !TryGetLightingKeyframes(
+                    out TimeOfDaySkyKeyframe midnight,
+                    out TimeOfDaySkyKeyframe dawn,
+                    out TimeOfDaySkyKeyframe noon,
+                    out TimeOfDaySkyKeyframe dusk))
+            {
+                return;
+            }
+
+            float heightWeight = Mathf.SmoothStep(
+                0f,
+                1f,
+                cycle.Altitude);
+            TimeOfDaySkyKeyframe horizon =
+                cycle.Progress < 0.5f
+                    ? dawn
+                    : dusk;
+            float exposure = cycle.IsSun
+                ? Mathf.Lerp(
+                    horizon.SkyExposure,
+                    noon.SkyExposure,
+                    heightWeight)
+                : Mathf.Lerp(
+                    horizon.SkyExposure,
+                    midnight.SkyExposure,
+                    heightWeight);
+            runtimeSkybox.SetFloat(ExposureAId, exposure);
+            runtimeSkybox.SetFloat(ExposureBId, exposure);
         }
 
         internal void ApplyHorizonCorrection(
@@ -411,23 +723,116 @@ namespace CityFlow.Environment
             }
 
             ApplyHorizonCorrection(targetCamera);
+            if (hasCurrentCycle)
+            {
+                ApplyCelestialVisual(
+                    currentCycle,
+                    targetCamera);
+            }
         }
 
         private void ApplyLighting(
-            TimeOfDaySkyEvaluation evaluation)
+            CelestialCycleState cycle)
         {
-            TimeOfDaySkyKeyframe current =
-                evaluation.Current;
+            if (!TryGetLightingKeyframes(
+                    out TimeOfDaySkyKeyframe midnight,
+                    out TimeOfDaySkyKeyframe dawn,
+                    out TimeOfDaySkyKeyframe noon,
+                    out TimeOfDaySkyKeyframe dusk))
+            {
+                return;
+            }
+
+            float heightWeight = Mathf.SmoothStep(
+                0f,
+                1f,
+                cycle.Altitude);
+            TimeOfDaySkyKeyframe horizon =
+                cycle.Progress < 0.5f
+                    ? dawn
+                    : dusk;
+
+            Color lightColor;
+            float lightIntensity;
+            float shadowStrength;
+            Color ambientSkyColor;
+            Color ambientEquatorColor;
+            Color ambientGroundColor;
+            float ambientIntensity;
+
+            if (cycle.IsSun)
+            {
+                lightColor = Color.Lerp(
+                    horizon.LightColor,
+                    noon.LightColor,
+                    heightWeight);
+                lightIntensity = Mathf.Lerp(
+                    horizon.LightIntensity,
+                    noon.LightIntensity,
+                    heightWeight);
+                shadowStrength = Mathf.Lerp(
+                    horizon.ShadowStrength,
+                    noon.ShadowStrength,
+                    heightWeight);
+                ambientSkyColor = Color.Lerp(
+                    horizon.AmbientSkyColor,
+                    noon.AmbientSkyColor,
+                    heightWeight);
+                ambientEquatorColor = Color.Lerp(
+                    horizon.AmbientEquatorColor,
+                    noon.AmbientEquatorColor,
+                    heightWeight);
+                ambientGroundColor = Color.Lerp(
+                    horizon.AmbientGroundColor,
+                    noon.AmbientGroundColor,
+                    heightWeight);
+                ambientIntensity = Mathf.Lerp(
+                    horizon.AmbientIntensity,
+                    noon.AmbientIntensity,
+                    heightWeight);
+            }
+            else
+            {
+                TimeOfDaySkyKeyframe nightHorizon =
+                    cycle.Progress < 0.5f
+                        ? dusk
+                        : dawn;
+                lightColor = midnight.LightColor;
+                lightIntensity = Mathf.Lerp(
+                    moonHorizonIntensity,
+                    midnight.LightIntensity,
+                    heightWeight);
+                shadowStrength = Mathf.Lerp(
+                    0.1f,
+                    midnight.ShadowStrength,
+                    heightWeight);
+                ambientSkyColor = Color.Lerp(
+                    nightHorizon.AmbientSkyColor,
+                    midnight.AmbientSkyColor,
+                    heightWeight);
+                ambientEquatorColor = Color.Lerp(
+                    nightHorizon.AmbientEquatorColor,
+                    midnight.AmbientEquatorColor,
+                    heightWeight);
+                ambientGroundColor = Color.Lerp(
+                    nightHorizon.AmbientGroundColor,
+                    midnight.AmbientGroundColor,
+                    heightWeight);
+                ambientIntensity = Mathf.Lerp(
+                    nightHorizon.AmbientIntensity,
+                    midnight.AmbientIntensity,
+                    heightWeight);
+            }
 
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.ambientSkyColor =
-                current.AmbientSkyColor;
+                ambientSkyColor;
             RenderSettings.ambientEquatorColor =
-                current.AmbientEquatorColor;
+                ambientEquatorColor;
             RenderSettings.ambientGroundColor =
-                current.AmbientGroundColor;
+                ambientGroundColor;
             RenderSettings.ambientIntensity =
-                current.AmbientIntensity;
+                ambientIntensity;
 
             if (keyLight == null)
             {
@@ -435,41 +840,81 @@ namespace CityFlow.Environment
             }
 
             keyLight.enabled = true;
-            keyLight.color = current.LightColor;
-            keyLight.intensity = current.LightIntensity;
-            keyLight.shadowStrength =
-                current.ShadowStrength;
-            keyLight.transform.rotation =
-                Quaternion.Euler(current.LightEuler);
+            keyLight.color = lightColor;
+            keyLight.intensity = lightIntensity;
+            keyLight.shadowStrength = shadowStrength;
+            ResolveLightDirections(
+                out Vector3 eastDirection,
+                out Vector3 upDirection);
+            Vector3 bodyDirection =
+                (eastDirection * cycle.EastWeight +
+                 upDirection * cycle.Altitude).normalized;
+            Vector3 orbitNorth = Vector3.Cross(
+                upDirection,
+                eastDirection).normalized;
+            keyLight.transform.rotation = Quaternion.LookRotation(
+                -bodyDirection,
+                orbitNorth);
             RenderSettings.sun = keyLight;
         }
 
-        private static bool TryGetCubemap(
-            Material source,
-            out Cubemap texture)
+        private void ApplyGridLineBrightness(
+            CelestialCycleState cycle)
         {
-            texture = null;
-            if (source == null ||
-                !source.HasProperty("_Tex"))
+            mainCityView ??=
+                FindAnyObjectByType<MainCityView>(
+                    FindObjectsInactive.Include);
+            if (mainCityView == null)
             {
-                return false;
+                return;
             }
 
-            texture = source.GetTexture("_Tex") as Cubemap;
-            return texture != null;
+            mainCityView.SetGridLineBrightness(
+                CalculateGridLineBrightness(cycle));
         }
 
-        private static float SourceExposure(Material source)
+        internal static float CalculateGridLineBrightness(
+            CelestialCycleState cycle)
         {
-            if (source != null &&
-                source.HasProperty("_Exposure"))
-            {
-                return Mathf.Max(
+            float daylight = cycle.IsSun
+                ? Mathf.SmoothStep(
                     0f,
-                    source.GetFloat("_Exposure"));
+                    1f,
+                    Mathf.InverseLerp(
+                        0f,
+                        0.35f,
+                        cycle.Altitude))
+                : 0f;
+            return Mathf.Lerp(
+                NightGridBrightness,
+                1f,
+                daylight);
+        }
+
+        private bool TryGetLightingKeyframes(
+            out TimeOfDaySkyKeyframe midnight,
+            out TimeOfDaySkyKeyframe dawn,
+            out TimeOfDaySkyKeyframe noon,
+            out TimeOfDaySkyKeyframe dusk)
+        {
+            midnight = null;
+            dawn = null;
+            noon = null;
+            dusk = null;
+            bool valid =
+                profile.TryGetKeyframe(0f, out midnight) &&
+                profile.TryGetKeyframe(6f, out dawn) &&
+                profile.TryGetKeyframe(12f, out noon) &&
+                profile.TryGetKeyframe(18f, out dusk);
+            if (!valid && !missingMaterialLogged)
+            {
+                Debug.LogError(
+                    "[TimeOfDaySkyController] Lighting profile requires 0, 6, 12, and 18 hour keyframes.",
+                    this);
+                missingMaterialLogged = true;
             }
 
-            return 1f;
+            return valid;
         }
 
         private void ReleaseRenderSettings()
@@ -514,23 +959,63 @@ namespace CityFlow.Environment
                 activeOwner = null;
             }
 
+            if (mainCityView != null)
+            {
+                mainCityView.SetGridLineBrightness(1f);
+            }
+
             ownsRenderSettings = false;
             renderSettingsCaptured = false;
             lightStateCaptured = false;
-            lastCurrentSource = null;
+            hasCurrentCycle = false;
+            DestroyRuntimeSkybox();
+            DestroyCelestialVisual();
+        }
 
-            if (runtimeSkybox != null)
+        private void DestroyRuntimeSkybox()
+        {
+            if (runtimeSkybox == null)
             {
-                if (Application.isPlaying)
-                {
-                    Destroy(runtimeSkybox);
-                }
-                else
-                {
-                    DestroyImmediate(runtimeSkybox);
-                }
+                return;
+            }
 
-                runtimeSkybox = null;
+            if (Application.isPlaying)
+            {
+                Destroy(runtimeSkybox);
+            }
+            else
+            {
+                DestroyImmediate(runtimeSkybox);
+            }
+
+            runtimeSkybox = null;
+        }
+
+        private void DestroyCelestialVisual()
+        {
+            DestroyRuntimeObject(runtimeCelestialObject);
+            DestroyRuntimeObject(runtimeCelestialMesh);
+            DestroyRuntimeObject(runtimeCelestialMaterial);
+            runtimeCelestialObject = null;
+            runtimeCelestialMesh = null;
+            runtimeCelestialMaterial = null;
+        }
+
+        private static void DestroyRuntimeObject(
+            Object target)
+        {
+            if (target == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(target);
+            }
+            else
+            {
+                DestroyImmediate(target);
             }
         }
 
@@ -548,6 +1033,28 @@ namespace CityFlow.Environment
                     OnGameCalendarRegistered;
                 services = null;
             }
+
+            mainCityView = null;
+        }
+
+        internal readonly struct CelestialCycleState
+        {
+            public CelestialCycleState(
+                bool isSun,
+                float progress,
+                float altitude,
+                float eastWeight)
+            {
+                IsSun = isSun;
+                Progress = progress;
+                Altitude = altitude;
+                EastWeight = eastWeight;
+            }
+
+            public bool IsSun { get; }
+            public float Progress { get; }
+            public float Altitude { get; }
+            public float EastWeight { get; }
         }
     }
 }

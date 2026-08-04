@@ -54,7 +54,7 @@ namespace CityFlow.DebugTools
                 for (int y = 6; y <= 12; y++)
                     placement.Place(new Vector2Int(x, y), TileType.Road);
 
-            // 채용 램프가 빨리 보이도록 도로 가까이에 밀집 배치한다(각 건물은 2x2 풋프린트).
+            // 채용 램프가 빨리 보이도록 도로 가까이에 밀집 배치한다(거주지는 1x2, 회사는 2x2 풋프린트).
             Vector2Int[] houses =
             {
                 new Vector2Int(2, 7), new Vector2Int(8, 7), new Vector2Int(12, 7),

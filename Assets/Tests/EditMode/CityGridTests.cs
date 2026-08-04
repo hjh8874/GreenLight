@@ -63,7 +63,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void Building_Place_UsesTwoByTwoFootprint()
+        public void House_Place_UsesOneByTwoFootprint()
         {
             var g = NewGrid();
             var anchor = new Vector2Int(1, 1);
@@ -71,11 +71,16 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(g.Place(anchor, TileType.House));
 
             Assert.AreEqual(TileType.House, g.GetTile(new Vector2Int(1, 1)));
-            Assert.AreEqual(TileType.House, g.GetTile(new Vector2Int(2, 1)));
             Assert.AreEqual(TileType.House, g.GetTile(new Vector2Int(1, 2)));
-            Assert.AreEqual(TileType.House, g.GetTile(new Vector2Int(2, 2)));
+            Assert.AreEqual(TileType.Empty, g.GetTile(new Vector2Int(2, 1)));
+            Assert.AreEqual(TileType.Empty, g.GetTile(new Vector2Int(2, 2)));
             Assert.IsTrue(g.IsFootprintAnchor(anchor));
-            Assert.IsFalse(g.IsFootprintAnchor(new Vector2Int(2, 2)));
+            Assert.IsFalse(g.IsFootprintAnchor(new Vector2Int(1, 2)));
+            Assert.AreEqual(
+                new Vector2Int(2, 1),
+                TileFootprint.GetRotatedSize(
+                    TileType.House,
+                    PlacementDirection.East));
         }
 
         [Test]
@@ -155,7 +160,7 @@ namespace CityFlow.Sim.Tests
             // 세이브 복원용 seam: 저장된 타일 재배치 전에 도시를 통째로 비운다.
             var g = NewGrid();
             g.Place(new Vector2Int(0, 0), TileType.Road);
-            g.Place(new Vector2Int(3, 2), TileType.House);   // 우상단까지 차지하는 2x2 건물 — 전체 범위 확인
+            g.Place(new Vector2Int(3, 2), TileType.House);   // 위쪽 경계까지 차지하는 1x2 건물 — 전체 범위 확인
             g.ClearTopologyDirty();
             int versionBefore = g.TopologyVersion;
 
