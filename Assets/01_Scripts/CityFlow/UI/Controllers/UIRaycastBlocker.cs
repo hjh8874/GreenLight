@@ -14,7 +14,7 @@ namespace CityFlow.UI.Controllers
 
         public bool IsPointerOverBlockingUI()
         {
-            if (CityFlow.UI.OfflineSettlementPopup.IsInteractionBlocked)
+            if (CityFlow.UI.WeeklySettlementPopup.IsInteractionBlocked)
             {
                 return true;
             }

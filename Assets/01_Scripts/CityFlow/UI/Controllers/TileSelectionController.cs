@@ -71,7 +71,7 @@ namespace CityFlow.UI
 
         private void Update()
         {
-            if (OfflineSettlementPopup.IsInteractionBlocked)
+            if (WeeklySettlementPopup.IsInteractionBlocked)
             {
                 return;
             }

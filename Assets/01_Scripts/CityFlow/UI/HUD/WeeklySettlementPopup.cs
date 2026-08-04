@@ -9,6 +9,7 @@ namespace CityFlow.UI
 {
     public sealed class WeeklySettlementPopup : MonoBehaviour, ICityFlowServiceConsumer
     {
+        public static bool IsInteractionBlocked { get; private set; }
         [Header("UI References")]
         [SerializeField] private CanvasGroup canvasGroup;
         [SerializeField] private RectTransform settlementCard;
@@ -60,8 +61,20 @@ namespace CityFlow.UI
             ApplyHiddenState();
         }
 
+        private void OnDisable()
+        {
+            if (presentationRoutine != null)
+            {
+                StopCoroutine(presentationRoutine);
+                presentationRoutine = null;
+            }
+
+            SetInteractionEnabled(false);
+        }
+
         private void OnDestroy()
         {
+            SetInteractionEnabled(false);
             backdropButton?.onClick.RemoveListener(Hide);
 
             if (services != null)
@@ -193,8 +206,12 @@ namespace CityFlow.UI
 
         private void SetInteractionEnabled(bool enabled)
         {
-            canvasGroup.interactable = enabled;
-            canvasGroup.blocksRaycasts = enabled;
+            IsInteractionBlocked = enabled;
+            if (canvasGroup != null)
+            {
+                canvasGroup.interactable = enabled;
+                canvasGroup.blocksRaycasts = enabled;
+            }
         }
 
         private static float NormalizedProgress(float elapsed, float duration)

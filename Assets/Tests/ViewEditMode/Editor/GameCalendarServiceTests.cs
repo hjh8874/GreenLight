@@ -29,33 +29,7 @@ namespace CityFlow.Tests
         }
 
         [Test]
-        public void OfflineAdvance_TwelveMinutesAdvancesOneDay()
-        {
-            GameObject owner = new GameObject("GameCalendarTest");
-
-            try
-            {
-                GameCalendarService calendar =
-                    owner.AddComponent<GameCalendarService>();
-                calendar.Initialize(CreateServices());
-
-                calendar.AdvanceOffline(720d);
-
-                Assert.That(calendar.Year, Is.EqualTo(1));
-                Assert.That(calendar.Month, Is.EqualTo(1));
-                Assert.That(calendar.Day, Is.EqualTo(2));
-                Assert.That(calendar.Hour, Is.EqualTo(0));
-                Assert.That(calendar.TotalDays, Is.EqualTo(1L));
-                Assert.That(calendar.TimeOfDay01, Is.EqualTo(0f));
-            }
-            finally
-            {
-                Object.DestroyImmediate(owner);
-            }
-        }
-
-        [Test]
-        public void TimeOfDay01_IncludesProgressWithinCurrentHour()
+        public void TimeOfDay01_StartsAtBeginningOfHour()
         {
             GameObject owner = new GameObject("GameCalendarProgressTest");
 
@@ -65,12 +39,10 @@ namespace CityFlow.Tests
                     owner.AddComponent<GameCalendarService>();
                 calendar.Initialize(CreateServices());
 
-                calendar.AdvanceOffline(15d);
-
                 Assert.That(calendar.Hour, Is.EqualTo(0));
                 Assert.That(
                     calendar.TimeOfDay01,
-                    Is.EqualTo(0.5f / calendar.HoursPerDay)
+                    Is.EqualTo(0f)
                         .Within(0.000001f));
             }
             finally
@@ -95,8 +67,6 @@ namespace CityFlow.Tests
                 serializedCalendar.ApplyModifiedPropertiesWithoutUndo();
 
                 calendar.Initialize(CreateServices());
-                calendar.AdvanceOffline(360d);
-
                 Assert.That(
                     calendar.RealSecondsPerGameHour,
                     Is.EqualTo(60f));
@@ -104,8 +74,8 @@ namespace CityFlow.Tests
                     calendar.RealSecondsPerGameDay,
                     Is.EqualTo(1440f));
                 Assert.That(calendar.HoursPerDay, Is.EqualTo(24));
-                Assert.That(calendar.Hour, Is.EqualTo(6));
-                Assert.That(calendar.TimeOfDay01, Is.EqualTo(0.25f));
+                Assert.That(calendar.Hour, Is.EqualTo(0));
+                Assert.That(calendar.TimeOfDay01, Is.EqualTo(0f));
             }
             finally
             {

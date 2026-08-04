@@ -55,7 +55,7 @@ namespace CityFlow.UI
             }
 
             // 게임 씬의 UI 캔버스 숨기기 (타이틀 씬 UI만 보이도록)
-            // GameObject 전체를 비활성화(SetActive(false))하면 OfflineSettlementPopup 등
+            // GameObject 전체를 비활성화(SetActive(false))하면 런타임 UI 등
             // UI에 붙은 스크립트들이 StartCoroutine을 실행하지 못하고 에러가 발생합니다.
             // 따라서 렌더링(Canvas)과 터치(GraphicRaycaster) 기능만 꺼줍니다.
             foreach (var root in scene.GetRootGameObjects())
