@@ -1030,7 +1030,9 @@ namespace CityFlow.Sim
                         ref car.HasResume,
                         net,
                         i,
-                        out int start))
+                        out int start,
+                        _roadNetwork,
+                        DepartureBuilding(i)))
                 {
                     continue;
                 }
@@ -1111,7 +1113,9 @@ namespace CityFlow.Sim
                         ref car.HasResume,
                         net,
                         carId,
-                        out int start))
+                        out int start,
+                        _roadNetwork,
+                        DepartureBuilding(carId)))
                 {
                     MarkEnqueued(carId, start);
                 }
@@ -1148,7 +1152,9 @@ namespace CityFlow.Sim
                     ref car.HasResume,
                     net,
                     carId,
-                    out int start))
+                    out int start,
+                    _roadNetwork,
+                    DepartureBuilding(carId)))
             {
                 return true;
             }
@@ -1253,15 +1259,31 @@ namespace CityFlow.Sim
             return -1;
         }
 
+        // 이 차의 이번 여정 출발 건물. 진출 방향 산출용(설계 D2-1).
+        // 특수 방문(transient) 차는 RouteIndex 가 -1 이라(CommuteScheduler.cs:50-65)
+        // 여기서 null 을 돌려주고, 호출부는 exit 폴백을 쓴다. 특수 트립의 정확한
+        // 차고 방향은 이번 범위 밖이다 — 리뷰 P1 지적을 의도적 축소로 수용한다.
+        private Vector2Int? DepartureBuilding(int carId)
+        {
+            CommuteCar car = _scheduler.Cars[carId];
+            int ri = car.RouteIndex;
+            if (ri < 0) return null;                    // transient — exit 폴백
+            var list = car.State == CarState.Outbound ? _sources : _sinks;
+            return ri < list.Count ? list[ri] : (Vector2Int?)null;
+        }
+
         internal static bool TryEnqueueRouteStart(
             IReadOnlyList<Vector2Int> route,
             Vector2Int resumeTile,
             ref bool hasResume,
             RoadQueueNetwork net,
             int carId,
-            out int start)
+            out int start,
+            RoadNetwork roadNetwork = null,
+            Vector2Int? originBuilding = null)
         {
             start = 0;
+            bool wasResumeRequest = hasResume;
             bool retryingResume = hasResume;
             if (retryingResume)
             {
@@ -1274,6 +1296,33 @@ namespace CityFlow.Sim
                     retryingResume = false;
                     start = 0;
                 }
+            }
+
+            // 신규 출발이고 원점이 교차로면 스테이지를 부여해 정식 진입한다(설계 D1·D4).
+            // 재개 요청은 여기 오지 않는다 — 경로상 위치가 모호해 위험하다.
+            // route 가 1칸이면 exit 방향을 못 구하므로 오늘 동작(오프네트워크)을 유지한다.
+            if (!wasResumeRequest && start == 0 && route.Count > 1
+                && net.IsIntersectionSpawnTile(route[0]))
+            {
+                if (!TryRouteDirection(route[1] - route[0], out Dir spawnExit)) return false;
+                // 기본은 exit 폴백(설계 D2-2). 건물 정보가 주어졌고 직교 인접이면 그 방향을 쓴다.
+                Dir spawnEntry = spawnExit;
+                // originBuilding 이 null 이면 조회 자체를 건너뛴다. default 좌표 (0,0) 은
+                // 유효 좌표라 그 옆이 route[0] 이면 엉뚱한 entry 가 나온다(2차 리뷰 P1).
+                if (roadNetwork != null
+                    && originBuilding.HasValue
+                    && roadNetwork.TryGetDepartureEntryDir(
+                        originBuilding.Value, route[0], out Dir fromBuilding))
+                {
+                    spawnEntry = fromBuilding;
+                }
+                if (!net.TryEnqueueAtIntersection(
+                        route[0], spawnEntry, spawnExit, carId, 1))
+                {
+                    return false;   // 셀이 막혔다 — 다음 틱 재시도(수렴)
+                }
+                hasResume = false;
+                return true;
             }
 
             // A route whose origin itself is an intersection/roundabout state-machine

@@ -164,6 +164,31 @@ namespace CityFlow.Sim
             StablePrioritizeOrdinaryRoads(buffer, firstAdded);
         }
 
+        // 차고 진출 방향: 건물 풋프린트 셀 중 진입로와 직교 인접한 셀에서 도로로 향하는 진행 방향.
+        // 직사각형 풋프린트라 후보는 최대 1개다(둘이면 사이 칸까지 덮어야 해 모순).
+        // 대각으로만 닿으면 false — 호출자가 exit 방향 폴백을 쓴다(설계 D2-2).
+        internal bool TryGetDepartureEntryDir(
+            Vector2Int building,
+            Vector2Int road,
+            out Dir entry)
+        {
+            Vector2Int size = GetBuildingFootprintSize(building);
+            for (int y = 0; y < size.y; y++)
+            {
+                for (int x = 0; x < size.x; x++)
+                {
+                    Vector2Int cell = building + new Vector2Int(x, y);
+                    Vector2Int delta = road - cell;
+                    if (delta == new Vector2Int(0, 1)) { entry = Dir.N; return true; }
+                    if (delta == new Vector2Int(1, 0)) { entry = Dir.E; return true; }
+                    if (delta == new Vector2Int(0, -1)) { entry = Dir.S; return true; }
+                    if (delta == new Vector2Int(-1, 0)) { entry = Dir.W; return true; }
+                }
+            }
+            entry = default;
+            return false;
+        }
+
         private Vector2Int GetBuildingFootprintSize(Vector2Int building)
         {
             TileType type = _grid.GetTile(building);
