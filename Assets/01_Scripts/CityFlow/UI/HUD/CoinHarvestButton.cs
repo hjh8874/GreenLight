@@ -115,6 +115,23 @@ namespace CityFlow.UI
             }
         }
 
+        private void OnDisable()
+        {
+            if (countUpRoutine != null)
+            {
+                StopCoroutine(countUpRoutine);
+                countUpRoutine = null;
+            }
+
+            isCountingUp = false;
+            if (receiptText != null)
+            {
+                receiptText.enabled = false;
+            }
+
+            Refresh(weeklyEconomy?.PendingCoins ?? 0L);
+        }
+
         public void Harvest()
         {
             if (weeklyEconomy == null || DisplayedPendingCoins <= 0L)

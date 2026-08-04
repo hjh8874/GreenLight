@@ -136,6 +136,11 @@ namespace CityFlow.Gameplay.Economy
 
             economySystem.RestoreWeeklyAccumulatedCoin(snapshot.PendingCoins);
             pendingBreakdown.Clear();
+            long restoredPendingCoins = PendingCoins;
+            if (restoredPendingCoins > 0L)
+            {
+                pendingBreakdown["previous accrual"] = restoredPendingCoins;
+            }
             observedOnlineIncomeCoins = Math.Max(
                 0L,
                 snapshot.ObservedOnlineIncomeCoins);
