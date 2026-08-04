@@ -55,6 +55,46 @@ public class StatsPanelPresentationTests
         }
     }
 
+    [Test]
+    public void Reenable_ReusesExistingDashboardWithoutDuplicates()
+    {
+        var owner = new GameObject(
+            "Statistics_Panel",
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(Image));
+        try
+        {
+            StatsPanelController controller =
+                owner.AddComponent<StatsPanelController>();
+            RectTransform initialDashboard =
+                controller.DashboardRootForTest;
+
+            owner.SetActive(false);
+            owner.SetActive(true);
+
+            Assert.AreSame(
+                initialDashboard,
+                controller.DashboardRootForTest);
+            Assert.AreEqual(10, controller.IncomeBarsForTest.Count);
+
+            int dashboardCount = 0;
+            for (int index = 0; index < owner.transform.childCount; index++)
+            {
+                if (owner.transform.GetChild(index).name == "StatsDashboard")
+                {
+                    dashboardCount++;
+                }
+            }
+
+            Assert.AreEqual(1, dashboardCount);
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+        }
+    }
+
     [TestCase(0, 0f, "분석 대기")]
     [TestCase(20, 0.04f, "원활")]
     [TestCase(20, 0.05f, "주의")]

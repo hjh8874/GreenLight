@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using CityFlow.Gameplay.Research;
 using NUnit.Framework;
 using UnityEngine;
@@ -338,6 +339,79 @@ public class ResearchConditionTests
             Assert.IsTrue(service.TryStartResearch(
                 "research_expansion_center_040"));
             Assert.IsEmpty(expansion.RequestedStages);
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(catalog);
+        }
+    }
+
+    [Test]
+    public void RestoredExpansionResearch_AppliesConfiguredWorldStage()
+    {
+        var owner = new GameObject("restored_expansion_research");
+        var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+        try
+        {
+            var service = owner.AddComponent<ResearchUnlockService>();
+            ConfigureExpansionCatalog(
+                catalog,
+                "research_expansion_center_040",
+                "center_040");
+            SetPrivateField(service, "catalog", catalog);
+
+            var services = new CityFlowServices(
+                new SimEventHub(), null, null);
+            var expansion = new FakeWorldGridExpansion();
+            Assert.IsTrue(services.RegisterWorldGridExpansion(expansion));
+            service.Initialize(services);
+
+            service.RestoreSnapshot(new ResearchSaveData
+            {
+                UnlockedResearchIds = new[]
+                {
+                    "research_expansion_center_040"
+                }
+            });
+
+            Assert.IsTrue(service.IsUnlocked(
+                "research_expansion_center_040"));
+            CollectionAssert.AreEqual(
+                new[] { "center_040" },
+                expansion.RequestedStages);
+            Assert.IsTrue(expansion.IsStageUnlocked("center_040"));
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(catalog);
+        }
+    }
+
+    [Test]
+    public void LegacyResearchSnapshot_WithMissingFields_UsesSafeDefaults()
+    {
+        var owner = new GameObject("legacy_research_snapshot");
+        var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+        try
+        {
+            var service = owner.AddComponent<ResearchUnlockService>();
+            ConfigureExpansionCatalog(
+                catalog,
+                "research_expansion_center_040",
+                "center_040");
+            SetPrivateField(service, "catalog", catalog);
+            service.Initialize(new CityFlowServices(
+                new SimEventHub(), null, null));
+
+            Assert.DoesNotThrow(() =>
+                service.RestoreSnapshot(new ResearchSaveData()));
+            Assert.AreEqual(0, service.UnlockedCount);
+            Assert.AreEqual(string.Empty, service.ActiveResearchId);
+            Assert.AreEqual(
+                0L,
+                service.CreateSnapshot().ResearchCompletionGameHour);
         }
         finally
         {
