@@ -24,8 +24,12 @@ namespace CityFlow.Audio.Editor
 
         private const string DownloadRoot = "Assets/99_Download";
         private const string UiPack = DownloadRoot + "/Casual Game UI Sound";
+        private const string CityNoisePack = DownloadRoot + "/City_noise";
         private const string BackgroundPack = DownloadRoot +
             "/Gamemaster Audio - Pro Sound Collection/Backgrounds";
+        private const string FacilityMusicPack = DownloadRoot +
+            "/Gamemaster Audio - Pro Sound Collection/" +
+            "\u03A9_Bonus_Music_16bit44kOnly";
 
         private static readonly string PlacementSuccessPath =
             UiPack + "/ITEM/ITEM_Gear_Wood_Put.wav";
@@ -40,14 +44,57 @@ namespace CityFlow.Audio.Editor
         private static readonly string PositiveNotificationPath =
             UiPack +
             "/NOTIFICATION/NOTIFICATION_Positive_Notification_09.wav";
+        private static readonly string LargePositiveNotificationPath =
+            UiPack +
+            "/NOTIFICATION/NOTIFICATION_Positive_Notification_10.wav";
         private static readonly string HospitalPath = DownloadRoot +
             "/Gamemaster Audio - Pro Sound Collection/" +
             "Alarms_Beeps_Siren/alarm_siren_loop_01.wav";
-        private static readonly string SchoolPath = DownloadRoot +
-            "/City_noise/geralt-the-big-break-at-half-past-nine-220150.mp3";
-        private static readonly string CongestionPath = DownloadRoot +
-            "/City_noise/" +
+        private static readonly string SchoolPath = CityNoisePack +
+            "/geralt-the-big-break-at-half-past-nine-220150.mp3";
+        private static readonly string HousePath = CityNoisePack +
+            "/freesound_community-going-through-a-zoo-with-lots-of-" +
+            "people-atmo-24895.mp3";
+        private static readonly string OfficePath = CityNoisePack +
+            "/virtual_vibes-office-desk-keystrokes-423439.mp3";
+        private static readonly string MallPath = CityNoisePack +
+            "/dragon-studio-large-shopping-mall-on-christmas-eve-451860.mp3";
+        private static readonly string PetrolStationPath = BackgroundPack +
+            "/background_construction_building_loop.wav";
+        private static readonly string PoliceStationPath = CityNoisePack +
+            "/freesound_community-police-radio-chatter-30048.mp3";
+        private static readonly string VideoStoreLeverPath = DownloadRoot +
+            "/Gamemaster Audio - Pro Sound Collection/" +
+            "Switches_Buttons_Gears_Levers/" +
+            "lever_turn_push_crank_handle_small_08.wav";
+        private static readonly string VideoStoreProjectorPath = DownloadRoot +
+            "/Gamemaster Audio - Pro Sound Collection/Miscellaneous/" +
+            "Film Camera Movie Projector Small/" +
+            "movie_camera_vintage_shutter_loop_3.wav";
+        private static readonly string PharmacyPath = CityNoisePack +
+            "/ribhavagrawal-coughing-sound-effect-type-06-294181.mp3";
+        private static readonly string CoffeeShopPath = BackgroundPack +
+            "/background_people_restaurant_cafe_noisy_chatter_talk_loop_01.wav";
+        private static readonly string CinemaEpicPath = FacilityMusicPack +
+            "/music_epic_fallen_empire.wav";
+        private static readonly string CinemaRevealPath = FacilityMusicPack +
+            "/music_cinematic_reveal.wav";
+        private static readonly string CinemaComedyPath = FacilityMusicPack +
+            "/music_comedy_quirky_fun_knockout.wav";
+        private static readonly string CinemaOrientalPath = FacilityMusicPack +
+            "/music_oriental_sunrise.wav";
+        private static readonly string CinemaCalmPath = FacilityMusicPack +
+            "/music_calm_green_lake_serenade.wav";
+        private static readonly string AutoRepairPath = BackgroundPack +
+            "/background_construction_factory_warehouse_machine_loop_01.wav";
+        private static readonly string CongestionPath = CityNoisePack +
+            "/" +
             "freesound_community-downtown-traffic-and-crowd-noises-14734.mp3";
+        private static readonly string[] CongestionHornPaths =
+        {
+            CityNoisePack + "/99647C365D0D18E402.mp3",
+            CityNoisePack + "/993FF73C5D0D195402.mp3"
+        };
         private static readonly string RoomTonePath =
             BackgroundPack + "/background_room_tone_loop_01.wav";
         private const string BgmFolder = DownloadRoot + "/BGM";
@@ -76,7 +123,30 @@ namespace CityFlow.Audio.Editor
             CoinPath,
             UiClickPath,
             PositiveNotificationPath,
-            HospitalPath
+            LargePositiveNotificationPath,
+            HospitalPath,
+            OfficePath,
+            MallPath,
+            PoliceStationPath,
+            VideoStoreLeverPath,
+            VideoStoreProjectorPath,
+            PharmacyPath,
+            CongestionHornPaths[0],
+            CongestionHornPaths[1]
+        };
+
+        private static readonly string[] FacilityStreamingPaths =
+        {
+            SchoolPath,
+            HousePath,
+            PetrolStationPath,
+            CoffeeShopPath,
+            CinemaEpicPath,
+            CinemaRevealPath,
+            CinemaComedyPath,
+            CinemaOrientalPath,
+            CinemaCalmPath,
+            AutoRepairPath
         };
 
         [MenuItem("Tools/GreenLight/Audio/Bake Sound System")]
@@ -128,6 +198,16 @@ namespace CityFlow.Audio.Editor
                 Entry(SoundIds.PlacementRejected, PlacementRejectedPath, 0.7f, 0.15f),
                 Entry(SoundIds.DemolitionSuccess, DemolitionPath, 0.8f, 0.08f),
                 Entry(SoundIds.CoinTransaction, CoinPath, 0.7f, 0.08f),
+                Entry(
+                    SoundIds.HarvestRewardStandard,
+                    PositiveNotificationPath,
+                    0.75f,
+                    0f),
+                Entry(
+                    SoundIds.HarvestRewardLarge,
+                    LargePositiveNotificationPath,
+                    0.75f,
+                    0f),
                 Entry(SoundIds.UiClick, UiClickPath, 0.45f, 0.03f),
                 Entry(
                     SoundIds.PositiveNotification,
@@ -135,8 +215,67 @@ namespace CityFlow.Audio.Editor
                     0.75f,
                     1f),
                 Entry(SoundIds.FlowBurst, PositiveNotificationPath, 0.65f, 0.5f),
-                Entry(SoundIds.HospitalPreview, HospitalPath, 0.4f, 2f),
-                Entry(SoundIds.SchoolPreview, SchoolPath, 0.35f, 5f)
+                Entry(SoundIds.HospitalPreview, HospitalPath, 0.5f, 0f),
+                Entry(SoundIds.SchoolPreview, SchoolPath, 0.5f, 0f),
+                Entry(SoundIds.HousePreview, HousePath, 0.5f, 0f),
+                Entry(SoundIds.OfficePreview, OfficePath, 0.5f, 0f),
+                Entry(SoundIds.MallPreview, MallPath, 0.5f, 0f),
+                Entry(
+                    SoundIds.PetrolStationPreview,
+                    PetrolStationPath,
+                    0.5f,
+                    0f),
+                Entry(
+                    SoundIds.PoliceStationPreview,
+                    PoliceStationPath,
+                    0.5f,
+                    0f),
+                Entry(
+                    SoundIds.VideoStoreLeverPreview,
+                    VideoStoreLeverPath,
+                    0.5f,
+                    0f),
+                Entry(
+                    SoundIds.VideoStoreProjectorPreview,
+                    VideoStoreProjectorPath,
+                    0.5f,
+                    0f),
+                Entry(SoundIds.PharmacyPreview, PharmacyPath, 0.5f, 0f),
+                Entry(
+                    SoundIds.CoffeeShopPreview,
+                    CoffeeShopPath,
+                    0.5f,
+                    0f),
+                Entry(
+                    SoundIds.CinemaEpicPreview,
+                    CinemaEpicPath,
+                    0.5f,
+                    0f),
+                Entry(
+                    SoundIds.CinemaRevealPreview,
+                    CinemaRevealPath,
+                    0.5f,
+                    0f),
+                Entry(
+                    SoundIds.CinemaComedyPreview,
+                    CinemaComedyPath,
+                    0.5f,
+                    0f),
+                Entry(
+                    SoundIds.CinemaOrientalPreview,
+                    CinemaOrientalPath,
+                    0.5f,
+                    0f),
+                Entry(
+                    SoundIds.CinemaCalmPreview,
+                    CinemaCalmPath,
+                    0.5f,
+                    0f),
+                Entry(
+                    SoundIds.AutoRepairPreview,
+                    AutoRepairPath,
+                    0.5f,
+                    0f)
             };
             catalog.EditorSetSounds(entries);
         }
@@ -163,7 +302,11 @@ namespace CityFlow.Audio.Editor
                 DayPaths.Select(LoadClip).Where(clip => clip != null).ToArray(),
                 NightPaths.Select(LoadClip).Where(clip => clip != null).ToArray(),
                 LoadClip(RoomTonePath),
-                LoadClip(CongestionPath));
+                LoadClip(CongestionPath),
+                CongestionHornPaths
+                    .Select(LoadClip)
+                    .Where(clip => clip != null)
+                    .ToArray());
         }
 
         private static void ConfigureBgmPlaylist(BgmPlaylistSO playlist)
@@ -204,7 +347,7 @@ namespace CityFlow.Audio.Editor
             streamingPaths.AddRange(NightPaths);
             streamingPaths.Add(RoomTonePath);
             streamingPaths.Add(CongestionPath);
-            streamingPaths.Add(SchoolPath);
+            streamingPaths.AddRange(FacilityStreamingPaths);
 
             string[] bgmGuids = AssetDatabase.FindAssets(
                 "t:AudioClip",

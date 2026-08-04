@@ -60,7 +60,13 @@ MonoBehaviour:
   driveRoomTone: {fileID: 8300000, guid: 4c037da9b7ba27e4b87adca176c08836, type: 3}
   driveRoomToneVolume: 0.5
   congestionClip: {fileID: 8300000, guid: bdf9110f5d1b43b40a793f694f4ad2a6, type: 3}
+  congestionHornClips:
+  - {fileID: 8300000, guid: 59abc1db03d68504684699d1ad0fab3a, type: 3}
+  - {fileID: 8300000, guid: 47bc5c3938d6fd44ca001dc316646d34, type: 3}
   congestionStartZoom: 0.7
   jamTilesForMinimumVolume: 3
   jamTilesForFullVolume: 12
   congestionVolume: 0.7
+  congestionHornVolume: 0.3
+  congestionHornMinInterval: 3
+  congestionHornMaxInterval: 9
