@@ -239,6 +239,10 @@ namespace CityFlow.EditorTools
                     worldView,
                     "busRoute",
                     route);
+                SetValue(
+                    worldView,
+                    "visualScale",
+                    1f);
                 SetReference(
                     worldView,
                     "busMaterial",

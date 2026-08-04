@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CityFlow.Contracts;
 using CityFlow.Sim;
 using CityFlow.ViewKit;
 using UnityEngine;
@@ -118,6 +119,8 @@ namespace CityFlow.View
                     MoveCarSimVehicle(i, car, snapshot, vehicle);
                 }
             }
+
+            UpdateCommuteVehicleOverlapDiagnostics();
         }
 
         // 차선 = (타일, 진입방향). Sim의 큐 키와 같은 축이며, 뷰가 자기 폴리라인에서
@@ -194,6 +197,14 @@ namespace CityFlow.View
             // 그러면 추종 모델이 엉뚱한 차를 붙잡아 진짜 앞차를 그대로 관통한다
             // (계측 2026-07-20: 앞차와의 간격 최소 −0.378타일 = 앞차가 뒤에 있음).
             // Candidate lanes follow the vehicle's directed route for the braking-based 2-3 tile range.
+            VehicleFootprint standardFootprint =
+                simEngine.StandardVehicleFootprint;
+            float standardPresentationHeadway =
+                GetRequiredVehiclePresentationHeadway(
+                    RoadTrafficAgentKind.Car,
+                    standardFootprint,
+                    RoadTrafficAgentKind.Car,
+                    standardFootprint);
             for (int i = 0; i < count; i++)
             {
                 if (!laneValid[i]) continue;
@@ -205,7 +216,7 @@ namespace CityFlow.View
                     self.TravelSpeed,
                     vehicleBrakeAccel,
                     simEngine.TickInterval,
-                    VehicleMinHeadway * tileSize,
+                    standardPresentationHeadway,
                     tileSize,
                     2,
                     3);
@@ -271,11 +282,19 @@ namespace CityFlow.View
         }
 
         // Same-tile spacing uses the lane direction; future tiles use world distance across corners.
-        private bool TryGetLaneHeadway(int carIndex, RouteVehicle vehicle, out float headway, out float leaderSpeed)
+        private bool TryGetLaneHeadway(
+            int carIndex,
+            RouteVehicle vehicle,
+            out float headway,
+            out float leaderSpeed,
+            out float minimumHeadway)
         {
             headway = float.PositiveInfinity;
             leaderSpeed = 0f;
+            minimumHeadway = 0f;
             bool found = false;
+            VehicleFootprint standardFootprint =
+                simEngine.StandardVehicleFootprint;
 
             if (carIndex >= 0 && carIndex < laneLeader.Length)
             {
@@ -307,8 +326,31 @@ namespace CityFlow.View
                             Vector3.Dot(separation, forward);
                     }
 
+                    minimumHeadway =
+                        GetRequiredVehiclePresentationHeadway(
+                            RoadTrafficAgentKind.Car,
+                            standardFootprint,
+                            RoadTrafficAgentKind.Car,
+                            standardFootprint);
                     found = true;
                 }
+            }
+
+            if (TryGetVehiclePresentationLeader(
+                    carSimMirrors[carIndex],
+                    RoadTrafficAgentKind.Car,
+                    standardFootprint,
+                    vehicle.Pos,
+                    vehicle.Dir,
+                    includeCarCandidates: false,
+                    out VehiclePresentationLeader externalLeader) &&
+                (!found || externalLeader.Headway < headway))
+            {
+                headway = externalLeader.Headway;
+                leaderSpeed = externalLeader.Speed;
+                minimumHeadway =
+                    externalLeader.RequiredHeadway;
+                found = true;
             }
 
             // 예전엔 `headway > 0`일 때만 제약을 걸었다 — 앞차를 파고든 순간 제약이 통째로
@@ -632,6 +674,7 @@ namespace CityFlow.View
             {
                 for (int i = 0; i < stale.Count; i++)
                 {
+                    RemoveVehiclePresentation(stale[i]);
                     DeactivateCommuteVehicle(carVehicles[stale[i]]);
                     carVehicles.Remove(stale[i]);
                 }
@@ -837,6 +880,7 @@ namespace CityFlow.View
         {
             if (!bakedRoutes.TryGetValue(car.RouteIndex, out BakedRoutePair pair))
             {
+                RemoveVehiclePresentation(car);
                 SetVehicleRenderersEnabled(vehicle, false);
                 return;
             }
@@ -860,6 +904,11 @@ namespace CityFlow.View
                     vehicle.SettleRate = 0f;   // 이번 정착의 남은거리로 다시 산출
                 }
 
+                if (!vehicle.Settling)
+                {
+                    RemoveVehiclePresentation(car);
+                }
+
                 // Sim은 뷰보다 먼저 도착할 수 있다. 이때 현재 월드 위치→주차 앵커 MoveTowards는
                 // 꺾인 도로를 chord로 가로지르므로, 도착 방향 폴리라인의 누적거리 끝까지 따라간다.
                 RoutePolyline parkingPolyline = snapshot.State == CarState.ParkedWork
@@ -867,6 +916,7 @@ namespace CityFlow.View
                     : pair.Inbound;
                 Sample parked;
                 bool followingParkingPath = vehicle.Settling;
+                bool parkingBlocked = false;
                 float parkingPreviousDistance = car.Distance;
                 if (followingParkingPath)
                 {
@@ -895,7 +945,20 @@ namespace CityFlow.View
                             parkingPolyline.Length,
                             vehicle.SettleRate *
                             Time.deltaTime);
-                    car.Distance = proposedParkingDistance;
+                    float limitedParkingDistance =
+                        LimitVehiclePresentationAdvance(
+                            car,
+                            RoadTrafficAgentKind.Car,
+                            simEngine.StandardVehicleFootprint,
+                            parkingPolyline,
+                            car.Distance,
+                            proposedParkingDistance,
+                            yieldToCrossFlowCars: false,
+                            out _);
+                    parkingBlocked =
+                        limitedParkingDistance <
+                        proposedParkingDistance - 0.0001f;
+                    car.Distance = limitedParkingDistance;
                     parked =
                         parkingPolyline.SampleAt(
                             car.Distance);
@@ -937,11 +1000,33 @@ namespace CityFlow.View
                     Vector2Int building = snapshot.State == CarState.ParkedWork ? car.Work : car.Home;
                     SetForwardBuildingParkingRotation(vehicle, building);
                 }
-                vehicle.CurrentTile = snapshot.State == CarState.ParkedWork ? car.Work : car.Home;
+                vehicle.CurrentTile = vehicle.Settling
+                    ? parkingPolyline.TileAt(
+                        Mathf.Clamp(
+                            parked.TileIndex,
+                            0,
+                            parkingPolyline.TileCount - 1))
+                    : snapshot.State == CarState.ParkedWork
+                        ? car.Work
+                        : car.Home;
                 vehicle.HasCurrentTile = true;
                 SetVehicleRenderersEnabled(vehicle, true);
-                SetBrakeLight(vehicle, false);
+                SetBrakeLight(vehicle, parkingBlocked);
                 HideJamMarks(vehicle);
+                if (vehicle.Settling)
+                {
+                    PublishVehiclePresentation(
+                        car,
+                        RoadTrafficAgentKind.Car,
+                        simEngine.StandardVehicleFootprint,
+                        vehicle.Pos,
+                        vehicle.Dir,
+                        vehicle.TravelSpeed);
+                }
+                else
+                {
+                    RemoveVehiclePresentation(car);
+                }
                 if (snapshot.State == CarState.ParkedWork && !vehicle.Settling)
                     FlushPendingCoinPop(car.Work, vehicle.Object.transform.position);
                 vehicle.LastState = snapshot.State;
@@ -1194,23 +1279,34 @@ namespace CityFlow.View
                 // 들어오지 않으므로 정지 관계는 선형이고 사이클(=데드락)이 생기지 않는다.
                 float headway;
                 float leaderSpeed;
-                if (TryGetLaneHeadway(carIndex, vehicle, out headway, out leaderSpeed))
+                float minimumHeadway;
+                if (TryGetLaneHeadway(
+                        carIndex,
+                        vehicle,
+                        out headway,
+                        out leaderSpeed,
+                        out minimumHeadway))
                 {
                     // 상한 없이 노브 그대로 쓴다. 슬롯은 더 이상 위치의 주인이 아니므로
                     // Sim 슬롯 간격(0.250)으로 누를 이유가 없다.
-                    float minHeadway = VehicleMinHeadway * tileSize;
                     hardHeadway = headway;
-                    hardMinimumHeadway = minHeadway;
+                    hardMinimumHeadway = minimumHeadway;
                     hardLeaderSpeed = leaderSpeed;
-                    float slack = Mathf.Max(0f, headway - minHeadway);
+                    float slack = Mathf.Max(
+                        0f,
+                        headway - minimumHeadway);
                     float follow = Mathf.Sqrt(leaderSpeed * leaderSpeed + 2f * brakeAccel * slack);
                     // 간격이 최소치보다 좁으면 앞차보다 **느리게** 가야 간격이 다시 벌어진다.
                     // 속도를 맞추기만 하면 한번 겹친 쌍이 영원히 겹친 채로 굳는다.
                     // 부족분이 최소치만큼이면(=완전히 포개짐) 0 → 서서 앞차를 보낸다.
                     // 앞차는 나에게 막히지 않으므로(선형 관계) 간격은 반드시 회복된다.
-                    if (headway < minHeadway)
+                    if (headway < minimumHeadway)
                     {
-                        float recover = Mathf.Clamp01(headway / Mathf.Max(0.0001f, minHeadway));
+                        float recover = Mathf.Clamp01(
+                            headway /
+                            Mathf.Max(
+                                0.0001f,
+                                minimumHeadway));
                         follow = Mathf.Min(follow, leaderSpeed * recover);
                     }
                     desired = Mathf.Min(desired, follow);
@@ -1246,6 +1342,13 @@ namespace CityFlow.View
                 : 0f;
             vehicle.CurrentTile = poly.TileAt(Mathf.Clamp(sample.TileIndex, 0, poly.TileCount - 1));
             vehicle.HasCurrentTile = true;
+            PublishVehiclePresentation(
+                car,
+                RoadTrafficAgentKind.Car,
+                simEngine.StandardVehicleFootprint,
+                vehicle.Pos,
+                vehicle.Dir,
+                vehicle.TravelSpeed);
             if (sample.Dir.sqrMagnitude > 0.001f)
             {
                 float angle = Mathf.Atan2(sample.Dir.y, sample.Dir.x) * Mathf.Rad2Deg;
@@ -1286,6 +1389,11 @@ namespace CityFlow.View
         private void ResetCommuteState()
         {
             bakedRoutes.Clear();
+            foreach (CommuteCar car in carVehicles.Keys)
+            {
+                RemoveVehiclePresentation(car);
+            }
+
             carVehicles.Clear();
             DestroyParkingVisuals();
             carSimMirrors.Clear();

@@ -12,7 +12,10 @@ namespace CityFlow.Content.Transit
         Moving = 1,
         WaitingAtStop = 2,
         Completed = 3,
-        RouteUnavailable = 4
+        RouteUnavailable = 4,
+        WaitingForRoadEntry = 5,
+        EnteringRoad = 6,
+        LeavingRoad = 7
     }
 
     /// <summary>
@@ -118,6 +121,7 @@ namespace CityFlow.Content.Transit
         private bool holdRoadTrafficAtDestination;
         private bool roadTrafficArrivalHandled;
         private int roadTrafficPathOffset;
+        private int pendingOffRoadStopIndex = -1;
         private int roadsideStopSetbackTiles;
         private Vector2Int preferredInitialAccessRoad;
         private bool hasPreferredInitialAccessRoad;
@@ -137,6 +141,8 @@ namespace CityFlow.Content.Transit
         public int RoadSegmentVersion { get; private set; }
         public bool UsesRoadTraffic =>
             roadTraffic != null && roadTrafficAgentId.IsValid;
+
+        public bool SynchronizeOffRoadTransitions { get; private set; }
 
         public bool LoopRoute
         {
@@ -228,6 +234,8 @@ namespace CityFlow.Content.Transit
         public event Action<Vector2Int> TileChanged;
         public event Action<Vector2Int, int> StopArrived;
         public event Action<Vector2Int, int> StopPresentationRequested;
+        public event Action<RoadTrafficSnapshot> RoadEntryReserved;
+        public event Action<Vector2Int> OffRoadExitRequested;
         public event Action RouteCompleted;
         public event Action RouteUnavailable;
 
@@ -260,6 +268,12 @@ namespace CityFlow.Content.Transit
             roadTrafficConfigured = true;
             holdRoadTrafficAtDestination = holdAtDestination;
             TryRegisterRoadTrafficAgent();
+        }
+
+        public void ConfigureOffRoadTransitionSynchronization(
+            bool enabled)
+        {
+            SynchronizeOffRoadTransitions = enabled;
         }
 
         public void ConfigureRoadTrafficAgent(
@@ -348,6 +362,10 @@ namespace CityFlow.Content.Transit
 
             switch (State)
             {
+                case BusRouteState.WaitingForRoadEntry:
+                    UpdateRoadEntryReservation();
+                    break;
+
                 case BusRouteState.Moving:
                     UpdateMoving(Time.deltaTime);
                     break;
@@ -1025,6 +1043,7 @@ namespace CityFlow.Content.Transit
             hasCurrentStopAccessRoad = false;
             currentSegmentUsesRoadsideStop = false;
             hasPreferredInitialAccessRoad = false;
+            pendingOffRoadStopIndex = -1;
 
             ReleaseRoadTrafficAgent();
 
@@ -1118,8 +1137,117 @@ namespace CityFlow.Content.Transit
                      !roadTrafficArrivalHandled)
             {
                 roadTrafficArrivalHandled = true;
-                ArriveAtNextStop();
+                if (SynchronizeOffRoadTransitions &&
+                    !currentSegmentUsesRoadsideStop)
+                {
+                    BeginOffRoadExit();
+                }
+                else
+                {
+                    ArriveAtNextStop();
+                }
             }
+        }
+
+        private void UpdateRoadEntryReservation()
+        {
+            if (roadTraffic == null ||
+                !roadTraffic.TryGetSnapshot(
+                    roadTrafficAgentId,
+                    out RoadTrafficSnapshot snapshot))
+            {
+                SetRouteUnavailable();
+                return;
+            }
+
+            if (snapshot.State ==
+                RoadTrafficAgentState.RouteUnavailable)
+            {
+                SetRouteUnavailable();
+                return;
+            }
+
+            if (!snapshot.IsVisible ||
+                snapshot.State != RoadTrafficAgentState.Paused)
+            {
+                return;
+            }
+
+            currentRoadPathIndex = Mathf.Clamp(
+                roadTrafficPathOffset + snapshot.RouteTileIndex,
+                0,
+                Mathf.Max(0, currentRoadPath.Count - 1));
+            CurrentTile = snapshot.CurrentTile;
+            State = BusRouteState.EnteringRoad;
+
+            Action<RoadTrafficSnapshot> handler =
+                RoadEntryReserved;
+            if (handler == null)
+            {
+                CompleteRoadEntryTransition();
+                return;
+            }
+
+            handler.Invoke(snapshot);
+        }
+
+        public bool CompleteRoadEntryTransition()
+        {
+            if (State != BusRouteState.EnteringRoad)
+            {
+                return false;
+            }
+
+            if (roadTraffic == null ||
+                !roadTrafficAgentId.IsValid ||
+                !roadTraffic.TrySetAgentPaused(
+                    roadTrafficAgentId,
+                    false))
+            {
+                SetRouteUnavailable();
+                return false;
+            }
+
+            State = BusRouteState.Moving;
+            TileChanged?.Invoke(CurrentTile);
+            return true;
+        }
+
+        private void BeginOffRoadExit()
+        {
+            int nextStopIndex = GetNextStopIndex();
+            if (nextStopIndex < 0)
+            {
+                CompleteRoute();
+                return;
+            }
+
+            pendingOffRoadStopIndex = nextStopIndex;
+            State = BusRouteState.LeavingRoad;
+
+            Action<Vector2Int> handler = OffRoadExitRequested;
+            if (handler == null)
+            {
+                CompleteOffRoadExitTransition();
+                return;
+            }
+
+            handler.Invoke(stops[nextStopIndex]);
+        }
+
+        public bool CompleteOffRoadExitTransition()
+        {
+            if (State != BusRouteState.LeavingRoad ||
+                pendingOffRoadStopIndex < 0)
+            {
+                return false;
+            }
+
+            int stopIndex = pendingOffRoadStopIndex;
+            pendingOffRoadStopIndex = -1;
+            ReleaseRoadTrafficAgent();
+            ArriveAtStop(stopIndex);
+            return true;
         }
 
         private void MoveOneTile()
@@ -1586,6 +1714,11 @@ namespace CityFlow.Content.Transit
 
             Vector2Int startStop = GetCurrentStop();
             Vector2Int destinationStop = stops[nextStopIndex];
+            bool requiresRoadEntryTransition =
+                SynchronizeOffRoadTransitions &&
+                roadTrafficConfigured &&
+                roadTraffic != null &&
+                !IsRoad(CurrentTile);
             currentSegmentUsesRoadsideStop =
                 ShouldUseRoadsideStop(destinationStop);
 
@@ -1733,20 +1866,27 @@ namespace CityFlow.Content.Transit
             CurrentTile = currentRoadPath[0];
 
             moveTimer = 0f;
-            State = BusRouteState.Moving;
+            State = requiresRoadEntryTransition
+                ? BusRouteState.WaitingForRoadEntry
+                : BusRouteState.Moving;
 
             if (roadTrafficConfigured &&
-                !TryStartRoadTrafficSegment())
+                !TryStartRoadTrafficSegment(
+                    requiresRoadEntryTransition))
             {
                 SetRouteUnavailable();
                 return false;
             }
 
-            TileChanged?.Invoke(CurrentTile);
+            if (!requiresRoadEntryTransition)
+            {
+                TileChanged?.Invoke(CurrentTile);
+            }
             return true;
         }
 
-        private bool TryStartRoadTrafficSegment()
+        private bool TryStartRoadTrafficSegment(
+            bool pauseOnEntry = false)
         {
             if (roadTraffic == null)
             {
@@ -1793,11 +1933,12 @@ namespace CityFlow.Content.Transit
                            roadTrafficAgentId,
                            route,
                            false,
-                           holdRoadTrafficAtDestination
-                               ? RoadTrafficArrivalPolicy
-                                   .HoldAtDestination
-                               : RoadTrafficArrivalPolicy
-                                   .ReleaseAtDestination))
+                            holdRoadTrafficAtDestination
+                                ? RoadTrafficArrivalPolicy
+                                    .HoldAtDestination
+                                : RoadTrafficArrivalPolicy
+                                    .ReleaseAtDestination,
+                            pauseOnEntry))
                 && roadTraffic.TryStartAgent(roadTrafficAgentId);
         }
 
@@ -1814,6 +1955,7 @@ namespace CityFlow.Content.Transit
             hasDepartureStop = false;
             hasCurrentStopAccessRoad = false;
             currentSegmentUsesRoadsideStop = false;
+            pendingOffRoadStopIndex = -1;
             State = BusRouteState.Idle;
         }
 
@@ -2700,6 +2842,7 @@ namespace CityFlow.Content.Transit
             routeRequested = false;
             stopPresentationPending = false;
             currentSegmentUsesRoadsideStop = false;
+            pendingOffRoadStopIndex = -1;
             ReleaseRoadTrafficAgent();
             State = BusRouteState.Completed;
 
@@ -2711,6 +2854,7 @@ namespace CityFlow.Content.Transit
             routeRequested = false;
             stopPresentationPending = false;
             currentSegmentUsesRoadsideStop = false;
+            pendingOffRoadStopIndex = -1;
             ReleaseRoadTrafficAgent();
             State = BusRouteState.RouteUnavailable;
 

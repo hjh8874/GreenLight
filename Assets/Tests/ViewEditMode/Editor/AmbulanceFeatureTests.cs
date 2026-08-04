@@ -539,7 +539,7 @@ namespace CityFlow.Tests.ViewEditMode
                         },
                         -0.38f);
                 float queueGap =
-                    cityView.VehicleMinHeadway *
+                    VehicleFootprint.StandardDefault.HeadwayTiles *
                     cityView.TileSize;
                 float frontDistance =
                     path.ReprojectDistance(
@@ -572,7 +572,7 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     frontDistance - queuedDistance,
                     Is.EqualTo(
-                            cityView.VehicleMinHeadway *
+                            VehicleFootprint.StandardDefault.HeadwayTiles *
                             cityView.TileSize * 2f)
                         .Within(0.0001f),
                     "The ambulance must occupy the same physical queue slots as regular cars.");

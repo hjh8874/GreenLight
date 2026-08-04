@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2015f90de65d4adb82f84232b7e520be, type: 3}
+  m_Name: VehiclePresentationSpacingProfile
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.VehiclePresentationSpacingProfileSO
+  standardExtraGapTiles: 0.04
+  largeExtraGapTiles: 0.08
+  emergencyExtraGapTiles: 0.06
+  laneToleranceTiles: 0.02
+  heightToleranceTiles: 0.3
+  minimumDirectionDot: 0.6
+  maximumCatchUpSpeedMultiplier: 1.15
+  staleFrameTolerance: 2
