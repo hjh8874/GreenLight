@@ -56,6 +56,7 @@ namespace CityFlow.UI
 
         public void Initialize(CityFlowServices cityServices)
         {
+            EnsureInputRaycaster();
             AutoWireSceneIntegration();
             Unbind();
             services = cityServices;
@@ -111,7 +112,21 @@ namespace CityFlow.UI
             }
         }
 
-        private void OnEnable() => RefreshAll();
+        private void OnEnable()
+        {
+            EnsureInputRaycaster();
+            RefreshAll();
+        }
+
+        private void EnsureInputRaycaster()
+        {
+            Canvas canvas = GetComponentInParent<Canvas>(true);
+            if (canvas != null && canvas.GetComponent<GraphicRaycaster>() == null)
+            {
+                canvas.gameObject.AddComponent<GraphicRaycaster>();
+            }
+        }
+
         private void OnDestroy()
         {
             ReleaseCatalogPresentation();

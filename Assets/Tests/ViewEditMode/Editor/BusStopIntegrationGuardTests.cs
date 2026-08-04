@@ -173,6 +173,21 @@ namespace Tests.EditMode
             AssertProjectOwnedPrefab(buildingCatalog.HousePrefab);
             AssertProjectOwnedPrefab(buildingCatalog.OfficePrefab);
             AssertProjectOwnedPrefab(buildingCatalog.SchoolPrefab);
+            Assert.That(
+                AssetDatabase.GetAssetPath(buildingCatalog.SchoolPrefab),
+                Is.EqualTo(
+                    "Assets/02_Prefabs/Buildings/SchoolVisual_StudioHorizon.prefab"),
+                "The building catalog must use the Studio Horizon school visual selected for the school.");
+            MeshFilter schoolMesh =
+                buildingCatalog.SchoolPrefab
+                    .GetComponentInChildren<MeshFilter>(true);
+            Assert.That(schoolMesh, Is.Not.Null);
+            Assert.That(
+                AssetDatabase.GetAssetPath(schoolMesh.sharedMesh),
+                Is.EqualTo(
+                    "Assets/99_Download/Studio Horizon/" +
+                    "Simple Building Generic Free/FBX/School.fbx"),
+                "The project-owned school wrapper must use the complete Studio Horizon school mesh.");
             AssertProjectOwnedPrefab(buildingCatalog.HospitalPrefab);
             AssertProjectOwnedPrefab(buildingCatalog.FoundationPrefab);
 

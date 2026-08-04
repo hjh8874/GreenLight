@@ -36,7 +36,7 @@ MonoBehaviour:
   routeRetrySeconds: 2
   maximumOutboundRouteRetries: 3
   maximumReturnRouteRetries: 5
-  vehicleVisualPrefab: {fileID: 100000, guid: e76a211798c34f4fb5e47bad0a4ee269, type: 3}
+  vehicleVisualPrefab: {fileID: 2694572219059838977, guid: c3328895cefea8f4b9cc2ffaf5dba78a, type: 3}
   visualScale: 0.085
   visualDepth: -0.18
   vehicleLengthTiles: 0.56

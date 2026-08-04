@@ -93,7 +93,8 @@ namespace CityFlow.View
             EnsureVisual();
             nightLighting = VehicleNightLighting.Attach(
                 visual != null ? visual.gameObject : null,
-                services);
+                services,
+                Vector3.right);
             Subscribe();
         }
 
@@ -276,7 +277,7 @@ namespace CityFlow.View
                 cityView?.RegisterExternalSelectableVehicle(
                     this,
                     visual,
-                    Vector3.back);
+                    Vector3.right);
                 return;
             }
 
@@ -290,6 +291,7 @@ namespace CityFlow.View
                 config.VehicleVisualPrefab,
                 cityView.transform);
             instance.name = "AmbulanceVisual";
+            VehicleVisualUtility.PrepareLit(instance);
             visual = instance.transform;
             visual.localScale =
                 CalculateVisualScale(
@@ -297,14 +299,17 @@ namespace CityFlow.View
                     config,
                     cityView.TileSize);
             nightLighting =
-                VehicleNightLighting.Attach(instance, services);
+                VehicleNightLighting.Attach(
+                    instance,
+                    services,
+                    Vector3.right);
             instance.SetActive(false);
             previousVisualPosition =
                 visual.localPosition;
             cityView.RegisterExternalSelectableVehicle(
                 this,
                 visual,
-                Vector3.back);
+                Vector3.right);
         }
 
         internal static Vector3 CalculateVisualScale(
@@ -329,21 +334,26 @@ namespace CityFlow.View
 
             float safeTileSize =
                 Mathf.Max(0.0001f, tileSize);
-            float modelWidth =
-                Mathf.Max(
-                    0.0001f,
-                    modelBounds.size.x);
             float modelLength =
                 Mathf.Max(
                     0.0001f,
-                    modelBounds.size.z);
+                    modelBounds.size.x);
+            float modelWidth =
+                Mathf.Max(
+                    0.0001f,
+                    modelBounds.size.y);
+
+            float widthScale =
+                visualConfig.VehicleWidthTiles *
+                safeTileSize / modelWidth;
+            float lengthScale =
+                visualConfig.VehicleLengthTiles *
+                safeTileSize / modelLength;
 
             return new Vector3(
-                visualConfig.VehicleWidthTiles *
-                safeTileSize / modelWidth,
-                fallbackScale,
-                visualConfig.VehicleLengthTiles *
-                safeTileSize / modelLength);
+                lengthScale,
+                widthScale,
+                Mathf.Min(widthScale, lengthScale));
         }
 
         private static bool TryGetModelBounds(
@@ -404,7 +414,7 @@ namespace CityFlow.View
 
             return hasBounds &&
                    modelBounds.size.x > 0.0001f &&
-                   modelBounds.size.z > 0.0001f;
+                   modelBounds.size.y > 0.0001f;
         }
 
         public void ShowParkedAtHospital(
@@ -822,7 +832,7 @@ namespace CityFlow.View
 
             parkingPath = cityView.BakeTrafficRoute(
                 roadTiles,
-                config?.VisualDepth ?? -0.38f,
+                GetVisualSurfaceDepth(),
                 null,
                 parkingPosition,
                 clampAnchorSpurOvershoot: true);
@@ -867,13 +877,11 @@ namespace CityFlow.View
                     out position,
                     out forward))
             {
-                position.z =
-                    config?.VisualDepth ?? position.z;
+                position.z = GetVisualSurfaceDepth();
                 return true;
             }
 
-            float depth =
-                config?.VisualDepth ?? -0.38f;
+            float depth = GetVisualSurfaceDepth();
             Vector3 buildingCenter =
                 cityView.GridToLocal(building, depth);
             if (route != null &&
@@ -967,7 +975,7 @@ namespace CityFlow.View
                     route,
                     tileData,
                     cityView,
-                    config?.VisualDepth ?? -0.38f,
+                    GetVisualSurfaceDepth(),
                     startAnchor,
                     endAnchor,
                     out int roadIndex))
@@ -1135,7 +1143,7 @@ namespace CityFlow.View
                 route,
                 tileData,
                 cityView,
-                config?.VisualDepth ?? -0.38f,
+                GetVisualSurfaceDepth(),
                 startAnchor,
                 endAnchor,
                 out roadIndex);
@@ -1247,8 +1255,7 @@ namespace CityFlow.View
                 RoutePolyline refreshedPath =
                     cityView.BakeTrafficRoute(
                         routeRoadTiles,
-                        config?.VisualDepth ??
-                        -0.38f);
+                        GetVisualSurfaceDepth());
                 if (refreshedPath == null)
                 {
                     return false;
@@ -1327,6 +1334,22 @@ namespace CityFlow.View
                 0.01f,
                 cityView.TileSize /
                 GetMovementDuration());
+        }
+
+        private float GetVisualSurfaceDepth()
+        {
+            return ResolveVisualSurfaceDepth(
+                cityView,
+                config);
+        }
+
+        internal static float ResolveVisualSurfaceDepth(
+            MainCityView targetCityView,
+            EmergencyIncidentConfigSO visualConfig)
+        {
+            return targetCityView != null
+                ? targetCityView.VehicleGroundZ
+                : visualConfig?.VisualDepth ?? -0.38f;
         }
 
         private void CompleteCurrentMovement()
@@ -1560,13 +1583,9 @@ namespace CityFlow.View
                     direction.x) *
                 Mathf.Rad2Deg;
             return Quaternion.Euler(
-                       0f,
-                       0f,
-                       angle + 90f) *
-                   Quaternion.Euler(
-                       -90f,
-                       0f,
-                       0f);
+                0f,
+                0f,
+                angle);
         }
 
         private void HandleRouteUnavailable()

@@ -155,7 +155,12 @@ namespace CityFlow.UI.Controllers
 
         public void CancelPlacement()
         {
-            if (!_isBuildingMode && !_isDemolishMode) return;
+            if (!_isBuildingMode &&
+                !_isDemolishMode &&
+                _placementPreview == null)
+            {
+                return;
+            }
 
             _isBuildingMode = false;
             _isDemolishMode = false;
@@ -179,7 +184,7 @@ namespace CityFlow.UI.Controllers
 
         private void OnDisable()
         {
-            SetPlacementPreviewActive(false);
+            ClearPlacementPreview();
             BuildModeCursorFeedback.SetBuilding(this, false);
         }
 
@@ -440,6 +445,9 @@ namespace CityFlow.UI.Controllers
             }
 
             _placementPreview = preview;
+            _placementPreview.transform.SetParent(
+                transform,
+                true);
             _placementPreviewLocalRotation =
                 preview.transform.localRotation;
             _placementPreviewMaterial ??=
@@ -502,13 +510,17 @@ namespace CityFlow.UI.Controllers
                 return;
             }
 
-            if (Application.isPlaying)
+            bool isTemporaryEditorObject =
+                Application.isEditor &&
+                (target.hideFlags & HideFlags.DontSave) != 0;
+            if (!Application.isPlaying ||
+                isTemporaryEditorObject)
             {
-                Destroy(target);
+                DestroyImmediate(target);
             }
             else
             {
-                DestroyImmediate(target);
+                Destroy(target);
             }
         }
 

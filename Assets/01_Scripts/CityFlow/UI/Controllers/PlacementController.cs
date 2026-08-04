@@ -91,7 +91,8 @@ namespace CityFlow.UI
                 ghostRenderer, colorValid, colorInvalid,
                 use3DGhostVolume, ghostVolumeHeight, volumeValidColor, volumeInvalidColor,
                 GetComponent<BenefitHighlightRenderer>(),
-                populationConfig, hospitalDefinition);
+                populationConfig, hospitalDefinition,
+                transform);
 
             _costLabelManager = new PlacementCostLabelManager(showCostLabel, costAffordableColor, costUnaffordableColor);
 
@@ -226,6 +227,10 @@ namespace CityFlow.UI
                 _visualManager.HideBenefitHighlights();
                 UpdateGhostSprite();
                 _visualManager.UpdateGhostFootprint(_currentType, _currentDirection);
+                if (_visualManager.BuildingPreviewObject == null)
+                {
+                    UpdateBuildingModelPreview();
+                }
             }
 
             _visualManager.SetGhostActive(isOn);
@@ -234,6 +239,8 @@ namespace CityFlow.UI
             if (!isOn)
             {
                 _visualManager.HideBenefitHighlights();
+                _visualManager.SetBuildingPreview(null);
+                _lastModelPreviewCoord = null;
                 _costLabelManager.SetCostLabelActive(false);
             }
         }
@@ -251,7 +258,8 @@ namespace CityFlow.UI
                 ghostRenderer, colorValid, colorInvalid,
                 use3DGhostVolume, ghostVolumeHeight, volumeValidColor, volumeInvalidColor,
                 GetComponent<BenefitHighlightRenderer>(),
-                populationConfig, hospitalDefinition);
+                populationConfig, hospitalDefinition,
+                transform);
 
             _visualManager.Initialize();
             _visualManager.SetGhostActive(_isBuildingMode);
@@ -291,6 +299,10 @@ namespace CityFlow.UI
         {
             BuildModeCursorFeedback.SetBuilding(this, false);
             _visualManager?.HideBenefitHighlights();
+            _visualManager?.SetGhostActive(false);
+            _visualManager?.SetBuildingPreview(null);
+            _costLabelManager?.SetCostLabelActive(false);
+            _lastModelPreviewCoord = null;
         }
 
         private void OnDestroy()

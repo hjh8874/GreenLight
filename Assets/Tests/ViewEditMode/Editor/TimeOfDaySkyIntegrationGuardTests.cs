@@ -171,6 +171,48 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
+        public void VehicleHeadlights_RespectAuthoredForwardAxis()
+        {
+            var vehicle =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            vehicle.transform.localScale =
+                new Vector3(0.4f, 1f, 0.2f);
+
+            try
+            {
+                VehicleNightLighting.Attach(
+                    vehicle,
+                    null,
+                    Vector3.right);
+                Light[] headlights =
+                    vehicle.GetComponentsInChildren<Light>(true);
+
+                Assert.That(headlights.Length, Is.EqualTo(2));
+                Assert.That(
+                    headlights[0].transform.localPosition.x,
+                    Is.GreaterThan(0.2f),
+                    "The authored +X nose must place both headlights at the vehicle front.");
+                Assert.That(
+                    headlights[1].transform.localPosition.x,
+                    Is.GreaterThan(0.2f));
+                Assert.That(
+                    Mathf.Sign(headlights[0].transform.localPosition.y),
+                    Is.Not.EqualTo(
+                        Mathf.Sign(headlights[1].transform.localPosition.y)),
+                    "The two headlights must remain on opposite sides of the vehicle.");
+                Assert.That(
+                    headlights[0].gameObject.hideFlags &
+                    HideFlags.HideInHierarchy,
+                    Is.Not.EqualTo(HideFlags.None),
+                    "Runtime light helpers must not draw distracting editor gizmo icons.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(vehicle);
+            }
+        }
+
+        [Test]
         public void BuildingWindowLights_DoNotChangeBodyMaterial()
         {
             var building =

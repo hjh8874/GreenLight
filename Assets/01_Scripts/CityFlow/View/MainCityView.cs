@@ -538,10 +538,6 @@ namespace CityFlow.View
             BuildBoard();
             BuildGridLines();
             RefreshAllTiles();
-            HospitalAmbulanceParkingView ambulanceView =
-                GetComponent<HospitalAmbulanceParkingView>() ??
-                gameObject.AddComponent<HospitalAmbulanceParkingView>();
-            ambulanceView.Initialize(services);
             RefreshSignals();
             RefreshRoundabouts();
             RefreshOverpasses();

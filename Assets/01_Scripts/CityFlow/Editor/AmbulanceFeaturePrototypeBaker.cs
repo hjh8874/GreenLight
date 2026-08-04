@@ -24,6 +24,8 @@ namespace CityFlow.EditorTools
             "Assets/03_Art/Materials/Vehicles/Ambulance_URP.mat";
         private const string VisualPrefabPath =
             "Assets/02_Prefabs/Vehicles/AmbulanceVehicleVisual.prefab";
+        private const string RuntimeVisualPrefabPath =
+            "Assets/02_Prefabs/Vehicles/AmbulanceVisual.prefab";
         private const string CityBusPrefabPath =
             "Assets/02_Prefabs/Vehicles/CityBusContent.prefab";
         private static readonly string[]
@@ -47,9 +49,13 @@ namespace CityFlow.EditorTools
             GameObject sourceVisualPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
                     SourceVisualPrefabPath);
+            GameObject runtimeVisualPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    RuntimeVisualPrefabPath);
 
             if (debugScene == null ||
-                sourceVisualPrefab == null)
+                sourceVisualPrefab == null ||
+                runtimeVisualPrefab == null)
             {
                 Debug.LogError(
                     "[AmbulanceFeaturePrototypeBaker] Existing Lee Debug scene or ambulance visual prefab is missing.");
@@ -59,12 +65,11 @@ namespace CityFlow.EditorTools
             Material visualMaterial =
                 CreateOrUpdateVisualMaterial(
                     sourceVisualPrefab);
-            GameObject visualPrefab =
-                CreateOrUpdateVisualPrefab(
-                    sourceVisualPrefab,
-                    visualMaterial);
+            CreateOrUpdateVisualPrefab(
+                sourceVisualPrefab,
+                visualMaterial);
             EmergencyIncidentConfigSO config =
-                CreateOrUpdateConfig(visualPrefab);
+                CreateOrUpdateConfig(runtimeVisualPrefab);
             GameObject vehiclePrefab =
                 CreateOrUpdateVehiclePrefab(config);
             CreateOrUpdateContentPrefab(
@@ -84,12 +89,15 @@ namespace CityFlow.EditorTools
         {
             Shader shader =
                 Shader.Find(
-                    "GreenLight/CityFlow Opaque Unlit");
+                    "Universal Render Pipeline/Lit");
+            shader ??= Shader.Find(
+                "Universal Render Pipeline/Simple Lit");
+            shader ??= Shader.Find("Standard");
 
             if (shader == null)
             {
                 throw new System.InvalidOperationException(
-                    "GreenLight/CityFlow Opaque Unlit shader is missing.");
+                    "A lit shader for the ambulance visual is missing.");
             }
 
             Material material =
