@@ -7,7 +7,7 @@ using UnityEngine.UI;
 public class StatsPanelPresentationTests
 {
     [Test]
-    public void Awake_BuildsCompactDashboardWithoutSceneWiring()
+    public void Configure_BuildsCompactDashboardWithoutSceneWiring()
     {
         var owner = new GameObject(
             "Statistics_Panel",
@@ -18,6 +18,7 @@ public class StatsPanelPresentationTests
         {
             StatsPanelController controller =
                 owner.AddComponent<StatsPanelController>();
+            controller.Configure(null, null);
 
             RectTransform dashboard = controller.DashboardRootForTest;
             Assert.NotNull(dashboard);
@@ -67,6 +68,7 @@ public class StatsPanelPresentationTests
         {
             StatsPanelController controller =
                 owner.AddComponent<StatsPanelController>();
+            controller.Configure(null, null);
             RectTransform initialDashboard =
                 controller.DashboardRootForTest;
 

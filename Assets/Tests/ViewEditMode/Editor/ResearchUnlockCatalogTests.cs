@@ -45,8 +45,8 @@ public class ResearchUnlockCatalogTests
                 balanceEntries[index].category,
                 $"Publishing balance values would overwrite the category for {runtimeEntries[index].researchId}.");
             Assert.AreEqual(
-                runtimeEntries[index].worldGridStageId,
-                balanceEntries[index].worldGridStageId,
+                runtimeEntries[index].worldGridStageId ?? string.Empty,
+                balanceEntries[index].worldGridStageId ?? string.Empty,
                 $"Publishing balance values would overwrite the expansion reward for {runtimeEntries[index].researchId}.");
             if (runtimeEntries[index].category ==
                 ResearchCategory.Expansion)

@@ -43,6 +43,10 @@ namespace CityFlow.UI
 
         private void EnsureCatalogPresentation()
         {
+            // The unlock catalog replaces this legacy summary. Hide it even when
+            // the rest of the catalog presentation has already been prepared.
+            SetHeaderVisible(yesterdayArrivalsText, false);
+
             if (catalogPresentationReady)
             {
                 BindUnlockMenuButton();
