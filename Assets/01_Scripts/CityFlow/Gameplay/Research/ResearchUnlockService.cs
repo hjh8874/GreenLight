@@ -478,15 +478,19 @@ namespace CityFlow.Gameplay.Research
                     string stageId = NormalizeId(entry.worldGridStageId);
                     if (stageId.Length == 0 ||
                         !unlockedResearchIds.Contains(researchId) ||
-                        string.Equals(
-                            boundWorldGridExpansion.CurrentStageId,
-                            stageId,
-                            StringComparison.Ordinal))
+                        boundWorldGridExpansion.IsStageUnlocked(stageId))
                     {
                         continue;
                     }
 
-                    boundWorldGridExpansion.TryUnlockStage(stageId);
+                    if (!boundWorldGridExpansion.TryUnlockStage(stageId))
+                    {
+                        Debug.LogWarning(
+                            $"[ResearchUnlockService] Failed to apply " +
+                            $"expansion reward. Research={researchId}, " +
+                            $"Stage={stageId}.",
+                            this);
+                    }
                 }
             }
             finally

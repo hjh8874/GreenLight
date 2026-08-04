@@ -316,7 +316,6 @@ namespace CityFlow.UI
                 ResearchCategory.Commercial => 0,
                 ResearchCategory.Infrastructure => 1,
                 ResearchCategory.PublicService => 2,
-                ResearchCategory.Expansion => 2,
                 _ => 2
             };
 

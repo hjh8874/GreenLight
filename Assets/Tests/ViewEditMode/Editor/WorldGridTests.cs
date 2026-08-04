@@ -338,6 +338,11 @@ namespace CityFlow.Tests
                 Assert.AreEqual(
                     36,
                     worldGrid.CreateSnapshot().UnlockedChunkIndices.Length);
+                Assert.IsTrue(expansion.IsStageUnlocked("center_020"));
+                Assert.IsTrue(expansion.IsStageUnlocked("center_040"));
+                Assert.IsTrue(expansion.IsStageUnlocked("center_060"));
+                Assert.IsFalse(expansion.IsStageUnlocked("center_080"));
+                Assert.IsFalse(expansion.IsStageUnlocked("missing_stage"));
                 Assert.IsFalse(expansion.TryUnlockStage("center_040"));
                 Assert.IsFalse(expansion.TryUnlockStage("missing_stage"));
             }

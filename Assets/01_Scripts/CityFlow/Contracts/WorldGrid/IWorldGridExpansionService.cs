@@ -10,6 +10,7 @@ namespace CityFlow.Contracts
 
         event Action<WorldGridStageChangedEvent> StageChanged;
 
+        bool IsStageUnlocked(string stageId);
         bool TryUnlockNextStage();
         bool TryUnlockStage(string stageId);
         bool TryResetToInitialStage();

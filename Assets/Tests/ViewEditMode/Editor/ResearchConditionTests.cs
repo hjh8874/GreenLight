@@ -5,6 +5,7 @@ using CityFlow.Contracts;
 using CityFlow.Gameplay.Research;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 // 기본 에디터 어셈블리. 실행: run_tests(group_names=[".*ResearchConditionTests.*"])
 public class ResearchConditionTests
@@ -269,6 +270,82 @@ public class ResearchConditionTests
         }
     }
 
+    [Test]
+    public void FailedExpansionReward_LogsResearchAndStage()
+    {
+        var owner = new GameObject("failed_expansion_research");
+        var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+        try
+        {
+            var service = owner.AddComponent<ResearchUnlockService>();
+            ConfigureExpansionCatalog(
+                catalog,
+                "research_expansion_center_040",
+                "center_040");
+            SetPrivateField(service, "catalog", catalog);
+
+            var services = new CityFlowServices(
+                new SimEventHub(), null, null);
+            var expansion = new FakeWorldGridExpansion
+            {
+                RejectStageRequests = true
+            };
+            Assert.IsTrue(services.RegisterWorldGridExpansion(expansion));
+            service.Initialize(services);
+            SetTestInputs(service, population: 10, arrivals: 0);
+            service.EvaluatePendingResearch();
+
+            LogAssert.Expect(
+                LogType.Warning,
+                "[ResearchUnlockService] Failed to apply expansion reward. " +
+                "Research=research_expansion_center_040, Stage=center_040.");
+            Assert.IsTrue(service.TryStartResearch(
+                "research_expansion_center_040"));
+            CollectionAssert.AreEqual(
+                new[] { "center_040" },
+                expansion.RequestedStages);
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(catalog);
+        }
+    }
+
+    [Test]
+    public void AlreadyUnlockedExpansionReward_DoesNotRequestStageAgain()
+    {
+        var owner = new GameObject("existing_expansion_research");
+        var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+        try
+        {
+            var service = owner.AddComponent<ResearchUnlockService>();
+            ConfigureExpansionCatalog(
+                catalog,
+                "research_expansion_center_040",
+                "center_040");
+            SetPrivateField(service, "catalog", catalog);
+
+            var services = new CityFlowServices(
+                new SimEventHub(), null, null);
+            var expansion = new FakeWorldGridExpansion();
+            expansion.MarkStageUnlocked("center_040", 1);
+            Assert.IsTrue(services.RegisterWorldGridExpansion(expansion));
+            service.Initialize(services);
+            SetTestInputs(service, population: 10, arrivals: 0);
+            service.EvaluatePendingResearch();
+
+            Assert.IsTrue(service.TryStartResearch(
+                "research_expansion_center_040"));
+            Assert.IsEmpty(expansion.RequestedStages);
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(catalog);
+        }
+    }
+
     static void ConfigureExpansionCatalog(
         ResearchCatalogSO catalog,
         string researchId,
@@ -355,18 +432,33 @@ public class ResearchConditionTests
 
     sealed class FakeWorldGridExpansion : IWorldGridExpansionService
     {
+        readonly HashSet<string> unlockedStages = new()
+        {
+            "center_020"
+        };
+
         public int CurrentStageIndex { get; private set; }
         public string CurrentStageId { get; private set; } = "center_020";
         public bool CanUnlockNextStage => true;
         public List<string> RequestedStages { get; } = new();
+        public bool RejectStageRequests { get; set; }
 
         public event System.Action<WorldGridStageChangedEvent> StageChanged;
+
+        public bool IsStageUnlocked(string stageId) =>
+            unlockedStages.Contains(stageId);
 
         public bool TryUnlockNextStage() => false;
 
         public bool TryUnlockStage(string stageId)
         {
             RequestedStages.Add(stageId);
+            if (RejectStageRequests)
+            {
+                return false;
+            }
+
+            unlockedStages.Add(stageId);
             CurrentStageId = stageId;
             CurrentStageIndex++;
             StageChanged?.Invoke(new WorldGridStageChangedEvent(
@@ -375,6 +467,13 @@ public class ResearchConditionTests
                 default,
                 WorldGridStageChangeReason.Unlocked));
             return true;
+        }
+
+        public void MarkStageUnlocked(string stageId, int stageIndex)
+        {
+            unlockedStages.Add(stageId);
+            CurrentStageId = stageId;
+            CurrentStageIndex = stageIndex;
         }
 
         public bool TryResetToInitialStage() => false;
