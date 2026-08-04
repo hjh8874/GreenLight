@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Contracts;
@@ -23,10 +24,13 @@ namespace CityFlow.Gameplay.Economy
         private int daysIntoCurrentWeek;
         private long lastProcessedTotalDays = -1L;
         private bool awaitingLegacyCalendarBaseline;
+        private readonly Dictionary<string, long> pendingBreakdown =
+            new Dictionary<string, long>();
         private long observedOnlineIncomeCoins;
         private double observedOnlineSeconds;
 
         public long PendingCoins => economySystem?.WeeklyAccumulatedCoin ?? 0L;
+        public IReadOnlyDictionary<string, long> PendingBreakdown => pendingBreakdown;
         public int DaysIntoCurrentWeek => daysIntoCurrentWeek;
         public int SettlementDays => Mathf.Max(1, economyConfig?.SettlementDays ?? 7);
         public double MaximumOfflineSeconds =>
@@ -131,6 +135,12 @@ namespace CityFlow.Gameplay.Economy
             }
 
             economySystem.RestoreWeeklyAccumulatedCoin(snapshot.PendingCoins);
+            pendingBreakdown.Clear();
+            long restoredPendingCoins = PendingCoins;
+            if (restoredPendingCoins > 0L)
+            {
+                pendingBreakdown["previous accrual"] = restoredPendingCoins;
+            }
             observedOnlineIncomeCoins = Math.Max(
                 0L,
                 snapshot.ObservedOnlineIncomeCoins);
@@ -219,6 +229,22 @@ namespace CityFlow.Gameplay.Economy
                 int chunk = (int)Math.Min(remaining, int.MaxValue);
                 economySystem.AddWeeklyIncome(chunk, reason);
                 remaining -= chunk;
+            }
+
+            if (acceptedAmount > 0L)
+            {
+                string safeReason = string.IsNullOrEmpty(reason)
+                    ? "weekly income"
+                    : reason;
+                long current = pendingBreakdown.TryGetValue(
+                    safeReason,
+                    out long existing)
+                    ? existing
+                    : 0L;
+                pendingBreakdown[safeReason] = current >
+                    long.MaxValue - acceptedAmount
+                    ? long.MaxValue
+                    : current + acceptedAmount;
             }
 
             if (trackAsOnlineIncome && acceptedAmount > 0L)
@@ -348,6 +374,8 @@ namespace CityFlow.Gameplay.Economy
                 PublishPendingCoins();
                 return false;
             }
+
+            pendingBreakdown.Clear();
 
             PublishPendingCoins();
 

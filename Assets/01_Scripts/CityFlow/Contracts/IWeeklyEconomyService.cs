@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 
 namespace CityFlow.Contracts
 {
     public interface IWeeklyEconomyService
     {
         long PendingCoins { get; }
+        IReadOnlyDictionary<string, long> PendingBreakdown { get; }
         int DaysIntoCurrentWeek { get; }
         int SettlementDays { get; }
 
