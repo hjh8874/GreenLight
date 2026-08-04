@@ -106,6 +106,12 @@ namespace CityFlow.Sim.Tests
                 new(worldView);
             Assert.That(
                 worldViewSerialized
+                    .FindProperty("visualScale")
+                    .floatValue,
+                Is.EqualTo(1f).Within(0.0001f),
+                "The normalized school bus visual must use unit scale.");
+            Assert.That(
+                worldViewSerialized
                     .FindProperty("laneOffset"),
                 Is.Null,
                 "The school bus must use MainCityView's lane setting.");

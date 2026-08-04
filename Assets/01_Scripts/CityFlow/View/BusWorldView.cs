@@ -65,6 +65,11 @@ namespace CityFlow.View
         private bool observedSnapshotVisible;
         private RoadTrafficAgentState observedSnapshotState;
         private bool snapshotMissingLogged;
+        private SchoolBusService schoolBusService;
+        private float schoolBusInvisibleSeconds;
+        private bool schoolBusInvisibleLogged;
+        private float nextVehicleOverlapCheckTime;
+        private float nextVehicleOverlapWarningTime;
 
         private bool offRoadTransitionActive;
         private bool transitionEndsOnRoad;
@@ -211,22 +216,26 @@ namespace CityFlow.View
                  !cityBusService.IsVehicleVisible))
             {
                 HideCityBusVisual();
+                UpdateSchoolBusVisibilityDiagnostics();
                 return;
             }
 
             if (offRoadTransitionActive)
             {
                 UpdateOffRoadTransition();
+                UpdateSchoolBusVisibilityDiagnostics();
                 return;
             }
 
             UpdateRoadPose();
+            UpdateSchoolBusVisibilityDiagnostics();
         }
 
         private void ResolveReferences()
         {
             busRoute ??= GetComponent<BusRoute>();
             cityBusService ??= GetComponent<CityBusService>();
+            schoolBusService ??= GetComponent<SchoolBusService>();
             cityView ??= FindAnyObjectByType<MainCityView>();
 
             if (definition == null)
@@ -236,10 +245,118 @@ namespace CityFlow.View
 
             if (definition == null)
             {
-                SchoolBusService schoolBusService =
-                    GetComponent<SchoolBusService>();
                 definition = schoolBusService?.Definition;
             }
+        }
+
+        private void UpdateSchoolBusVisibilityDiagnostics()
+        {
+            if (schoolBusService == null)
+            {
+                return;
+            }
+
+            bool presentationExpected =
+                schoolBusService.IsOperating ||
+                schoolBusService.CurrentTrip != SchoolBusTripKind.None;
+            if (!presentationExpected)
+            {
+                schoolBusInvisibleSeconds = 0f;
+                schoolBusInvisibleLogged = false;
+                return;
+            }
+
+            Renderer[] renderers = visual != null
+                ? visual.GetComponentsInChildren<Renderer>(true)
+                : null;
+            int rendererCount = renderers?.Length ?? 0;
+            int renderableRendererCount = 0;
+            int zeroBoundsRendererCount = 0;
+            for (int i = 0; i < rendererCount; i++)
+            {
+                Renderer renderer = renderers[i];
+                bool hasBounds =
+                    renderer.localBounds.size.sqrMagnitude > 0.0001f;
+                zeroBoundsRendererCount += hasBounds ? 0 : 1;
+                if (renderer.enabled &&
+                    !renderer.forceRenderingOff &&
+                    hasBounds)
+                {
+                    renderableRendererCount++;
+                }
+            }
+
+            if (HasVisibleBus && renderableRendererCount > 0)
+            {
+                schoolBusInvisibleSeconds = 0f;
+                schoolBusInvisibleLogged = false;
+                return;
+            }
+
+            schoolBusInvisibleSeconds += Time.unscaledDeltaTime;
+            if (schoolBusInvisibleSeconds < 1f || schoolBusInvisibleLogged)
+            {
+                return;
+            }
+
+            schoolBusInvisibleLogged = true;
+            GameObject resolvedPrefab = busVisualPrefab != null
+                ? busVisualPrefab
+                : definition?.VehicleVisualPrefab;
+            RoadTrafficSnapshot snapshot = default;
+            bool hasTrafficSnapshot =
+                busRoute != null &&
+                busRoute.TryGetRoadTrafficSnapshot(
+                    out snapshot);
+            Vector2Int currentTile = busRoute != null
+                ? busRoute.CurrentTile
+                : default;
+            bool isAtSchool =
+                tileData != null &&
+                tileData.GetTileType(currentTile) == TileType.School;
+            bool hasSchoolParkingPose =
+                isAtSchool &&
+                TryGetSchoolParkingPose(
+                    currentTile,
+                    out _,
+                    out _);
+            string suspectedCause = resolvedPrefab == null
+                ? "vehicle visual prefab is missing"
+                : visual == null
+                    ? "visual instance was not created"
+                    : rendererCount == 0
+                        ? "visual contains no Renderer"
+                        : zeroBoundsRendererCount == rendererCount
+                            ? "all renderer bounds are zero"
+                            : isAtSchool && !hasSchoolParkingPose
+                                ? "school parking pose could not be resolved"
+                                : !isAtSchool && !hasTrafficSnapshot
+                                    ? "road traffic snapshot is missing"
+                                    : hasTrafficSnapshot && !snapshot.IsVisible
+                                        ? $"road traffic snapshot is hidden ({snapshot.State})"
+                                        : !visual.gameObject.activeSelf
+                                            ? "visual instance was not activated"
+                                            : "visual root is inactive in the hierarchy";
+            string trafficSummary = hasTrafficSnapshot
+                ? $"{snapshot.State}/visible={snapshot.IsVisible}"
+                : "missing";
+
+            Debug.LogWarning(
+                "[SchoolBusVisibility] School bus should be visible but its " +
+                $"presentation is unavailable. cause={suspectedCause}, " +
+                $"serviceState={schoolBusService.State}, " +
+                $"trip={schoolBusService.CurrentTrip}, " +
+                $"routeState={(busRoute != null ? busRoute.State : default)}, " +
+                $"tile={currentTile}, traffic={trafficSummary}, " +
+                $"prefab={(resolvedPrefab != null ? resolvedPrefab.name : "<null>")}, " +
+                $"visualExists={visual != null}, " +
+                $"activeSelf={(visual != null && visual.gameObject.activeSelf)}, " +
+                $"activeInHierarchy={HasVisibleBus}, " +
+                $"renderers={rendererCount}, " +
+                $"renderableRenderers={renderableRendererCount}, " +
+                $"zeroBoundsRenderers={zeroBoundsRendererCount}, " +
+                $"atSchool={isAtSchool}, parkingPose={hasSchoolParkingPose}.",
+                this);
         }
 
         private void Subscribe()
@@ -822,6 +939,33 @@ namespace CityFlow.View
             ApplyPose(
                 position,
                 new Vector2(sample.Dir.x, sample.Dir.y));
+            UpdateVehicleOverlapDiagnostics(snapshot);
+        }
+
+        private void UpdateVehicleOverlapDiagnostics(
+            RoadTrafficSnapshot snapshot)
+        {
+            if (cityView == null ||
+                visual == null ||
+                Time.unscaledTime < nextVehicleOverlapCheckTime)
+            {
+                return;
+            }
+
+            nextVehicleOverlapCheckTime = Time.unscaledTime + 0.2f;
+            if (!cityView.TryBuildCommuteVehicleOverlapDiagnostic(
+                    visual,
+                    snapshot,
+                    out string diagnostic) ||
+                Time.unscaledTime < nextVehicleOverlapWarningTime)
+            {
+                return;
+            }
+
+            nextVehicleOverlapWarningTime = Time.unscaledTime + 1.5f;
+            Debug.LogWarning(
+                $"[VehicleOverlap] {diagnostic}",
+                this);
         }
 
         private void BeginOffRoadTransition(

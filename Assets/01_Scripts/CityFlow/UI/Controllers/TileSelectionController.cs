@@ -4,6 +4,7 @@ using UnityEngine.InputSystem;
 using CityFlow.Contracts;
 using CityFlow.UI.Controllers;
 using CityFlow.Bootstrap;
+using CityFlow.View;
 
 namespace CityFlow.UI
 {
@@ -20,6 +21,7 @@ namespace CityFlow.UI
         [SerializeField] private BuildingInfoCardController buildingInfoCard;
         [SerializeField] private PlacementController placementController;
         private InfrastructurePlacementCoordinator _infraCoordinator;
+        private MainCityView _mainCityView;
 
         private float _searchTimer = 0f;
         private Vector2Int? _lastHoveredBuildingCoord;
@@ -243,14 +245,15 @@ namespace CityFlow.UI
 
         private void SelectTile(Vector2Int coord)
         {
+            TileType selectedType = _services != null && _services.TileData != null
+                ? _services.TileData.GetTileType(coord)
+                : TileType.Empty;
+
             // 하이라이트 박스 이동
             if (highlightBox != null)
             {
                 highlightBox.SetActive(true);
-                TileType type = _services != null && _services.TileData != null
-                    ? _services.TileData.GetTileType(coord)
-                    : TileType.Empty;
-                Vector2Int size = TileFootprint.GetSize(type);
+                Vector2Int size = TileFootprint.GetSize(selectedType);
                 float offsetX = (size.x - 1) * 0.5f;
                 float offsetY = (size.y - 1) * 0.5f;
                 float markerZ = placementController != null
@@ -297,6 +300,23 @@ namespace CityFlow.UI
             if (analysisCard != null)
             {
                 analysisCard.OpenCard(coord);
+            }
+
+            if (selectedType == TileType.School)
+            {
+                _mainCityView ??= FindAnyObjectByType<MainCityView>(
+                    FindObjectsInactive.Include);
+                if (_mainCityView != null)
+                {
+                    _mainCityView.LogSchoolVisualDiagnostics(coord);
+                }
+                else
+                {
+                    Debug.LogWarning(
+                        "[SchoolVisualDiagnostics] School was selected, but MainCityView " +
+                        "was not found. The runtime school model cannot be inspected.",
+                        this);
+                }
             }
             
             Debug.Log($"[TileSelection] 타일 선택됨: {coord}");
