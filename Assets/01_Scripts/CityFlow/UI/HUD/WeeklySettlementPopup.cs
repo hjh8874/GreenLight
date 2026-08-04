@@ -61,8 +61,20 @@ namespace CityFlow.UI
             ApplyHiddenState();
         }
 
+        private void OnDisable()
+        {
+            if (presentationRoutine != null)
+            {
+                StopCoroutine(presentationRoutine);
+                presentationRoutine = null;
+            }
+
+            SetInteractionEnabled(false);
+        }
+
         private void OnDestroy()
         {
+            SetInteractionEnabled(false);
             backdropButton?.onClick.RemoveListener(Hide);
 
             if (services != null)
@@ -195,8 +207,11 @@ namespace CityFlow.UI
         private void SetInteractionEnabled(bool enabled)
         {
             IsInteractionBlocked = enabled;
-            canvasGroup.interactable = enabled;
-            canvasGroup.blocksRaycasts = enabled;
+            if (canvasGroup != null)
+            {
+                canvasGroup.interactable = enabled;
+                canvasGroup.blocksRaycasts = enabled;
+            }
         }
 
         private static float NormalizedProgress(float elapsed, float duration)

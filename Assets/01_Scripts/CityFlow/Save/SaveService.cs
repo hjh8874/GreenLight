@@ -470,7 +470,7 @@ namespace CityFlow.Save
             {
                 Debug.LogWarning(
                     $"Save restore completion failed.\n{exception.Message}");
-
+                return false;
             }
 
             Debug.Log("Game save loaded and restored.");
