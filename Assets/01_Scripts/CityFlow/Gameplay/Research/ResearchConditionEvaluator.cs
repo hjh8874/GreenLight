@@ -14,7 +14,9 @@ namespace CityFlow.Gameplay.Research
         [InspectorName("인프라")]
         Infrastructure,
         [InspectorName("공공")]
-        PublicService
+        PublicService,
+        [InspectorName("개척")]
+        Expansion
     }
 
     [Serializable]
@@ -69,6 +71,10 @@ namespace CityFlow.Gameplay.Research
         [InspectorName("연구 시간 (게임 시간)")]
         [Min(0)]
         public int researchDurationHours;
+
+        [InspectorName("개척 완료 단계 ID")]
+        [Tooltip("개척 연구 완료 시 해금할 WorldGridUnlockProfile 단계 ID입니다. 일반 연구는 비워 둡니다.")]
+        public string worldGridStageId;
 
         [InspectorName("해금 조건 목록 (모두 만족)")]
         [Tooltip("하나 이상 등록하면 위 단일 조건 대신 이 조건들을 모두 만족해야 합니다.")]

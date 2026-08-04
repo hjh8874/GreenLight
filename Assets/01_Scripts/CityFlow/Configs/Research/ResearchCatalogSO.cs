@@ -50,6 +50,14 @@ namespace CityFlow.Content
                         $"[ResearchCatalogSO] 연구 {result[i].researchId}의 " +
                         $"전제 id가 없다: {prerequisiteId}. 루트로 취급한다.", this);
                 }
+
+                if (result[i].category == ResearchCategory.Expansion &&
+                    string.IsNullOrWhiteSpace(result[i].worldGridStageId))
+                {
+                    Debug.LogWarning(
+                        $"[ResearchCatalogSO] 개척 연구 {result[i].researchId}의 " +
+                        "월드 확장 단계 ID가 비어 있다.", this);
+                }
             }
             return result;
         }

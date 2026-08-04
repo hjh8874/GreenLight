@@ -199,6 +199,100 @@ public class ResearchConditionTests
         }
     }
 
+    [Test]
+    public void CompletedExpansionResearch_UnlocksConfiguredWorldStage()
+    {
+        var owner = new GameObject("expansion_research");
+        var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+        try
+        {
+            var service = owner.AddComponent<ResearchUnlockService>();
+            ConfigureExpansionCatalog(
+                catalog,
+                "research_expansion_center_040",
+                "center_040");
+            SetPrivateField(service, "catalog", catalog);
+
+            var services = new CityFlowServices(
+                new SimEventHub(), null, null);
+            var expansion = new FakeWorldGridExpansion();
+            Assert.IsTrue(services.RegisterWorldGridExpansion(expansion));
+            service.Initialize(services);
+            SetTestInputs(service, population: 10, arrivals: 0);
+            service.EvaluatePendingResearch();
+
+            Assert.IsTrue(service.TryStartResearch(
+                "research_expansion_center_040"));
+            CollectionAssert.AreEqual(
+                new[] { "center_040" },
+                expansion.RequestedStages);
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(catalog);
+        }
+    }
+
+    [Test]
+    public void ExpansionServiceRegisteredLater_AppliesCompletedResearchReward()
+    {
+        var owner = new GameObject("deferred_expansion_research");
+        var catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+        try
+        {
+            var service = owner.AddComponent<ResearchUnlockService>();
+            ConfigureExpansionCatalog(
+                catalog,
+                "research_expansion_center_040",
+                "center_040");
+            SetPrivateField(service, "catalog", catalog);
+
+            var services = new CityFlowServices(
+                new SimEventHub(), null, null);
+            service.Initialize(services);
+            SetTestInputs(service, population: 10, arrivals: 0);
+            service.EvaluatePendingResearch();
+            Assert.IsTrue(service.TryStartResearch(
+                "research_expansion_center_040"));
+
+            var expansion = new FakeWorldGridExpansion();
+            Assert.IsTrue(services.RegisterWorldGridExpansion(expansion));
+            CollectionAssert.AreEqual(
+                new[] { "center_040" },
+                expansion.RequestedStages);
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(catalog);
+        }
+    }
+
+    static void ConfigureExpansionCatalog(
+        ResearchCatalogSO catalog,
+        string researchId,
+        string stageId)
+    {
+        var serialized = new UnityEditor.SerializedObject(catalog);
+        UnityEditor.SerializedProperty list =
+            serialized.FindProperty("entries");
+        list.arraySize = 1;
+        UnityEditor.SerializedProperty entry =
+            list.GetArrayElementAtIndex(0);
+        entry.FindPropertyRelative("researchId").stringValue = researchId;
+        entry.FindPropertyRelative("displayName").stringValue = researchId;
+        entry.FindPropertyRelative("category").enumValueIndex =
+            (int)ResearchCategory.Expansion;
+        entry.FindPropertyRelative("conditionKind").enumValueIndex =
+            (int)ResearchConditionKind.Population;
+        entry.FindPropertyRelative("threshold").intValue = 0;
+        entry.FindPropertyRelative("researchCost").intValue = 0;
+        entry.FindPropertyRelative("researchDurationHours").intValue = 0;
+        entry.FindPropertyRelative("worldGridStageId").stringValue = stageId;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+    }
+
     static void ConfigureCatalog(ResearchCatalogSO catalog,
         params (string id, ResearchConditionKind kind, int threshold)[] rows)
     {
@@ -257,5 +351,32 @@ public class ResearchConditionTests
         public System.Collections.Generic.IReadOnlyList<CommuterHomeCount>
             GetCompanyCommuterHomes(Vector2Int tile) =>
             System.Array.Empty<CommuterHomeCount>();
+    }
+
+    sealed class FakeWorldGridExpansion : IWorldGridExpansionService
+    {
+        public int CurrentStageIndex { get; private set; }
+        public string CurrentStageId { get; private set; } = "center_020";
+        public bool CanUnlockNextStage => true;
+        public List<string> RequestedStages { get; } = new();
+
+        public event System.Action<WorldGridStageChangedEvent> StageChanged;
+
+        public bool TryUnlockNextStage() => false;
+
+        public bool TryUnlockStage(string stageId)
+        {
+            RequestedStages.Add(stageId);
+            CurrentStageId = stageId;
+            CurrentStageIndex++;
+            StageChanged?.Invoke(new WorldGridStageChangedEvent(
+                stageId,
+                CurrentStageIndex,
+                default,
+                WorldGridStageChangeReason.Unlocked));
+            return true;
+        }
+
+        public bool TryResetToInitialStage() => false;
     }
 }

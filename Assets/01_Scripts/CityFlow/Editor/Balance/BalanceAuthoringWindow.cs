@@ -5,6 +5,7 @@ using System.Linq;
 using CityFlow.Configs;
 using CityFlow.Content;
 using CityFlow.Contracts;
+using CityFlow.EditorTools.Save;
 using CityFlow.Gameplay.Research;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -15,6 +16,12 @@ namespace CityFlow.EditorTools.Balance
 {
     public sealed class BalanceAuthoringWindow : EditorWindow
     {
+        internal enum ResearchBalanceSection
+        {
+            BuildingUnlock,
+            Expansion
+        }
+
         internal const string SourceScenePath =
             "Assets/00_Scenes/CityFlowIntegrated_cmt.unity";
         internal const string BalanceScenePath =
@@ -145,10 +152,20 @@ namespace CityFlow.EditorTools.Balance
         private string selectedGroup = "핵심";
         private int selectedEntryIndex;
         private int selectedResearchIndex;
+        private ResearchBalanceSection selectedResearchSection;
         private bool showResearchAdvanced;
         private Dictionary<string, string> researchUnlockLabels;
         private UnityEditor.Editor cachedAssetEditor;
         private UnityEngine.Object cachedTarget;
+
+        internal static bool IsResearchInSection(
+            ResearchCategory category,
+            ResearchBalanceSection section)
+        {
+            bool isExpansion = category == ResearchCategory.Expansion;
+            return isExpansion ==
+                   (section == ResearchBalanceSection.Expansion);
+        }
 
         [MenuItem("CityFlow/Balance/밸런스 편집기 열기")]
         public static void OpenWindow()
@@ -253,6 +270,23 @@ namespace CityFlow.EditorTools.Balance
                 GUI.backgroundColor = Color.white;
             }
 
+            using (new EditorGUI.DisabledScope(
+                       EditorApplication.isPlayingOrWillChangePlaymode ||
+                       EditorApplication.isCompiling ||
+                       EditorApplication.isUpdating))
+            {
+                GUI.backgroundColor = new Color(1f, 0.55f, 0.55f);
+                if (GUILayout.Button(
+                        "현재 게임 진행 데이터만 초기화",
+                        GUILayout.Height(24f)))
+                {
+                    GameProgressResetTool.ConfirmAndReset();
+                    GUIUtility.ExitGUI();
+                }
+
+                GUI.backgroundColor = Color.white;
+            }
+
             EditorGUILayout.LabelField(
                 $"테스트 Scene: {BalanceScenePath}",
                 EditorStyles.miniLabel);
@@ -303,6 +337,19 @@ namespace CityFlow.EditorTools.Balance
 
                 for (int i = 0; i < groupEntries.Length; i++)
                 {
+                    if (groupEntries[i].Label == "건물 해금 연구")
+                    {
+                        DrawResearchNavigationButton(
+                            i,
+                            ResearchBalanceSection.BuildingUnlock,
+                            "건물 해금 연구");
+                        DrawResearchNavigationButton(
+                            i,
+                            ResearchBalanceSection.Expansion,
+                            "개척 시스템");
+                        continue;
+                    }
+
                     if (GUILayout.Toggle(
                             i == selectedEntryIndex,
                             groupEntries[i].Label,
@@ -315,6 +362,29 @@ namespace CityFlow.EditorTools.Balance
                     }
                 }
             }
+        }
+
+        private void DrawResearchNavigationButton(
+            int entryIndex,
+            ResearchBalanceSection section,
+            string label)
+        {
+            bool selected = selectedEntryIndex == entryIndex &&
+                            selectedResearchSection == section;
+            if (!GUILayout.Toggle(
+                    selected,
+                    label,
+                    EditorStyles.miniButtonLeft) ||
+                selected)
+            {
+                return;
+            }
+
+            selectedEntryIndex = entryIndex;
+            selectedResearchSection = section;
+            selectedResearchIndex = -1;
+            scroll = Vector2.zero;
+            DestroyCachedEditor();
         }
 
         private void DrawSelectedAsset()
@@ -333,12 +403,18 @@ namespace CityFlow.EditorTools.Balance
                 0,
                 groupEntries.Length - 1);
             BalanceEntry entry = groupEntries[selectedEntryIndex];
+            bool isResearchEntry = entry.Label == "건물 해금 연구";
+            string selectedLabel = isResearchEntry &&
+                                   selectedResearchSection ==
+                                   ResearchBalanceSection.Expansion
+                ? "개척 시스템"
+                : entry.Label;
             UnityEngine.Object target =
                 AssetDatabase.LoadMainAssetAtPath(entry.WorkingPath);
 
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
-                EditorGUILayout.LabelField(entry.Label, EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(selectedLabel, EditorStyles.boldLabel);
                 EditorGUILayout.LabelField(
                     $"작업용: {entry.WorkingPath}",
                     EditorStyles.miniLabel);
@@ -357,12 +433,21 @@ namespace CityFlow.EditorTools.Balance
                         "하루 길이는 '시간 > 게임 시간'에서 조정하세요.",
                         MessageType.Info);
                 }
-                else if (entry.Label == "건물 해금 연구")
+                else if (isResearchEntry &&
+                         selectedResearchSection ==
+                         ResearchBalanceSection.BuildingUnlock)
                 {
                     EditorGUILayout.HelpBox(
                         "연구별 선행 연구, 해금 조건, 비용, 게임 내 연구 시간을 조정합니다. " +
                         "조건 목록이 비어 있으면 기존 단일 조건을 사용하고, 조건을 여러 개 넣으면 모두 만족해야 합니다. " +
                         "연구 ID는 건물 해금 연결에 사용되므로 변경할 때 주의하세요.",
+                        MessageType.Info);
+                }
+                else if (isResearchEntry)
+                {
+                    EditorGUILayout.HelpBox(
+                        "개척 단계별 조건, 비용, 게임 내 연구 시간과 확장 단계 연결을 조정합니다. " +
+                        "완료한 연구의 확장 단계 ID가 월드 확장 설정과 연결됩니다.",
                         MessageType.Info);
                 }
 
@@ -374,10 +459,10 @@ namespace CityFlow.EditorTools.Balance
                     return;
                 }
 
-                if (entry.Label == "건물 해금 연구")
+                if (isResearchEntry)
                 {
                     scroll = EditorGUILayout.BeginScrollView(scroll);
-                    DrawResearchCatalog(target);
+                    DrawResearchCatalog(target, selectedResearchSection);
                     EditorGUILayout.EndScrollView();
                     return;
                 }
@@ -652,7 +737,9 @@ namespace CityFlow.EditorTools.Balance
             }
         }
 
-        private void DrawResearchCatalog(UnityEngine.Object target)
+        private void DrawResearchCatalog(
+            UnityEngine.Object target,
+            ResearchBalanceSection section)
         {
             var serialized = new SerializedObject(target);
             serialized.Update();
@@ -666,26 +753,46 @@ namespace CityFlow.EditorTools.Balance
                 return;
             }
 
-            selectedResearchIndex = Mathf.Clamp(
-                selectedResearchIndex,
-                0,
-                entries.arraySize - 1);
-
-            string[] researchLabels = new string[entries.arraySize];
+            var matchingIndices = new List<int>();
             for (int index = 0; index < entries.arraySize; index++)
             {
-                researchLabels[index] = GetResearchLabel(
-                    entries.GetArrayElementAtIndex(index),
-                    index);
+                SerializedProperty entry =
+                    entries.GetArrayElementAtIndex(index);
+                SerializedProperty category =
+                    entry.FindPropertyRelative("category");
+                ResearchCategory researchCategory = category != null
+                    ? (ResearchCategory)category.enumValueIndex
+                    : ResearchCategory.Commercial;
+                if (IsResearchInSection(researchCategory, section))
+                {
+                    matchingIndices.Add(index);
+                }
             }
+
+            if (matchingIndices.Count == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    section == ResearchBalanceSection.Expansion
+                        ? "설정할 개척 단계가 없습니다."
+                        : "설정할 건물 해금 연구가 없습니다.",
+                    MessageType.Warning);
+                return;
+            }
+
+            int popupIndex = matchingIndices.IndexOf(selectedResearchIndex);
+            popupIndex = popupIndex >= 0 ? popupIndex : 0;
+            string[] researchLabels = matchingIndices
+                .Select(index => GetResearchLabel(
+                    entries.GetArrayElementAtIndex(index),
+                    index))
+                .ToArray();
 
             EditorGUILayout.Space(4f);
             EditorGUILayout.LabelField(
                 "1. 수정할 연구 선택",
                 EditorStyles.boldLabel);
-            selectedResearchIndex = EditorGUILayout.Popup(
-                selectedResearchIndex,
-                researchLabels);
+            popupIndex = EditorGUILayout.Popup(popupIndex, researchLabels);
+            selectedResearchIndex = matchingIndices[popupIndex];
 
             SerializedProperty selectedEntry =
                 entries.GetArrayElementAtIndex(
@@ -694,14 +801,20 @@ namespace CityFlow.EditorTools.Balance
                 selectedEntry.FindPropertyRelative("researchId")
                     ?.stringValue ?? string.Empty).Trim();
 
-            DrawUnlockedBuildingSummary(
-                selectedResearchId);
+            if (section == ResearchBalanceSection.BuildingUnlock)
+            {
+                DrawUnlockedBuildingSummary(selectedResearchId);
+            }
+            else
+            {
+                DrawExpansionStageSummary(selectedEntry);
+            }
 
             EditorGUILayout.Space(8f);
             using (new EditorGUILayout.VerticalScope(
                        EditorStyles.helpBox))
             {
-                DrawResearchIdentity(entries, selectedEntry);
+                DrawResearchIdentity(entries, selectedEntry, section);
             }
 
             EditorGUILayout.Space(6f);
@@ -743,6 +856,21 @@ namespace CityFlow.EditorTools.Balance
             {
                 EditorUtility.SetDirty(target);
             }
+        }
+
+        private static void DrawExpansionStageSummary(
+            SerializedProperty selectedEntry)
+        {
+            string stageId = (
+                selectedEntry.FindPropertyRelative("worldGridStageId")
+                    ?.stringValue ?? string.Empty).Trim();
+            EditorGUILayout.HelpBox(
+                stageId.Length > 0
+                    ? $"연구 완료 후 적용할 개척 단계: {stageId}"
+                    : "연결된 개척 단계가 없습니다. 확장 단계 ID를 설정해 주세요.",
+                stageId.Length > 0
+                    ? MessageType.Info
+                    : MessageType.Warning);
         }
 
         private void DrawUnlockedBuildingSummary(
@@ -862,7 +990,8 @@ namespace CityFlow.EditorTools.Balance
 
         private static void DrawResearchIdentity(
             SerializedProperty entries,
-            SerializedProperty selectedEntry)
+            SerializedProperty selectedEntry,
+            ResearchBalanceSection section)
         {
             EditorGUILayout.LabelField(
                 "2. 이름과 선행 연구",
@@ -874,18 +1003,40 @@ namespace CityFlow.EditorTools.Balance
                     "화면 표시 이름",
                     "게임 연구 화면에 보이는 이름입니다."));
 
-            EditorGUILayout.PropertyField(
-                selectedEntry.FindPropertyRelative("category"),
-                new GUIContent(
-                    "해금 카테고리",
-                    "게임 연구 화면에서 이 건물이 표시될 카테고리입니다."));
+            SerializedProperty category =
+                selectedEntry.FindPropertyRelative("category");
+            if (section == ResearchBalanceSection.BuildingUnlock)
+            {
+                EditorGUILayout.PropertyField(
+                    category,
+                    new GUIContent(
+                        "해금 카테고리",
+                        "게임 연구 화면에서 이 건물이 표시될 카테고리입니다."));
+            }
+            else
+            {
+                EditorGUILayout.LabelField("설정 종류", "개척");
+            }
 
-            DrawPrerequisitePopup(entries, selectedEntry);
+            if (category != null &&
+                category.enumValueIndex ==
+                (int)ResearchCategory.Expansion)
+            {
+                EditorGUILayout.PropertyField(
+                    selectedEntry.FindPropertyRelative(
+                        "worldGridStageId"),
+                    new GUIContent(
+                        "확장 단계 ID",
+                        "연구 완료 시 해금할 WorldGridUnlockProfile 단계 ID입니다."));
+            }
+
+            DrawPrerequisitePopup(entries, selectedEntry, section);
         }
 
         private static void DrawPrerequisitePopup(
             SerializedProperty entries,
-            SerializedProperty selectedEntry)
+            SerializedProperty selectedEntry,
+            ResearchBalanceSection section)
         {
             SerializedProperty selectedIdProperty =
                 selectedEntry.FindPropertyRelative("researchId");
@@ -911,6 +1062,19 @@ namespace CityFlow.EditorTools.Balance
             {
                 SerializedProperty candidate =
                     entries.GetArrayElementAtIndex(index);
+                SerializedProperty candidateCategory =
+                    candidate.FindPropertyRelative("category");
+                ResearchCategory candidateResearchCategory =
+                    candidateCategory != null
+                        ? (ResearchCategory)candidateCategory.enumValueIndex
+                        : ResearchCategory.Commercial;
+                if (!IsResearchInSection(
+                        candidateResearchCategory,
+                        section))
+                {
+                    continue;
+                }
+
                 string candidateId =
                     candidate.FindPropertyRelative("researchId")
                         ?.stringValue?.Trim() ?? string.Empty;
@@ -1244,6 +1408,20 @@ namespace CityFlow.EditorTools.Balance
                 if (prerequisiteId.Length > 0)
                 {
                     prerequisiteIds.Add((researchId, prerequisiteId));
+                }
+
+                SerializedProperty category =
+                    entry.FindPropertyRelative("category");
+                string worldGridStageId = (
+                    entry.FindPropertyRelative("worldGridStageId")
+                        ?.stringValue ?? string.Empty).Trim();
+                if (category != null &&
+                    category.enumValueIndex ==
+                    (int)ResearchCategory.Expansion &&
+                    worldGridStageId.Length == 0)
+                {
+                    validationMessages.Add(
+                        $"개척 연구 {researchId}의 확장 단계 ID가 비어 있습니다.");
                 }
 
                 ValidateNonNegative(
