@@ -91,6 +91,17 @@ namespace CityFlow.WorldGrid
                        publishEvent: true);
         }
 
+        public bool IsStageUnlocked(string stageId)
+        {
+            if (!initialized || profile == null)
+            {
+                return false;
+            }
+
+            int stageIndex = profile.FindStageIndex(stageId);
+            return stageIndex >= 0 && stageIndex <= currentStageIndex;
+        }
+
         public bool TryUnlockStage(string stageId)
         {
             if (!initialized || profile == null)

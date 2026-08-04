@@ -102,6 +102,44 @@ namespace CityFlow.Sim.Tests
                         BalanceAuthoringWindow.ResearchCatalogPath)));
         }
 
+        [TestCase(
+            ResearchCategory.Commercial,
+            0,
+            true)]
+        [TestCase(
+            ResearchCategory.Infrastructure,
+            0,
+            true)]
+        [TestCase(
+            ResearchCategory.PublicService,
+            0,
+            true)]
+        [TestCase(
+            ResearchCategory.Expansion,
+            0,
+            false)]
+        [TestCase(
+            ResearchCategory.Expansion,
+            1,
+            true)]
+        [TestCase(
+            ResearchCategory.PublicService,
+            1,
+            false)]
+        public void ResearchBalanceSections_SeparateExpansionFromBuildingUnlocks(
+            ResearchCategory category,
+            int sectionValue,
+            bool expected)
+        {
+            var section =
+                (BalanceAuthoringWindow.ResearchBalanceSection)sectionValue;
+            Assert.That(
+                BalanceAuthoringWindow.IsResearchInSection(
+                    category,
+                    section),
+                Is.EqualTo(expected));
+        }
+
         [Test]
         public void LockedBuildings_HavePaidTimedResearchEntries()
         {

@@ -304,7 +304,9 @@ namespace CityFlow.UI
         {
             if (row.IsUnlocked)
             {
-                return "연구 완료 · 건설 가능";
+                return row.Entry.category == ResearchCategory.Expansion
+                    ? "모든 지역 개척 완료"
+                    : "연구 완료 · 건설 가능";
             }
 
             if (row.IsResearching)
@@ -438,6 +440,12 @@ namespace CityFlow.UI
             int[] categoryCounts = new int[3];
             for (int i = 0; i < rows.Count; i++)
             {
+                if (rows[i].Entry.category ==
+                    ResearchCategory.Expansion)
+                {
+                    continue;
+                }
+
                 int categoryColumn =
                     GetOverallCategoryColumn(rows[i].Entry.category);
                 categoryCounts[categoryColumn]++;

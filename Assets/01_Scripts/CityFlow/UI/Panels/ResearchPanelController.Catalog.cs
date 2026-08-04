@@ -43,6 +43,10 @@ namespace CityFlow.UI
 
         private void EnsureCatalogPresentation()
         {
+            // The unlock catalog replaces this legacy summary. Hide it even when
+            // the rest of the catalog presentation has already been prepared.
+            SetHeaderVisible(yesterdayArrivalsText, false);
+
             if (catalogPresentationReady)
             {
                 BindUnlockMenuButton();
@@ -150,12 +154,18 @@ namespace CityFlow.UI
             SetHeaderVisible(unlockProgressText, catalogVisible);
 
             int visibleIndex = 0;
+            bool expansionSelected =
+                selectedCategory == ResearchCategory.Expansion;
+            Row currentExpansion = expansionSelected
+                ? FindCurrentExpansionRow()
+                : null;
             for (int index = 0; index < rows.Count; index++)
             {
                 Row row = rows[index];
-                bool matches =
-                    !selectedCategory.HasValue ||
-                    row.Entry.category == selectedCategory.Value;
+                bool matches = selectedCategory.HasValue
+                    ? row.Entry.category == selectedCategory.Value &&
+                      (!expansionSelected || row == currentExpansion)
+                    : row.Entry.category != ResearchCategory.Expansion;
                 bool visible = catalogVisible && matches;
                 row.Instance.SetActive(visible);
                 if (!visible)
@@ -167,7 +177,9 @@ namespace CityFlow.UI
                 int column = selectedCategory.HasValue
                     ? 0
                     : GetOverallCategoryColumn(row.Entry.category);
-                int line = selectedCategory.HasValue
+                int line = expansionSelected
+                    ? 0
+                    : selectedCategory.HasValue
                     ? GetVerticalListIndex(row)
                     : GetOverallCategoryListIndex(row);
                 RectTransform panel = GetComponent<RectTransform>();
@@ -198,17 +210,80 @@ namespace CityFlow.UI
                 visibleIndex++;
             }
 
-            UpdateConnectorGeometry();
+            ResizePanelToGrid();
 
-            for (int index = 0; index < connectors.Count; index++)
-            {
-                connectors[index].SetActive(
-                    catalogVisible &&
-                    !selectedCategory.HasValue);
-            }
+            UpdateConnectorGeometry();
+            UpdateConnectorVisibility();
 
             UpdateCategoryTabColors();
             UpdateUnlockButtonColor();
+        }
+
+        private Row FindCurrentExpansionRow()
+        {
+            Row lastCompleted = null;
+            for (int index = 0; index < rows.Count; index++)
+            {
+                Row row = rows[index];
+                if (row.Entry.category != ResearchCategory.Expansion)
+                {
+                    continue;
+                }
+
+                if (row.IsResearching)
+                {
+                    return row;
+                }
+
+                if (!row.IsUnlocked)
+                {
+                    return row;
+                }
+
+                lastCompleted = row;
+            }
+
+            return lastCompleted;
+        }
+
+        private void UpdateConnectorVisibility()
+        {
+            var rowById = new Dictionary<string, Row>(
+                StringComparer.Ordinal);
+            for (int index = 0; index < rows.Count; index++)
+            {
+                rowById[Normalize(rows[index].Entry.researchId)] =
+                    rows[index];
+            }
+
+            int connectorIndex = 0;
+            for (int index = 0; index < rows.Count; index++)
+            {
+                Row child = rows[index];
+                string prerequisite = Normalize(
+                    child.Entry.prerequisiteId);
+                if (prerequisite.Length == 0 ||
+                    !rowById.TryGetValue(prerequisite, out Row parent))
+                {
+                    continue;
+                }
+
+                if (connectorIndex >= connectors.Count)
+                {
+                    break;
+                }
+
+                connectors[connectorIndex++].SetActive(
+                    catalogVisible &&
+                    !selectedCategory.HasValue &&
+                    parent.Instance.activeSelf &&
+                    child.Instance.activeSelf);
+            }
+
+            while (connectorIndex < connectors.Count)
+            {
+                connectors[connectorIndex++].SetActive(false);
+            }
         }
 
         private int GetVerticalListIndex(Row target)
@@ -365,7 +440,7 @@ namespace CityFlow.UI
                 categoryBar.pivot = new Vector2(0f, 1f);
                 categoryBar.anchoredPosition =
                     new Vector2(PanelPadding, -108f);
-                categoryBar.sizeDelta = new Vector2(604f, 36f);
+                categoryBar.sizeDelta = new Vector2(730f, 36f);
             }
 
             if (categoryTabs.Count > 0)
@@ -389,6 +464,11 @@ namespace CityFlow.UI
                 "공공",
                 styleSource,
                 3);
+            CreateCategoryTab(
+                ResearchCategory.Expansion,
+                "개척",
+                styleSource,
+                4);
         }
 
         private void CreateCategoryTab(
@@ -1074,6 +1154,7 @@ namespace CityFlow.UI
                 ResearchCategory.Commercial => "상업",
                 ResearchCategory.Infrastructure => "인프라",
                 ResearchCategory.PublicService => "공공",
+                ResearchCategory.Expansion => "개척",
                 _ => "기타"
             };
     }

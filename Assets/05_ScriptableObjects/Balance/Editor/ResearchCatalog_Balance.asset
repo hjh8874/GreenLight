@@ -22,6 +22,7 @@ MonoBehaviour:
     targetTileType: 0
     researchCost: 100
     researchDurationHours: 12
+    worldGridStageId:
     requirements: []
   - researchId: research_building_video_store
     prerequisiteId: research_building_coffee_shop
@@ -32,6 +33,7 @@ MonoBehaviour:
     targetTileType: 0
     researchCost: 150
     researchDurationHours: 18
+    worldGridStageId:
     requirements: []
   - researchId: research_building_pharmacy
     prerequisiteId: research_building_school
@@ -42,6 +44,7 @@ MonoBehaviour:
     targetTileType: 4
     researchCost: 200
     researchDurationHours: 18
+    worldGridStageId:
     requirements: []
   - researchId: research_building_petrol_station
     prerequisiteId:
@@ -52,6 +55,7 @@ MonoBehaviour:
     targetTileType: 0
     researchCost: 250
     researchDurationHours: 24
+    worldGridStageId:
     requirements: []
   - researchId: research_building_auto_repair
     prerequisiteId: research_building_petrol_station
@@ -62,6 +66,7 @@ MonoBehaviour:
     targetTileType: 0
     researchCost: 350
     researchDurationHours: 30
+    worldGridStageId:
     requirements: []
   - researchId: research_building_cinema
     prerequisiteId: research_building_video_store
@@ -72,6 +77,7 @@ MonoBehaviour:
     targetTileType: 0
     researchCost: 450
     researchDurationHours: 36
+    worldGridStageId:
     requirements: []
   - researchId: research_building_police_station
     prerequisiteId: research_building_pharmacy
@@ -82,6 +88,7 @@ MonoBehaviour:
     targetTileType: 5
     researchCost: 600
     researchDurationHours: 48
+    worldGridStageId:
     requirements: []
   - researchId: research_building_mall
     prerequisiteId: research_building_auto_repair
@@ -92,6 +99,7 @@ MonoBehaviour:
     targetTileType: 0
     researchCost: 800
     researchDurationHours: 72
+    worldGridStageId:
     requirements: []
   - researchId: research_building_school
     prerequisiteId:
@@ -102,6 +110,7 @@ MonoBehaviour:
     targetTileType: 2
     researchCost: 500
     researchDurationHours: 24
+    worldGridStageId:
     requirements:
     - conditionKind: 2
       threshold: 3
@@ -118,6 +127,7 @@ MonoBehaviour:
     targetTileType: 2
     researchCost: 750
     researchDurationHours: 36
+    worldGridStageId:
     requirements:
     - conditionKind: 2
       threshold: 5
@@ -125,3 +135,126 @@ MonoBehaviour:
     - conditionKind: 2
       threshold: 3
       targetTileType: 3
+  - researchId: research_expansion_center_040
+    prerequisiteId:
+    displayName: "\uC9C0\uC5ED \uAC1C\uCC99 1\uB2E8\uACC4"
+    category: 3
+    conditionKind: 1
+    threshold: 10
+    targetTileType: 0
+    researchCost: 1000
+    researchDurationHours: 24
+    worldGridStageId: center_040
+    requirements:
+    - conditionKind: 1
+      threshold: 10
+      targetTileType: 0
+    - conditionKind: 2
+      threshold: 5
+      targetTileType: 2
+  - researchId: research_expansion_center_060
+    prerequisiteId: research_expansion_center_040
+    displayName: "\uC9C0\uC5ED \uAC1C\uCC99 2\uB2E8\uACC4"
+    category: 3
+    conditionKind: 1
+    threshold: 25
+    targetTileType: 0
+    researchCost: 2500
+    researchDurationHours: 36
+    worldGridStageId: center_060
+    requirements:
+    - conditionKind: 1
+      threshold: 25
+      targetTileType: 0
+    - conditionKind: 2
+      threshold: 10
+      targetTileType: 2
+    - conditionKind: 2
+      threshold: 1
+      targetTileType: 4
+  - researchId: research_expansion_center_080
+    prerequisiteId: research_expansion_center_060
+    displayName: "\uC9C0\uC5ED \uAC1C\uCC99 3\uB2E8\uACC4"
+    category: 3
+    conditionKind: 1
+    threshold: 50
+    targetTileType: 0
+    researchCost: 5000
+    researchDurationHours: 48
+    worldGridStageId: center_080
+    requirements:
+    - conditionKind: 1
+      threshold: 50
+      targetTileType: 0
+    - conditionKind: 2
+      threshold: 1
+      targetTileType: 5
+    - conditionKind: 2
+      threshold: 1
+      targetTileType: 4
+  - researchId: research_expansion_center_100
+    prerequisiteId: research_expansion_center_080
+    displayName: "\uC9C0\uC5ED \uAC1C\uCC99 4\uB2E8\uACC4"
+    category: 3
+    conditionKind: 1
+    threshold: 100
+    targetTileType: 0
+    researchCost: 9000
+    researchDurationHours: 72
+    worldGridStageId: center_100
+    requirements: []
+  - researchId: research_expansion_center_120
+    prerequisiteId: research_expansion_center_100
+    displayName: "\uC9C0\uC5ED \uAC1C\uCC99 5\uB2E8\uACC4"
+    category: 3
+    conditionKind: 1
+    threshold: 180
+    targetTileType: 0
+    researchCost: 15000
+    researchDurationHours: 96
+    worldGridStageId: center_120
+    requirements: []
+  - researchId: research_expansion_center_140
+    prerequisiteId: research_expansion_center_120
+    displayName: "\uC9C0\uC5ED \uAC1C\uCC99 6\uB2E8\uACC4"
+    category: 3
+    conditionKind: 1
+    threshold: 300
+    targetTileType: 0
+    researchCost: 24000
+    researchDurationHours: 120
+    worldGridStageId: center_140
+    requirements: []
+  - researchId: research_expansion_center_160
+    prerequisiteId: research_expansion_center_140
+    displayName: "\uC9C0\uC5ED \uAC1C\uCC99 7\uB2E8\uACC4"
+    category: 3
+    conditionKind: 1
+    threshold: 500
+    targetTileType: 0
+    researchCost: 36000
+    researchDurationHours: 144
+    worldGridStageId: center_160
+    requirements: []
+  - researchId: research_expansion_center_180
+    prerequisiteId: research_expansion_center_160
+    displayName: "\uC9C0\uC5ED \uAC1C\uCC99 8\uB2E8\uACC4"
+    category: 3
+    conditionKind: 1
+    threshold: 800
+    targetTileType: 0
+    researchCost: 52000
+    researchDurationHours: 168
+    worldGridStageId: center_180
+    requirements: []
+  - researchId: research_expansion_center_200
+    prerequisiteId: research_expansion_center_180
+    displayName: "\uC9C0\uC5ED \uAC1C\uCC99 9\uB2E8\uACC4"
+    category: 3
+    conditionKind: 1
+    threshold: 1200
+    targetTileType: 0
+    researchCost: 75000
+    researchDurationHours: 240
+    worldGridStageId: center_200
+    requirements: []

@@ -33,7 +33,9 @@ namespace CityFlow.Gameplay.Research
         private CityFlowServices cityServices;
         private IReadOnlyPopulationData boundPopulation;
         private IGameCalendarService boundCalendar;
+        private IWorldGridExpansionService boundWorldGridExpansion;
         private int lastSeenDayArrivals;
+        private bool applyingExpansionRewards;
         internal Func<ResearchConditionInputs> inputsOverrideForTest;
 
         public int UnlockedCount => unlockedResearchIds.Count;
@@ -87,6 +89,8 @@ namespace CityFlow.Gameplay.Research
             BindCalendar(services.GameCalendar);
             services.PopulationRegistered += BindPopulation;
             services.GameCalendarRegistered += OnGameCalendarRegistered;
+            services.WorldGridExpansionRegistered += BindWorldGridExpansion;
+            BindWorldGridExpansion(services.WorldGridExpansion);
             EvaluatePendingResearch();                            // 초기 1회
         }
 
@@ -105,12 +109,15 @@ namespace CityFlow.Gameplay.Research
                 cityServices.PopulationRegistered -= BindPopulation;
                 cityServices.GameCalendarRegistered -=
                     OnGameCalendarRegistered;
+                cityServices.WorldGridExpansionRegistered -=
+                    BindWorldGridExpansion;
             }
             if (boundPopulation != null)
             {
                 boundPopulation.PopulationChanged -= OnPopulationChangedForResearch;
             }
             BindCalendar(null);
+            BindWorldGridExpansion(null);
         }
 
         private void Update()
@@ -191,6 +198,38 @@ namespace CityFlow.Gameplay.Research
             if (!TryCompleteActiveResearch())
             {
                 ResearchProgressChanged?.Invoke();
+            }
+        }
+
+        private void BindWorldGridExpansion(
+            IWorldGridExpansionService expansion)
+        {
+            if (ReferenceEquals(boundWorldGridExpansion, expansion))
+            {
+                return;
+            }
+
+            if (boundWorldGridExpansion != null)
+            {
+                boundWorldGridExpansion.StageChanged -=
+                    OnWorldGridStageChanged;
+            }
+
+            boundWorldGridExpansion = expansion;
+            if (boundWorldGridExpansion != null)
+            {
+                boundWorldGridExpansion.StageChanged +=
+                    OnWorldGridStageChanged;
+                ApplyUnlockedExpansionRewards();
+            }
+        }
+
+        private void OnWorldGridStageChanged(
+            WorldGridStageChangedEvent stage)
+        {
+            if (stage.Reason == WorldGridStageChangeReason.Restored)
+            {
+                ApplyUnlockedExpansionRewards();
             }
         }
 
@@ -361,6 +400,7 @@ namespace CityFlow.Gameplay.Research
             Debug.Log(
                 $"[ResearchUnlockService] Unlocked {normalizedId}.",
                 this);
+            ApplyUnlockedExpansionRewards();
             EvaluatePendingResearch();
             ResearchUnlocked?.Invoke(normalizedId);
             ResearchProgressChanged?.Invoke();
@@ -418,6 +458,47 @@ namespace CityFlow.Gameplay.Research
             return false;
         }
 
+        private void ApplyUnlockedExpansionRewards()
+        {
+            if (applyingExpansionRewards ||
+                boundWorldGridExpansion == null ||
+                catalog == null)
+            {
+                return;
+            }
+
+            applyingExpansionRewards = true;
+            try
+            {
+                List<ResearchEntry> entries = catalog.ValidEntries();
+                for (int index = 0; index < entries.Count; index++)
+                {
+                    ResearchEntry entry = entries[index];
+                    string researchId = NormalizeId(entry.researchId);
+                    string stageId = NormalizeId(entry.worldGridStageId);
+                    if (stageId.Length == 0 ||
+                        !unlockedResearchIds.Contains(researchId) ||
+                        boundWorldGridExpansion.IsStageUnlocked(stageId))
+                    {
+                        continue;
+                    }
+
+                    if (!boundWorldGridExpansion.TryUnlockStage(stageId))
+                    {
+                        Debug.LogWarning(
+                            $"[ResearchUnlockService] Failed to apply " +
+                            $"expansion reward. Research={researchId}, " +
+                            $"Stage={stageId}.",
+                            this);
+                    }
+                }
+            }
+            finally
+            {
+                applyingExpansionRewards = false;
+            }
+        }
+
         public ResearchSaveData CreateSnapshot()
         {
             return new ResearchSaveData
@@ -452,6 +533,7 @@ namespace CityFlow.Gameplay.Research
             }
             EvaluatePendingResearch();
             TryCompleteActiveResearch();
+            ApplyUnlockedExpansionRewards();
             ResearchStateRestored?.Invoke();
             ResearchProgressChanged?.Invoke();
         }

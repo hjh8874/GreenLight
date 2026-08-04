@@ -44,6 +44,20 @@ public class ResearchUnlockCatalogTests
                 runtimeEntries[index].category,
                 balanceEntries[index].category,
                 $"Publishing balance values would overwrite the category for {runtimeEntries[index].researchId}.");
+            Assert.AreEqual(
+                runtimeEntries[index].worldGridStageId ?? string.Empty,
+                balanceEntries[index].worldGridStageId ?? string.Empty,
+                $"Publishing balance values would overwrite the expansion reward for {runtimeEntries[index].researchId}.");
+            if (runtimeEntries[index].category ==
+                ResearchCategory.Expansion)
+            {
+                StringAssert.DoesNotContain(
+                    "x",
+                    runtimeEntries[index].displayName.ToLowerInvariant());
+                StringAssert.DoesNotContain(
+                    "×",
+                    runtimeEntries[index].displayName);
+            }
         }
     }
 
@@ -118,6 +132,10 @@ public class ResearchUnlockCatalogTests
                 categoryLabels,
                 Has.All.Matches<TMP_Text>(
                     label => IsReadable(label.color)));
+            Assert.That(
+                categoryLabels,
+                Has.Some.Matches<TMP_Text>(
+                    label => label.text == "개척"));
             Assert.IsFalse(controller.IsCatalogVisibleForTest);
             Assert.IsFalse(
                 controller.RowsForTest[0].Instance.activeSelf);
@@ -270,6 +288,175 @@ public class ResearchUnlockCatalogTests
             Object.DestroyImmediate(owner);
             Object.DestroyImmediate(serviceOwner);
         }
+    }
+
+    [Test]
+    public void ExpansionCategory_PreservesPreviousThreeColumnOverview()
+    {
+        var owner = new GameObject("panel", typeof(RectTransform));
+        var serviceOwner = new GameObject("research");
+        ResearchCatalogSO catalog = null;
+        try
+        {
+            Button unlockButton =
+                CreateButton(owner.transform, "Upgrade", "Upgrade");
+            CityFlowServices services =
+                CreateServicesWithExpansionResearch(
+                    serviceOwner,
+                    out catalog);
+            var controller =
+                owner.AddComponent<ResearchPanelController>();
+            SetPrivate(controller, "catalog", catalog);
+
+            controller.Initialize(services);
+            unlockButton.onClick.Invoke();
+
+            Assert.That(
+                controller.GetComponent<RectTransform>().rect.width,
+                Is.EqualTo(756f).Within(0.01f));
+            Assert.That(
+                controller.RowsForTest,
+                Has.None.Matches<ResearchPanelController.Row>(
+                    row => row.Entry.category ==
+                           ResearchCategory.Expansion &&
+                           row.Instance.activeSelf));
+
+            Button expansionButton = null;
+            Button[] categoryButtons = owner.transform
+                .Find("CategoryTabs")
+                .GetComponentsInChildren<Button>(true);
+            for (int index = 0; index < categoryButtons.Length; index++)
+            {
+                TMP_Text label = categoryButtons[index]
+                    .GetComponentInChildren<TMP_Text>(true);
+                if (label != null && label.text == "개척")
+                {
+                    expansionButton = categoryButtons[index];
+                    break;
+                }
+            }
+
+            Assert.NotNull(expansionButton);
+            expansionButton.onClick.Invoke();
+
+            int visibleExpansionRows = 0;
+            ResearchPanelController.Row currentExpansion = null;
+            for (int index = 0;
+                 index < controller.RowsForTest.Count;
+                 index++)
+            {
+                ResearchPanelController.Row row =
+                    controller.RowsForTest[index];
+                if (row.Entry.category == ResearchCategory.Expansion &&
+                    row.Instance.activeSelf)
+                {
+                    visibleExpansionRows++;
+                    currentExpansion = row;
+                }
+                else
+                {
+                    Assert.IsFalse(row.Instance.activeSelf);
+                }
+            }
+
+            Assert.AreEqual(1, visibleExpansionRows);
+            Assert.NotNull(currentExpansion);
+            string firstExpansionId =
+                currentExpansion.Entry.researchId;
+            Assert.That(
+                currentExpansion.Instance
+                    .GetComponent<RectTransform>().rect.width,
+                Is.EqualTo(520f).Within(0.01f));
+            Rect panelRect = controller
+                .GetComponent<RectTransform>().rect;
+            Assert.That(panelRect.width, Is.EqualTo(756f).Within(0.01f));
+
+            currentExpansion.Instance
+                .GetComponent<Button>().onClick.Invoke();
+
+            ResearchPanelController.Row nextExpansion = null;
+            for (int index = 0;
+                 index < controller.RowsForTest.Count;
+                 index++)
+            {
+                ResearchPanelController.Row row =
+                    controller.RowsForTest[index];
+                if (row.Entry.category == ResearchCategory.Expansion &&
+                    row.Instance.activeSelf)
+                {
+                    Assert.IsNull(nextExpansion);
+                    nextExpansion = row;
+                }
+            }
+
+            Assert.NotNull(nextExpansion);
+            Assert.AreNotEqual(
+                firstExpansionId,
+                nextExpansion.Entry.researchId,
+                "완료 후 같은 위치에 다음 개척 단계가 표시되어야 한다.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(serviceOwner);
+            if (catalog != null)
+            {
+                Object.DestroyImmediate(catalog);
+            }
+        }
+    }
+
+    private static CityFlowServices CreateServicesWithExpansionResearch(
+        GameObject serviceOwner,
+        out ResearchCatalogSO catalog)
+    {
+        var services =
+            new CityFlowServices(new SimEventHub(), null, null);
+        var research =
+            serviceOwner.AddComponent<ResearchUnlockService>();
+        catalog = ScriptableObject.CreateInstance<ResearchCatalogSO>();
+        var serialized = new UnityEditor.SerializedObject(catalog);
+        var entries = serialized.FindProperty("entries");
+        entries.arraySize = 12;
+
+        ResearchCategory[] overviewCategories =
+        {
+            ResearchCategory.Commercial,
+            ResearchCategory.Infrastructure,
+            ResearchCategory.PublicService
+        };
+        for (int index = 0; index < overviewCategories.Length; index++)
+        {
+            var entry = entries.GetArrayElementAtIndex(index);
+            entry.FindPropertyRelative("researchId").stringValue =
+                $"overview_{index}";
+            entry.FindPropertyRelative("displayName").stringValue =
+                $"Overview {index}";
+            entry.FindPropertyRelative("category").enumValueIndex =
+                (int)overviewCategories[index];
+            entry.FindPropertyRelative("threshold").intValue = 0;
+        }
+
+        for (int index = 0; index < 9; index++)
+        {
+            var entry = entries.GetArrayElementAtIndex(index + 3);
+            entry.FindPropertyRelative("researchId").stringValue =
+                $"expansion_{index}";
+            entry.FindPropertyRelative("displayName").stringValue =
+                $"Expansion {index}";
+            entry.FindPropertyRelative("category").enumValueIndex =
+                (int)ResearchCategory.Expansion;
+            entry.FindPropertyRelative("threshold").intValue = 0;
+            entry.FindPropertyRelative("worldGridStageId").stringValue =
+                $"stage_{index}";
+        }
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+
+        SetPrivate(research, "catalog", catalog);
+        research.inputsOverrideForTest = () =>
+            new ResearchConditionInputs(0, 0, null);
+        research.Initialize(services);
+        return services;
     }
 
     private static CityFlowServices CreateServicesWithReadyResearch(
