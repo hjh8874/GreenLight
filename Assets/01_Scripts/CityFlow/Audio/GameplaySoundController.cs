@@ -21,6 +21,7 @@ namespace CityFlow.Audio
 
         private CityFlowServices services;
         private IEconomyService economy;
+        private IWeeklyEconomyService weeklyEconomy;
         private IWorldGridExpansionService worldGridExpansion;
         private CityQuestSystem questSystem;
         private bool coinChangePending;
@@ -44,8 +45,10 @@ namespace CityFlow.Audio
             }
 
             services.EconomyRegistered += BindEconomy;
+            services.WeeklyEconomyRegistered += BindWeeklyEconomy;
             services.WorldGridExpansionRegistered += BindWorldGridExpansion;
             BindEconomy(services.Economy);
+            BindWeeklyEconomy(services.WeeklyEconomy);
             BindWorldGridExpansion(services.WorldGridExpansion);
             BindSceneControllers();
         }
@@ -112,6 +115,25 @@ namespace CityFlow.Audio
             if (worldGridExpansion != null)
             {
                 worldGridExpansion.StageChanged += OnWorldGridStageChanged;
+            }
+        }
+
+        private void BindWeeklyEconomy(IWeeklyEconomyService service)
+        {
+            if (ReferenceEquals(weeklyEconomy, service))
+            {
+                return;
+            }
+
+            if (weeklyEconomy != null)
+            {
+                weeklyEconomy.SettlementCompleted -= OnSettlementCompleted;
+            }
+
+            weeklyEconomy = service;
+            if (weeklyEconomy != null)
+            {
+                weeklyEconomy.SettlementCompleted += OnSettlementCompleted;
             }
         }
 
@@ -235,6 +257,30 @@ namespace CityFlow.Audio
             }
         }
 
+        private void OnSettlementCompleted(
+            WeeklySettlementCompletedEvent settlement)
+        {
+            // The settlement changes the balance before publishing this event.
+            // Consume that change here so the generic coin sound does not overlap.
+            settledCoins = settlement.BalanceAfterSettlement;
+            observedCoins = settlement.BalanceAfterSettlement;
+            coinChangePending = false;
+
+            if (services?.Save?.IsRestoring == true)
+            {
+                return;
+            }
+
+            if (settlement.Amount >= 5000L)
+            {
+                soundManager?.PlaySfx(SoundIds.HarvestRewardLarge);
+            }
+            else if (settlement.Amount >= 1000L)
+            {
+                soundManager?.PlaySfx(SoundIds.HarvestRewardStandard);
+            }
+        }
+
         private void OnWorldGridStageChanged(WorldGridStageChangedEvent stage)
         {
             if (stage.Reason == WorldGridStageChangeReason.Unlocked)
@@ -261,10 +307,12 @@ namespace CityFlow.Audio
             if (services != null)
             {
                 services.EconomyRegistered -= BindEconomy;
+                services.WeeklyEconomyRegistered -= BindWeeklyEconomy;
                 services.WorldGridExpansionRegistered -= BindWorldGridExpansion;
             }
 
             BindEconomy(null);
+            BindWeeklyEconomy(null);
             BindWorldGridExpansion(null);
             services = null;
         }

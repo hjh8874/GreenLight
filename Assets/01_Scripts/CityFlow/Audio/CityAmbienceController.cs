@@ -18,12 +18,14 @@ namespace CityFlow.Audio
         private readonly HashSet<Vector2Int> jamTiles = new();
         private readonly List<AudioSource> daySources = new();
         private readonly List<AudioSource> nightSources = new();
+        private readonly List<AudioSource> congestionHornSources = new();
 
         private CityFlowServices services;
         private IGameCalendarService calendar;
         private MainCityView cityView;
         private AudioSource roomToneSource;
         private AudioSource congestionSource;
+        private float[] congestionHornPlayAt = System.Array.Empty<float>();
         private float nextResolveTime;
 
         public void Initialize(CityFlowServices cityFlowServices)
@@ -63,6 +65,7 @@ namespace CityFlow.Audio
             bool isDay = profile.IsDayHour(calendar?.Hour ?? 12);
             float ambience = Mathf.Clamp01(
                 profile.AmbienceVolume * profile.AmbienceByZoom.Evaluate(zoom));
+            float congestionPresence = CalculateCongestionPresence(zoom);
             float step = Time.unscaledDeltaTime / profile.FadeSeconds;
 
             SetLayerVolume(daySources, isDay ? ambience : 0f, step);
@@ -73,8 +76,9 @@ namespace CityFlow.Audio
                 step);
             SetSourceVolume(
                 congestionSource,
-                CalculateCongestionVolume(zoom),
+                profile.CongestionVolume * congestionPresence,
                 step);
+            UpdateCongestionHorns(congestionPresence);
         }
 
         private void OnDestroy()
@@ -107,6 +111,7 @@ namespace CityFlow.Audio
                 "Congestion Ambience",
                 profile.CongestionClip,
                 congestionOutput);
+            CreateCongestionHornSources();
         }
 
         private void ResolveCityView()
@@ -137,7 +142,7 @@ namespace CityFlow.Audio
             }
         }
 
-        private float CalculateCongestionVolume(float zoom)
+        private float CalculateCongestionPresence(float zoom)
         {
             if (jamTiles.Count < profile.JamTilesForMinimumVolume ||
                 zoom < profile.CongestionStartZoom)
@@ -153,8 +158,98 @@ namespace CityFlow.Audio
                 profile.JamTilesForMinimumVolume,
                 profile.JamTilesForFullVolume,
                 jamTiles.Count);
-            return Mathf.Clamp01(
-                profile.CongestionVolume * zoomGain * jamGain);
+            return Mathf.Clamp01(zoomGain * jamGain);
+        }
+
+        private void CreateCongestionHornSources()
+        {
+            IReadOnlyList<AudioClip> clips = profile.CongestionHornClips;
+            for (int index = 0; index < clips.Count; index++)
+            {
+                AudioClip clip = clips[index];
+                if (clip == null)
+                {
+                    continue;
+                }
+
+                GameObject child = new GameObject($"Congestion Horn {index + 1}");
+                child.transform.SetParent(transform, false);
+                AudioSource source = child.AddComponent<AudioSource>();
+                source.clip = clip;
+                source.playOnAwake = false;
+                source.loop = false;
+                source.spatialBlend = 0f;
+                source.volume = 0f;
+                source.outputAudioMixerGroup = congestionOutput;
+                congestionHornSources.Add(source);
+            }
+
+            congestionHornPlayAt = new float[congestionHornSources.Count];
+        }
+
+        private void UpdateCongestionHorns(float congestionPresence)
+        {
+            if (congestionHornSources.Count == 0)
+            {
+                return;
+            }
+
+            if (congestionPresence <= 0.001f)
+            {
+                ResetCongestionHorns();
+                return;
+            }
+
+            float now = Time.unscaledTime;
+            float volume = Mathf.Clamp01(
+                profile.CongestionHornVolume * congestionPresence);
+            for (int index = 0; index < congestionHornSources.Count; index++)
+            {
+                AudioSource source = congestionHornSources[index];
+                source.volume = volume;
+
+                if (congestionHornPlayAt[index] <= 0f)
+                {
+                    ScheduleNextHorn(index, now, congestionPresence);
+                    continue;
+                }
+
+                if (now < congestionHornPlayAt[index])
+                {
+                    continue;
+                }
+
+                source.pitch = Random.Range(0.96f, 1.04f);
+                source.Play();
+                ScheduleNextHorn(index, now, congestionPresence);
+            }
+        }
+
+        private void ScheduleNextHorn(
+            int index,
+            float now,
+            float congestionPresence)
+        {
+            float density = Mathf.Lerp(0.55f, 1f, congestionPresence);
+            float interval = Random.Range(
+                profile.CongestionHornMinInterval,
+                profile.CongestionHornMaxInterval) / density;
+            congestionHornPlayAt[index] = now + interval;
+        }
+
+        private void ResetCongestionHorns()
+        {
+            for (int index = 0; index < congestionHornSources.Count; index++)
+            {
+                AudioSource source = congestionHornSources[index];
+                if (source.isPlaying)
+                {
+                    source.Stop();
+                }
+
+                source.volume = 0f;
+                congestionHornPlayAt[index] = 0f;
+            }
         }
 
         private void CreateLayerSources(
