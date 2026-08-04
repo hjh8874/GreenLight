@@ -34,9 +34,7 @@ namespace CityFlow.EditorTools
 
             if (existingButton != null)
             {
-                Selection.activeGameObject = existingButton.gameObject;
-                EditorGUIUtility.PingObject(existingButton.gameObject);
-                Debug.Log("[ManualCoinHarvestUiBaker] The active scene already contains a coin harvest button.");
+                UpdateExistingButton(activeScene, existingButton);
                 return;
             }
 
@@ -60,11 +58,7 @@ namespace CityFlow.EditorTools
             root.layer = topBar.gameObject.layer;
 
             RectTransform rect = root.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(1f, 0f);
-            rect.anchorMax = new Vector2(1f, 0f);
-            rect.pivot = new Vector2(1f, 1f);
-            rect.anchoredPosition = new Vector2(-18f, -8f);
-            rect.sizeDelta = new Vector2(184f, 40f);
+            ApplyButtonRect(rect);
 
             Image image = root.GetComponent<Image>();
             image.color = new Color(0.12f, 0.55f, 0.48f, 0.98f);
@@ -88,8 +82,12 @@ namespace CityFlow.EditorTools
             button.colors = colors;
 
             TextMeshProUGUI label = CreateLabel(root.transform);
+            TextMeshProUGUI receipt = CreateReceipt(topBar);
+            Undo.RegisterCreatedObjectUndo(
+                receipt.gameObject,
+                "Create Coin Harvest Receipt");
             CoinHarvestButton controller = root.AddComponent<CoinHarvestButton>();
-            controller.Configure(button, label);
+            controller.Configure(button, label, receipt);
 
             EditorUtility.SetDirty(root);
             EditorSceneManager.MarkSceneDirty(activeScene);
@@ -99,6 +97,48 @@ namespace CityFlow.EditorTools
             Debug.Log(
                 $"[ManualCoinHarvestUiBaker] Coin harvest UI baked below " +
                 $"'{TopBarName}' in scene '{activeScene.name}'.");
+        }
+
+        private static void UpdateExistingButton(
+            Scene activeScene,
+            CoinHarvestButton existingButton)
+        {
+            RectTransform existingRect =
+                existingButton.GetComponent<RectTransform>();
+            Undo.RecordObject(
+                existingRect,
+                "Update Manual Coin Harvest Button Layout");
+            ApplyButtonRect(existingRect);
+
+            Transform receiptParent =
+                FindTransform(activeScene, TopBarName) ??
+                existingButton.transform.parent;
+            TextMeshProUGUI receipt = FindReceipt(receiptParent);
+            if (receipt == null && receiptParent != null)
+            {
+                receipt = CreateReceipt(receiptParent);
+                Undo.RegisterCreatedObjectUndo(
+                    receipt.gameObject,
+                    "Create Coin Harvest Receipt");
+            }
+
+            Button button = existingButton.GetComponent<Button>();
+            TextMeshProUGUI label =
+                existingButton.GetComponentInChildren<TextMeshProUGUI>(true);
+            Undo.RecordObject(existingButton, "Update Manual Coin Harvest UI");
+            existingButton.Configure(button, label, receipt);
+            EditorUtility.SetDirty(existingButton);
+            EditorUtility.SetDirty(existingRect);
+            if (receipt != null)
+            {
+                EditorUtility.SetDirty(receipt);
+            }
+            EditorSceneManager.MarkSceneDirty(activeScene);
+            Selection.activeGameObject = existingButton.gameObject;
+            EditorGUIUtility.PingObject(existingButton.gameObject);
+            Debug.Log(
+                $"[ManualCoinHarvestUiBaker] Updated existing coin harvest UI " +
+                $"in scene '{activeScene.name}'.");
         }
 
         private static TextMeshProUGUI CreateLabel(Transform parent)
@@ -124,6 +164,53 @@ namespace CityFlow.EditorTools
             label.raycastTarget = false;
             label.characterSpacing = 0f;
             return label;
+        }
+
+        private static void ApplyButtonRect(RectTransform rect)
+        {
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.anchoredPosition = new Vector2(0f, -18f);
+            rect.sizeDelta = new Vector2(184f, 40f);
+        }
+
+        private static TextMeshProUGUI FindReceipt(Transform parent)
+        {
+            if (parent == null)
+            {
+                return null;
+            }
+
+            Transform receiptTransform = parent.Find("CoinHarvestReceipt");
+            return receiptTransform == null
+                ? null
+                : receiptTransform.GetComponent<TextMeshProUGUI>();
+        }
+
+        private static TextMeshProUGUI CreateReceipt(Transform parent)
+        {
+            GameObject receiptObject = CreateUiObject(
+                "CoinHarvestReceipt",
+                parent,
+                typeof(TextMeshProUGUI));
+            receiptObject.layer = parent.gameObject.layer;
+
+            RectTransform rect = receiptObject.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.anchoredPosition = new Vector2(0f, -64f);
+            rect.sizeDelta = new Vector2(260f, 86f);
+
+            TextMeshProUGUI receipt = receiptObject.GetComponent<TextMeshProUGUI>();
+            receipt.fontSize = 12f;
+            receipt.color = new Color(1f, 0.92f, 0.62f, 1f);
+            receipt.alignment = TextAlignmentOptions.Top;
+            receipt.textWrappingMode = TextWrappingModes.Normal;
+            receipt.raycastTarget = false;
+            receipt.enabled = false;
+            return receipt;
         }
 
         private static GameObject CreateUiObject(

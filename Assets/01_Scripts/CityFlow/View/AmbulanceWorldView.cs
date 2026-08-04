@@ -47,6 +47,7 @@ namespace CityFlow.View
         private Vector3 previousVisualPosition;
         private float currentVisualSpeed;
         private bool visualBlockedByTraffic;
+        private float nextVehicleSpacingWarningTime;
         private float lastTrafficTickProgress;
         private bool hasTrafficTickProgress;
         private bool isParkedOffRoad;
@@ -62,6 +63,12 @@ namespace CityFlow.View
         private RoutePolyline parkingTransitionPath;
         private float parkingTransitionStartDistance;
         private float parkingTransitionTargetDistance;
+        private bool parkingRequestPending;
+        private Vector3 pendingParkingTargetPosition;
+        private Quaternion pendingParkingTargetRotation;
+        private bool pendingParkingEndsParked;
+        private Action pendingParkingCompleted;
+        private float nextParkingWaitLogTime;
         private bool hasHospitalParkingPose;
         private Vector2Int hospitalParkingTile;
         private Vector3 hospitalParkingPosition;
@@ -100,6 +107,8 @@ namespace CityFlow.View
         private void OnDisable()
         {
             Unsubscribe();
+            ClearPendingParkingRequest();
+            cityView?.RemoveVehiclePresentation(this);
             cityView?.UnregisterExternalSelectableVehicle(
                 this);
         }
@@ -107,6 +116,8 @@ namespace CityFlow.View
         private void OnDestroy()
         {
             Unsubscribe();
+            ClearPendingParkingRequest();
+            cityView?.RemoveVehiclePresentation(this);
             cityView?.UnregisterExternalSelectableVehicle(
                 this);
             DestroyVisual();
@@ -116,6 +127,7 @@ namespace CityFlow.View
         {
             if (parkingTransitionActive)
             {
+                cityView?.RemoveVehiclePresentation(this);
                 UpdateParkingTransition();
                 return;
             }
@@ -133,6 +145,7 @@ namespace CityFlow.View
                 visual == null ||
                 !routeFollower.HasPath)
             {
+                TryBeginPendingParkingTransition();
                 return;
             }
 
@@ -141,29 +154,49 @@ namespace CityFlow.View
                 routeFollower.CalculateCandidateDistance(
                     Time.deltaTime,
                     GetNominalRoadSpeed());
-            Sample candidateSample =
-                path.SampleAt(candidateDistance);
-            Vector3 candidatePosition =
-                candidateSample.Pos;
-            Vector2 candidateDirection =
-                new(
-                    candidateSample.Dir.x,
-                    candidateSample.Dir.y);
-            if (candidateDirection.sqrMagnitude >
-                0.0001f)
+            float currentDistance = routeFollower.CurrentDistance;
+            float limitedDistance = candidateDistance;
+            VehiclePresentationLeader leader = default;
+            if (cityView != null &&
+                route != null &&
+                route.TryGetRoadTrafficSnapshot(
+                    out RoadTrafficSnapshot trafficSnapshot) &&
+                trafficSnapshot.IsVisible)
             {
-                candidateDirection.Normalize();
+                limitedDistance =
+                    cityView.LimitVehiclePresentationAdvance(
+                        this,
+                        trafficSnapshot.Kind,
+                        trafficSnapshot.Footprint,
+                        path,
+                        currentDistance,
+                        candidateDistance,
+                        yieldToCrossFlowCars: true,
+                        out leader);
             }
-            else
-            {
-                candidateDirection =
-                    currentVisualDirection;
-            }
+
+            float requestedAdvance =
+                Mathf.Max(0f, candidateDistance - currentDistance);
+            float allowedAdvance =
+                Mathf.Max(0f, limitedDistance - currentDistance);
+            float allowedFraction = requestedAdvance > 0.0001f
+                ? Mathf.Clamp01(allowedAdvance / requestedAdvance)
+                : 1f;
 
             routeFollower.CommitCandidate(
                 candidateDistance,
-                1f);
-            visualBlockedByTraffic = false;
+                allowedFraction);
+            visualBlockedByTraffic = allowedFraction < 0.999f;
+            if (visualBlockedByTraffic &&
+                Time.unscaledTime >= nextVehicleSpacingWarningTime)
+            {
+                nextVehicleSpacingWarningTime =
+                    Time.unscaledTime + 1.5f;
+                Debug.Log(
+                    $"[VehicleSpacingGuard] Ambulance view held behind {leader.Kind}. " +
+                    $"headway={leader.Headway:F3}, required={leader.RequiredHeadway:F3}.",
+                    this);
+            }
 
             Sample committedSample =
                 path.SampleAt(
@@ -185,6 +218,7 @@ namespace CityFlow.View
             previousVisualPosition =
                 visual.localPosition;
             PublishExternalTraffic();
+            TryBeginPendingParkingTransition();
         }
 
         private void ResolveReferences()
@@ -463,11 +497,79 @@ namespace CityFlow.View
                         targetForward.x,
                         targetForward.y));
 
+            visual.gameObject.SetActive(true);
+
+            if (immediate ||
+                !visual.gameObject.activeInHierarchy)
+            {
+                ClearPendingParkingRequest();
+                routeFollower.Reset();
+                movementPath = null;
+                hasTarget = false;
+                hasCurrentTrafficTile = false;
+                visualBlockedByTraffic = false;
+                currentVisualSpeed = 0f;
+                hasTrafficTickProgress = false;
+                lastTrafficTickProgress = 0f;
+                parkingTransitionActive = false;
+                parkingCompleted = null;
+                visual.localPosition = targetPosition;
+                visual.localRotation = targetRotation;
+                previousVisualPosition =
+                    visual.localPosition;
+                isParkedOffRoad = true;
+                cityView?.RemoveVehiclePresentation(this);
+                onParked?.Invoke();
+                return;
+            }
+
+            parkingRequestPending = true;
+            pendingParkingTargetPosition = targetPosition;
+            pendingParkingTargetRotation = targetRotation;
+            pendingParkingEndsParked = true;
+            pendingParkingCompleted = onParked;
+            TryBeginPendingParkingTransition();
+        }
+
+        private void TryBeginPendingParkingTransition()
+        {
+            if (!parkingRequestPending ||
+                parkingTransitionActive ||
+                visual == null)
+            {
+                return;
+            }
+
+            if (routeFollower.HasPath &&
+                !routeFollower.IsAtTarget)
+            {
+                if (Time.unscaledTime >= nextParkingWaitLogTime)
+                {
+                    nextParkingWaitLogTime =
+                        Time.unscaledTime + 1.5f;
+                    Debug.Log(
+                        "[VehicleTransitionGate] Ambulance parking waits for " +
+                        $"its road presentation. current=" +
+                        $"{routeFollower.CurrentDistance:F3}, target=" +
+                        $"{routeFollower.TargetDistance:F3}.",
+                        this);
+                }
+
+                return;
+            }
+
             RoutePolyline arrivalPath = movementPath;
-            float arrivalDistance =
-                routeFollower.HasPath
-                    ? routeFollower.CurrentDistance
-                    : 0f;
+            float arrivalDistance = routeFollower.HasPath
+                ? routeFollower.CurrentDistance
+                : 0f;
+            Vector3 targetPosition =
+                pendingParkingTargetPosition;
+            Quaternion targetRotation =
+                pendingParkingTargetRotation;
+            bool endsParked = pendingParkingEndsParked;
+            Action onCompleted = pendingParkingCompleted;
+            ClearPendingParkingRequest();
+
             routeFollower.Reset();
             movementPath = null;
             hasTarget = false;
@@ -476,29 +578,22 @@ namespace CityFlow.View
             currentVisualSpeed = 0f;
             hasTrafficTickProgress = false;
             lastTrafficTickProgress = 0f;
-            visual.gameObject.SetActive(true);
-
-            if (immediate ||
-                !visual.gameObject.activeInHierarchy)
-            {
-                parkingTransitionActive = false;
-                parkingCompleted = null;
-                visual.localPosition = targetPosition;
-                visual.localRotation = targetRotation;
-                previousVisualPosition =
-                    visual.localPosition;
-                isParkedOffRoad = true;
-                onParked?.Invoke();
-                return;
-            }
-
             BeginParkingTransition(
                 targetPosition,
                 targetRotation,
-                endsParked: true,
-                onCompleted: onParked,
+                endsParked,
+                onCompleted,
                 arrivalPath: arrivalPath,
                 arrivalDistance: arrivalDistance);
+        }
+
+        private void ClearPendingParkingRequest()
+        {
+            parkingRequestPending = false;
+            pendingParkingTargetPosition = default;
+            pendingParkingTargetRotation = default;
+            pendingParkingEndsParked = false;
+            pendingParkingCompleted = null;
         }
 
         private void BeginParkingTransition(
@@ -626,6 +721,11 @@ namespace CityFlow.View
 
             isParkedOffRoad =
                 parkingTransitionEndsParked;
+            if (isParkedOffRoad)
+            {
+                cityView?.RemoveVehiclePresentation(this);
+            }
+
             Action callback = parkingCompleted;
             parkingCompleted = null;
             callback?.Invoke();
@@ -810,6 +910,7 @@ namespace CityFlow.View
 
             cityView?.UnregisterExternalSelectableVehicle(
                 this);
+            cityView?.RemoveVehiclePresentation(this);
             GameObject visualObject = visual.gameObject;
             visual = null;
 
@@ -1313,37 +1414,32 @@ namespace CityFlow.View
 
         private void PublishExternalTraffic()
         {
-            // The shared road traffic coordinator owns spacing and collision
-            // authority. The view only interpolates its authoritative snapshot.
-        }
-
-        private float GetMinimumHeadway()
-        {
-            return config != null && cityView != null
-                ? (config.VehicleLengthTiles + 0.11f) *
-                  cityView.TileSize
-                : 0f;
-        }
-
-        private bool TryGetTrafficFootprint(
-            out float halfLength,
-            out float halfWidth)
-        {
-            halfLength = 0f;
-            halfWidth = 0f;
-
-            if (cityView == null || config == null)
+            if (cityView == null ||
+                visual == null ||
+                !visual.gameObject.activeInHierarchy ||
+                isParkedOffRoad ||
+                parkingTransitionActive ||
+                route == null ||
+                !route.TryGetRoadTrafficSnapshot(
+                    out RoadTrafficSnapshot snapshot) ||
+                !snapshot.IsVisible ||
+                snapshot.State ==
+                    RoadTrafficAgentState.RouteUnavailable)
             {
-                return false;
+                cityView?.RemoveVehiclePresentation(this);
+                return;
             }
 
-            halfLength =
-                config.VehicleLengthTiles *
-                cityView.TileSize * 0.5f;
-            halfWidth =
-                config.VehicleWidthTiles *
-                cityView.TileSize * 0.5f;
-            return true;
+            cityView.PublishVehiclePresentation(
+                this,
+                snapshot.Kind,
+                snapshot.Footprint,
+                visual.localPosition,
+                new Vector3(
+                    currentVisualDirection.x,
+                    currentVisualDirection.y,
+                    0f),
+                currentVisualSpeed);
         }
 
         private bool IsRoad(Vector2Int tile)

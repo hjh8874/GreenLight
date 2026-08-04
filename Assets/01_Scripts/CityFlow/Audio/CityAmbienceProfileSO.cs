@@ -34,6 +34,8 @@ namespace CityFlow.Audio
 
         [Header("Congestion")]
         [SerializeField] private AudioClip congestionClip;
+        [SerializeField] private AudioClip[] congestionHornClips =
+            System.Array.Empty<AudioClip>();
         [Range(0f, 1f)]
         [SerializeField] private float congestionStartZoom = 0.7f;
         [Min(1)]
@@ -42,6 +44,12 @@ namespace CityFlow.Audio
         [SerializeField] private int jamTilesForFullVolume = 12;
         [Range(0f, 1f)]
         [SerializeField] private float congestionVolume = 0.7f;
+        [Range(0f, 1f)]
+        [SerializeField] private float congestionHornVolume = 0.3f;
+        [Min(0.1f)]
+        [SerializeField] private float congestionHornMinInterval = 3f;
+        [Min(0.1f)]
+        [SerializeField] private float congestionHornMaxInterval = 9f;
 
         public IReadOnlyList<AudioClip> DayClips => dayClips;
         public IReadOnlyList<AudioClip> NightClips => nightClips;
@@ -53,12 +61,19 @@ namespace CityFlow.Audio
         public AudioClip DriveRoomTone => driveRoomTone;
         public float DriveRoomToneVolume => driveRoomToneVolume;
         public AudioClip CongestionClip => congestionClip;
+        public IReadOnlyList<AudioClip> CongestionHornClips =>
+            congestionHornClips;
         public float CongestionStartZoom => congestionStartZoom;
         public int JamTilesForMinimumVolume =>
             Mathf.Max(1, jamTilesForMinimumVolume);
         public int JamTilesForFullVolume =>
             Mathf.Max(JamTilesForMinimumVolume, jamTilesForFullVolume);
         public float CongestionVolume => congestionVolume;
+        public float CongestionHornVolume => congestionHornVolume;
+        public float CongestionHornMinInterval =>
+            Mathf.Max(0.1f, congestionHornMinInterval);
+        public float CongestionHornMaxInterval =>
+            Mathf.Max(CongestionHornMinInterval, congestionHornMaxInterval);
 
         public bool IsDayHour(int hour)
         {
@@ -76,12 +91,15 @@ namespace CityFlow.Audio
             AudioClip[] day,
             AudioClip[] night,
             AudioClip roomTone,
-            AudioClip congestion)
+            AudioClip congestion,
+            AudioClip[] congestionHorns)
         {
             dayClips = day ?? System.Array.Empty<AudioClip>();
             nightClips = night ?? System.Array.Empty<AudioClip>();
             driveRoomTone = roomTone;
             congestionClip = congestion;
+            congestionHornClips = congestionHorns ??
+                System.Array.Empty<AudioClip>();
             dayStartHour = 6;
             nightStartHour = 22;
             ambienceByZoom = new AnimationCurve(
@@ -95,6 +113,9 @@ namespace CityFlow.Audio
             jamTilesForMinimumVolume = 3;
             jamTilesForFullVolume = 12;
             congestionVolume = 0.7f;
+            congestionHornVolume = 0.3f;
+            congestionHornMinInterval = 3f;
+            congestionHornMaxInterval = 9f;
         }
 #endif
     }

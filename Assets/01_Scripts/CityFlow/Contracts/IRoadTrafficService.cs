@@ -103,18 +103,21 @@ namespace CityFlow.Contracts
             RoadRoutePlan route,
             bool loop,
             RoadTrafficArrivalPolicy arrivalPolicy =
-                RoadTrafficArrivalPolicy.ReleaseAtDestination)
+                RoadTrafficArrivalPolicy.ReleaseAtDestination,
+            bool pauseOnEntry = false)
         {
             AgentId = agentId;
             Route = route;
             Loop = loop;
             ArrivalPolicy = arrivalPolicy;
+            PauseOnEntry = pauseOnEntry;
         }
 
         public RoadTrafficAgentId AgentId { get; }
         public RoadRoutePlan Route { get; }
         public bool Loop { get; }
         public RoadTrafficArrivalPolicy ArrivalPolicy { get; }
+        public bool PauseOnEntry { get; }
     }
 
     public readonly struct RoadTrafficSnapshot

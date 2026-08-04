@@ -96,7 +96,10 @@ namespace CityFlow.Content.Transit
         public bool IsOperating =>
             busRoute != null &&
             (busRoute.State == BusRouteState.Moving ||
-             busRoute.State == BusRouteState.WaitingAtStop);
+             busRoute.State == BusRouteState.WaitingAtStop ||
+             busRoute.State == BusRouteState.WaitingForRoadEntry ||
+             busRoute.State == BusRouteState.EnteringRoad ||
+             busRoute.State == BusRouteState.LeavingRoad);
 
         public event Action RouteStarted;
         public event Action<SchoolBusTripKind> ScheduledTripStarted;
@@ -166,7 +169,7 @@ namespace CityFlow.Content.Transit
                 return;
             }
 
-            if (definition != null &&
+            if (definition == null ||
                 definition.BusType != BusType.SchoolBus)
             {
                 Debug.LogError(
@@ -181,14 +184,14 @@ namespace CityFlow.Content.Transit
             busRoute.UseRoadsideStopApproach = true;
             busRoute.RoadsideStopSetbackTiles = 1;
             busRoute.AllowUnscheduledStopArrival = false;
+            busRoute.ConfigureOffRoadTransitionSynchronization(
+                true);
             busRoute.RoadsideStopFilter =
                 IsResidentialStop;
-            if (definition != null)
-            {
-                busRoute.ConfigureRoadTrafficAgent(
-                    RoadTrafficAgentKind.SchoolBus,
-                    definition.VehicleFootprint);
-            }
+            busRoute.ConfigureRoadTrafficAgent(
+                RoadTrafficAgentKind.SchoolBus,
+                definition.VehicleFootprint,
+                true);
             busRoute.Initialize(cityServices);
 
             int capacity = definition != null

@@ -13,6 +13,13 @@ namespace CityFlow.View
         MonoBehaviour,
         ICityFlowServiceConsumer
     {
+        private enum OffRoadTransitionKind
+        {
+            None = 0,
+            RoadEntry = 1,
+            SchoolExit = 2
+        }
+
         [Header("Configuration")]
         [SerializeField] private BusDefinitionSO definition;
         [SerializeField] private BusRoute busRoute;
@@ -58,16 +65,36 @@ namespace CityFlow.View
         private bool observedSnapshotVisible;
         private RoadTrafficAgentState observedSnapshotState;
         private bool snapshotMissingLogged;
+        private SchoolBusService schoolBusService;
+        private float schoolBusInvisibleSeconds;
+        private bool schoolBusInvisibleLogged;
+        private float nextVehicleOverlapCheckTime;
+        private float nextVehicleOverlapWarningTime;
+        private float previousPresentationDistance;
+        private float presentationSpeed;
+        private bool hasPreviousPresentationDistance;
+        private float nextVehicleSpacingWarningTime;
+        private float nextVehicleCatchUpWarningTime;
+        private VehicleFootprint presentationFootprint;
+        private bool hasPresentationFootprint;
+        private bool presentationFootprintAdjustedLogged;
 
         private bool offRoadTransitionActive;
         private bool transitionEndsOnRoad;
         private bool isParkedOffRoad;
+        private OffRoadTransitionKind offRoadTransitionKind;
         private Vector3 transitionStart;
         private Vector3 transitionControl;
         private Vector3 transitionTarget;
         private Vector2 parkingForward;
         private float transitionElapsed;
         private float transitionDuration;
+        private float reservedRoadDistance;
+        private bool hasPendingOffRoadExit;
+        private Vector2Int pendingOffRoadDestination;
+        private Vector3 pendingOffRoadParkingPosition;
+        private Vector2 pendingOffRoadForward;
+        private float nextOffRoadExitWaitLogTime;
 
         public bool HasVisibleBus =>
             visual != null &&
@@ -163,13 +190,17 @@ namespace CityFlow.View
 
         protected virtual void OnDisable()
         {
+            cityView?.RemoveVehiclePresentation(this);
             DisableStopPresentationGate();
+            CompletePendingTransition();
             Unsubscribe();
         }
 
         protected virtual void OnDestroy()
         {
+            cityView?.RemoveVehiclePresentation(this);
             DisableStopPresentationGate();
+            CompletePendingTransition();
             Unsubscribe();
 
             if (visual == null)
@@ -200,22 +231,27 @@ namespace CityFlow.View
                  !cityBusService.IsVehicleVisible))
             {
                 HideCityBusVisual();
+                UpdateSchoolBusVisibilityDiagnostics();
                 return;
             }
 
             if (offRoadTransitionActive)
             {
                 UpdateOffRoadTransition();
+                UpdateSchoolBusVisibilityDiagnostics();
                 return;
             }
 
             UpdateRoadPose();
+            TryBeginPendingOffRoadExit();
+            UpdateSchoolBusVisibilityDiagnostics();
         }
 
         private void ResolveReferences()
         {
             busRoute ??= GetComponent<BusRoute>();
             cityBusService ??= GetComponent<CityBusService>();
+            schoolBusService ??= GetComponent<SchoolBusService>();
             cityView ??= FindAnyObjectByType<MainCityView>();
 
             if (definition == null)
@@ -225,10 +261,118 @@ namespace CityFlow.View
 
             if (definition == null)
             {
-                SchoolBusService schoolBusService =
-                    GetComponent<SchoolBusService>();
                 definition = schoolBusService?.Definition;
             }
+        }
+
+        private void UpdateSchoolBusVisibilityDiagnostics()
+        {
+            if (schoolBusService == null)
+            {
+                return;
+            }
+
+            bool presentationExpected =
+                schoolBusService.IsOperating ||
+                schoolBusService.CurrentTrip != SchoolBusTripKind.None;
+            if (!presentationExpected)
+            {
+                schoolBusInvisibleSeconds = 0f;
+                schoolBusInvisibleLogged = false;
+                return;
+            }
+
+            Renderer[] renderers = visual != null
+                ? visual.GetComponentsInChildren<Renderer>(true)
+                : null;
+            int rendererCount = renderers?.Length ?? 0;
+            int renderableRendererCount = 0;
+            int zeroBoundsRendererCount = 0;
+            for (int i = 0; i < rendererCount; i++)
+            {
+                Renderer renderer = renderers[i];
+                bool hasBounds =
+                    renderer.localBounds.size.sqrMagnitude > 0.0001f;
+                zeroBoundsRendererCount += hasBounds ? 0 : 1;
+                if (renderer.enabled &&
+                    !renderer.forceRenderingOff &&
+                    hasBounds)
+                {
+                    renderableRendererCount++;
+                }
+            }
+
+            if (HasVisibleBus && renderableRendererCount > 0)
+            {
+                schoolBusInvisibleSeconds = 0f;
+                schoolBusInvisibleLogged = false;
+                return;
+            }
+
+            schoolBusInvisibleSeconds += Time.unscaledDeltaTime;
+            if (schoolBusInvisibleSeconds < 1f || schoolBusInvisibleLogged)
+            {
+                return;
+            }
+
+            schoolBusInvisibleLogged = true;
+            GameObject resolvedPrefab = busVisualPrefab != null
+                ? busVisualPrefab
+                : definition?.VehicleVisualPrefab;
+            RoadTrafficSnapshot snapshot = default;
+            bool hasTrafficSnapshot =
+                busRoute != null &&
+                busRoute.TryGetRoadTrafficSnapshot(
+                    out snapshot);
+            Vector2Int currentTile = busRoute != null
+                ? busRoute.CurrentTile
+                : default;
+            bool isAtSchool =
+                tileData != null &&
+                tileData.GetTileType(currentTile) == TileType.School;
+            bool hasSchoolParkingPose =
+                isAtSchool &&
+                TryGetSchoolParkingPose(
+                    currentTile,
+                    out _,
+                    out _);
+            string suspectedCause = resolvedPrefab == null
+                ? "vehicle visual prefab is missing"
+                : visual == null
+                    ? "visual instance was not created"
+                    : rendererCount == 0
+                        ? "visual contains no Renderer"
+                        : zeroBoundsRendererCount == rendererCount
+                            ? "all renderer bounds are zero"
+                            : isAtSchool && !hasSchoolParkingPose
+                                ? "school parking pose could not be resolved"
+                                : !isAtSchool && !hasTrafficSnapshot
+                                    ? "road traffic snapshot is missing"
+                                    : hasTrafficSnapshot && !snapshot.IsVisible
+                                        ? $"road traffic snapshot is hidden ({snapshot.State})"
+                                        : !visual.gameObject.activeSelf
+                                            ? "visual instance was not activated"
+                                            : "visual root is inactive in the hierarchy";
+            string trafficSummary = hasTrafficSnapshot
+                ? $"{snapshot.State}/visible={snapshot.IsVisible}"
+                : "missing";
+
+            Debug.LogWarning(
+                "[SchoolBusVisibility] School bus should be visible but its " +
+                $"presentation is unavailable. cause={suspectedCause}, " +
+                $"serviceState={schoolBusService.State}, " +
+                $"trip={schoolBusService.CurrentTrip}, " +
+                $"routeState={(busRoute != null ? busRoute.State : default)}, " +
+                $"tile={currentTile}, traffic={trafficSummary}, " +
+                $"prefab={(resolvedPrefab != null ? resolvedPrefab.name : "<null>")}, " +
+                $"visualExists={visual != null}, " +
+                $"activeSelf={(visual != null && visual.gameObject.activeSelf)}, " +
+                $"activeInHierarchy={HasVisibleBus}, " +
+                $"renderers={rendererCount}, " +
+                $"renderableRenderers={renderableRendererCount}, " +
+                $"zeroBoundsRenderers={zeroBoundsRendererCount}, " +
+                $"atSchool={isAtSchool}, parkingPose={hasSchoolParkingPose}.",
+                this);
         }
 
         private void Subscribe()
@@ -239,6 +383,10 @@ namespace CityFlow.View
             }
 
             busRoute.TileChanged += HandleTileChanged;
+            busRoute.RoadEntryReserved +=
+                HandleRoadEntryReserved;
+            busRoute.OffRoadExitRequested +=
+                HandleOffRoadExitRequested;
             busRoute.RouteUnavailable += HandleRouteUnavailable;
             busRoute.StopPresentationRequested +=
                 HandleStopPresentationRequested;
@@ -266,6 +414,10 @@ namespace CityFlow.View
             if (busRoute != null)
             {
                 busRoute.TileChanged -= HandleTileChanged;
+                busRoute.RoadEntryReserved -=
+                    HandleRoadEntryReserved;
+                busRoute.OffRoadExitRequested -=
+                    HandleOffRoadExitRequested;
                 busRoute.RouteUnavailable -= HandleRouteUnavailable;
                 busRoute.StopPresentationRequested -=
                     HandleStopPresentationRequested;
@@ -347,6 +499,105 @@ namespace CityFlow.View
             }
         }
 
+        private VehicleFootprint ResolvePresentationFootprint(
+            VehicleFootprint configuredFootprint)
+        {
+            if (hasPresentationFootprint)
+            {
+                return presentationFootprint;
+            }
+
+            presentationFootprint = configuredFootprint;
+            hasPresentationFootprint = true;
+            if (visual == null || cityView == null)
+            {
+                return presentationFootprint;
+            }
+
+            Renderer[] renderers =
+                visual.GetComponentsInChildren<Renderer>(true);
+            float minimumX = float.PositiveInfinity;
+            float maximumX = float.NegativeInfinity;
+            float minimumY = float.PositiveInfinity;
+            float maximumY = float.NegativeInfinity;
+            for (int rendererIndex = 0;
+                 rendererIndex < renderers.Length;
+                 rendererIndex++)
+            {
+                Renderer targetRenderer = renderers[rendererIndex];
+                Bounds bounds = targetRenderer.localBounds;
+                Vector3 center = bounds.center;
+                Vector3 extents = bounds.extents;
+                for (int x = -1; x <= 1; x += 2)
+                {
+                    for (int y = -1; y <= 1; y += 2)
+                    {
+                        for (int z = -1; z <= 1; z += 2)
+                        {
+                            Vector3 localCorner = center +
+                                Vector3.Scale(
+                                    extents,
+                                    new Vector3(x, y, z));
+                            Vector3 rootCorner =
+                                visual.InverseTransformPoint(
+                                    targetRenderer.transform.TransformPoint(
+                                        localCorner));
+                            minimumX = Mathf.Min(minimumX, rootCorner.x);
+                            maximumX = Mathf.Max(maximumX, rootCorner.x);
+                            minimumY = Mathf.Min(minimumY, rootCorner.y);
+                            maximumY = Mathf.Max(maximumY, rootCorner.y);
+                        }
+                    }
+                }
+            }
+
+            if (float.IsInfinity(minimumX) ||
+                float.IsInfinity(minimumY))
+            {
+                return presentationFootprint;
+            }
+
+            float safeTileSize = Mathf.Max(
+                0.0001f,
+                cityView.TileSize);
+            float visualLengthTiles =
+                (maximumX - minimumX) *
+                Mathf.Abs(visual.localScale.x) /
+                safeTileSize;
+            float visualWidthTiles =
+                (maximumY - minimumY) *
+                Mathf.Abs(visual.localScale.y) /
+                safeTileSize;
+            presentationFootprint = new VehicleFootprint(
+                configuredFootprint.SizeClass,
+                Mathf.Max(
+                    configuredFootprint.LengthTiles,
+                    visualLengthTiles),
+                Mathf.Max(
+                    configuredFootprint.WidthTiles,
+                    visualWidthTiles),
+                configuredFootprint.MinimumGapTiles);
+
+            if (!presentationFootprintAdjustedLogged &&
+                (presentationFootprint.LengthTiles >
+                     configuredFootprint.LengthTiles * 1.05f ||
+                 presentationFootprint.WidthTiles >
+                     configuredFootprint.WidthTiles * 1.05f))
+            {
+                presentationFootprintAdjustedLogged = true;
+                Debug.LogWarning(
+                    "[VehicleFootprint] Bus presentation footprint was expanded " +
+                    $"to match its renderer. configured=" +
+                    $"({configuredFootprint.LengthTiles:F2}," +
+                    $"{configuredFootprint.WidthTiles:F2}), visual=" +
+                    $"({presentationFootprint.LengthTiles:F2}," +
+                    $"{presentationFootprint.WidthTiles:F2}).",
+                    this);
+            }
+
+            return presentationFootprint;
+        }
+
         private void HandleTileChanged(Vector2Int tile)
         {
             EnsureVisual();
@@ -361,11 +612,15 @@ namespace CityFlow.View
                     out Vector2 forward))
             {
                 parkingForward = forward;
-                if (!visual.gameObject.activeSelf || !hasRoadPose)
+                if (isParkedOffRoad ||
+                    !visual.gameObject.activeSelf ||
+                    !hasRoadPose)
                 {
                     ApplyPose(parkingPosition, forward);
                     visual.gameObject.SetActive(true);
                     isParkedOffRoad = true;
+                    cityView?.RemoveVehiclePresentation(this);
+                    hasPreviousPresentationDistance = false;
                     offRoadTransitionActive = false;
                     return;
                 }
@@ -375,7 +630,8 @@ namespace CityFlow.View
                 BeginOffRoadTransition(
                     parkingPosition,
                     control,
-                    endsOnRoad: false);
+                    endsOnRoad: false,
+                    transitionKind: OffRoadTransitionKind.None);
                 return;
             }
 
@@ -400,7 +656,144 @@ namespace CityFlow.View
             BeginOffRoadTransition(
                 firstRoadPose.Pos,
                 departureControl,
-                endsOnRoad: true);
+                endsOnRoad: true,
+                transitionKind: OffRoadTransitionKind.None);
+        }
+
+        private void HandleRoadEntryReserved(
+            RoadTrafficSnapshot snapshot)
+        {
+            EnsureVisual();
+            if (visual == null ||
+                cityView == null ||
+                !TryBakeRoadPath(out _) ||
+                roadPolyline == null ||
+                !TryGetRoadTargetDistance(
+                    snapshot,
+                    out reservedRoadDistance))
+            {
+                busRoute?.CompleteRoadEntryTransition();
+                return;
+            }
+
+            if (!isParkedOffRoad &&
+                TryGetSchoolParkingPose(
+                    busRoute.CurrentStop,
+                    out Vector3 parkingPosition,
+                    out Vector2 parkingDirection))
+            {
+                parkingForward = parkingDirection;
+                ApplyPose(parkingPosition, parkingDirection);
+                visual.gameObject.SetActive(true);
+                isParkedOffRoad = true;
+                cityView?.RemoveVehiclePresentation(this);
+                hasPreviousPresentationDistance = false;
+            }
+
+            Sample reservedPose =
+                roadPolyline.SampleAt(reservedRoadDistance);
+            Vector3 control = visual.localPosition -
+                ToVector3(parkingForward) *
+                GetParkingApproachDistance();
+            BeginOffRoadTransition(
+                reservedPose.Pos,
+                control,
+                endsOnRoad: true,
+                transitionKind: OffRoadTransitionKind.RoadEntry);
+        }
+
+        private void HandleOffRoadExitRequested(
+            Vector2Int destination)
+        {
+            EnsureVisual();
+            if (visual == null ||
+                cityView == null ||
+                !TryGetSchoolParkingPose(
+                    destination,
+                    out Vector3 parkingPosition,
+                    out Vector2 forward))
+            {
+                busRoute?.CompleteOffRoadExitTransition();
+                return;
+            }
+
+            parkingForward = forward;
+            hasPendingOffRoadExit = true;
+            pendingOffRoadDestination = destination;
+            pendingOffRoadParkingPosition = parkingPosition;
+            pendingOffRoadForward = forward;
+            TryBeginPendingOffRoadExit();
+        }
+
+        private void TryBeginPendingOffRoadExit()
+        {
+            if (!hasPendingOffRoadExit ||
+                offRoadTransitionActive ||
+                visual == null ||
+                cityView == null ||
+                busRoute == null)
+            {
+                return;
+            }
+
+            if (busRoute.State != BusRouteState.LeavingRoad)
+            {
+                ClearPendingOffRoadExit();
+                return;
+            }
+
+            if (!busRoute.TryGetRoadTrafficSnapshot(
+                    out RoadTrafficSnapshot snapshot) ||
+                !snapshot.IsVisible ||
+                !TryBakeRoadPath(out _) ||
+                roadPolyline == null ||
+                !TryGetRoadTargetDistance(
+                    snapshot,
+                    out float exitDistance))
+            {
+                return;
+            }
+
+            float tolerance = Mathf.Max(
+                0.005f,
+                cityView.TileSize * 0.02f);
+            if (!hasRoadPose ||
+                Mathf.Abs(currentDistance - exitDistance) > tolerance)
+            {
+                if (Time.unscaledTime >= nextOffRoadExitWaitLogTime)
+                {
+                    nextOffRoadExitWaitLogTime =
+                        Time.unscaledTime + 1.5f;
+                    Debug.Log(
+                        "[VehicleTransitionGate] School bus parking waits for " +
+                        $"its road presentation. destination={pendingOffRoadDestination}, " +
+                        $"current={currentDistance:F3}, exit={exitDistance:F3}.",
+                        this);
+                }
+
+                return;
+            }
+
+            Vector3 parkingPosition =
+                pendingOffRoadParkingPosition;
+            Vector2 forward = pendingOffRoadForward;
+            ClearPendingOffRoadExit();
+            parkingForward = forward;
+            Vector3 control = parkingPosition -
+                ToVector3(forward) * GetParkingApproachDistance();
+            BeginOffRoadTransition(
+                parkingPosition,
+                control,
+                endsOnRoad: false,
+                transitionKind: OffRoadTransitionKind.SchoolExit);
+        }
+
+        private void ClearPendingOffRoadExit()
+        {
+            hasPendingOffRoadExit = false;
+            pendingOffRoadDestination = default;
+            pendingOffRoadParkingPosition = default;
+            pendingOffRoadForward = default;
         }
 
         private void UpdateRoadPose()
@@ -413,6 +806,7 @@ namespace CityFlow.View
             if (!busRoute.TryGetRoadTrafficSnapshot(
                     out RoadTrafficSnapshot snapshot))
             {
+                cityView?.RemoveVehiclePresentation(this);
                 LogMissingTrafficSnapshot();
                 return;
             }
@@ -423,6 +817,7 @@ namespace CityFlow.View
                 !TryBakeRoadPath(out bool pathChanged) ||
                 roadPolyline == null)
             {
+                cityView?.RemoveVehiclePresentation(this);
                 return;
             }
 
@@ -432,22 +827,12 @@ namespace CityFlow.View
             observedRoadSegmentVersion =
                 busRoute.RoadSegmentVersion;
 
-            int tileIndex = Mathf.Clamp(
-                snapshot.RouteTileIndex,
-                0,
-                roadPolyline.TileCount - 1);
-            Vector2Int tile = roadPolyline.TileAt(tileIndex);
-            float headInset = cityView.IsSharedIntersectionTile(tile)
-                ? cityView.IntersectionQueueInsetTiles * cityView.TileSize
-                : 0f;
-            float nextTarget = roadPolyline.ReprojectDistance(
-                tileIndex,
-                snapshot.QueueOffsetTiles * cityView.TileSize,
-                headInset,
-                snapshot.IntersectionProgress01,
-                snapshot.LinkProgress01,
-                snapshot.RoundaboutProgress01,
-                cityView.RoundaboutTransitionSpanTiles);
+            if (!TryGetRoadTargetDistance(
+                    snapshot,
+                    out float nextTarget))
+            {
+                return;
+            }
             nextTarget = ResolveStopPresentationTarget(nextTarget);
 
             bool stopPresentationPending =
@@ -498,10 +883,72 @@ namespace CityFlow.View
                 float progress = segmentDuration > 0f
                     ? Mathf.Clamp01(segmentElapsed / segmentDuration)
                     : 1f;
-                currentDistance = Mathf.Lerp(
+                float rawProposedDistance = Mathf.Lerp(
                     segmentStartDistance,
                     targetDistance,
                     progress);
+                float nominalPresentationSpeed =
+                    cityView != null && busRoute != null
+                        ? cityView.TileSize /
+                          Mathf.Max(
+                              0.01f,
+                              busRoute.SecondsPerTile)
+                        : 0f;
+                float proposedDistance = cityView != null
+                    ? cityView.LimitVehiclePresentationCatchUp(
+                        currentDistance,
+                        rawProposedDistance,
+                        nominalPresentationSpeed,
+                        Time.deltaTime)
+                    : rawProposedDistance;
+                if (proposedDistance <
+                        rawProposedDistance - 0.0001f &&
+                    Time.unscaledTime >=
+                        nextVehicleCatchUpWarningTime)
+                {
+                    nextVehicleCatchUpWarningTime =
+                        Time.unscaledTime + 1.5f;
+                    Debug.Log(
+                        $"[VehicleCatchUpLimit] {snapshot.Kind} view catch-up was capped. " +
+                        $"debt={targetDistance - currentDistance:F3}, " +
+                        $"nominalSpeed={nominalPresentationSpeed:F3}.",
+                        this);
+                }
+
+                VehicleFootprint spacingFootprint =
+                    ResolvePresentationFootprint(
+                        snapshot.Footprint);
+                VehiclePresentationLeader leader = default;
+                float limitedDistance = cityView != null
+                    ? cityView.LimitVehiclePresentationAdvance(
+                        this,
+                        snapshot.Kind,
+                        spacingFootprint,
+                        roadPolyline,
+                        currentDistance,
+                        proposedDistance,
+                        yieldToCrossFlowCars: true,
+                        out leader)
+                    : proposedDistance;
+                bool spacingBlocked =
+                    limitedDistance < proposedDistance - 0.0001f;
+                if (spacingBlocked &&
+                    Time.unscaledTime >= nextVehicleSpacingWarningTime)
+                {
+                    nextVehicleSpacingWarningTime =
+                        Time.unscaledTime + 1.5f;
+                    Debug.Log(
+                        $"[VehicleSpacingGuard] {snapshot.Kind} view held behind {leader.Kind}. " +
+                        $"headway={leader.Headway:F3}, required={leader.RequiredHeadway:F3}.",
+                        this);
+                }
+
+                currentDistance = limitedDistance;
+                if (spacingBlocked)
+                {
+                    segmentStartDistance = currentDistance;
+                    segmentElapsed = 0f;
+                }
             }
 
             ApplyRoadSample(snapshot);
@@ -579,6 +1026,38 @@ namespace CityFlow.View
             {
                 ResetStopPresentationTarget();
             }
+        }
+
+        private bool TryGetRoadTargetDistance(
+            RoadTrafficSnapshot snapshot,
+            out float distance)
+        {
+            distance = 0f;
+            if (roadPolyline == null ||
+                roadPolyline.TileCount == 0 ||
+                cityView == null)
+            {
+                return false;
+            }
+
+            int tileIndex = Mathf.Clamp(
+                snapshot.RouteTileIndex,
+                0,
+                roadPolyline.TileCount - 1);
+            Vector2Int tile = roadPolyline.TileAt(tileIndex);
+            float headInset = cityView.IsSharedIntersectionTile(tile)
+                ? cityView.IntersectionQueueInsetTiles *
+                  cityView.TileSize
+                : 0f;
+            distance = roadPolyline.ReprojectDistance(
+                tileIndex,
+                snapshot.QueueOffsetTiles * cityView.TileSize,
+                headInset,
+                snapshot.IntersectionProgress01,
+                snapshot.LinkProgress01,
+                snapshot.RoundaboutProgress01,
+                cityView.RoundaboutTransitionSpanTiles);
+            return true;
         }
 
         private bool TryBakeRoadPath(out bool changed)
@@ -700,16 +1179,67 @@ namespace CityFlow.View
                     Mathf.Sin(snapshot.LinkProgress01 * Mathf.PI);
             }
 
-            ApplyPose(
+            Vector2 direction =
+                new(sample.Dir.x, sample.Dir.y);
+            ApplyPose(position, direction);
+
+            presentationSpeed = hasPreviousPresentationDistance
+                ? Mathf.Max(
+                    0f,
+                    currentDistance - previousPresentationDistance) /
+                  Mathf.Max(Time.deltaTime, 0.0001f)
+                : 0f;
+            previousPresentationDistance = currentDistance;
+            hasPreviousPresentationDistance = true;
+            VehicleFootprint spacingFootprint =
+                ResolvePresentationFootprint(snapshot.Footprint);
+            cityView?.PublishVehiclePresentation(
+                this,
+                snapshot.Kind,
+                spacingFootprint,
                 position,
-                new Vector2(sample.Dir.x, sample.Dir.y));
+                new Vector3(direction.x, direction.y, 0f),
+                presentationSpeed);
+            UpdateVehicleOverlapDiagnostics(
+                snapshot,
+                spacingFootprint);
+        }
+
+        private void UpdateVehicleOverlapDiagnostics(
+            RoadTrafficSnapshot snapshot,
+            VehicleFootprint spacingFootprint)
+        {
+            if (cityView == null ||
+                visual == null ||
+                Time.unscaledTime < nextVehicleOverlapCheckTime)
+            {
+                return;
+            }
+
+            nextVehicleOverlapCheckTime = Time.unscaledTime + 0.2f;
+            if (!cityView.TryBuildCommuteVehicleOverlapDiagnostic(
+                    visual,
+                    snapshot,
+                    spacingFootprint,
+                    out string diagnostic) ||
+                Time.unscaledTime < nextVehicleOverlapWarningTime)
+            {
+                return;
+            }
+
+            nextVehicleOverlapWarningTime = Time.unscaledTime + 1.5f;
+            Debug.LogWarning(
+                $"[VehicleOverlap] {diagnostic}",
+                this);
         }
 
         private void BeginOffRoadTransition(
             Vector3 target,
             Vector3 control,
-            bool endsOnRoad)
+            bool endsOnRoad,
+            OffRoadTransitionKind transitionKind)
         {
+            cityView?.RemoveVehiclePresentation(this);
             transitionStart = visual.localPosition;
             transitionControl = control;
             transitionTarget = target;
@@ -719,6 +1249,7 @@ namespace CityFlow.View
                 transitionControl,
                 transitionTarget);
             transitionEndsOnRoad = endsOnRoad;
+            offRoadTransitionKind = transitionKind;
             offRoadTransitionActive = true;
             visual.gameObject.SetActive(true);
         }
@@ -757,10 +1288,43 @@ namespace CityFlow.View
 
             offRoadTransitionActive = false;
             isParkedOffRoad = !transitionEndsOnRoad;
+            if (isParkedOffRoad)
+            {
+                cityView?.RemoveVehiclePresentation(this);
+                hasPreviousPresentationDistance = false;
+                presentationSpeed = 0f;
+            }
+
+            OffRoadTransitionKind completedTransition =
+                offRoadTransitionKind;
+            offRoadTransitionKind = OffRoadTransitionKind.None;
             if (transitionEndsOnRoad)
             {
-                hasRoadPose = false;
-                return;
+                if (completedTransition ==
+                    OffRoadTransitionKind.RoadEntry)
+                {
+                    currentDistance = reservedRoadDistance;
+                    targetDistance = reservedRoadDistance;
+                    segmentStartDistance = reservedRoadDistance;
+                    segmentElapsed = 0f;
+                    segmentDuration = 0f;
+                    hasRoadPose = true;
+                }
+                else
+                {
+                    hasRoadPose = false;
+                }
+            }
+
+            if (completedTransition ==
+                OffRoadTransitionKind.RoadEntry)
+            {
+                busRoute?.CompleteRoadEntryTransition();
+            }
+            else if (completedTransition ==
+                     OffRoadTransitionKind.SchoolExit)
+            {
+                busRoute?.CompleteOffRoadExitTransition();
             }
 
             busRoute?.ConfirmStopPresentationReached();
@@ -867,7 +1431,9 @@ namespace CityFlow.View
 
         private void HandleRouteUnavailable()
         {
+            ClearPendingOffRoadExit();
             offRoadTransitionActive = false;
+            offRoadTransitionKind = OffRoadTransitionKind.None;
             segmentElapsed = 0f;
             segmentDuration = 0f;
             ResetStopPresentationTarget();
@@ -878,6 +1444,31 @@ namespace CityFlow.View
             int __)
         {
             ResetStopPresentationTarget();
+        }
+
+        private void CompletePendingTransition()
+        {
+            bool pendingOffRoadExit = hasPendingOffRoadExit;
+            ClearPendingOffRoadExit();
+            OffRoadTransitionKind pendingTransition =
+                offRoadTransitionKind;
+            offRoadTransitionActive = false;
+            offRoadTransitionKind = OffRoadTransitionKind.None;
+
+            if (pendingTransition ==
+                OffRoadTransitionKind.RoadEntry)
+            {
+                busRoute?.CompleteRoadEntryTransition();
+            }
+            else if (pendingTransition ==
+                     OffRoadTransitionKind.SchoolExit)
+            {
+                busRoute?.CompleteOffRoadExitTransition();
+            }
+            else if (pendingOffRoadExit)
+            {
+                busRoute?.CompleteOffRoadExitTransition();
+            }
         }
 
         private void HandleVehicleVisibilityChanged(bool visible)
@@ -912,6 +1503,7 @@ namespace CityFlow.View
             }
 
             UpdateRoadPose();
+            TryBeginPendingOffRoadExit();
         }
 
         private void LogMissingTrafficSnapshot()
@@ -1038,6 +1630,7 @@ namespace CityFlow.View
 
         private void HideCityBusVisual()
         {
+            cityView?.RemoveVehiclePresentation(this);
             if (visual == null)
             {
                 return;
@@ -1049,6 +1642,8 @@ namespace CityFlow.View
             observedRoadSegmentVersion = -1;
             segmentElapsed = 0f;
             segmentDuration = 0f;
+            presentationSpeed = 0f;
+            hasPreviousPresentationDistance = false;
             hasObservedTrafficSnapshot = false;
             snapshotMissingLogged = false;
             ResetStopPresentationTarget();

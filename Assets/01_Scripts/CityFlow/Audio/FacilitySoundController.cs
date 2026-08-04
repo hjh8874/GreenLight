@@ -16,15 +16,51 @@ namespace CityFlow.Audio
         [SerializeField] private SoundManager soundManager;
         [SerializeField] private AudioMixerGroup facilityOutput;
         [Min(0.1f)]
-        [SerializeField] private float hospitalPreviewSeconds = 4.8f;
+        [SerializeField] private float previewSeconds = 10f;
         [Min(0.1f)]
-        [SerializeField] private float schoolPreviewSeconds = 6f;
+        [SerializeField] private float fadeStartsAtSeconds = 6f;
+
+        private static readonly string[] HospitalSounds =
+            { SoundIds.HospitalPreview };
+        private static readonly string[] SchoolSounds =
+            { SoundIds.SchoolPreview };
+        private static readonly string[] HouseSounds =
+            { SoundIds.HousePreview };
+        private static readonly string[] OfficeSounds =
+            { SoundIds.OfficePreview };
+        private static readonly string[] MallSounds =
+            { SoundIds.MallPreview };
+        private static readonly string[] PetrolStationSounds =
+            { SoundIds.PetrolStationPreview };
+        private static readonly string[] PoliceStationSounds =
+            { SoundIds.PoliceStationPreview };
+        private static readonly string[] VideoStoreSounds =
+        {
+            SoundIds.VideoStoreLeverPreview,
+            SoundIds.VideoStoreProjectorPreview
+        };
+        private static readonly string[] PharmacySounds =
+            { SoundIds.PharmacyPreview };
+        private static readonly string[] CoffeeShopSounds =
+            { SoundIds.CoffeeShopPreview };
+        private static readonly string[] CinemaSounds =
+        {
+            SoundIds.CinemaEpicPreview,
+            SoundIds.CinemaRevealPreview,
+            SoundIds.CinemaComedyPreview,
+            SoundIds.CinemaOrientalPreview,
+            SoundIds.CinemaCalmPreview
+        };
+        private static readonly string[] AutoRepairSounds =
+            { SoundIds.AutoRepairPreview };
 
         private CityFlowServices services;
         private MainCityView cityView;
         private AudioSource previewSource;
         private Vector2Int? hoveredFacility;
+        private float previewStartedAt;
         private float previewEndsAt;
+        private float previewBaseVolume;
         private bool isPinnedByClick;
         private float nextResolveTime;
 
@@ -50,12 +86,9 @@ namespace CityFlow.Audio
 
             if (!TryGetHoveredFacility(
                     out Vector2Int tile,
-                    out TileType type))
+                    out string[] soundIds))
             {
-                if (!isPinnedByClick)
-                {
-                    ClearHover(stopPlayback: true);
-                }
+                ClearHover(stopPlayback: !isPinnedByClick);
                 UpdatePreviewLifetime();
                 return;
             }
@@ -64,13 +97,13 @@ namespace CityFlow.Audio
             hoveredFacility = tile;
             if (changed)
             {
-                PlayFacilityPreview(type, pinByClick: false);
+                PlayFacilityPreview(soundIds, pinByClick: false);
             }
 
             if (Mouse.current != null &&
                 Mouse.current.leftButton.wasPressedThisFrame)
             {
-                PlayFacilityPreview(type, pinByClick: true);
+                PlayFacilityPreview(soundIds, pinByClick: true);
             }
 
             UpdatePreviewLifetime();
@@ -89,10 +122,10 @@ namespace CityFlow.Audio
 
         private bool TryGetHoveredFacility(
             out Vector2Int tile,
-            out TileType type)
+            out string[] soundIds)
         {
             tile = default;
-            type = TileType.Empty;
+            soundIds = null;
             if (services?.TileData == null ||
                 EventSystem.current != null &&
                 EventSystem.current.IsPointerOverGameObject())
@@ -126,33 +159,101 @@ namespace CityFlow.Audio
                 tile = anchor;
             }
 
-            type = services.TileData.GetTileType(tile);
-            return type == TileType.Hospital || type == TileType.School;
+            TileType type = services.TileData.GetTileType(tile);
+            return TryGetFacilitySounds(tile, type, out soundIds);
         }
 
-        private void PlayFacilityPreview(TileType type, bool pinByClick)
+        private bool TryGetFacilitySounds(
+            Vector2Int tile,
+            TileType type,
+            out string[] soundIds)
         {
-            string id = type == TileType.Hospital
-                ? SoundIds.HospitalPreview
-                : SoundIds.SchoolPreview;
-            if (soundManager == null ||
-                !soundManager.TryGetSfx(
-                    id,
+            soundIds = type switch
+            {
+                TileType.House => HouseSounds,
+                TileType.Office => OfficeSounds,
+                TileType.Hospital => HospitalSounds,
+                TileType.School => SchoolSounds,
+                _ => null
+            };
+            if (soundIds != null)
+            {
+                return true;
+            }
+
+            if (type != TileType.SpecialBuilding ||
+                services?.SpecialBuildings == null ||
+                !services.SpecialBuildings.TryGetBuilding(
+                    tile,
+                    out SpecialBuildingInstance building))
+            {
+                return false;
+            }
+
+            soundIds = building.BuildingId switch
+            {
+                "mall" => MallSounds,
+                "petrol_station" => PetrolStationSounds,
+                "police_station" => PoliceStationSounds,
+                "video_store" => VideoStoreSounds,
+                "pharmacy" => PharmacySounds,
+                "coffee_shop" => CoffeeShopSounds,
+                "cinema" => CinemaSounds,
+                "auto_repair" => AutoRepairSounds,
+                _ => null
+            };
+            return soundIds != null;
+        }
+
+        private void PlayFacilityPreview(
+            string[] soundIds,
+            bool pinByClick)
+        {
+            if (!TryResolveRandomClip(
+                    soundIds,
                     out AudioClip clip,
                     out float volume))
             {
+                StopPreview();
                 return;
             }
 
-            float duration = type == TileType.Hospital
-                ? hospitalPreviewSeconds
-                : schoolPreviewSeconds;
             previewSource.Stop();
             previewSource.clip = clip;
-            previewSource.volume = volume;
+            previewBaseVolume = volume;
+            previewSource.volume = previewBaseVolume;
             previewSource.Play();
-            previewEndsAt = Time.unscaledTime + Mathf.Min(duration, clip.length);
+            previewStartedAt = Time.unscaledTime;
+            previewEndsAt = previewStartedAt + previewSeconds;
             isPinnedByClick = pinByClick;
+        }
+
+        private bool TryResolveRandomClip(
+            string[] soundIds,
+            out AudioClip clip,
+            out float volume)
+        {
+            clip = null;
+            volume = 0f;
+            if (soundManager == null ||
+                soundIds == null ||
+                soundIds.Length == 0)
+            {
+                return false;
+            }
+
+            int startIndex = Random.Range(0, soundIds.Length);
+            for (int offset = 0; offset < soundIds.Length; offset++)
+            {
+                string soundId = soundIds[
+                    (startIndex + offset) % soundIds.Length];
+                if (soundManager.TryGetSfx(soundId, out clip, out volume))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void UpdatePreviewLifetime()
@@ -165,11 +266,20 @@ namespace CityFlow.Audio
 
             if (Time.unscaledTime < previewEndsAt)
             {
+                float fadeStart = previewStartedAt + fadeStartsAtSeconds;
+                if (Time.unscaledTime >= fadeStart &&
+                    previewEndsAt > fadeStart)
+                {
+                    float fade = 1f - Mathf.InverseLerp(
+                        fadeStart,
+                        previewEndsAt,
+                        Time.unscaledTime);
+                    previewSource.volume = previewBaseVolume * fade;
+                }
                 return;
             }
 
-            previewSource.Stop();
-            isPinnedByClick = false;
+            StopPreview();
         }
 
         private void ClearHover(bool stopPlayback)
@@ -177,8 +287,22 @@ namespace CityFlow.Audio
             hoveredFacility = null;
             if (stopPlayback && previewSource != null)
             {
-                previewSource.Stop();
+                StopPreview();
             }
+        }
+
+        private void StopPreview()
+        {
+            if (previewSource != null)
+            {
+                previewSource.Stop();
+                previewSource.clip = null;
+            }
+
+            previewBaseVolume = 0f;
+            previewStartedAt = 0f;
+            previewEndsAt = 0f;
+            isPinnedByClick = false;
         }
 
         private AudioSource CreateSource()
@@ -187,7 +311,7 @@ namespace CityFlow.Audio
             child.transform.SetParent(transform, false);
             AudioSource source = child.AddComponent<AudioSource>();
             source.playOnAwake = false;
-            source.loop = false;
+            source.loop = true;
             source.spatialBlend = 0f;
             source.outputAudioMixerGroup = facilityOutput;
             return source;
@@ -200,12 +324,12 @@ namespace CityFlow.Audio
         {
             soundManager = manager;
             facilityOutput = output;
-            hospitalPreviewSeconds = 4.8f;
-            schoolPreviewSeconds = 6f;
+            previewSeconds = 10f;
+            fadeStartsAtSeconds = 6f;
         }
 #endif
 
         // Unity setup:
-        // The baked prefab resolves hospital and school tiles through CityFlow services.
+        // The baked prefab resolves standard and special facilities through CityFlow services.
     }
 }

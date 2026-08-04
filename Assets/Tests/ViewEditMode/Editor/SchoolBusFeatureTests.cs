@@ -106,6 +106,12 @@ namespace CityFlow.Sim.Tests
                 new(worldView);
             Assert.That(
                 worldViewSerialized
+                    .FindProperty("visualScale")
+                    .floatValue,
+                Is.EqualTo(1f).Within(0.0001f),
+                "The normalized school bus visual must use unit scale.");
+            Assert.That(
+                worldViewSerialized
                     .FindProperty("laneOffset"),
                 Is.Null,
                 "The school bus must use MainCityView's lane setting.");
@@ -369,6 +375,9 @@ namespace CityFlow.Sim.Tests
                     route.UseRoadsideStopApproach,
                     Is.True);
                 Assert.That(
+                    route.SynchronizeOffRoadTransitions,
+                    Is.True);
+                Assert.That(
                     route.RoadsideStopSetbackTiles,
                     Is.EqualTo(1));
                 Assert.That(
@@ -387,6 +396,10 @@ namespace CityFlow.Sim.Tests
                     service.CurrentTrip,
                     Is.EqualTo(
                         SchoolBusTripKind.MorningCommute));
+                Assert.That(
+                    route.State,
+                    Is.EqualTo(
+                        BusRouteState.WaitingForRoadEntry));
             }
             finally
             {

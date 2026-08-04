@@ -151,5 +151,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Audio.FacilitySoundController
   soundManager: {fileID: 5817850918565057909}
   facilityOutput: {fileID: 9029856555565852733, guid: 1f8828438f65e15488cc2c2ab28e81d7, type: 2}
-  hospitalPreviewSeconds: 4.8
-  schoolPreviewSeconds: 6
+  previewSeconds: 10
+  fadeStartsAtSeconds: 6
