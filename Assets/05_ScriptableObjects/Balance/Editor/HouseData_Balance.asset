@@ -10,12 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e2f59b7cd21b92448996b0bc26e27670, type: 3}
-  m_Name: HouseData
+  m_Name: HouseData_Balance
   m_EditorClassIdentifier: CityFlow.Contracts::CityFlow.Contracts.TileDataSO
   buildingId: house_001
   buildingName: "\uC9D1"
   category: 2
-  companyTypeId: 
   buildingIcon: {fileID: 0}
   buildingPrefab: {fileID: 0}
   buildingDescription: "\uC774\uACF3\uC740 \uC778\uAD6C\uB97C \uC720\uC785\uC2DC\uD0A4\uACE0
@@ -23,4 +22,3 @@ MonoBehaviour:
   buildCost: 100
   dailyCoinValue: 10
   prosperityValue: 1
-  requiredResearchId: 

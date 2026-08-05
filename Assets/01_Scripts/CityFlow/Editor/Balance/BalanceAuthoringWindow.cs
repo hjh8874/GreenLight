@@ -6,6 +6,7 @@ using CityFlow.Configs;
 using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.EditorTools.Save;
+using CityFlow.Gameplay.Progression;
 using CityFlow.Gameplay.Research;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -30,6 +31,9 @@ namespace CityFlow.EditorTools.Balance
             "Assets/05_ScriptableObjects/Resources/CityFlow/ResearchCatalog.asset";
         internal const string WorkingResearchCatalogPath =
             "Assets/05_ScriptableObjects/Balance/Editor/ResearchCatalog_Balance.asset";
+        internal const string WorkingBuildingCatalogPath =
+            "Assets/05_ScriptableObjects/Balance/Editor/SpecialBuildingCatalog_Balance.asset";
+        private const string BuildingNameEntryLabel = "건설 UI 정보";
         private const string WorkingRoot =
             "Assets/05_ScriptableObjects/Balance/Editor";
 
@@ -39,19 +43,95 @@ namespace CityFlow.EditorTools.Balance
             public readonly string Label;
             public readonly string SourcePath;
             public readonly string WorkingPath;
+            public readonly string[] VisiblePropertyPaths;
+            public readonly bool ShowInNavigation;
+            public readonly bool PublishToSource;
+            public readonly string LinkedResearchId;
 
             public BalanceEntry(
                 string group,
                 string label,
                 string sourcePath,
-                string workingName)
+                string workingName,
+                string[] visiblePropertyPaths = null,
+                bool showInNavigation = true,
+                bool publishToSource = true,
+                string linkedResearchId = null)
             {
                 Group = group;
                 Label = label;
                 SourcePath = sourcePath;
                 WorkingPath = $"{WorkingRoot}/{workingName}.asset";
+                VisiblePropertyPaths = visiblePropertyPaths ??
+                                       Array.Empty<string>();
+                ShowInNavigation = showInNavigation;
+                PublishToSource = publishToSource;
+                LinkedResearchId = linkedResearchId?.Trim() ?? string.Empty;
             }
         }
+
+        private static readonly string[] GeneralVehiclePropertyPaths =
+        {
+            "Value.CarsPerHouse",
+            "Value.MaxSimCars",
+            "Value.MaxPendingVehicleTrips",
+            "Value.MaxConcurrentSpecialTrips",
+            "Value.LeisureTripRatio",
+            "Value.TruckCommuterRatio",
+            "Value.MorningStartHour",
+            "Value.MorningEndHour",
+            "Value.EveningStartHour",
+            "Value.EveningEndHour",
+            "Value.DemandChoicePool",
+            "Value.RushAmplitude",
+            "Value.CoinPerTrip"
+        };
+
+        private static readonly string[] ResidentialPropertyPaths =
+        {
+            "Value.CarsPerHouse",
+            "Value.ConstructionHoursHouse"
+        };
+
+        private static readonly string[] CompanyPropertyPaths =
+        {
+            "Value.OfficeCapacity",
+            "Value.CompanyHiringSlotsPerGameHour",
+            "Value.ConstructionHoursOffice"
+        };
+
+        private static readonly string[] TileBuildingPropertyPaths =
+        {
+            "buildingName",
+            "buildingDescription",
+            "buildCost",
+            "dailyCoinValue",
+            "prosperityValue"
+        };
+
+        private static readonly string[] SpecialBuildingPropertyPaths =
+        {
+            "buildingName",
+            "description",
+            "canGenerateTraffic",
+            "canReceiveTraffic",
+            "trafficGenerationAmount",
+            "destinationRewardMultiplier",
+            "buildCost",
+            "dailyCoinValue",
+            "prosperityValue",
+            "footprint",
+            "canReceiveVisitors",
+            "visitCadence",
+            "visitorCapacity",
+            "attractionWeight",
+            "coinPerVisit",
+            "visitTimeProfile",
+            "schoolCoverageCapacity",
+            "coveredPopulationCapBonus",
+            "hospitalCoverageRadius",
+            "hospitalPatientCapacity"
+        };
 
         private static readonly BalanceEntry[] Entries =
         {
@@ -87,6 +167,12 @@ namespace CityFlow.EditorTools.Balance
                 "ResearchCatalog_Balance"),
             new(
                 "교통",
+                "일반 차량",
+                "Assets/05_ScriptableObjects/SimConfig_Integrated.asset",
+                "SimConfig_Integrated_Balance",
+                GeneralVehiclePropertyPaths),
+            new(
+                "교통",
                 "시내버스",
                 "Assets/05_ScriptableObjects/CityFlow/Transit/CityBusDefinition.asset",
                 "CityBusDefinition_Balance"),
@@ -105,6 +191,118 @@ namespace CityFlow.EditorTools.Balance
                 "스쿨버스 운행 시간",
                 "Assets/05_ScriptableObjects/CityFlow/Transit/KoreanSchoolBusSchedule.asset",
                 "KoreanSchoolBusSchedule_Balance"),
+            new(
+                "건물",
+                "주거 지역",
+                "Assets/05_ScriptableObjects/SimConfig_Integrated.asset",
+                "SimConfig_Integrated_Balance",
+                ResidentialPropertyPaths),
+            new(
+                "건물",
+                "회사",
+                "Assets/05_ScriptableObjects/SimConfig_Integrated.asset",
+                "SimConfig_Integrated_Balance",
+                CompanyPropertyPaths),
+            new(
+                "건물",
+                BuildingNameEntryLabel,
+                "Assets/05_ScriptableObjects/Buildings/SpecialBuildingCatalog.asset",
+                "SpecialBuildingCatalog_Balance",
+                showInNavigation: true,
+                publishToSource: false),
+            new(
+                "내부",
+                "특수 건물 카탈로그",
+                "Assets/05_ScriptableObjects/Buildings/SpecialBuildingCatalog.asset",
+                "SpecialBuildingCatalog_Balance",
+                showInNavigation: false,
+                publishToSource: false),
+            new(
+                "내부",
+                "주거 지역 실제 건물",
+                "Assets/05_ScriptableObjects/CityFlow/TileData/HouseData.asset",
+                "HouseData_Balance",
+                TileBuildingPropertyPaths,
+                showInNavigation: false),
+            new(
+                "내부",
+                "회사 실제 건물",
+                "Assets/05_ScriptableObjects/CityFlow/TileData/OfficeData.asset",
+                "OfficeData_Balance",
+                TileBuildingPropertyPaths,
+                showInNavigation: false),
+            new(
+                "내부",
+                "학교 실제 건물",
+                "Assets/05_ScriptableObjects/CityFlow/TileData/SchoolData.asset",
+                "SchoolData_Balance",
+                TileBuildingPropertyPaths,
+                showInNavigation: false,
+                linkedResearchId: "research_building_school"),
+            new(
+                "내부",
+                "병원 실제 건물",
+                "Assets/05_ScriptableObjects/CityFlow/TileData/HospitalTileData.asset",
+                "HospitalTileData_Balance",
+                TileBuildingPropertyPaths,
+                showInNavigation: false,
+                linkedResearchId: "research_building_hospital"),
+            new(
+                "내부", "커피숍 실제 건물",
+                "Assets/05_ScriptableObjects/Buildings/Building_CoffeeShop.asset",
+                "Building_CoffeeShop_Balance",
+                SpecialBuildingPropertyPaths,
+                showInNavigation: false,
+                linkedResearchId: "research_building_coffee_shop"),
+            new(
+                "내부", "비디오 대여점 실제 건물",
+                "Assets/05_ScriptableObjects/Buildings/Building_StoreCorner_Video.asset",
+                "Building_StoreCorner_Video_Balance",
+                SpecialBuildingPropertyPaths,
+                showInNavigation: false,
+                linkedResearchId: "research_building_video_store"),
+            new(
+                "내부", "약국 실제 건물",
+                "Assets/05_ScriptableObjects/Buildings/Building_StoreCorner_Drug.asset",
+                "Building_StoreCorner_Drug_Balance",
+                SpecialBuildingPropertyPaths,
+                showInNavigation: false,
+                linkedResearchId: "research_building_pharmacy"),
+            new(
+                "내부", "주유소 실제 건물",
+                "Assets/05_ScriptableObjects/Buildings/Building_PetrolStation.asset",
+                "Building_PetrolStation_Balance",
+                SpecialBuildingPropertyPaths,
+                showInNavigation: false,
+                linkedResearchId: "research_building_petrol_station"),
+            new(
+                "내부", "정비소 실제 건물",
+                "Assets/05_ScriptableObjects/Buildings/Building_AutoRepair.asset",
+                "Building_AutoRepair_Balance",
+                SpecialBuildingPropertyPaths,
+                showInNavigation: false,
+                linkedResearchId: "research_building_auto_repair"),
+            new(
+                "내부", "영화관 실제 건물",
+                "Assets/05_ScriptableObjects/Buildings/Building_Cinema.asset",
+                "Building_Cinema_Balance",
+                SpecialBuildingPropertyPaths,
+                showInNavigation: false,
+                linkedResearchId: "research_building_cinema"),
+            new(
+                "내부", "경찰서 실제 건물",
+                "Assets/05_ScriptableObjects/Buildings/Building_PoliceStation.asset",
+                "Building_PoliceStation_Balance",
+                SpecialBuildingPropertyPaths,
+                showInNavigation: false,
+                linkedResearchId: "research_building_police_station"),
+            new(
+                "내부", "큰 상점 실제 건물",
+                "Assets/05_ScriptableObjects/Buildings/Building_Mall.asset",
+                "Building_Mall_Balance",
+                SpecialBuildingPropertyPaths,
+                showInNavigation: false,
+                linkedResearchId: "research_building_mall"),
             new(
                 "응급",
                 "응급 신고와 구급차",
@@ -147,6 +345,226 @@ namespace CityFlow.EditorTools.Balance
                 "HighwayData_Balance")
         };
 
+        private static IEnumerable<BalanceEntry> UniqueAssetEntries =>
+            Entries
+                .GroupBy(
+                    entry => entry.WorkingPath,
+                    StringComparer.Ordinal)
+                .Select(group => group.First());
+
+        // 저장 필드명은 세이브·에셋 호환성을 위해 그대로 두고,
+        // 밸런스 편집기에서 보이는 이름만 한국어로 바꾼다.
+        private static readonly IReadOnlyDictionary<string, string>
+            PropertyLabels = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["x"] = "가로축",
+                ["y"] = "세로축",
+                ["z"] = "높이축",
+                ["w"] = "네 번째 축",
+                ["Value"] = "시뮬레이션 설정값",
+                ["standardVehicleFootprint"] = "일반 차량 차체 규격",
+                ["TickInterval"] = "시뮬레이션 틱 간격(초)",
+                ["MaxStepsPerFrame"] = "프레임당 최대 처리 단계",
+                ["GridWidth"] = "도시 격자 너비",
+                ["GridHeight"] = "도시 격자 높이",
+                ["RoadCapacity"] = "도로 처리 용량",
+                ["QueueCapacityPerTile"] = "타일당 차량 대기열 용량",
+                ["QueueServicePerTick"] = "틱당 대기열 처리 차량 수",
+                ["GridlockValveTicks"] = "교착 해제 대기 틱",
+                ["UnsignaledIntersectionRoundCap"] = "무신호 교차로 회차당 통과 차량 수",
+                ["CoinPerTrip"] = "운행 1회 보상",
+                ["CarsPerHouse"] = "주거지당 차량 수",
+                ["BusCoverageRadius"] = "버스 정류장 유효 반경",
+                ["MorningStartHour"] = "출근 시작 시간",
+                ["MorningEndHour"] = "출근 종료 시간",
+                ["EveningStartHour"] = "퇴근 시작 시간",
+                ["EveningEndHour"] = "퇴근 종료 시간",
+                ["SchoolMorningStartHour"] = "등교 시작 시간",
+                ["SchoolMorningEndHour"] = "등교 종료 시간",
+                ["SchoolReturnStartHour"] = "하교 시작 시간",
+                ["SchoolReturnEndHour"] = "하교 종료 시간",
+                ["MaxSimCars"] = "최대 시뮬레이션 차량 수",
+                ["MaxPendingVehicleTrips"] = "최대 대기 운행 수",
+                ["MaxConcurrentSpecialTrips"] = "최대 동시 특수 운행 수",
+                ["LeisureTripRatio"] = "여가 외출 비율",
+                ["TruckCommuterRatio"] = "통근 차량 중 트럭 비율",
+                ["QueueSlowRatio"] = "대기열 서행 판정 비율",
+                ["QueueJamRatio"] = "대기열 정체 판정 비율",
+                ["SlowRatio"] = "서행 판정 비율",
+                ["JamRatio"] = "정체 판정 비율",
+                ["EfficiencyMin"] = "최저 도로 효율",
+                ["EfficiencyMinRatio"] = "최저 효율 도달 비율",
+                ["GreenWaveFloor"] = "그린웨이브 최저 효율",
+                ["GreenWaveScanInterval"] = "그린웨이브 검사 주기",
+                ["GreenWaveThreshold"] = "그린웨이브 달성 기준",
+                ["GreenWaveMagnitudeOffset"] = "그린웨이브 강도 기준값",
+                ["GreenWaveMagnitudeScale"] = "그린웨이브 강도 배율",
+                ["OfficeCapacity"] = "회사 수용 인원",
+                ["CompanyHiringSlotsPerGameHour"] = "게임 시간당 회사 채용 수",
+                ["ConstructionHoursHouse"] = "주거지 건설 시간",
+                ["ConstructionHoursOffice"] = "회사 건설 시간",
+                ["ConstructionHoursSchool"] = "학교 건설 시간",
+                ["ConstructionHoursHospital"] = "병원 건설 시간",
+                ["ConstructionHoursSpecial"] = "특수 건물 건설 시간",
+                ["SchoolCapacity"] = "학교 수용 인원",
+                ["DemandChoicePool"] = "목적지 선택 후보 수",
+                ["RushAmplitude"] = "출퇴근 혼잡 증가폭",
+                ["DayLengthSeconds"] = "게임 하루 길이(초)",
+                ["OverrideDurationSeconds"] = "신호 강제 제어 지속 시간",
+                ["OverrideCooldownSeconds"] = "신호 강제 제어 재사용 대기 시간",
+                ["OverrideCorridorSignals"] = "강제 제어 최대 신호 수",
+                ["UnsignaledInterference"] = "무신호 교차로 간섭 계수",
+                ["RoundaboutInterference"] = "회전교차로 간섭 계수",
+                ["RoundaboutCapacityFactor"] = "회전교차로 용량 배율",
+                ["PriorityMainInterference"] = "우선도로 주축 간섭 계수",
+                ["PriorityYieldInterference"] = "우선도로 양보축 간섭 계수",
+                ["RoutingCongestionWeight"] = "경로 탐색 혼잡 가중치",
+                ["AutoDetectSignals"] = "교차로 신호 자동 생성",
+                ["CoinBase"] = "도착 기본 보상",
+                ["MaxRoadTiles"] = "최대 도로 타일 수",
+                ["RoadExpandBaseCost"] = "도로 확장 기본 비용",
+                ["RoadExpandCostGrowth"] = "도로 확장 비용 증가량",
+                ["StabilityJamWeight"] = "정체 안정도 감점 가중치",
+                ["BurstJamEnterRatio"] = "버스트 정체 진입 기준",
+                ["BurstFreeReturnRatio"] = "버스트 정상 복귀 기준",
+                ["BurstCooldownSeconds"] = "버스트 재사용 대기 시간",
+                ["BurstRewardThreshold"] = "버스트 보상 발생 기준",
+
+                ["coinBase"] = "도착 기본 보상",
+                ["defaultDestinationRewardPercent"] = "목적지 기본 보상 비율(%)",
+                ["settlementDays"] = "정산 주기(게임 일)",
+                ["offlineMaximumRealHours"] = "오프라인 보상 최대 현실 시간",
+                ["offlineIncomePercent"] = "오프라인 수익 비율(%)",
+                ["weeklyCoinPerBuilding"] = "건물당 주간 수익",
+                ["cityUnlockCosts"] = "도시 단계별 해금 비용",
+                ["landCosts"] = "토지 매입 단계별 비용",
+                ["upgradeCosts"] = "업그레이드 단계별 비용",
+                ["initialRefundPercent"] = "최초 철거 환급률(%)",
+                ["refundDecreasePercent"] = "환급 감소량(%)",
+                ["minimumRefundPercent"] = "최저 환급률(%)",
+                ["refundDecreaseIntervalDays"] = "환급 감소 주기(게임 일)",
+                ["realMinutesPerGameDay"] = "게임 하루당 현실 시간(분)",
+                ["flowBurstRewardPercent"] = "플로우 버스트 보상 비율(%)",
+                ["flowBurstDurationSeconds"] = "플로우 버스트 지속 시간(초)",
+                ["rewardTiers"] = "거리별 보상 단계",
+                ["minimumDistanceTiles"] = "최소 이동 거리(타일)",
+                ["rewardMultiplier"] = "보상 배율",
+                ["populationEntries"] = "건물별 인구 설정",
+                ["tileType"] = "건물 종류",
+                ["populationValue"] = "인구 증가량",
+                ["schoolCoverageRadius"] = "학교 영향 반경",
+                ["schoolCoveragePopulationBonus"] = "학교 영향권 인구 보너스",
+
+                ["busId"] = "버스 ID",
+                ["displayName"] = "표시 이름",
+                ["buildingName"] = "실제 건물 이름",
+                ["buildingDescription"] = "건설 메뉴 설명",
+                ["description"] = "건물 설명",
+                ["buildCost"] = "건설 비용",
+                ["dailyCoinValue"] = "일일 기본 코인",
+                ["prosperityValue"] = "번성도 증가량",
+                ["canGenerateTraffic"] = "교통 수요 생성",
+                ["canReceiveTraffic"] = "차량 목적지 허용",
+                ["trafficGenerationAmount"] = "기본 이동 수요",
+                ["destinationRewardMultiplier"] = "도착 보상 배율",
+                ["footprint"] = "건물 점유 크기",
+                ["canReceiveVisitors"] = "방문객 허용",
+                ["visitCadence"] = "방문 주기",
+                ["visitsPerPeriod"] = "주기당 방문 횟수",
+                ["periodDays"] = "방문 주기 일수",
+                ["visitorCapacity"] = "방문객 수용 인원",
+                ["attractionWeight"] = "방문 목적지 가중치",
+                ["coinPerVisit"] = "방문 1회 수익",
+                ["visitTimeProfile"] = "방문 가능 시간대",
+                ["schoolCoverageCapacity"] = "학교 영향 수용량",
+                ["coveredPopulationCapBonus"] = "영향권 인구 상한 보너스",
+                ["hospitalCoverageRadius"] = "병원 영향 반경",
+                ["hospitalPatientCapacity"] = "병원 환자 수용량",
+                ["busType"] = "버스 종류",
+                ["secondsPerTile"] = "타일당 이동 시간(초)",
+                ["stopWaitSeconds"] = "정류장 대기 시간(초)",
+                ["initialStops"] = "초기 정류장 좌표",
+                ["passengerCapacity"] = "승객 정원",
+                ["boardingDemandPerStop"] = "정류장당 탑승 수요",
+                ["leavingDemandPerStop"] = "정류장당 하차 수요",
+                ["vehicleFootprintProfile"] = "차체 점유 규격",
+                ["vehicleLengthTiles"] = "차량 길이(타일)",
+                ["vehicleWidthTiles"] = "차량 너비(타일)",
+                ["stopRevenueCoins"] = "정류장 도착 수익",
+                ["routeColor"] = "노선 표시 색상",
+                ["vehicleVisualPrefab"] = "차량 외형 프리팹",
+                ["serviceStartHour"] = "운행 시작 시간",
+                ["serviceEndHour"] = "운행 종료 시간",
+                ["morningStartHour"] = "등교 운행 시작 시간",
+                ["morningEndHour"] = "등교 운행 종료 시간",
+                ["afternoonStartHour"] = "하교 운행 시작 시간",
+                ["afternoonEndHour"] = "하교 운행 종료 시간",
+                ["operateOnWeekends"] = "주말 운행",
+
+                ["minimumSpawnInterval"] = "최소 신고 발생 간격(초)",
+                ["maximumSpawnInterval"] = "최대 신고 발생 간격(초)",
+                ["minimumDispatchIntervalDays"] = "최소 자동 출동 간격(게임 일)",
+                ["maximumDispatchIntervalDays"] = "최대 자동 출동 간격(게임 일)",
+                ["maximumActiveIncidents"] = "최대 동시 응급 신고 수",
+                ["maximumAutomaticIncidentsPerDay"] = "하루 최대 자동 신고 수",
+                ["incidentDefinitions"] = "응급 신고 종류",
+                ["houseWeight"] = "주거지 출동 가중치",
+                ["officeWeight"] = "회사 출동 가중치",
+                ["schoolWeight"] = "학교 출동 가중치",
+                ["specialBuildingWeight"] = "특수 건물 출동 가중치",
+                ["recentTargetHistorySize"] = "최근 출동지 중복 방지 개수",
+                ["travelSecondsPerTile"] = "구급차 타일당 이동 시간(초)",
+                ["treatmentSeconds"] = "현장 정차 시간(초)",
+                ["ambulancesPerHospital"] = "병원당 구급차 수",
+                ["routeRetrySeconds"] = "경로 재탐색 간격(초)",
+                ["maximumOutboundRouteRetries"] = "출동 경로 최대 재시도 횟수",
+                ["maximumReturnRouteRetries"] = "복귀 경로 최대 재시도 횟수",
+                ["visualScale"] = "구급차 외형 크기",
+                ["visualDepth"] = "구급차 화면 깊이",
+
+                ["Kind"] = "인프라 종류",
+                ["InfrastructureName"] = "인프라 이름",
+                ["Icon"] = "아이콘",
+                ["Description"] = "설명",
+                ["Cost"] = "건설 비용",
+                ["GreenSlots"] = "신호등 초록불 슬롯 길이",
+                ["OnewayDir"] = "일방통행 방향",
+                ["TurnMode"] = "허용 회전 방식",
+                ["PriorityAxis"] = "우선도로 주축"
+            };
+
+        private static readonly IReadOnlyDictionary<string, string>
+            EnumLabels = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["None"] = "없음",
+                ["CityBus"] = "시내버스",
+                ["SchoolBus"] = "스쿨버스",
+                ["Empty"] = "빈 공간",
+                ["Road"] = "도로",
+                ["House"] = "주거 지역",
+                ["Office"] = "회사",
+                ["School"] = "학교",
+                ["Hospital"] = "병원",
+                ["SpecialBuilding"] = "특수 건물",
+                ["UnderConstruction"] = "건설 중",
+                ["Signal"] = "신호등",
+                ["Roundabout"] = "회전교차로",
+                ["Overpass"] = "고가도로",
+                ["Oneway"] = "일방통행",
+                ["OneWay"] = "일방통행",
+                ["TurnRestriction"] = "회전 제한",
+                ["PriorityRoad"] = "우선 도로",
+                ["Highway"] = "고속도로",
+                ["BusStop"] = "버스 정류장",
+                ["LeftOnly"] = "좌회전만 허용",
+                ["RightOnly"] = "우회전만 허용",
+                ["StraightOnly"] = "직진만 허용",
+                ["NoLeft"] = "좌회전 금지",
+                ["NoRight"] = "우회전 금지",
+                ["Horizontal"] = "가로축",
+                ["Vertical"] = "세로축"
+            };
+
         private readonly List<string> validationMessages = new();
         private Vector2 scroll;
         private string selectedGroup = "핵심";
@@ -187,9 +605,12 @@ namespace CityFlow.EditorTools.Balance
             EnsureWorkingAssets();
             EnsureBalanceScene();
 
-            Scene scene = EditorSceneManager.OpenScene(
-                BalanceScenePath,
-                OpenSceneMode.Single);
+            Scene activeScene = SceneManager.GetActiveScene();
+            Scene scene = IsSupportedBalanceScenePath(activeScene.path)
+                ? activeScene
+                : EditorSceneManager.OpenScene(
+                    BalanceScenePath,
+                    OpenSceneMode.Single);
             int changedReferences = RewireSceneToWorkingAssets(scene);
 
             if (changedReferences > 0)
@@ -198,7 +619,7 @@ namespace CityFlow.EditorTools.Balance
             }
 
             EditorSceneManager.playModeStartScene =
-                AssetDatabase.LoadAssetAtPath<SceneAsset>(BalanceScenePath);
+                AssetDatabase.LoadAssetAtPath<SceneAsset>(scene.path);
             OpenWindow();
             Debug.Log(
                 $"[Balance] 전용 Scene 준비 완료: {BalanceScenePath} " +
@@ -207,7 +628,70 @@ namespace CityFlow.EditorTools.Balance
 
         private void OnDisable()
         {
+            EditorApplication.delayCall -=
+                RewireLoadedBalanceSceneToWorkingAssets;
             DestroyCachedEditor();
+        }
+
+        private void OnEnable()
+        {
+            EnsureWorkingAssets();
+            EditorApplication.delayCall -=
+                RewireLoadedBalanceSceneToWorkingAssets;
+            EditorApplication.delayCall +=
+                RewireLoadedBalanceSceneToWorkingAssets;
+        }
+
+        private static void RewireLoadedBalanceSceneToWorkingAssets()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode ||
+                EditorApplication.isCompiling ||
+                EditorApplication.isUpdating)
+            {
+                return;
+            }
+
+            Scene scene = SceneManager.GetActiveScene();
+            if (!IsSupportedBalanceScenePath(scene.path))
+            {
+                return;
+            }
+
+            bool wasDirty = scene.isDirty;
+            int changedReferences = RewireSceneToWorkingAssets(scene);
+            if (changedReferences <= 0)
+            {
+                return;
+            }
+
+            // Do not silently save unrelated user edits. A clean debug scene can
+            // be saved safely; a dirty one keeps the new references in memory and
+            // remains visibly dirty for the user to review.
+            if (!wasDirty)
+            {
+                EditorSceneManager.SaveScene(scene);
+            }
+
+            Debug.Log(
+                $"[Balance] Connected {changedReferences} working balance " +
+                $"references to the debug scene: {scene.path}");
+        }
+
+        internal static bool IsSupportedBalanceScenePath(string scenePath)
+        {
+            const string debugPrefix = "Assets/00_Scenes/Debug/";
+            const string balanceScenePrefix = "CityFlowBalance_Lee";
+            if (string.IsNullOrWhiteSpace(scenePath) ||
+                !scenePath.StartsWith(debugPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            string fileName = scenePath.Substring(debugPrefix.Length);
+            return fileName.StartsWith(
+                       balanceScenePrefix,
+                       StringComparison.Ordinal) &&
+                   fileName.EndsWith(".unity", StringComparison.Ordinal);
         }
 
         private void OnProjectChange()
@@ -302,6 +786,7 @@ namespace CityFlow.EditorTools.Balance
         private void DrawNavigation()
         {
             string[] groups = Entries
+                .Where(entry => entry.ShowInNavigation)
                 .Select(entry => entry.Group)
                 .Distinct()
                 .ToArray();
@@ -332,7 +817,8 @@ namespace CityFlow.EditorTools.Balance
                 EditorGUILayout.LabelField("설정", EditorStyles.boldLabel);
 
                 BalanceEntry[] groupEntries = Entries
-                    .Where(entry => entry.Group == selectedGroup)
+                    .Where(entry => entry.ShowInNavigation &&
+                                    entry.Group == selectedGroup)
                     .ToArray();
 
                 for (int i = 0; i < groupEntries.Length; i++)
@@ -390,7 +876,8 @@ namespace CityFlow.EditorTools.Balance
         private void DrawSelectedAsset()
         {
             BalanceEntry[] groupEntries = Entries
-                .Where(entry => entry.Group == selectedGroup)
+                .Where(entry => entry.ShowInNavigation &&
+                                entry.Group == selectedGroup)
                 .ToArray();
 
             if (groupEntries.Length == 0)
@@ -404,6 +891,8 @@ namespace CityFlow.EditorTools.Balance
                 groupEntries.Length - 1);
             BalanceEntry entry = groupEntries[selectedEntryIndex];
             bool isResearchEntry = entry.Label == "건물 해금 연구";
+            bool isBuildingNameEntry =
+                entry.Label == BuildingNameEntryLabel;
             string selectedLabel = isResearchEntry &&
                                    selectedResearchSection ==
                                    ResearchBalanceSection.Expansion
@@ -431,6 +920,28 @@ namespace CityFlow.EditorTools.Balance
                     EditorGUILayout.HelpBox(
                         "플레이 시작 시 DayLengthSeconds는 게임 시간 설정과 자동 동기화됩니다. " +
                         "하루 길이는 '시간 > 게임 시간'에서 조정하세요.",
+                        MessageType.Info);
+                }
+                else if (entry.Label == "일반 차량")
+                {
+                    EditorGUILayout.HelpBox(
+                        "일반 차량의 생성량, 동시 운행 한도, 출퇴근 시간, " +
+                        "차량 구성과 운행 보상을 조정합니다. 같은 값은 주거 지역과 " +
+                        "회사 설정에도 연결되어 즉시 일관되게 반영됩니다.",
+                        MessageType.Info);
+                }
+                else if (entry.Label == "주거 지역")
+                {
+                    EditorGUILayout.HelpBox(
+                        "주거 지역 한 곳에서 보유할 차량 수와 건설 완료까지 필요한 " +
+                        "게임 시간을 조정합니다. 주거 인구는 '핵심 > 인구'에서 조정합니다.",
+                        MessageType.Info);
+                }
+                else if (entry.Label == "회사")
+                {
+                    EditorGUILayout.HelpBox(
+                        "회사 한 곳의 수용 인원, 게임 시간당 채용 인원과 건설 완료까지 " +
+                        "필요한 게임 시간을 조정합니다.",
                         MessageType.Info);
                 }
                 else if (isResearchEntry &&
@@ -467,18 +978,613 @@ namespace CityFlow.EditorTools.Balance
                     return;
                 }
 
-                if (cachedTarget != target || cachedAssetEditor == null)
+                if (isBuildingNameEntry)
                 {
-                    DestroyCachedEditor();
-                    cachedTarget = target;
-                    cachedAssetEditor =
-                        UnityEditor.Editor.CreateEditor(target);
+                    scroll = EditorGUILayout.BeginScrollView(scroll);
+                    DrawBuildingNameEditor();
+                    EditorGUILayout.EndScrollView();
+                    return;
                 }
 
                 scroll = EditorGUILayout.BeginScrollView(scroll);
-                cachedAssetEditor.OnInspectorGUI();
+                if (entry.VisiblePropertyPaths.Length > 0)
+                {
+                    DrawFilteredAssetInspector(
+                        target,
+                        entry.VisiblePropertyPaths);
+                    if (entry.Label == "주거 지역")
+                    {
+                        DrawResidentialPopulationSetting();
+                        DrawSupplementalBuildingSettings(
+                            "HouseData_Balance.asset",
+                            "주거 건설 UI와 수익");
+                    }
+                    else if (entry.Label == "회사")
+                    {
+                        DrawSupplementalBuildingSettings(
+                            "OfficeData_Balance.asset",
+                            "회사 건설 UI와 수익");
+                    }
+                }
+                else
+                {
+                    DrawLocalizedAssetInspector(target);
+                }
                 EditorGUILayout.EndScrollView();
             }
+        }
+
+        internal static IReadOnlyList<string> GetVisiblePropertyPaths(
+            string group,
+            string label)
+        {
+            BalanceEntry entry = Entries.FirstOrDefault(
+                candidate => candidate.Group == group &&
+                             candidate.Label == label);
+            return entry?.VisiblePropertyPaths ?? Array.Empty<string>();
+        }
+
+        internal static bool HasLocalizedPropertyLabel(string propertyName) =>
+            PropertyLabels.ContainsKey(propertyName ?? string.Empty);
+
+        internal static string GetLocalizedPropertyLabel(
+            string propertyName,
+            string fallback = null)
+        {
+            return PropertyLabels.TryGetValue(
+                propertyName ?? string.Empty,
+                out string label)
+                ? label
+                : fallback ?? ObjectNames.NicifyVariableName(propertyName);
+        }
+
+        internal static string GetLocalizedEnumLabel(string enumName)
+        {
+            return EnumLabels.TryGetValue(
+                enumName ?? string.Empty,
+                out string label)
+                ? label
+                : ObjectNames.NicifyVariableName(enumName);
+        }
+
+        private void DrawBuildingNameEditor()
+        {
+            EditorGUILayout.HelpBox(
+                "여기서 바꾼 이름, 비용, 수입, 안정도, 설명은 건설 메뉴 툴팁과 " +
+                "건물 정보창에 표시됩니다. " +
+                "연구 카드 이름은 '연구 > 건물 해금 연구'에서 별도로 설정합니다.",
+                MessageType.Info);
+
+            foreach (string workingPath in GetBuildingNameWorkingPaths())
+            {
+                UnityEngine.Object target =
+                    AssetDatabase.LoadMainAssetAtPath(workingPath);
+                if (target == null)
+                {
+                    continue;
+                }
+
+                var serialized = new SerializedObject(target);
+                serialized.UpdateIfRequiredOrScript();
+                SerializedProperty buildingName =
+                    serialized.FindProperty("buildingName");
+                if (buildingName == null)
+                {
+                    continue;
+                }
+
+                using (new EditorGUILayout.VerticalScope(
+                           EditorStyles.helpBox))
+                {
+                    EditorGUILayout.LabelField(
+                        string.IsNullOrWhiteSpace(buildingName.stringValue)
+                            ? target.name
+                            : buildingName.stringValue,
+                        EditorStyles.boldLabel);
+
+                    EditorGUILayout.PropertyField(
+                        buildingName,
+                        new GUIContent(
+                            "건설 UI 표시 이름",
+                            "건설 메뉴 툴팁과 건물 정보창에 표시할 이름입니다."));
+
+                    string categoryLabel = target switch
+                    {
+                        TileDataSO tileData => tileData.Category.ToString(),
+                        BuildingDefinitionSO definition =>
+                            definition.category.ToString(),
+                        _ => "-"
+                    };
+                    using (new EditorGUI.DisabledScope(true))
+                    {
+                        EditorGUILayout.TextField(
+                            new GUIContent(
+                                "표시 분류",
+                                "건물 동작과 연결된 값이므로 이 화면에서는 변경하지 않습니다."),
+                            categoryLabel);
+                    }
+
+                    DrawTooltipProperty(
+                        serialized,
+                        "buildCost",
+                        "건설 비용",
+                        "툴팁의 '비용'에 표시되는 코인입니다.");
+
+                    if (target is TileDataSO)
+                    {
+                        DrawTooltipProperty(
+                            serialized,
+                            "dailyCoinValue",
+                            "툴팁 수입",
+                            "툴팁의 '수입'에 표시되는 값입니다.");
+                        DrawTooltipProperty(
+                            serialized,
+                            "prosperityValue",
+                            "툴팁 안정도",
+                            "툴팁의 '안정도'에 표시되는 값입니다.");
+                    }
+                    else
+                    {
+                        DrawTooltipProperty(
+                            serialized,
+                            "visitCadence.visitsPerPeriod",
+                            "기간 내 방문 횟수",
+                            "특수 건물 툴팁의 방문 횟수입니다.");
+                        DrawTooltipProperty(
+                            serialized,
+                            "visitCadence.periodDays",
+                            "방문 기간(일)",
+                            "특수 건물 툴팁의 방문 주기입니다.");
+                    }
+
+                    if (string.IsNullOrWhiteSpace(buildingName.stringValue))
+                    {
+                        EditorGUILayout.HelpBox(
+                            "건물 이름은 비워둘 수 없습니다.",
+                            MessageType.Error);
+                    }
+
+                    string descriptionPropertyName = target is TileDataSO
+                        ? "buildingDescription"
+                        : "description";
+                    SerializedProperty description =
+                        serialized.FindProperty(descriptionPropertyName);
+                    if (description != null)
+                    {
+                        EditorGUILayout.PropertyField(
+                            description,
+                            new GUIContent(
+                                "건설 UI 설명",
+                                "툴팁 맨 아래에 표시되는 설명입니다."));
+                    }
+
+                    if (serialized.ApplyModifiedProperties())
+                    {
+                        EditorUtility.SetDirty(target);
+                        researchUnlockLabels = null;
+                        RefreshOpenBuildPanels();
+                    }
+                }
+            }
+        }
+
+        private static void DrawTooltipProperty(
+            SerializedObject serialized,
+            string propertyPath,
+            string label,
+            string tooltip)
+        {
+            SerializedProperty property =
+                serialized.FindProperty(propertyPath);
+            if (property != null)
+            {
+                EditorGUILayout.PropertyField(
+                    property,
+                    new GUIContent(label, tooltip));
+            }
+        }
+
+        private static void RefreshOpenBuildPanels()
+        {
+            if (!Application.isPlaying)
+            {
+                return;
+            }
+
+            CityFlow.UI.BuildPanelController[] panels =
+                UnityEngine.Object.FindObjectsByType<
+                    CityFlow.UI.BuildPanelController>(
+                    FindObjectsInactive.Include,
+                    FindObjectsSortMode.None);
+            foreach (CityFlow.UI.BuildPanelController panel in panels)
+            {
+                panel?.RefreshBalancePresentation();
+            }
+        }
+
+        internal static IReadOnlyList<string> GetBuildingNameWorkingPaths() =>
+            Entries
+                .Where(entry => entry.VisiblePropertyPaths.Contains(
+                    "buildingName",
+                    StringComparer.Ordinal))
+                .GroupBy(entry => entry.WorkingPath, StringComparer.Ordinal)
+                .Select(group => group.Key)
+                .ToArray();
+
+        private static void DrawLocalizedAssetInspector(
+            UnityEngine.Object target)
+        {
+            var serialized = new SerializedObject(target);
+            serialized.UpdateIfRequiredOrScript();
+
+            SerializedProperty property = serialized.GetIterator();
+            bool enterChildren = true;
+            while (property.NextVisible(enterChildren))
+            {
+                enterChildren = false;
+                if (property.propertyPath == "m_Script")
+                {
+                    continue;
+                }
+
+                DrawLocalizedProperty(
+                    property.Copy(),
+                    CreateLocalizedContent(property));
+            }
+
+            if (serialized.ApplyModifiedProperties())
+            {
+                EditorUtility.SetDirty(target);
+            }
+
+            if (target is GameTimeSettingsSO timeSettings)
+            {
+                DrawGameTimeSummary(timeSettings);
+            }
+        }
+
+        private static void DrawFilteredAssetInspector(
+            UnityEngine.Object target,
+            IReadOnlyList<string> propertyPaths)
+        {
+            var serialized = new SerializedObject(target);
+            serialized.UpdateIfRequiredOrScript();
+
+            foreach (string propertyPath in propertyPaths)
+            {
+                SerializedProperty property =
+                    serialized.FindProperty(propertyPath);
+                if (property == null)
+                {
+                    EditorGUILayout.HelpBox(
+                        $"설정 항목을 찾을 수 없습니다: {propertyPath}",
+                        MessageType.Error);
+                    continue;
+                }
+
+                DrawLocalizedProperty(
+                    property.Copy(),
+                    CreateLocalizedContent(property));
+            }
+
+            if (serialized.ApplyModifiedProperties())
+            {
+                EditorUtility.SetDirty(target);
+            }
+        }
+
+        private static void DrawResidentialPopulationSetting()
+        {
+            const string populationWorkingPath =
+                "Assets/05_ScriptableObjects/Balance/Editor/PopulationConfig_Balance.asset";
+            UnityEngine.Object target =
+                AssetDatabase.LoadMainAssetAtPath(populationWorkingPath);
+            if (target == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "주거 인구 작업용 설정을 찾을 수 없습니다.",
+                    MessageType.Warning);
+                return;
+            }
+
+            var serialized = new SerializedObject(target);
+            serialized.UpdateIfRequiredOrScript();
+            SerializedProperty entries =
+                serialized.FindProperty("populationEntries");
+            SerializedProperty housePopulation = null;
+
+            if (entries != null && entries.isArray)
+            {
+                for (int index = 0; index < entries.arraySize; index++)
+                {
+                    SerializedProperty entry =
+                        entries.GetArrayElementAtIndex(index);
+                    SerializedProperty tileType =
+                        entry.FindPropertyRelative("tileType");
+                    if (tileType != null &&
+                        tileType.enumValueIndex == (int)TileType.House)
+                    {
+                        housePopulation =
+                            entry.FindPropertyRelative("populationValue");
+                        break;
+                    }
+                }
+            }
+
+            if (housePopulation == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "인구 설정에 주거 지역 항목이 없습니다. '핵심 > 인구'에서 추가해 주세요.",
+                    MessageType.Warning);
+                return;
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                "주거 인구",
+                EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(
+                housePopulation,
+                new GUIContent(
+                    "주거지당 인구 증가량",
+                    "주거 지역 한 곳이 기본으로 제공하는 인구입니다."));
+
+            if (serialized.ApplyModifiedProperties())
+            {
+                EditorUtility.SetDirty(target);
+            }
+        }
+
+        private static void DrawSupplementalBuildingSettings(
+            string workingFileName,
+            string heading)
+        {
+            UnityEngine.Object target = AssetDatabase.LoadMainAssetAtPath(
+                $"{WorkingRoot}/{workingFileName}");
+            if (target == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "실제 건물 작업용 설정을 찾을 수 없습니다. " +
+                    "'작업 공간 생성 / 열기'를 다시 눌러 주세요.",
+                    MessageType.Warning);
+                return;
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(heading, EditorStyles.boldLabel);
+            DrawFilteredAssetInspector(
+                target,
+                TileBuildingPropertyPaths);
+        }
+
+        private static void DrawGameTimeSummary(
+            GameTimeSettingsSO settings)
+        {
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                "1배속 기준 환산 시간",
+                EditorStyles.boldLabel);
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.FloatField(
+                    "게임 1시간당 현실 초",
+                    settings.RealSecondsPerGameHour);
+                EditorGUILayout.FloatField(
+                    "게임 1일당 현실 분",
+                    settings.RealMinutesPerGameDay);
+                EditorGUILayout.FloatField(
+                    "게임 1주당 현실 분",
+                    settings.RealMinutesPerGameDay * 7f);
+                EditorGUILayout.FloatField(
+                    "게임 1개월당 현실 시간",
+                    settings.RealMinutesPerGameDay * 30f / 60f);
+                EditorGUILayout.FloatField(
+                    "게임 1년당 현실 시간",
+                    settings.RealMinutesPerGameDay * 360f / 60f);
+            }
+
+            EditorGUILayout.HelpBox(
+                "시간 값을 바꾼 뒤에는 플레이 모드를 다시 시작해야 " +
+                "모든 시간 시스템에 같은 속도가 적용됩니다.",
+                MessageType.Info);
+        }
+
+        private static void DrawLocalizedProperty(
+            SerializedProperty property,
+            GUIContent label)
+        {
+            if (property.isArray &&
+                property.propertyType != SerializedPropertyType.String)
+            {
+                DrawLocalizedArray(property, label);
+                return;
+            }
+
+            if (property.propertyType == SerializedPropertyType.Generic)
+            {
+                DrawLocalizedGroup(property, label);
+                return;
+            }
+
+            if (DrawLocalizedVector(property, label))
+            {
+                return;
+            }
+
+            if (property.propertyType == SerializedPropertyType.Enum)
+            {
+                string[] labels = property.enumNames
+                    .Select(GetLocalizedEnumLabel)
+                    .ToArray();
+                property.enumValueIndex = EditorGUILayout.Popup(
+                    label,
+                    property.enumValueIndex,
+                    labels);
+                return;
+            }
+
+            EditorGUILayout.PropertyField(property, label, false);
+        }
+
+        private static bool DrawLocalizedVector(
+            SerializedProperty property,
+            GUIContent label)
+        {
+            switch (property.propertyType)
+            {
+                case SerializedPropertyType.Vector2Int:
+                {
+                    Vector2Int value = property.vector2IntValue;
+                    EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
+                    using (new EditorGUI.IndentLevelScope())
+                    {
+                        value.x = EditorGUILayout.IntField("가로축", value.x);
+                        value.y = EditorGUILayout.IntField("세로축", value.y);
+                    }
+
+                    property.vector2IntValue = value;
+                    return true;
+                }
+                case SerializedPropertyType.Vector2:
+                {
+                    Vector2 value = property.vector2Value;
+                    EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
+                    using (new EditorGUI.IndentLevelScope())
+                    {
+                        value.x = EditorGUILayout.FloatField("가로축", value.x);
+                        value.y = EditorGUILayout.FloatField("세로축", value.y);
+                    }
+
+                    property.vector2Value = value;
+                    return true;
+                }
+                case SerializedPropertyType.Vector3Int:
+                {
+                    Vector3Int value = property.vector3IntValue;
+                    EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
+                    using (new EditorGUI.IndentLevelScope())
+                    {
+                        value.x = EditorGUILayout.IntField("가로축", value.x);
+                        value.y = EditorGUILayout.IntField("세로축", value.y);
+                        value.z = EditorGUILayout.IntField("높이축", value.z);
+                    }
+
+                    property.vector3IntValue = value;
+                    return true;
+                }
+                case SerializedPropertyType.Vector3:
+                {
+                    Vector3 value = property.vector3Value;
+                    EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
+                    using (new EditorGUI.IndentLevelScope())
+                    {
+                        value.x = EditorGUILayout.FloatField("가로축", value.x);
+                        value.y = EditorGUILayout.FloatField("세로축", value.y);
+                        value.z = EditorGUILayout.FloatField("높이축", value.z);
+                    }
+
+                    property.vector3Value = value;
+                    return true;
+                }
+                case SerializedPropertyType.Vector4:
+                {
+                    Vector4 value = property.vector4Value;
+                    EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
+                    using (new EditorGUI.IndentLevelScope())
+                    {
+                        value.x = EditorGUILayout.FloatField("가로축", value.x);
+                        value.y = EditorGUILayout.FloatField("세로축", value.y);
+                        value.z = EditorGUILayout.FloatField("높이축", value.z);
+                        value.w = EditorGUILayout.FloatField("네 번째 축", value.w);
+                    }
+
+                    property.vector4Value = value;
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        }
+
+        private static void DrawLocalizedArray(
+            SerializedProperty property,
+            GUIContent label)
+        {
+            property.isExpanded = EditorGUILayout.Foldout(
+                property.isExpanded,
+                $"{label.text} ({property.arraySize}개)",
+                true);
+            if (!property.isExpanded)
+            {
+                return;
+            }
+
+            using (new EditorGUI.IndentLevelScope())
+            {
+                int size = Mathf.Max(
+                    0,
+                    EditorGUILayout.DelayedIntField(
+                        new GUIContent("항목 수"),
+                        property.arraySize));
+                if (size != property.arraySize)
+                {
+                    property.arraySize = size;
+                }
+
+                for (int index = 0; index < property.arraySize; index++)
+                {
+                    SerializedProperty element =
+                        property.GetArrayElementAtIndex(index);
+                    DrawLocalizedProperty(
+                        element,
+                        new GUIContent($"항목 {index + 1}"));
+                }
+            }
+        }
+
+        private static void DrawLocalizedGroup(
+            SerializedProperty property,
+            GUIContent label)
+        {
+            property.isExpanded = EditorGUILayout.Foldout(
+                property.isExpanded,
+                label,
+                true);
+            if (!property.isExpanded)
+            {
+                return;
+            }
+
+            SerializedProperty child = property.Copy();
+            SerializedProperty end = property.GetEndProperty();
+            if (!child.NextVisible(true))
+            {
+                return;
+            }
+
+            using (new EditorGUI.IndentLevelScope())
+            {
+                while (!SerializedProperty.EqualContents(child, end))
+                {
+                    DrawLocalizedProperty(
+                        child.Copy(),
+                        CreateLocalizedContent(child));
+                    if (!child.NextVisible(false))
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        private static GUIContent CreateLocalizedContent(
+            SerializedProperty property)
+        {
+            return new GUIContent(
+                GetLocalizedPropertyLabel(
+                    property.name,
+                    property.displayName),
+                property.tooltip);
         }
 
         private static void EnsureWorkingAssets()
@@ -486,7 +1592,7 @@ namespace CityFlow.EditorTools.Balance
             EnsureFolder("Assets/05_ScriptableObjects/Balance");
             EnsureFolder(WorkingRoot);
 
-            foreach (BalanceEntry entry in Entries)
+            foreach (BalanceEntry entry in UniqueAssetEntries)
             {
                 if (AssetDatabase.LoadMainAssetAtPath(entry.SourcePath) == null)
                 {
@@ -507,8 +1613,69 @@ namespace CityFlow.EditorTools.Balance
                 }
             }
 
+            RewireWorkingBuildingCatalog();
+
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
+        }
+
+        private static void RewireWorkingBuildingCatalog()
+        {
+            UnityEngine.Object catalog =
+                AssetDatabase.LoadMainAssetAtPath(
+                    WorkingBuildingCatalogPath);
+            if (catalog == null)
+            {
+                return;
+            }
+
+            var serialized = new SerializedObject(catalog);
+            serialized.UpdateIfRequiredOrScript();
+            SerializedProperty buildings =
+                serialized.FindProperty("buildings");
+            if (buildings == null || !buildings.isArray)
+            {
+                return;
+            }
+
+            bool changed = false;
+            for (int index = 0; index < buildings.arraySize; index++)
+            {
+                SerializedProperty element =
+                    buildings.GetArrayElementAtIndex(index);
+                UnityEngine.Object current =
+                    element.objectReferenceValue;
+                if (current == null)
+                {
+                    continue;
+                }
+
+                string currentPath = AssetDatabase.GetAssetPath(current);
+                BalanceEntry entry = Entries.FirstOrDefault(candidate =>
+                    candidate.LinkedResearchId.Length > 0 &&
+                    (candidate.SourcePath == currentPath ||
+                     candidate.WorkingPath == currentPath));
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                UnityEngine.Object working =
+                    AssetDatabase.LoadMainAssetAtPath(
+                        entry.WorkingPath);
+                if (working == null || current == working)
+                {
+                    continue;
+                }
+
+                element.objectReferenceValue = working;
+                changed = true;
+            }
+
+            if (changed && serialized.ApplyModifiedProperties())
+            {
+                EditorUtility.SetDirty(catalog);
+            }
         }
 
         private static void EnsureBalanceScene()
@@ -557,7 +1724,7 @@ namespace CityFlow.EditorTools.Balance
                 AssetDatabase.LoadMainAssetAtPath(
                     WorkingResearchCatalogPath);
 
-            foreach (BalanceEntry entry in Entries)
+            foreach (BalanceEntry entry in UniqueAssetEntries)
             {
                 UnityEngine.Object source =
                     AssetDatabase.LoadMainAssetAtPath(entry.SourcePath);
@@ -582,27 +1749,12 @@ namespace CityFlow.EditorTools.Balance
                     }
 
                     SerializedObject serialized = new(component);
-                    SerializedProperty researchCatalogProperty =
-                        UsesResearchCatalog(component)
-                            ? serialized.FindProperty("catalog")
-                            : null;
+                    // Research catalog assignment is deferred until after the
+                    // generic iterator has finished (see below).
+                    SerializedProperty researchCatalogProperty = null;
                     SerializedProperty property = serialized.GetIterator();
                     bool enterChildren = true;
                     bool recorded = false;
-
-                    if (researchCatalogProperty != null &&
-                        workingResearchCatalog != null &&
-                        researchCatalogProperty.objectReferenceValue !=
-                        workingResearchCatalog)
-                    {
-                        Undo.RecordObject(
-                            component,
-                            "연구 작업용 설정 연결");
-                        recorded = true;
-                        researchCatalogProperty.objectReferenceValue =
-                            workingResearchCatalog;
-                        changeCount++;
-                    }
 
                     while (property.Next(enterChildren))
                     {
@@ -632,9 +1784,35 @@ namespace CityFlow.EditorTools.Balance
                         changeCount++;
                     }
 
+                    researchCatalogProperty = UsesResearchCatalog(component)
+                        ? serialized.FindProperty("catalog")
+                        : null;
+                    if (researchCatalogProperty != null &&
+                        workingResearchCatalog != null &&
+                        researchCatalogProperty.objectReferenceValue !=
+                        workingResearchCatalog)
+                    {
+                        if (!recorded)
+                        {
+                            Undo.RecordObject(
+                                component,
+                                "Connect working research catalog");
+                            recorded = true;
+                        }
+
+                        researchCatalogProperty.objectReferenceValue =
+                            workingResearchCatalog;
+                        changeCount++;
+                    }
+
                     if (recorded)
                     {
                         serialized.ApplyModifiedProperties();
+                        if (PrefabUtility.IsPartOfPrefabInstance(component))
+                        {
+                            PrefabUtility.RecordPrefabInstancePropertyModifications(
+                                component);
+                        }
                         EditorUtility.SetDirty(component);
                     }
                 }
@@ -678,7 +1856,7 @@ namespace CityFlow.EditorTools.Balance
                     "밸런스 전용 Scene이 Build Settings에 포함되어 있습니다. 제거해 주세요.");
             }
 
-            foreach (BalanceEntry entry in Entries)
+            foreach (BalanceEntry entry in UniqueAssetEntries)
             {
                 if (AssetDatabase.LoadMainAssetAtPath(entry.SourcePath) == null)
                 {
@@ -831,6 +2009,12 @@ namespace CityFlow.EditorTools.Balance
                 DrawResearchCostAndDuration(selectedEntry);
             }
 
+            if (section == ResearchBalanceSection.BuildingUnlock)
+            {
+                EditorGUILayout.Space(6f);
+                DrawLinkedBuildingBalance(selectedResearchId);
+            }
+
             EditorGUILayout.Space(6f);
             showResearchAdvanced = EditorGUILayout.Foldout(
                 showResearchAdvanced,
@@ -858,6 +2042,70 @@ namespace CityFlow.EditorTools.Balance
             }
         }
 
+        private static void DrawLinkedBuildingBalance(
+            string researchId)
+        {
+            BalanceEntry[] linkedEntries = Entries
+                .Where(entry =>
+                    string.Equals(
+                        entry.LinkedResearchId,
+                        researchId,
+                        StringComparison.Ordinal))
+                .ToArray();
+
+            using (new EditorGUILayout.VerticalScope(
+                       EditorStyles.helpBox))
+            {
+                EditorGUILayout.LabelField(
+                    "5. 실제 건설 메뉴와 건물 밸런스",
+                    EditorStyles.boldLabel);
+                EditorGUILayout.HelpBox(
+                    "연구 화면 이름·비용과 실제 건설 메뉴의 건물 이름·건설 비용은 " +
+                    "서로 다른 값입니다. 아래 값은 건설 버튼, 툴팁, 배치된 건물에 적용됩니다.",
+                    MessageType.Info);
+
+                if (linkedEntries.Length == 0)
+                {
+                    EditorGUILayout.HelpBox(
+                        "이 연구에 연결된 실제 건물 설정을 찾을 수 없습니다.",
+                        MessageType.Warning);
+                    return;
+                }
+
+                foreach (BalanceEntry entry in linkedEntries)
+                {
+                    UnityEngine.Object target =
+                        AssetDatabase.LoadMainAssetAtPath(
+                            entry.WorkingPath);
+                    if (target == null)
+                    {
+                        EditorGUILayout.HelpBox(
+                            $"{entry.Label} 작업용 에셋이 없습니다. " +
+                            "'작업 공간 생성 / 열기'를 다시 눌러 주세요.",
+                            MessageType.Warning);
+                        continue;
+                    }
+
+                    EditorGUILayout.LabelField(
+                        entry.Label,
+                        EditorStyles.miniBoldLabel);
+                    DrawFilteredAssetInspector(
+                        target,
+                        entry.VisiblePropertyPaths);
+                }
+            }
+        }
+
+        internal static IReadOnlyList<string>
+            GetLinkedBuildingWorkingPaths(string researchId) =>
+            Entries
+                .Where(entry => string.Equals(
+                    entry.LinkedResearchId,
+                    researchId?.Trim(),
+                    StringComparison.Ordinal))
+                .Select(entry => entry.WorkingPath)
+                .ToArray();
+
         private static void DrawExpansionStageSummary(
             SerializedProperty selectedEntry)
         {
@@ -876,8 +2124,7 @@ namespace CityFlow.EditorTools.Balance
         private void DrawUnlockedBuildingSummary(
             string researchId)
         {
-            researchUnlockLabels ??=
-                BuildResearchUnlockLabels();
+            researchUnlockLabels = BuildResearchUnlockLabels();
 
             if (researchId.Length > 0 &&
                 researchUnlockLabels.TryGetValue(
@@ -902,33 +2149,26 @@ namespace CityFlow.EditorTools.Balance
                 new Dictionary<string, List<string>>(
                     StringComparer.Ordinal);
 
-            foreach (string guid in
-                     AssetDatabase.FindAssets(
-                         "t:BuildingDefinitionSO"))
+            foreach (BalanceEntry entry in Entries.Where(candidate =>
+                         candidate.LinkedResearchId.Length > 0))
             {
-                string path =
-                    AssetDatabase.GUIDToAssetPath(guid);
-                BuildingDefinitionSO definition =
-                    AssetDatabase.LoadAssetAtPath<
-                        BuildingDefinitionSO>(path);
+                UnityEngine.Object asset =
+                    AssetDatabase.LoadMainAssetAtPath(
+                        entry.WorkingPath) ??
+                    AssetDatabase.LoadMainAssetAtPath(
+                        entry.SourcePath);
+                string buildingName = asset switch
+                {
+                    BuildingDefinitionSO definition =>
+                        definition.buildingName,
+                    TileDataSO tileData =>
+                        tileData.BuildingName,
+                    _ => string.Empty
+                };
                 AddResearchBuildingLabel(
                     namesByResearch,
-                    definition?.RequiredResearchId,
-                    definition?.buildingName);
-            }
-
-            foreach (string guid in
-                     AssetDatabase.FindAssets("t:TileDataSO"))
-            {
-                string path =
-                    AssetDatabase.GUIDToAssetPath(guid);
-                TileDataSO tileData =
-                    AssetDatabase.LoadAssetAtPath<TileDataSO>(
-                        path);
-                AddResearchBuildingLabel(
-                    namesByResearch,
-                    tileData?.RequiredResearchId,
-                    tileData?.BuildingName);
+                    entry.LinkedResearchId,
+                    buildingName);
             }
 
             return namesByResearch.ToDictionary(
@@ -1493,7 +2733,7 @@ namespace CityFlow.EditorTools.Balance
         private void ValidateLoadedSceneReferences()
         {
             Scene scene = SceneManager.GetActiveScene();
-            if (scene.path != BalanceScenePath)
+            if (!IsSupportedBalanceScenePath(scene.path))
             {
                 validationMessages.Add(
                     "밸런스 전용 Scene이 열려 있지 않아 Scene 연결 상태는 검사하지 못했습니다.");
@@ -1593,8 +2833,13 @@ namespace CityFlow.EditorTools.Balance
                 return;
             }
 
-            foreach (BalanceEntry entry in Entries)
+            foreach (BalanceEntry entry in UniqueAssetEntries)
             {
+                if (!entry.PublishToSource)
+                {
+                    continue;
+                }
+
                 UnityEngine.Object source =
                     AssetDatabase.LoadMainAssetAtPath(entry.SourcePath);
                 UnityEngine.Object working =

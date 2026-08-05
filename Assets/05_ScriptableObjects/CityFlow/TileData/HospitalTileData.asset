@@ -13,11 +13,13 @@ MonoBehaviour:
   m_Name: HospitalTileData
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.TileDataSO
   buildingId: hospital_001
-  buildingName: 병원
+  buildingName: "\uBCD1\uC6D0"
   category: 5
+  companyTypeId: 
   buildingIcon: {fileID: 0}
   buildingPrefab: {fileID: 0}
-  buildingDescription: 주변 주거지에 의료 혜택과 안정도 보너스를 제공하는 병원입니다.
+  buildingDescription: "\uC8FC\uBCC0 \uC8FC\uAC70\uC9C0\uC5D0 \uC758\uB8CC \uD61C\uD0DD\uACFC
+    \uC548\uC815\uB3C4 \uBCF4\uB108\uC2A4\uB97C \uC81C\uACF5\uD558\uB294 \uBCD1\uC6D0\uC785\uB2C8\uB2E4."
   buildCost: 100
   dailyCoinValue: 20
   prosperityValue: 1

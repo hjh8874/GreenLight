@@ -14,13 +14,13 @@ namespace CityFlow.UI
     // 연구 패널 — 카테고리를 열, 연구 순서를 행으로 하는 상→하 목록.
     public sealed partial class ResearchPanelController : MonoBehaviour, ICityFlowServiceConsumer
     {
-        private const float CellWidth = 226f;
-        private const float CellHeight = 88f;
-        private const float ColumnGap = 18f;
+        private const float CellWidth = 220f;
+        private const float CellHeight = 108f;
+        private const float ColumnGap = 14f;
         private const float RowGap = 12f;
         private const float ConnectorThickness = 4f;
-        private const float HeaderHeight = 148f;
-        private const float PanelPadding = 20f;
+        private const float HeaderHeight = 136f;
+        private const float PanelPadding = 16f;
 
         [SerializeField] private ResearchCatalogSO catalog;
         [SerializeField] private GameObject rowTemplate;
@@ -50,6 +50,7 @@ namespace CityFlow.UI
         private CityFlowServices services;
         private IResearchUnlockService research;
         private IEconomyService economy;
+        private UIDockController dockController;
         private bool warnedMissingResearch;
 
         internal IReadOnlyList<Row> RowsForTest => rows;
@@ -87,10 +88,10 @@ namespace CityFlow.UI
             // 해당 패널이 bootstrap 초기화 순서에서 새 연결을 되돌리지 않게 건너뛴다.
             if (catalog == null || rowTemplate == null) return;
 
-            UIDockController dock = FindAnyObjectByType<UIDockController>(FindObjectsInactive.Include);
-            if (dock != null)
+            dockController = FindAnyObjectByType<UIDockController>(FindObjectsInactive.Include);
+            if (dockController != null)
             {
-                dock.RebindResearchPanel(gameObject);
+                dockController.RebindResearchPanel(gameObject);
             }
 
             ResearchPanelController[] panels = FindObjectsByType<ResearchPanelController>(
@@ -366,18 +367,18 @@ namespace CityFlow.UI
             if (!string.IsNullOrEmpty(research?.ActiveResearchId))
                 return "다른 연구 진행 중";
             if (!CanAfford(row.Entry))
-                return $"재화 부족 · {Mathf.Max(0, row.Entry.researchCost):N0}";
+                return $"재화 부족 · 비용 {Mathf.Max(0, row.Entry.researchCost):N0}";
 
             int cost = Mathf.Max(0, row.Entry.researchCost);
             int duration = Mathf.Max(
                 0,
                 row.Entry.researchDurationHours);
-            if (cost == 0 && duration == 0)
+            if (duration == 0)
             {
-                return "연구 가능";
+                return $"연구 가능 · 비용 {cost:N0}";
             }
 
-            return $"연구 가능 · {cost:N0} · {duration}시간";
+            return $"연구 가능 · 비용 {cost:N0} · {duration}시간";
         }
 
         private bool CanAfford(ResearchEntry entry)
@@ -465,14 +466,18 @@ namespace CityFlow.UI
                     GetOverallCategoryColumn(rows[i].Entry.category);
                 categoryCounts[categoryColumn]++;
             }
+            // 탭을 바꿀 때 창 크기가 튀지 않도록 전체 보기의 행 수를
+            // 모든 카테고리에서 공통 기준으로 사용한다.
             int rowCount = Mathf.Max(
                 categoryCounts[0],
                 Mathf.Max(categoryCounts[1], categoryCounts[2]));
             float gridWidth = columnCount * CellWidth + Mathf.Max(0, columnCount - 1) * ColumnGap;
             float gridHeight = rowCount * CellHeight + Mathf.Max(0, rowCount - 1) * RowGap;
+            panel.anchorMin = new Vector2(0.5f, 0.5f);
+            panel.anchorMax = new Vector2(0.5f, 0.5f);
             panel.pivot = new Vector2(0.5f, 0.5f);
             panel.sizeDelta = new Vector2(
-                Mathf.Max(756f, gridWidth + PanelPadding * 2f),
+                Mathf.Max(720f, gridWidth + PanelPadding * 2f),
                 HeaderHeight + gridHeight + PanelPadding * 2f);
             // 부모(우측 독 서브패널)가 어디에 있든 화면 중앙 — 오버레이 캔버스는 픽셀 좌표
             panel.position = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f);

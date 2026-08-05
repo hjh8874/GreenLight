@@ -26,4 +26,4 @@ MonoBehaviour:
   vehicleWidthTiles: 0.24
   stopRevenueCoins: 0
   routeColor: {r: 0.96, g: 0.64, b: 0.08, a: 1}
-  vehicleVisualPrefab: {fileID: 507465280799779415, guid: b9cde52db3d85b44899e2599988b0cd0, type: 3}
+  vehicleVisualPrefab: {fileID: 100000, guid: aeccb9afd2c5d0a49806a3a543b169d2, type: 3}

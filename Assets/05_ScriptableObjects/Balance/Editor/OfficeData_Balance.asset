@@ -10,17 +10,17 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e2f59b7cd21b92448996b0bc26e27670, type: 3}
-  m_Name: HouseData
+  m_Name: OfficeData_Balance
   m_EditorClassIdentifier: CityFlow.Contracts::CityFlow.Contracts.TileDataSO
-  buildingId: house_001
-  buildingName: "\uC9D1"
-  category: 2
-  companyTypeId: 
+  buildingId: office_001
+  buildingName: "\uD68C\uC0AC"
+  category: 3
+  companyTypeId: office
   buildingIcon: {fileID: 0}
   buildingPrefab: {fileID: 0}
-  buildingDescription: "\uC774\uACF3\uC740 \uC778\uAD6C\uB97C \uC720\uC785\uC2DC\uD0A4\uACE0
-    \uC138\uC218(\uCF54\uC778)\uB97C \uCC3D\uCD9C\uD558\uB294 \uC8FC\uAC70 \uAD6C\uC5ED\uC785\uB2C8\uB2E4\n"
-  buildCost: 100
-  dailyCoinValue: 10
-  prosperityValue: 1
-  requiredResearchId: 
+  buildingDescription: "\uC774\uAC83\uB4E4\uC740 \uB354 \uB9CE\uC740 \uC77C\uC790\uB9AC\uC640
+    \uC218\uC775\uC744 \uCC3D\uCD9C\uD558\uB294 \uC0C1\uC5C5 \uBC0F \uC5C5\uBB34\uC6A9
+    \uC2DC\uC124\uC785\uB2C8\uB2E4.\n"
+  buildCost: 200
+  dailyCoinValue: 30
+  prosperityValue: 2

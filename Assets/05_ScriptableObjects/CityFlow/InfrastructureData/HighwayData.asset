@@ -15,7 +15,9 @@ MonoBehaviour:
   Kind: 6
   InfrastructureName: "\uACE0\uC18D\uB3C4\uB85C"
   Icon: {fileID: 0}
-  Description: "첫 번째 램프와 두 번째 램프를 선택해 고가 직결 도로를 만듭니다. 가격은 거리당 25입니다."
+  Description: "\uCCAB \uBC88\uC9F8 \uB7A8\uD504\uC640 \uB450 \uBC88\uC9F8 \uB7A8\uD504\uB97C
+    \uC120\uD0DD\uD574 \uACE0\uAC00 \uC9C1\uACB0 \uB3C4\uB85C\uB97C \uB9CC\uB4ED\uB2C8\uB2E4.
+    \uAC00\uACA9\uC740 \uAC70\uB9AC\uB2F9 25\uC785\uB2C8\uB2E4."
   Cost: 25
   GreenSlots: 0
   OnewayDir: {x: 0, y: 0}

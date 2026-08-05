@@ -484,6 +484,8 @@ namespace CityFlow.UI
         {
             if (categoryPages == null) return;
 
+            RefreshBalancePresentation();
+
             for (int i = 0; i < categoryPages.Length; i++)
             {
                 if (categoryPages[i] != null)
@@ -491,6 +493,21 @@ namespace CityFlow.UI
                     bool isActive = (i == index);
                     categoryPages[i].SetActive(isActive);
                 }
+            }
+        }
+
+        public void RefreshBalancePresentation()
+        {
+            RefreshSpecialBuildingSlots();
+
+            if (buildSlots == null)
+            {
+                return;
+            }
+
+            foreach (BuildSlotController slot in buildSlots)
+            {
+                slot?.RefreshAvailability();
             }
         }
         private void BindButtons()

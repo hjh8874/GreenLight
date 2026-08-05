@@ -10,17 +10,16 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e2f59b7cd21b92448996b0bc26e27670, type: 3}
-  m_Name: HouseData
-  m_EditorClassIdentifier: CityFlow.Contracts::CityFlow.Contracts.TileDataSO
-  buildingId: house_001
-  buildingName: "\uC9D1"
-  category: 2
-  companyTypeId: 
+  m_Name: HospitalTileData_Balance
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.TileDataSO
+  buildingId: hospital_001
+  buildingName: 병원
+  category: 5
   buildingIcon: {fileID: 0}
   buildingPrefab: {fileID: 0}
-  buildingDescription: "\uC774\uACF3\uC740 \uC778\uAD6C\uB97C \uC720\uC785\uC2DC\uD0A4\uACE0
-    \uC138\uC218(\uCF54\uC778)\uB97C \uCC3D\uCD9C\uD558\uB294 \uC8FC\uAC70 \uAD6C\uC5ED\uC785\uB2C8\uB2E4\n"
+  buildingDescription: 주변 주거지에 의료 혜택과 안정도 보너스를
+    제공하는 병원입니다.
   buildCost: 100
-  dailyCoinValue: 10
+  dailyCoinValue: 20
   prosperityValue: 1
-  requiredResearchId: 
+  requiredResearchId: research_building_hospital

@@ -10,18 +10,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 56833a33ddfead049a9a41fad0e32eea, type: 3}
-  m_Name: Building_Mall
+  m_Name: Building_Cinema_Balance
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.BuildingDefinitionSO
-  buildingId: mall
-  buildingName: "\uC1FC\uD551\uBAB0"
+  buildingId: cinema
+  buildingName: "\uC601\uD654\uAD00"
   category: 3
   menuCategory: 0
-  description: Large retail destination.
+  description: Cinema and leisure destination.
   canGenerateTraffic: 0
   canReceiveTraffic: 1
   trafficGenerationAmount: 0
   destinationRewardMultiplier: 1
-  buildCost: 1200
+  buildCost: 800
   dailyCoinValue: 0
   prosperityValue: 0
   unlockedByDefault: 0
@@ -30,10 +30,10 @@ MonoBehaviour:
   visualOffset: {x: 0, y: 0, z: 0}
   visualEulerAngles: {x: 0, y: 0, z: 0}
   visualScale: {x: 1, y: 1, z: 1}
-  fallbackColor: {r: 0.12, g: 0.64, b: 0.7, a: 1}
-  fallbackHeight: 1.2
+  fallbackColor: {r: 0.75, g: 0.2, b: 0.28, a: 1}
+  fallbackHeight: 1
   footprint: {x: 2, y: 2}
-  requiredResearchId: research_building_mall
+  requiredResearchId: research_building_cinema
   canReceiveVisitors: 1
   visitCadence:
     visitsPerPeriod: 1
@@ -41,8 +41,8 @@ MonoBehaviour:
   visitorCapacity: 0
   attractionWeight: 1
   coinPerVisit: 10
-  visitTimeProfile: 2
-  happinessEffectKey: happiness_building_mall
+  visitTimeProfile: 3
+  happinessEffectKey: happiness_building_cinema
   schoolCoverageCapacity: 0
   coveredPopulationCapBonus: 0
   hospitalCoverageRadius: 0
