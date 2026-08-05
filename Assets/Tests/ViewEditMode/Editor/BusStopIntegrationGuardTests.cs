@@ -156,6 +156,47 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void SchoolBusPresentation_UsesAuthoredPackCarsVisualAndMaterials()
+        {
+            const string contentPath =
+                "Assets/02_Prefabs/Vehicles/SchoolBusContent.prefab";
+            const string visualPath =
+                "Assets/02_Prefabs/Vehicles/SchoolBusVisual.prefab";
+
+            GameObject content =
+                AssetDatabase.LoadAssetAtPath<GameObject>(contentPath);
+            GameObject expectedVisual =
+                AssetDatabase.LoadAssetAtPath<GameObject>(visualPath);
+
+            Assert.That(content, Is.Not.Null);
+            Assert.That(expectedVisual, Is.Not.Null);
+
+            BusWorldView worldView =
+                content.GetComponent<BusWorldView>();
+            Assert.That(worldView, Is.Not.Null);
+
+            SerializedObject serializedView = new(worldView);
+            Assert.That(
+                serializedView
+                    .FindProperty("busVisualPrefab")
+                    .objectReferenceValue,
+                Is.SameAs(expectedVisual));
+            Assert.That(
+                serializedView
+                    .FindProperty("busMaterial")
+                    .objectReferenceValue,
+                Is.Null,
+                "The school bus must keep the authored Pack Cars materials.");
+            Assert.That(
+                serializedView
+                    .FindProperty("visualScale")
+                    .floatValue,
+                Is.EqualTo(0.76f).Within(0.0001f),
+                "The normalized school-bus visual must remain twice the " +
+                "0.38-tile normal-vehicle length.");
+        }
+
+        [Test]
         public void VisualCatalogs_ReferenceProjectOwnedPrefabCopies()
         {
             BuildingVisualCatalogSO buildingCatalog =
@@ -185,9 +226,20 @@ namespace Tests.EditMode
             Assert.That(
                 AssetDatabase.GetAssetPath(schoolMesh.sharedMesh),
                 Is.EqualTo(
+                    "Assets/02_Prefabs/Buildings/" +
+                    "School_Right_StudioHorizon.obj"),
+                "The project-owned school wrapper must use only the selected front Studio Horizon school building.");
+            MeshRenderer schoolRenderer =
+                buildingCatalog.SchoolPrefab
+                    .GetComponentInChildren<MeshRenderer>(true);
+            Assert.That(schoolRenderer, Is.Not.Null);
+            Assert.That(
+                AssetDatabase.GetAssetPath(schoolRenderer.sharedMaterial),
+                Is.EqualTo(
                     "Assets/99_Download/Studio Horizon/" +
-                    "Simple Building Generic Free/FBX/School.fbx"),
-                "The project-owned school wrapper must use the complete Studio Horizon school mesh.");
+                    "Simple Building Generic Free/Materials/" +
+                    "Simple Building 01.mat"),
+                "The extracted school building must keep the authored atlas material and textures.");
             AssertProjectOwnedPrefab(buildingCatalog.HospitalPrefab);
             AssertProjectOwnedPrefab(buildingCatalog.FoundationPrefab);
 

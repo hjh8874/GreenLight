@@ -104,8 +104,9 @@ MonoBehaviour:
   definition: {fileID: 11400000, guid: c14bab61267254549b64ce068f4afc1a, type: 2}
   busRoute: {fileID: 91657992659517729}
   cityView: {fileID: 0}
-  busMaterial: {fileID: 2100000, guid: 94a1370b83b9174428b9bd8cc98a686f, type: 2}
-  visualScale: 0.75
+  busVisualPrefab: {fileID: 507465280799779415, guid: b9cde52db3d85b44899e2599988b0cd0, type: 3}
+  busMaterial: {fileID: 0}
+  visualScale: 0.76
   visualDepth: -0.38
   movementDuration: 0.24
   schoolParkingSlot: 1

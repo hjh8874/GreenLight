@@ -24,7 +24,7 @@ MonoBehaviour:
   - {fileID: 8300000, guid: 764ee659609b7fd408b810a3c0aa224f, type: 3}
   shuffle: 1
   crossfadeSeconds: 2
-  musicVolume: 0.75
+  musicVolume: 0.5
   musicByZoom:
     serializedVersion: 2
     m_Curve:

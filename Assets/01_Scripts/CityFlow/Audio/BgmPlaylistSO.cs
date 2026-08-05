@@ -13,7 +13,7 @@ namespace CityFlow.Audio
         [Min(0f)]
         [SerializeField] private float crossfadeSeconds = 2f;
         [Range(0f, 1f)]
-        [SerializeField] private float musicVolume = 0.75f;
+        [SerializeField] private float musicVolume = 0.5f;
         [SerializeField] private AnimationCurve musicByZoom =
             new(
                 new Keyframe(0f, 1f),
@@ -32,7 +32,7 @@ namespace CityFlow.Audio
             tracks = clips ?? System.Array.Empty<AudioClip>();
             shuffle = true;
             crossfadeSeconds = 2f;
-            musicVolume = 0.75f;
+            musicVolume = 0.5f;
             musicByZoom = new AnimationCurve(
                 new Keyframe(0f, 1f),
                 new Keyframe(0.5f, 0.8f),
