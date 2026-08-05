@@ -1,7 +1,9 @@
 ﻿using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
+using UnityEngine.Audio;
 using UnityEngine.UI;
+using TMPro;
 
 namespace CityFlow.UI
 {
@@ -13,14 +15,43 @@ namespace CityFlow.UI
         [SerializeField] private Button btnTitleScene;
         [SerializeField] private string titleSceneName = "TitleScene";
 
+        [Header("Audio Control UI")]
+        [SerializeField] private Slider sldBgm;
+        [SerializeField] private TMP_InputField inputBgm;
+        [SerializeField] private Slider sldSfx;
+        [SerializeField] private TMP_InputField inputSfx;
+
+        [Header("Audio System")]
+        [SerializeField] private AudioMixer audioMixer;
+        [SerializeField] private string bgmParameterName = "BGMVolume";
+        [SerializeField] private string sfxParameterName = "SFXVolume";
+
         private CityFlowServices _services;
         private bool _isBound;
+        private bool _isUpdatingBgm;
+        private bool _isUpdatingSfx;
 
-        public void Configure(Toggle muteAudio, Button quitGame, Button titleScene = null)
+        public void Configure(
+            Toggle muteAudio,
+            Button quitGame,
+            Button titleScene = null,
+            Slider bgmSlider = null,
+            TMP_InputField bgmInput = null,
+            Slider sfxSlider = null,
+            TMP_InputField sfxInput = null,
+            AudioMixer mixer = null)
         {
             tglMuteAudio = muteAudio;
             btnQuitGame = quitGame;
             btnTitleScene = titleScene;
+            sldBgm = bgmSlider;
+            inputBgm = bgmInput;
+            sldSfx = sfxSlider;
+            inputSfx = sfxInput;
+            if (mixer != null)
+            {
+                audioMixer = mixer;
+            }
             BindButtons();
         }
 
@@ -31,7 +62,28 @@ namespace CityFlow.UI
 
         private void Start()
         {
+            if (audioMixer == null)
+            {
+                audioMixer = Resources.Load<AudioMixer>("Audio/MainMixer");
+                if (audioMixer == null)
+                {
+                    Debug.LogWarning("[SettingsPanelController] AudioMixer가 할당되지 않았으며 Resources에서도 찾을 수 없습니다. (베이킹 시 주입된 참조를 확인해주세요.)");
+                }
+            }
+
             BindButtons();
+
+            // PlayerPrefs에서 저장된 소리 설정 불러오기
+            float savedBgm = PlayerPrefs.GetFloat("Settings_BGMVolume", 0.5f);
+            float savedSfx = PlayerPrefs.GetFloat("Settings_SFXVolume", 0.5f);
+
+            // 슬라이더 값 변경 시 OnBgmSliderChanged가 호출되어 믹서와 텍스트(%) 업데이트 됨
+            if (sldBgm != null) sldBgm.value = savedBgm;
+            if (sldSfx != null) sldSfx.value = savedSfx;
+
+            // 만약 슬라이더가 없더라도 믹서는 갱신되어야 함
+            UpdateMixerVolume(bgmParameterName, savedBgm);
+            UpdateMixerVolume(sfxParameterName, savedSfx);
         }
 
         private void BindButtons()
@@ -61,7 +113,119 @@ namespace CityFlow.UI
                 btnTitleScene.onClick.AddListener(OnTitleSceneClicked);
             }
 
+            if (sldBgm != null)
+            {
+                sldBgm.onValueChanged.AddListener(OnBgmSliderChanged);
+                OnBgmSliderChanged(sldBgm.value);
+            }
+            if (inputBgm != null)
+            {
+                inputBgm.onEndEdit.AddListener(OnBgmInputChanged);
+            }
+
+            if (sldSfx != null)
+            {
+                sldSfx.onValueChanged.AddListener(OnSfxSliderChanged);
+                OnSfxSliderChanged(sldSfx.value);
+            }
+            if (inputSfx != null)
+            {
+                inputSfx.onEndEdit.AddListener(OnSfxInputChanged);
+            }
+
             _isBound = true;
+        }
+
+        private void OnBgmSliderChanged(float value)
+        {
+            if (_isUpdatingBgm) return;
+            _isUpdatingBgm = true;
+
+            int percentage = Mathf.RoundToInt(value * 100f);
+            if (inputBgm != null) inputBgm.text = percentage.ToString();
+            UpdateMixerVolume(bgmParameterName, value);
+
+            PlayerPrefs.SetFloat("Settings_BGMVolume", value);
+            PlayerPrefs.Save();
+
+            _isUpdatingBgm = false;
+        }
+
+        private void OnBgmInputChanged(string text)
+        {
+            if (_isUpdatingBgm) return;
+            if (int.TryParse(text, out int percentage))
+            {
+                percentage = Mathf.Clamp(percentage, 0, 100);
+                float value = percentage / 100f;
+
+                _isUpdatingBgm = true;
+                if (sldBgm != null) sldBgm.value = value;
+                if (inputBgm != null) inputBgm.text = percentage.ToString();
+                UpdateMixerVolume(bgmParameterName, value);
+
+                PlayerPrefs.SetFloat("Settings_BGMVolume", value);
+                PlayerPrefs.Save();
+                _isUpdatingBgm = false;
+            }
+            else
+            {
+                if (sldBgm != null && inputBgm != null)
+                {
+                    inputBgm.text = Mathf.RoundToInt(sldBgm.value * 100f).ToString();
+                }
+            }
+        }
+
+        private void OnSfxSliderChanged(float value)
+        {
+            if (_isUpdatingSfx) return;
+            _isUpdatingSfx = true;
+
+            int percentage = Mathf.RoundToInt(value * 100f);
+            if (inputSfx != null) inputSfx.text = percentage.ToString();
+            UpdateMixerVolume(sfxParameterName, value);
+
+            PlayerPrefs.SetFloat("Settings_SFXVolume", value);
+            PlayerPrefs.Save();
+
+            _isUpdatingSfx = false;
+        }
+
+        private void OnSfxInputChanged(string text)
+        {
+            if (_isUpdatingSfx) return;
+            if (int.TryParse(text, out int percentage))
+            {
+                percentage = Mathf.Clamp(percentage, 0, 100);
+                float value = percentage / 100f;
+
+                _isUpdatingSfx = true;
+                if (sldSfx != null) sldSfx.value = value;
+                if (inputSfx != null) inputSfx.text = percentage.ToString();
+                UpdateMixerVolume(sfxParameterName, value);
+
+                PlayerPrefs.SetFloat("Settings_SFXVolume", value);
+                PlayerPrefs.Save();
+                _isUpdatingSfx = false;
+            }
+            else
+            {
+                if (sldSfx != null && inputSfx != null)
+                {
+                    inputSfx.text = Mathf.RoundToInt(sldSfx.value * 100f).ToString();
+                }
+            }
+        }
+
+        private void UpdateMixerVolume(string parameterName, float linearValue)
+        {
+            if (audioMixer != null)
+            {
+                // Convert linear (0-1) to Decibel (-80 to 0)
+                float db = linearValue > 0.0001f ? Mathf.Log10(linearValue) * 20f : -80f;
+                audioMixer.SetFloat(parameterName, db);
+            }
         }
 
         private void OnMuteToggleChanged(bool isMuted)
@@ -117,6 +281,14 @@ namespace CityFlow.UI
                 btnQuitGame.onClick.RemoveListener(OnQuitClicked);
             if (btnTitleScene != null)
                 btnTitleScene.onClick.RemoveListener(OnTitleSceneClicked);
+            if (sldBgm != null)
+                sldBgm.onValueChanged.RemoveListener(OnBgmSliderChanged);
+            if (inputBgm != null)
+                inputBgm.onEndEdit.RemoveListener(OnBgmInputChanged);
+            if (sldSfx != null)
+                sldSfx.onValueChanged.RemoveListener(OnSfxSliderChanged);
+            if (inputSfx != null)
+                inputSfx.onEndEdit.RemoveListener(OnSfxInputChanged);
         }
     }
 }
