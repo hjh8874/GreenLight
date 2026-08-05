@@ -352,6 +352,12 @@ namespace CityFlow.Feed
                 return null;
             }
 
+            // 이어받기 상황에서는 후속 전용 문구가 있으면 **그것만** 후보로 삼는다.
+            // 가중치 경쟁에 맡기면(4 vs 일반 7종) 절반 가까이 평범한 문구가 뽑혀
+            // 같은 시민이 써도 인과가 글에 드러나지 않는다. 실측 5/9였다.
+            bool preferFollowUpOnly =
+                pinnedAuthor != null && HasFollowUpTemplate(collection);
+
             for (int authorIndex = 0; authorIndex < authors.Length; authorIndex++)
             {
                 FeedAuthorProfileSO author = authors[authorIndex];
@@ -390,6 +396,12 @@ namespace CityFlow.Feed
                     // "제가 저번에 말한 그곳" 류는 앞선 불만이 있어야 성립한다.
                     // 이어받기가 아닌데 새어나가면 하지도 않은 말을 전제하게 된다.
                     if (template.FollowUpOnly && pinnedAuthor == null)
+                    {
+                        continue;
+                    }
+
+                    // 반대로 이어받기인데 후속 문구가 준비돼 있으면 일반 문구는 뺀다.
+                    if (preferFollowUpOnly && !template.FollowUpOnly)
                     {
                         continue;
                     }
@@ -851,6 +863,22 @@ namespace CityFlow.Feed
             }
 
             initialized = false;
+        }
+
+        /// <summary>
+        /// 이 묶음에 이어받기 전용 문구가 하나라도 있는가.
+        /// 없으면(예: 데이터를 아직 안 채운 이벤트) 일반 문구로 떨어져야 하므로
+        /// 후속 전용 필터를 걸면 안 된다 — 걸면 글이 아예 안 나간다.
+        /// </summary>
+        private static bool HasFollowUpTemplate(FeedTemplateCollectionSO collection)
+        {
+            IReadOnlyList<CitizenFeedTemplateEntry> templates = collection.Templates;
+            for (int i = 0; i < templates.Count; i++)
+            {
+                if (templates[i] != null && templates[i].FollowUpOnly) return true;
+            }
+
+            return false;
         }
 
         /// <summary>

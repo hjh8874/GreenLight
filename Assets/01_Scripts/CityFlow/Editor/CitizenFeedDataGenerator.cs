@@ -641,7 +641,8 @@ namespace CityFlow.EditorTools
                     "제가 저번에 말한 {Location}, 이제 좀 괜찮아졌네요. 신경 써주셔서 고맙습니다."),
                 CreateFollowUpTemplate(
                     "FollowUp_Congestion_02",
-                    "아까 그렇게 막히던 {Location}이 뚫렸습니다. 말한 보람이 있네요."),
+                    // {Location}은 항상 "…교차로"로 끝나 받침이 없다. "이"가 아니라 "가".
+                    "아까 그렇게 막히던 {Location}, 드디어 뚫렸습니다. 말한 보람이 있네요."),
                 CreateFollowUpTemplate(
                     "FollowUp_Congestion_03",
                     "{Location} 불평했던 사람인데요, 오늘은 그냥 지나갔습니다. 이런 날도 있군요."),
