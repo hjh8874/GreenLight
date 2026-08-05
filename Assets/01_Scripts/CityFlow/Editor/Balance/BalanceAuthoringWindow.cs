@@ -411,6 +411,8 @@ namespace CityFlow.EditorTools.Balance
                 ["QueueCapacityPerTile"] = "타일당 차량 대기열 용량",
                 ["QueueServicePerTick"] = "틱당 대기열 처리 차량 수",
                 ["GridlockValveTicks"] = "교착 해제 대기 틱",
+                ["VehicleRerouteBlockedTicks"] = "차량 경로 재탐색 대기 틱",
+                ["VehicleRestartBlockedTicks"] = "차량 재출발 대기 틱",
                 ["UnsignaledIntersectionRoundCap"] = "무신호 교차로 회차당 통과 차량 수",
                 ["CoinPerTrip"] = "운행 1회 보상",
                 ["CarsPerHouse"] = "주거지당 차량 수",

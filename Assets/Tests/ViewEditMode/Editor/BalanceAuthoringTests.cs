@@ -284,6 +284,39 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void WorkingSimConfig_PreservesLatestTrafficRecoveryFields()
+        {
+            Object source = AssetDatabase.LoadMainAssetAtPath(
+                "Assets/05_ScriptableObjects/SimConfig_Integrated.asset");
+            Object working = AssetDatabase.LoadMainAssetAtPath(
+                "Assets/05_ScriptableObjects/Balance/Editor/SimConfig_Integrated_Balance.asset");
+
+            Assert.That(source, Is.Not.Null);
+            Assert.That(working, Is.Not.Null);
+
+            var sourceSerialized = new SerializedObject(source);
+            var workingSerialized = new SerializedObject(working);
+            string[] propertyPaths =
+            {
+                "Value.VehicleRerouteBlockedTicks",
+                "Value.VehicleRestartBlockedTicks"
+            };
+            foreach (string propertyPath in propertyPaths)
+            {
+                SerializedProperty sourceProperty =
+                    sourceSerialized.FindProperty(propertyPath);
+                SerializedProperty workingProperty =
+                    workingSerialized.FindProperty(propertyPath);
+                Assert.That(sourceProperty, Is.Not.Null, propertyPath);
+                Assert.That(workingProperty, Is.Not.Null, propertyPath);
+                Assert.That(
+                    workingProperty.intValue,
+                    Is.EqualTo(sourceProperty.intValue),
+                    propertyPath);
+            }
+        }
+
+        [Test]
         public void GymDisplayContract_UsesConsistentNameAndDescription()
         {
             const string expectedName = "헬스장";
