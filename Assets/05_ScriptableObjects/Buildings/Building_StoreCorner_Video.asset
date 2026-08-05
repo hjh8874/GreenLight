@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Building_StoreCorner_Video
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.BuildingDefinitionSO
   buildingId: video_store
-  buildingName: "\uD5EC\uC2A4\uC7A5"
+  buildingName: "\uBE44\uB514\uC624 \uB300\uC5EC\uC810"
   category: 3
   menuCategory: 0
   description: Neighborhood video rental store.

@@ -26,7 +26,7 @@ MonoBehaviour:
     requirements: []
   - researchId: research_building_video_store
     prerequisiteId: research_building_coffee_shop
-    displayName: "\uD5EC\uC2A4\uC7A5"
+    displayName: "\uBE44\uB514\uC624 \uB300\uC5EC\uC810"
     category: 0
     conditionKind: 1
     threshold: 40

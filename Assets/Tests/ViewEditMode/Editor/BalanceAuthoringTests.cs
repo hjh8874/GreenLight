@@ -158,6 +158,199 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void EmergencyPublishing_PreservesRuntimeReferences()
+        {
+            const string sourcePath =
+                "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset";
+            EmergencyIncidentConfigSO source =
+                AssetDatabase.LoadAssetAtPath<EmergencyIncidentConfigSO>(
+                    sourcePath);
+            EmergencyIncidentConfigSO working =
+                AssetDatabase.LoadAssetAtPath<EmergencyIncidentConfigSO>(
+                    "Assets/05_ScriptableObjects/Balance/Editor/EmergencyIncidentConfig_Balance.asset");
+
+            Assert.That(source, Is.Not.Null);
+            Assert.That(working, Is.Not.Null);
+
+            EmergencyIncidentConfigSO sourceClone = Object.Instantiate(source);
+            EmergencyIncidentConfigSO staleWorkingClone =
+                Object.Instantiate(working);
+            try
+            {
+                var staleSerialized = new SerializedObject(staleWorkingClone);
+                staleSerialized.FindProperty("incidentDefinitions").arraySize = 0;
+                staleSerialized.FindProperty("vehicleVisualPrefab")
+                    .objectReferenceValue = null;
+                staleSerialized.FindProperty("travelSecondsPerTile").floatValue =
+                    0.12f;
+                staleSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+                int expectedDefinitionCount = sourceClone.IncidentDefinitions.Count;
+                GameObject expectedVisualPrefab = sourceClone.VehicleVisualPrefab;
+                Assert.That(expectedDefinitionCount, Is.EqualTo(6));
+                Assert.That(expectedVisualPrefab, Is.Not.Null);
+
+                var publishPaths =
+                    BalanceAuthoringWindow.GetPublishPropertyPaths(sourcePath);
+                Assert.That(publishPaths, Does.Not.Contain("incidentDefinitions"));
+                Assert.That(publishPaths, Does.Not.Contain("vehicleVisualPrefab"));
+
+                Assert.That(
+                    BalanceAuthoringWindow.CopyPublishedProperties(
+                        staleWorkingClone,
+                        sourceClone,
+                        publishPaths),
+                    Is.True);
+                Assert.That(
+                    sourceClone.TravelSecondsPerTile,
+                    Is.EqualTo(0.12f).Within(0.0001f));
+                Assert.That(
+                    sourceClone.IncidentDefinitions.Count,
+                    Is.EqualTo(expectedDefinitionCount));
+                Assert.That(
+                    sourceClone.VehicleVisualPrefab,
+                    Is.SameAs(expectedVisualPrefab));
+            }
+            finally
+            {
+                Object.DestroyImmediate(sourceClone);
+                Object.DestroyImmediate(staleWorkingClone);
+            }
+        }
+
+        [Test]
+        public void SimConfigPublishing_DoesNotOverwriteUnexposedFields()
+        {
+            const string sourcePath =
+                "Assets/05_ScriptableObjects/SimConfig_Integrated.asset";
+            Object source = AssetDatabase.LoadMainAssetAtPath(sourcePath);
+            Object working = AssetDatabase.LoadMainAssetAtPath(
+                "Assets/05_ScriptableObjects/Balance/Editor/SimConfig_Integrated_Balance.asset");
+
+            Assert.That(source, Is.Not.Null);
+            Assert.That(working, Is.Not.Null);
+
+            Object sourceClone = Object.Instantiate(source);
+            Object staleWorkingClone = Object.Instantiate(working);
+            try
+            {
+                var sourceSerialized = new SerializedObject(sourceClone);
+                var staleSerialized = new SerializedObject(staleWorkingClone);
+                SerializedProperty sourceCars =
+                    sourceSerialized.FindProperty("Value.CarsPerHouse");
+                SerializedProperty sourceBusRadius =
+                    sourceSerialized.FindProperty("Value.BusCoverageRadius");
+                SerializedProperty staleCars =
+                    staleSerialized.FindProperty("Value.CarsPerHouse");
+                SerializedProperty staleBusRadius =
+                    staleSerialized.FindProperty("Value.BusCoverageRadius");
+
+                Assert.That(sourceCars, Is.Not.Null);
+                Assert.That(sourceBusRadius, Is.Not.Null);
+                Assert.That(staleCars, Is.Not.Null);
+                Assert.That(staleBusRadius, Is.Not.Null);
+
+                sourceCars.intValue = 2;
+                sourceBusRadius.intValue = 3;
+                staleCars.intValue = 5;
+                staleBusRadius.intValue = 0;
+                sourceSerialized.ApplyModifiedPropertiesWithoutUndo();
+                staleSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+                var publishPaths =
+                    BalanceAuthoringWindow.GetPublishPropertyPaths(sourcePath);
+                Assert.That(publishPaths, Does.Contain("Value.CarsPerHouse"));
+                Assert.That(publishPaths, Does.Not.Contain("Value.BusCoverageRadius"));
+                Assert.That(
+                    BalanceAuthoringWindow.CopyPublishedProperties(
+                        staleWorkingClone,
+                        sourceClone,
+                        publishPaths),
+                    Is.True);
+
+                sourceSerialized.UpdateIfRequiredOrScript();
+                Assert.That(
+                    sourceSerialized.FindProperty("Value.CarsPerHouse").intValue,
+                    Is.EqualTo(5));
+                Assert.That(
+                    sourceSerialized.FindProperty("Value.BusCoverageRadius").intValue,
+                    Is.EqualTo(3));
+            }
+            finally
+            {
+                Object.DestroyImmediate(sourceClone);
+                Object.DestroyImmediate(staleWorkingClone);
+            }
+        }
+
+        [Test]
+        public void VideoStoreContract_UsesConsistentDisplayName()
+        {
+            const string expectedName = "비디오 대여점";
+            const string sourceBuildingPath =
+                "Assets/05_ScriptableObjects/Buildings/Building_StoreCorner_Video.asset";
+            string[] buildingPaths =
+            {
+                sourceBuildingPath,
+                "Assets/05_ScriptableObjects/Balance/Editor/Building_StoreCorner_Video_Balance.asset"
+            };
+            foreach (string path in buildingPaths)
+            {
+                Object building = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(building, Is.Not.Null, path);
+                var serialized = new SerializedObject(building);
+                Assert.That(
+                    serialized.FindProperty("buildingId").stringValue,
+                    Is.EqualTo("video_store"),
+                    path);
+                Assert.That(
+                    serialized.FindProperty("buildingName").stringValue,
+                    Is.EqualTo(expectedName),
+                    path);
+            }
+
+            var buildingPublishPaths =
+                BalanceAuthoringWindow.GetPublishPropertyPaths(
+                    sourceBuildingPath);
+            Assert.That(buildingPublishPaths, Does.Contain("buildingName"));
+            Assert.That(buildingPublishPaths, Does.Not.Contain("buildingId"));
+            Assert.That(buildingPublishPaths, Does.Not.Contain("visualPrefab"));
+
+            string[] catalogPaths =
+            {
+                BalanceAuthoringWindow.ResearchCatalogPath,
+                BalanceAuthoringWindow.WorkingResearchCatalogPath
+            };
+            foreach (string path in catalogPaths)
+            {
+                Object catalog = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(catalog, Is.Not.Null, path);
+                var serialized = new SerializedObject(catalog);
+                SerializedProperty entries = serialized.FindProperty("entries");
+                bool found = false;
+                for (int index = 0; index < entries.arraySize; index++)
+                {
+                    SerializedProperty entry =
+                        entries.GetArrayElementAtIndex(index);
+                    if (entry.FindPropertyRelative("researchId").stringValue !=
+                        "research_building_video_store")
+                    {
+                        continue;
+                    }
+
+                    Assert.That(
+                        entry.FindPropertyRelative("displayName").stringValue,
+                        Is.EqualTo(expectedName),
+                        path);
+                    found = true;
+                    break;
+                }
+
+                Assert.That(found, Is.True, path);
+            }
+        }
+
+        [Test]
         public void BalanceEditor_LocalizesEveryVisibleEnumOption()
         {
             foreach (string path in WorkingAssetPaths)

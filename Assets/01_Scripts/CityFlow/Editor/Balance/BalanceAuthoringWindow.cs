@@ -44,6 +44,7 @@ namespace CityFlow.EditorTools.Balance
             public readonly string SourcePath;
             public readonly string WorkingPath;
             public readonly string[] VisiblePropertyPaths;
+            public readonly string[] PublishPropertyPaths;
             public readonly bool ShowInNavigation;
             public readonly bool PublishToSource;
             public readonly string LinkedResearchId;
@@ -56,7 +57,8 @@ namespace CityFlow.EditorTools.Balance
                 string[] visiblePropertyPaths = null,
                 bool showInNavigation = true,
                 bool publishToSource = true,
-                string linkedResearchId = null)
+                string linkedResearchId = null,
+                string[] publishPropertyPaths = null)
             {
                 Group = group;
                 Label = label;
@@ -64,6 +66,8 @@ namespace CityFlow.EditorTools.Balance
                 WorkingPath = $"{WorkingRoot}/{workingName}.asset";
                 VisiblePropertyPaths = visiblePropertyPaths ??
                                        Array.Empty<string>();
+                PublishPropertyPaths = publishPropertyPaths ??
+                                       VisiblePropertyPaths;
                 ShowInNavigation = showInNavigation;
                 PublishToSource = publishToSource;
                 LinkedResearchId = linkedResearchId?.Trim() ?? string.Empty;
@@ -98,6 +102,38 @@ namespace CityFlow.EditorTools.Balance
             "Value.OfficeCapacity",
             "Value.CompanyHiringSlotsPerGameHour",
             "Value.ConstructionHoursOffice"
+        };
+
+        private static readonly string[] SimConfigPublishPropertyPaths =
+            GeneralVehiclePropertyPaths
+                .Concat(ResidentialPropertyPaths)
+                .Concat(CompanyPropertyPaths)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+        private static readonly string[] EmergencyIncidentPropertyPaths =
+        {
+            "minimumSpawnInterval",
+            "maximumSpawnInterval",
+            "minimumDispatchIntervalDays",
+            "maximumDispatchIntervalDays",
+            "maximumActiveIncidents",
+            "maximumAutomaticIncidentsPerDay",
+            "houseWeight",
+            "officeWeight",
+            "schoolWeight",
+            "specialBuildingWeight",
+            "recentTargetHistorySize",
+            "travelSecondsPerTile",
+            "treatmentSeconds",
+            "ambulancesPerHospital",
+            "routeRetrySeconds",
+            "maximumOutboundRouteRetries",
+            "maximumReturnRouteRetries",
+            "visualScale",
+            "visualDepth",
+            "vehicleLengthTiles",
+            "vehicleWidthTiles"
         };
 
         private static readonly string[] TileBuildingPropertyPaths =
@@ -139,7 +175,9 @@ namespace CityFlow.EditorTools.Balance
                 "핵심",
                 "시뮬레이션",
                 "Assets/05_ScriptableObjects/SimConfig_Integrated.asset",
-                "SimConfig_Integrated_Balance"),
+                "SimConfig_Integrated_Balance",
+                SimConfigPublishPropertyPaths,
+                publishPropertyPaths: SimConfigPublishPropertyPaths),
             new(
                 "핵심",
                 "경제",
@@ -307,7 +345,9 @@ namespace CityFlow.EditorTools.Balance
                 "응급",
                 "응급 신고와 구급차",
                 "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset",
-                "EmergencyIncidentConfig_Balance"),
+                "EmergencyIncidentConfig_Balance",
+                EmergencyIncidentPropertyPaths,
+                publishPropertyPaths: EmergencyIncidentPropertyPaths),
             new(
                 "인프라",
                 "신호등",
@@ -1022,6 +1062,62 @@ namespace CityFlow.EditorTools.Balance
                 candidate => candidate.Group == group &&
                              candidate.Label == label);
             return entry?.VisiblePropertyPaths ?? Array.Empty<string>();
+        }
+
+        internal static IReadOnlyList<string> GetPublishPropertyPaths(
+            string sourcePath)
+        {
+            BalanceEntry entry = UniqueAssetEntries.FirstOrDefault(
+                candidate => string.Equals(
+                    candidate.SourcePath,
+                    sourcePath,
+                    StringComparison.Ordinal));
+            return entry?.PublishPropertyPaths ?? Array.Empty<string>();
+        }
+
+        internal static bool CopyPublishedProperties(
+            UnityEngine.Object working,
+            UnityEngine.Object source,
+            IReadOnlyList<string> propertyPaths)
+        {
+            if (working == null || source == null ||
+                propertyPaths == null || propertyPaths.Count == 0)
+            {
+                return false;
+            }
+
+            var workingObject = new SerializedObject(working);
+            var sourceObject = new SerializedObject(source);
+            workingObject.UpdateIfRequiredOrScript();
+            sourceObject.UpdateIfRequiredOrScript();
+
+            bool copiedAny = false;
+            foreach (string propertyPath in propertyPaths
+                         .Where(path => !string.IsNullOrWhiteSpace(path))
+                         .Distinct(StringComparer.Ordinal))
+            {
+                SerializedProperty workingProperty =
+                    workingObject.FindProperty(propertyPath);
+                SerializedProperty sourceProperty =
+                    sourceObject.FindProperty(propertyPath);
+                if (workingProperty == null || sourceProperty == null)
+                {
+                    Debug.LogWarning(
+                        $"[Balance] 게시 필드를 찾을 수 없습니다: " +
+                        $"{propertyPath} ({working.name} -> {source.name})");
+                    continue;
+                }
+
+                sourceObject.CopyFromSerializedProperty(workingProperty);
+                copiedAny = true;
+            }
+
+            if (copiedAny)
+            {
+                sourceObject.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            return copiedAny;
         }
 
         internal static bool HasLocalizedPropertyLabel(string propertyName) =>
@@ -2852,7 +2948,17 @@ namespace CityFlow.EditorTools.Balance
 
                 string originalName = source.name;
                 Undo.RecordObject(source, "밸런스 수치 확정");
-                EditorUtility.CopySerialized(working, source);
+                if (entry.PublishPropertyPaths.Length > 0)
+                {
+                    CopyPublishedProperties(
+                        working,
+                        source,
+                        entry.PublishPropertyPaths);
+                }
+                else
+                {
+                    EditorUtility.CopySerialized(working, source);
+                }
                 source.name = originalName;
                 EditorUtility.SetDirty(source);
             }
