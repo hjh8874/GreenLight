@@ -94,8 +94,8 @@ namespace CityFlow.Tests.ViewEditMode
 
             SchoolBusService schoolBus =
                 RequireObject<SchoolBusService>();
-            SchoolBusWorldView schoolBusView =
-                RequireObject<SchoolBusWorldView>();
+            BusWorldView schoolBusView =
+                schoolBus.GetComponent<BusWorldView>();
             Assert.That(schoolBus.IsInitialized, Is.True);
             Assert.That(schoolBus.IsScheduled, Is.True);
             Assert.That(schoolBusView, Is.Not.Null);
@@ -753,16 +753,17 @@ namespace CityFlow.Tests.ViewEditMode
             SchoolBusService[] schoolBusServices =
                 Object.FindObjectsByType<SchoolBusService>(
                     FindObjectsInactive.Include);
-            SchoolBusWorldView[] schoolBusViews =
-                Object.FindObjectsByType<SchoolBusWorldView>(
-                    FindObjectsInactive.Include);
             SchoolBusRouteView[] legacyRouteViews =
                 Object.FindObjectsByType<SchoolBusRouteView>(
                     FindObjectsInactive.Include);
 
             Assert.That(schoolBusServices, Has.Length.EqualTo(1));
-            Assert.That(schoolBusViews, Has.Length.EqualTo(1));
             Assert.That(legacyRouteViews, Is.Empty);
+
+            BusWorldView schoolBusView =
+                schoolBusServices[0]
+                    .GetComponent<BusWorldView>();
+            Assert.That(schoolBusView, Is.Not.Null);
 
             var serializedSchoolBus =
                 new SerializedObject(schoolBusServices[0]);
@@ -780,7 +781,7 @@ namespace CityFlow.Tests.ViewEditMode
                 Is.Not.Null);
 
             var serializedSchoolBusView =
-                new SerializedObject(schoolBusViews[0]);
+                new SerializedObject(schoolBusView);
             Material schoolBusMaterial =
                 serializedSchoolBusView.FindProperty(
                         "busMaterial")
@@ -795,20 +796,16 @@ namespace CityFlow.Tests.ViewEditMode
                 Is.Not.Null);
             Assert.That(
                 schoolBusMaterial,
+                Is.Null,
+                "The authored school-bus materials must not be overridden.");
+            Assert.That(
+                serializedSchoolBusView.FindProperty(
+                    "busVisualPrefab").objectReferenceValue,
                 Is.Not.Null);
-            Assert.That(schoolBusMaterial.shader, Is.Not.Null);
             Assert.That(
-                schoolBusMaterial.shader.name,
-                Is.EqualTo("GreenLight/CityFlow Opaque Unlit"));
-            Assert.That(
-                schoolBusMaterial.GetColor("_BaseColor").r,
-                Is.EqualTo(0.96f).Within(0.01f));
-            Assert.That(
-                schoolBusMaterial.GetColor("_BaseColor").g,
-                Is.EqualTo(0.64f).Within(0.01f));
-            Assert.That(
-                schoolBusMaterial.GetColor("_BaseColor").b,
-                Is.EqualTo(0.08f).Within(0.01f));
+                serializedSchoolBusView.FindProperty(
+                    "visualScale").floatValue,
+                Is.EqualTo(0.76f).Within(0.0001f));
 
             SpecialBuildingVisitTripSource[] visitTripSources =
                 Object.FindObjectsByType<SpecialBuildingVisitTripSource>(
@@ -867,6 +864,7 @@ namespace CityFlow.Tests.ViewEditMode
                 Is.EquivalentTo(
                     new[]
                     {
+                        "CoinHarvestReceipt",
                         "CoinText",
                         "TimeText",
                         "VehicleCountText"

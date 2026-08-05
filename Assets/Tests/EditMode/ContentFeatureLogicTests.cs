@@ -91,7 +91,7 @@ namespace CityFlow.Sim.Tests
             const string ambulanceMaterialPath =
                 "Assets/03_Art/Materials/Vehicles/Ambulance_URP.mat";
             const string ambulanceScenePath =
-                "Assets/00_Scenes/Debug/CityFlowIntegrated_Lee.unity";
+                "Assets/00_Scenes/CityFlowIntegrated_cmt.unity";
 
             GameObject prefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
