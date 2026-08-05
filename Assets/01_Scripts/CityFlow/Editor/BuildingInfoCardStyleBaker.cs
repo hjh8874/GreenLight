@@ -15,6 +15,8 @@ namespace CityFlow.Editor
         private const string TargetScenePath =
             "Assets/00_Scenes/Debug/CityFlowIntegrated_han.unity";
         private const string CardName = "UI_BuildingInfoCard";
+        private const string LegacyAnalysisCardName =
+            "AnalysisCard_BottomLeft";
         private const string ThemeRootName = "VisualTheme_GreenSNS";
 
         private const string AssetRoot =
@@ -62,6 +64,7 @@ namespace CityFlow.Editor
             }
 
             ApplyStyle(card);
+            SuppressLegacyAnalysisCard(scene);
             EditorSceneManager.MarkSceneDirty(scene);
             Selection.activeGameObject = card.gameObject;
             Debug.Log(
@@ -99,6 +102,7 @@ namespace CityFlow.Editor
                 }
 
                 ApplyStyle(card);
+                SuppressLegacyAnalysisCard(scene);
                 EditorSceneManager.MarkSceneDirty(scene);
                 EditorSceneManager.SaveScene(scene);
                 Debug.Log(
@@ -161,6 +165,68 @@ namespace CityFlow.Editor
             StyleText(card.transform);
 
             EditorUtility.SetDirty(card);
+        }
+
+        private static void SuppressLegacyAnalysisCard(Scene scene)
+        {
+            AnalysisCardController legacyCard = FindComponent<AnalysisCardController>(
+                scene,
+                LegacyAnalysisCardName);
+            if (legacyCard == null)
+            {
+                return;
+            }
+
+            CanvasGroup group = legacyCard.GetComponent<CanvasGroup>();
+            if (group == null)
+            {
+                group = Undo.AddComponent<CanvasGroup>(legacyCard.gameObject);
+            }
+
+            Undo.RecordObject(group, "Suppress legacy analysis card");
+            group.alpha = 0f;
+            group.interactable = false;
+            group.blocksRaycasts = false;
+            group.ignoreParentGroups = true;
+            EditorUtility.SetDirty(group);
+
+            FloatingHudLevelController hud =
+                FindComponent<FloatingHudLevelController>(scene);
+            if (hud == null)
+            {
+                return;
+            }
+
+            Undo.RecordObject(hud, "Remove legacy analysis card from HUD level");
+            SerializedObject serializedHud = new SerializedObject(hud);
+            SerializedProperty levelObjects =
+                serializedHud.FindProperty("mLevelObjects");
+            if (levelObjects == null)
+            {
+                return;
+            }
+
+            List<UnityEngine.Object> retained = new List<UnityEngine.Object>();
+            for (int index = 0; index < levelObjects.arraySize; index++)
+            {
+                UnityEngine.Object target = levelObjects
+                    .GetArrayElementAtIndex(index)
+                    .objectReferenceValue;
+                if (target != null && target != legacyCard.gameObject)
+                {
+                    retained.Add(target);
+                }
+            }
+
+            levelObjects.arraySize = retained.Count;
+            for (int index = 0; index < retained.Count; index++)
+            {
+                levelObjects.GetArrayElementAtIndex(index)
+                    .objectReferenceValue = retained[index];
+            }
+
+            serializedHud.ApplyModifiedProperties();
+            EditorUtility.SetDirty(hud);
         }
 
         private static void AddHeader(
@@ -429,6 +495,26 @@ namespace CityFlow.Editor
             }
 
             return false;
+        }
+
+        private static T FindComponent<T>(
+            Scene scene,
+            string objectName = null) where T : Component
+        {
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                T[] components = root.GetComponentsInChildren<T>(true);
+                foreach (T component in components)
+                {
+                    if (string.IsNullOrEmpty(objectName) ||
+                        component.name == objectName)
+                    {
+                        return component;
+                    }
+                }
+            }
+
+            return null;
         }
 
         private static Sprite LoadSprite(string path)
