@@ -118,6 +118,7 @@ namespace CityFlow.Content.Transit
         private bool useOppositePairedPlatformDirection;
         private bool currentSegmentUsesRoadsideStop;
         private bool roadTrafficConfigured;
+        private bool roadTrafficRecoverySubscribed;
         private bool holdRoadTrafficAtDestination;
         private bool roadTrafficArrivalHandled;
         private int roadTrafficPathOffset;
@@ -316,6 +317,7 @@ namespace CityFlow.Content.Transit
             this.services = services;
             tileData = services.TileData;
             roadTraffic = services.RoadTraffic;
+            SubscribeRoadTrafficRecovery();
             worldGridAccess = services.WorldGrid;
             if (worldGridAccess != null)
             {
@@ -2861,8 +2863,59 @@ namespace CityFlow.Content.Transit
             RouteUnavailable?.Invoke();
         }
 
+        private void SubscribeRoadTrafficRecovery()
+        {
+            if (roadTrafficRecoverySubscribed || roadTraffic == null)
+            {
+                return;
+            }
+
+            roadTraffic.RecoveryRequested +=
+                HandleRoadTrafficRecoveryRequested;
+            roadTrafficRecoverySubscribed = true;
+        }
+
+        private void UnsubscribeRoadTrafficRecovery()
+        {
+            if (!roadTrafficRecoverySubscribed || roadTraffic == null)
+            {
+                return;
+            }
+
+            roadTraffic.RecoveryRequested -=
+                HandleRoadTrafficRecoveryRequested;
+            roadTrafficRecoverySubscribed = false;
+        }
+
+        private void HandleRoadTrafficRecoveryRequested(
+            RoadTrafficRecoveryRequest request)
+        {
+            if (request.AgentId != roadTrafficAgentId ||
+                !routeRequested ||
+                State != BusRouteState.Moving)
+            {
+                return;
+            }
+
+            CurrentTile = request.CurrentTile;
+            int currentIndex = currentRoadPath.IndexOf(
+                request.CurrentTile);
+            if (currentIndex >= 0)
+            {
+                currentRoadPathIndex = currentIndex;
+            }
+
+            bool rebuilt = RebuildCurrentSegment();
+            Debug.LogWarning(
+                $"[RoadTrafficRecovery] {request.Kind} route " +
+                $"replan {(rebuilt ? "succeeded" : "failed")} at " +
+                $"{request.CurrentTile} after {request.BlockedTicks} ticks.",
+                this);
+        }
+
         private void OnDestroy()
         {
+            UnsubscribeRoadTrafficRecovery();
             ReleaseRoadTrafficAgent();
         }
 

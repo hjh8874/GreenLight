@@ -315,6 +315,76 @@ namespace CityFlow.Tests.EditMode
         }
 
         [Test]
+        public void BlockedExternalAgent_RequestsRecoveryAtThreshold()
+        {
+            SimConfig config = SimConfig.Default();
+            config.GridWidth = 3;
+            config.GridHeight = 1;
+            config.QueueCapacityPerTile = 4;
+            var network = new RoadQueueNetwork(3, 1, config);
+            var coordinator = new RoadTrafficCoordinator(network);
+            var large = new VehicleFootprint(
+                VehicleSizeClass.Large,
+                0.8f,
+                0.24f,
+                0.11f);
+            int recoveryCount = 0;
+            RoadTrafficRecoveryRequest recovery = default;
+            coordinator.RecoveryRequested += request =>
+            {
+                recovery = request;
+                recoveryCount++;
+            };
+
+            Assert.IsTrue(network.TryEnqueue(
+                new Vector2Int(1, 0),
+                Dir.E,
+                90,
+                large));
+            Assert.IsTrue(network.TryEnqueue(
+                new Vector2Int(1, 0),
+                Dir.E,
+                91,
+                large));
+            Assert.IsTrue(coordinator.TryRegisterAgent(
+                new RoadTrafficAgentRegistration(
+                    RoadTrafficAgentKind.SchoolBus,
+                    large),
+                out RoadTrafficAgentId busId));
+            Assert.IsTrue(coordinator.TryAssignRoute(
+                new RoadTrafficRouteRequest(
+                    busId,
+                    new RoadRoutePlan(new[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(1, 0),
+                        new Vector2Int(2, 0)
+                    }),
+                    false)));
+            Assert.IsTrue(coordinator.TryStartAgent(busId));
+            coordinator.PrepareStep(new EmptyRouteProvider());
+            coordinator.SynchronizeSnapshots();
+
+            network.Step(coordinator, null, 0);
+            coordinator.ProcessLivenessWatchdog(2, 4);
+            coordinator.SynchronizeSnapshots();
+            Assert.AreEqual(0, recoveryCount);
+
+            network.Step(coordinator, null, 1);
+            coordinator.ProcessLivenessWatchdog(2, 4);
+            coordinator.SynchronizeSnapshots();
+
+            Assert.AreEqual(1, recoveryCount);
+            Assert.AreEqual(busId, recovery.AgentId);
+            Assert.AreEqual(
+                RoadTrafficAgentKind.SchoolBus,
+                recovery.Kind);
+            Assert.AreEqual(new Vector2Int(0, 0), recovery.CurrentTile);
+            Assert.AreEqual(new Vector2Int(2, 0), recovery.Destination);
+            Assert.AreEqual(2, recovery.BlockedTicks);
+        }
+
+        [Test]
         public void RouteStartingInRoundabout_EntersAtFirstSafeRoadTile()
         {
             SimConfig config = SimConfig.Default();

@@ -465,7 +465,9 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(grid.Remove(V(2, 2)), "직선 경로를 철거해 위쪽 우회로만 남긴다");
             planner.Plan(demands, road, grid, Cfg());
 
-            for (int tick = 0; tick < Cfg().GridlockValveTicks * 3 - 1; tick++)
+            for (int tick = 0;
+                 tick < Cfg().GetVehicleRerouteBlockedTicks() - 1;
+                 tick++)
                 sim.Step(7f, net, events);
             Assert.AreEqual(0, sim.RescueRerouteCount, "L2 임계 전 조기 구제 금지");
             sim.Step(7f, net, events);
@@ -513,7 +515,9 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(grid.Remove(V(1, 3)), "우회로도 끊어 L2 재탐색을 실패시킨다");
             planner.Plan(demands, road, grid, Cfg());
 
-            for (int tick = 0; tick < Cfg().GridlockValveTicks * 6 - 1; tick++)
+            for (int tick = 0;
+                 tick < Cfg().GetVehicleRestartBlockedTicks() - 1;
+                 tick++)
                 sim.Step(7f, net, events);
             Assert.AreEqual(0, sim.RescueRestartCount, "L3 임계 전 조기 재출발 금지");
             sim.Step(7f, net, events);
@@ -549,7 +553,9 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
             Assert.IsTrue(grid.Remove(V(2, 2)), "직선 경로를 철거해 위쪽 우회로만 남긴다");
             planner.Plan(demands, road, grid, Cfg());
-            for (int tick = 0; tick < Cfg().GridlockValveTicks * 3; tick++)
+            for (int tick = 0;
+                 tick < Cfg().GetVehicleRerouteBlockedTicks();
+                 tick++)
                 sim.Step(7f, net, events);
             Assert.AreEqual(1, sim.RescueRerouteCount, "전제: L2 rescue 발동");
             sim.Step(7f, net, events);
@@ -607,7 +613,9 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 90));
             Assert.IsTrue(net.TryEnqueue(V(3, 2), Dir.E, 91));
 
-            for (int tick = 0; tick < Cfg().GridlockValveTicks * 3 - 1; tick++)
+            for (int tick = 0;
+                 tick < Cfg().GetVehicleRerouteBlockedTicks() - 1;
+                 tick++)
                 sim.Step(7f, net, events);
             Assert.AreEqual(0, sim.RescueRerouteCount);
             Assert.AreEqual(0, sim.RescueRestartCount);

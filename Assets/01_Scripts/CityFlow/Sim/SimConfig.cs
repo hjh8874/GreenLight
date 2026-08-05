@@ -11,6 +11,16 @@ namespace CityFlow.Sim
         // 차 1대가 방해 없이 이동할 때 1초당 몇 타일을 가는가 (현재 엔진 규약 상 1틱당 1칸)
         public float GetFreeFlowSpeed() => 1f / TickInterval;
         public float GetTravelSeconds(int distTiles) => distTiles / GetFreeFlowSpeed();
+        public int GetVehicleRerouteBlockedTicks() =>
+            VehicleRerouteBlockedTicks > 0
+                ? System.Math.Max(1, VehicleRerouteBlockedTicks)
+                : System.Math.Max(1, GridlockValveTicks) * 3;
+        public int GetVehicleRestartBlockedTicks() =>
+            VehicleRestartBlockedTicks > 0
+                ? System.Math.Max(
+                    GetVehicleRerouteBlockedTicks() + 1,
+                    VehicleRestartBlockedTicks)
+                : System.Math.Max(1, GridlockValveTicks) * 6;
 
         // ── 고정 틱 ─────────────────────────────
         public float TickInterval;      // 시뮬 1스텝(초). blueprint §3 = 0.1
@@ -30,6 +40,8 @@ namespace CityFlow.Sim
         public int QueueCapacityPerTile;
         public int QueueServicePerTick;   // 한 방향 큐가 틱당 서비스할 최대 차 수 🔓
         public int GridlockValveTicks;    // 머리 차 연속 막힘 후 강제 전이까지의 틱 수 🔓
+        public int VehicleRerouteBlockedTicks;
+        public int VehicleRestartBlockedTicks;
         // 무신호 교차로가 한 서비스 라운드에 승인하는 차량 수. 0 = 기존 동작.
         public int UnsignaledIntersectionRoundCap;
         public int CoinPerTrip;           // 회사 도착 1회 보상 🔓
@@ -159,6 +171,8 @@ namespace CityFlow.Sim
             QueueCapacityPerTile = 4,
             QueueServicePerTick = 1,
             GridlockValveTicks = 8,
+            VehicleRerouteBlockedTicks = 12,
+            VehicleRestartBlockedTicks = 24,
             CoinPerTrip = 10,
             CarsPerHouse = 2,
             MorningStartHour = 6f,

@@ -34,11 +34,6 @@ namespace CityFlow.Sim
     {
         private const float JumpThresholdHours = 1f;
         private const float StaleSpecialJourneyHours = 24f;
-        // Watchdog thresholds are deliberately derived from the existing L1
-        // contract: L2 at 3x and L3 at 6x GridlockValveTicks. Promote them to
-        // SimConfig only if tuning ownership is approved later.
-        private const int RescueRerouteMultiplier = 3;
-        private const int RescueRestartMultiplier = 6;
         private const int VehicleRetryDelayTicks = 10;
         private const int RouteRetryDelayTicks = 30;
 
@@ -826,6 +821,9 @@ namespace CityFlow.Sim
                     events.QueueArrival(new ArrivalEvent(car.Work, _cfg.CoinPerTrip));
             }
             ProcessLivenessWatchdog(net);
+            roadTraffic?.ProcessLivenessWatchdog(
+                _cfg.GetVehicleRerouteBlockedTicks(),
+                _cfg.GetVehicleRestartBlockedTicks());
             SyncLocations(net);
             roadTraffic?.SynchronizeSnapshots();
             return result;
@@ -1048,10 +1046,10 @@ namespace CityFlow.Sim
 
         private void ProcessLivenessWatchdog(RoadQueueNetwork net)
         {
-            int rerouteThreshold = Math.Max(1, _cfg.GridlockValveTicks)
-                * RescueRerouteMultiplier;
-            int restartThreshold = Math.Max(1, _cfg.GridlockValveTicks)
-                * RescueRestartMultiplier;
+            int rerouteThreshold =
+                _cfg.GetVehicleRerouteBlockedTicks();
+            int restartThreshold =
+                _cfg.GetVehicleRestartBlockedTicks();
 
             for (int carId = 0; carId < CarCount; carId++)
             {

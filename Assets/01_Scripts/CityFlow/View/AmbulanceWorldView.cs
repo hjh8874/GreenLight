@@ -28,6 +28,7 @@ namespace CityFlow.View
         private readonly List<int> routePathToRoadIndex = new();
         private readonly BusRoutePolylineMotion routeMotion = new();
         private readonly BufferedRouteFollower routeFollower = new();
+        private readonly VehicleViewRecoveryMonitor viewRecovery = new();
 
         private IReadOnlyTileData tileData;
         private CityFlowServices services;
@@ -140,6 +141,7 @@ namespace CityFlow.View
 
             if (parkingTransitionActive)
             {
+                viewRecovery.Reset();
                 cityView?.RemoveVehiclePresentation(this);
                 UpdateParkingTransition();
                 return;
@@ -158,6 +160,7 @@ namespace CityFlow.View
                 visual == null ||
                 !routeFollower.HasPath)
             {
+                viewRecovery.Reset();
                 TryBeginPendingParkingTransition();
                 return;
             }
@@ -195,11 +198,21 @@ namespace CityFlow.View
             float allowedFraction = requestedAdvance > 0.0001f
                 ? Mathf.Clamp01(allowedAdvance / requestedAdvance)
                 : 1f;
+            bool spacingBlocked = allowedFraction < 0.999f;
 
             routeFollower.CommitCandidate(
                 candidateDistance,
                 allowedFraction);
-            visualBlockedByTraffic = allowedFraction < 0.999f;
+            bool presentationRecovered =
+                TryRecoverAmbulancePresentation(
+                    spacingBlocked,
+                    out RoutePolyline recoveredPath);
+            if (presentationRecovered)
+            {
+                path = recoveredPath;
+            }
+            visualBlockedByTraffic =
+                !presentationRecovered && allowedFraction < 0.999f;
             if (visualBlockedByTraffic &&
                 Time.unscaledTime >= nextVehicleSpacingWarningTime)
             {
@@ -232,6 +245,75 @@ namespace CityFlow.View
                 visual.localPosition;
             PublishExternalTraffic();
             TryBeginPendingParkingTransition();
+        }
+
+        private bool TryRecoverAmbulancePresentation(
+            bool spacingBlocked,
+            out RoutePolyline recoveredPath)
+        {
+            recoveredPath = routeFollower.Path;
+            if (cityView == null || route == null ||
+                !route.TryGetRoadTrafficSnapshot(
+                    out RoadTrafficSnapshot snapshot) ||
+                !snapshot.IsVisible ||
+                snapshot.State ==
+                RoadTrafficAgentState.RouteUnavailable)
+            {
+                return false;
+            }
+
+            VehicleViewRecoveryReason reason =
+                viewRecovery.Observe(
+                    routeFollower.CurrentDistance,
+                    routeFollower.TargetDistance,
+                    cityView.TileSize,
+                    Time.unscaledDeltaTime,
+                    route.RoadSegmentVersion,
+                    eligible: !spacingBlocked &&
+                              snapshot.State !=
+                              RoadTrafficAgentState.Paused &&
+                              snapshot.State !=
+                              RoadTrafficAgentState.HoldingAtDestination,
+                    stopPresentationPending: false,
+                    profile: cityView.VehicleViewRecoveryProfile);
+            if (reason == VehicleViewRecoveryReason.None)
+            {
+                return false;
+            }
+
+            float previousDistance = routeFollower.CurrentDistance;
+            routeMotion.Invalidate();
+            if (!TrySynchronizeAuthoritativeTrafficTarget(out _))
+            {
+                return false;
+            }
+
+            recoveredPath = routeMotion.Polyline;
+            if (recoveredPath == null)
+            {
+                return false;
+            }
+
+            routeFollower.RecoverToAuthoritativeDistance(
+                recoveredPath,
+                spacingBlocked
+                    ? previousDistance
+                    : targetMovementDistance);
+            currentVisualSpeed = 0f;
+            visualBlockedByTraffic = false;
+            cityView.RemoveVehiclePresentation(this);
+            viewRecovery.Synchronize(
+                routeFollower.CurrentDistance,
+                route.RoadSegmentVersion);
+
+            Debug.LogWarning(
+                $"[VehicleViewRecovery] Ambulance view recovered " +
+                $"({reason}). distance={previousDistance:F3}->" +
+                $"{routeFollower.CurrentDistance:F3}, " +
+                $"mode={(spacingBlocked ? "rebake" : "resync")}, " +
+                $"tile={snapshot.CurrentTile}.",
+                this);
+            return true;
         }
 
         private void ResolveReferences()
@@ -528,6 +610,7 @@ namespace CityFlow.View
             {
                 ClearPendingParkingRequest();
                 routeFollower.Reset();
+                viewRecovery.Reset();
                 movementPath = null;
                 hasTarget = false;
                 hasCurrentTrafficTile = false;
@@ -595,6 +678,7 @@ namespace CityFlow.View
             ClearPendingParkingRequest();
 
             routeFollower.Reset();
+            viewRecovery.Reset();
             movementPath = null;
             hasTarget = false;
             hasCurrentTrafficTile = false;

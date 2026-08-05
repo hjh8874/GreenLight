@@ -46,6 +46,8 @@ namespace CityFlow.Sim
             public RoadTrafficArrivalPolicy ArrivalPolicy { get; set; }
             public bool IsHoldingAtDestination { get; set; }
             public bool PauseOnEntry { get; set; }
+            public int RecoveryStage { get; set; }
+            public int OffNetworkBlockedTicks { get; set; }
         }
 
         private readonly RoadQueueNetwork network;
@@ -53,6 +55,8 @@ namespace CityFlow.Sim
         private readonly Func<float> stepProgressProvider;
         private readonly Dictionary<int, Agent> agentsById = new();
         private readonly Dictionary<int, Agent> agentsByNetworkId = new();
+        private readonly List<RoadTrafficRecoveryRequest>
+            pendingRecoveryRequests = new();
         private ICarRouteProvider coreRoutes;
         private int nextAgentId = 1;
 
@@ -75,6 +79,7 @@ namespace CityFlow.Sim
             stepProgressProvider?.Invoke() ?? 1f);
 
         public event Action<RoadTrafficArrivalEvent> AgentArrived;
+        public event Action<RoadTrafficRecoveryRequest> RecoveryRequested;
 
         public bool TryRegisterAgent(
             RoadTrafficAgentRegistration registration,
@@ -121,6 +126,8 @@ namespace CityFlow.Sim
             agent.IsEnqueued = continueFromHeldDestination;
             agent.IsPaused = continueFromHeldDestination;
             agent.IsHoldingAtDestination = false;
+            agent.RecoveryStage = 0;
+            agent.OffNetworkBlockedTicks = 0;
             agent.CurrentTile = agent.Route[0];
             agent.NextTile = agent.Route.Count > 1
                 ? agent.Route[1]
@@ -151,6 +158,7 @@ namespace CityFlow.Sim
 
             agent.Started = true;
             agent.IsPaused = false;
+            agent.OffNetworkBlockedTicks = 0;
             agent.State = agent.IsEnqueued
                 ? RoadTrafficAgentState.Moving
                 : RoadTrafficAgentState.Ready;
@@ -321,6 +329,91 @@ namespace CityFlow.Sim
             return externalArrivalCount;
         }
 
+        internal void ProcessLivenessWatchdog(
+            int rerouteThreshold,
+            int restartThreshold)
+        {
+            rerouteThreshold = Math.Max(1, rerouteThreshold);
+            restartThreshold = Math.Max(
+                rerouteThreshold + 1,
+                restartThreshold);
+            pendingRecoveryRequests.Clear();
+
+            foreach (Agent agent in agentsById.Values)
+            {
+                if (!agent.Started || agent.IsPaused ||
+                    agent.IsHoldingAtDestination ||
+                    agent.State != RoadTrafficAgentState.Moving ||
+                    agent.Route.Count == 0)
+                {
+                    ResetRecoveryState(agent);
+                    continue;
+                }
+
+                Vector2Int currentTile = agent.CurrentTile;
+                int blockedTicks;
+                if (agent.IsEnqueued && network.TryLocateCar(
+                        agent.NetworkId,
+                        out Vector2Int locatedTile,
+                        out _,
+                        out _))
+                {
+                    currentTile = locatedTile;
+                    blockedTicks = network.GetBlockedTicks(
+                        agent.NetworkId);
+                    agent.OffNetworkBlockedTicks = 0;
+                }
+                else
+                {
+                    blockedTicks = ++agent.OffNetworkBlockedTicks;
+                }
+
+                if (blockedTicks <= 0)
+                {
+                    agent.RecoveryStage = 0;
+                    continue;
+                }
+
+                if (agent.RecoveryStage == 0 &&
+                    blockedTicks >= rerouteThreshold)
+                {
+                    agent.RecoveryStage = 1;
+                    pendingRecoveryRequests.Add(
+                        new RoadTrafficRecoveryRequest(
+                            agent.Id,
+                            agent.Registration.Kind,
+                            currentTile,
+                            agent.Route[agent.Route.Count - 1],
+                            blockedTicks));
+                }
+
+                if (blockedTicks < restartThreshold)
+                {
+                    continue;
+                }
+
+                RestartAgentFromCurrentRoute(agent, currentTile);
+                Debug.LogWarning(
+                    $"[RoadTrafficRecovery] Restarted {agent.Registration.Kind} " +
+                    $"agent {agent.Id} at {currentTile} after " +
+                    $"{blockedTicks} blocked ticks.");
+            }
+
+            Action<RoadTrafficRecoveryRequest> handler =
+                RecoveryRequested;
+            if (handler == null)
+            {
+                return;
+            }
+
+            for (int index = 0;
+                 index < pendingRecoveryRequests.Count;
+                 index++)
+            {
+                handler.Invoke(pendingRecoveryRequests[index]);
+            }
+        }
+
         internal void SynchronizeSnapshots()
         {
             foreach (Agent agent in agentsById.Values)
@@ -385,6 +478,8 @@ namespace CityFlow.Sim
                 agent.IntersectionProgress01 = -1f;
                 agent.LinkProgress01 = 0f;
                 agent.RoundaboutProgress01 = -1f;
+                agent.RecoveryStage = 0;
+                agent.OffNetworkBlockedTicks = 0;
                 if (agent.Started)
                 {
                     agent.State = RoadTrafficAgentState.Ready;
@@ -489,6 +584,49 @@ namespace CityFlow.Sim
             agent = null;
             return agentId.IsValid
                 && agentsById.TryGetValue(agentId.Value, out agent);
+        }
+
+        private void RestartAgentFromCurrentRoute(
+            Agent agent,
+            Vector2Int currentTile)
+        {
+            if (agent.IsEnqueued)
+            {
+                network.TryRemoveCarForRescue(agent.NetworkId);
+            }
+
+            int routeIndex = FindRouteIndex(
+                agent.Route,
+                currentTile,
+                agent.RouteTileIndex);
+            agent.RouteTileIndex = routeIndex >= 0
+                ? routeIndex
+                : Mathf.Clamp(
+                    agent.RouteTileIndex,
+                    0,
+                    agent.Route.Count - 1);
+            agent.CurrentTile = agent.Route[agent.RouteTileIndex];
+            agent.NextTile = GetNextTile(
+                agent,
+                agent.RouteTileIndex);
+            agent.IsEnqueued = false;
+            agent.IsPaused = false;
+            agent.IsHoldingAtDestination = false;
+            agent.QueueSlot = -1;
+            agent.QueueOffsetTiles = 0f;
+            agent.IntersectionProgress01 = -1f;
+            agent.LinkProgress01 = 0f;
+            agent.RoundaboutProgress01 = -1f;
+            agent.Started = true;
+            agent.State = RoadTrafficAgentState.Ready;
+            agent.IsVisible = true;
+            ResetRecoveryState(agent);
+        }
+
+        private static void ResetRecoveryState(Agent agent)
+        {
+            agent.RecoveryStage = 0;
+            agent.OffNetworkBlockedTicks = 0;
         }
 
         private int FindSafeResumeIndex(Agent agent)

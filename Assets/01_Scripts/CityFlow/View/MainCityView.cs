@@ -472,6 +472,7 @@ namespace CityFlow.View
             public GameObject BrakeLight;  // 후방 제동등(기본 off) — CreateDetailCube 패턴
             public bool BrakeOn;           // 제동등 상태 캐시(매 프레임 SetActive 금지)
             public VehicleNightLighting NightLighting;
+            public readonly VehicleViewRecoveryMonitor ViewRecovery = new();
         }
 
         private sealed class ExternalSelectableVehicle
