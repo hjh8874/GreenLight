@@ -12,6 +12,8 @@ namespace CityFlow.Audio.Editor
     public static class SoundSystemBaker
     {
         private const string AudioRoot = "Assets/04_Audio";
+        private const float FacilityPreviewVolume = 0.2f;
+        private const float EmergencyFacilityPreviewVolume = 0.08f;
         private const string ConfigRoot = AudioRoot + "/Configs";
         private const string MixerRoot = AudioRoot + "/Mixers";
         private const string PrefabRoot = AudioRoot + "/Prefabs";
@@ -215,66 +217,90 @@ namespace CityFlow.Audio.Editor
                     0.75f,
                     1f),
                 Entry(SoundIds.FlowBurst, PositiveNotificationPath, 0.65f, 0.5f),
-                Entry(SoundIds.HospitalPreview, HospitalPath, 0.5f, 0f),
-                Entry(SoundIds.SchoolPreview, SchoolPath, 0.5f, 0f),
-                Entry(SoundIds.HousePreview, HousePath, 0.5f, 0f),
-                Entry(SoundIds.OfficePreview, OfficePath, 0.5f, 0f),
-                Entry(SoundIds.MallPreview, MallPath, 0.5f, 0f),
+                Entry(
+                    SoundIds.HospitalPreview,
+                    HospitalPath,
+                    EmergencyFacilityPreviewVolume,
+                    0f),
+                Entry(
+                    SoundIds.SchoolPreview,
+                    SchoolPath,
+                    FacilityPreviewVolume,
+                    0f),
+                Entry(
+                    SoundIds.HousePreview,
+                    HousePath,
+                    FacilityPreviewVolume,
+                    0f),
+                Entry(
+                    SoundIds.OfficePreview,
+                    OfficePath,
+                    FacilityPreviewVolume,
+                    0f),
+                Entry(
+                    SoundIds.MallPreview,
+                    MallPath,
+                    FacilityPreviewVolume,
+                    0f),
                 Entry(
                     SoundIds.PetrolStationPreview,
                     PetrolStationPath,
-                    0.5f,
+                    FacilityPreviewVolume,
                     0f),
                 Entry(
                     SoundIds.PoliceStationPreview,
                     PoliceStationPath,
-                    0.5f,
+                    EmergencyFacilityPreviewVolume,
                     0f),
                 Entry(
                     SoundIds.VideoStoreLeverPreview,
                     VideoStoreLeverPath,
-                    0.5f,
+                    FacilityPreviewVolume,
                     0f),
                 Entry(
                     SoundIds.VideoStoreProjectorPreview,
                     VideoStoreProjectorPath,
-                    0.5f,
+                    FacilityPreviewVolume,
                     0f),
-                Entry(SoundIds.PharmacyPreview, PharmacyPath, 0.5f, 0f),
+                Entry(
+                    SoundIds.PharmacyPreview,
+                    PharmacyPath,
+                    FacilityPreviewVolume,
+                    0f),
                 Entry(
                     SoundIds.CoffeeShopPreview,
                     CoffeeShopPath,
-                    0.5f,
+                    FacilityPreviewVolume,
                     0f),
                 Entry(
                     SoundIds.CinemaEpicPreview,
                     CinemaEpicPath,
-                    0.5f,
+                    FacilityPreviewVolume,
                     0f),
                 Entry(
                     SoundIds.CinemaRevealPreview,
                     CinemaRevealPath,
-                    0.5f,
+                    FacilityPreviewVolume,
                     0f),
                 Entry(
                     SoundIds.CinemaComedyPreview,
                     CinemaComedyPath,
-                    0.5f,
+                    FacilityPreviewVolume,
                     0f),
                 Entry(
                     SoundIds.CinemaOrientalPreview,
                     CinemaOrientalPath,
-                    0.5f,
+                    FacilityPreviewVolume,
                     0f),
                 Entry(
                     SoundIds.CinemaCalmPreview,
                     CinemaCalmPath,
-                    0.5f,
+                    FacilityPreviewVolume,
                     0f),
                 Entry(
                     SoundIds.AutoRepairPreview,
                     AutoRepairPath,
-                    0.5f,
+                    FacilityPreviewVolume,
                     0f)
             };
             catalog.EditorSetSounds(entries);
