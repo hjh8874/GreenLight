@@ -51,14 +51,19 @@ namespace CityFlow.EditorTools
         // 티커는 그 왼쪽에 나란히 앉힌다(겹치면 클릭이 서로 먹는다).
         private const float DockLeftEdge = -80f;
         private const float DockBottomEdge = 20f;
-        private static readonly Vector2 TickerSize = new Vector2(520f, 54f);
+        // 본문이 잘리지 않을 만큼 넓게. 520일 때 본문이 342px(≈28자)라
+        // 대부분의 템플릿 문장이 중간에서 끊겼다. 760이면 582px(≈48자)로
+        // 현재 가장 긴 문장(45자)까지 들어간다.
+        private static readonly Vector2 TickerSize = new Vector2(760f, 54f);
         // 도크 왼쪽에 서므로 세로는 자유롭다 — 바닥에서 조금 띄워 올린다.
         private static readonly Vector2 TickerPosition =
             new Vector2(DockLeftEdge - 12f, DockBottomEdge + 58f);
 
         // 히스토리는 화면 중앙 팝업이다 — 자리를 옮기지 않으므로 열림/숨김
         // 좌표가 없다. 씬에서 잡아둔 위치가 곧 표시 위치다.
-        private static readonly Vector2 PanelSize = new Vector2(460f, 560f);
+        // 폭 460일 때 행 본문이 202px(≈17자)까지 좁아져 티커보다 심하게 잘렸다.
+        // 720이면 462px(≈38자)로 대부분의 문장이 한 줄에 들어간다.
+        private static readonly Vector2 PanelSize = new Vector2(720f, 560f);
 
         private const float RowHeight = 44f;
         private const float HeaderHeight = 52f;
