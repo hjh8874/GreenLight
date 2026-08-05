@@ -944,13 +944,16 @@ namespace CityFlow.Feed
 
         private string GetTimestamp()
         {
-            return calendar != null
-                ? CitizenFeedFormatter.FormatTimestamp(
-                    calendar.Year,
-                    calendar.Month,
-                    calendar.Day,
-                    calendar.Hour)
-                : $"{GetGameHour():00}:00";
+            if (calendar == null)
+            {
+                return $"{GetGameHour():00}:00";
+            }
+
+            // 달력은 분을 노출하지 않지만 TimeOfDay01이 있다.
+            // 하루 안 진행도에서 시를 빼면 그 시각의 분이 나온다.
+            float hoursIntoDay = calendar.TimeOfDay01 * calendar.HoursPerDay;
+            int minute = Mathf.Clamp((int)((hoursIntoDay - calendar.Hour) * 60f), 0, 59);
+            return CitizenFeedFormatter.FormatTimestamp(calendar.Hour, minute);
         }
 
         private static float ScoreToChance(float score)

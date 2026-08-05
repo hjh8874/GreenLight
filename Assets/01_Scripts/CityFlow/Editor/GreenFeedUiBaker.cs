@@ -485,8 +485,10 @@ namespace CityFlow.EditorTools
                 root.transform,
                 "Timestamp",
                 timestamp,
-                new Vector2(-14f, 0f),
-                new Vector2(52f, 16f),
+                new Vector2(-12f, 0f),
+                // "17:24" 5글자가 잘리지 않을 만큼만. 예전 "Y1 M01 D03 17:00"은
+                // 어떤 폭을 줘도 한 줄 UI에 안 들어갔다.
+                new Vector2(42f, 16f),
                 10f,
                 FontStyles.Normal,
                 TextFaint,
@@ -512,7 +514,7 @@ namespace CityFlow.EditorTools
             messageRect.anchorMax = new Vector2(1f, 0.5f);
             messageRect.pivot = new Vector2(0.5f, 0.5f);
             messageRect.offsetMin = new Vector2(180f, -9f);
-            messageRect.offsetMax = new Vector2(-74f, 9f);
+            messageRect.offsetMax = new Vector2(-58f, 9f);
             messageText.textWrappingMode = TextWrappingModes.NoWrap;
             messageText.overflowMode = TextOverflowModes.Ellipsis;
 
@@ -624,6 +626,19 @@ namespace CityFlow.EditorTools
             ApplySprite(background, TickerFramePath, Image.Type.Sliced, RowBorderScale);
             background.color = PanelColor;
             background.raycastTarget = true;
+
+            // 티커는 본문이 전부다. 직업(122~174)을 빼고 시각 칸을 줄여
+            // 본문에 약 120px을 더 준다 — 안 그러면 문장이 중간에서 잘린다.
+            Transform occupation = tickerObject.transform.Find("Occupation");
+            if (occupation != null) occupation.gameObject.SetActive(false);
+
+            Transform message = tickerObject.transform.Find("Message");
+            if (message != null)
+            {
+                RectTransform messageRect = message.GetComponent<RectTransform>();
+                messageRect.offsetMin = new Vector2(120f, -9f);
+                messageRect.offsetMax = new Vector2(-58f, 9f);
+            }
 
             Button button = tickerObject.AddComponent<Button>();
             button.targetGraphic = background;
