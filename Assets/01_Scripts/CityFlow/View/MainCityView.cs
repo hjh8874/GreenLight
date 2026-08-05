@@ -538,10 +538,6 @@ namespace CityFlow.View
             BuildBoard();
             BuildGridLines();
             RefreshAllTiles();
-            HospitalAmbulanceParkingView ambulanceView =
-                GetComponent<HospitalAmbulanceParkingView>() ??
-                gameObject.AddComponent<HospitalAmbulanceParkingView>();
-            ambulanceView.Initialize(services);
             RefreshSignals();
             RefreshRoundabouts();
             RefreshOverpasses();
@@ -2384,9 +2380,18 @@ namespace CityFlow.View
                     body.transform,
                     root.transform,
                     footprintSize,
-                    type == TileType.Hospital
-                        ? 180f
-                        : 0f);
+                    type switch
+                    {
+                        TileType.Hospital => 180f,
+                        TileType.School => 270f,
+                        _ => 0f
+                    });
+                if (type == TileType.School)
+                {
+                    Vector3 schoolScale = body.transform.localScale;
+                    schoolScale.y *= 1.5f;
+                    body.transform.localScale = schoolScale;
+                }
                 body.transform.localPosition +=
                     new Vector3(
                         0f,

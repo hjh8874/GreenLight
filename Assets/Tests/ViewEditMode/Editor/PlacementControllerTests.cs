@@ -607,6 +607,101 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void BuildingModelPreview_CleanupRemovesOwnedPreviewImmediately()
+        {
+            var owner = new GameObject("PlacementPreviewOwner");
+            var ghostObject = new GameObject("PlacementPreviewGhost");
+            var renderer = ghostObject.AddComponent<SpriteRenderer>();
+            var manager = new PlacementVisualManager(
+                renderer,
+                Color.green,
+                Color.red,
+                false,
+                1f,
+                Color.green,
+                Color.red,
+                null,
+                null,
+                null,
+                owner.transform);
+            GameObject preview =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+
+            try
+            {
+                manager.Initialize();
+                manager.SetBuildingPreview(preview);
+
+                Assert.AreSame(
+                    owner.transform,
+                    preview.transform.parent,
+                    "배치 미리보기는 컨트롤러 수명 아래에 있어야 한다.");
+
+                manager.Cleanup();
+
+                Assert.That(
+                    preview == null,
+                    Is.True,
+                    "에디터의 임시 미리보기는 Cleanup 즉시 제거되어야 한다.");
+            }
+            finally
+            {
+                manager.Cleanup();
+                Object.DestroyImmediate(owner);
+                Object.DestroyImmediate(ghostObject);
+            }
+        }
+
+        [Test]
+        public void BuildingModelPreview_ErrorShaderFallsBackToPreviewMaterial()
+        {
+            Shader errorShader =
+                Shader.Find("Hidden/InternalErrorShader");
+            Assert.That(errorShader, Is.Not.Null);
+
+            var ghostObject = new GameObject("ErrorShaderPreviewGhost");
+            var ghostRenderer =
+                ghostObject.AddComponent<SpriteRenderer>();
+            var manager = new PlacementVisualManager(
+                ghostRenderer,
+                Color.green,
+                Color.red,
+                false,
+                1f,
+                Color.green,
+                Color.red,
+                null,
+                null,
+                null);
+            GameObject preview =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var errorMaterial = new Material(errorShader);
+            Renderer previewRenderer =
+                preview.GetComponent<Renderer>();
+            previewRenderer.sharedMaterial = errorMaterial;
+
+            try
+            {
+                manager.Initialize();
+                manager.SetBuildingPreview(preview);
+
+                Assert.AreNotSame(
+                    errorMaterial,
+                    previewRenderer.sharedMaterial,
+                    "Error Shader 재질은 미리보기 전용 재질로 교체되어야 한다.");
+                Assert.That(
+                    previewRenderer.sharedMaterial.shader.name,
+                    Does.Contain("Unlit"));
+            }
+            finally
+            {
+                manager.Cleanup();
+                Object.DestroyImmediate(errorMaterial);
+                Object.DestroyImmediate(ghostObject);
+            }
+        }
+
+        [Test]
         public void RoadSelection_UsesFlatRoadPlacementPreview()
         {
             var cityObject = new GameObject("RoadPreviewCityView");

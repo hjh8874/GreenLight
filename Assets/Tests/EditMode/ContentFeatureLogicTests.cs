@@ -87,11 +87,11 @@ namespace CityFlow.Sim.Tests
             const string ambulanceVehiclePath =
                 "Assets/02_Prefabs/Vehicles/AmbulanceVehicle.prefab";
             const string ambulanceVisualPath =
-                "Assets/02_Prefabs/Vehicles/AmbulanceVehicleVisual.prefab";
+                "Assets/02_Prefabs/Vehicles/AmbulanceVisual.prefab";
             const string ambulanceMaterialPath =
                 "Assets/03_Art/Materials/Vehicles/Ambulance_URP.mat";
             const string ambulanceScenePath =
-                "Assets/00_Scenes/Debug/CityFlowIntegrated_Lee.unity";
+                "Assets/00_Scenes/CityFlowIntegrated_cmt.unity";
 
             GameObject prefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
@@ -133,8 +133,7 @@ namespace CityFlow.Sim.Tests
             Assert.That(ambulanceMaterial, Is.Not.Null);
             Assert.That(
                 ambulanceMaterial.shader.name,
-                Is.EqualTo(
-                    "GreenLight/CityFlow Opaque Unlit"));
+                Does.Contain("Lit").And.Not.Contain("Unlit"));
             Assert.That(scene, Is.Not.Null);
             Assert.That(ambulanceScene, Is.Not.Null);
             Assert.That(busConfig, Is.Not.Null);

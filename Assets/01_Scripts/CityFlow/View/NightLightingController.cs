@@ -24,10 +24,22 @@ namespace CityFlow.View
         private CityFlowServices services;
         private IGameCalendarService calendar;
         private bool isMoving;
+        private Vector3 localForward = Vector3.right;
 
         public static VehicleNightLighting Attach(
             GameObject vehicleRoot,
             CityFlowServices services)
+        {
+            return Attach(
+                vehicleRoot,
+                services,
+                Vector3.right);
+        }
+
+        public static VehicleNightLighting Attach(
+            GameObject vehicleRoot,
+            CityFlowServices services,
+            Vector3 localForward)
         {
             if (vehicleRoot == null)
             {
@@ -37,6 +49,10 @@ namespace CityFlow.View
             VehicleNightLighting lighting =
                 vehicleRoot.GetComponent<VehicleNightLighting>() ??
                 vehicleRoot.AddComponent<VehicleNightLighting>();
+            lighting.localForward =
+                localForward.sqrMagnitude > 0.0001f
+                    ? localForward.normalized
+                    : Vector3.right;
             lighting.Initialize(services);
             return lighting;
         }
@@ -92,41 +108,62 @@ namespace CityFlow.View
             var lightRoot = new GameObject("NightHeadlights");
             lightRoot.transform.SetParent(transform, false);
 
-            float length = Mathf.Max(0.01f, bounds.size.x);
-            float width = Mathf.Max(0.01f, bounds.size.y);
+            Vector3 forward = localForward;
+            Vector3 side = new(
+                -forward.y,
+                forward.x,
+                0f);
+            float halfLength =
+                Mathf.Abs(forward.x) * bounds.extents.x +
+                Mathf.Abs(forward.y) * bounds.extents.y;
+            float halfWidth =
+                Mathf.Abs(side.x) * bounds.extents.x +
+                Mathf.Abs(side.y) * bounds.extents.y;
+            float length = Mathf.Max(0.01f, halfLength * 2f);
+            float width = Mathf.Max(0.01f, halfWidth * 2f);
             float worldLength = transform.TransformVector(
-                Vector3.right * length).magnitude;
-            float frontX = bounds.max.x + length * 0.025f;
+                forward * length).magnitude;
+            Vector3 front =
+                bounds.center +
+                forward *
+                (halfLength + length * 0.025f);
             float sideOffset = width * 0.3f;
             float heightZ = Mathf.Lerp(
                 bounds.center.z,
                 bounds.max.z,
                 0.25f);
+            front.z = heightZ;
 
             CreateHeadlight(
                 lightRoot.transform,
                 "Headlight_Left",
-                new Vector3(frontX, sideOffset, heightZ),
-                worldLength);
+                front + side * sideOffset,
+                worldLength,
+                forward);
             CreateHeadlight(
                 lightRoot.transform,
                 "Headlight_Right",
-                new Vector3(frontX, -sideOffset, heightZ),
-                worldLength);
+                front - side * sideOffset,
+                worldLength,
+                forward);
         }
 
         private void CreateHeadlight(
             Transform parent,
             string lightName,
             Vector3 localPosition,
-            float worldLength)
+            float worldLength,
+            Vector3 forward)
         {
             var lightObject = new GameObject(lightName);
+            lightObject.hideFlags =
+                HideFlags.HideInHierarchy |
+                HideFlags.DontSave;
             lightObject.transform.SetParent(parent, false);
             lightObject.transform.localPosition = localPosition;
             lightObject.transform.localRotation =
                 Quaternion.LookRotation(
-                    Vector3.right,
+                    forward,
                     Vector3.back);
 
             Light headlight = lightObject.AddComponent<Light>();

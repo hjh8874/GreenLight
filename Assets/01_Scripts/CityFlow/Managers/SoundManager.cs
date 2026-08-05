@@ -21,7 +21,7 @@ namespace CityFlow.Managers
 
         [Header("Volume")]
         [Range(0f, 1f)]
-        [SerializeField] private float bgmVolume = 0.6f;
+        [SerializeField] private float bgmVolume = 0.5f;
         [Range(0f, 1f)]
         [SerializeField] private float sfxVolume = 1f;
 

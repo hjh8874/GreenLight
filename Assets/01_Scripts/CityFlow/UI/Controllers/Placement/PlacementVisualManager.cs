@@ -39,6 +39,7 @@ namespace CityFlow.UI.Controllers.Placement
         private readonly BenefitHighlightRenderer _benefitRenderer;
         private readonly CityFlow.Content.PopulationConfigSO _populationConfig;
         private readonly CityFlow.Content.BuildingDefinitionSO _hospitalDefinition;
+        private readonly Transform _previewParent;
 
         private Vector2Int? _lastPreviewCoord = null;
         private readonly List<Vector2Int> _benefitTileBuffer = new List<Vector2Int>(32);
@@ -49,7 +50,8 @@ namespace CityFlow.UI.Controllers.Placement
             bool use3DGhostVolume, float ghostVolumeHeight, Color volumeValidColor, Color volumeInvalidColor,
             BenefitHighlightRenderer benefitRenderer,
             CityFlow.Content.PopulationConfigSO populationConfig,
-            CityFlow.Content.BuildingDefinitionSO hospitalDefinition)
+            CityFlow.Content.BuildingDefinitionSO hospitalDefinition,
+            Transform previewParent = null)
         {
             _ghostRenderer = ghostRenderer;
             _colorValid = colorValid;
@@ -62,6 +64,7 @@ namespace CityFlow.UI.Controllers.Placement
             _benefitRenderer = benefitRenderer;
             _populationConfig = populationConfig;
             _hospitalDefinition = hospitalDefinition;
+            _previewParent = previewParent;
         }
 
         public void Initialize()
@@ -91,8 +94,13 @@ namespace CityFlow.UI.Controllers.Placement
         private void SafeDestroy(UnityEngine.Object obj)
         {
             if (obj == null) return;
-            if (Application.isPlaying) UnityEngine.Object.Destroy(obj);
-            else UnityEngine.Object.DestroyImmediate(obj);
+            bool isTemporaryEditorObject =
+                Application.isEditor &&
+                (obj.hideFlags & HideFlags.DontSave) != 0;
+            if (!Application.isPlaying || isTemporaryEditorObject)
+                UnityEngine.Object.DestroyImmediate(obj);
+            else
+                UnityEngine.Object.Destroy(obj);
         }
 
         public void SetGhostActive(bool active)
@@ -136,6 +144,12 @@ namespace CityFlow.UI.Controllers.Placement
 
             _buildingPreviewObject.hideFlags =
                 HideFlags.HideAndDontSave;
+            if (_previewParent != null)
+            {
+                _buildingPreviewObject.transform.SetParent(
+                    _previewParent,
+                    true);
+            }
             Material previewMaterial =
                 GetOrCreateBuildingPreviewMaterial();
             _buildingPreviewRenderers =
@@ -558,13 +572,14 @@ namespace CityFlow.UI.Controllers.Placement
                     ShadowCastingMode.Off;
                 renderer.receiveShadows = false;
 
-                if (preserveSourceMaterials)
+                Material[] materials =
+                    renderer.sharedMaterials;
+                if (preserveSourceMaterials &&
+                    AreMaterialsUsable(materials))
                 {
                     continue;
                 }
 
-                Material[] materials =
-                    renderer.sharedMaterials;
                 if (materials.Length == 0)
                 {
                     materials =
@@ -584,6 +599,31 @@ namespace CityFlow.UI.Controllers.Placement
             }
 
             return renderers;
+        }
+
+        private static bool AreMaterialsUsable(
+            Material[] materials)
+        {
+            if (materials == null || materials.Length == 0)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < materials.Length; index++)
+            {
+                Material material = materials[index];
+                Shader shader = material != null
+                    ? material.shader
+                    : null;
+                if (shader == null ||
+                    !shader.isSupported ||
+                    shader.name.Contains("InternalErrorShader"))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         internal static void ApplyPreviewColor(

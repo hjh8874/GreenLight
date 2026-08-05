@@ -174,7 +174,7 @@ namespace CityFlow.Tests.ViewEditMode
                     "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset");
             GameObject visualPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
-                    "Assets/02_Prefabs/Vehicles/AmbulanceVehicleVisual.prefab");
+                    "Assets/02_Prefabs/Vehicles/AmbulanceVisual.prefab");
             GameObject instance =
                 Object.Instantiate(visualPrefab);
 
@@ -215,11 +215,46 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
+        public void RuntimeVisualDepth_UsesSharedVehicleGround()
+        {
+            EmergencyIncidentConfigSO config =
+                AssetDatabase.LoadAssetAtPath<
+                    EmergencyIncidentConfigSO>(
+                    "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset");
+            GameObject owner = new("Ambulance Ground Test");
+
+            try
+            {
+                MainCityView cityView =
+                    owner.AddComponent<MainCityView>();
+
+                Assert.That(
+                    AmbulanceWorldView.ResolveVisualSurfaceDepth(
+                        cityView,
+                        config),
+                    Is.EqualTo(cityView.VehicleGroundZ)
+                        .Within(0.0001f),
+                    "Ambulances must use the same ground surface as other road vehicles.");
+                Assert.That(
+                    AmbulanceWorldView.ResolveVisualSurfaceDepth(
+                        cityView,
+                        config),
+                    Is.Not.EqualTo(config.VisualDepth)
+                        .Within(0.0001f),
+                    "The legacy ambulance-only depth must not lift the visual above the road.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+            }
+        }
+
+        [Test]
         public void ExternalVehicleVisual_UsesSharedVehicleSelection()
         {
             GameObject visualPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
-                    "Assets/02_Prefabs/Vehicles/AmbulanceVehicleVisual.prefab");
+                    "Assets/02_Prefabs/Vehicles/AmbulanceVisual.prefab");
             GameObject cityObject =
                 new("VehicleSelectionTestCity");
             GameObject owner =
@@ -234,7 +269,7 @@ namespace CityFlow.Tests.ViewEditMode
                 cityView.RegisterExternalSelectableVehicle(
                     owner,
                     visual.transform,
-                    Vector3.back);
+                    Vector3.right);
 
                 Collider selectionCollider =
                     visual.GetComponentInChildren<
@@ -254,7 +289,7 @@ namespace CityFlow.Tests.ViewEditMode
                     Is.SameAs(visual.transform));
                 Assert.That(
                     localTravelAxis,
-                    Is.EqualTo(Vector3.back));
+                    Is.EqualTo(Vector3.right));
 
                 cityView.UnregisterExternalSelectableVehicle(
                     owner);
@@ -286,9 +321,9 @@ namespace CityFlow.Tests.ViewEditMode
             Quaternion rotation =
                 AmbulanceWorldView.CreateRotation(direction);
             Vector3 vehicleNose =
-                rotation * Vector3.back;
+                rotation * Vector3.right;
             Vector3 vehicleUp =
-                rotation * Vector3.up;
+                rotation * Vector3.back;
 
             Assert.That(
                 Vector3.Dot(
@@ -1455,6 +1490,23 @@ namespace CityFlow.Tests.ViewEditMode
                         .HasVisibleAmbulance,
                     Is.True,
                     "Installing a hospital must show its ambulance in a parking slot before an incident exists.");
+                Renderer[] ambulanceRenderers =
+                    cityViewObject.GetComponentsInChildren<Renderer>(true);
+                Assert.That(
+                    ambulanceRenderers,
+                    Is.Not.Empty,
+                    "A parked ambulance must have at least one renderer.");
+                foreach (Renderer renderer in ambulanceRenderers)
+                {
+                    foreach (Material material in renderer.sharedMaterials)
+                    {
+                        Assert.That(material, Is.Not.Null);
+                        Assert.That(
+                            material.shader.name,
+                            Does.Contain("Lit").And.Not.Contain("Unlit"),
+                            "Every ambulance renderer must use a lit shader.");
+                    }
+                }
 
                 Assert.That(
                     system.TryCreateIncidentAt(

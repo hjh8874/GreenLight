@@ -5,12 +5,30 @@ using CityFlow.Contracts;
 using CityFlow.UI;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 // 이름 필터로 돌린다: run_tests(group_names=[".*ResearchPanelTests.*"])
 // 상태·개수·잠금 여부만 단정한다 — TMP 텍스트 내용은 카피 변경에 취약해 보지 않는다.
 public class ResearchPanelTests
 {
+    [Test]
+    public void Initialize_CanvasWithoutRaycaster_AddsGraphicRaycaster()
+    {
+        var owner = new GameObject("panel", typeof(Canvas));
+        try
+        {
+            ResearchPanelController controller = CreateController(owner, null);
+
+            Assert.IsNotNull(owner.GetComponent<GraphicRaycaster>(),
+                "독립 Canvas인 연구 패널은 클릭 입력용 GraphicRaycaster가 필요하다");
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+        }
+    }
+
     [Test]
     public void Initialize_BuildsOneRowPerEntry_WithLockState()
     {

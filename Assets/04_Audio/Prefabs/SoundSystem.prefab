@@ -58,7 +58,7 @@ MonoBehaviour:
   soundCatalog: {fileID: 11400000, guid: 149c6a4199b5cd240b6b34947ac36ba6, type: 2}
   playOnStart: 0
   startBgmId:
-  bgmVolume: 0.6
+  bgmVolume: 0.5
   sfxVolume: 1
 --- !u!81 &7657521594040660546
 AudioListener:

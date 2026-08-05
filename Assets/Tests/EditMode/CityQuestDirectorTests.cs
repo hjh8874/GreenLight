@@ -148,5 +148,40 @@ namespace CityFlow.Sim.Tests
 
             Assert.AreEqual(CityQuestId.ResolveCongestion, director.ActiveQuest.Id);
         }
+
+        [Test]
+        public void SchoolQuest_RequiresOneSchoolPerTenHouses()
+        {
+            var director = new CityQuestDirector();
+            director.RestoreTutorialStage(5);
+
+            director.Tick(
+                Snapshot(
+                    roads: 20,
+                    houses: 10,
+                    offices: 2,
+                    schools: 1,
+                    arrivals: 1,
+                    harvested: true),
+                120f);
+            Assert.AreNotEqual(
+                CityQuestId.BuildSchool,
+                director.ActiveQuest?.Id);
+
+            director.Tick(
+                Snapshot(
+                    roads: 20,
+                    houses: 11,
+                    offices: 2,
+                    schools: 1,
+                    arrivals: 1,
+                    harvested: true),
+                5f);
+            Assert.AreEqual(
+                CityQuestId.BuildSchool,
+                director.ActiveQuest?.Id,
+                "주택이 학교 한 곳의 10채 수용 기준을 넘으면 학교 건설 퀘스트가 나타나야 한다.");
+        }
+
     }
 }
