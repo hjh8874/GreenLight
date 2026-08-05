@@ -102,6 +102,10 @@ namespace CityFlow.Feed
             {
                 case "Location":
                     return $"{context.Tile.x + 1}-{context.Tile.y + 1} 교차로";
+                // 교차로가 아닌 자리를 가리킬 때 쓴다. 건물이 선 타일이나 구급 현장에
+                // {Location}을 쓰면 "3-5 교차로에 건물이 들어섰다"가 된다.
+                case "Spot":
+                    return $"{context.Tile.x + 1}-{context.Tile.y + 1} 일대";
                 case "DensityPercent":
                     return $"{context.Density01 * 100f:0}%";
                 case "Hour":

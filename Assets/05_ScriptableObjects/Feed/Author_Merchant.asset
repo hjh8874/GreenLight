@@ -19,4 +19,11 @@ MonoBehaviour:
   role: 3
   personality: 5
   postingWeight: 0.9
-  preferredEvents: 000000000100000002000000
+  preferredEvents: 0000000001000000020000000c0000000d0000000e0000000f00000010000000
+  activeFromHour: 0
+  activeUntilHour: 24
+  complaintTendency: 1
+  humorTendency: 1
+  praiseTendency: 1
+  emojiSuffixes: []
+  commonHashtags: []

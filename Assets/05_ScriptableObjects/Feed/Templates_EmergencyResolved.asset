@@ -11,11 +11,11 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
   m_Name: Templates_EmergencyResolved
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  m_EditorClassIdentifier: CityFlow.Feed::CityFlow.Feed.FeedTemplateCollectionSO
   eventType: 15
   templates:
   - templateId: FollowUp_Emergency_01
-    text: "\uC544\uAE4C {Location} \uC0AC\uC774\uB80C, \uC798 \uB9C8\uBB34\uB9AC\uB410\uB2E4\uACE0
+    text: "\uC544\uAE4C {Spot} \uC0AC\uC774\uB80C, \uC798 \uB9C8\uBB34\uB9AC\uB410\uB2E4\uACE0
       \uD558\uB124\uC694. \uB2E4\uD589\uC785\uB2C8\uB2E4."
     tone: 1
     category: 1
@@ -25,7 +25,7 @@ MonoBehaviour:
     allowedTimePeriods: 
     followUpOnly: 1
   - templateId: FollowUp_Emergency_02
-    text: "{Location} \uC0C1\uD669 \uAD81\uAE08\uD574\uD588\uC5C8\uB294\uB370 \uBB34\uC0AC\uD788
+    text: "{Spot} \uC0C1\uD669 \uAD81\uAE08\uD574\uD588\uC5C8\uB294\uB370 \uBB34\uC0AC\uD788
       \uB05D\uB0AC\uB2F5\uB2C8\uB2E4. \uD55C\uC228 \uB193\uC558\uC5B4\uC694."
     tone: 1
     category: 1
@@ -35,7 +35,7 @@ MonoBehaviour:
     allowedTimePeriods: 
     followUpOnly: 1
   - templateId: EmergencyResolved_Resident_01
-    text: "{Location} \uC0C1\uD669\uC740 \uC815\uB9AC\uB41C \uAC83 \uAC19\uC2B5\uB2C8\uB2E4.
+    text: "{Spot} \uC0C1\uD669\uC740 \uC815\uB9AC\uB41C \uAC83 \uAC19\uC2B5\uB2C8\uB2E4.
       \uC0AC\uC774\uB80C \uC18C\uB9AC\uAC00 \uBA4E\uC5C8\uC5B4\uC694."
     tone: 1
     category: 1
@@ -45,7 +45,7 @@ MonoBehaviour:
     allowedTimePeriods: 
     followUpOnly: 0
   - templateId: EmergencyResolved_Taxi_01
-    text: "{Location} \uD1B5\uC81C \uD480\uB838\uC2B5\uB2C8\uB2E4. \uC815\uC0C1 \uD1B5\uD589
+    text: "{Spot} \uD1B5\uC81C \uD480\uB838\uC2B5\uB2C8\uB2E4. \uC815\uC0C1 \uD1B5\uD589
       \uAC00\uB2A5\uD569\uB2C8\uB2E4."
     tone: 3
     category: 1

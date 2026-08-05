@@ -323,15 +323,18 @@ namespace CityFlow.Save
                     saveData.SchoolBus ?? new SchoolBusSaveData());
             }
 
+            if (saveData.Calendar != null)
+            {
+                GameCalendarSaveSource?.RestoreSnapshot(saveData.Calendar);
+            }
+
+            // 반드시 달력 복원 뒤에 온다. 피드 장부는 복원 즉시 현재 게임 시각으로
+            // 24시간 만료를 판정하는데, 달력이 아직 이전 런타임 값이면 저장 시점과
+            // 무관한 기준으로 항목을 버리거나 남긴다.
             if (CitizenFeedSaveSource != null)
             {
                 CitizenFeedSaveSource.RestoreSnapshot(
                     saveData.CitizenFeed ?? new CitizenFeedSaveData());
-            }
-
-            if (saveData.Calendar != null)
-            {
-                GameCalendarSaveSource?.RestoreSnapshot(saveData.Calendar);
             }
 
             if (RadioSaveSource != null)

@@ -89,6 +89,44 @@ namespace CityFlow.Sim.Tests
                 "옛 세이브와 같은 상태를 재현한다 — 복원 쪽이 이걸 견뎌야 한다");
         }
 
+        /// <summary>
+        /// 저장 시각과 복원 시각이 다를 때 만료 판정이 **복원에 넘긴 시각**을 따르는지.
+        /// SaveService가 달력보다 피드를 먼저 복원하면 여기 들어오는 nowHour가 이전
+        /// 런타임 값이 되어, 살아있어야 할 항목이 버려지거나 그 반대가 된다.
+        /// (복원 순서 자체는 SaveService.RestoreSnapshot에서 달력 → 피드로 고정했다.)
+        /// </summary>
+        [Test]
+        public void RestoreFrom_UsesGivenHour_NotSaveHour()
+        {
+            var ledger = new CitizenConcernLedger();
+            ledger.Open("김민수", V(3, 4), CitizenFeedConcernKind.Congestion, 100.0);
+            CitizenFeedSaveData saved = ledger.ToSaveData();
+
+            // 저장 시점(100h) 기준 12시간 뒤 — 살아 있어야 한다
+            var fresh = new CitizenConcernLedger();
+            fresh.RestoreFrom(saved, 112.0);
+            Assert.AreEqual(1, fresh.Count, "24시간 이내면 살아남는다");
+
+            // 같은 세이브를 30시간 뒤로 복원하면 만료
+            var stale = new CitizenConcernLedger();
+            stale.RestoreFrom(saved, 130.0);
+            Assert.AreEqual(0, stale.Count, "24시간을 넘기면 버린다");
+        }
+
+        [Test]
+        public void RestoreFrom_EarlierThanSaveHour_KeepsEntries()
+        {
+            // 달력보다 피드를 먼저 복원하면 nowHour가 저장 시각보다 **작을** 수도 있다.
+            // 이때 음수 경과시간으로 만료 판정이 뒤집히면 안 된다.
+            var ledger = new CitizenConcernLedger();
+            ledger.Open("이영희", V(1, 1), CitizenFeedConcernKind.Congestion, 500.0);
+
+            var restored = new CitizenConcernLedger();
+            restored.RestoreFrom(ledger.ToSaveData(), 10.0);
+
+            Assert.AreEqual(1, restored.Count, "경과시간이 음수면 만료가 아니다");
+        }
+
         [Test]
         public void SaveVersion_IsUnchanged()
         {

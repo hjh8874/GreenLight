@@ -404,6 +404,17 @@ namespace CityFlow.EditorTools
                     new[] { ":|", "^^" },
                     new[] { "#오늘도정체", "#초록불은장식" }));
 
+            // LoadOrCreate는 에셋이 이미 있으면 Configure를 다시 부르지 않는다.
+            // 그래서 이벤트를 추가해도 옛 프로필의 preferredEvents는 그대로 남고,
+            // Supports()가 false를 돌려 신규 이벤트 글이 한 건도 안 나간다.
+            // 메뉴 이름이 "Create or Upgrade"인 만큼 여기서 실제로 업그레이드한다.
+            UpgradeAuthorsForNewEvents(new[]
+            {
+                officeWorker, parent, taxiDriver, merchant,
+                trafficEnthusiast, deliveryDriver, student, selfEmployed,
+                realEstateAgent, civicActivist, nightResident, anonymousDriver
+            });
+
             FeedTemplateCollectionSO congestionStartedTemplates = LoadOrCreateTemplateCollection(
                 CitizenFeedEventType.CongestionStarted,
                 CreateCongestionStartedTemplates());
@@ -994,25 +1005,25 @@ namespace CityFlow.EditorTools
             {
                 CreateTemplate(
                     "Placed_Resident_01",
-                    "{Location}에 뭔가 새로 생겼네요. 동네가 조금씩 달라집니다.",
+                    "{Spot}에 뭔가 새로 생겼네요. 동네가 조금씩 달라집니다.",
                     CitizenFeedTone.Neutral,
                     1.1f,
                     CitizenFeedRole.Resident),
                 CreateTemplate(
                     "Placed_RealEstate_01",
-                    "{Location} 신축 확인했습니다. 주변 유동인구에 영향이 있겠네요.",
+                    "{Spot} 신축 확인했습니다. 주변 유동인구에 영향이 있겠네요.",
                     CitizenFeedTone.Information,
                     1.2f,
                     CitizenFeedRole.RealEstateAgent),
                 CreateTemplate(
                     "Placed_Merchant_01",
-                    "{Location}에 건물이 들어섰습니다. 손님이 좀 늘었으면 좋겠는데요.",
+                    "{Spot}에 건물이 들어섰습니다. 손님이 좀 늘었으면 좋겠는데요.",
                     CitizenFeedTone.Neutral,
                     1f,
                     CitizenFeedRole.Merchant),
                 CreateTemplate(
                     "Placed_Activist_01",
-                    "{Location} 공사 끝났네요. 이제 진입로 정리만 되면 좋겠습니다.",
+                    "{Spot} 공사 끝났네요. 이제 진입로 정리만 되면 좋겠습니다.",
                     CitizenFeedTone.Question,
                     0.9f,
                     CitizenFeedRole.CivicActivist)
@@ -1025,25 +1036,25 @@ namespace CityFlow.EditorTools
             {
                 CreateTemplate(
                     "Emergency_Resident_01",
-                    "{Location} 쪽에서 사이렌 소리가 납니다. 무슨 일이죠?",
+                    "{Spot} 쪽에서 사이렌 소리가 납니다. 무슨 일이죠?",
                     CitizenFeedTone.Question,
                     1.3f,
                     CitizenFeedRole.Resident),
                 CreateTemplate(
                     "Emergency_Taxi_01",
-                    "{Location} 구급차 지나갑니다. 길 좀 비켜주세요.",
+                    "{Spot} 구급차 지나갑니다. 길 좀 비켜주세요.",
                     CitizenFeedTone.Information,
                     1.3f,
                     CitizenFeedRole.TaxiDriver),
                 CreateTemplate(
                     "Emergency_Parent_01",
-                    "{Location}에 구급차가 갔어요. 별일 아니었으면 좋겠네요.",
+                    "{Spot}에 구급차가 갔어요. 별일 아니었으면 좋겠네요.",
                     CitizenFeedTone.Complaint,
                     1.1f,
                     CitizenFeedRole.Parent),
                 CreateTemplate(
                     "Emergency_Activist_01",
-                    "{Location} 긴급 상황입니다. 이 구간 진입로가 좁은 게 계속 마음에 걸렸는데요.",
+                    "{Spot} 긴급 상황입니다. 이 구간 진입로가 좁은 게 계속 마음에 걸렸는데요.",
                     CitizenFeedTone.Complaint,
                     1f,
                     CitizenFeedRole.CivicActivist)
@@ -1056,19 +1067,19 @@ namespace CityFlow.EditorTools
             {
                 CreateFollowUpTemplate(
                     "FollowUp_Emergency_01",
-                    "아까 {Location} 사이렌, 잘 마무리됐다고 하네요. 다행입니다."),
+                    "아까 {Spot} 사이렌, 잘 마무리됐다고 하네요. 다행입니다."),
                 CreateFollowUpTemplate(
                     "FollowUp_Emergency_02",
-                    "{Location} 상황 궁금해했었는데 무사히 끝났답니다. 한숨 놓았어요."),
+                    "{Spot} 상황 궁금해했었는데 무사히 끝났답니다. 한숨 놓았어요."),
                 CreateTemplate(
                     "EmergencyResolved_Resident_01",
-                    "{Location} 상황은 정리된 것 같습니다. 사이렌 소리가 멎었어요.",
+                    "{Spot} 상황은 정리된 것 같습니다. 사이렌 소리가 멎었어요.",
                     CitizenFeedTone.Praise,
                     1f,
                     CitizenFeedRole.Resident),
                 CreateTemplate(
                     "EmergencyResolved_Taxi_01",
-                    "{Location} 통제 풀렸습니다. 정상 통행 가능합니다.",
+                    "{Spot} 통제 풀렸습니다. 정상 통행 가능합니다.",
                     CitizenFeedTone.Information,
                     1.2f,
                     CitizenFeedRole.TaxiDriver)
@@ -1175,6 +1186,37 @@ namespace CityFlow.EditorTools
             collection.AddMissingTemplates(defaultTemplates);
             EditorUtility.SetDirty(collection);
             return collection;
+        }
+
+        /// <summary>
+        /// 기존 프로필에 이번 버전에서 추가된 이벤트 지원을 병합한다.
+        /// 나머지 필드(가중치·활동시간·성향)는 손대지 않는다 — 손으로 튜닝했을 수 있다.
+        /// </summary>
+        private static void UpgradeAuthorsForNewEvents(FeedAuthorProfileSO[] profiles)
+        {
+            CitizenFeedEventType[] newEvents =
+            {
+                CitizenFeedEventType.FlowBurst,
+                CitizenFeedEventType.BuildingPlaced,
+                CitizenFeedEventType.EmergencyAlert,
+                CitizenFeedEventType.EmergencyResolved,
+                CitizenFeedEventType.TimePeriodChanged
+            };
+
+            int upgraded = 0;
+            foreach (FeedAuthorProfileSO profile in profiles)
+            {
+                if (profile == null) continue;
+                if (!profile.AddSupportedEvents(newEvents)) continue;
+                EditorUtility.SetDirty(profile);
+                upgraded++;
+            }
+
+            if (upgraded > 0)
+            {
+                Debug.Log(
+                    $"[CitizenFeedDataGenerator] 작성자 프로필 {upgraded}개에 신규 이벤트 지원을 추가했습니다.");
+            }
         }
 
         private static T LoadOrCreate<T>(string assetPath, Action<T> configureNewAsset)

@@ -305,9 +305,11 @@ namespace CityFlow.Feed
 
             RefreshRateBuckets(absoluteHour);
 
-            // 시간당 상한에 후속 글용 1칸을 예약한다. 이게 없으면 플레이어가 문제를
-            // 고쳤는데 아무도 알아보지 않는, 이 기능이 존재할 이유가 사라지는 결과가 난다.
-            // 후속 글은 짝이 있을 때만 생기므로 이 예외로 도배가 될 수 없다.
+            // 시간당·일간 상한 **양쪽**에 후속 글용 1칸씩 예약한다. 이게 없으면
+            // 플레이어가 문제를 고쳤는데 아무도 알아보지 않는, 이 기능이 존재할
+            // 이유가 사라지는 결과가 난다. 시간당만 열어두면 일간 상한(12개)에서
+            // 같은 문제가 그대로 재현된다.
+            // 후속 글은 장부에 짝이 있을 때만 생기므로 이 예외로 도배가 될 수 없다.
             int hourlyCap = isFollowUp
                 ? settings.MaximumPostsPerGameHour + 1
                 : settings.MaximumPostsPerGameHour;
@@ -640,6 +642,14 @@ namespace CityFlow.Feed
                 return;
             }
 
+            // PlacedEvent는 도로에도, 공사 시작(UnderConstruction)에도 발행된다.
+            // 거르지 않으면 도로를 깔 때마다 "건물이 들어섰다"는 글이 나가고,
+            // 건설형 건물은 공사 시작과 완공에 두 번 나간다.
+            if (!IsCompletedBuilding(placedEvent.Type))
+            {
+                return;
+            }
+
             TryGeneratePost(CitizenFeedContext.ForTile(
                 CitizenFeedEventType.BuildingPlaced,
                 placedEvent.Tile,
@@ -837,6 +847,26 @@ namespace CityFlow.Feed
             }
 
             initialized = false;
+        }
+
+        /// <summary>
+        /// 시민이 "뭔가 새로 생겼다"고 말할 만한 완성된 건물인가.
+        /// 도로(Road)는 인프라 이벤트가 따로 다루고, 공사 중(UnderConstruction)은
+        /// 아직 건물이 아니다 — 완공 시 실제 타입으로 다시 발행된다.
+        /// </summary>
+        private static bool IsCompletedBuilding(TileType type)
+        {
+            switch (type)
+            {
+                case TileType.House:
+                case TileType.Office:
+                case TileType.School:
+                case TileType.Hospital:
+                case TileType.SpecialBuilding:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         /// <summary>

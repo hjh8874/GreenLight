@@ -11,11 +11,11 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
   m_Name: Templates_BuildingPlaced
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  m_EditorClassIdentifier: CityFlow.Feed::CityFlow.Feed.FeedTemplateCollectionSO
   eventType: 13
   templates:
   - templateId: Placed_Resident_01
-    text: "{Location}\uC5D0 \uBB54\uAC00 \uC0C8\uB85C \uC0DD\uACBC\uB124\uC694. \uB3D9\uB124\uAC00
+    text: "{Spot}\uC5D0 \uBB54\uAC00 \uC0C8\uB85C \uC0DD\uACBC\uB124\uC694. \uB3D9\uB124\uAC00
       \uC870\uAE08\uC529 \uB2EC\uB77C\uC9D1\uB2C8\uB2E4."
     tone: 2
     category: 1
@@ -25,7 +25,7 @@ MonoBehaviour:
     allowedTimePeriods: 
     followUpOnly: 0
   - templateId: Placed_RealEstate_01
-    text: "{Location} \uC2E0\uCD95 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. \uC8FC\uBCC0
+    text: "{Spot} \uC2E0\uCD95 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4. \uC8FC\uBCC0
       \uC720\uB3D9\uC778\uAD6C\uC5D0 \uC601\uD5A5\uC774 \uC788\uACA0\uB124\uC694."
     tone: 3
     category: 1
@@ -35,7 +35,7 @@ MonoBehaviour:
     allowedTimePeriods: 
     followUpOnly: 0
   - templateId: Placed_Merchant_01
-    text: "{Location}\uC5D0 \uAC74\uBB3C\uC774 \uB4E4\uC5B4\uC130\uC2B5\uB2C8\uB2E4.
+    text: "{Spot}\uC5D0 \uAC74\uBB3C\uC774 \uB4E4\uC5B4\uC130\uC2B5\uB2C8\uB2E4.
       \uC190\uB2D8\uC774 \uC880 \uB298\uC5C8\uC73C\uBA74 \uC88B\uACA0\uB294\uB370\uC694."
     tone: 2
     category: 1
@@ -45,7 +45,7 @@ MonoBehaviour:
     allowedTimePeriods: 
     followUpOnly: 0
   - templateId: Placed_Activist_01
-    text: "{Location} \uACF5\uC0AC \uB05D\uB0AC\uB124\uC694. \uC774\uC81C \uC9C4\uC785\uB85C
+    text: "{Spot} \uACF5\uC0AC \uB05D\uB0AC\uB124\uC694. \uC774\uC81C \uC9C4\uC785\uB85C
       \uC815\uB9AC\uB9CC \uB418\uBA74 \uC88B\uACA0\uC2B5\uB2C8\uB2E4."
     tone: 4
     category: 1
