@@ -22,5 +22,8 @@ namespace CityFlow.Contracts.Save
         public SpecialBuildingSaveData SpecialBuildings;
         public SpecialBuildingVisitSaveData SpecialBuildingVisits;
         public EmergencyIncidentSaveData EmergencyIncidents;
+        // 옛 세이브엔 이 필드가 없어 null로 온다. 복원 쪽이 ?? new로 받아
+        // 빈 장부로 시작하므로 SaveVersion을 올리지 않는다(기존 섹션과 동일한 관용).
+        public CitizenFeedSaveData CitizenFeed;
     }
 }

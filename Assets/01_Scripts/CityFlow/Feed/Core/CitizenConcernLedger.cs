@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using UnityEngine;
 
 namespace CityFlow.Feed
@@ -117,6 +119,52 @@ namespace CityFlow.Feed
                 if (records.Count >= Capacity) break;
                 records.Add(record);
             }
+        }
+
+        /// <summary>
+        /// 세이브 DTO로 옮긴다. 변환을 장부가 들고 있는 이유는 하나뿐이다 —
+        /// 서비스와 테스트가 각자 변환 코드를 쓰면 둘이 어긋날 때 조용히 깨진다.
+        /// </summary>
+        public CitizenFeedSaveData ToSaveData()
+        {
+            var entries = new CitizenConcernEntry[records.Count];
+            for (int i = 0; i < records.Count; i++)
+            {
+                CitizenConcernRecord record = records[i];
+                entries[i] = new CitizenConcernEntry
+                {
+                    AuthorName = record.AuthorName,
+                    TileX = record.Tile.x,
+                    TileY = record.Tile.y,
+                    Kind = record.Kind,
+                    OpenedAtHour = record.OpenedAtHour
+                };
+            }
+
+            return new CitizenFeedSaveData { OpenConcerns = entries };
+        }
+
+        /// <summary>
+        /// 세이브 DTO에서 되돌린다. snapshot이 null이거나 옛 세이브라 필드가
+        /// 없어도 예외 없이 빈 장부가 된다.
+        /// </summary>
+        public void RestoreFrom(CitizenFeedSaveData snapshot, double nowHour)
+        {
+            CitizenConcernEntry[] entries =
+                snapshot?.OpenConcerns ?? Array.Empty<CitizenConcernEntry>();
+
+            var restored = new List<CitizenConcernRecord>(entries.Length);
+            foreach (CitizenConcernEntry entry in entries)
+            {
+                if (entry == null) continue;
+                restored.Add(new CitizenConcernRecord(
+                    entry.AuthorName,
+                    new Vector2Int(entry.TileX, entry.TileY),
+                    entry.Kind,
+                    entry.OpenedAtHour));
+            }
+
+            Restore(restored, nowHour);
         }
 
         private void RemoveMatch(Vector2Int tile, CitizenFeedConcernKind kind)

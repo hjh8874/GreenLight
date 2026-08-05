@@ -28,6 +28,7 @@ namespace CityFlow.Save
             get;
             private set;
         }
+        public ICitizenFeedSaveSource CitizenFeedSaveSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
         public ISaveClock Clock { get; private set; }
         public SaveSlotRepository SaveSlots { get; private set; }
@@ -49,6 +50,7 @@ namespace CityFlow.Save
         private SpecialBuildingSaveData retainedSpecialBuildings;
         private SpecialBuildingVisitSaveData retainedSpecialBuildingVisits;
         private EmergencyIncidentSaveData retainedEmergencyIncidents;
+        private CitizenFeedSaveData retainedCitizenFeed;
         private readonly IWorldGridAccess worldGridAccess;
         private bool hasLoadedSave;
 
@@ -205,6 +207,18 @@ namespace CityFlow.Save
             }
         }
 
+        public void RegisterCitizenFeedSaveSource(
+            ICitizenFeedSaveSource citizenFeedSaveSource)
+        {
+            CitizenFeedSaveSource = citizenFeedSaveSource;
+
+            if (hasLoadedSave)
+            {
+                CitizenFeedSaveSource?.RestoreSnapshot(
+                    retainedCitizenFeed ?? new CitizenFeedSaveData());
+            }
+        }
+
         public GameSaveData CreateSnapshot()
         {
             return new GameSaveData
@@ -239,7 +253,9 @@ namespace CityFlow.Save
                     ?? retainedSpecialBuildingVisits,
                 EmergencyIncidents =
                     EmergencyIncidentSaveSource?.CreateSnapshot()
-                    ?? retainedEmergencyIncidents
+                    ?? retainedEmergencyIncidents,
+                CitizenFeed = CitizenFeedSaveSource?.CreateSnapshot()
+                    ?? retainedCitizenFeed
             };
         }
 
@@ -305,6 +321,12 @@ namespace CityFlow.Save
             {
                 SchoolBusSaveSource.RestoreSnapshot(
                     saveData.SchoolBus ?? new SchoolBusSaveData());
+            }
+
+            if (CitizenFeedSaveSource != null)
+            {
+                CitizenFeedSaveSource.RestoreSnapshot(
+                    saveData.CitizenFeed ?? new CitizenFeedSaveData());
             }
 
             if (saveData.Calendar != null)
@@ -497,6 +519,7 @@ namespace CityFlow.Save
                 CreateRestoredSpecialBuildingVisitData(saveData);
             retainedEmergencyIncidents =
                 saveData?.EmergencyIncidents;
+            retainedCitizenFeed = saveData?.CitizenFeed;
         }
 
         private SpecialBuildingSaveData CreateRestoredSpecialBuildingData(
