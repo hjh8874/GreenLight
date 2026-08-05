@@ -246,76 +246,85 @@ namespace CityFlow.UI.Editor
         {
             // 외부 베이커들이 타겟팅할 수 있도록 씬에 'UI_MainCanvas'로 생성
             // 단, 현재 씬에 이미 'UI_MainCanvas'가 있으면 외부 베이커가 그쪽으로 붙어버리므로 임시로 이름 변경
-            var existingCanvases = Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var existingCanvases = Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include);
             foreach (var c in existingCanvases)
             {
                 if (c.gameObject.name == "UI_MainCanvas")
                     c.gameObject.name = "UI_MainCanvas_Hidden_Temp";
             }
 
-            GameObject root = new GameObject("UI_MainCanvas");
-
-            // Canvas 설정
-            Canvas canvas = root.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 10;
-
-            CanvasScaler scaler = root.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920, 1080);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
-
-            root.AddComponent<GraphicRaycaster>();
-
-            // ── 1) 상단 HUD ─────────────────────────────────────
-            BuildHUD(root.transform);
-            
-            // ── 1-1) 우측 상단 정체 토글 및 부가 버튼 ────────────
-            BuildTopRightControls(root.transform);
-
-            // ── 2) 우측 도크 ─────────────────────────────────────
-            BuildDock(root.transform);
-
-            // ── 3) 서브패널 컨테이너 ────────────────────────────
-            BuildSubPanels(root.transform);
-
-            // ── 3-1) 하단 와이드 패널 (건설 패널 등) ──────────────
-            BuildBottomPanels(root.transform);
-
-            // ── 4) 좌하단 분석 카드 ─────────────────────────────
-            BuildAnalysisCard(root.transform);
-
-            // ── 4-1) 누락된 팝업 및 특수 UI 패널 생성 ───────────
-            BuildMissingPopupsAndDocks(root.transform);
-
-            // ── 5) 외부 베이커 연동 (SNS피드, 오프라인 정산) ─────
-            // ── 5) 외부 베이커 연동 (오프라인 정산 제외, 나머지 추가) ─────
-            try { CityFlow.EditorTools.GreenFeedUiBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
-            try { CityFlow.EditorTools.SaveSlotsPanelBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
-            try { CityFlow.EditorTools.WeeklySettlementPopupBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
-            try { CityFlow.UI.Editor.SignalControlBaker.BakePrefab(); } catch (System.Exception e) { Debug.LogWarning(e); }
-            try { CityFlow.UI.Editor.CongestionToggleBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
-            
-            // 수동 하베스트 UI는 최상단 HUD를 타겟하므로 여기서 호출
-            try { CityFlow.EditorTools.ManualCoinHarvestUiBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
-
-            // 외부 UI 스킨 교체
-            ApplySkinToExternalUI(root.transform);
-
-            // ── 6) 스크립트 바인딩 ──────────────────────────────
-            AttachScripts(root);
-
-            // 이름 복구 후 프리팹 저장
-            root.name = "UI_MainCanvas_Polished";
-            SavePrefab(root, $"{PrefabOutputDir}/UI_MainCanvas_Polished.prefab");
-            Object.DestroyImmediate(root);
-
-            // 기존 캔버스 이름 복구
-            foreach (var c in existingCanvases)
+            GameObject root = null;
+            try
             {
-                if (c != null && c.gameObject.name == "UI_MainCanvas_Hidden_Temp")
-                    c.gameObject.name = "UI_MainCanvas";
+                root = new GameObject("UI_MainCanvas");
+
+                // Canvas 설정
+                Canvas canvas = root.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvas.sortingOrder = 10;
+
+                CanvasScaler scaler = root.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1920, 1080);
+                scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+                scaler.matchWidthOrHeight = 0.5f;
+
+                root.AddComponent<GraphicRaycaster>();
+
+                // ── 1) 상단 HUD ─────────────────────────────────────
+                BuildHUD(root.transform);
+
+                // ── 1-1) 우측 상단 정체 토글 및 부가 버튼 ────────────
+                BuildTopRightControls(root.transform);
+
+                // ── 2) 우측 도크 ─────────────────────────────────────
+                BuildDock(root.transform);
+
+                // ── 3) 서브패널 컨테이너 ────────────────────────────
+                BuildSubPanels(root.transform);
+
+                // ── 3-1) 하단 와이드 패널 (건설 패널 등) ──────────────
+                BuildBottomPanels(root.transform);
+
+                // ── 4) 좌하단 분석 카드 ─────────────────────────────
+                BuildAnalysisCard(root.transform);
+
+                // ── 4-1) 누락된 팝업 및 특수 UI 패널 생성 ───────────
+                BuildMissingPopupsAndDocks(root.transform);
+
+                // ── 5) 외부 베이커 연동 (오프라인 정산 제외, 나머지 추가) ─────
+                try { CityFlow.EditorTools.GreenFeedUiBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
+                try { CityFlow.EditorTools.SaveSlotsPanelBaker.Bake(false); } catch (System.Exception e) { Debug.LogWarning(e); }
+                try { CityFlow.EditorTools.WeeklySettlementPopupBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
+                try { CityFlow.UI.Editor.SignalControlBaker.BakePrefab(); } catch (System.Exception e) { Debug.LogWarning(e); }
+                try { CityFlow.UI.Editor.CongestionToggleBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
+
+                // 수동 하베스트 UI는 최상단 HUD를 타겟하므로 여기서 호출
+                try { CityFlow.EditorTools.ManualCoinHarvestUiBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
+
+                // 외부 UI 스킨 교체
+                ApplySkinToExternalUI(root.transform);
+
+                // ── 6) 스크립트 바인딩 ──────────────────────────────
+                AttachScripts(root);
+
+                // 이름 복구 후 프리팹 저장
+                root.name = "UI_MainCanvas_Polished";
+                SavePrefab(root, $"{PrefabOutputDir}/UI_MainCanvas_Polished.prefab");
+            }
+            finally
+            {
+                if (root != null)
+                {
+                    Object.DestroyImmediate(root);
+                }
+
+                // 기존 캔버스 이름 복구
+                foreach (var c in existingCanvases)
+                {
+                    if (c != null && c.gameObject.name == "UI_MainCanvas_Hidden_Temp")
+                        c.gameObject.name = "UI_MainCanvas";
+                }
             }
         }
 
@@ -1072,8 +1081,9 @@ namespace CityFlow.UI.Editor
                     var bgmInput = settingsPanel.Find("Content/BGM_Group/BGM_Input")?.GetComponent<TMP_InputField>();
                     var sfxSlider = settingsPanel.Find("Content/SFX_Group/SFX_Slider")?.GetComponent<Slider>();
                     var sfxInput = settingsPanel.Find("Content/SFX_Group/SFX_Input")?.GetComponent<TMP_InputField>();
-                    
-                    spCtrl.Configure(null, null, null, bgmSlider, bgmInput, sfxSlider, sfxInput, null);
+
+                    var mixer = AssetDatabase.LoadAssetAtPath<UnityEngine.Audio.AudioMixer>("Assets/04_Audio/Mixers/CityAudioMixer.mixer");
+                    spCtrl.Configure(null, null, null, bgmSlider, bgmInput, sfxSlider, sfxInput, mixer);
                 }
                 
                 Transform statsPanel = subPanels.Find("Stats_Panel");

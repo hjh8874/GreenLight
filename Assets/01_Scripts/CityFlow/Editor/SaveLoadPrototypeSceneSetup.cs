@@ -10,7 +10,7 @@ namespace CityFlow.EditorTools
 {
     public static class SaveLoadPrototypeSceneSetup
     {
-        private const string ScenePath = "Assets/00_Scenes/UI_Proto_SaveTest.unity";
+        private const string ScenePath = "Assets/00_Scenes/Debug/UI_Proto_SaveTest.unity";
         private const string PanelName = "SaveLoad_TestPanel";
 
         [MenuItem("CityFlow/Setup SaveLoad Panel")]

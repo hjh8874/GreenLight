@@ -55,6 +55,14 @@ namespace CityFlow.UI
 
         private void Start()
         {
+            if (audioMixer == null)
+            {
+                audioMixer = Resources.Load<AudioMixer>("Audio/MainMixer");
+                if (audioMixer == null)
+                {
+                    Debug.LogWarning("[SettingsPanelController] AudioMixer가 할당되지 않았으며 Resources에서도 찾을 수 없습니다. (베이킹 시 주입된 참조를 확인해주세요.)");
+                }
+            }
             BindButtons();
         }
 

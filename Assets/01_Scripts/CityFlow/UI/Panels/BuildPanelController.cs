@@ -114,7 +114,16 @@ namespace CityFlow.UI
 
             if (placementController == null)
             {
-                Debug.LogError("[BuildPanelController] PlacementController가 할당되지 않았습니다. 인스펙터를 확인해주세요.");
+                placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
+            }
+            if (tooltipController == null)
+            {
+                tooltipController = FindAnyObjectByType<TooltipController>(FindObjectsInactive.Include);
+            }
+
+            if (placementController == null)
+            {
+                Debug.LogError("[BuildPanelController] PlacementController가 할당되지 않았으며 씬에서도 찾을 수 없습니다.");
                 return;
             }
             ConfigureInfrastructureSlots();

@@ -22,6 +22,11 @@ namespace CityFlow.EditorTools
         [MenuItem("Tools/GreenLight/UI/Bake Save Slots Panel")]
         public static void Bake()
         {
+            Bake(true);
+        }
+
+        public static void Bake(bool saveScene)
+        {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
                 Debug.LogWarning(
@@ -39,7 +44,7 @@ namespace CityFlow.EditorTools
 
             BakeIntoScene(scene);
 
-            if (scene.isDirty && EditorSceneManager.SaveScene(scene))
+            if (saveScene && scene.isDirty && EditorSceneManager.SaveScene(scene))
             {
                 Debug.Log($"[SaveSlotsPanelBaker] Saved baked scene: {scene.path}");
             }
