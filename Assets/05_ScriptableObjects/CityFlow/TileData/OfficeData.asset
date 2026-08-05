@@ -16,7 +16,7 @@ MonoBehaviour:
   buildingName: "\uD68C\uC0AC"
   category: 3
   companyTypeId: office
-  buildingIcon: {fileID: 0}
+  buildingIcon: {fileID: 21300000, guid: 001757900e8b1be49a4b8923a6255cd8, type: 3}
   buildingPrefab: {fileID: 0}
   buildingDescription: "\uC774\uAC83\uB4E4\uC740 \uB354 \uB9CE\uC740 \uC77C\uC790\uB9AC\uC640
     \uC218\uC775\uC744 \uCC3D\uCD9C\uD558\uB294 \uC0C1\uC5C5 \uBC0F \uC5C5\uBB34\uC6A9
@@ -24,4 +24,4 @@ MonoBehaviour:
   buildCost: 200
   dailyCoinValue: 30
   prosperityValue: 2
-  requiredResearchId:
+  requiredResearchId: 

@@ -270,6 +270,9 @@ namespace CityFlow.UI.Editor
 
             // ── 1) 상단 HUD ─────────────────────────────────────
             BuildHUD(root.transform);
+            
+            // ── 1-1) 우측 상단 정체 토글 및 부가 버튼 ────────────
+            BuildTopRightControls(root.transform);
 
             // ── 2) 우측 도크 ─────────────────────────────────────
             BuildDock(root.transform);
@@ -277,17 +280,25 @@ namespace CityFlow.UI.Editor
             // ── 3) 서브패널 컨테이너 ────────────────────────────
             BuildSubPanels(root.transform);
 
+            // ── 3-1) 하단 와이드 패널 (건설 패널 등) ──────────────
+            BuildBottomPanels(root.transform);
+
             // ── 4) 좌하단 분석 카드 ─────────────────────────────
             BuildAnalysisCard(root.transform);
 
+            // ── 4-1) 누락된 팝업 및 특수 UI 패널 생성 ───────────
+            BuildMissingPopupsAndDocks(root.transform);
+
             // ── 5) 외부 베이커 연동 (SNS피드, 오프라인 정산) ─────
-            try {
-                CityFlow.EditorTools.GreenFeedUiBaker.Bake();
-            } catch (System.Exception e) { Debug.LogWarning(e); }
+            // ── 5) 외부 베이커 연동 (오프라인 정산 제외, 나머지 추가) ─────
+            try { CityFlow.EditorTools.GreenFeedUiBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
+            try { CityFlow.EditorTools.SaveSlotsPanelBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
+            try { CityFlow.EditorTools.WeeklySettlementPopupBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
+            try { CityFlow.UI.Editor.SignalControlBaker.BakePrefab(); } catch (System.Exception e) { Debug.LogWarning(e); }
+            try { CityFlow.UI.Editor.CongestionToggleBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
             
-            try {
-                CityFlow.EditorTools.OfflineSettlementPopupBaker.Bake();
-            } catch (System.Exception e) { Debug.LogWarning(e); }
+            // 수동 하베스트 UI는 최상단 HUD를 타겟하므로 여기서 호출
+            try { CityFlow.EditorTools.ManualCoinHarvestUiBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
 
             // 외부 UI 스킨 교체
             ApplySkinToExternalUI(root.transform);
@@ -328,9 +339,9 @@ namespace CityFlow.UI.Editor
             hlg.padding = new RectOffset(16, 16, 6, 6);
             hlg.spacing = 20;
             hlg.childAlignment = TextAnchor.MiddleLeft;
-            hlg.childControlWidth = false;
+            hlg.childControlWidth = true; // 그룹 내부 요소 크기 제어
             hlg.childControlHeight = true;
-            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandWidth = false; // Spacer가 늘어나도록
             hlg.childForceExpandHeight = true;
 
             // 시간 표시
@@ -349,14 +360,14 @@ namespace CityFlow.UI.Editor
             string iconPath, string textName, string defaultValue)
         {
             GameObject group = CreateChild(groupName, parent);
-            group.AddComponent<LayoutElement>().preferredWidth = 140;
+            group.AddComponent<LayoutElement>().preferredWidth = 200; // 텍스트 겹침 방지를 위해 너비 증가
 
             HorizontalLayoutGroup hlg = group.AddComponent<HorizontalLayoutGroup>();
             hlg.spacing = 6;
             hlg.childAlignment = TextAnchor.MiddleLeft;
-            hlg.childControlWidth = false;
+            hlg.childControlWidth = true; // 텍스트 영역 크기 강제 제어
             hlg.childControlHeight = true;
-            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandWidth = true; // 아이콘 외 남은 영역 텍스트가 차지
             hlg.childForceExpandHeight = true;
 
             // 아이콘
@@ -397,12 +408,10 @@ namespace CityFlow.UI.Editor
             vlg.childForceExpandWidth = true;
             vlg.childForceExpandHeight = false;
 
-            // 도크 버튼 5개
+            // 도크 버튼 3개 (핵심 기능만 남김)
             BuildDockButton(dock.transform, "Btn_Build",       "건설", BtnGreen);
             BuildDockButton(dock.transform, "Btn_Research",    "연구", BtnBlue);
             BuildDockButton(dock.transform, "Btn_Stats",       "통계", BtnOrange);
-            BuildDockButton(dock.transform, "Btn_Settings",    "설정", BtnGray);
-            BuildDockButton(dock.transform, "Btn_FloatingMode","플로팅", BtnDark);
         }
 
         private static void BuildDockButton(Transform parent, string name,
@@ -437,12 +446,46 @@ namespace CityFlow.UI.Editor
             cRect.offsetMin = new Vector2(cRect.offsetMin.x, 80);
             cRect.offsetMax = new Vector2(-92, -60);
 
-            // Build_Panel
-            BuildSubPanel(container.transform, "Build_Panel",    "건설",   ColorAccentGreen);
+            // Build_Panel은 하단 가로 레이아웃으로 이동됨
             BuildSubPanel(container.transform, "Research_Panel", "연구",   ColorAccentBlue);
             BuildSubPanel(container.transform, "Stats_Panel",    "통계",   new Color(0.92f, 0.55f, 0.20f));
-            BuildSubPanel(container.transform, "Settings_Panel", "설정",   new Color(0.50f, 0.50f, 0.55f));
+            BuildSettingsPanel(container.transform);
             BuildSubPanel(container.transform, "Floating_Panel", "플로팅", new Color(0.35f, 0.35f, 0.45f));
+        }
+
+        private static void BuildSettingsPanel(Transform parent)
+        {
+            BuildSubPanel(parent, "Settings_Panel", "설정", new Color(0.50f, 0.50f, 0.55f));
+            Transform panel = parent.Find("Settings_Panel/Content");
+            if (panel == null) return;
+            
+            // BGM 그룹
+            GameObject bgmGroup = CreateChild("BGM_Group", panel);
+            HorizontalLayoutGroup hlg1 = bgmGroup.AddComponent<HorizontalLayoutGroup>();
+            hlg1.spacing = 10; hlg1.childControlWidth = false;
+            CreateTMP("Label", bgmGroup.transform, "BGM", 16, ColorTextLight, TextAlignmentOptions.Left);
+            
+            GameObject bgmSliderObj = CreateChild("BGM_Slider", bgmGroup.transform);
+            bgmSliderObj.AddComponent<LayoutElement>().preferredWidth = 150;
+            Slider bgmSlider = bgmSliderObj.AddComponent<Slider>();
+            
+            GameObject bgmInputObj = CreateChild("BGM_Input", bgmGroup.transform);
+            bgmInputObj.AddComponent<LayoutElement>().preferredWidth = 50;
+            TMP_InputField bgmInput = bgmInputObj.AddComponent<TMP_InputField>();
+            
+            // SFX 그룹
+            GameObject sfxGroup = CreateChild("SFX_Group", panel);
+            HorizontalLayoutGroup hlg2 = sfxGroup.AddComponent<HorizontalLayoutGroup>();
+            hlg2.spacing = 10; hlg2.childControlWidth = false;
+            CreateTMP("Label", sfxGroup.transform, "SFX", 16, ColorTextLight, TextAlignmentOptions.Left);
+            
+            GameObject sfxSliderObj = CreateChild("SFX_Slider", sfxGroup.transform);
+            sfxSliderObj.AddComponent<LayoutElement>().preferredWidth = 150;
+            Slider sfxSlider = sfxSliderObj.AddComponent<Slider>();
+            
+            GameObject sfxInputObj = CreateChild("SFX_Input", sfxGroup.transform);
+            sfxInputObj.AddComponent<LayoutElement>().preferredWidth = 50;
+            TMP_InputField sfxInput = sfxInputObj.AddComponent<TMP_InputField>();
         }
 
         private static void BuildSubPanel(Transform parent, string name,
@@ -534,6 +577,222 @@ namespace CityFlow.UI.Editor
             card.SetActive(false); // 초기에는 숨김
         }
 
+        // ── 하단 와이드 패널 (건설 패널 등) ────────────────────────
+        private static void BuildBottomPanels(Transform parent)
+        {
+            GameObject buildPanel = CreateChild("Build_Panel", parent);
+            RectTransform panelRect = buildPanel.GetComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0, 0);
+            panelRect.anchorMax = new Vector2(1, 0);
+            panelRect.pivot = new Vector2(0.5f, 0);
+            panelRect.sizeDelta = new Vector2(0, 180); 
+            panelRect.anchoredPosition = new Vector2(0, 20); 
+            panelRect.offsetMin = new Vector2(100, panelRect.offsetMin.y); 
+            panelRect.offsetMax = new Vector2(-100, panelRect.offsetMax.y);
+
+            Image bg = buildPanel.AddComponent<Image>();
+            bg.color = new Color(0, 0, 0, 0); 
+            bg.raycastTarget = false;
+
+            GameObject tabs = CreateChild("Tabs", buildPanel.transform);
+            RectTransform tabsRect = tabs.GetComponent<RectTransform>();
+            tabsRect.anchorMin = new Vector2(0, 1);
+            tabsRect.anchorMax = new Vector2(1, 1);
+            tabsRect.pivot = new Vector2(0, 1);
+            tabsRect.sizeDelta = new Vector2(0, 40);
+            tabsRect.anchoredPosition = Vector2.zero;
+            
+            HorizontalLayoutGroup tabLayout = tabs.AddComponent<HorizontalLayoutGroup>();
+            tabLayout.childAlignment = TextAnchor.MiddleLeft;
+            tabLayout.spacing = 10;
+            tabLayout.childControlWidth = true;
+            tabLayout.childControlHeight = false;
+            tabLayout.childForceExpandWidth = true;
+
+            GameObject content = CreateChild("Content", buildPanel.transform);
+            RectTransform contentRect = content.GetComponent<RectTransform>();
+            contentRect.anchorMin = Vector2.zero;
+            contentRect.anchorMax = Vector2.one;
+            contentRect.offsetMin = new Vector2(0, 0);
+            contentRect.offsetMax = new Vector2(0, -45); 
+
+            string[] categories = { "Infra", "Housing", "Commercial", "Public" };
+            GameObject slotPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/02_Prefabs/UI_BuildSlot.prefab");
+
+            for (int i = 0; i < categories.Length; i++)
+            {
+                GameObject tabBtn = CreateChild("Tab_" + categories[i], tabs.transform);
+                Image tabImg = tabBtn.AddComponent<Image>();
+                tabImg.color = new Color(0.2f, 0.2f, 0.25f, 1f);
+                Button btn = tabBtn.AddComponent<Button>();
+                var le = tabBtn.AddComponent<LayoutElement>();
+                le.preferredWidth = 100;
+                CreateTMP("Text", tabBtn.transform, categories[i], 16, ColorTextLight, TextAlignmentOptions.Center);
+                
+                GameObject page = CreateChild("Page_" + categories[i], content.transform);
+                var pageRect = page.GetComponent<RectTransform>();
+                pageRect.anchorMin = Vector2.zero;
+                pageRect.anchorMax = Vector2.one;
+                pageRect.offsetMin = Vector2.zero;
+                pageRect.offsetMax = Vector2.zero;
+                
+                HorizontalLayoutGroup pageLayout = page.AddComponent<HorizontalLayoutGroup>();
+                pageLayout.padding = new RectOffset(10, 10, 10, 10);
+                pageLayout.spacing = 10;
+                pageLayout.childAlignment = TextAnchor.MiddleLeft;
+                pageLayout.childControlWidth = false;
+                pageLayout.childControlHeight = false;
+
+                if (i == 0 && slotPrefab != null) 
+                {
+                    string[] infraPaths = {
+                        "Assets/05_ScriptableObjects/CityFlow/InfrastructureData/PriorityRoadData.asset",
+                        "Assets/05_ScriptableObjects/CityFlow/InfrastructureData/HighwayData.asset",
+                        "Assets/05_ScriptableObjects/CityFlow/InfrastructureData/OnewayData.asset",
+                        "Assets/05_ScriptableObjects/CityFlow/InfrastructureData/OverpassData.asset",
+                        "Assets/05_ScriptableObjects/CityFlow/InfrastructureData/RoundaboutData.asset",
+                        "Assets/05_ScriptableObjects/CityFlow/InfrastructureData/TurnRestrictionData.asset",
+                        "Assets/05_ScriptableObjects/CityFlow/InfrastructureData/SignalData.asset"
+                    };
+
+                    foreach (var path in infraPaths)
+                    {
+                        var data = AssetDatabase.LoadAssetAtPath<CityFlow.UI.Data.InfrastructureDataSO>(path);
+                        if (data != null)
+                        {
+                            GameObject slot = PrefabUtility.InstantiatePrefab(slotPrefab, page.transform) as GameObject;
+                            slot.name = "Slot_" + data.name;
+                            var slotCtrl = slot.GetComponent<CityFlow.UI.Controllers.InfrastructureSlotController>();
+                            if (slotCtrl != null) 
+                            {
+                                var so = new SerializedObject(slotCtrl);
+                                so.FindProperty("infraData").objectReferenceValue = data;
+                                so.ApplyModifiedProperties();
+                            }
+                        }
+                    }
+                }
+                
+                page.SetActive(i == 0);
+            }
+
+            buildPanel.SetActive(false); 
+        }
+
+        // ── 누락된 팝업 및 특수 패널 ────────────────────────────
+        private static void BuildMissingPopupsAndDocks(Transform parent)
+        {
+            // 1. ToolTip_Panel (마우스 호버 툴팁)
+            GameObject tooltip = CreateChild("ToolTip_Panel", parent);
+            RectTransform tooltipRect = tooltip.GetComponent<RectTransform>();
+            tooltipRect.sizeDelta = new Vector2(250, 100);
+            Image ttBg = tooltip.AddComponent<Image>();
+            ttBg.sprite = LoadSprite(PopupBg);
+            ttBg.type = Image.Type.Sliced;
+            ttBg.color = new Color(0.12f, 0.14f, 0.20f, 0.95f);
+            ttBg.raycastTarget = false;
+            CreateTMP("Text", tooltip.transform, "툴팁 텍스트", 14, ColorTextLight, TextAlignmentOptions.Center);
+            tooltip.SetActive(false);
+
+            // 2. UI_ConfirmPopup (확인 팝업)
+            GameObject confirmPopup = CreateChild("UI_ConfirmPopup", parent);
+            StretchFill(confirmPopup.GetComponent<RectTransform>(), 0, 0, 0, 0);
+            Image confirmBg = confirmPopup.AddComponent<Image>();
+            confirmBg.color = new Color(0, 0, 0, 0.5f);
+            GameObject confirmFrame = CreateChild("Frame", confirmPopup.transform);
+            confirmFrame.GetComponent<RectTransform>().sizeDelta = new Vector2(400, 200);
+            Image cfBg = confirmFrame.AddComponent<Image>();
+            cfBg.sprite = LoadSprite(PopupBg);
+            cfBg.type = Image.Type.Sliced;
+            cfBg.color = ColorPanelBg;
+            confirmPopup.SetActive(false);
+
+            // 3. CoinHarvestResultPopup
+            GameObject harvestPopup = CreateChild("CoinHarvestResultPopup", parent);
+            StretchFill(harvestPopup.GetComponent<RectTransform>(), 0, 0, 0, 0);
+            Image hBg = harvestPopup.AddComponent<Image>();
+            hBg.color = new Color(0, 0, 0, 0.5f);
+            GameObject hFrame = CreateChild("Frame", harvestPopup.transform);
+            hFrame.GetComponent<RectTransform>().sizeDelta = new Vector2(300, 150);
+            Image hfBg = hFrame.AddComponent<Image>();
+            hfBg.sprite = LoadSprite(PopupBg);
+            hfBg.type = Image.Type.Sliced;
+            hfBg.color = ColorPanelBg;
+            harvestPopup.SetActive(false);
+
+            // 4. SaveSlotsUiRoot
+            GameObject saveSlots = CreateChild("SaveSlotsUiRoot", parent);
+            StretchFill(saveSlots.GetComponent<RectTransform>(), 0, 0, 0, 0);
+            Image saveBg = saveSlots.AddComponent<Image>();
+            saveBg.color = new Color(0, 0, 0, 0.5f);
+            saveSlots.SetActive(false);
+
+            // 5. GreenSNSFeedDock
+            GameObject snsDock = CreateChild("GreenSNSFeedDock", parent);
+            RectTransform snsRect = snsDock.GetComponent<RectTransform>();
+            snsRect.anchorMin = new Vector2(0, 0.5f);
+            snsRect.anchorMax = new Vector2(0, 0.5f);
+            snsRect.pivot = new Vector2(0, 0.5f);
+            snsRect.sizeDelta = new Vector2(300, 400);
+            snsRect.anchoredPosition = new Vector2(20, 0);
+
+            // 6. UI_BuildingInfoCard
+            GameObject buildInfo = CreateChild("UI_BuildingInfoCard", parent);
+            RectTransform biRect = buildInfo.GetComponent<RectTransform>();
+            biRect.anchorMin = new Vector2(1, 0.5f);
+            biRect.anchorMax = new Vector2(1, 0.5f);
+            biRect.pivot = new Vector2(1, 0.5f);
+            biRect.sizeDelta = new Vector2(350, 400);
+            biRect.anchoredPosition = new Vector2(-100, 0);
+            Image biBg = buildInfo.AddComponent<Image>();
+            biBg.sprite = LoadSprite(ListFrameBg);
+            biBg.type = Image.Type.Sliced;
+            biBg.color = ColorPanelBg;
+            buildInfo.SetActive(false);
+        }
+
+        // ── 우측 상단 컨트롤 (정체 토글, 플로팅, 설정) ───────────────────
+        private static void BuildTopRightControls(Transform parent)
+        {
+            GameObject container = CreateChild("TopRightControls", parent);
+            RectTransform rt = container.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(1, 1);
+            rt.anchorMax = new Vector2(1, 1);
+            rt.pivot = new Vector2(1, 1);
+            rt.anchoredPosition = new Vector2(-20, -60); // HUD 바로 아래
+            rt.sizeDelta = new Vector2(200, 150);
+
+            VerticalLayoutGroup vlg = container.AddComponent<VerticalLayoutGroup>();
+            vlg.spacing = 8;
+            vlg.childAlignment = TextAnchor.UpperRight;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = false;
+
+            // CongestionToggleBaker에서 생성한 UI_CongestionToggle 프라팹 로드 (예외처리)
+            GameObject togglePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/02_Prefabs/UI/UI_CongestionToggle.prefab");
+            if (togglePrefab != null)
+            {
+                GameObject congestionToggle = PrefabUtility.InstantiatePrefab(togglePrefab, container.transform) as GameObject;
+                if (congestionToggle != null)
+                {
+                    congestionToggle.name = "CongestionToggle";
+                    // 기존 베이커가 버튼 위치를 고정시킬 수 있으므로 Rect 초기화
+                    var rect = congestionToggle.GetComponent<RectTransform>();
+                    rect.anchoredPosition = Vector2.zero;
+                }
+            }
+
+            // 추가 버튼 컨테이너 (가로 배치)
+            GameObject btnContainer = CreateChild("ExtraButtons", container.transform);
+            HorizontalLayoutGroup hlg = btnContainer.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 10;
+            hlg.childAlignment = TextAnchor.UpperRight;
+            btnContainer.GetComponent<RectTransform>().sizeDelta = new Vector2(200, 50);
+
+            BuildDockButton(btnContainer.transform, "Btn_FloatingMode", "플로팅", BtnDark);
+            BuildDockButton(btnContainer.transform, "Btn_Settings", "설정", BtnGray);
+        }
+
         // ================================================================
         //  유틸리티
         // ================================================================
@@ -568,7 +827,9 @@ namespace CityFlow.UI.Editor
             tmp.fontSize = fontSize;
             tmp.color = color;
             tmp.alignment = alignment;
-            tmp.enableAutoSizing = false;
+            tmp.enableAutoSizing = true;
+            tmp.fontSizeMin = 12;
+            tmp.fontSizeMax = fontSize;
             tmp.overflowMode = TextOverflowModes.Ellipsis;
             return tmp;
         }
@@ -726,6 +987,7 @@ namespace CityFlow.UI.Editor
             // 2. UIDockController
             Transform dock = t.Find("Dock_Right");
             Transform subPanels = t.Find("SubPanels_Right");
+            Transform topControls = t.Find("TopRightControls/ExtraButtons");
             if (dock != null && subPanels != null)
             {
                 var dockCtrl = dock.gameObject.AddComponent<UIDockController>();
@@ -733,20 +995,26 @@ namespace CityFlow.UI.Editor
                 var btnBuild = dock.Find("Btn_Build")?.GetComponent<Button>();
                 var btnResearch = dock.Find("Btn_Research")?.GetComponent<Button>();
                 var btnStats = dock.Find("Btn_Stats")?.GetComponent<Button>();
-                var btnSettings = dock.Find("Btn_Settings")?.GetComponent<Button>();
                 
-                var pBuild = subPanels.Find("Build_Panel")?.gameObject;
+                Button btnSettings = null;
+                Button btnFloat = null;
+                if (topControls != null)
+                {
+                    btnSettings = topControls.Find("Btn_Settings")?.GetComponent<Button>();
+                    btnFloat = topControls.Find("Btn_FloatingMode")?.GetComponent<Button>();
+                }
+                
+                var pBuild = t.Find("Build_Panel")?.gameObject;
                 var pResearch = subPanels.Find("Research_Panel")?.gameObject;
                 var pStats = subPanels.Find("Stats_Panel")?.gameObject;
                 var pSettings = subPanels.Find("Settings_Panel")?.gameObject;
 
                 dockCtrl.Configure(btnBuild, btnResearch, btnStats, btnSettings, pBuild, pResearch, pStats, pSettings, null);
 
-                // Configure에 없는 필드는 SerializedObject로 주입
                 var so = new SerializedObject(dockCtrl);
                 var propBtnFloat = so.FindProperty("btnFloatingMode");
-                if (propBtnFloat != null && dock.Find("Btn_FloatingMode") != null)
-                    propBtnFloat.objectReferenceValue = dock.Find("Btn_FloatingMode").GetComponent<Button>();
+                if (propBtnFloat != null && btnFloat != null)
+                    propBtnFloat.objectReferenceValue = btnFloat;
                 
                 var propPFloat = so.FindProperty("panelFloating");
                 if (propPFloat != null && subPanels.Find("Floating_Panel") != null)
@@ -755,13 +1023,57 @@ namespace CityFlow.UI.Editor
                 so.ApplyModifiedProperties();
             }
 
-            // 3. SettingsPanelController (껍데기만 연결)
+            // 4. BuildPanelController 연결
+            if (t.Find("Build_Panel") != null)
+            {
+                Transform buildPanel = t.Find("Build_Panel");
+                var bCtrl = buildPanel.gameObject.AddComponent<BuildPanelController>();
+                
+                var tabsObj = buildPanel.Find("Tabs");
+                var contentObj = buildPanel.Find("Content");
+                
+                Button[] tabs = new Button[tabsObj.childCount];
+                GameObject[] pages = new GameObject[contentObj.childCount];
+                
+                for(int i=0; i<tabsObj.childCount; i++) {
+                    tabs[i] = tabsObj.GetChild(i).GetComponent<Button>();
+                    pages[i] = contentObj.GetChild(i).gameObject;
+                    
+                    int index = i;
+                    tabs[i].onClick.AddListener(() => {
+                        for(int p=0; p<pages.Length; p++) {
+                            pages[p].SetActive(p == index);
+                        }
+                    });
+                }
+                
+                var so = new SerializedObject(bCtrl);
+                var propTabs = so.FindProperty("categoryTabs");
+                propTabs.arraySize = tabs.Length;
+                for(int i=0; i<tabs.Length; i++) propTabs.GetArrayElementAtIndex(i).objectReferenceValue = tabs[i];
+                
+                var propPages = so.FindProperty("categoryPages");
+                propPages.arraySize = pages.Length;
+                for(int i=0; i<pages.Length; i++) propPages.GetArrayElementAtIndex(i).objectReferenceValue = pages[i];
+                so.ApplyModifiedProperties();
+                
+                bCtrl.Configure(null, null, null, null, null, null);
+            }
+
+            // 3. SettingsPanelController (오디오 슬라이더 연결)
             if (subPanels != null)
             {
                 Transform settingsPanel = subPanels.Find("Settings_Panel");
                 if (settingsPanel != null)
                 {
-                    settingsPanel.gameObject.AddComponent<SettingsPanelController>();
+                    var spCtrl = settingsPanel.gameObject.AddComponent<SettingsPanelController>();
+                    
+                    var bgmSlider = settingsPanel.Find("Content/BGM_Group/BGM_Slider")?.GetComponent<Slider>();
+                    var bgmInput = settingsPanel.Find("Content/BGM_Group/BGM_Input")?.GetComponent<TMP_InputField>();
+                    var sfxSlider = settingsPanel.Find("Content/SFX_Group/SFX_Slider")?.GetComponent<Slider>();
+                    var sfxInput = settingsPanel.Find("Content/SFX_Group/SFX_Input")?.GetComponent<TMP_InputField>();
+                    
+                    spCtrl.Configure(null, null, null, bgmSlider, bgmInput, sfxSlider, sfxInput, null);
                 }
                 
                 Transform statsPanel = subPanels.Find("Stats_Panel");

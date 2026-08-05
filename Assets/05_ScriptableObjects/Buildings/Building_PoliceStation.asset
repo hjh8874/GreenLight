@@ -25,7 +25,7 @@ MonoBehaviour:
   dailyCoinValue: 0
   prosperityValue: 0
   unlockedByDefault: 0
-  buildingIcon: {fileID: 0}
+  buildingIcon: {fileID: 21300000, guid: f4f9f5ad8d8755f47ad45ec71f70b6f6, type: 3}
   visualPrefab: {fileID: 0}
   visualOffset: {x: 0, y: 0, z: 0}
   visualEulerAngles: {x: 0, y: 0, z: 0}

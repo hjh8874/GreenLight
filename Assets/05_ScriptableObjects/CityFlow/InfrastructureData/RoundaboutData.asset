@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Data.InfrastructureDataSO
   Kind: 1
   InfrastructureName: "\uD68C\uC804 \uAD50\uCC28\uB85C"
-  Icon: {fileID: 0}
+  Icon: {fileID: 21300000, guid: d10f4d10271266d40b14387bc03e6683, type: 3}
   Description: "\uC5ED\uD560: \uC2E0\uD638 \uB300\uAE30 \uC5C6\uC774 \uCC28\uB7C9\uC774
     \uC6D0\uD615\uC73C\uB85C \uB04A\uAE40 \uC5C6\uC774 \uC774\uB3D9\uD560 \uC218
     \uC788\uAC8C \uD569\uB2C8\uB2E4. \uC801\uB2F9\uD55C \uAD50\uD1B5\uB7C9\uC5D0
