@@ -135,6 +135,56 @@ namespace CityFlow.EditorTools
                     AllRoles(),
                     targetVehicleCountMultiplier: 2f));
 
+            // 흐름이 터지는 순간. 자주 일어나므로 쿨다운을 길게, 확률을 낮게 잡는다.
+            FeedEventRuleSO flowBurstRule = LoadOrCreate<FeedEventRuleSO>(
+                $"{RootFolder}/Rule_FlowBurst.asset",
+                asset => asset.Configure(
+                    CitizenFeedEventType.FlowBurst,
+                    0.35f,
+                    3f,
+                    45f,
+                    0f,
+                    AllRoles()));
+            FeedEventRuleSO buildingPlacedRule = LoadOrCreate<FeedEventRuleSO>(
+                $"{RootFolder}/Rule_BuildingPlaced.asset",
+                asset => asset.Configure(
+                    CitizenFeedEventType.BuildingPlaced,
+                    0.55f,
+                    1f,
+                    55f,
+                    0f,
+                    AllRoles()));
+            // 구급 출동은 드물고 눈에 띄는 사건이다 — 확률·점수를 높게 준다.
+            FeedEventRuleSO emergencyAlertRule = LoadOrCreate<FeedEventRuleSO>(
+                $"{RootFolder}/Rule_EmergencyAlert.asset",
+                asset => asset.Configure(
+                    CitizenFeedEventType.EmergencyAlert,
+                    1f,
+                    0.5f,
+                    85f,
+                    0f,
+                    AllRoles()));
+            // 해결 글은 반드시 나가야 인과가 보인다. 확률 1.0, 쿨다운 0.
+            FeedEventRuleSO emergencyResolvedRule = LoadOrCreate<FeedEventRuleSO>(
+                $"{RootFolder}/Rule_EmergencyResolved.asset",
+                asset => asset.Configure(
+                    CitizenFeedEventType.EmergencyResolved,
+                    1f,
+                    0f,
+                    90f,
+                    0f,
+                    AllRoles()));
+            // 시간대 훅은 "아무 일 없어도 도시가 말하게" 하는 용도라 존재감이 약해야 한다.
+            FeedEventRuleSO timePeriodRule = LoadOrCreate<FeedEventRuleSO>(
+                $"{RootFolder}/Rule_TimePeriodChanged.asset",
+                asset => asset.Configure(
+                    CitizenFeedEventType.TimePeriodChanged,
+                    0.5f,
+                    5f,
+                    40f,
+                    0f,
+                    AllRoles()));
+
             CitizenFeedEventType[] allEvents = AllEvents();
             FeedAuthorProfileSO officeWorker = LoadOrCreate<FeedAuthorProfileSO>(
                 $"{RootFolder}/Author_OfficeWorker.asset",
@@ -383,6 +433,22 @@ namespace CityFlow.EditorTools
                 CitizenFeedEventType.VehicleSurge,
                 CreateVehicleSurgeTemplates());
 
+            FeedTemplateCollectionSO flowBurstTemplates = LoadOrCreateTemplateCollection(
+                CitizenFeedEventType.FlowBurst,
+                CreateFlowBurstTemplates());
+            FeedTemplateCollectionSO buildingPlacedTemplates = LoadOrCreateTemplateCollection(
+                CitizenFeedEventType.BuildingPlaced,
+                CreateBuildingPlacedTemplates());
+            FeedTemplateCollectionSO emergencyAlertTemplates = LoadOrCreateTemplateCollection(
+                CitizenFeedEventType.EmergencyAlert,
+                CreateEmergencyAlertTemplates());
+            FeedTemplateCollectionSO emergencyResolvedTemplates = LoadOrCreateTemplateCollection(
+                CitizenFeedEventType.EmergencyResolved,
+                CreateEmergencyResolvedTemplates());
+            FeedTemplateCollectionSO timePeriodTemplates = LoadOrCreateTemplateCollection(
+                CitizenFeedEventType.TimePeriodChanged,
+                CreateTimePeriodTemplates());
+
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             return new CitizenFeedV1Assets(
@@ -398,7 +464,13 @@ namespace CityFlow.EditorTools
                     infrastructurePlacedRule,
                     infrastructureRemovedRule,
                     notableArrivalRule,
-                    vehicleSurgeRule
+                    vehicleSurgeRule,
+
+                    flowBurstRule,
+                    buildingPlacedRule,
+                    emergencyAlertRule,
+                    emergencyResolvedRule,
+                    timePeriodRule
                 },
                 new[]
                 {
@@ -426,7 +498,13 @@ namespace CityFlow.EditorTools
                     infrastructurePlacedTemplates,
                     infrastructureRemovedTemplates,
                     notableArrivalTemplates,
-                    vehicleSurgeTemplates
+                    vehicleSurgeTemplates,
+
+                    flowBurstTemplates,
+                    buildingPlacedTemplates,
+                    emergencyAlertTemplates,
+                    emergencyResolvedTemplates,
+                    timePeriodTemplates
                 });
         }
 
@@ -519,10 +597,43 @@ namespace CityFlow.EditorTools
             };
         }
 
+        /// <summary>
+        /// 이어받는 문구. followUpOnly=true라 장부에서 작성자가 나왔을 때만 뽑힌다.
+        /// 역할을 비워 누구든 자기가 한 말을 이어받을 수 있게 하고, 가중치를 높게 줘서
+        /// 이어받기 상황에선 이쪽이 뽑히게 한다 — 안 그러면 평범한 해결 문구가 나와
+        /// 인과관계가 글에 안 드러난다.
+        /// </summary>
+        private static CitizenFeedTemplateEntry CreateFollowUpTemplate(
+            string templateId,
+            string text)
+        {
+            CitizenFeedTemplateEntry entry = new CitizenFeedTemplateEntry();
+            entry.Configure(
+                templateId,
+                text,
+                CitizenFeedTone.Praise,
+                4f,
+                Array.Empty<CitizenFeedRole>(),
+                null,
+                CitizenFeedCategory.TrafficReport,
+                null,
+                targetFollowUpOnly: true);
+            return entry;
+        }
+
         private static CitizenFeedTemplateEntry[] CreateCongestionResolvedTemplates()
         {
             return new[]
             {
+                CreateFollowUpTemplate(
+                    "FollowUp_Congestion_01",
+                    "제가 저번에 말한 {Location}, 이제 좀 괜찮아졌네요. 신경 써주셔서 고맙습니다."),
+                CreateFollowUpTemplate(
+                    "FollowUp_Congestion_02",
+                    "아까 그렇게 막히던 {Location}이 뚫렸습니다. 말한 보람이 있네요."),
+                CreateFollowUpTemplate(
+                    "FollowUp_Congestion_03",
+                    "{Location} 불평했던 사람인데요, 오늘은 그냥 지나갔습니다. 이런 날도 있군요."),
                 CreateTemplate(
                     "Resolved_Office_01",
                     "{Location}가 드디어 움직이네요. 오늘은 제시간에 도착할 수 있겠습니다.",
@@ -843,6 +954,168 @@ namespace CityFlow.EditorTools
                     0.5f,
                     CitizenFeedCategory.HumorAndChatter,
                     new[] { CitizenFeedRole.Driver })
+            };
+        }
+
+        private static CitizenFeedTemplateEntry[] CreateFlowBurstTemplates()
+        {
+            return new[]
+            {
+                CreateTemplate(
+                    "FlowBurst_Taxi_01",
+                    "{Location} 흐름이 갑자기 확 풀렸습니다. 지금이 지나갈 타이밍이에요.",
+                    CitizenFeedTone.Information,
+                    1.2f,
+                    CitizenFeedRole.TaxiDriver),
+                CreateTemplate(
+                    "FlowBurst_Enthusiast_01",
+                    "{Location} 방금 신호 타이밍이 딱 맞아떨어졌습니다. 이런 순간이 좋아요.",
+                    CitizenFeedTone.Praise,
+                    1f,
+                    CitizenFeedRole.TrafficEnthusiast),
+                CreateTemplate(
+                    "FlowBurst_Driver_01",
+                    "{Location}에서 한 번에 쭉 빠졌습니다. 오늘 운이 좋네요.",
+                    CitizenFeedTone.Praise,
+                    1f,
+                    CitizenFeedRole.Driver),
+                CreateTemplate(
+                    "FlowBurst_Delivery_01",
+                    "{Location} 뚫린 김에 배달 두 건 더 잡았습니다.",
+                    CitizenFeedTone.Neutral,
+                    0.9f,
+                    CitizenFeedRole.DeliveryDriver)
+            };
+        }
+
+        private static CitizenFeedTemplateEntry[] CreateBuildingPlacedTemplates()
+        {
+            return new[]
+            {
+                CreateTemplate(
+                    "Placed_Resident_01",
+                    "{Location}에 뭔가 새로 생겼네요. 동네가 조금씩 달라집니다.",
+                    CitizenFeedTone.Neutral,
+                    1.1f,
+                    CitizenFeedRole.Resident),
+                CreateTemplate(
+                    "Placed_RealEstate_01",
+                    "{Location} 신축 확인했습니다. 주변 유동인구에 영향이 있겠네요.",
+                    CitizenFeedTone.Information,
+                    1.2f,
+                    CitizenFeedRole.RealEstateAgent),
+                CreateTemplate(
+                    "Placed_Merchant_01",
+                    "{Location}에 건물이 들어섰습니다. 손님이 좀 늘었으면 좋겠는데요.",
+                    CitizenFeedTone.Neutral,
+                    1f,
+                    CitizenFeedRole.Merchant),
+                CreateTemplate(
+                    "Placed_Activist_01",
+                    "{Location} 공사 끝났네요. 이제 진입로 정리만 되면 좋겠습니다.",
+                    CitizenFeedTone.Question,
+                    0.9f,
+                    CitizenFeedRole.CivicActivist)
+            };
+        }
+
+        private static CitizenFeedTemplateEntry[] CreateEmergencyAlertTemplates()
+        {
+            return new[]
+            {
+                CreateTemplate(
+                    "Emergency_Resident_01",
+                    "{Location} 쪽에서 사이렌 소리가 납니다. 무슨 일이죠?",
+                    CitizenFeedTone.Question,
+                    1.3f,
+                    CitizenFeedRole.Resident),
+                CreateTemplate(
+                    "Emergency_Taxi_01",
+                    "{Location} 구급차 지나갑니다. 길 좀 비켜주세요.",
+                    CitizenFeedTone.Information,
+                    1.3f,
+                    CitizenFeedRole.TaxiDriver),
+                CreateTemplate(
+                    "Emergency_Parent_01",
+                    "{Location}에 구급차가 갔어요. 별일 아니었으면 좋겠네요.",
+                    CitizenFeedTone.Complaint,
+                    1.1f,
+                    CitizenFeedRole.Parent),
+                CreateTemplate(
+                    "Emergency_Activist_01",
+                    "{Location} 긴급 상황입니다. 이 구간 진입로가 좁은 게 계속 마음에 걸렸는데요.",
+                    CitizenFeedTone.Complaint,
+                    1f,
+                    CitizenFeedRole.CivicActivist)
+            };
+        }
+
+        private static CitizenFeedTemplateEntry[] CreateEmergencyResolvedTemplates()
+        {
+            return new[]
+            {
+                CreateFollowUpTemplate(
+                    "FollowUp_Emergency_01",
+                    "아까 {Location} 사이렌, 잘 마무리됐다고 하네요. 다행입니다."),
+                CreateFollowUpTemplate(
+                    "FollowUp_Emergency_02",
+                    "{Location} 상황 궁금해했었는데 무사히 끝났답니다. 한숨 놓았어요."),
+                CreateTemplate(
+                    "EmergencyResolved_Resident_01",
+                    "{Location} 상황은 정리된 것 같습니다. 사이렌 소리가 멎었어요.",
+                    CitizenFeedTone.Praise,
+                    1f,
+                    CitizenFeedRole.Resident),
+                CreateTemplate(
+                    "EmergencyResolved_Taxi_01",
+                    "{Location} 통제 풀렸습니다. 정상 통행 가능합니다.",
+                    CitizenFeedTone.Information,
+                    1.2f,
+                    CitizenFeedRole.TaxiDriver)
+            };
+        }
+
+        private static CitizenFeedTemplateEntry[] CreateTimePeriodTemplates()
+        {
+            // 시간대 훅은 장소가 없다 — {Location}을 쓰면 안 된다.
+            return new[]
+            {
+                CreateDetailedTemplate(
+                    "TimePeriod_Office_Morning",
+                    "출근길 시작입니다. 오늘은 무사히 갈 수 있을까요.",
+                    CitizenFeedTone.Neutral,
+                    1.2f,
+                    CitizenFeedCategory.CommuteExperience,
+                    new[] { CitizenFeedRole.OfficeWorker },
+                    null,
+                    new[] { CitizenFeedTimePeriod.MorningRush }),
+                CreateDetailedTemplate(
+                    "TimePeriod_Student_Morning",
+                    "아침 등굣길. 오늘은 좀 덜 붐볐으면.",
+                    CitizenFeedTone.Neutral,
+                    1f,
+                    CitizenFeedCategory.CommuteExperience,
+                    new[] { CitizenFeedRole.Student },
+                    null,
+                    new[] { CitizenFeedTimePeriod.MorningRush }),
+                CreateDetailedTemplate(
+                    "TimePeriod_Driver_Evening",
+                    "퇴근 시간입니다. 다들 무사히 들어가세요.",
+                    CitizenFeedTone.Neutral,
+                    1.1f,
+                    CitizenFeedCategory.CommuteExperience,
+                    new[] { CitizenFeedRole.Driver },
+                    null,
+                    new[] { CitizenFeedTimePeriod.EveningRush }),
+                CreateDetailedTemplate(
+                    "TimePeriod_Merchant_Evening",
+                    "퇴근길 손님이 들어올 시간이네요. 슬슬 준비합니다.",
+                    CitizenFeedTone.Neutral,
+                    1f,
+                    CitizenFeedCategory.EconomyReaction,
+                    new[] { CitizenFeedRole.Merchant },
+                    null,
+                    new[] { CitizenFeedTimePeriod.EveningRush })
             };
         }
 

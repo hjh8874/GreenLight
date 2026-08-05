@@ -23,6 +23,7 @@ MonoBehaviour:
     allowedRoles: 010000000a000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: FacilityPlaced_Taxi_01
     text: "{Location}\uC5D0 \uC0C8 {Facility} \uC124\uCE58\uB97C \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4.
       \uC2E4\uC81C \uAD50\uD1B5 \uD750\uB984\uC740 \uC870\uAE08 \uB354 \uC9C0\uCF1C\uBD10\uC57C\uACA0\uC2B5\uB2C8\uB2E4."
@@ -32,6 +33,7 @@ MonoBehaviour:
     allowedRoles: 0200000005000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: FacilityPlaced_Analyst_01
     text: "{Location}\uC5D0 {Facility}\uC774 \uC801\uC6A9\uB410\uC2B5\uB2C8\uB2E4.
       \uC124\uCE58 \uC804\uD6C4 \uBC00\uB3C4 \uBCC0\uD654\uAC00 \uC911\uC694\uD55C
@@ -42,6 +44,7 @@ MonoBehaviour:
     allowedRoles: 04000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: FacilityPlaced_Driver_01
     text: "{Location}\uC5D0 {Facility}\uC774 \uC0DD\uACBC\uC2B5\uB2C8\uB2E4. \uC774\uBC88\uC5D0\uB294
       \uAE38\uC774 \uC815\uB9D0 \uBE68\uB77C\uC9C8\uAE4C\uC694?"
@@ -51,3 +54,4 @@ MonoBehaviour:
     allowedRoles: 0b00000000000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0

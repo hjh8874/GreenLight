@@ -23,6 +23,7 @@ MonoBehaviour:
     allowedRoles: 01000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Sustained_Taxi_01
     text: "{Location} \uC815\uCCB4\uAC00 \uC7A5\uC2DC\uAC04 \uC774\uC5B4\uC9C0\uACE0
       \uC788\uC2B5\uB2C8\uB2E4. \uB2F9\uBD84\uAC04 \uC774 \uAD6C\uAC04\uC740 \uD53C\uD558\uB294
@@ -33,6 +34,7 @@ MonoBehaviour:
     allowedRoles: 0200000005000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Sustained_Merchant_01
     text: "\uAC00\uAC8C \uC55E \uC815\uCCB4\uAC00 \uD480\uB9B4 \uAE30\uBBF8\uAC00
       \uC5C6\uB124\uC694. \uB0A9\uD488\uB3C4 \uC190\uB2D8\uB3C4 \uACC4\uC18D \uB2A6\uC5B4\uC9C0\uACE0
@@ -43,6 +45,7 @@ MonoBehaviour:
     allowedRoles: 0300000007000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Sustained_Driver_01
     text: "{Location}\uC5D0\uC11C \uCC28\uBCF4\uB2E4 \uACC4\uC808\uC774 \uBA3C\uC800
       \uBC14\uB00C\uACA0\uC2B5\uB2C8\uB2E4."
@@ -52,6 +55,7 @@ MonoBehaviour:
     allowedRoles: 0b000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Sustained_Activist_01
     text: "{Location}\uC758 \uC7A5\uAE30 \uC815\uCCB4\uB85C \uC8FC\uBBFC \uBD88\uD3B8\uC774
       \uACC4\uC18D\uB418\uACE0 \uC788\uC2B5\uB2C8\uB2E4. \uC9C0\uC18D\uC801\uC778
@@ -62,3 +66,4 @@ MonoBehaviour:
     allowedRoles: 09000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0

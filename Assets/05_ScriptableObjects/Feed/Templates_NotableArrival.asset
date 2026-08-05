@@ -24,6 +24,7 @@ MonoBehaviour:
     allowedRoles: 00000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Arrival_Delivery_01
     text: "{RouteDistance} \uAC70\uB9AC\uC758 \uBC30\uB2EC\uC744 \uB9C8\uCCE4\uC2B5\uB2C8\uB2E4.
       \uB2A6\uC9C0 \uC54A\uAC8C \uB3C4\uCC29\uD574\uC11C \uB2E4\uD589\uC785\uB2C8\uB2E4."
@@ -33,6 +34,7 @@ MonoBehaviour:
     allowedRoles: 05000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Arrival_Taxi_01
     text: "{Location}\uAE4C\uC9C0 \uC7A5\uAC70\uB9AC \uC6B4\uD589 \uC644\uB8CC\uD588\uC2B5\uB2C8\uB2E4.
       \uBA40\uB9AC \uB3CC\uC544\uC654\uC9C0\uB9CC \uBAA9\uC801\uC9C0\uC5D0\uB294
@@ -43,6 +45,7 @@ MonoBehaviour:
     allowedRoles: 02000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Arrival_Student_01
     text: "\uC624\uB298 \uC774\uB3D9 \uAC70\uB9AC\uAC00 {RouteDistance}\uB798\uC694.
       \uD559\uAD50\uBCF4\uB2E4 \uB3C4\uB85C\uC5D0\uC11C \uB354 \uC624\uB798 \uC9C0\uB0B8
@@ -53,6 +56,7 @@ MonoBehaviour:
     allowedRoles: 06000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Arrival_Merchant_01
     text: "\uBA3C \uAE38\uC744 \uC628 \uCC28\uB7C9\uC774 \uC81C\uC2DC\uAC04\uC5D0
       \uB3C4\uCC29\uD588\uC2B5\uB2C8\uB2E4. \uC624\uB298 \uB0A9\uD488 \uC77C\uC815\uC740
@@ -63,3 +67,4 @@ MonoBehaviour:
     allowedRoles: 0300000007000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0

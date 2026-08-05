@@ -381,6 +381,13 @@ namespace CityFlow.Feed
                         continue;
                     }
 
+                    // "제가 저번에 말한 그곳" 류는 앞선 불만이 있어야 성립한다.
+                    // 이어받기가 아닌데 새어나가면 하지도 않은 말을 전제하게 된다.
+                    if (template.FollowUpOnly && pinnedAuthor == null)
+                    {
+                        continue;
+                    }
+
                     candidates.Add(new FeedCandidate(
                         author,
                         template,
