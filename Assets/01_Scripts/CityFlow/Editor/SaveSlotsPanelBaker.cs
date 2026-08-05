@@ -74,6 +74,11 @@ namespace CityFlow.EditorTools
                 return;
             }
             BakeIntoCanvas(canvas);
+            
+            EditorSceneManager.MarkSceneDirty(scene);
+            Debug.Log(
+                $"[SaveSlotsPanelBaker] Save slot UI baked into '{scene.name}'. " +
+                "Save and load entry buttons are ready, and the legacy delete-save button was removed.");
         }
 
         public static void BakeIntoCanvas(Canvas canvas)
@@ -206,8 +211,8 @@ namespace CityFlow.EditorTools
                 out Button confirmNameButton,
                 out Button cancelNameButton);
 
-            ConfirmPopupController confirmPopup = FindComponent<ConfirmPopupController>(scene);
-            UIDockController dockController = FindComponent<UIDockController>(scene);
+            ConfirmPopupController confirmPopup = FindComponent<ConfirmPopupController>(canvas.transform);
+            UIDockController dockController = FindComponent<UIDockController>(canvas.transform);
             SerializedObject serializedController = new SerializedObject(controller);
             SetReference(serializedController, "openPanelButton", openButton);
             SetReference(serializedController, "loadPanelButton", loadButton);
@@ -234,12 +239,8 @@ namespace CityFlow.EditorTools
             nameDialog.SetActive(false);
             panelRoot.SetActive(false);
             EditorUtility.SetDirty(controllerRoot);
-            EditorSceneManager.MarkSceneDirty(scene);
             Selection.activeGameObject = openButton.gameObject;
             EditorGUIUtility.PingObject(openButton.gameObject);
-            Debug.Log(
-                $"[SaveSlotsPanelBaker] Save slot UI baked into '{scene.name}'. " +
-                "Save and load entry buttons are ready, and the legacy delete-save button was removed.");
         }
 
         private static RectTransform CreateCard(Transform parent)
@@ -784,6 +785,11 @@ namespace CityFlow.EditorTools
         {
             T[] components = FindComponents<T>(scene);
             return components.Length > 0 ? components[0] : null;
+        }
+
+        private static T FindComponent<T>(Transform root) where T : Component
+        {
+            return root.GetComponentInChildren<T>(true);
         }
 
         private static T[] FindComponents<T>(Scene scene) where T : Component
