@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2be9575e655c43c9a5c2941313a50f97, type: 3}
+  m_Name: SpecialBuildingCatalog_Balance
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.BuildingCatalogSO
+  buildings:
+  - {fileID: 11400000, guid: 5def9c944b9fa4645888240a518ae87a, type: 2}
+  - {fileID: 11400000, guid: cb915d34fa8c2f44eb7d81229cee27cb, type: 2}
+  - {fileID: 11400000, guid: beffba88e68789347807f6e040419a4c, type: 2}
+  - {fileID: 11400000, guid: 0aa84a0f4969f1746bd54b1adc425026, type: 2}
+  - {fileID: 11400000, guid: 3487312cc29c86b40b1d8f6d5c2c9373, type: 2}
+  - {fileID: 11400000, guid: c6e14688179c93741acc3ea13e8cd1ab, type: 2}
+  - {fileID: 11400000, guid: 254ee7e05b8618943ad848e4b490b978, type: 2}
+  - {fileID: 11400000, guid: 629932d4d41cd814fa12bb3d9101d4e1, type: 2}

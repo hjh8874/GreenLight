@@ -10,18 +10,18 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 56833a33ddfead049a9a41fad0e32eea, type: 3}
-  m_Name: Building_Mall
+  m_Name: Building_CoffeeShop_Balance
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.BuildingDefinitionSO
-  buildingId: mall
-  buildingName: "\uC1FC\uD551\uBAB0"
+  buildingId: coffee_shop
+  buildingName: "\uCEE4\uD53C\uC20D"
   category: 3
   menuCategory: 0
-  description: Large retail destination.
+  description: Coffee shop and social destination.
   canGenerateTraffic: 0
   canReceiveTraffic: 1
   trafficGenerationAmount: 0
   destinationRewardMultiplier: 1
-  buildCost: 1200
+  buildCost: 200
   dailyCoinValue: 0
   prosperityValue: 0
   unlockedByDefault: 0
@@ -30,19 +30,19 @@ MonoBehaviour:
   visualOffset: {x: 0, y: 0, z: 0}
   visualEulerAngles: {x: 0, y: 0, z: 0}
   visualScale: {x: 1, y: 1, z: 1}
-  fallbackColor: {r: 0.12, g: 0.64, b: 0.7, a: 1}
-  fallbackHeight: 1.2
+  fallbackColor: {r: 0.76, g: 0.45, b: 0.2, a: 1}
+  fallbackHeight: 0.75
   footprint: {x: 2, y: 2}
-  requiredResearchId: research_building_mall
+  requiredResearchId: research_building_coffee_shop
   canReceiveVisitors: 1
   visitCadence:
     visitsPerPeriod: 1
-    periodDays: 7
+    periodDays: 2
   visitorCapacity: 0
   attractionWeight: 1
   coinPerVisit: 10
-  visitTimeProfile: 2
-  happinessEffectKey: happiness_building_mall
+  visitTimeProfile: 1
+  happinessEffectKey: happiness_building_coffee_shop
   schoolCoverageCapacity: 0
   coveredPopulationCapBonus: 0
   hospitalCoverageRadius: 0

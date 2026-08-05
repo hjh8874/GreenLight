@@ -13,11 +13,13 @@ MonoBehaviour:
   m_Name: SchoolData
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.TileDataSO
   buildingId: 
-  buildingName: 공립 학교
+  buildingName: "\uACF5\uB9BD \uD559\uAD50"
   category: 4
+  companyTypeId:
   buildingIcon: {fileID: 0}
   buildingPrefab: {fileID: 0}
-  buildingDescription: 주변 주거지의 발전도를 상승시켜 인구를 유치하는 학교입니다.
+  buildingDescription: "\uC8FC\uBCC0 \uC8FC\uAC70\uC9C0\uC758 \uBC1C\uC804\uB3C4\uB97C
+    \uC0C1\uC2B9\uC2DC\uCF1C \uC778\uAD6C\uB97C \uC720\uCE58\uD558\uB294 \uD559\uAD50\uC785\uB2C8\uB2E4."
   buildCost: 500
   dailyCoinValue: 10
   prosperityValue: 1

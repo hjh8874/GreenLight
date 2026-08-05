@@ -15,25 +15,9 @@ MonoBehaviour:
   coinBase: 1
   defaultDestinationRewardPercent: 100
   settlementDays: 7
-  offlineMaximumRealHours: 8
-  offlineIncomePercent: 100
-  weeklyCoinPerBuilding: 20
-  cityUnlockCosts:
-  - 1000
-  - 5000
-  - 20000
-  landCosts:
-  - 500
-  - 900
-  - 1500
-  - 2400
-  - 3800
-  upgradeCosts:
-  - 200
-  - 350
-  - 600
-  - 1000
-  - 1600
+  cityUnlockCosts: e803000088130000204e0000
+  landCosts: f401000084030000dc05000060090000d80e0000
+  upgradeCosts: c80000005e01000058020000e803000040060000
   initialRefundPercent: 100
   refundDecreasePercent: 10
   minimumRefundPercent: 50

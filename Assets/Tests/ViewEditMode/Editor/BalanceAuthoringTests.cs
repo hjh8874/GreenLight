@@ -71,6 +71,24 @@ namespace CityFlow.Sim.Tests
                 "밸런스 전용 Scene은 Build Settings에 포함되면 안 됩니다.");
         }
 
+        [TestCase(
+            "Assets/00_Scenes/Debug/CityFlowBalance_Lee.unity",
+            true)]
+        [TestCase(
+            "Assets/00_Scenes/Debug/CityFlowBalance_Lee1.unity",
+            true)]
+        [TestCase(
+            "Assets/00_Scenes/CityFlowIntegrated_cmt.unity",
+            false)]
+        public void BalanceEditor_OnlyRewiresSupportedDebugScenes(
+            string scenePath,
+            bool expected)
+        {
+            Assert.That(
+                BalanceAuthoringWindow.IsSupportedBalanceScenePath(scenePath),
+                Is.EqualTo(expected));
+        }
+
         [Test]
         public void WorkingBalanceAssets_ArePresentUnderEditorFolder()
         {
@@ -81,6 +99,401 @@ namespace CityFlow.Sim.Tests
                     Is.Not.Null,
                     $"작업용 밸런스 에셋 누락: {path}");
             }
+        }
+
+        [Test]
+        public void BalanceEditor_LocalizesEveryVisibleSettingField()
+        {
+            foreach (string path in WorkingAssetPaths)
+            {
+                if (path == BalanceAuthoringWindow.WorkingResearchCatalogPath)
+                {
+                    // 연구 카탈로그는 전용 한국어 편집 화면을 사용한다.
+                    continue;
+                }
+
+                Object asset = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(asset, Is.Not.Null, path);
+                var serialized = new SerializedObject(asset);
+                SerializedProperty property = serialized.GetIterator();
+                while (property.NextVisible(true))
+                {
+                    string name = property.name;
+                    if (property.propertyPath == "m_Script" ||
+                        property.propertyPath.Contains(".Array.data[") ||
+                        name == "Array" ||
+                        name == "size" ||
+                        name.StartsWith("data[", System.StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    Assert.That(
+                        BalanceAuthoringWindow.HasLocalizedPropertyLabel(name),
+                        Is.True,
+                        $"밸런스 편집기 한글 이름 누락: {path} > " +
+                        $"{property.propertyPath} ({property.displayName})");
+                }
+            }
+        }
+
+        [TestCase("교통", "일반 차량", "Value.CarsPerHouse")]
+        [TestCase("교통", "일반 차량", "Value.MaxSimCars")]
+        [TestCase("교통", "일반 차량", "Value.MorningStartHour")]
+        [TestCase("교통", "일반 차량", "Value.RushAmplitude")]
+        [TestCase("건물", "주거 지역", "Value.CarsPerHouse")]
+        [TestCase("건물", "주거 지역", "Value.ConstructionHoursHouse")]
+        [TestCase("건물", "회사", "Value.OfficeCapacity")]
+        [TestCase("건물", "회사", "Value.CompanyHiringSlotsPerGameHour")]
+        [TestCase("건물", "회사", "Value.ConstructionHoursOffice")]
+        public void BalanceEditor_ProvidesFocusedRuntimeBalanceViews(
+            string group,
+            string label,
+            string propertyPath)
+        {
+            Assert.That(
+                BalanceAuthoringWindow.GetVisiblePropertyPaths(group, label),
+                Does.Contain(propertyPath),
+                $"{group} > {label}에 실제 런타임 설정 {propertyPath}가 보여야 합니다.");
+        }
+
+        [Test]
+        public void EmergencyPublishing_PreservesRuntimeReferences()
+        {
+            const string sourcePath =
+                "Assets/05_ScriptableObjects/CityFlow/Emergency/EmergencyIncidentConfig.asset";
+            EmergencyIncidentConfigSO source =
+                AssetDatabase.LoadAssetAtPath<EmergencyIncidentConfigSO>(
+                    sourcePath);
+            EmergencyIncidentConfigSO working =
+                AssetDatabase.LoadAssetAtPath<EmergencyIncidentConfigSO>(
+                    "Assets/05_ScriptableObjects/Balance/Editor/EmergencyIncidentConfig_Balance.asset");
+
+            Assert.That(source, Is.Not.Null);
+            Assert.That(working, Is.Not.Null);
+
+            EmergencyIncidentConfigSO sourceClone = Object.Instantiate(source);
+            EmergencyIncidentConfigSO staleWorkingClone =
+                Object.Instantiate(working);
+            try
+            {
+                var staleSerialized = new SerializedObject(staleWorkingClone);
+                staleSerialized.FindProperty("incidentDefinitions").arraySize = 0;
+                staleSerialized.FindProperty("vehicleVisualPrefab")
+                    .objectReferenceValue = null;
+                staleSerialized.FindProperty("travelSecondsPerTile").floatValue =
+                    0.12f;
+                staleSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+                int expectedDefinitionCount = sourceClone.IncidentDefinitions.Count;
+                GameObject expectedVisualPrefab = sourceClone.VehicleVisualPrefab;
+                Assert.That(expectedDefinitionCount, Is.EqualTo(6));
+                Assert.That(expectedVisualPrefab, Is.Not.Null);
+
+                var publishPaths =
+                    BalanceAuthoringWindow.GetPublishPropertyPaths(sourcePath);
+                Assert.That(publishPaths, Does.Not.Contain("incidentDefinitions"));
+                Assert.That(publishPaths, Does.Not.Contain("vehicleVisualPrefab"));
+
+                Assert.That(
+                    BalanceAuthoringWindow.CopyPublishedProperties(
+                        staleWorkingClone,
+                        sourceClone,
+                        publishPaths),
+                    Is.True);
+                Assert.That(
+                    sourceClone.TravelSecondsPerTile,
+                    Is.EqualTo(0.12f).Within(0.0001f));
+                Assert.That(
+                    sourceClone.IncidentDefinitions.Count,
+                    Is.EqualTo(expectedDefinitionCount));
+                Assert.That(
+                    sourceClone.VehicleVisualPrefab,
+                    Is.SameAs(expectedVisualPrefab));
+            }
+            finally
+            {
+                Object.DestroyImmediate(sourceClone);
+                Object.DestroyImmediate(staleWorkingClone);
+            }
+        }
+
+        [Test]
+        public void SimConfigPublishing_DoesNotOverwriteUnexposedFields()
+        {
+            const string sourcePath =
+                "Assets/05_ScriptableObjects/SimConfig_Integrated.asset";
+            Object source = AssetDatabase.LoadMainAssetAtPath(sourcePath);
+            Object working = AssetDatabase.LoadMainAssetAtPath(
+                "Assets/05_ScriptableObjects/Balance/Editor/SimConfig_Integrated_Balance.asset");
+
+            Assert.That(source, Is.Not.Null);
+            Assert.That(working, Is.Not.Null);
+
+            Object sourceClone = Object.Instantiate(source);
+            Object staleWorkingClone = Object.Instantiate(working);
+            try
+            {
+                var sourceSerialized = new SerializedObject(sourceClone);
+                var staleSerialized = new SerializedObject(staleWorkingClone);
+                SerializedProperty sourceCars =
+                    sourceSerialized.FindProperty("Value.CarsPerHouse");
+                SerializedProperty sourceBusRadius =
+                    sourceSerialized.FindProperty("Value.BusCoverageRadius");
+                SerializedProperty staleCars =
+                    staleSerialized.FindProperty("Value.CarsPerHouse");
+                SerializedProperty staleBusRadius =
+                    staleSerialized.FindProperty("Value.BusCoverageRadius");
+
+                Assert.That(sourceCars, Is.Not.Null);
+                Assert.That(sourceBusRadius, Is.Not.Null);
+                Assert.That(staleCars, Is.Not.Null);
+                Assert.That(staleBusRadius, Is.Not.Null);
+
+                sourceCars.intValue = 2;
+                sourceBusRadius.intValue = 3;
+                staleCars.intValue = 5;
+                staleBusRadius.intValue = 0;
+                sourceSerialized.ApplyModifiedPropertiesWithoutUndo();
+                staleSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+                var publishPaths =
+                    BalanceAuthoringWindow.GetPublishPropertyPaths(sourcePath);
+                Assert.That(publishPaths, Does.Contain("Value.CarsPerHouse"));
+                Assert.That(publishPaths, Does.Not.Contain("Value.BusCoverageRadius"));
+                Assert.That(
+                    BalanceAuthoringWindow.CopyPublishedProperties(
+                        staleWorkingClone,
+                        sourceClone,
+                        publishPaths),
+                    Is.True);
+
+                sourceSerialized.UpdateIfRequiredOrScript();
+                Assert.That(
+                    sourceSerialized.FindProperty("Value.CarsPerHouse").intValue,
+                    Is.EqualTo(5));
+                Assert.That(
+                    sourceSerialized.FindProperty("Value.BusCoverageRadius").intValue,
+                    Is.EqualTo(3));
+            }
+            finally
+            {
+                Object.DestroyImmediate(sourceClone);
+                Object.DestroyImmediate(staleWorkingClone);
+            }
+        }
+
+        [Test]
+        public void WorkingSimConfig_PreservesLatestTrafficRecoveryFields()
+        {
+            Object source = AssetDatabase.LoadMainAssetAtPath(
+                "Assets/05_ScriptableObjects/SimConfig_Integrated.asset");
+            Object working = AssetDatabase.LoadMainAssetAtPath(
+                "Assets/05_ScriptableObjects/Balance/Editor/SimConfig_Integrated_Balance.asset");
+
+            Assert.That(source, Is.Not.Null);
+            Assert.That(working, Is.Not.Null);
+
+            var sourceSerialized = new SerializedObject(source);
+            var workingSerialized = new SerializedObject(working);
+            string[] propertyPaths =
+            {
+                "Value.VehicleRerouteBlockedTicks",
+                "Value.VehicleRestartBlockedTicks"
+            };
+            foreach (string propertyPath in propertyPaths)
+            {
+                SerializedProperty sourceProperty =
+                    sourceSerialized.FindProperty(propertyPath);
+                SerializedProperty workingProperty =
+                    workingSerialized.FindProperty(propertyPath);
+                Assert.That(sourceProperty, Is.Not.Null, propertyPath);
+                Assert.That(workingProperty, Is.Not.Null, propertyPath);
+                Assert.That(
+                    workingProperty.intValue,
+                    Is.EqualTo(sourceProperty.intValue),
+                    propertyPath);
+            }
+        }
+
+        [Test]
+        public void GymDisplayContract_UsesConsistentNameAndDescription()
+        {
+            const string expectedName = "헬스장";
+            const string expectedDescription =
+                "Neighborhood fitness center.";
+            const string sourceBuildingPath =
+                "Assets/05_ScriptableObjects/Buildings/Building_StoreCorner_Video.asset";
+            string[] buildingPaths =
+            {
+                sourceBuildingPath,
+                "Assets/05_ScriptableObjects/Balance/Editor/Building_StoreCorner_Video_Balance.asset"
+            };
+            foreach (string path in buildingPaths)
+            {
+                Object building = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(building, Is.Not.Null, path);
+                var serialized = new SerializedObject(building);
+                Assert.That(
+                    serialized.FindProperty("buildingId").stringValue,
+                    Is.EqualTo("video_store"),
+                    path);
+                Assert.That(
+                    serialized.FindProperty("buildingName").stringValue,
+                    Is.EqualTo(expectedName),
+                    path);
+                Assert.That(
+                    serialized.FindProperty("description").stringValue,
+                    Is.EqualTo(expectedDescription),
+                    path);
+            }
+
+            var buildingPublishPaths =
+                BalanceAuthoringWindow.GetPublishPropertyPaths(
+                    sourceBuildingPath);
+            Assert.That(buildingPublishPaths, Does.Contain("buildingName"));
+            Assert.That(buildingPublishPaths, Does.Not.Contain("buildingId"));
+            Assert.That(buildingPublishPaths, Does.Not.Contain("visualPrefab"));
+
+            string[] catalogPaths =
+            {
+                BalanceAuthoringWindow.ResearchCatalogPath,
+                BalanceAuthoringWindow.WorkingResearchCatalogPath
+            };
+            foreach (string path in catalogPaths)
+            {
+                Object catalog = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(catalog, Is.Not.Null, path);
+                var serialized = new SerializedObject(catalog);
+                SerializedProperty entries = serialized.FindProperty("entries");
+                bool found = false;
+                for (int index = 0; index < entries.arraySize; index++)
+                {
+                    SerializedProperty entry =
+                        entries.GetArrayElementAtIndex(index);
+                    if (entry.FindPropertyRelative("researchId").stringValue !=
+                        "research_building_video_store")
+                    {
+                        continue;
+                    }
+
+                    Assert.That(
+                        entry.FindPropertyRelative("displayName").stringValue,
+                        Is.EqualTo(expectedName),
+                        path);
+                    found = true;
+                    break;
+                }
+
+                Assert.That(found, Is.True, path);
+            }
+        }
+
+        [Test]
+        public void ShoppingMallDisplayContract_UsesConsistentName()
+        {
+            const string expectedName = "쇼핑몰";
+            string[] buildingPaths =
+            {
+                "Assets/05_ScriptableObjects/Buildings/Building_Mall.asset",
+                "Assets/05_ScriptableObjects/Balance/Editor/Building_Mall_Balance.asset"
+            };
+            foreach (string path in buildingPaths)
+            {
+                Object building = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(building, Is.Not.Null, path);
+                var serialized = new SerializedObject(building);
+                Assert.That(
+                    serialized.FindProperty("buildingId").stringValue,
+                    Is.EqualTo("mall"),
+                    path);
+                Assert.That(
+                    serialized.FindProperty("buildingName").stringValue,
+                    Is.EqualTo(expectedName),
+                    path);
+            }
+
+            string[] catalogPaths =
+            {
+                BalanceAuthoringWindow.ResearchCatalogPath,
+                BalanceAuthoringWindow.WorkingResearchCatalogPath
+            };
+            foreach (string path in catalogPaths)
+            {
+                Object catalog = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(catalog, Is.Not.Null, path);
+                var serialized = new SerializedObject(catalog);
+                SerializedProperty entries = serialized.FindProperty("entries");
+                bool found = false;
+                for (int index = 0; index < entries.arraySize; index++)
+                {
+                    SerializedProperty entry =
+                        entries.GetArrayElementAtIndex(index);
+                    if (entry.FindPropertyRelative("researchId").stringValue !=
+                        "research_building_mall")
+                    {
+                        continue;
+                    }
+
+                    Assert.That(
+                        entry.FindPropertyRelative("displayName").stringValue,
+                        Is.EqualTo(expectedName),
+                        path);
+                    found = true;
+                    break;
+                }
+
+                Assert.That(found, Is.True, path);
+            }
+        }
+
+        [Test]
+        public void BalanceEditor_LocalizesEveryVisibleEnumOption()
+        {
+            foreach (string path in WorkingAssetPaths)
+            {
+                if (path == BalanceAuthoringWindow.WorkingResearchCatalogPath)
+                {
+                    continue;
+                }
+
+                Object asset = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(asset, Is.Not.Null, path);
+                var serialized = new SerializedObject(asset);
+                SerializedProperty property = serialized.GetIterator();
+                while (property.NextVisible(true))
+                {
+                    if (property.propertyType != SerializedPropertyType.Enum)
+                    {
+                        continue;
+                    }
+
+                    foreach (string enumName in property.enumNames)
+                    {
+                        string label =
+                            BalanceAuthoringWindow.GetLocalizedEnumLabel(enumName);
+                        Assert.That(
+                            label.Any(character =>
+                                character >= '가' && character <= '힣'),
+                            Is.True,
+                            $"밸런스 편집기 열거형 한글 이름 누락: {path} > " +
+                            $"{property.propertyPath}.{enumName} ({label})");
+                    }
+                }
+            }
+        }
+
+        [TestCase("CityBus", "시내버스")]
+        [TestCase("SchoolBus", "스쿨버스")]
+        [TestCase("Roundabout", "회전교차로")]
+        [TestCase("Horizontal", "가로축")]
+        public void BalanceEditor_LocalizesEnumOptions(
+            string enumName,
+            string expected)
+        {
+            Assert.That(
+                BalanceAuthoringWindow.GetLocalizedEnumLabel(enumName),
+                Is.EqualTo(expected));
         }
 
         [Test]
@@ -99,7 +512,140 @@ namespace CityFlow.Sim.Tests
                     BalanceAuthoringWindow.WorkingResearchCatalogPath),
                 Is.Not.EqualTo(
                     AssetDatabase.AssetPathToGUID(
-                        BalanceAuthoringWindow.ResearchCatalogPath)));
+                    BalanceAuthoringWindow.ResearchCatalogPath)));
+        }
+
+        [TestCase(
+            "research_building_video_store",
+            "Building_StoreCorner_Video_Balance.asset")]
+        [TestCase(
+            "research_building_mall",
+            "Building_Mall_Balance.asset")]
+        [TestCase(
+            "research_building_school",
+            "SchoolData_Balance.asset")]
+        [TestCase(
+            "research_building_hospital",
+            "HospitalTileData_Balance.asset")]
+        public void ResearchBalance_ExposesLinkedConstructionSettings(
+            string researchId,
+            string expectedFileName)
+        {
+            string path = BalanceAuthoringWindow
+                .GetLinkedBuildingWorkingPaths(researchId)
+                .Single();
+
+            Assert.That(
+                path,
+                Does.EndWith(expectedFileName));
+            Assert.That(
+                AssetDatabase.LoadMainAssetAtPath(path),
+                Is.Not.Null,
+                $"연구 {researchId}의 실제 건물 작업용 에셋이 필요합니다.");
+        }
+
+        [Test]
+        public void BuildingNameEditor_ExposesEveryConstructionName()
+        {
+            var paths = BalanceAuthoringWindow
+                .GetBuildingNameWorkingPaths();
+
+            Assert.That(paths.Count, Is.EqualTo(12));
+            Assert.That(
+                paths,
+                Does.Contain(
+                    "Assets/05_ScriptableObjects/Balance/Editor/HouseData_Balance.asset"));
+            Assert.That(
+                paths,
+                Does.Contain(
+                    "Assets/05_ScriptableObjects/Balance/Editor/Building_Mall_Balance.asset"));
+
+            foreach (string path in paths)
+            {
+                Object asset = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(asset, Is.Not.Null, path);
+
+                var serialized = new SerializedObject(asset);
+                Assert.That(
+                    serialized.FindProperty("buildingName"),
+                    Is.Not.Null,
+                    $"건물 이름 설정 누락: {path}");
+                Assert.That(
+                    serialized.FindProperty("buildCost"),
+                    Is.Not.Null,
+                    $"건설 비용 설정 누락: {path}");
+
+                if (asset is TileDataSO)
+                {
+                    Assert.That(
+                        serialized.FindProperty("dailyCoinValue"),
+                        Is.Not.Null,
+                        $"툴팁 수입 설정 누락: {path}");
+                    Assert.That(
+                        serialized.FindProperty("prosperityValue"),
+                        Is.Not.Null,
+                        $"툴팁 안정도 설정 누락: {path}");
+                    Assert.That(
+                        serialized.FindProperty("buildingDescription"),
+                        Is.Not.Null,
+                        $"툴팁 설명 설정 누락: {path}");
+                }
+                else
+                {
+                    Assert.That(
+                        serialized.FindProperty(
+                            "visitCadence.visitsPerPeriod"),
+                        Is.Not.Null,
+                        $"툴팁 방문 횟수 설정 누락: {path}");
+                    Assert.That(
+                        serialized.FindProperty(
+                            "visitCadence.periodDays"),
+                        Is.Not.Null,
+                        $"툴팁 방문 기간 설정 누락: {path}");
+                    Assert.That(
+                        serialized.FindProperty("description"),
+                        Is.Not.Null,
+                        $"툴팁 설명 설정 누락: {path}");
+                }
+            }
+        }
+
+        [Test]
+        public void WorkingBuildingCatalog_UsesOnlyWorkingBuildingDefinitions()
+        {
+            BuildingCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<BuildingCatalogSO>(
+                    BalanceAuthoringWindow.WorkingBuildingCatalogPath);
+
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(catalog.Buildings, Is.Not.Empty);
+            foreach (BuildingDefinitionSO building in catalog.Buildings)
+            {
+                Assert.That(building, Is.Not.Null);
+                Assert.That(
+                    AssetDatabase.GetAssetPath(building),
+                    Does.StartWith(
+                        "Assets/05_ScriptableObjects/Balance/Editor/"),
+                    $"작업용 건물 카탈로그에 원본 건물이 연결됨: " +
+                    building.name);
+            }
+        }
+
+        [Test]
+        public void ProductionBuildingCatalog_DoesNotReferenceWorkingAssets()
+        {
+            BuildingCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<BuildingCatalogSO>(
+                    "Assets/05_ScriptableObjects/Buildings/SpecialBuildingCatalog.asset");
+
+            Assert.That(catalog, Is.Not.Null);
+            foreach (BuildingDefinitionSO building in catalog.Buildings)
+            {
+                Assert.That(
+                    AssetDatabase.GetAssetPath(building),
+                    Does.Not.StartWith(
+                        "Assets/05_ScriptableObjects/Balance/Editor/"));
+            }
         }
 
         [TestCase(

@@ -98,7 +98,7 @@ public class ResearchUnlockCatalogTests
     }
 
     [Test]
-    public void ExistingUpgradeButton_BecomesUnlockAndOpensCatalog()
+    public void ExistingUpgradeButton_BecomesCloseAndClosesResearchPanel()
     {
         var owner = new GameObject("panel");
         var serviceOwner = new GameObject("research");
@@ -120,7 +120,7 @@ public class ResearchUnlockCatalogTests
                 "Unlock",
                 upgradeButton.name);
             Assert.AreEqual(
-                "해금",
+                "닫기",
                 upgradeButton
                     .GetComponentInChildren<TMP_Text>().text);
             AssertReadable(
@@ -136,34 +136,66 @@ public class ResearchUnlockCatalogTests
                 categoryLabels,
                 Has.Some.Matches<TMP_Text>(
                     label => label.text == "개척"));
-            Assert.IsFalse(controller.IsCatalogVisibleForTest);
-            Assert.IsFalse(
-                controller.RowsForTest[0].Instance.activeSelf);
-
-            upgradeButton.onClick.Invoke();
-
             Assert.IsTrue(controller.IsCatalogVisibleForTest);
-            Assert.AreEqual(
-                "닫기",
-                upgradeButton
-                    .GetComponentInChildren<TMP_Text>().text);
             Assert.IsTrue(
                 controller.RowsForTest[0].Instance.activeSelf);
 
             upgradeButton.onClick.Invoke();
 
-            Assert.IsFalse(controller.IsCatalogVisibleForTest);
-            Assert.AreEqual(
-                "해금",
-                upgradeButton
-                    .GetComponentInChildren<TMP_Text>().text);
-            Assert.IsFalse(
-                controller.RowsForTest[0].Instance.activeSelf);
+            Assert.IsFalse(owner.activeSelf);
         }
         finally
         {
             Object.DestroyImmediate(owner);
             Object.DestroyImmediate(serviceOwner);
+        }
+    }
+
+    [Test]
+    public void CloseButton_ClosesDockResearchMenuState()
+    {
+        var owner = new GameObject("panel");
+        var serviceOwner = new GameObject("research");
+        var dockOwner = new GameObject("dock");
+        try
+        {
+            Button closeButton =
+                CreateButton(owner.transform, "Upgrade", "Upgrade");
+            UIDockController dock =
+                dockOwner.AddComponent<UIDockController>();
+            dock.Configure(
+                null,
+                null,
+                null,
+                null,
+                null,
+                owner,
+                null,
+                null,
+                null);
+            dock.ToggleMenu(UIDockController.MenuType.Research);
+
+            CityFlowServices services =
+                CreateServicesWithReadyResearch(
+                    serviceOwner,
+                    out ResearchCatalogSO catalog);
+            var controller =
+                owner.AddComponent<ResearchPanelController>();
+            SetPrivate(controller, "catalog", catalog);
+            controller.Initialize(services);
+
+            closeButton.onClick.Invoke();
+
+            Assert.AreEqual(
+                UIDockController.MenuType.None,
+                dock.CurrentMenu);
+            Assert.IsFalse(owner.activeSelf);
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(serviceOwner);
+            Object.DestroyImmediate(dockOwner);
         }
     }
 
@@ -185,14 +217,14 @@ public class ResearchUnlockCatalogTests
                 owner.AddComponent<ResearchPanelController>();
             SetPrivate(controller, "catalog", catalog);
             controller.Initialize(services);
-            upgradeButton.onClick.Invoke();
-
             ResearchPanelController.Row row =
                 controller.RowsForTest[0];
             Assert.IsTrue(row.IsReady);
             Assert.IsTrue(
                 row.Instance.GetComponent<Button>().interactable);
-            Assert.AreEqual("연구 가능", row.StateText.text);
+            Assert.AreEqual(
+                "연구 가능 · 비용 500 · 24시간",
+                row.StateText.text);
             AssertReadable(row.NameText.color);
             AssertReadable(row.ProgressText.color);
             AssertReadable(row.StateText.color);
@@ -206,7 +238,7 @@ public class ResearchUnlockCatalogTests
                 row.Instance
                     .GetComponent<RectTransform>()
                     .rect.height,
-                Is.EqualTo(88f).Within(0.01f));
+                Is.EqualTo(108f).Within(0.01f));
             Transform laneHeaders = owner.transform.Find("ResearchLaneHeaders");
             Assert.NotNull(laneHeaders);
             Assert.IsTrue(laneHeaders.gameObject.activeSelf);
@@ -218,6 +250,8 @@ public class ResearchUnlockCatalogTests
             Assert.That(row.NameText.rectTransform.rect.height, Is.GreaterThan(0f));
             Assert.That(row.ProgressText.rectTransform.rect.height, Is.GreaterThan(0f));
             Assert.That(row.StateText.rectTransform.rect.height, Is.GreaterThan(0f));
+            Assert.That(row.ProgressText.fontSize, Is.EqualTo(13.5f).Within(0.01f));
+            Assert.That(row.StateText.fontSize, Is.EqualTo(12.5f).Within(0.01f));
             Color cardColor =
                 row.Instance.GetComponent<Image>().color;
             Assert.That(
@@ -236,10 +270,10 @@ public class ResearchUnlockCatalogTests
             Assert.IsFalse(laneHeaders.gameObject.activeSelf);
             Assert.That(
                 filteredCard.rect.width,
-                Is.EqualTo(520f).Within(0.01f));
+                Is.EqualTo(500f).Within(0.01f));
             Assert.That(
                 filteredCard.rect.height,
-                Is.EqualTo(88f).Within(0.01f));
+                Is.EqualTo(108f).Within(0.01f));
         }
         finally
         {
@@ -266,7 +300,6 @@ public class ResearchUnlockCatalogTests
             SetPrivate(controller, "catalog", catalog);
 
             controller.Initialize(services);
-            unlockButton.onClick.Invoke();
 
             Vector2 parentPosition = controller.RowsForTest[0].Instance
                 .GetComponent<RectTransform>().anchoredPosition;
@@ -309,11 +342,12 @@ public class ResearchUnlockCatalogTests
             SetPrivate(controller, "catalog", catalog);
 
             controller.Initialize(services);
-            unlockButton.onClick.Invoke();
+            Vector2 overviewPanelSize = controller
+                .GetComponent<RectTransform>().rect.size;
 
             Assert.That(
                 controller.GetComponent<RectTransform>().rect.width,
-                Is.EqualTo(756f).Within(0.01f));
+                Is.EqualTo(720f).Within(0.01f));
             Assert.That(
                 controller.RowsForTest,
                 Has.None.Matches<ResearchPanelController.Row>(
@@ -366,10 +400,14 @@ public class ResearchUnlockCatalogTests
             Assert.That(
                 currentExpansion.Instance
                     .GetComponent<RectTransform>().rect.width,
-                Is.EqualTo(520f).Within(0.01f));
+                Is.EqualTo(500f).Within(0.01f));
             Rect panelRect = controller
                 .GetComponent<RectTransform>().rect;
-            Assert.That(panelRect.width, Is.EqualTo(756f).Within(0.01f));
+            Assert.That(panelRect.width, Is.EqualTo(720f).Within(0.01f));
+            Assert.That(
+                panelRect.size,
+                Is.EqualTo(overviewPanelSize),
+                "카테고리를 바꿔도 전체 보기의 창 크기를 유지해야 한다.");
 
             currentExpansion.Instance
                 .GetComponent<Button>().onClick.Invoke();
@@ -479,6 +517,8 @@ public class ResearchUnlockCatalogTests
         entry.FindPropertyRelative("conditionKind").enumValueIndex =
             (int)ResearchConditionKind.DailyArrivals;
         entry.FindPropertyRelative("threshold").intValue = 1;
+        entry.FindPropertyRelative("researchCost").intValue = 500;
+        entry.FindPropertyRelative("researchDurationHours").intValue = 24;
         entries.InsertArrayElementAtIndex(1);
         var childEntry = entries.GetArrayElementAtIndex(1);
         childEntry.FindPropertyRelative("researchId").stringValue =
@@ -499,6 +539,7 @@ public class ResearchUnlockCatalogTests
             (int)ResearchCategory.Infrastructure;
         serialized.ApplyModifiedPropertiesWithoutUndo();
 
+        services.RegisterEconomy(new TestEconomy(1000));
         SetPrivate(research, "catalog", catalog);
         research.inputsOverrideForTest = () =>
             new ResearchConditionInputs(1, 0, null);
@@ -528,6 +569,35 @@ public class ResearchUnlockCatalogTests
         label.text = text;
         label.color = new Color(0.04f, 0.05f, 0.05f, 1f);
         return buttonObject.GetComponent<Button>();
+    }
+
+    private sealed class TestEconomy : IEconomyService
+    {
+        public TestEconomy(long coins)
+        {
+            Coins = coins;
+        }
+
+        public long Coins { get; private set; }
+        public event System.Action<long> CoinsChanged;
+
+        public bool TrySpend(long amount)
+        {
+            if (amount < 0L || Coins < amount)
+            {
+                return false;
+            }
+
+            Coins -= amount;
+            CoinsChanged?.Invoke(Coins);
+            return true;
+        }
+
+        public void AddCoins(long amount, string reason)
+        {
+            Coins += amount;
+            CoinsChanged?.Invoke(Coins);
+        }
     }
 
     private static void AssertReadable(Color color)

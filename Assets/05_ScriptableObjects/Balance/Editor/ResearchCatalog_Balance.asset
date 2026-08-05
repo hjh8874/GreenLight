@@ -26,7 +26,7 @@ MonoBehaviour:
     requirements: []
   - researchId: research_building_video_store
     prerequisiteId: research_building_coffee_shop
-    displayName: "\uBE44\uB514\uC624 \uB300\uC5EC\uC810"
+    displayName: "\uD5EC\uC2A4\uC7A5"
     category: 0
     conditionKind: 1
     threshold: 40
@@ -36,7 +36,7 @@ MonoBehaviour:
     worldGridStageId:
     requirements: []
   - researchId: research_building_pharmacy
-    prerequisiteId: research_building_school
+    prerequisiteId: research_building_hospital
     displayName: "\uC57D\uAD6D"
     category: 2
     conditionKind: 2
@@ -92,7 +92,7 @@ MonoBehaviour:
     requirements: []
   - researchId: research_building_mall
     prerequisiteId: research_building_auto_repair
-    displayName: "\uD070 \uC0C1\uC810"
+    displayName: "\uC1FC\uD551\uBAB0"
     category: 0
     conditionKind: 0
     threshold: 150

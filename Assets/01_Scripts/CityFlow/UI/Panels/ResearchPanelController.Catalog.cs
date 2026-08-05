@@ -23,8 +23,8 @@ namespace CityFlow.UI
 
         private readonly List<CategoryTab> categoryTabs = new();
         private readonly List<TMP_Text> laneHeaderLabels = new();
-        private const float CategoryListWidth = 520f;
-        private const float CategoryCellHeight = 88f;
+        private const float CategoryListWidth = 500f;
+        private const float CategoryCellHeight = 108f;
         private const float CategoryRowGap = 12f;
         private Button unlockMenuButton;
         private RectTransform categoryBar;
@@ -36,7 +36,6 @@ namespace CityFlow.UI
         private ResearchCategory? selectedCategory;
         private bool catalogVisible;
         private bool catalogPresentationReady;
-        private bool startsCollapsed;
 
         internal Button UnlockMenuButtonForTest => unlockMenuButton;
         internal bool IsCatalogVisibleForTest => catalogVisible;
@@ -54,7 +53,6 @@ namespace CityFlow.UI
             }
 
             unlockMenuButton = FindMenuButton();
-            startsCollapsed = unlockMenuButton != null;
             TMP_Text styleSource = unlockMenuButton != null
                 ? unlockMenuButton.GetComponentInChildren<TMP_Text>(true)
                 : FindTemplateText();
@@ -70,13 +68,13 @@ namespace CityFlow.UI
                 unlockMenuButton = CreateButton(
                     "Unlock",
                     transform,
-                    "해금",
+                    "닫기",
                     styleSource,
                     new Color(0.08f, 0.43f, 0.36f, 1f));
             }
 
             unlockMenuButton.name = "Unlock";
-            SetButtonLabel(unlockMenuButton, "해금");
+            SetButtonLabel(unlockMenuButton, "닫기");
             PositionUnlockButton(unlockMenuButton);
             EnsureCategoryBar(styleSource);
             EnsureCatalogHeader(styleSource);
@@ -86,7 +84,7 @@ namespace CityFlow.UI
 
         private void InitializeCatalogPresentation()
         {
-            catalogVisible = !startsCollapsed;
+            catalogVisible = true;
             selectedCategory = null;
             ApplyCatalogSelection();
         }
@@ -96,7 +94,7 @@ namespace CityFlow.UI
             if (unlockMenuButton != null)
             {
                 unlockMenuButton.onClick.RemoveListener(
-                    ToggleUnlockCatalog);
+                    CloseResearchPanel);
             }
         }
 
@@ -108,16 +106,25 @@ namespace CityFlow.UI
             }
 
             unlockMenuButton.onClick.RemoveListener(
-                ToggleUnlockCatalog);
+                CloseResearchPanel);
             unlockMenuButton.onClick.AddListener(
-                ToggleUnlockCatalog);
+                CloseResearchPanel);
             unlockMenuButton.interactable = true;
         }
 
-        private void ToggleUnlockCatalog()
+        private void CloseResearchPanel()
         {
-            catalogVisible = !catalogVisible;
-            ApplyCatalogSelection();
+            UIDockController dock = dockController != null
+                ? dockController
+                : FindAnyObjectByType<UIDockController>(
+                    FindObjectsInactive.Include);
+            if (dock != null)
+            {
+                dock.CloseAllPanels();
+                return;
+            }
+
+            gameObject.SetActive(false);
         }
 
         private void SelectCategory(ResearchCategory? category)
@@ -184,8 +191,8 @@ namespace CityFlow.UI
                     : GetOverallCategoryListIndex(row);
                 RectTransform panel = GetComponent<RectTransform>();
                 float panelWidth = panel != null
-                    ? Mathf.Max(756f, panel.rect.width)
-                    : 756f;
+                    ? Mathf.Max(720f, panel.rect.width)
+                    : 720f;
                 float cardWidth = selectedCategory.HasValue
                     ? Mathf.Min(
                         CategoryListWidth,
@@ -439,8 +446,8 @@ namespace CityFlow.UI
                 categoryBar.anchorMax = new Vector2(0f, 1f);
                 categoryBar.pivot = new Vector2(0f, 1f);
                 categoryBar.anchoredPosition =
-                    new Vector2(PanelPadding, -108f);
-                categoryBar.sizeDelta = new Vector2(730f, 36f);
+                    new Vector2(PanelPadding, -94f);
+                categoryBar.sizeDelta = new Vector2(630f, 34f);
             }
 
             if (categoryTabs.Count > 0)
@@ -488,8 +495,8 @@ namespace CityFlow.UI
             rect.anchorMin = new Vector2(0f, 0.5f);
             rect.anchorMax = new Vector2(0f, 0.5f);
             rect.pivot = new Vector2(0f, 0.5f);
-            rect.anchoredPosition = new Vector2(index * 148f, 0f);
-            rect.sizeDelta = new Vector2(138f, 34f);
+            rect.anchoredPosition = new Vector2(index * 126f, 0f);
+            rect.sizeDelta = new Vector2(116f, 32f);
             button.onClick.AddListener(
                 () => SelectCategory(category));
             categoryTabs.Add(new CategoryTab(category, button));
@@ -756,18 +763,14 @@ namespace CityFlow.UI
 
         private void UpdateUnlockButtonColor()
         {
-            SetButtonLabel(
-                unlockMenuButton,
-                catalogVisible ? "닫기" : "해금");
+            SetButtonLabel(unlockMenuButton, "닫기");
 
             Image image = unlockMenuButton != null
                 ? unlockMenuButton.targetGraphic as Image
                 : null;
             if (image != null)
             {
-                image.color = catalogVisible
-                    ? new Color(0.10f, 0.62f, 0.50f, 1f)
-                    : new Color(0.08f, 0.48f, 0.40f, 1f);
+                image.color = new Color(0.72f, 0.24f, 0.22f, 1f);
             }
         }
 
@@ -847,7 +850,7 @@ namespace CityFlow.UI
             headerSurface.anchorMin = new Vector2(0f, 1f);
             headerSurface.anchorMax = new Vector2(1f, 1f);
             headerSurface.pivot = new Vector2(0.5f, 1f);
-            headerSurface.offsetMin = new Vector2(10f, -100f);
+            headerSurface.offsetMin = new Vector2(10f, -88f);
             headerSurface.offsetMax = new Vector2(-10f, -8f);
 
             LayoutHeaderText(
@@ -892,7 +895,7 @@ namespace CityFlow.UI
                 categoryBar.SetParent(panel, false);
                 categoryBar.SetAsLastSibling();
                 categoryBar.anchoredPosition =
-                    new Vector2(PanelPadding, -108f);
+                    new Vector2(PanelPadding, -94f);
             }
             if (unlockMenuButton != null)
             {
@@ -1008,30 +1011,33 @@ namespace CityFlow.UI
             Row row,
             float cardHeight)
         {
-            bool compact = cardHeight <= 90f;
-            float nameTop = compact ? 10f : 14f;
-            float nameBottom = compact ? 32f : 42f;
-            float progressTop = compact ? 34f : 46f;
-            float progressBottom = compact ? 56f : 70f;
-            float stateTop = compact ? 60f : cardHeight - 30f;
+            float nameTop = 10f;
+            float nameBottom = 34f;
+            float progressTop = 38f;
+            float progressBottom = 68f;
+            float stateTop = 72f;
             float stateBottom = cardHeight - 6f;
             LayoutCardLabel(
                 row.NameText,
                 new Vector2(14f, -nameTop),
                 new Vector2(-14f, -nameBottom),
-                compact ? 15f : 16f,
+                16f,
                 TextAlignmentOptions.TopLeft);
             LayoutCardLabel(
                 row.ProgressText,
                 new Vector2(14f, -progressTop),
                 new Vector2(-14f, -progressBottom),
-                compact ? 11f : 11.5f,
+                13.5f,
                 TextAlignmentOptions.TopLeft);
+            if (row.ProgressText != null)
+            {
+                row.ProgressText.textWrappingMode = TextWrappingModes.Normal;
+            }
             LayoutCardLabel(
                 row.StateText,
                 new Vector2(14f, -stateTop),
                 new Vector2(-14f, -stateBottom),
-                compact ? 11f : 11.5f,
+                12.5f,
                 TextAlignmentOptions.MidlineRight);
             LayoutStateBadge(row, cardHeight);
         }
@@ -1043,9 +1049,9 @@ namespace CityFlow.UI
             rect.anchorMin = new Vector2(1f, 1f);
             rect.anchorMax = new Vector2(1f, 1f);
             rect.pivot = new Vector2(1f, 1f);
-            float top = cardHeight <= 90f ? 60f : cardHeight - 30f;
+            float top = 72f;
             rect.anchoredPosition = new Vector2(-10f, -top);
-            rect.sizeDelta = new Vector2(86f, 24f);
+            rect.sizeDelta = new Vector2(174f, 26f);
         }
 
         private static void LayoutCardLabel(
