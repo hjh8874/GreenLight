@@ -70,102 +70,102 @@ MonoBehaviour:
   - id: hospital_preview
     type: 1
     clip: {fileID: 8300000, guid: 04820e39aae9c0d4bb6bdb097b5a5a39, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.08
     cooldownSeconds: 0
     preload: 1
   - id: school_preview
     type: 1
     clip: {fileID: 8300000, guid: 97ad5678f617b104daf762caeacc9fdc, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: house_preview
     type: 1
     clip: {fileID: 8300000, guid: 6e71ecb4cd03bbd428565feefc0f376a, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: office_preview
     type: 1
     clip: {fileID: 8300000, guid: 5eb9ced686476d6458527844125f2bd8, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: mall_preview
     type: 1
     clip: {fileID: 8300000, guid: 808551ffb70eedf4abed55a692c95e31, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: petrol_station_preview
     type: 1
     clip: {fileID: 8300000, guid: 5bd396eccb5098a4cb09d0edd276ccda, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: police_station_preview
     type: 1
     clip: {fileID: 8300000, guid: ca43247c6a909cd43bc82e2624545548, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.08
     cooldownSeconds: 0
     preload: 1
   - id: video_store_lever_preview
     type: 1
     clip: {fileID: 8300000, guid: 6484ea0df455f2641a0093a974eed787, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: video_store_projector_preview
     type: 1
     clip: {fileID: 8300000, guid: a355c519d164dab4ab30f508e772368a, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: pharmacy_preview
     type: 1
     clip: {fileID: 8300000, guid: a4509a5bb42ca1749b0798223e590895, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: coffee_shop_preview
     type: 1
     clip: {fileID: 8300000, guid: 68dcda8954081904fa0bb00e3d4782f4, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: cinema_epic_preview
     type: 1
     clip: {fileID: 8300000, guid: a7bfdcb767a52e1449edb578774235df, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: cinema_reveal_preview
     type: 1
     clip: {fileID: 8300000, guid: e0b2c856088d1684e91973a6d2fb1b90, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: cinema_comedy_preview
     type: 1
     clip: {fileID: 8300000, guid: aba1a408a5e3ef841a0dfa164cfd5e33, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: cinema_oriental_preview
     type: 1
     clip: {fileID: 8300000, guid: 1b93a96d8cb480b40b77730e0a4b93a6, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: cinema_calm_preview
     type: 1
     clip: {fileID: 8300000, guid: 828e4ba1421185f48bb759392999d41d, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
   - id: auto_repair_preview
     type: 1
     clip: {fileID: 8300000, guid: 87c97903f68472942bc19200399bc220, type: 3}
-    volumeScale: 0.5
+    volumeScale: 0.2
     cooldownSeconds: 0
     preload: 1
