@@ -23,6 +23,17 @@ namespace CityFlow.View
 
         public RoutePolyline Polyline => polyline;
 
+        public void Invalidate()
+        {
+            polyline = null;
+            cachedPathCount = -1;
+            cachedPathHash = 0;
+            cachedSourcePathCount = -1;
+            cachedSourcePathHash = 0;
+            roadTiles.Clear();
+            pathToRoadIndex.Clear();
+        }
+
         public bool MatchesSourcePath(BusRoute route)
         {
             IReadOnlyList<Vector2Int> sourcePath =
@@ -404,6 +415,27 @@ namespace CityFlow.View
             targetDistance = 0f;
             speed = 0f;
             hasDistance = false;
+            authorityTargetAdvancing = false;
+        }
+
+        public void RecoverToAuthoritativeDistance(
+            RoutePolyline nextPath,
+            float authoritativeDistance)
+        {
+            if (nextPath == null)
+            {
+                Reset();
+                return;
+            }
+
+            path = nextPath;
+            currentDistance = Mathf.Clamp(
+                authoritativeDistance,
+                0f,
+                path.Length);
+            targetDistance = currentDistance;
+            speed = 0f;
+            hasDistance = true;
             authorityTargetAdvancing = false;
         }
     }

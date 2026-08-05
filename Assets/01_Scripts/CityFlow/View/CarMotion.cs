@@ -834,6 +834,7 @@ namespace CityFlow.View
             vehicle.SettleRate = 0f;
             vehicle.TravelSpeed = 0f;
             vehicle.HasLastState = false;
+            vehicle.ViewRecovery.Reset();
             vehicle.BrakeOn = false;
             vehicle.NightLighting?.SetMoving(false);
             if (vehicle.BrakeLight != null)
@@ -869,6 +870,7 @@ namespace CityFlow.View
             vehicle.SettleRate = 0f;
             vehicle.TravelSpeed = 0f;
             vehicle.HasLastState = false;
+            vehicle.ViewRecovery.Reset();
             vehicle.BrakeOn = false;
             vehicle.NightLighting?.SetMoving(false);
             if (vehicle.BrakeLight != null)
@@ -909,6 +911,7 @@ namespace CityFlow.View
                 if (!vehicle.Settling)
                 {
                     RemoveVehiclePresentation(car);
+                    vehicle.ViewRecovery.Reset();
                 }
 
                 // Sim은 뷰보다 먼저 도착할 수 있다. 이때 현재 월드 위치→주차 앵커 MoveTowards는
@@ -1216,6 +1219,7 @@ namespace CityFlow.View
                     distanceToBoundary / remainingTickSeconds);
             }
 
+            bool spacingBlocked = false;
             bool corridorRegressed =
                 corridor < car.Distance;
             corridor =
@@ -1331,10 +1335,19 @@ namespace CityFlow.View
                         hardMinimumHeadway);
                 if (allowedAdvance < proposedAdvance - 0.0001f)
                 {
+                    spacingBlocked = true;
                     vehicle.TravelSpeed = Mathf.Min(vehicle.TravelSpeed, hardLeaderSpeed);
                 }
                 car.Distance = Mathf.Min(corridor, car.Distance + allowedAdvance);
             }
+
+            TryRecoverCommuteVehicleView(
+                car,
+                snapshot,
+                vehicle,
+                poly,
+                corridor,
+                spacingBlocked);
 
             Sample sample = poly.SampleAt(car.Distance);
             if (snapshot.LinkProgress01 > 0f)
@@ -1371,6 +1384,65 @@ namespace CityFlow.View
             HideJamMarks(vehicle);
             vehicle.LastState = snapshot.State;
             vehicle.HasLastState = true;
+        }
+
+        private bool TryRecoverCommuteVehicleView(
+            CommuteCar car,
+            CarSnapshot snapshot,
+            RouteVehicle vehicle,
+            RoutePolyline polyline,
+            float authoritativeDistance,
+            bool spacingBlocked)
+        {
+            int routeVersion = unchecked(
+                car.RouteIndex * 31 + (int)snapshot.State);
+            VehicleViewRecoveryReason reason =
+                vehicle.ViewRecovery.Observe(
+                    car.Distance,
+                    authoritativeDistance,
+                    tileSize,
+                    Time.unscaledDeltaTime,
+                    routeVersion,
+                    eligible: !spacingBlocked &&
+                              (snapshot.State == CarState.Outbound ||
+                               snapshot.State == CarState.Inbound),
+                    stopPresentationPending: false,
+                    profile: VehicleViewRecoveryProfile);
+            if (reason == VehicleViewRecoveryReason.None)
+            {
+                return false;
+            }
+
+            float previousDistance = car.Distance;
+            float recoveredDistance = ReprojectDistance(
+                snapshot,
+                polyline,
+                snapshot.QueueOffsetTiles);
+            car.Distance = spacingBlocked
+                ? previousDistance
+                : Mathf.Clamp(
+                    Mathf.Max(previousDistance, recoveredDistance),
+                    0f,
+                    polyline.Length);
+            vehicle.CurrentSpeed = 0f;
+            vehicle.TravelSpeed = 0f;
+            vehicle.HasTickTarget = false;
+            vehicle.TargetTileIndex = -1;
+            vehicle.TargetRouteIndex = -1;
+            intersectionMotionStates.Remove(vehicle);
+            RemoveVehiclePresentation(car);
+            commuteRoutesBuilt = false;
+            vehicle.ViewRecovery.Synchronize(
+                car.Distance,
+                routeVersion);
+
+            Debug.LogWarning(
+                $"[VehicleViewRecovery] Car view recovered ({reason}). " +
+                $"mode={(spacingBlocked ? "rebake" : "resync")}, " +
+                $"route={car.RouteIndex}, tile={snapshot.TileIndex}, " +
+                $"distance={previousDistance:F3}->{car.Distance:F3}.",
+                vehicle.Object);
+            return true;
         }
 
         private void SetForwardBuildingParkingRotation(RouteVehicle vehicle, Vector2Int building)

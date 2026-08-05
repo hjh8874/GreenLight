@@ -43,6 +43,7 @@ namespace CityFlow.View
         private float parkingApproachDistance = 0.7f;
 
         private readonly List<Vector2Int> bakedRoadTiles = new();
+        private readonly VehicleViewRecoveryMonitor viewRecovery = new();
         private IReadOnlyTileData tileData;
         private CityFlowServices services;
         private IRoadTrafficService roadTraffic;
@@ -243,6 +244,7 @@ namespace CityFlow.View
 
             if (offRoadTransitionActive)
             {
+                viewRecovery.Reset();
                 nightLighting?.SetMoving(true);
                 UpdateOffRoadTransition();
                 UpdateSchoolBusVisibilityDiagnostics();
@@ -816,6 +818,7 @@ namespace CityFlow.View
             if (!busRoute.TryGetRoadTrafficSnapshot(
                     out RoadTrafficSnapshot snapshot))
             {
+                viewRecovery.Reset();
                 cityView?.RemoveVehiclePresentation(this);
                 LogMissingTrafficSnapshot();
                 return;
@@ -827,6 +830,7 @@ namespace CityFlow.View
                 !TryBakeRoadPath(out bool pathChanged) ||
                 roadPolyline == null)
             {
+                viewRecovery.Reset();
                 cityView?.RemoveVehiclePresentation(this);
                 return;
             }
@@ -857,6 +861,9 @@ namespace CityFlow.View
                 segmentElapsed = 0f;
                 segmentDuration = 0f;
                 hasRoadPose = true;
+                viewRecovery.Synchronize(
+                    currentDistance,
+                    busRoute.RoadSegmentVersion);
                 bool visualWasInactive =
                     !visual.gameObject.activeSelf;
                 visual.gameObject.SetActive(true);
@@ -885,6 +892,7 @@ namespace CityFlow.View
                     stepInterval * (1f - stepProgress));
             }
 
+            bool spacingBlocked = false;
             if (currentDistance < targetDistance - 0.0001f)
             {
                 segmentElapsed = Mathf.Min(
@@ -940,7 +948,7 @@ namespace CityFlow.View
                         yieldToCrossFlowCars: true,
                         out leader)
                     : proposedDistance;
-                bool spacingBlocked =
+                spacingBlocked =
                     limitedDistance < proposedDistance - 0.0001f;
                 if (spacingBlocked &&
                     Time.unscaledTime >= nextVehicleSpacingWarningTime)
@@ -959,6 +967,14 @@ namespace CityFlow.View
                     segmentStartDistance = currentDistance;
                     segmentElapsed = 0f;
                 }
+            }
+
+            if (TryRecoverRoadPresentation(
+                    snapshot,
+                    nextTarget,
+                    spacingBlocked))
+            {
+                return;
             }
 
             ApplyRoadSample(snapshot);
@@ -1036,6 +1052,96 @@ namespace CityFlow.View
             {
                 ResetStopPresentationTarget();
             }
+        }
+
+        private bool TryRecoverRoadPresentation(
+            RoadTrafficSnapshot snapshot,
+            float authoritativeDistance,
+            bool spacingBlocked)
+        {
+            if (cityView == null || busRoute == null ||
+                roadPolyline == null)
+            {
+                return false;
+            }
+
+            bool stopPresentationPending =
+                busRoute.IsStopPresentationPending;
+            bool eligible = snapshot.IsVisible &&
+                            snapshot.State !=
+                            RoadTrafficAgentState.Paused &&
+                            snapshot.State !=
+                            RoadTrafficAgentState.RouteUnavailable &&
+                            (!spacingBlocked ||
+                             stopPresentationPending);
+            VehicleViewRecoveryReason reason =
+                viewRecovery.Observe(
+                    currentDistance,
+                    authoritativeDistance,
+                    cityView.TileSize,
+                    Time.unscaledDeltaTime,
+                    busRoute.RoadSegmentVersion,
+                    eligible,
+                    stopPresentationPending,
+                    cityView.VehicleViewRecoveryProfile);
+            if (reason == VehicleViewRecoveryReason.None)
+            {
+                return false;
+            }
+
+            float previousDistance = currentDistance;
+            hasRoadPathHash = false;
+            ResetStopPresentationTarget();
+            if (!TryBakeRoadPath(out _) || roadPolyline == null ||
+                !TryGetRoadTargetDistance(
+                    snapshot,
+                    out float recoveredDistance))
+            {
+                return false;
+            }
+
+            if (stopPresentationPending)
+            {
+                recoveredDistance = ResolveStopPresentationTarget(
+                    recoveredDistance);
+            }
+
+            bool forceResynchronize =
+                reason == VehicleViewRecoveryReason
+                    .StopPresentationTimeout ||
+                !spacingBlocked;
+            currentDistance = forceResynchronize
+                ? Mathf.Clamp(
+                    recoveredDistance,
+                    0f,
+                    roadPolyline.Length)
+                : Mathf.Clamp(
+                    previousDistance,
+                    0f,
+                    roadPolyline.Length);
+            targetDistance = currentDistance;
+            segmentStartDistance = currentDistance;
+            segmentElapsed = 0f;
+            segmentDuration = 0f;
+            presentationSpeed = 0f;
+            hasPreviousPresentationDistance = false;
+            cityView.RemoveVehiclePresentation(this);
+            viewRecovery.Synchronize(
+                currentDistance,
+                busRoute.RoadSegmentVersion);
+            ApplyRoadSample(snapshot);
+            TryConfirmStopPresentationReached(
+                snapshot,
+                currentDistance);
+
+            Debug.LogWarning(
+                $"[VehicleViewRecovery] {snapshot.Kind} view recovered " +
+                $"({reason}). distance={previousDistance:F3}->" +
+                $"{currentDistance:F3}, " +
+                $"mode={(forceResynchronize ? "resync" : "rebake")}, " +
+                $"tile={snapshot.CurrentTile}.",
+                this);
+            return true;
         }
 
         private bool TryGetRoadTargetDistance(
@@ -1649,6 +1755,7 @@ namespace CityFlow.View
             offRoadTransitionActive = false;
             isParkedOffRoad = false;
             hasRoadPose = false;
+            viewRecovery.Reset();
             observedRoadSegmentVersion = -1;
             segmentElapsed = 0f;
             segmentDuration = 0f;

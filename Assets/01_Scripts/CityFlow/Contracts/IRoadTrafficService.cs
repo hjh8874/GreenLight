@@ -188,6 +188,29 @@ namespace CityFlow.Contracts
         public Vector2Int Destination { get; }
     }
 
+    public readonly struct RoadTrafficRecoveryRequest
+    {
+        public RoadTrafficRecoveryRequest(
+            RoadTrafficAgentId agentId,
+            RoadTrafficAgentKind kind,
+            Vector2Int currentTile,
+            Vector2Int destination,
+            int blockedTicks)
+        {
+            AgentId = agentId;
+            Kind = kind;
+            CurrentTile = currentTile;
+            Destination = destination;
+            BlockedTicks = Mathf.Max(0, blockedTicks);
+        }
+
+        public RoadTrafficAgentId AgentId { get; }
+        public RoadTrafficAgentKind Kind { get; }
+        public Vector2Int CurrentTile { get; }
+        public Vector2Int Destination { get; }
+        public int BlockedTicks { get; }
+    }
+
     public interface IRoadTrafficService
     {
         int RegisteredAgentCount { get; }
@@ -195,6 +218,7 @@ namespace CityFlow.Contracts
         float StepProgress01 { get; }
 
         event Action<RoadTrafficArrivalEvent> AgentArrived;
+        event Action<RoadTrafficRecoveryRequest> RecoveryRequested;
 
         bool TryRegisterAgent(
             RoadTrafficAgentRegistration registration,
