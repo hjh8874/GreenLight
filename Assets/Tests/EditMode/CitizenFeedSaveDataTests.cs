@@ -203,13 +203,21 @@ namespace CityFlow.Sim.Tests
                 "폴백 시각(0h)으로는 경과시간이 음수라 만료 판정이 나지 않는다");
         }
 
+        /// <summary>
+        /// 피드 필드 추가가 옛 세이브를 거부하게 만들지 않는지 본다.
+        /// 전역 버전 숫자를 단언하지 않는다 — 다른 시스템이 정당하게 버전을 올릴 때
+        /// 피드와 무관한 이 테스트가 깨지면 안 된다. 계약은 "옛 세이브도 지원 범위"다.
+        /// </summary>
         [Test]
-        public void SaveVersion_IsUnchanged()
+        public void OldSaveVersion_IsStillSupported()
         {
-            // 필드 추가는 옛 세이브에서 null로 들어와 ?? new로 흡수되므로
-            // 버전을 올릴 이유가 없다. 올리면 옛 세이브가 통째로 거부된다.
-            Assert.AreEqual(1, CityFlow.Save.SaveConstants.CurrentSaveVersion);
-            Assert.AreEqual(1, CityFlow.Save.SaveConstants.MinimumSupportedSaveVersion);
+            Assert.IsTrue(
+                CityFlow.Save.SaveConstants.IsSupportedSaveVersion(1),
+                "CitizenFeed 필드는 null로 흡수되므로 버전 1 세이브를 계속 읽어야 한다");
+            Assert.LessOrEqual(
+                CityFlow.Save.SaveConstants.MinimumSupportedSaveVersion,
+                1,
+                "최소 지원 버전이 1을 넘으면 기존 세이브가 통째로 거부된다");
         }
     }
 }

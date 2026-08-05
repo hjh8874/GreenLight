@@ -171,6 +171,55 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void ApplyLimits_ChangesExpiryAndCapacity()
+        {
+            var ledger = new CitizenConcernLedger();
+            ledger.ApplyLimits(2.0, 3);
+
+            Assert.AreEqual(2.0, ledger.ExpiryGameHours);
+            Assert.AreEqual(3, ledger.Capacity);
+
+            ledger.Open("가", V(1, 1), CitizenFeedConcernKind.Congestion, 10.0);
+            Assert.IsFalse(
+                ledger.TryResolve(V(1, 1), CitizenFeedConcernKind.Congestion, 12.5, out _),
+                "설정 만료(2시간)를 넘기면 버려야 한다");
+
+            for (int i = 0; i < 5; i++)
+            {
+                ledger.Open($"시민{i}", V(i, 5), CitizenFeedConcernKind.Congestion, 20.0);
+            }
+
+            Assert.AreEqual(3, ledger.Count, "설정 상한(3)을 지켜야 한다");
+        }
+
+        [Test]
+        public void ApplyLimits_ShrinkingCapacity_TrimsImmediately()
+        {
+            var ledger = new CitizenConcernLedger();
+            for (int i = 0; i < 6; i++)
+            {
+                ledger.Open($"시민{i}", V(i, 0), CitizenFeedConcernKind.Congestion, 10.0);
+            }
+
+            ledger.ApplyLimits(24.0, 2);
+
+            Assert.AreEqual(2, ledger.Count, "상한을 줄이면 즉시 오래된 것부터 잘라낸다");
+            Assert.IsTrue(
+                ledger.TryResolve(V(5, 0), CitizenFeedConcernKind.Congestion, 11.0, out _),
+                "가장 최근 것은 남는다");
+        }
+
+        [Test]
+        public void ApplyLimits_RejectsNonPositive_FallsBackToDefaults()
+        {
+            var ledger = new CitizenConcernLedger();
+            ledger.ApplyLimits(0.0, 0);
+
+            Assert.AreEqual(CitizenConcernLedger.DefaultExpiryGameHours, ledger.ExpiryGameHours);
+            Assert.AreEqual(CitizenConcernLedger.DefaultCapacity, ledger.Capacity);
+        }
+
+        [Test]
         public void SnapshotRestore_RoundTrips()
         {
             var ledger = new CitizenConcernLedger();

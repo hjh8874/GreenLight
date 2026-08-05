@@ -40,14 +40,33 @@ namespace CityFlow.Feed
     /// </summary>
     public sealed class CitizenConcernLedger
     {
-        public const double ExpiryGameHours = 24.0;
-        public const int Capacity = 32;
+        // SO가 없을 때(테스트 등) 쓰는 기본값. 운영 값은 FeedSystemSettingsSO에 있다.
+        public const double DefaultExpiryGameHours = 24.0;
+        public const int DefaultCapacity = 32;
 
         // 삽입 순서를 유지한다 — 상한 초과 시 가장 오래된 것부터 버리기 위해서다.
         private readonly List<CitizenConcernRecord> records =
-            new List<CitizenConcernRecord>(Capacity);
+            new List<CitizenConcernRecord>(DefaultCapacity);
+
+        private double expiryGameHours = DefaultExpiryGameHours;
+        private int capacity = DefaultCapacity;
 
         public int Count => records.Count;
+        public double ExpiryGameHours => expiryGameHours;
+        public int Capacity => capacity;
+
+        /// <summary>
+        /// 설정 SO의 값을 반영한다. 나머지 피드 노브가 전부 SO에 있으므로
+        /// 장부만 하드코딩으로 남으면 튜닝 지점이 두 곳으로 갈린다.
+        /// </summary>
+        public void ApplyLimits(double targetExpiryGameHours, int targetCapacity)
+        {
+            expiryGameHours = targetExpiryGameHours > 0d
+                ? targetExpiryGameHours
+                : DefaultExpiryGameHours;
+            capacity = targetCapacity > 0 ? targetCapacity : DefaultCapacity;
+            TrimToCapacity();
+        }
 
         public void Open(
             string authorName,
@@ -62,10 +81,7 @@ namespace CityFlow.Feed
             // 오래된 걸 남겨두면 해결 글이 엉뚱한 사람에게 간다.
             RemoveMatch(tile, kind);
 
-            if (records.Count >= Capacity)
-            {
-                records.RemoveAt(0);
-            }
+            TrimToCapacity(capacity - 1);
 
             records.Add(new CitizenConcernRecord(authorName, tile, kind, atHour));
         }
@@ -141,7 +157,7 @@ namespace CityFlow.Feed
             {
                 if (string.IsNullOrEmpty(record.AuthorName)) continue;
                 if (IsExpired(record, nowHour)) continue;
-                if (records.Count >= Capacity) break;
+                if (records.Count >= capacity) break;
                 records.Add(record);
             }
         }
@@ -203,9 +219,15 @@ namespace CityFlow.Feed
             }
         }
 
-        private static bool IsExpired(CitizenConcernRecord record, double atHour)
+        private void TrimToCapacity(int limit = -1)
         {
-            return atHour - record.OpenedAtHour > ExpiryGameHours;
+            int max = limit >= 0 ? limit : capacity;
+            while (records.Count > max) records.RemoveAt(0);
+        }
+
+        private bool IsExpired(CitizenConcernRecord record, double atHour)
+        {
+            return atHour - record.OpenedAtHour > expiryGameHours;
         }
     }
 }

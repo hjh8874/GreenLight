@@ -114,6 +114,115 @@ namespace CityFlow.Feed
             RebuildLookups();
         }
 
+        /// <summary>
+        /// 목록의 항목 중 **아직 없는 것만** 더한다. 씬에 직렬화된 참조는 그대로 두므로
+        /// 손으로 맞춘 구성이 덮이지 않는다.
+        ///
+        /// 씬의 직렬화 배열만으로는 통합이 깨지기 때문에 존재한다 — 규칙이 늘거나
+        /// 에셋이 재생성되면 배열에 안 들어가거나 참조가 끊기고, 해당 이벤트가
+        /// 에러 없이 조용히 무동작이 된다.
+        /// </summary>
+        /// <returns>실제로 더해진 항목 수.</returns>
+        public int MergeFrom(FeedCatalogSO catalog)
+        {
+            if (catalog == null) return 0;
+
+            int added = 0;
+            if (settings == null && catalog.Settings != null)
+            {
+                settings = catalog.Settings;
+                added++;
+            }
+
+            added += MergeRules(catalog.Rules);
+            added += MergeTemplates(catalog.TemplateCollections);
+            added += MergeAuthors(catalog.Authors);
+
+            if (added > 0)
+            {
+                RebuildLookups();
+                // 데이터가 비어 있어 초기화에 실패했던 경우를 여기서 되살린다.
+                initialized = initialized ||
+                    services != null && settings != null &&
+                    ruleByType.Count > 0 && templatesByType.Count > 0;
+            }
+
+            return added;
+        }
+
+        private int MergeRules(FeedEventRuleSO[] incoming)
+        {
+            if (incoming == null || incoming.Length == 0) return 0;
+
+            var merged = new List<FeedEventRuleSO>(eventRules);
+            var present = new HashSet<CitizenFeedEventType>();
+            foreach (FeedEventRuleSO existing in merged)
+            {
+                if (existing != null) present.Add(existing.EventType);
+            }
+
+            int added = 0;
+            foreach (FeedEventRuleSO rule in incoming)
+            {
+                if (rule == null || !present.Add(rule.EventType)) continue;
+                merged.Add(rule);
+                added++;
+            }
+
+            if (added > 0) eventRules = merged.ToArray();
+            return added;
+        }
+
+        private int MergeTemplates(FeedTemplateCollectionSO[] incoming)
+        {
+            if (incoming == null || incoming.Length == 0) return 0;
+
+            var merged = new List<FeedTemplateCollectionSO>(templateCollections);
+            var present = new HashSet<CitizenFeedEventType>();
+            foreach (FeedTemplateCollectionSO existing in merged)
+            {
+                if (existing != null) present.Add(existing.EventType);
+            }
+
+            int added = 0;
+            foreach (FeedTemplateCollectionSO collection in incoming)
+            {
+                if (collection == null || !present.Add(collection.EventType)) continue;
+                merged.Add(collection);
+                added++;
+            }
+
+            if (added > 0) templateCollections = merged.ToArray();
+            return added;
+        }
+
+        private int MergeAuthors(FeedAuthorProfileSO[] incoming)
+        {
+            if (incoming == null || incoming.Length == 0) return 0;
+
+            var merged = new List<FeedAuthorProfileSO>(authors);
+            var present = new HashSet<string>();
+            foreach (FeedAuthorProfileSO existing in merged)
+            {
+                if (existing != null && !string.IsNullOrEmpty(existing.DisplayName))
+                {
+                    present.Add(existing.DisplayName);
+                }
+            }
+
+            int added = 0;
+            foreach (FeedAuthorProfileSO author in incoming)
+            {
+                if (author == null || string.IsNullOrEmpty(author.DisplayName)) continue;
+                if (!present.Add(author.DisplayName)) continue;
+                merged.Add(author);
+                added++;
+            }
+
+            if (added > 0) authors = merged.ToArray();
+            return added;
+        }
+
         public void Initialize(CityFlowServices targetServices)
         {
             if (targetServices == null || services == targetServices && initialized)
@@ -821,6 +930,14 @@ namespace CityFlow.Feed
                 {
                     templatesByType[collection.EventType] = collection;
                 }
+            }
+
+            // 장부 노브도 설정 SO를 따른다 — 튜닝 지점이 두 곳으로 갈리지 않게.
+            if (settings != null)
+            {
+                ledger.ApplyLimits(
+                    settings.ConcernExpiryGameHours,
+                    settings.ConcernCapacity);
             }
 
             authorByName.Clear();

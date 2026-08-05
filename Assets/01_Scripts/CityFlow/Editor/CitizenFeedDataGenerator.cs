@@ -460,9 +460,7 @@ namespace CityFlow.EditorTools
                 CitizenFeedEventType.TimePeriodChanged,
                 CreateTimePeriodTemplates());
 
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-            return new CitizenFeedV1Assets(
+            var assembled = new CitizenFeedV1Assets(
                 settings,
                 new[]
                 {
@@ -517,6 +515,129 @@ namespace CityFlow.EditorTools
                     emergencyResolvedTemplates,
                     timePeriodTemplates
                 });
+
+            // 목록과 통합 프리팹을 갱신한 뒤 저장한다. 씬의 직렬화 배열에 의존하지
+            // 않고 데이터가 전달되는 경로가 여기다.
+            FeedCatalogSO catalog = UpdateCatalog(assembled);
+            EnsureIntegrationPrefab(catalog);
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            return assembled;
+        }
+
+        /// <summary>
+        /// 폐기된 에셋인가. #164에서 제거된 Stability 계열이 파일로 남아 있다.
+        /// </summary>
+        private static bool IsDeprecated(string assetPath) =>
+            assetPath.Contains("_DEPRECATED");
+
+        /// <summary>
+        /// 폴더에 있는 에셋을 전부 모은다. 손으로 나열하지 않는 이유는 하나다 —
+        /// 나열을 빠뜨리면 그 이벤트가 조용히 무동작이 된다. 실제로 Rule_JobChanged
+        /// (#207 이직 피드)가 제너레이터 배열에 빠져 있어, 제너레이터를 돌리면
+        /// ApplyToActiveScene의 Configure가 배열을 통째로 교체하며 그 규칙을 날렸다.
+        /// </summary>
+        private static T[] CollectGenerated<T>() where T : ScriptableObject
+        {
+            string[] guids = AssetDatabase.FindAssets(
+                $"t:{typeof(T).Name}", new[] { RootFolder });
+            var found = new System.Collections.Generic.List<T>(guids.Length);
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (IsDeprecated(path)) continue;
+                T asset = AssetDatabase.LoadAssetAtPath<T>(path);
+                if (asset != null) found.Add(asset);
+            }
+
+            return found.ToArray();
+        }
+
+        /// <summary>
+        /// 목록을 만들거나 갱신한다. 내용이 실제로 바뀌었을 때만 버전을 올린다 —
+        /// 제너레이터를 여러 번 돌린다고 버전이 계속 오르면 추적 의미가 없다.
+        /// </summary>
+        private static FeedCatalogSO UpdateCatalog(CitizenFeedV1Assets assets)
+        {
+            string path = $"{RootFolder}/FeedCatalog.asset";
+            FeedCatalogSO catalog = AssetDatabase.LoadAssetAtPath<FeedCatalogSO>(path);
+            bool isNew = catalog == null;
+            if (isNew)
+            {
+                catalog = ScriptableObject.CreateInstance<FeedCatalogSO>();
+                AssetDatabase.CreateAsset(catalog, path);
+            }
+
+            // 이번 실행이 만든 것만이 아니라 폴더 전체를 담는다.
+            FeedEventRuleSO[] rules = CollectGenerated<FeedEventRuleSO>();
+            FeedTemplateCollectionSO[] templates = CollectGenerated<FeedTemplateCollectionSO>();
+            FeedAuthorProfileSO[] catalogAuthors = CollectGenerated<FeedAuthorProfileSO>();
+
+            bool changed = isNew
+                || catalog.Rules.Length != rules.Length
+                || catalog.Authors.Length != catalogAuthors.Length
+                || catalog.TemplateCollections.Length != templates.Length
+                || catalog.Settings != assets.Settings;
+
+            catalog.Configure(
+                changed ? catalog.CatalogVersion + (isNew ? 0 : 1) : catalog.CatalogVersion,
+                assets.Settings,
+                rules,
+                catalogAuthors,
+                templates);
+            EditorUtility.SetDirty(catalog);
+
+            if (changed)
+            {
+                Debug.Log(
+                    $"[CitizenFeedDataGenerator] 목록 v{catalog.CatalogVersion} — " +
+                    $"규칙 {rules.Length} · 템플릿 {templates.Length} " +
+                    $"· 작성자 {catalogAuthors.Length}");
+            }
+
+            return catalog;
+        }
+
+        /// <summary>
+        /// 통합 담당자가 배치할 프리팹 하나를 만든다. 이미 있으면 목록 참조만 갱신한다.
+        /// </summary>
+        private static void EnsureIntegrationPrefab(FeedCatalogSO catalog)
+        {
+            const string prefabFolder = "Assets/02_Prefabs/Feed";
+            const string prefabPath = prefabFolder + "/CitizenFeedIntegration.prefab";
+            EnsureFolder(prefabFolder);
+
+            GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (existing != null)
+            {
+                var installed = existing.GetComponent<CitizenFeedIntegrationInstaller>();
+                if (installed != null)
+                {
+                    var so = new SerializedObject(installed);
+                    so.FindProperty("catalog").objectReferenceValue = catalog;
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                    EditorUtility.SetDirty(existing);
+                }
+
+                return;
+            }
+
+            var root = new GameObject("CitizenFeedIntegration");
+            try
+            {
+                var installer = root.AddComponent<CitizenFeedIntegrationInstaller>();
+                var so = new SerializedObject(installer);
+                so.FindProperty("catalog").objectReferenceValue = catalog;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
+                Debug.Log(
+                    $"[CitizenFeedDataGenerator] 통합 프리팹을 만들었습니다: {prefabPath}");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
         }
 
         private static void ApplyToActiveScene(CitizenFeedV1Assets assets)

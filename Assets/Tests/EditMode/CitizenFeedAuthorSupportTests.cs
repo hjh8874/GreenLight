@@ -16,9 +16,16 @@ namespace CityFlow.Sim.Tests
     /// </summary>
     public class CitizenFeedAuthorSupportTests
     {
+        // 제너레이터가 관리하는 폴더로 한정한다. 프로젝트 전체를 훑으면
+        // 누가 다른 곳에 좁은 preferredEvents를 가진 프로필을 하나 두는 순간
+        // 이 회귀 가드가 흔들린다.
+        private const string GeneratedFolder = "Assets/05_ScriptableObjects/Feed";
+
         private static FeedAuthorProfileSO[] LoadAuthors()
         {
-            string[] guids = AssetDatabase.FindAssets("t:FeedAuthorProfileSO");
+            string[] guids = AssetDatabase.FindAssets(
+                "t:FeedAuthorProfileSO",
+                new[] { GeneratedFolder });
             var authors = new FeedAuthorProfileSO[guids.Length];
             for (int i = 0; i < guids.Length; i++)
             {

@@ -31,6 +31,12 @@ namespace CityFlow.Feed
         [Header("Writing Style")]
         [SerializeField, Range(0f, 1f)] private float decorationChance = 0.35f;
 
+        [Header("Concern Ledger")]
+        [Tooltip("불만을 기억해 두는 기간. 넘기면 후속 글 대상에서 빠진다.")]
+        [SerializeField, Min(1f)] private float concernExpiryGameHours = 24f;
+        [Tooltip("동시에 기억하는 불만 수. 넘치면 오래된 것부터 버린다.")]
+        [SerializeField, Min(1)] private int concernCapacity = 32;
+
         public float MinimumRealSecondsBetweenPosts => minimumRealSecondsBetweenPosts;
         public int MaximumPostsPerGameHour => maximumPostsPerGameHour;
         public int MaximumPostsPerGameDay => maximumPostsPerGameDay;
@@ -45,6 +51,8 @@ namespace CityFlow.Feed
         public int VehicleSurgeCount => vehicleSurgeCount;
         public float VehicleSurgeResetRatio => vehicleSurgeResetRatio;
         public float DecorationChance => decorationChance;
+        public float ConcernExpiryGameHours => concernExpiryGameHours;
+        public int ConcernCapacity => concernCapacity;
 
 #if UNITY_EDITOR
         public void ConfigureDefaults()
@@ -63,6 +71,8 @@ namespace CityFlow.Feed
             vehicleSurgeCount = 20;
             vehicleSurgeResetRatio = 0.65f;
             decorationChance = 0.35f;
+            concernExpiryGameHours = 24f;
+            concernCapacity = 32;
         }
 #endif
 
