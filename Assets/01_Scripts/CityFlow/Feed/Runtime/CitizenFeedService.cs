@@ -2,11 +2,15 @@ using System;
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using UnityEngine;
 
 namespace CityFlow.Feed
 {
-    public sealed class CitizenFeedService : MonoBehaviour, ICityFlowServiceConsumer
+    public sealed class CitizenFeedService :
+        MonoBehaviour,
+        ICityFlowServiceConsumer,
+        ICitizenFeedSaveSource
     {
         [Header("Feed Data")]
         [SerializeField] private FeedSystemSettingsSO settings;
@@ -38,6 +42,11 @@ namespace CityFlow.Feed
         private readonly Dictionary<string, double> lastTemplateHour = new Dictionary<string, double>();
         private readonly List<FeedCandidate> candidates = new List<FeedCandidate>(32);
         private readonly List<Vector2Int> signalRemovalBuffer = new List<Vector2Int>();
+        private readonly CitizenConcernLedger ledger = new CitizenConcernLedger();
+        // 장부는 작성자를 이름으로 기억한다(FeedAuthorProfileSO에 안정적 id가 없다).
+        // 후속 글에서 이름 → 프로필로 되돌리기 위한 역인덱스.
+        private readonly Dictionary<string, FeedAuthorProfileSO> authorByName =
+            new Dictionary<string, FeedAuthorProfileSO>();
 
         private CityFlowServices services;
         private IGameCalendarService calendar;
@@ -52,6 +61,9 @@ namespace CityFlow.Feed
         private int postsThisDay;
         private bool vehicleSurgeArmed = true;
         private bool initialized;
+        // null = 아직 기록 전. 로드 직후 첫 관측은 기록만 하고 발행하지 않는다 —
+        // 안 그러면 세이브를 열 때마다 "좋은 아침"이 튀어나온다.
+        private CitizenFeedTimePeriod? lastTimePeriod;
 
         public FeedSystemSettingsSO Settings => settings;
         public event Action<CitizenFeedPost> PostGenerated;
@@ -81,6 +93,7 @@ namespace CityFlow.Feed
             ObserveSignals();
             ObserveSustainedCongestion();
             ObserveVehicleSurge();
+            ObserveTimePeriod();
         }
 
         private void OnDestroy()
@@ -117,7 +130,15 @@ namespace CityFlow.Feed
             services.Events.InfrastructureChanged += OnInfrastructureChanged;
             services.Events.Arrival += OnArrival;
             services.Events.JobChanged += OnJobChanged;
+            // 이미 발행되고 있었으나 듣지 않던 신호들.
+            // ⚠️ 이벤트 이름과 타입 이름이 다르다 — EmergencyIncidentAlertEvent(타입) /
+            //    EmergencyIncidentAlerted(이벤트). 타입명으로 쓰면 컴파일이 안 된다.
+            services.Events.FlowBurst += OnFlowBurst;
+            services.Events.Placed += OnPlaced;
+            services.Events.EmergencyIncidentAlerted += OnEmergencyAlerted;
+            services.Events.EmergencyIncidentOutcomeReported += OnEmergencyOutcomeReported;
             services.GameCalendarRegistered += OnGameCalendarRegistered;
+            services.RegisterCitizenFeedSaveSource(this);
             BindCalendar(services.GameCalendar);
             RebuildLookups();
             SnapshotSignals();
@@ -187,7 +208,16 @@ namespace CityFlow.Feed
 
         private bool TryGeneratePost(in CitizenFeedContext context)
         {
-            if (!CanAttemptPost(context, out FeedEventRuleSO rule, out double absoluteHour))
+            // 후속 글 여부를 먼저 안다. 상한 판단이 여기에 걸리기 때문이다.
+            // 소비형 TryResolve가 아니라 TryPeek을 쓰는 이유 — 이 시점엔 글이 나갈지 모른다.
+            double peekHour = GetAbsoluteGameHour();
+            string pinnedName = null;
+            bool isFollowUp =
+                TryGetResolveKind(context.EventType, out CitizenFeedConcernKind resolveKind) &&
+                ledger.TryPeek(context.Tile, resolveKind, peekHour, out pinnedName);
+
+            if (!CanAttemptPost(
+                    context, isFollowUp, out FeedEventRuleSO rule, out double absoluteHour))
             {
                 return false;
             }
@@ -204,7 +234,16 @@ namespace CityFlow.Feed
                 return false;
             }
 
-            FeedCandidate selected = SelectCandidate(context.EventType, rule, absoluteHour);
+            // 이어받는 글은 그 사람이 써야 의미가 있다. 그 사람으로 글을 못 만들면
+            // (템플릿이 없거나 하면) 아무나 쓰는 일반 글로 조용히 떨어진다.
+            FeedAuthorProfileSO pinnedAuthor = isFollowUp ? FindAuthor(pinnedName) : null;
+            FeedCandidate selected =
+                SelectCandidate(context.EventType, rule, absoluteHour, pinnedAuthor);
+            if (selected == null && pinnedAuthor != null)
+            {
+                selected = SelectCandidate(context.EventType, rule, absoluteHour, null);
+            }
+
             if (selected == null)
             {
                 return false;
@@ -228,6 +267,17 @@ namespace CityFlow.Feed
             RecordPost(context, rule, selected, absoluteHour);
             PostGenerated?.Invoke(post);
 
+            // 장부 갱신은 글이 실제로 나간 뒤에만 한다. 점수·확률 게이트에서 걸러진
+            // 이벤트는 시민이 말한 적이 없으므로 이어받을 것도, 지울 것도 없다.
+            if (isFollowUp)
+            {
+                ledger.TryResolve(context.Tile, resolveKind, absoluteHour, out _);
+            }
+            else if (TryGetConcernKind(context.EventType, out CitizenFeedConcernKind openKind))
+            {
+                ledger.Open(selected.Author.DisplayName, context.Tile, openKind, absoluteHour);
+            }
+
             if (settings.LogDiagnostics)
             {
                 Debug.Log(
@@ -240,6 +290,7 @@ namespace CityFlow.Feed
 
         private bool CanAttemptPost(
             in CitizenFeedContext context,
+            bool isFollowUp,
             out FeedEventRuleSO rule,
             out double absoluteHour)
         {
@@ -253,8 +304,19 @@ namespace CityFlow.Feed
             }
 
             RefreshRateBuckets(absoluteHour);
-            if (postsThisHour >= settings.MaximumPostsPerGameHour ||
-                postsThisDay >= settings.MaximumPostsPerGameDay ||
+
+            // 시간당 상한에 후속 글용 1칸을 예약한다. 이게 없으면 플레이어가 문제를
+            // 고쳤는데 아무도 알아보지 않는, 이 기능이 존재할 이유가 사라지는 결과가 난다.
+            // 후속 글은 짝이 있을 때만 생기므로 이 예외로 도배가 될 수 없다.
+            int hourlyCap = isFollowUp
+                ? settings.MaximumPostsPerGameHour + 1
+                : settings.MaximumPostsPerGameHour;
+            int dailyCap = isFollowUp
+                ? settings.MaximumPostsPerGameDay + 1
+                : settings.MaximumPostsPerGameDay;
+
+            if (postsThisHour >= hourlyCap ||
+                postsThisDay >= dailyCap ||
                 Time.unscaledTime - lastPostRealTime < settings.MinimumRealSecondsBetweenPosts)
             {
                 return false;
@@ -274,7 +336,8 @@ namespace CityFlow.Feed
         private FeedCandidate SelectCandidate(
             CitizenFeedEventType eventType,
             FeedEventRuleSO rule,
-            double absoluteHour)
+            double absoluteHour,
+            FeedAuthorProfileSO pinnedAuthor)
         {
             candidates.Clear();
             if (!templatesByType.TryGetValue(eventType, out FeedTemplateCollectionSO collection) ||
@@ -286,10 +349,22 @@ namespace CityFlow.Feed
             for (int authorIndex = 0; authorIndex < authors.Length; authorIndex++)
             {
                 FeedAuthorProfileSO author = authors[authorIndex];
-                if (author == null || author.PostingWeight <= 0f ||
-                    !author.Supports(eventType) || !rule.AllowsRole(author.Role) ||
-                    !author.IsActiveAtHour(GetGameHour()) ||
-                    IsAuthorCoolingDown(author, absoluteHour))
+                if (author == null || author.PostingWeight <= 0f) continue;
+
+                // 이어받는 글은 지정된 사람만 쓴다. 그 사람에겐 작성자 쿨다운과
+                // 활동시간을 적용하지 않는다 — 방금 불평한 사람이라 쿨다운에 걸려 있고,
+                // 그걸 지키면 후속 글이 영영 안 나간다.
+                if (pinnedAuthor != null)
+                {
+                    if (author != pinnedAuthor) continue;
+                }
+                else if (!author.IsActiveAtHour(GetGameHour()) ||
+                         IsAuthorCoolingDown(author, absoluteHour))
+                {
+                    continue;
+                }
+
+                if (!author.Supports(eventType) || !rule.AllowsRole(author.Role))
                 {
                     continue;
                 }
@@ -536,6 +611,85 @@ namespace CityFlow.Feed
             TryGeneratePost(context);
         }
 
+        private void OnFlowBurst(FlowBurstEvent flowBurstEvent)
+        {
+            if (!initialized) return;
+
+            TryGeneratePost(CitizenFeedContext.ForTile(
+                CitizenFeedEventType.FlowBurst,
+                flowBurstEvent.Tile,
+                GetGameHour()));
+        }
+
+        private void OnPlaced(PlacedEvent placedEvent)
+        {
+            if (!initialized) return;
+
+            if (placedEvent.IsRemove)
+            {
+                // 타일이 사라지면 그 자리를 가리키던 관심사도 버린다.
+                // 안 그러면 없어진 도로를 두고 "이제 괜찮네요"가 나간다.
+                ledger.DropTile(placedEvent.Tile);
+                return;
+            }
+
+            TryGeneratePost(CitizenFeedContext.ForTile(
+                CitizenFeedEventType.BuildingPlaced,
+                placedEvent.Tile,
+                GetGameHour()));
+        }
+
+        private void OnEmergencyAlerted(EmergencyIncidentAlertEvent alertEvent)
+        {
+            if (!initialized) return;
+
+            TryGeneratePost(CitizenFeedContext.ForTile(
+                CitizenFeedEventType.EmergencyAlert,
+                alertEvent.Location,
+                GetGameHour()));
+        }
+
+        private void OnEmergencyOutcomeReported(EmergencyIncidentOutcomeEvent outcomeEvent)
+        {
+            if (!initialized) return;
+            // 실패한 결말까지 "다행이다"로 말하면 안 된다. 해결된 것만 이어받는다.
+            // 실패는 장부에 관심사를 남겨둬서 나중에 해결되면 그때 알아본다.
+            if (outcomeEvent.Outcome != EmergencyIncidentOutcome.Resolved) return;
+
+            TryGeneratePost(CitizenFeedContext.ForTile(
+                CitizenFeedEventType.EmergencyResolved,
+                outcomeEvent.Location,
+                GetGameHour()));
+        }
+
+        /// <summary>
+        /// 아무 사건이 없어도 도시가 말하게 하는 유일한 훅. 출근·퇴근 시간대 진입에만 쏜다 —
+        /// 전 시간대를 열면 잡담이 진짜 정보를 밀어낸다.
+        /// </summary>
+        private void ObserveTimePeriod()
+        {
+            if (!initialized) return;
+
+            CitizenFeedTimePeriod current =
+                CitizenFeedFormatter.GetTimePeriod(GetGameHour());
+            if (lastTimePeriod == null)
+            {
+                lastTimePeriod = current;
+                return;
+            }
+
+            if (lastTimePeriod.Value == current) return;
+            lastTimePeriod = current;
+
+            if (current != CitizenFeedTimePeriod.MorningRush &&
+                current != CitizenFeedTimePeriod.EveningRush)
+            {
+                return;
+            }
+
+            TryGeneratePost(CitizenFeedContext.ForTimePeriod(GetGameHour()));
+        }
+
         private void ObserveVehicleSurge()
         {
             if (settings == null || services?.Stats == null)
@@ -635,6 +789,19 @@ namespace CityFlow.Feed
                     templatesByType[collection.EventType] = collection;
                 }
             }
+
+            authorByName.Clear();
+            for (int i = 0; i < authors.Length; i++)
+            {
+                FeedAuthorProfileSO author = authors[i];
+                if (author == null || string.IsNullOrEmpty(author.DisplayName)) continue;
+                // 이름이 겹치면 먼저 등록된 쪽을 남긴다. 장부는 이름으로만 짝짓기 때문에
+                // 동명이인이 있으면 어느 쪽이든 하나로 고정돼야 결과가 일관된다.
+                if (!authorByName.ContainsKey(author.DisplayName))
+                {
+                    authorByName.Add(author.DisplayName, author);
+                }
+            }
         }
 
         private void OnGameCalendarRegistered(IGameCalendarService gameCalendar)
@@ -655,10 +822,74 @@ namespace CityFlow.Feed
                 services.Events.InfrastructureChanged -= OnInfrastructureChanged;
                 services.Events.Arrival -= OnArrival;
                 services.Events.JobChanged -= OnJobChanged;
+                services.Events.FlowBurst -= OnFlowBurst;
+                services.Events.Placed -= OnPlaced;
+                services.Events.EmergencyIncidentAlerted -= OnEmergencyAlerted;
+                services.Events.EmergencyIncidentOutcomeReported -= OnEmergencyOutcomeReported;
                 services.GameCalendarRegistered -= OnGameCalendarRegistered;
             }
 
             initialized = false;
+        }
+
+        /// <summary>
+        /// 어떤 이벤트가 관심사를 여는가. 여기 없는 이벤트는 장부를 건드리지 않는다.
+        /// </summary>
+        private static bool TryGetConcernKind(
+            CitizenFeedEventType eventType,
+            out CitizenFeedConcernKind kind)
+        {
+            switch (eventType)
+            {
+                case CitizenFeedEventType.CongestionStarted:
+                case CitizenFeedEventType.CongestionSustained:
+                    kind = CitizenFeedConcernKind.Congestion;
+                    return true;
+                case CitizenFeedEventType.EmergencyAlert:
+                    kind = CitizenFeedConcernKind.Emergency;
+                    return true;
+                default:
+                    kind = default;
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// 어떤 이벤트가 관심사를 닫는가. 위 표와 짝을 이룬다.
+        /// </summary>
+        private static bool TryGetResolveKind(
+            CitizenFeedEventType eventType,
+            out CitizenFeedConcernKind kind)
+        {
+            switch (eventType)
+            {
+                case CitizenFeedEventType.CongestionResolved:
+                    kind = CitizenFeedConcernKind.Congestion;
+                    return true;
+                case CitizenFeedEventType.EmergencyResolved:
+                    kind = CitizenFeedConcernKind.Emergency;
+                    return true;
+                default:
+                    kind = default;
+                    return false;
+            }
+        }
+
+        private FeedAuthorProfileSO FindAuthor(string displayName)
+        {
+            if (string.IsNullOrEmpty(displayName)) return null;
+            return authorByName.TryGetValue(displayName, out FeedAuthorProfileSO author)
+                ? author
+                : null;
+        }
+
+        public CitizenFeedSaveData CreateSnapshot() => ledger.ToSaveData();
+
+        public void RestoreSnapshot(CitizenFeedSaveData snapshot)
+        {
+            ledger.RestoreFrom(snapshot, GetAbsoluteGameHour());
+            // 로드 직후 첫 시간대 관측은 발행 없이 기록만 하도록 되돌린다.
+            lastTimePeriod = null;
         }
 
         private bool IsAuthorCoolingDown(FeedAuthorProfileSO author, double absoluteHour)

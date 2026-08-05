@@ -132,6 +132,36 @@ namespace CityFlow.Feed
                 gameHour);
         }
 
+        /// <summary>
+        /// 타일 하나만 있으면 되는 사건용(흐름 폭발·건물 설치·구급 출동/결말).
+        /// ForInfrastructure가 이미 범용 타일 컨텍스트라 그대로 위임한다.
+        /// </summary>
+        public static CitizenFeedContext ForTile(
+            CitizenFeedEventType eventType,
+            Vector2Int tile,
+            int gameHour)
+        {
+            return ForInfrastructure(
+                eventType,
+                tile,
+                CitizenFeedInfrastructureType.None,
+                false,
+                gameHour);
+        }
+
+        /// <summary>
+        /// 시간대 진입은 장소가 없다. VehicleSurge와 같은 이유로 타일은 zero다.
+        /// </summary>
+        public static CitizenFeedContext ForTimePeriod(int gameHour)
+        {
+            return ForInfrastructure(
+                CitizenFeedEventType.TimePeriodChanged,
+                Vector2Int.zero,
+                CitizenFeedInfrastructureType.None,
+                false,
+                gameHour);
+        }
+
         public static CitizenFeedContext ForArrival(
             Vector2Int destination,
             float routeDistanceTiles,

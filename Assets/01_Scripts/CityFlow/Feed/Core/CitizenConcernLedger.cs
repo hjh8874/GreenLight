@@ -70,6 +70,31 @@ namespace CityFlow.Feed
             records.Add(new CitizenConcernRecord(authorName, tile, kind, atHour));
         }
 
+        /// <summary>
+        /// 소비하지 않고 짝이 있는지만 본다.
+        /// 발행 상한을 "후속 글이면 1칸 더"로 판단하려면 글을 만들기 전에 알아야 하는데,
+        /// 그 시점엔 아직 글이 나갈지 모르므로 소비하면 안 된다.
+        /// </summary>
+        public bool TryPeek(
+            Vector2Int tile,
+            CitizenFeedConcernKind kind,
+            double atHour,
+            out string authorName)
+        {
+            authorName = null;
+            for (int i = 0; i < records.Count; i++)
+            {
+                CitizenConcernRecord record = records[i];
+                if (record.Tile != tile || record.Kind != kind) continue;
+                if (IsExpired(record, atHour)) return false;
+
+                authorName = record.AuthorName;
+                return true;
+            }
+
+            return false;
+        }
+
         public bool TryResolve(
             Vector2Int tile,
             CitizenFeedConcernKind kind,

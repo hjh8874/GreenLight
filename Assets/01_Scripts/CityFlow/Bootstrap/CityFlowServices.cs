@@ -197,6 +197,17 @@ namespace CityFlow.Bootstrap
             Save?.RegisterSchoolBusSaveSource(schoolBusSaveSource);
         }
 
+        public void RegisterCitizenFeedSaveSource(
+            ICitizenFeedSaveSource citizenFeedSaveSource)
+        {
+            if (citizenFeedSaveSource == null)
+            {
+                return;
+            }
+
+            Save?.RegisterCitizenFeedSaveSource(citizenFeedSaveSource);
+        }
+
         public void RegisterRadioSaveSource(IRadioSaveSource radioSaveSource)
         {
             if (radioSaveSource == null)

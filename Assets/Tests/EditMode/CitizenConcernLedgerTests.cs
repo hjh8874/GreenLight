@@ -64,6 +64,33 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void TryPeek_DoesNotConsume()
+        {
+            var ledger = new CitizenConcernLedger();
+            ledger.Open("김민수", V(3, 4), CitizenFeedConcernKind.Congestion, 10.0);
+
+            Assert.IsTrue(
+                ledger.TryPeek(V(3, 4), CitizenFeedConcernKind.Congestion, 11.0, out string peeked));
+            Assert.AreEqual("김민수", peeked);
+            Assert.AreEqual(1, ledger.Count, "조회는 항목을 소비하지 않는다");
+
+            Assert.IsTrue(
+                ledger.TryResolve(V(3, 4), CitizenFeedConcernKind.Congestion, 11.0, out _),
+                "조회 뒤에도 여전히 꺼낼 수 있어야 한다");
+        }
+
+        [Test]
+        public void TryPeek_IgnoresExpired()
+        {
+            var ledger = new CitizenConcernLedger();
+            ledger.Open("최민호", V(5, 5), CitizenFeedConcernKind.Congestion, 10.0);
+
+            Assert.IsFalse(
+                ledger.TryPeek(V(5, 5), CitizenFeedConcernKind.Congestion, 34.1, out _),
+                "만료된 항목을 후속 글 대상으로 보면 안 된다");
+        }
+
+        [Test]
         public void Entries_ExpireAfterTwentyFourGameHours()
         {
             var ledger = new CitizenConcernLedger();
