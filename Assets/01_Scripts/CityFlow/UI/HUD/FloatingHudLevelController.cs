@@ -18,6 +18,7 @@ namespace CityFlow.UI
         [SerializeField] private GameObject[] lLevelObjects;
 
         private FloatingWindowService _floatingWindow;
+        private UIDockController _dockController;
         private bool _isFloating;
         private bool _isRevealed;
         private int _presetIndex;
@@ -34,6 +35,7 @@ namespace CityFlow.UI
 
         private void Start()
         {
+            FindAndSubscribeDockController();
             FindAndSubscribeService();
             if (_floatingWindow == null)
             {
@@ -61,15 +63,40 @@ namespace CityFlow.UI
             }
         }
 
-        private void OnDestroy()
+        private void FindAndSubscribeDockController()
         {
-            if (_floatingWindow == null)
+            if (_dockController != null || lLevelObjects == null)
             {
                 return;
             }
 
-            _floatingWindow.OnFloatingStateChanged -= OnFloatingStateChanged;
-            _floatingWindow.OnPresetChanged -= OnPresetChanged;
+            for (int index = 0; index < lLevelObjects.Length; index++)
+            {
+                GameObject target = lLevelObjects[index];
+                if (target == null ||
+                    !target.TryGetComponent(out UIDockController dock))
+                {
+                    continue;
+                }
+
+                _dockController = dock;
+                _dockController.MenuChanged += OnDockMenuChanged;
+                return;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_floatingWindow != null)
+            {
+                _floatingWindow.OnFloatingStateChanged -= OnFloatingStateChanged;
+                _floatingWindow.OnPresetChanged -= OnPresetChanged;
+            }
+
+            if (_dockController != null)
+            {
+                _dockController.MenuChanged -= OnDockMenuChanged;
+            }
         }
 
         private void Update()
@@ -95,6 +122,10 @@ namespace CityFlow.UI
             }
 
             _isRevealed = !_isRevealed;
+            if (!_isRevealed)
+            {
+                _dockController?.CloseAllPanels();
+            }
             Apply();
         }
 
@@ -107,6 +138,10 @@ namespace CityFlow.UI
         {
             _isFloating = floating;
             _isRevealed = !floating;
+            if (!_isRevealed)
+            {
+                _dockController?.CloseAllPanels();
+            }
             Apply();
         }
 
@@ -124,22 +159,46 @@ namespace CityFlow.UI
             Apply();
         }
 
+        private void OnDockMenuChanged(UIDockController.MenuType menu)
+        {
+            if (!_isFloating ||
+                _isRevealed ||
+                menu == UIDockController.MenuType.None)
+            {
+                return;
+            }
+
+            _isRevealed = true;
+            Apply();
+        }
+
         private void Apply()
         {
             SetCanvasGroup(minimalOverlay, true);
             bool mVisible = !_isFloating || (_isRevealed && _presetIndex >= 1);
             bool lVisible = !_isFloating || (_isRevealed && _presetIndex >= 2);
             ApplyObjects(mLevelObjects, mVisible);
-            ApplyObjects(lLevelObjects, lVisible);
+            ApplyObjects(
+                lLevelObjects,
+                lVisible,
+                keepDockVisible: true);
         }
 
-        private static void ApplyObjects(GameObject[] objects, bool visible)
+        private static void ApplyObjects(
+            GameObject[] objects,
+            bool visible,
+            bool keepDockVisible = false)
         {
             if (objects == null) return;
             for (int i = 0; i < objects.Length; i++)
             {
-                CanvasGroup group = GetDeltaGroup(objects[i]);
-                SetCanvasGroup(group, visible);
+                GameObject target = objects[i];
+                bool targetVisible = visible ||
+                    keepDockVisible &&
+                    target != null &&
+                    target.GetComponent<UIDockController>() != null;
+                CanvasGroup group = GetDeltaGroup(target);
+                SetCanvasGroup(group, targetVisible);
             }
         }
 
