@@ -62,8 +62,8 @@ namespace CityFlow.EditorTools
         // 히스토리는 화면 중앙 팝업이다 — 자리를 옮기지 않으므로 열림/숨김
         // 좌표가 없다. 씬에서 잡아둔 위치가 곧 표시 위치다.
         // 폭 460일 때 행 본문이 202px(≈17자)까지 좁아져 티커보다 심하게 잘렸다.
-        // 720이면 462px(≈38자)로 대부분의 문장이 한 줄에 들어간다.
-        private static readonly Vector2 PanelSize = new Vector2(720f, 560f);
+        // 640이면 382px(≈32자)로 대부분 들어가면서 화면도 덜 가린다.
+        private static readonly Vector2 PanelSize = new Vector2(640f, 520f);
 
         private const float RowHeight = 44f;
         private const float HeaderHeight = 52f;
