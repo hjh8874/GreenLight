@@ -77,8 +77,10 @@ namespace CityFlow.EditorTools
                 return;
             }
 
-            Transform settingsPanel = FindTransform(scene, SettingsPanelName)
-                ?? FindTransform(scene, SettingsPanelName.Trim());
+            Transform settingsPanel = FindTransform(scene, "Settings_Panel")
+                ?? FindTransform(scene, "Setting_Panel")
+                ?? FindTransform(scene, "Setting_Panel ")
+                ?? FindTransform(scene, "Setting");
             Canvas canvas = FindCanvas(scene);
 
             if (settingsPanel == null || canvas == null)
