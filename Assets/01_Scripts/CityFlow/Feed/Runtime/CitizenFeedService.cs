@@ -138,8 +138,12 @@ namespace CityFlow.Feed
             services.Events.EmergencyIncidentAlerted += OnEmergencyAlerted;
             services.Events.EmergencyIncidentOutcomeReported += OnEmergencyOutcomeReported;
             services.GameCalendarRegistered += OnGameCalendarRegistered;
-            services.RegisterCitizenFeedSaveSource(this);
+            // 반드시 세이브 소스 등록보다 먼저다. 이미 세이브를 불러온 상태라면
+            // RegisterCitizenFeedSaveSource가 등록 즉시 RestoreSnapshot을 부르고,
+            // 그 안에서 GetAbsoluteGameHour()로 24시간 만료를 판정한다.
+            // 달력이 아직 null이면 저장된 시각이 아니라 폴백 런타임 시각을 쓴다.
             BindCalendar(services.GameCalendar);
+            services.RegisterCitizenFeedSaveSource(this);
             RebuildLookups();
             SnapshotSignals();
             SnapshotInfrastructure();

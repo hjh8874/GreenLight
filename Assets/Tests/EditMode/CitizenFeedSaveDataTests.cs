@@ -127,6 +127,82 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1, restored.Count, "경과시간이 음수면 만료가 아니다");
         }
 
+        private sealed class FakeCitizenFeedSaveSource : ICitizenFeedSaveSource
+        {
+            private readonly CitizenConcernLedger ledger;
+            private readonly System.Func<double> nowHour;
+
+            public FakeCitizenFeedSaveSource(
+                CitizenConcernLedger ledger,
+                System.Func<double> nowHour)
+            {
+                this.ledger = ledger;
+                this.nowHour = nowHour;
+            }
+
+            public CitizenFeedSaveData CreateSnapshot() => ledger.ToSaveData();
+
+            public void RestoreSnapshot(CitizenFeedSaveData snapshot) =>
+                ledger.RestoreFrom(snapshot, nowHour());
+        }
+
+        /// <summary>
+        /// 세이브를 이미 불러온 뒤에 피드 서비스가 늦게 등록되는 경로.
+        /// SaveService.RegisterCitizenFeedSaveSource는 등록 즉시 RestoreSnapshot을
+        /// 부르므로, 그 시점에 달력이 아직 연결되지 않았다면 저장된 시각이 아니라
+        /// 폴백 런타임 시각으로 24시간 만료를 판정하게 된다.
+        ///
+        /// 실제 수정은 CitizenFeedService.Initialize에서 BindCalendar를 등록보다
+        /// 먼저 부르는 것이다. 이 테스트는 "달력이 붙은 뒤 등록되면 저장 시각 기준으로
+        /// 판정된다"는 계약을 고정한다.
+        /// </summary>
+        [Test]
+        public void LateRegistration_UsesBoundCalendarHour_NotFallback()
+        {
+            var ledger = new CitizenConcernLedger();
+            ledger.Open("김민수", V(3, 4), CitizenFeedConcernKind.Congestion, 1000.0);
+            CitizenFeedSaveData saved = ledger.ToSaveData();
+
+            // 달력이 붙기 전(폴백 0시)에 복원되면 경과시간이 음수라 살아남고,
+            // 저장 달력(1010h)이 붙은 뒤 복원돼도 10시간 경과라 살아남는다.
+            // 구분되는 지점은 만료 경계 너머다 — 폴백이면 유지, 저장 기준이면 만료.
+            double boundHour = 1030.0;
+            double fallbackHour = 0.0;
+            bool calendarBound = false;
+
+            var target = new CitizenConcernLedger();
+            var source = new FakeCitizenFeedSaveSource(
+                target,
+                () => calendarBound ? boundHour : fallbackHour);
+
+            // 달력을 먼저 연결한 뒤 등록 — 수정 후의 순서
+            calendarBound = true;
+            source.RestoreSnapshot(saved);
+
+            Assert.AreEqual(
+                0,
+                target.Count,
+                "저장 달력 기준 30시간 경과이므로 만료돼야 한다. " +
+                "폴백 시각을 쓰면 살아남아 이 단언이 깨진다.");
+        }
+
+        [Test]
+        public void EarlyRegistration_WithoutCalendar_WouldKeepStaleEntries()
+        {
+            // 위 테스트의 대조군 — 달력이 붙기 전에 복원되면 폴백 시각을 쓰게 되고
+            // 만료됐어야 할 항목이 그대로 남는다. 이 동작이 버그였다.
+            var ledger = new CitizenConcernLedger();
+            ledger.Open("김민수", V(3, 4), CitizenFeedConcernKind.Congestion, 1000.0);
+
+            var target = new CitizenConcernLedger();
+            target.RestoreFrom(ledger.ToSaveData(), 0.0);
+
+            Assert.AreEqual(
+                1,
+                target.Count,
+                "폴백 시각(0h)으로는 경과시간이 음수라 만료 판정이 나지 않는다");
+        }
+
         [Test]
         public void SaveVersion_IsUnchanged()
         {

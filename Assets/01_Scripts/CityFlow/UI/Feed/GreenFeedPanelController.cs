@@ -26,7 +26,14 @@ namespace CityFlow.UI.Feed
         [SerializeField] private GreenFeedPostView postTemplate;
         [SerializeField, Min(1)] private int maximumPosts = 50;
 
+        [Header("Legacy")]
+        // 리베이킹 전 씬은 릴레이의 clickAction이 None으로 로드된다. 그 씬에서
+        // 예전처럼 호버로 열리게 하는 지연 닫기 시간이다.
+        [SerializeField, Min(0f)] private float legacyCloseDelay = 0.12f;
+
         private Coroutine animationRoutine;
+        private Coroutine legacyCloseRoutine;
+        private bool legacyPointerInside;
         // IsOpen은 애니메이션이 끝나야 갱신된다. 연타에도 토글이 맞으려면
         // 목표 상태를 즉시 기억해야 한다.
         private bool openTarget;
@@ -58,6 +65,60 @@ namespace CityFlow.UI.Feed
             contentRoot = targetContentRoot;
             postTemplate = targetPostTemplate;
             tickerView = targetTickerView;
+        }
+
+        /// <summary>
+        /// 리베이킹 전 씬을 위한 하위 호환 경로. 릴레이의 clickAction이 직렬화상
+        /// None으로 로드되는 씬에서만 호출되며, 예전처럼 호버로 패널이 열린다.
+        /// 베이커가 명시적 Toggle/Close/Locate/Passive를 넣은 씬은 이 경로를 타지 않는다.
+        /// </summary>
+        public void NotifyLegacyHoverEntered()
+        {
+            legacyPointerInside = true;
+            StopLegacyCloseRoutine();
+            GreenFeedInputGuard.SetPointerCaptured(this, true);
+            SetOpen(true);
+        }
+
+        public void NotifyLegacyHoverExited()
+        {
+            legacyPointerInside = false;
+            StopLegacyCloseRoutine();
+            if (!isActiveAndEnabled)
+            {
+                CloseFromLegacyHover();
+                return;
+            }
+
+            legacyCloseRoutine = StartCoroutine(LegacyCloseAfterDelay());
+        }
+
+        private IEnumerator LegacyCloseAfterDelay()
+        {
+            if (legacyCloseDelay > 0f)
+            {
+                yield return new WaitForSecondsRealtime(legacyCloseDelay);
+            }
+
+            legacyCloseRoutine = null;
+            // 유예 중에 다시 들어왔으면 닫지 않는다 — 티커와 패널 사이를 지날 때
+            // 깜빡이는 것을 막는 원래 동작이다.
+            if (legacyPointerInside) yield break;
+
+            CloseFromLegacyHover();
+        }
+
+        private void CloseFromLegacyHover()
+        {
+            SetOpen(false);
+            GreenFeedInputGuard.Release(this);
+        }
+
+        private void StopLegacyCloseRoutine()
+        {
+            if (legacyCloseRoutine == null) return;
+            StopCoroutine(legacyCloseRoutine);
+            legacyCloseRoutine = null;
         }
 
         // 티커 버튼이 부르는 진입점 — 베이커가 지속 리스너로 연결한다.

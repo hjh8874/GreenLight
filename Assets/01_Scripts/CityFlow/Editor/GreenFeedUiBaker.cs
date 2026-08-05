@@ -163,9 +163,11 @@ namespace CityFlow.EditorTools
 
             // 패널은 스크롤되므로 휠 가드를 잡는다. 클릭은 아무 동작도 하지 않는다 —
             // 패널 안을 누르다가 닫히면 곤란하다.
+            // ⚠️ None이 아니라 Passive를 쓴다. None은 리베이킹 전 씬을 위한
+            // 레거시 호버 개폐 값이라, 여기 쓰면 패널 위에서 개폐가 요동친다.
             panel.gameObject.AddComponent<GreenFeedHoverRelay>().Configure(
                 controller,
-                GreenFeedHoverRelay.ClickAction.None,
+                GreenFeedHoverRelay.ClickAction.Passive,
                 true);
             GreenFeedPostView ticker = CreateTicker(root.transform, controller);
 

@@ -16,12 +16,22 @@ namespace CityFlow.UI.Feed
     {
         public enum ClickAction
         {
+            /// <summary>
+            /// 리베이킹 전 씬의 값. 이 필드가 새로 생기기 전에 구워진 릴레이는 전부
+            /// 0으로 로드되므로, 0을 **레거시 호버 개폐**로 해석해야 기존 씬에서
+            /// 피드가 계속 열린다. "아무 동작 없음"이 필요하면 Passive를 쓸 것.
+            /// </summary>
             None = 0,
             Toggle = 1,
             Close = 2,
             // 글이 가리키는 타일을 선택한다. 기존 숫자는 씬에 직렬화돼 있으므로
             // 뒤에 잇기만 한다.
-            Locate = 3
+            Locate = 3,
+            /// <summary>
+            /// 클릭에 반응하지 않는다. 새 베이커가 패널 본체에 쓴다 —
+            /// None을 쓰면 레거시 호버로 해석돼 패널 위에서 개폐가 요동친다.
+            /// </summary>
+            Passive = 4
         }
 
         [SerializeField] private GreenFeedPanelController controller;
@@ -45,20 +55,34 @@ namespace CityFlow.UI.Feed
             tileSelection = targetTileSelection;
         }
 
+        // 리베이킹 전 씬은 clickAction이 0(None)으로 로드된다. 그 씬에서는
+        // 예전처럼 호버가 패널을 열어야 기능이 죽지 않는다.
+        private bool IsLegacyHoverMode => clickAction == ClickAction.None;
+
         public void OnPointerEnter(PointerEventData eventData)
         {
-            if (controller != null && capturesPointer)
+            if (controller == null) return;
+
+            if (IsLegacyHoverMode)
             {
-                controller.NotifyPointerEntered();
+                controller.NotifyLegacyHoverEntered();
+                return;
             }
+
+            if (capturesPointer) controller.NotifyPointerEntered();
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
-            if (controller != null && capturesPointer)
+            if (controller == null) return;
+
+            if (IsLegacyHoverMode)
             {
-                controller.NotifyPointerExited();
+                controller.NotifyLegacyHoverExited();
+                return;
             }
+
+            if (capturesPointer) controller.NotifyPointerExited();
         }
 
         public void OnPointerClick(PointerEventData eventData)
