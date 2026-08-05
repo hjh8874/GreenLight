@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace CityFlow.View
@@ -5,6 +6,9 @@ namespace CityFlow.View
     public sealed partial class MainCityView
     {
         private const float ParkingOccupancyRadiusTiles = 0.12f;
+        private readonly Dictionary<
+            (Vector2Int BuildingTile, int SlotIndex),
+            Transform> parkingReservations = new();
 
         public bool TryGetBuildingParkingPose(
             Vector2Int buildingTile,
@@ -86,6 +90,120 @@ namespace CityFlow.View
             }
 
             return false;
+        }
+
+        public bool TryReserveFirstFreeBuildingParkingPose(
+            Vector2Int buildingTile,
+            int slotCount,
+            Transform requestingVehicle,
+            out int selectedSlot,
+            out Vector3 localPosition,
+            out Vector3 localForward)
+        {
+            selectedSlot = -1;
+            localPosition = default;
+            localForward = default;
+            if (requestingVehicle == null)
+            {
+                return false;
+            }
+
+            if (tileData != null &&
+                tileData.TryGetFootprintAnchor(
+                    buildingTile,
+                    out Vector2Int anchor))
+            {
+                buildingTile = anchor;
+            }
+
+            foreach (KeyValuePair<
+                         (Vector2Int BuildingTile, int SlotIndex),
+                         Transform> entry in parkingReservations)
+            {
+                if (entry.Key.BuildingTile == buildingTile &&
+                    entry.Value != null &&
+                    IsSameVehicle(entry.Value, requestingVehicle) &&
+                    TryGetBuildingParkingPose(
+                        buildingTile,
+                        entry.Key.SlotIndex,
+                        out localPosition,
+                        out localForward))
+                {
+                    selectedSlot = entry.Key.SlotIndex;
+                    return true;
+                }
+            }
+
+            for (int slotIndex = 0;
+                 slotIndex < Mathf.Max(0, slotCount);
+                 slotIndex++)
+            {
+                var key = (buildingTile, slotIndex);
+                if (parkingReservations.TryGetValue(
+                        key,
+                        out Transform reservation))
+                {
+                    if (reservation == null)
+                    {
+                        parkingReservations.Remove(key);
+                    }
+                    else if (!IsSameVehicle(
+                                 reservation,
+                                 requestingVehicle))
+                    {
+                        continue;
+                    }
+                }
+
+                if (!TryGetBuildingParkingPose(
+                        buildingTile,
+                        slotIndex,
+                        out Vector3 candidatePosition,
+                        out Vector3 candidateForward) ||
+                    IsParkingPoseOccupied(
+                        candidatePosition,
+                        requestingVehicle))
+                {
+                    continue;
+                }
+
+                parkingReservations[key] = requestingVehicle;
+                selectedSlot = slotIndex;
+                localPosition = candidatePosition;
+                localForward = candidateForward;
+                return true;
+            }
+
+            return false;
+        }
+
+        public void ReleaseBuildingParkingReservation(
+            Vector2Int buildingTile,
+            int slotIndex,
+            Transform requestingVehicle)
+        {
+            if (slotIndex < 0 || requestingVehicle == null)
+            {
+                return;
+            }
+
+            if (tileData != null &&
+                tileData.TryGetFootprintAnchor(
+                    buildingTile,
+                    out Vector2Int anchor))
+            {
+                buildingTile = anchor;
+            }
+
+            var key = (buildingTile, slotIndex);
+            if (parkingReservations.TryGetValue(
+                    key,
+                    out Transform reservation) &&
+                (reservation == null ||
+                 IsSameVehicle(reservation, requestingVehicle)))
+            {
+                parkingReservations.Remove(key);
+            }
         }
 
         private bool IsParkingPoseOccupied(

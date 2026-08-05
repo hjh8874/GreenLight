@@ -413,6 +413,89 @@ namespace CityFlow.Sim.Tests
             }
         }
 
+        [Test]
+        public void SchoolBusParking_ReservesDifferentSlotsBeforeArrival()
+        {
+            GameObject cityObject = new("School Parking Reservation View");
+            GameObject buildingObject = new("School Parking Reservation Building");
+            GameObject firstBus = new("First Approaching School Bus");
+            GameObject secondBus = new("Second Approaching School Bus");
+            GameObject thirdBus = new("Third Approaching School Bus");
+
+            try
+            {
+                MainCityView cityView =
+                    cityObject.AddComponent<MainCityView>();
+                buildingObject.transform.SetParent(
+                    cityObject.transform,
+                    false);
+                for (int slotIndex = 0; slotIndex < 3; slotIndex++)
+                {
+                    GameObject slot = new($"ParkingSlot_{slotIndex}");
+                    slot.transform.SetParent(
+                        buildingObject.transform,
+                        false);
+                    slot.transform.localPosition =
+                        new Vector3(1f - slotIndex, 0f, 0f);
+                }
+
+                Vector2Int schoolTile = new(4, 9);
+                RegisterTileVisual(
+                    cityView,
+                    schoolTile,
+                    buildingObject);
+                firstBus.transform.SetParent(cityObject.transform, false);
+                secondBus.transform.SetParent(cityObject.transform, false);
+                thirdBus.transform.SetParent(cityObject.transform, false);
+
+                Assert.That(
+                    cityView.TryReserveFirstFreeBuildingParkingPose(
+                        schoolTile,
+                        3,
+                        firstBus.transform,
+                        out int firstSlot,
+                        out _,
+                        out _),
+                    Is.True);
+                Assert.That(
+                    cityView.TryReserveFirstFreeBuildingParkingPose(
+                        schoolTile,
+                        3,
+                        secondBus.transform,
+                        out int secondSlot,
+                        out _,
+                        out _),
+                    Is.True);
+                Assert.That(firstSlot, Is.EqualTo(0));
+                Assert.That(
+                    secondSlot,
+                    Is.EqualTo(1),
+                    "A second approaching bus must not receive the first bus's reserved slot.");
+
+                cityView.ReleaseBuildingParkingReservation(
+                    schoolTile,
+                    firstSlot,
+                    firstBus.transform);
+                Assert.That(
+                    cityView.TryReserveFirstFreeBuildingParkingPose(
+                        schoolTile,
+                        3,
+                        thirdBus.transform,
+                        out int releasedSlot,
+                        out _,
+                        out _),
+                    Is.True);
+                Assert.That(
+                    releasedSlot,
+                    Is.EqualTo(0),
+                    "Released parking reservations must become available again.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(cityObject);
+            }
+        }
+
         private static GameObject CreateParkedTestVehicle(
             Transform parent,
             string name,

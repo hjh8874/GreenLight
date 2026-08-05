@@ -298,6 +298,65 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
+        public void VehicleHeadlights_AimAtLocalRoadPlaneInRotatedWorld()
+        {
+            var cityObject = new GameObject("Rotated Main City View");
+            cityObject.transform.position = new Vector3(12f, -7f, 5f);
+            cityObject.transform.rotation =
+                Quaternion.Euler(62f, 17f, -28f);
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
+            GameObject vehicle =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            vehicle.transform.SetParent(cityObject.transform, false);
+            vehicle.transform.localPosition =
+                new Vector3(2f, -1f, -0.18f);
+            vehicle.transform.localRotation =
+                Quaternion.Euler(0f, 0f, 31f);
+            vehicle.transform.localScale =
+                new Vector3(0.4f, 1f, 0.2f);
+
+            try
+            {
+                VehicleNightLighting.Attach(
+                    vehicle,
+                    null,
+                    Vector3.right);
+                Light headlight =
+                    vehicle.GetComponentInChildren<Light>(true);
+
+                Assert.That(headlight, Is.Not.Null);
+                Vector3 cityOrigin =
+                    cityObject.transform.InverseTransformPoint(
+                        headlight.transform.position);
+                Vector3 cityDirection =
+                    cityObject.transform.InverseTransformDirection(
+                        headlight.transform.forward).normalized;
+                float hitDistance =
+                    (cityView.RoadSurfaceZ - cityOrigin.z) /
+                    cityDirection.z;
+                Vector3 cityRoadHit =
+                    cityOrigin + cityDirection * hitDistance;
+                Vector3 vehicleRoadHit =
+                    vehicle.transform.InverseTransformPoint(
+                        cityObject.transform.TransformPoint(cityRoadHit));
+
+                Assert.That(hitDistance, Is.GreaterThan(0f));
+                Assert.That(
+                    cityRoadHit.z,
+                    Is.EqualTo(cityView.RoadSurfaceZ).Within(0.0001f));
+                Assert.That(
+                    vehicleRoadHit.x - 0.5f,
+                    Is.InRange(0.25f, 0.35f),
+                    "The rotated world must keep the light landing immediately ahead of the vehicle nose.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
         public void VehicleHeadlights_KeepFixedSpacingWhileVehicleTurns()
         {
             var vehicle =

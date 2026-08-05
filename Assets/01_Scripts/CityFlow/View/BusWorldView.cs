@@ -14,6 +14,7 @@ namespace CityFlow.View
         ICityFlowServiceConsumer
     {
         private const int SchoolParkingSlotCount = 6;
+        private const float SchoolParkingSearchInterval = 0.25f;
 
         private enum OffRoadTransitionKind
         {
@@ -102,6 +103,7 @@ namespace CityFlow.View
         private float nextOffRoadExitWaitLogTime;
         private int resolvedSchoolParkingSlot = -1;
         private Vector2Int resolvedSchoolParkingAnchor;
+        private float nextSchoolParkingSearchTime;
 
         public bool HasVisibleBus =>
             visual != null &&
@@ -205,6 +207,7 @@ namespace CityFlow.View
             cityView?.RemoveVehiclePresentation(this);
             DisableStopPresentationGate();
             CompletePendingTransition();
+            ClearResolvedSchoolParkingSlot();
             Unsubscribe();
         }
 
@@ -213,6 +216,7 @@ namespace CityFlow.View
             cityView?.RemoveVehiclePresentation(this);
             DisableStopPresentationGate();
             CompletePendingTransition();
+            ClearResolvedSchoolParkingSlot();
             Unsubscribe();
 
             if (visual == null)
@@ -1495,6 +1499,12 @@ namespace CityFlow.View
             tileData.TryGetFootprintAnchor(tile, out schoolAnchor);
             Vector3 localForward;
             if (resolvedSchoolParkingSlot >= 0 &&
+                resolvedSchoolParkingAnchor != schoolAnchor)
+            {
+                ClearResolvedSchoolParkingSlot();
+            }
+
+            if (resolvedSchoolParkingSlot >= 0 &&
                 resolvedSchoolParkingAnchor == schoolAnchor)
             {
                 if (!cityView.TryGetBuildingParkingPose(
@@ -1509,10 +1519,17 @@ namespace CityFlow.View
             }
             else
             {
+                if (Time.unscaledTime < nextSchoolParkingSearchTime)
+                {
+                    return false;
+                }
+
+                nextSchoolParkingSearchTime =
+                    Time.unscaledTime + SchoolParkingSearchInterval;
                 int slotCount = Mathf.Max(
                     SchoolParkingSlotCount,
                     schoolParkingSlot + 1);
-                if (!cityView.TryGetFirstFreeBuildingParkingPose(
+                if (!cityView.TryReserveFirstFreeBuildingParkingPose(
                         schoolAnchor,
                         slotCount,
                         visual,
@@ -1535,8 +1552,17 @@ namespace CityFlow.View
 
         private void ClearResolvedSchoolParkingSlot()
         {
+            if (resolvedSchoolParkingSlot >= 0)
+            {
+                cityView?.ReleaseBuildingParkingReservation(
+                    resolvedSchoolParkingAnchor,
+                    resolvedSchoolParkingSlot,
+                    visual);
+            }
+
             resolvedSchoolParkingSlot = -1;
             resolvedSchoolParkingAnchor = default;
+            nextSchoolParkingSearchTime = 0f;
         }
 
         private float CalculateTransitionDuration(

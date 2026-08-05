@@ -296,8 +296,10 @@ namespace CityFlow.View
                 return false;
             }
 
-            Vector3 roadPoint = transform.position;
+            Vector3 roadPoint = cityView.transform.InverseTransformPoint(
+                transform.position);
             roadPoint.z = cityView.RoadSurfaceZ;
+            roadPoint = cityView.transform.TransformPoint(roadPoint);
             roadHeight =
                 transform.InverseTransformPoint(roadPoint).z;
             return true;
