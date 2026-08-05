@@ -293,14 +293,16 @@ namespace CityFlow.UI.Editor
                 BuildMissingPopupsAndDocks(root.transform);
 
                 // ── 5) 외부 베이커 연동 (오프라인 정산 제외, 나머지 추가) ─────
-                try { CityFlow.EditorTools.GreenFeedUiBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
-                try { CityFlow.EditorTools.SaveSlotsPanelBaker.Bake(false); } catch (System.Exception e) { Debug.LogWarning(e); }
-                try { CityFlow.EditorTools.WeeklySettlementPopupBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
-                try { CityFlow.UI.Editor.SignalControlBaker.BakePrefab(); } catch (System.Exception e) { Debug.LogWarning(e); }
-                try { CityFlow.UI.Editor.CongestionToggleBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
+                // 필수 베이커들은 예외를 삼키지 않고 그대로 던져 불완전한 프리팹 저장을 막고 finally 블록을 통한 씬 복원을 유도합니다.
+                CityFlow.EditorTools.GreenFeedUiBaker.BakeIntoCanvas(canvas);
+                CityFlow.EditorTools.SaveSlotsPanelBaker.BakeIntoCanvas(canvas);
+                
+                CityFlow.EditorTools.WeeklySettlementPopupBaker.Bake();
+                CityFlow.UI.Editor.SignalControlBaker.BakePrefab();
+                CityFlow.UI.Editor.CongestionToggleBaker.Bake();
 
                 // 수동 하베스트 UI는 최상단 HUD를 타겟하므로 여기서 호출
-                try { CityFlow.EditorTools.ManualCoinHarvestUiBaker.Bake(); } catch (System.Exception e) { Debug.LogWarning(e); }
+                CityFlow.EditorTools.ManualCoinHarvestUiBaker.Bake();
 
                 // 외부 UI 스킨 교체
                 ApplySkinToExternalUI(root.transform);

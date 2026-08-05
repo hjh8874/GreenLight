@@ -98,16 +98,33 @@ namespace CityFlow.EditorTools
                 return;
             }
 
+            GameObject root = BakeIntoCanvas(canvas);
+
+            if (root != null)
+            {
+                EnsureIntegrationInstaller(scene);
+                EditorSceneManager.MarkSceneDirty(scene);
+                Selection.activeGameObject = root;
+                EditorGUIUtility.PingObject(root);
+                Debug.Log(
+                    $"[GreenFeedUiBaker] '{AppName}' 피드를 '{scene.name}'에 구웠습니다. " +
+                    "우하단 도크 왼쪽의 한 줄 티커를 누르면 중앙에 히스토리가 열립니다.");
+            }
+        }
+
+        public static GameObject BakeIntoCanvas(Canvas canvas)
+        {
             uiFont = LoadRequiredUiFont();
             if (uiFont == null)
             {
-                return;
+                return null;
             }
 
-            Transform parent = FindTransform(scene, ContentRootName) ?? canvas.transform;
+            Scene scene = canvas.gameObject.scene;
+            Transform parent = FindTransform(canvas.transform, ContentRootName) ?? canvas.transform;
             // 손으로 맞춘 배치는 재베이킹으로 날리지 않는다.
-            bool hasSavedLayout = TryCaptureLayout(scene, out SavedLayout savedLayout);
-            RemoveExistingFeed(scene);
+            bool hasSavedLayout = TryCaptureLayout(canvas.transform, out SavedLayout savedLayout);
+            RemoveExistingFeed(canvas.transform);
 
             GameObject root = CreateUiObject(FeedRootName, parent);
             Undo.RegisterCreatedObjectUndo(root, "Bake Green SNS Feed");
@@ -193,12 +210,8 @@ namespace CityFlow.EditorTools
 
             EditorUtility.SetDirty(root);
             EditorUtility.SetDirty(controller);
-            EditorSceneManager.MarkSceneDirty(scene);
-            Selection.activeGameObject = root;
-            EditorGUIUtility.PingObject(root);
-            Debug.Log(
-                $"[GreenFeedUiBaker] '{AppName}' 피드를 '{scene.name}'에 구웠습니다. " +
-                "우하단 도크 왼쪽의 한 줄 티커를 누르면 중앙에 히스토리가 열립니다.");
+
+            return root;
         }
 
         /// <summary>
@@ -227,6 +240,7 @@ namespace CityFlow.EditorTools
                 $"[GreenFeedUiBaker] 목록 설치 프리팹 '{instance.name}'을 '{scene.name}'에 배치했습니다.",
                 instance);
         }
+
 
         [MenuItem("Tools/GreenLight/UI/Bake Green SNS Feed", true)]
         private static bool ValidateBake()
@@ -858,16 +872,22 @@ namespace CityFlow.EditorTools
         {
             foreach (GameObject root in scene.GetRootGameObjects())
             {
-                Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
-                foreach (Transform candidate in transforms)
+                Transform found = FindTransform(root.transform, objectName);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private static Transform FindTransform(Transform root, string objectName)
+        {
+            Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
+            foreach (Transform candidate in transforms)
+            {
+                if (candidate.name == objectName)
                 {
-                    if (candidate.name == objectName)
-                    {
-                        return candidate;
-                    }
+                    return candidate;
                 }
             }
-
             return null;
         }
 
@@ -933,10 +953,10 @@ namespace CityFlow.EditorTools
             }
         }
 
-        private static bool TryCaptureLayout(Scene scene, out SavedLayout layout)
+        private static bool TryCaptureLayout(Transform root, out SavedLayout layout)
         {
             layout = default;
-            Transform existing = FindTransform(scene, FeedRootName);
+            Transform existing = FindTransform(root, FeedRootName);
             if (existing == null) return false;
 
             GreenFeedPanelController controller =
@@ -965,6 +985,15 @@ namespace CityFlow.EditorTools
         private static void RemoveExistingFeed(Scene scene)
         {
             Transform existing = FindTransform(scene, FeedRootName);
+            if (existing != null)
+            {
+                Undo.DestroyObjectImmediate(existing.gameObject);
+            }
+        }
+
+        private static void RemoveExistingFeed(Transform root)
+        {
+            Transform existing = FindTransform(root, FeedRootName);
             if (existing != null)
             {
                 Undo.DestroyObjectImmediate(existing.gameObject);

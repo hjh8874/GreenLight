@@ -66,6 +66,18 @@ namespace CityFlow.EditorTools
 
         private static void BakeIntoScene(Scene scene)
         {
+            Canvas canvas = FindCanvas(scene);
+            if (canvas == null)
+            {
+                Debug.LogError(
+                    $"[SaveSlotsPanelBaker] Canvas '{TargetCanvasName}' was not found in '{scene.name}'.");
+                return;
+            }
+            BakeIntoCanvas(canvas);
+        }
+
+        public static void BakeIntoCanvas(Canvas canvas)
+        {
             uiFont = ExternalKoreanFontAsset.LoadConfigured();
 
             if (uiFont == null)
@@ -77,21 +89,20 @@ namespace CityFlow.EditorTools
                 return;
             }
 
-            Transform settingsPanel = FindTransform(scene, "Settings_Panel")
-                ?? FindTransform(scene, "Setting_Panel")
-                ?? FindTransform(scene, "Setting_Panel ")
-                ?? FindTransform(scene, "Setting");
-            Canvas canvas = FindCanvas(scene);
+            Transform settingsPanel = FindTransform(canvas.transform, "Settings_Panel")
+                ?? FindTransform(canvas.transform, "Setting_Panel")
+                ?? FindTransform(canvas.transform, "Setting_Panel ")
+                ?? FindTransform(canvas.transform, "Setting");
 
-            if (settingsPanel == null || canvas == null)
+            if (settingsPanel == null)
             {
                 Debug.LogError(
-                    $"[SaveSlotsPanelBaker] Settings panel or canvas was not found in '{scene.name}'.");
+                    $"[SaveSlotsPanelBaker] Settings panel was not found in canvas.");
                 return;
             }
 
-            RemoveLegacyDeleteUi(scene);
-            RemoveExistingBakedUi(scene);
+            RemoveLegacyDeleteUi(canvas.transform);
+            RemoveExistingBakedUi(canvas.transform);
 
             CanvasGroup settingsCanvasGroup = settingsPanel.GetComponent<CanvasGroup>()
                 ?? Undo.AddComponent<CanvasGroup>(settingsPanel.gameObject);
@@ -665,7 +676,15 @@ namespace CityFlow.EditorTools
 
         private static void RemoveLegacyDeleteUi(Scene scene)
         {
-            SaveDataSettingsController[] controllers = FindComponents<SaveDataSettingsController>(scene);
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                RemoveLegacyDeleteUi(root.transform);
+            }
+        }
+
+        private static void RemoveLegacyDeleteUi(Transform root)
+        {
+            SaveDataSettingsController[] controllers = root.GetComponentsInChildren<SaveDataSettingsController>(true);
 
             foreach (SaveDataSettingsController controller in controllers)
             {
@@ -679,7 +698,7 @@ namespace CityFlow.EditorTools
                 }
             }
 
-            Transform deleteButton = FindTransform(scene, DeleteButtonName);
+            Transform deleteButton = FindTransform(root, DeleteButtonName);
 
             if (deleteButton != null)
             {
@@ -689,21 +708,29 @@ namespace CityFlow.EditorTools
 
         private static void RemoveExistingBakedUi(Scene scene)
         {
-            Transform controllerRoot = FindTransform(scene, ControllerRootName);
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                RemoveExistingBakedUi(root.transform);
+            }
+        }
+
+        private static void RemoveExistingBakedUi(Transform root)
+        {
+            Transform controllerRoot = FindTransform(root, ControllerRootName);
 
             if (controllerRoot != null)
             {
                 Undo.DestroyObjectImmediate(controllerRoot.gameObject);
             }
 
-            Transform openButton = FindTransform(scene, OpenButtonName);
+            Transform openButton = FindTransform(root, OpenButtonName);
 
             if (openButton != null)
             {
                 Undo.DestroyObjectImmediate(openButton.gameObject);
             }
 
-            Transform loadButton = FindTransform(scene, LoadButtonName);
+            Transform loadButton = FindTransform(root, LoadButtonName);
 
             if (loadButton != null)
             {
@@ -735,15 +762,21 @@ namespace CityFlow.EditorTools
         {
             foreach (GameObject root in scene.GetRootGameObjects())
             {
-                foreach (Transform transform in root.GetComponentsInChildren<Transform>(true))
+                Transform found = FindTransform(root.transform, objectName);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private static Transform FindTransform(Transform root, string objectName)
+        {
+            foreach (Transform transform in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (transform.name == objectName)
                 {
-                    if (transform.name == objectName)
-                    {
-                        return transform;
-                    }
+                    return transform;
                 }
             }
-
             return null;
         }
 
