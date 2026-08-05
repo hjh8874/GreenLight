@@ -298,13 +298,6 @@ namespace CityFlow.UI.Controllers
 
             if (mouse.rightButton.wasPressedThisFrame)
             {
-                if (_isBuildingMode && !_isDemolishMode)
-                {
-                    CancelPlacement();
-                    _rightClickStartCoord = null;
-                    return true;
-                }
-
                 if (IsBuildMenuOpen?.Invoke() != true)
                 {
                     _rightClickStartCoord = null;

@@ -138,6 +138,48 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void RightClick_DuringPlacement_DemolishesWithoutCancellingPlacement()
+        {
+            var handler = new PlacementInputHandler(
+                new UIRaycastBlocker(),
+                null);
+            Vector2Int target = new(4, 7);
+            bool cancelRequested = false;
+            Vector2Int? demolishedCoord = null;
+            handler.OnCancelPlacementRequested +=
+                () => cancelRequested = true;
+            handler.OnDemolishRequested += coord =>
+            {
+                demolishedCoord = coord;
+                return true;
+            };
+
+            var mouse = InputSystem.AddDevice<Mouse>();
+            try
+            {
+                using (StateEvent.From(mouse, out var eventPtr))
+                {
+                    mouse.rightButton.WriteValueIntoEvent(1f, eventPtr);
+                    InputSystem.QueueEvent(eventPtr);
+                }
+                InputSystem.Update();
+
+                handler.UpdateGlobalInput(
+                    true,
+                    true,
+                    target,
+                    true);
+
+                Assert.That(cancelRequested, Is.False);
+                Assert.That(demolishedCoord, Is.EqualTo(target));
+            }
+            finally
+            {
+                InputSystem.RemoveDevice(mouse);
+            }
+        }
+
+        [Test]
         public void Update_WhenPointerOverUI_ResetsDragState()
         {
             var go = new GameObject("Controller");
@@ -551,10 +593,18 @@ namespace Tests.EditMode
 
                 var previewRenderer =
                     preview.GetComponent<Renderer>();
-                Assert.AreSame(
+                Assert.AreNotSame(
                     sourceMaterial,
                     previewRenderer.sharedMaterial,
-                    "실제 설치 모델의 재질과 형태가 미리보기에서도 유지되어야 한다.");
+                    "미리보기는 원본 에셋을 변경하지 않는 전용 재질 복사본을 사용해야 한다.");
+                Assert.That(
+                    previewRenderer.sharedMaterial.shader.name,
+                    Does.Contain("Unlit").Or.EqualTo("Sprites/Default"),
+                    "미리보기 재질은 시간대 조명의 영향을 받지 않아야 한다.");
+                Assert.AreSame(
+                    sourceMaterial.mainTexture,
+                    previewRenderer.sharedMaterial.mainTexture,
+                    "전용 복사본도 실제 설치 모델의 텍스처를 유지해야 한다.");
 
                 var properties =
                     new MaterialPropertyBlock();
@@ -1909,12 +1959,13 @@ namespace Tests.EditMode
         }
 
         [Test]
-        public void RightClick_DuringPlacementMode_CancelsPlacement()
+        public void RightClick_DuringInfrastructurePlacementMode_KeepsPlacementActive()
         {
             var go = new GameObject("Coordinator");
             var coordinator = go.AddComponent<InfrastructurePlacementCoordinator>();
             var data = ScriptableObject.CreateInstance<InfrastructureDataSO>();
             data.Kind = InfrastructureKind.Signal;
+            coordinator.IsBuildMenuOpen = () => true;
 
             coordinator.StartPlacement(data);
 
@@ -1932,11 +1983,12 @@ namespace Tests.EditMode
                 var updateMethod = typeof(InfrastructurePlacementCoordinator).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
                 updateMethod.Invoke(coordinator, null);
 
-                // Verify placement is cancelled (IsPlacing property or something)
                 var isPlacingField = typeof(InfrastructurePlacementCoordinator).GetField("_isBuildingMode", BindingFlags.NonPublic | BindingFlags.Instance);
                 bool isPlacing = (bool)isPlacingField.GetValue(coordinator);
 
-                Assert.IsFalse(isPlacing, "Right click should cancel placement.");
+                Assert.IsTrue(
+                    isPlacing,
+                    "Right click demolition must keep the infrastructure preview active.");
             }
             finally
             {

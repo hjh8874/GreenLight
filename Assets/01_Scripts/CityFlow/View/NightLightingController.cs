@@ -19,12 +19,19 @@ namespace CityFlow.View
     {
         private const int HeadlightStartHour = 18;
         private const int HeadlightEndHour = 6;
+        private const float StandardHeadlightHeight = 0.65f;
+        private const float TallVehicleHeadlightHeight = 0.8f;
+        private const float HeadlightFrontClearance = 0.01f;
+        private const float HeadlightAimDistance = 0.3f;
+        private const float StandardRoadClearance = 0.12f;
+        private const float TallVehicleRoadClearance = 0.08f;
 
         private readonly List<Light> headlights = new();
         private CityFlowServices services;
         private IGameCalendarService calendar;
         private bool isMoving;
         private Vector3 localForward = Vector3.right;
+        private float headlightHeight = StandardHeadlightHeight;
 
         public static VehicleNightLighting Attach(
             GameObject vehicleRoot,
@@ -41,6 +48,31 @@ namespace CityFlow.View
             CityFlowServices services,
             Vector3 localForward)
         {
+            return Attach(
+                vehicleRoot,
+                services,
+                localForward,
+                StandardHeadlightHeight);
+        }
+
+        public static VehicleNightLighting AttachTallVehicle(
+            GameObject vehicleRoot,
+            CityFlowServices services,
+            Vector3 localForward)
+        {
+            return Attach(
+                vehicleRoot,
+                services,
+                localForward,
+                TallVehicleHeadlightHeight);
+        }
+
+        private static VehicleNightLighting Attach(
+            GameObject vehicleRoot,
+            CityFlowServices services,
+            Vector3 localForward,
+            float headlightHeight)
+        {
             if (vehicleRoot == null)
             {
                 return null;
@@ -53,6 +85,7 @@ namespace CityFlow.View
                 localForward.sqrMagnitude > 0.0001f
                     ? localForward.normalized
                     : Vector3.right;
+            lighting.headlightHeight = Mathf.Clamp01(headlightHeight);
             lighting.Initialize(services);
             return lighting;
         }
@@ -93,20 +126,34 @@ namespace CityFlow.View
                 return;
             }
 
+            if (moving)
+            {
+                EnsureHeadlights();
+            }
+
             isMoving = moving;
             ApplyHour(calendar?.Hour ?? 12);
         }
 
         private void EnsureHeadlights()
         {
-            if (headlights.Count > 0 ||
-                !TryCalculateLocalBounds(out Bounds bounds))
+            if (!TryCalculateLocalBounds(out Bounds bounds))
             {
                 return;
             }
 
-            var lightRoot = new GameObject("NightHeadlights");
-            lightRoot.transform.SetParent(transform, false);
+            Transform lightRoot;
+            if (headlights.Count == 0)
+            {
+                var lightRootObject =
+                    new GameObject("NightHeadlights");
+                lightRootObject.transform.SetParent(transform, false);
+                lightRoot = lightRootObject.transform;
+            }
+            else
+            {
+                lightRoot = headlights[0].transform.parent;
+            }
 
             Vector3 forward = localForward;
             Vector3 side = new(
@@ -126,26 +173,67 @@ namespace CityFlow.View
             Vector3 front =
                 bounds.center +
                 forward *
-                (halfLength + length * 0.025f);
+                (halfLength + length * HeadlightFrontClearance);
             float sideOffset = width * 0.3f;
+            float aimDistance = Mathf.Max(
+                0.05f,
+                length * HeadlightAimDistance);
+            bool hasRoadSurface =
+                TryResolveRoadHeight(out float roadHeight);
             float heightZ = Mathf.Lerp(
-                bounds.center.z,
+                bounds.min.z,
                 bounds.max.z,
-                0.25f);
-            front.z = heightZ;
+                headlightHeight);
+            if (hasRoadSurface)
+            {
+                float clearance =
+                    headlightHeight >= TallVehicleHeadlightHeight
+                        ? TallVehicleRoadClearance
+                        : StandardRoadClearance;
+                heightZ =
+                    roadHeight - bounds.size.z * clearance;
+            }
 
-            CreateHeadlight(
-                lightRoot.transform,
-                "Headlight_Left",
-                front + side * sideOffset,
-                worldLength,
-                forward);
-            CreateHeadlight(
-                lightRoot.transform,
-                "Headlight_Right",
-                front - side * sideOffset,
-                worldLength,
-                forward);
+            front.z = heightZ;
+            if (!hasRoadSurface)
+            {
+                roadHeight = bounds.max.z;
+            }
+
+            if (headlights.Count == 0)
+            {
+                CreateHeadlight(
+                    lightRoot,
+                    "Headlight_Left",
+                    front + side * sideOffset,
+                    worldLength,
+                    forward,
+                    aimDistance,
+                    roadHeight);
+                CreateHeadlight(
+                    lightRoot,
+                    "Headlight_Right",
+                    front - side * sideOffset,
+                    worldLength,
+                    forward,
+                    aimDistance,
+                    roadHeight);
+            }
+            else
+            {
+                ConfigureHeadlight(
+                    headlights[0],
+                    front + side * sideOffset,
+                    forward,
+                    aimDistance,
+                    roadHeight);
+                ConfigureHeadlight(
+                    headlights[1],
+                    front - side * sideOffset,
+                    forward,
+                    aimDistance,
+                    roadHeight);
+            }
         }
 
         private void CreateHeadlight(
@@ -153,29 +241,68 @@ namespace CityFlow.View
             string lightName,
             Vector3 localPosition,
             float worldLength,
-            Vector3 forward)
+            Vector3 forward,
+            float aimDistance,
+            float roadHeight)
         {
             var lightObject = new GameObject(lightName);
             lightObject.hideFlags =
                 HideFlags.HideInHierarchy |
                 HideFlags.DontSave;
             lightObject.transform.SetParent(parent, false);
-            lightObject.transform.localPosition = localPosition;
-            lightObject.transform.localRotation =
-                Quaternion.LookRotation(
-                    forward,
-                    Vector3.back);
 
             Light headlight = lightObject.AddComponent<Light>();
             headlight.type = LightType.Spot;
             headlight.color = new Color(1f, 0.9f, 0.72f);
-            headlight.intensity = 1.35f;
+            headlight.intensity = 1.55f;
             headlight.range = Mathf.Max(1.2f, worldLength * 6f);
-            headlight.spotAngle = 46f;
-            headlight.innerSpotAngle = 24f;
+            headlight.spotAngle = 60f;
+            headlight.innerSpotAngle = 32f;
             headlight.shadows = LightShadows.None;
             headlight.renderMode = LightRenderMode.Auto;
             headlights.Add(headlight);
+            ConfigureHeadlight(
+                headlight,
+                localPosition,
+                forward,
+                aimDistance,
+                roadHeight);
+        }
+
+        private static void ConfigureHeadlight(
+            Light headlight,
+            Vector3 localPosition,
+            Vector3 forward,
+            float aimDistance,
+            float roadHeight)
+        {
+            headlight.transform.localPosition = localPosition;
+            Vector3 localAimPoint =
+                localPosition + forward * aimDistance;
+            localAimPoint.z = roadHeight;
+            headlight.transform.localRotation =
+                Quaternion.LookRotation(
+                    localAimPoint - localPosition,
+                    Vector3.back);
+        }
+
+        private bool TryResolveRoadHeight(out float roadHeight)
+        {
+            MainCityView cityView =
+                GetComponentInParent<MainCityView>();
+            if (cityView == null)
+            {
+                roadHeight = 0f;
+                return false;
+            }
+
+            Vector3 roadPoint = cityView.transform.InverseTransformPoint(
+                transform.position);
+            roadPoint.z = cityView.RoadSurfaceZ;
+            roadPoint = cityView.transform.TransformPoint(roadPoint);
+            roadHeight =
+                transform.InverseTransformPoint(roadPoint).z;
+            return true;
         }
 
         private bool TryCalculateLocalBounds(out Bounds bounds)
@@ -189,19 +316,22 @@ namespace CityFlow.View
                  rendererIndex < renderers.Length;
                  rendererIndex++)
             {
-                Bounds worldBounds = renderers[rendererIndex].bounds;
+                Renderer renderer = renderers[rendererIndex];
+                Bounds rendererBounds = renderer.localBounds;
                 for (int corner = 0; corner < 8; corner++)
                 {
-                    Vector3 worldPoint = new(
+                    Vector3 rendererPoint = new(
                         (corner & 1) == 0
-                            ? worldBounds.min.x
-                            : worldBounds.max.x,
+                            ? rendererBounds.min.x
+                            : rendererBounds.max.x,
                         (corner & 2) == 0
-                            ? worldBounds.min.y
-                            : worldBounds.max.y,
+                            ? rendererBounds.min.y
+                            : rendererBounds.max.y,
                         (corner & 4) == 0
-                            ? worldBounds.min.z
-                            : worldBounds.max.z);
+                            ? rendererBounds.min.z
+                            : rendererBounds.max.z);
+                    Vector3 worldPoint =
+                        renderer.transform.TransformPoint(rendererPoint);
                     Vector3 localPoint =
                         transform.InverseTransformPoint(worldPoint);
                     if (!found)

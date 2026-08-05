@@ -213,6 +213,189 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
+        public void VehicleHeadlights_TallVehicleProfileKeepsLightCloserToRoad()
+        {
+            var regularVehicle =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            regularVehicle.transform.localScale =
+                new Vector3(0.4f, 1f, 0.2f);
+            var bus =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bus.transform.localScale =
+                new Vector3(0.4f, 1f, 0.4f);
+
+            try
+            {
+                VehicleNightLighting.Attach(
+                    regularVehicle,
+                    null,
+                    Vector3.right);
+                VehicleNightLighting.AttachTallVehicle(
+                    bus,
+                    null,
+                    Vector3.right);
+
+                Light regularHeadlight =
+                    regularVehicle.GetComponentInChildren<Light>(true);
+                Light busHeadlight =
+                    bus.GetComponentInChildren<Light>(true);
+
+                Assert.That(regularHeadlight, Is.Not.Null);
+                Assert.That(busHeadlight, Is.Not.Null);
+                Assert.That(
+                    busHeadlight.transform.localPosition.z,
+                    Is.GreaterThan(regularHeadlight.transform.localPosition.z),
+                    "Tall vehicles must mount headlights lower so their road light begins closer to the vehicle.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(regularVehicle);
+                UnityEngine.Object.DestroyImmediate(bus);
+            }
+        }
+
+        [Test]
+        public void VehicleHeadlights_AimAtRoadImmediatelyAheadOfVehicle()
+        {
+            var vehicle =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            vehicle.transform.localScale =
+                new Vector3(0.4f, 1f, 0.2f);
+
+            try
+            {
+                VehicleNightLighting.Attach(
+                    vehicle,
+                    null,
+                    Vector3.right);
+                Light headlight =
+                    vehicle.GetComponentInChildren<Light>(true);
+
+                Assert.That(headlight, Is.Not.Null);
+                Vector3 rayOrigin =
+                    headlight.transform.localPosition;
+                Vector3 rayDirection =
+                    vehicle.transform.InverseTransformDirection(
+                        headlight.transform.forward).normalized;
+                const float roadHeight = 0.5f;
+                float hitDistance =
+                    (roadHeight - rayOrigin.z) /
+                    rayDirection.z;
+                Vector3 roadHit =
+                    rayOrigin + rayDirection * hitDistance;
+                const float vehicleFront = 0.5f;
+
+                Assert.That(rayDirection.z, Is.GreaterThan(0f));
+                Assert.That(
+                    roadHit.x - vehicleFront,
+                    Is.InRange(0.25f, 0.35f),
+                    "The spotlight center must reach the road immediately ahead of the vehicle nose.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(vehicle);
+            }
+        }
+
+        [Test]
+        public void VehicleHeadlights_AimAtLocalRoadPlaneInRotatedWorld()
+        {
+            var cityObject = new GameObject("Rotated Main City View");
+            cityObject.transform.position = new Vector3(12f, -7f, 5f);
+            cityObject.transform.rotation =
+                Quaternion.Euler(62f, 17f, -28f);
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
+            GameObject vehicle =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            vehicle.transform.SetParent(cityObject.transform, false);
+            vehicle.transform.localPosition =
+                new Vector3(2f, -1f, -0.18f);
+            vehicle.transform.localRotation =
+                Quaternion.Euler(0f, 0f, 31f);
+            vehicle.transform.localScale =
+                new Vector3(0.4f, 1f, 0.2f);
+
+            try
+            {
+                VehicleNightLighting.Attach(
+                    vehicle,
+                    null,
+                    Vector3.right);
+                Light headlight =
+                    vehicle.GetComponentInChildren<Light>(true);
+
+                Assert.That(headlight, Is.Not.Null);
+                Vector3 cityOrigin =
+                    cityObject.transform.InverseTransformPoint(
+                        headlight.transform.position);
+                Vector3 cityDirection =
+                    cityObject.transform.InverseTransformDirection(
+                        headlight.transform.forward).normalized;
+                float hitDistance =
+                    (cityView.RoadSurfaceZ - cityOrigin.z) /
+                    cityDirection.z;
+                Vector3 cityRoadHit =
+                    cityOrigin + cityDirection * hitDistance;
+                Vector3 vehicleRoadHit =
+                    vehicle.transform.InverseTransformPoint(
+                        cityObject.transform.TransformPoint(cityRoadHit));
+
+                Assert.That(hitDistance, Is.GreaterThan(0f));
+                Assert.That(
+                    cityRoadHit.z,
+                    Is.EqualTo(cityView.RoadSurfaceZ).Within(0.0001f));
+                Assert.That(
+                    vehicleRoadHit.x - 0.5f,
+                    Is.InRange(0.25f, 0.35f),
+                    "The rotated world must keep the light landing immediately ahead of the vehicle nose.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
+        public void VehicleHeadlights_KeepFixedSpacingWhileVehicleTurns()
+        {
+            var vehicle =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            vehicle.transform.localScale =
+                new Vector3(0.6f, 0.3f, 0.2f);
+
+            try
+            {
+                VehicleNightLighting lighting =
+                    VehicleNightLighting.Attach(
+                        vehicle,
+                        null,
+                        Vector3.right);
+                Light[] headlights =
+                    vehicle.GetComponentsInChildren<Light>(true);
+                float initialSpacing = Mathf.Abs(
+                    headlights[0].transform.localPosition.y -
+                    headlights[1].transform.localPosition.y);
+
+                vehicle.transform.rotation =
+                    Quaternion.Euler(0f, 0f, 45f);
+                lighting.SetMoving(true);
+                float turningSpacing = Mathf.Abs(
+                    headlights[0].transform.localPosition.y -
+                    headlights[1].transform.localPosition.y);
+
+                Assert.That(
+                    turningSpacing,
+                    Is.EqualTo(initialSpacing).Within(0.0001f),
+                    "Turning must not spread the two headlights apart in vehicle-local space.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(vehicle);
+            }
+        }
+
+        [Test]
         public void BuildingWindowLights_DoNotChangeBodyMaterial()
         {
             var building =

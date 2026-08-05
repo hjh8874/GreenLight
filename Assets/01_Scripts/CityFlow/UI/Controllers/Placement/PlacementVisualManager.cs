@@ -26,6 +26,8 @@ namespace CityFlow.UI.Controllers.Placement
         private Material _ghostVolumeMaterial;
         private GameObject _buildingPreviewObject;
         private Material _buildingPreviewMaterial;
+        private readonly List<Material>
+            _buildingPreviewMaterialCopies = new List<Material>();
         private Renderer[] _buildingPreviewRenderers =
             System.Array.Empty<Renderer>();
         private bool _ghostActive;
@@ -157,6 +159,7 @@ namespace CityFlow.UI.Controllers.Placement
                     _buildingPreviewObject,
                     previewMaterial,
                     preserveSourceMaterials: true);
+            CreateBuildingPreviewMaterialCopies();
 
             UpdateBuildingPreviewColor(canPlace: true);
             _buildingPreviewObject.SetActive(_ghostActive);
@@ -682,10 +685,62 @@ namespace CityFlow.UI.Controllers.Placement
             material.SetColor("_Color", color);
         }
 
+        private void CreateBuildingPreviewMaterialCopies()
+        {
+            for (int rendererIndex = 0;
+                 rendererIndex < _buildingPreviewRenderers.Length;
+                 rendererIndex++)
+            {
+                Renderer renderer =
+                    _buildingPreviewRenderers[rendererIndex];
+                Material[] materials = renderer.sharedMaterials;
+                bool changed = false;
+                for (int materialIndex = 0;
+                     materialIndex < materials.Length;
+                     materialIndex++)
+                {
+                    Material source = materials[materialIndex];
+                    if (source == null ||
+                        ReferenceEquals(source, _buildingPreviewMaterial))
+                    {
+                        continue;
+                    }
+
+                    var copy = new Material(_buildingPreviewMaterial)
+                    {
+                        name = $"{source.name} (Placement Preview)",
+                        hideFlags = HideFlags.HideAndDontSave
+                    };
+                    Texture sourceTexture = source.mainTexture;
+                    if (sourceTexture != null)
+                    {
+                        copy.mainTexture = sourceTexture;
+                        copy.mainTextureScale = source.mainTextureScale;
+                        copy.mainTextureOffset = source.mainTextureOffset;
+                    }
+                    materials[materialIndex] = copy;
+                    _buildingPreviewMaterialCopies.Add(copy);
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    renderer.sharedMaterials = materials;
+                }
+            }
+        }
+
         private void ClearBuildingPreview()
         {
             SafeDestroy(_buildingPreviewObject);
             _buildingPreviewObject = null;
+            for (int index = 0;
+                 index < _buildingPreviewMaterialCopies.Count;
+                 index++)
+            {
+                SafeDestroy(_buildingPreviewMaterialCopies[index]);
+            }
+            _buildingPreviewMaterialCopies.Clear();
             _buildingPreviewRenderers =
                 System.Array.Empty<Renderer>();
         }

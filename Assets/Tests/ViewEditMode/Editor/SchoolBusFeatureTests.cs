@@ -314,6 +314,226 @@ namespace CityFlow.Sim.Tests
                 Is.EqualTo(-1f).Within(0.0001f));
         }
 
+        [Test]
+        public void SchoolBusParking_SelectsFirstEmptySlotFromTheRight()
+        {
+            GameObject cityObject = new("School Parking Slot Test View");
+            GameObject buildingObject = new("School Parking Slot Test Building");
+            GameObject parkedVehicle = new("Occupied Right Parking Slot");
+            GameObject requestingVehicle = new("Requesting School Bus");
+            GameObject secondParkedVehicle = null;
+            GameObject thirdParkedVehicle = null;
+
+            try
+            {
+                cityObject.transform.position =
+                    new Vector3(10000f, 10000f, 0f);
+                MainCityView cityView =
+                    cityObject.AddComponent<MainCityView>();
+                buildingObject.transform.SetParent(
+                    cityObject.transform,
+                    false);
+
+                for (int slotIndex = 0; slotIndex < 3; slotIndex++)
+                {
+                    GameObject slot =
+                        new($"ParkingSlot_{slotIndex}");
+                    slot.transform.SetParent(
+                        buildingObject.transform,
+                        false);
+                    slot.transform.localPosition =
+                        new Vector3(1f - slotIndex, 0f, 0f);
+                }
+
+                Vector2Int schoolTile = new(12, 8);
+                RegisterTileVisual(
+                    cityView,
+                    schoolTile,
+                    buildingObject);
+
+                parkedVehicle.transform.SetParent(
+                    cityObject.transform,
+                    false);
+                parkedVehicle.transform.localPosition =
+                    new Vector3(1f, 0f, 0f);
+                parkedVehicle.AddComponent<VehicleNightLighting>();
+
+                requestingVehicle.transform.SetParent(
+                    cityObject.transform,
+                    false);
+                requestingVehicle.transform.localPosition =
+                    new Vector3(-5f, 0f, 0f);
+
+                Assert.That(
+                    cityView.TryGetFirstFreeBuildingParkingPose(
+                        schoolTile,
+                        3,
+                        requestingVehicle.transform,
+                        out int selectedSlot,
+                        out Vector3 selectedPosition,
+                        out _),
+                    Is.True);
+                Assert.That(
+                    selectedSlot,
+                    Is.EqualTo(1),
+                    "오른쪽 첫 슬롯이 차 있으면 바로 왼쪽의 빈 슬롯을 선택해야 한다.");
+                Assert.That(
+                    selectedPosition.x,
+                    Is.EqualTo(0f).Within(0.0001f));
+
+                secondParkedVehicle =
+                    CreateParkedTestVehicle(
+                        cityObject.transform,
+                        "Occupied Middle Parking Slot",
+                        new Vector3(0f, 0f, 0f));
+                thirdParkedVehicle =
+                    CreateParkedTestVehicle(
+                        cityObject.transform,
+                        "Occupied Left Parking Slot",
+                        new Vector3(-1f, 0f, 0f));
+                Assert.That(
+                    cityView.TryGetFirstFreeBuildingParkingPose(
+                        schoolTile,
+                        3,
+                        requestingVehicle.transform,
+                        out _,
+                        out _,
+                        out _),
+                    Is.False,
+                    "모든 주차 칸이 차 있으면 다른 차량 위에 주차하면 안 된다.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(thirdParkedVehicle);
+                UnityEngine.Object.DestroyImmediate(secondParkedVehicle);
+                UnityEngine.Object.DestroyImmediate(requestingVehicle);
+                UnityEngine.Object.DestroyImmediate(parkedVehicle);
+                UnityEngine.Object.DestroyImmediate(buildingObject);
+                UnityEngine.Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
+        public void SchoolBusParking_ReservesDifferentSlotsBeforeArrival()
+        {
+            GameObject cityObject = new("School Parking Reservation View");
+            GameObject buildingObject = new("School Parking Reservation Building");
+            GameObject firstBus = new("First Approaching School Bus");
+            GameObject secondBus = new("Second Approaching School Bus");
+            GameObject thirdBus = new("Third Approaching School Bus");
+
+            try
+            {
+                MainCityView cityView =
+                    cityObject.AddComponent<MainCityView>();
+                buildingObject.transform.SetParent(
+                    cityObject.transform,
+                    false);
+                for (int slotIndex = 0; slotIndex < 3; slotIndex++)
+                {
+                    GameObject slot = new($"ParkingSlot_{slotIndex}");
+                    slot.transform.SetParent(
+                        buildingObject.transform,
+                        false);
+                    slot.transform.localPosition =
+                        new Vector3(1f - slotIndex, 0f, 0f);
+                }
+
+                Vector2Int schoolTile = new(4, 9);
+                RegisterTileVisual(
+                    cityView,
+                    schoolTile,
+                    buildingObject);
+                firstBus.transform.SetParent(cityObject.transform, false);
+                secondBus.transform.SetParent(cityObject.transform, false);
+                thirdBus.transform.SetParent(cityObject.transform, false);
+
+                Assert.That(
+                    cityView.TryReserveFirstFreeBuildingParkingPose(
+                        schoolTile,
+                        3,
+                        firstBus.transform,
+                        out int firstSlot,
+                        out _,
+                        out _),
+                    Is.True);
+                Assert.That(
+                    cityView.TryReserveFirstFreeBuildingParkingPose(
+                        schoolTile,
+                        3,
+                        secondBus.transform,
+                        out int secondSlot,
+                        out _,
+                        out _),
+                    Is.True);
+                Assert.That(firstSlot, Is.EqualTo(0));
+                Assert.That(
+                    secondSlot,
+                    Is.EqualTo(1),
+                    "A second approaching bus must not receive the first bus's reserved slot.");
+
+                cityView.ReleaseBuildingParkingReservation(
+                    schoolTile,
+                    firstSlot,
+                    firstBus.transform);
+                Assert.That(
+                    cityView.TryReserveFirstFreeBuildingParkingPose(
+                        schoolTile,
+                        3,
+                        thirdBus.transform,
+                        out int releasedSlot,
+                        out _,
+                        out _),
+                    Is.True);
+                Assert.That(
+                    releasedSlot,
+                    Is.EqualTo(0),
+                    "Released parking reservations must become available again.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        private static GameObject CreateParkedTestVehicle(
+            Transform parent,
+            string name,
+            Vector3 localPosition)
+        {
+            GameObject vehicle = new(name);
+            vehicle.transform.SetParent(parent, false);
+            vehicle.transform.localPosition = localPosition;
+            vehicle.AddComponent<VehicleNightLighting>();
+            return vehicle;
+        }
+
+        private static void RegisterTileVisual(
+            MainCityView cityView,
+            Vector2Int tile,
+            GameObject visualObject)
+        {
+            System.Type tileVisualType =
+                typeof(MainCityView).GetNestedType(
+                    "TileVisual",
+                    BindingFlags.NonPublic);
+            object tileVisual =
+                System.Activator.CreateInstance(tileVisualType);
+            tileVisualType.GetField(
+                    "Object",
+                    BindingFlags.Instance | BindingFlags.Public)
+                .SetValue(tileVisual, visualObject);
+
+            FieldInfo visualsField =
+                typeof(MainCityView).GetField(
+                    "tileVisuals",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            System.Collections.IDictionary visuals =
+                (System.Collections.IDictionary)visualsField.GetValue(
+                    cityView);
+            visuals.Add(tile, tileVisual);
+        }
+
 
         [Test]
         public void ScheduledService_StartsOnlyAfterSchoolAndMorningWindow()

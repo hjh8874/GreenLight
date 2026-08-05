@@ -78,7 +78,7 @@ namespace CityFlow.UI.Controllers.Placement
             return GridUtil.WorldToGrid(Camera.main.ScreenToWorldPoint(mousePos));
         }
 
-        public void UpdateGlobalInput(bool isBuildingMode, bool isBuildingType, Vector2Int gridCoord, bool isBuildMenuOpen)
+        public void UpdateGlobalInput(bool isBuildingMode, bool isBuildingType, Vector2Int cursorCoord, bool isBuildMenuOpen)
         {
             // R키 회전
             if (isBuildingMode && isBuildingType && Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
@@ -86,7 +86,7 @@ namespace CityFlow.UI.Controllers.Placement
                 OnRotateRequested?.Invoke();
             }
 
-            // 우클릭 철거 또는 배치 취소
+            // 건설 패널이 열려 있으면 배치 미리보기 중에도 우클릭으로 철거
             if (Mouse.current != null)
             {
                 bool rightPressed = Mouse.current.rightButton.isPressed;
@@ -94,31 +94,22 @@ namespace CityFlow.UI.Controllers.Placement
 
                 if (rightPressedThisFrame && !IsPointerOverBlockingUI())
                 {
-                    if (isBuildingMode)
-                    {
-                        OnCancelPlacementRequested?.Invoke();
-                        _rightClickStartCoord = null;
-                        return; // 배치 취소 시 이 프레임은 종료
-                    }
-                    else
-                    {
-                        _rightClickStartCoord = gridCoord; // Use the already resolved one
-                    }
+                    _rightClickStartCoord = cursorCoord;
                 }
 
                 if (rightPressed && !IsPointerOverBlockingUI() && _rightClickStartCoord.HasValue)
                 {
-                    if (_lastRemovedCoord == null || _lastRemovedCoord.Value != gridCoord)
+                    if (_lastRemovedCoord == null || _lastRemovedCoord.Value != cursorCoord)
                     {
                         if (!isBuildMenuOpen)
                         {
                             return; // 건설 탭이 열려있지 않으면 철거 불가
                         }
 
-                        bool success = OnDemolishRequested?.Invoke(gridCoord) ?? false;
+                        bool success = OnDemolishRequested?.Invoke(cursorCoord) ?? false;
                         if (success)
                         {
-                            _lastRemovedCoord = gridCoord;
+                            _lastRemovedCoord = cursorCoord;
                         }
                     }
                 }
