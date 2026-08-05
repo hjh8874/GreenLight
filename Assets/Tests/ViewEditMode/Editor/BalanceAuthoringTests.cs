@@ -284,9 +284,11 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void VideoStoreContract_UsesConsistentDisplayName()
+        public void GymDisplayContract_UsesConsistentNameAndDescription()
         {
-            const string expectedName = "비디오 대여점";
+            const string expectedName = "헬스장";
+            const string expectedDescription =
+                "Neighborhood fitness center.";
             const string sourceBuildingPath =
                 "Assets/05_ScriptableObjects/Buildings/Building_StoreCorner_Video.asset";
             string[] buildingPaths =
@@ -306,6 +308,10 @@ namespace CityFlow.Sim.Tests
                 Assert.That(
                     serialized.FindProperty("buildingName").stringValue,
                     Is.EqualTo(expectedName),
+                    path);
+                Assert.That(
+                    serialized.FindProperty("description").stringValue,
+                    Is.EqualTo(expectedDescription),
                     path);
             }
 
@@ -334,6 +340,64 @@ namespace CityFlow.Sim.Tests
                         entries.GetArrayElementAtIndex(index);
                     if (entry.FindPropertyRelative("researchId").stringValue !=
                         "research_building_video_store")
+                    {
+                        continue;
+                    }
+
+                    Assert.That(
+                        entry.FindPropertyRelative("displayName").stringValue,
+                        Is.EqualTo(expectedName),
+                        path);
+                    found = true;
+                    break;
+                }
+
+                Assert.That(found, Is.True, path);
+            }
+        }
+
+        [Test]
+        public void ShoppingMallDisplayContract_UsesConsistentName()
+        {
+            const string expectedName = "쇼핑몰";
+            string[] buildingPaths =
+            {
+                "Assets/05_ScriptableObjects/Buildings/Building_Mall.asset",
+                "Assets/05_ScriptableObjects/Balance/Editor/Building_Mall_Balance.asset"
+            };
+            foreach (string path in buildingPaths)
+            {
+                Object building = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(building, Is.Not.Null, path);
+                var serialized = new SerializedObject(building);
+                Assert.That(
+                    serialized.FindProperty("buildingId").stringValue,
+                    Is.EqualTo("mall"),
+                    path);
+                Assert.That(
+                    serialized.FindProperty("buildingName").stringValue,
+                    Is.EqualTo(expectedName),
+                    path);
+            }
+
+            string[] catalogPaths =
+            {
+                BalanceAuthoringWindow.ResearchCatalogPath,
+                BalanceAuthoringWindow.WorkingResearchCatalogPath
+            };
+            foreach (string path in catalogPaths)
+            {
+                Object catalog = AssetDatabase.LoadMainAssetAtPath(path);
+                Assert.That(catalog, Is.Not.Null, path);
+                var serialized = new SerializedObject(catalog);
+                SerializedProperty entries = serialized.FindProperty("entries");
+                bool found = false;
+                for (int index = 0; index < entries.arraySize; index++)
+                {
+                    SerializedProperty entry =
+                        entries.GetArrayElementAtIndex(index);
+                    if (entry.FindPropertyRelative("researchId").stringValue !=
+                        "research_building_mall")
                     {
                         continue;
                     }

@@ -293,7 +293,7 @@ namespace CityFlow.EditorTools.Balance
                 showInNavigation: false,
                 linkedResearchId: "research_building_coffee_shop"),
             new(
-                "내부", "비디오 대여점 실제 건물",
+                "내부", "헬스장 실제 건물",
                 "Assets/05_ScriptableObjects/Buildings/Building_StoreCorner_Video.asset",
                 "Building_StoreCorner_Video_Balance",
                 SpecialBuildingPropertyPaths,
@@ -335,7 +335,7 @@ namespace CityFlow.EditorTools.Balance
                 showInNavigation: false,
                 linkedResearchId: "research_building_police_station"),
             new(
-                "내부", "큰 상점 실제 건물",
+                "내부", "쇼핑몰 실제 건물",
                 "Assets/05_ScriptableObjects/Buildings/Building_Mall.asset",
                 "Building_Mall_Balance",
                 SpecialBuildingPropertyPaths,
