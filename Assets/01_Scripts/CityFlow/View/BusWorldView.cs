@@ -13,6 +13,8 @@ namespace CityFlow.View
         MonoBehaviour,
         ICityFlowServiceConsumer
     {
+        private const int SchoolParkingSlotCount = 6;
+
         private enum OffRoadTransitionKind
         {
             None = 0,
@@ -98,6 +100,8 @@ namespace CityFlow.View
         private Vector3 pendingOffRoadParkingPosition;
         private Vector2 pendingOffRoadForward;
         private float nextOffRoadExitWaitLogTime;
+        private int resolvedSchoolParkingSlot = -1;
+        private Vector2Int resolvedSchoolParkingAnchor;
 
         public bool HasVisibleBus =>
             visual != null &&
@@ -146,9 +150,10 @@ namespace CityFlow.View
                 services?.Placement as IIntersectionFacilityService;
             ResolveReferences();
             EnsureVisual();
-            nightLighting = VehicleNightLighting.Attach(
+            nightLighting = VehicleNightLighting.AttachTallVehicle(
                 visual != null ? visual.gameObject : null,
-                services);
+                services,
+                Vector3.right);
             UpdateStopPresentationGate();
             Subscribe();
             HandleTileChanged(busRoute != null
@@ -466,7 +471,10 @@ namespace CityFlow.View
             visual.localScale = Vector3.one * visualScale;
             ApplyFeatureMaterial(instance);
             nightLighting =
-                VehicleNightLighting.Attach(instance, services);
+                VehicleNightLighting.AttachTallVehicle(
+                    instance,
+                    services,
+                    Vector3.right);
             instance.SetActive(false);
 
             CityBusVehicleAgent agent =
@@ -718,22 +726,25 @@ namespace CityFlow.View
             Vector2Int destination)
         {
             EnsureVisual();
-            if (visual == null ||
-                cityView == null ||
-                !TryGetSchoolParkingPose(
-                    destination,
-                    out Vector3 parkingPosition,
-                    out Vector2 forward))
+            if (visual == null || cityView == null)
             {
                 busRoute?.CompleteOffRoadExitTransition();
                 return;
             }
 
-            parkingForward = forward;
             hasPendingOffRoadExit = true;
             pendingOffRoadDestination = destination;
-            pendingOffRoadParkingPosition = parkingPosition;
-            pendingOffRoadForward = forward;
+            pendingOffRoadParkingPosition = default;
+            pendingOffRoadForward = default;
+            if (TryGetSchoolParkingPose(
+                    destination,
+                    out Vector3 parkingPosition,
+                    out Vector2 forward))
+            {
+                pendingOffRoadParkingPosition = parkingPosition;
+                pendingOffRoadForward = forward;
+            }
+
             TryBeginPendingOffRoadExit();
         }
 
@@ -751,6 +762,25 @@ namespace CityFlow.View
             if (busRoute.State != BusRouteState.LeavingRoad)
             {
                 ClearPendingOffRoadExit();
+                return;
+            }
+
+            if (pendingOffRoadForward.sqrMagnitude <= 0.5f &&
+                !TryGetSchoolParkingPose(
+                    pendingOffRoadDestination,
+                    out pendingOffRoadParkingPosition,
+                    out pendingOffRoadForward))
+            {
+                if (Time.unscaledTime >= nextOffRoadExitWaitLogTime)
+                {
+                    nextOffRoadExitWaitLogTime =
+                        Time.unscaledTime + 1.5f;
+                    Debug.Log(
+                        "[SchoolBusParking] School bus waits for an empty " +
+                        $"school parking slot. destination={pendingOffRoadDestination}.",
+                        this);
+                }
+
                 return;
             }
 
@@ -1416,6 +1446,7 @@ namespace CityFlow.View
             offRoadTransitionKind = OffRoadTransitionKind.None;
             if (transitionEndsOnRoad)
             {
+                ClearResolvedSchoolParkingSlot();
                 if (completedTransition ==
                     OffRoadTransitionKind.RoadEntry)
                 {
@@ -1462,13 +1493,37 @@ namespace CityFlow.View
 
             Vector2Int schoolAnchor = tile;
             tileData.TryGetFootprintAnchor(tile, out schoolAnchor);
-            if (!cityView.TryGetBuildingParkingPose(
-                    schoolAnchor,
-                    schoolParkingSlot,
-                    out localPosition,
-                    out Vector3 localForward))
+            Vector3 localForward;
+            if (resolvedSchoolParkingSlot >= 0 &&
+                resolvedSchoolParkingAnchor == schoolAnchor)
             {
-                return false;
+                if (!cityView.TryGetBuildingParkingPose(
+                        schoolAnchor,
+                        resolvedSchoolParkingSlot,
+                        out localPosition,
+                        out localForward))
+                {
+                    ClearResolvedSchoolParkingSlot();
+                    return false;
+                }
+            }
+            else
+            {
+                int slotCount = Mathf.Max(
+                    SchoolParkingSlotCount,
+                    schoolParkingSlot + 1);
+                if (!cityView.TryGetFirstFreeBuildingParkingPose(
+                        schoolAnchor,
+                        slotCount,
+                        visual,
+                        out resolvedSchoolParkingSlot,
+                        out localPosition,
+                        out localForward))
+                {
+                    return false;
+                }
+
+                resolvedSchoolParkingAnchor = schoolAnchor;
             }
 
             localPosition.z = GetVisualSurfaceDepth();
@@ -1476,6 +1531,12 @@ namespace CityFlow.View
                 localForward.x,
                 localForward.y).normalized;
             return forward.sqrMagnitude > 0.5f;
+        }
+
+        private void ClearResolvedSchoolParkingSlot()
+        {
+            resolvedSchoolParkingSlot = -1;
+            resolvedSchoolParkingAnchor = default;
         }
 
         private float CalculateTransitionDuration(
@@ -1548,6 +1609,7 @@ namespace CityFlow.View
         private void HandleRouteUnavailable()
         {
             ClearPendingOffRoadExit();
+            ClearResolvedSchoolParkingSlot();
             offRoadTransitionActive = false;
             offRoadTransitionKind = OffRoadTransitionKind.None;
             segmentElapsed = 0f;
@@ -1747,6 +1809,7 @@ namespace CityFlow.View
         private void HideCityBusVisual()
         {
             cityView?.RemoveVehiclePresentation(this);
+            ClearResolvedSchoolParkingSlot();
             if (visual == null)
             {
                 return;

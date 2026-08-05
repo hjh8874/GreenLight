@@ -336,7 +336,7 @@ namespace CityFlow.UI
             _inputHandler.UpdateGlobalInput(
                 _isBuildingMode,
                 isBuildingType,
-                _isBuildingMode ? gridCoord : cursorCoord,
+                cursorCoord,
                 isBuildMenuOpen);
 
             if (_inputHandler.IsPointerOverBlockingUI())

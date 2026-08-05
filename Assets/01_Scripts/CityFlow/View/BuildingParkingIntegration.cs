@@ -4,6 +4,8 @@ namespace CityFlow.View
 {
     public sealed partial class MainCityView
     {
+        private const float ParkingOccupancyRadiusTiles = 0.12f;
+
         public bool TryGetBuildingParkingPose(
             Vector2Int buildingTile,
             int slotIndex,
@@ -47,6 +49,87 @@ namespace CityFlow.View
 
             localForward.Normalize();
             return true;
+        }
+
+        public bool TryGetFirstFreeBuildingParkingPose(
+            Vector2Int buildingTile,
+            int slotCount,
+            Transform requestingVehicle,
+            out int selectedSlot,
+            out Vector3 localPosition,
+            out Vector3 localForward)
+        {
+            selectedSlot = -1;
+            localPosition = default;
+            localForward = default;
+
+            for (int slotIndex = 0;
+                 slotIndex < Mathf.Max(0, slotCount);
+                 slotIndex++)
+            {
+                if (!TryGetBuildingParkingPose(
+                        buildingTile,
+                        slotIndex,
+                        out Vector3 candidatePosition,
+                        out Vector3 candidateForward) ||
+                    IsParkingPoseOccupied(
+                        candidatePosition,
+                        requestingVehicle))
+                {
+                    continue;
+                }
+
+                selectedSlot = slotIndex;
+                localPosition = candidatePosition;
+                localForward = candidateForward;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool IsParkingPoseOccupied(
+            Vector3 localPosition,
+            Transform requestingVehicle)
+        {
+            float occupancyRadius =
+                Mathf.Max(0.01f, tileSize * ParkingOccupancyRadiusTiles);
+            float occupancyRadiusSqr = occupancyRadius * occupancyRadius;
+            VehicleNightLighting[] vehicleLights =
+                FindObjectsByType<VehicleNightLighting>(
+                    FindObjectsInactive.Exclude);
+
+            foreach (VehicleNightLighting vehicleLight in vehicleLights)
+            {
+                Transform candidate = vehicleLight.transform;
+                if (!candidate.gameObject.activeInHierarchy ||
+                    IsSameVehicle(candidate, requestingVehicle))
+                {
+                    continue;
+                }
+
+                Vector3 candidatePosition =
+                    transform.InverseTransformPoint(candidate.position);
+                Vector2 separation = new(
+                    candidatePosition.x - localPosition.x,
+                    candidatePosition.y - localPosition.y);
+                if (separation.sqrMagnitude <= occupancyRadiusSqr)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsSameVehicle(
+            Transform candidate,
+            Transform requestingVehicle)
+        {
+            return requestingVehicle != null &&
+                   (candidate == requestingVehicle ||
+                    candidate.IsChildOf(requestingVehicle) ||
+                    requestingVehicle.IsChildOf(candidate));
         }
 
         // Unity integration: feature vehicle Views may request authored parking poses.

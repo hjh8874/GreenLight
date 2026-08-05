@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using CityFlow.UI.Controllers;
 
 namespace CityFlow.UI
 {
@@ -238,6 +239,10 @@ namespace CityFlow.UI
             if (panelStats != null) panelStats.SetActive(_currentMenu == MenuType.Stats);
             if (panelSettings != null) panelSettings.SetActive(_currentMenu == MenuType.Settings);
             if (panelFloating != null) panelFloating.SetActive(_currentMenu == MenuType.Floating);
+            BuildModeCursorFeedback.SetBuilding(
+                this,
+                _currentMenu == MenuType.Build);
+
             var infraCoord = UnityEngine.Object.FindFirstObjectByType<CityFlow.UI.Controllers.InfrastructurePlacementCoordinator>();
             if (infraCoord != null)
             {
@@ -249,6 +254,11 @@ namespace CityFlow.UI
             {
                 placementController.ToggleBuildMode(false);
             }
+        }
+
+        private void OnDisable()
+        {
+            BuildModeCursorFeedback.SetBuilding(this, false);
         }
     }
 }

@@ -5,12 +5,14 @@ namespace CityFlow.UI
 {
     /// <summary>
     /// 여러 배치 컨트롤러의 건설 상태를 하나의 망치 커서로 통합합니다.
-    /// 별도 Texture 에셋이나 Scene 연결 없이 런타임에 작은 픽셀 커서를 생성합니다.
+    /// 프로젝트 커서 에셋을 사용하고, 에셋 로딩 실패 시 런타임 커서를 생성합니다.
     /// </summary>
     internal static class BuildModeCursorFeedback
     {
+        private const string HammerCursorResourcePath =
+            "CityFlow/UI/Cursors/build_hammer_cursor";
         private const int CursorSize = 32;
-        private static readonly Vector2 HammerHotspot = new Vector2(4f, 4f);
+        private static readonly Vector2 HammerHotspot = new Vector2(10f, 10f);
         private static readonly HashSet<EntityId> ActiveSources = new HashSet<EntityId>();
 
         private static Texture2D hammerCursor;
@@ -62,7 +64,12 @@ namespace CityFlow.UI
 
             if (hammerCursor == null)
             {
-                hammerCursor = CreateHammerCursor();
+                hammerCursor = Resources.Load<Texture2D>(
+                    HammerCursorResourcePath);
+                if (hammerCursor == null)
+                {
+                    hammerCursor = CreateHammerCursor();
+                }
             }
 
             Cursor.SetCursor(hammerCursor, HammerHotspot, CursorMode.Auto);

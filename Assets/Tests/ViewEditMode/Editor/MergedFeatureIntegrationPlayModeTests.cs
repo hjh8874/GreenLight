@@ -398,6 +398,175 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [UnityTest]
+        public IEnumerator IntegrationScene_PlacementPreviewRemainsReadableAtAllHours()
+        {
+            Scene scene =
+                EditorSceneManager.OpenScene(
+                    IntegrationScenePath,
+                    OpenSceneMode.Single);
+            Assert.That(scene.IsValid(), Is.True);
+
+            GameObject saveGuardObject =
+                new("PlacementPreviewLighting_SaveGuard");
+            saveGuardObject.AddComponent<DebugDisableSaving>();
+
+            yield return new EnterPlayMode();
+            yield return null;
+
+            CityFlowServices services =
+                RequireObject<CityBootstrap>().Services;
+            Assert.That(services, Is.Not.Null);
+            services.Save?.SetSavingEnabled(false);
+
+            GameCalendarService calendar =
+                RequireObject<GameCalendarService>();
+            GameCalendarSaveData originalSnapshot =
+                calendar.CreateSnapshot();
+            var ghostObject =
+                new GameObject("PlacementPreviewLighting_Ghost");
+            var ghostRenderer =
+                ghostObject.AddComponent<SpriteRenderer>();
+            var visualManager = new PlacementVisualManager(
+                ghostRenderer,
+                Color.green,
+                Color.red,
+                true,
+                1f,
+                Color.green,
+                Color.red,
+                null,
+                null,
+                null);
+            GameObject preview =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var validationCameraObject =
+                new GameObject("PlacementPreviewLighting_Camera");
+            Camera validationCamera =
+                validationCameraObject.AddComponent<Camera>();
+            validationCamera.enabled = false;
+            validationCamera.clearFlags = CameraClearFlags.SolidColor;
+            validationCamera.backgroundColor = Color.black;
+            validationCamera.transform.position =
+                new Vector3(10000f, 10000f, -5f);
+            preview.transform.position =
+                new Vector3(10000f, 10000f, 0f);
+            var renderTarget =
+                new RenderTexture(64, 64, 24);
+            var readbackTexture =
+                new Texture2D(64, 64, TextureFormat.RGBA32, false);
+            validationCamera.targetTexture = renderTarget;
+
+            try
+            {
+                visualManager.Initialize();
+                visualManager.SetBuildingPreview(preview);
+                visualManager.SetGhostActive(true);
+
+                int[] representativeHours =
+                {
+                    0, 5, 6, 12, 17, 18, 23
+                };
+                var properties = new MaterialPropertyBlock();
+                Renderer previewRenderer =
+                    preview.GetComponent<Renderer>();
+
+                foreach (int hour in representativeHours)
+                {
+                    GameCalendarSaveData snapshot =
+                        calendar.CreateSnapshot();
+                    snapshot.Hour = hour;
+                    calendar.RestoreSnapshot(snapshot);
+                    yield return null;
+
+                    Assert.That(preview.activeInHierarchy, Is.True);
+                    Assert.That(previewRenderer.enabled, Is.True);
+                    Assert.That(
+                        previewRenderer.sharedMaterial.shader.name,
+                        Does.Contain("Unlit")
+                            .Or.EqualTo("Sprites/Default"),
+                        $"{hour:00}시 미리보기가 시간대 조명의 영향을 받으면 안 된다.");
+
+                    visualManager.UpdateColors(canPlace: true);
+                    previewRenderer.GetPropertyBlock(properties);
+                    Assert.That(
+                        properties.GetColor("_BaseColor"),
+                        Is.EqualTo(Color.green),
+                        $"{hour:00}시 설치 가능 초록색이 유지되어야 한다.");
+                    Color renderedGreen = RenderCenterPixel(
+                        validationCamera,
+                        renderTarget,
+                        readbackTexture);
+                    Assert.That(
+                        renderedGreen.g,
+                        Is.GreaterThan(0.5f),
+                        $"{hour:00}시 설치 가능 미리보기가 화면에서 밝게 보여야 한다.");
+
+                    visualManager.UpdateColors(canPlace: false);
+                    previewRenderer.GetPropertyBlock(properties);
+                    Assert.That(
+                        properties.GetColor("_BaseColor"),
+                        Is.EqualTo(Color.red),
+                        $"{hour:00}시 설치 불가능 빨간색이 유지되어야 한다.");
+                    Color renderedRed = RenderCenterPixel(
+                        validationCamera,
+                        renderTarget,
+                        readbackTexture);
+                    Assert.That(
+                        renderedRed.r,
+                        Is.GreaterThan(0.5f),
+                        $"{hour:00}시 설치 불가능 미리보기가 화면에서 밝게 보여야 한다.");
+                }
+            }
+            finally
+            {
+                calendar.RestoreSnapshot(originalSnapshot);
+                visualManager.Cleanup();
+                Object.Destroy(ghostObject);
+                validationCamera.targetTexture = null;
+                renderTarget.Release();
+                Object.Destroy(renderTarget);
+                Object.Destroy(readbackTexture);
+                Object.Destroy(validationCameraObject);
+            }
+
+            yield return new ExitPlayMode();
+
+            GameObject restoredGuard =
+                GameObject.Find(
+                    "PlacementPreviewLighting_SaveGuard");
+            if (restoredGuard != null)
+            {
+                Object.DestroyImmediate(restoredGuard);
+            }
+        }
+
+        private static Color RenderCenterPixel(
+            Camera camera,
+            RenderTexture target,
+            Texture2D readback)
+        {
+            RenderTexture previous = RenderTexture.active;
+            try
+            {
+                camera.Render();
+                RenderTexture.active = target;
+                readback.ReadPixels(
+                    new Rect(0f, 0f, target.width, target.height),
+                    0,
+                    0,
+                    false);
+                readback.Apply(false, false);
+                return readback.GetPixel(
+                    target.width / 2,
+                    target.height / 2);
+            }
+            finally
+            {
+                RenderTexture.active = previous;
+            }
+        }
+
+        [UnityTest]
         public IEnumerator IntegrationScene_RotatedBuildingKeepsDirection()
         {
             Scene scene =
