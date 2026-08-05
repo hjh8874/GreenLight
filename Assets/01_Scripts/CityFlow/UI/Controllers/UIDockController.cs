@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -31,6 +32,8 @@ namespace CityFlow.UI
 
         public MenuType CurrentMenu => _currentMenu;
         public bool IsAnyMenuOpen => _currentMenu != MenuType.None;
+
+        public event Action<MenuType> MenuChanged;
 
         public void Configure(
             Button build,
@@ -196,6 +199,7 @@ namespace CityFlow.UI
             }
             
             UpdatePanelVisibility();
+            MenuChanged?.Invoke(_currentMenu);
         }
 
         /// <summary>
@@ -205,6 +209,7 @@ namespace CityFlow.UI
         {
             _currentMenu = MenuType.None;
             UpdatePanelVisibility();
+            MenuChanged?.Invoke(_currentMenu);
         }
 
         public void SetDriveViewActive(bool isActive)
@@ -212,6 +217,14 @@ namespace CityFlow.UI
             if (isActive)
             {
                 CloseAllPanels();
+            }
+
+            if (isActive && gameObject.activeSelf)
+            {
+                Debug.LogWarning(
+                    "[DockVisibility] Dock_Right deactivated by " +
+                    "UIDockController because drive view became active.",
+                    this);
             }
 
             gameObject.SetActive(!isActive);

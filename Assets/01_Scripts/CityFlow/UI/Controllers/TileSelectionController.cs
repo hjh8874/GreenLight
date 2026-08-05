@@ -116,11 +116,6 @@ namespace CityFlow.UI
             if (isBuilding)
             {
                 DeselectTile(); // 건설 모드 켜지면 분석 카드도 바로 닫음
-                if (buildingInfoCard != null && buildingInfoCard.IsOpen)
-                {
-                    buildingInfoCard.CloseCard();
-                    _lastHoveredBuildingCoord = null;
-                }
                 return;
             }
 
@@ -169,11 +164,20 @@ namespace CityFlow.UI
         {
             if (buildingInfoCard == null) return;
 
+            if (TryGetSelectedBuilding(
+                    out Vector2Int selectedBuilding,
+                    out TileType selectedType))
+            {
+                ShowBuildingInfoCard(
+                    selectedBuilding,
+                    selectedType);
+                return;
+            }
+
             // UI 위에 있으면 호버 해제
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
             {
-                if (buildingInfoCard.IsOpen) buildingInfoCard.CloseCard();
-                _lastHoveredBuildingCoord = null;
+                HideBuildingInfoCard();
                 return;
             }
 
@@ -192,21 +196,59 @@ namespace CityFlow.UI
                     if (TileFootprint.IsBuilding(type))
                     {
                         // 새로운 건물 위에 올라갔을 때만 연다 (중복 호출 방지)
-                        if (_lastHoveredBuildingCoord != coord || !buildingInfoCard.IsOpen)
-                        {
-                            buildingInfoCard.OpenCard(coord, type);
-                            _lastHoveredBuildingCoord = coord;
-                        }
+                        ShowBuildingInfoCard(coord, type);
                         return;
                     }
                 }
             }
 
             // 건물이 아닌 곳이거나 허공이면 닫기
-            if (buildingInfoCard.IsOpen)
+            HideBuildingInfoCard();
+        }
+
+        private bool TryGetSelectedBuilding(
+            out Vector2Int coord,
+            out TileType type)
+        {
+            coord = default;
+            type = TileType.Empty;
+            if (!_selectedCoord.HasValue ||
+                _services?.TileData == null)
+            {
+                return false;
+            }
+
+            coord = _selectedCoord.Value;
+            type = _services.TileData.GetTileType(coord);
+            return TileFootprint.IsBuilding(type);
+        }
+
+        private void ShowBuildingInfoCard(
+            Vector2Int coord,
+            TileType type)
+        {
+            if (buildingInfoCard == null)
+            {
+                return;
+            }
+
+            if (_lastHoveredBuildingCoord != coord ||
+                !buildingInfoCard.IsOpen)
+            {
+                buildingInfoCard.OpenCard(coord, type);
+            }
+
+            _lastHoveredBuildingCoord = coord;
+        }
+
+        private void HideBuildingInfoCard()
+        {
+            if (buildingInfoCard != null &&
+                buildingInfoCard.IsOpen)
             {
                 buildingInfoCard.CloseCard();
             }
+
             _lastHoveredBuildingCoord = null;
         }
 
@@ -277,6 +319,15 @@ namespace CityFlow.UI
                 analysisCard.OpenCard(coord);
             }
 
+            if (TileFootprint.IsBuilding(selectedType))
+            {
+                ShowBuildingInfoCard(coord, selectedType);
+            }
+            else
+            {
+                HideBuildingInfoCard();
+            }
+
             if (selectedType == TileType.School)
             {
                 _mainCityView ??= FindAnyObjectByType<MainCityView>(
@@ -303,6 +354,7 @@ namespace CityFlow.UI
             ClearSelectedVisual();
             if (highlightBox != null) highlightBox.SetActive(false);
             if (analysisCard != null) analysisCard.CloseCard();
+            HideBuildingInfoCard();
         }
 
         private void ClearSelectionIfRemoved()
@@ -316,12 +368,6 @@ namespace CityFlow.UI
             }
 
             DeselectTile();
-            if (buildingInfoCard != null &&
-                buildingInfoCard.IsOpen)
-            {
-                buildingInfoCard.CloseCard();
-            }
-            _lastHoveredBuildingCoord = null;
         }
 
         private void DisableLegacyHighlight()
