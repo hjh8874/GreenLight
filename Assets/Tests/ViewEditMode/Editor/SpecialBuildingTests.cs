@@ -38,14 +38,14 @@ namespace CityFlow.Tests
 
             Assert.NotNull(catalog);
             Assert.AreEqual(8, catalog.Count);
-            AssertCadence(catalog, "mall", 1, 1);
-            AssertCadence(catalog, "petrol_station", 2, 1);
-            AssertCadence(catalog, "police_station", 1, 10);
-            AssertCadence(catalog, "video_store", 1, 1);
-            AssertCadence(catalog, "pharmacy", 1, 2);
+            AssertCadence(catalog, "mall", 1, 7);
+            AssertCadence(catalog, "petrol_station", 1, 7);
+            AssertCadence(catalog, "police_station", 1, 7);
+            AssertCadence(catalog, "video_store", 1, 7);
+            AssertCadence(catalog, "pharmacy", 1, 7);
             AssertCadence(catalog, "coffee_shop", 1, 2);
-            AssertCadence(catalog, "cinema", 1, 1);
-            AssertCadence(catalog, "auto_repair", 1, 5);
+            AssertCadence(catalog, "cinema", 1, 7);
+            AssertCadence(catalog, "auto_repair", 1, 7);
         }
 
         [Test]
@@ -246,10 +246,16 @@ namespace CityFlow.Tests
                 Assert.IsTrue(visitService.TryGetStatistics(
                     new Vector2Int(3, 4),
                     out SpecialBuildingVisitStatistics statistics));
-                Assert.AreEqual(10, statistics.PlannedToday);
-                Assert.AreEqual(10L, statistics.TotalPlannedVisits);
+                int expectedDemand = DeterministicVisitDemand.CalculateDailyDemand(
+                    population.CurrentPopulation,
+                    cinema.VisitCadence.VisitsPerPeriod,
+                    cinema.VisitCadence.PeriodDays,
+                    calendar.TotalDays,
+                    cinema.buildingId);
+                Assert.AreEqual(expectedDemand, statistics.PlannedToday);
+                Assert.AreEqual(expectedDemand, statistics.TotalPlannedVisits);
                 Assert.AreEqual(0L, economy.Coins);
-                Assert.AreEqual(10, engine.PendingTripCount);
+                Assert.AreEqual(expectedDemand, engine.PendingTripCount);
 
                 GameSaveData snapshot = save.CreateSnapshot();
                 Assert.NotNull(snapshot.SpecialBuildingVisits);
@@ -265,8 +271,21 @@ namespace CityFlow.Tests
                 Assert.IsTrue(save.Repository.TrySave(snapshot));
                 Assert.IsTrue(save.TryLoadAndRestore());
 
+                int expectedRemainingTrips = 0;
+                for (int visitIndex = 0; visitIndex < expectedDemand; visitIndex++)
+                {
+                    float scheduledHour = VisitTimeProfileSampler.SampleHour(
+                        cinema.VisitTimeProfile,
+                        visitIndex,
+                        expectedDemand);
+                    if (scheduledHour > calendar.Hour)
+                    {
+                        expectedRemainingTrips++;
+                    }
+                }
+
                 Assert.AreEqual(
-                    5,
+                    expectedRemainingTrips,
                     engine.PendingTripCount,
                     "Only visits scheduled after the restored hour should be rebuilt.");
             }

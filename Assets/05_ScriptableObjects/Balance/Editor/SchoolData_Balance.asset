@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e2f59b7cd21b92448996b0bc26e27670, type: 3}
   m_Name: SchoolData_Balance
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Configs.TileDataSO
-  buildingId: 
+  buildingId:
   buildingName: 공립 학교
   category: 4
   buildingIcon: {fileID: 0}

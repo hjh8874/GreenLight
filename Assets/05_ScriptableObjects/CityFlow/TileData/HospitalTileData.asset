@@ -15,7 +15,7 @@ MonoBehaviour:
   buildingId: hospital_001
   buildingName: "\uBCD1\uC6D0"
   category: 5
-  companyTypeId: 
+  companyTypeId:
   buildingIcon: {fileID: 0}
   buildingPrefab: {fileID: 0}
   buildingDescription: "\uC8FC\uBCC0 \uC8FC\uAC70\uC9C0\uC5D0 \uC758\uB8CC \uD61C\uD0DD\uACFC

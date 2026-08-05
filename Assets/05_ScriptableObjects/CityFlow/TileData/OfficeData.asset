@@ -24,4 +24,4 @@ MonoBehaviour:
   buildCost: 200
   dailyCoinValue: 30
   prosperityValue: 2
-  requiredResearchId: 
+  requiredResearchId:
