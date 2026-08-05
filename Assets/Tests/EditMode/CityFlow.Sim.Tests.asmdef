@@ -8,6 +8,7 @@
         "CityFlow.Content",
         "CityFlow.Save",
         "CityFlow.ViewKit",
+        "CityFlow.Feed",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
