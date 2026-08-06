@@ -2,6 +2,7 @@ using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.UI;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -28,10 +29,28 @@ namespace CityFlow.Tests.ViewEditMode
                 topBarRect.pivot = new Vector2(0.5f, 1f);
                 topBarRect.sizeDelta = new Vector2(0f, 60f);
 
-                GameObject statusText = new GameObject(
-                    "StatusText",
-                    typeof(RectTransform));
-                statusText.transform.SetParent(topBar.transform, false);
+                GameObject timeText = CreateHeaderText(
+                    topBar.transform,
+                    "TimeText");
+                RectTransform timeRect =
+                    timeText.GetComponent<RectTransform>();
+                timeRect.anchorMin = Vector2.zero;
+                timeRect.anchorMax = Vector2.one;
+                timeRect.pivot = new Vector2(0.5f, 0.5f);
+                timeRect.anchoredPosition = new Vector2(10f, -7.5f);
+                timeRect.sizeDelta = new Vector2(-20f, -15f);
+                GameObject vehicleCountText = CreateHeaderText(
+                    topBar.transform,
+                    "VehicleCountText");
+                GameObject coinText = CreateHeaderText(
+                    topBar.transform,
+                    "CoinText");
+                GameObject congestionDot = new GameObject(
+                    "CongestionDot",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image));
+                congestionDot.transform.SetParent(topBar.transform, false);
                 GameObject harvest = new GameObject(
                     "CoinHarvestButton",
                     typeof(RectTransform));
@@ -64,7 +83,7 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(timelineRect.sizeDelta, Is.EqualTo(Vector2.zero));
                 Assert.That(timeline.GetComponent<Graphic>(), Is.Null);
                 Assert.That(timeline.GetSiblingIndex(), Is.EqualTo(0));
-                Assert.That(statusText.transform.GetSiblingIndex(),
+                Assert.That(timeText.transform.GetSiblingIndex(),
                     Is.GreaterThan(timeline.GetSiblingIndex()));
                 Assert.That(harvest.transform.GetSiblingIndex(),
                     Is.GreaterThan(timeline.GetSiblingIndex()));
@@ -76,6 +95,29 @@ namespace CityFlow.Tests.ViewEditMode
                     Is.EqualTo(new Vector2(0.5f, 0.5f)));
                 Assert.That(harvestRect.anchoredPosition,
                     Is.EqualTo(Vector2.zero));
+
+                RectTransform congestionDotRect =
+                    congestionDot.GetComponent<RectTransform>();
+                Assert.That(congestionDotRect.anchorMin,
+                    Is.EqualTo(new Vector2(0f, 0.5f)));
+                Assert.That(congestionDotRect.anchorMax,
+                    Is.EqualTo(new Vector2(0f, 0.5f)));
+                Assert.That(congestionDotRect.pivot,
+                    Is.EqualTo(new Vector2(0.5f, 0.5f)));
+                Assert.That(congestionDotRect.anchoredPosition,
+                    Is.EqualTo(new Vector2(16f, 0f)));
+                Assert.That(congestionDotRect.sizeDelta,
+                    Is.EqualTo(new Vector2(12f, 12f)));
+                Image congestionDotImage =
+                    congestionDot.GetComponent<Image>();
+                Assert.That(congestionDotImage.sprite, Is.Not.Null);
+                Assert.That(congestionDotImage.preserveAspect, Is.True);
+                Assert.That(timeRect.offsetMin.x,
+                    Is.GreaterThanOrEqualTo(34f));
+
+                AssertHeaderOutline(timeText);
+                AssertHeaderOutline(vehicleCountText);
+                AssertHeaderOutline(coinText);
 
                 RectTransform divider = timeline.Find("NoonDivider")
                     .GetComponent<RectTransform>();
@@ -185,6 +227,29 @@ namespace CityFlow.Tests.ViewEditMode
             }
 
             return count;
+        }
+
+        private static GameObject CreateHeaderText(
+            Transform parent,
+            string name)
+        {
+            GameObject text = new GameObject(
+                name,
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(TextMeshProUGUI));
+            text.transform.SetParent(parent, false);
+            return text;
+        }
+
+        private static void AssertHeaderOutline(GameObject text)
+        {
+            Outline outline = text.GetComponent<Outline>();
+            Assert.That(outline, Is.Not.Null);
+            Assert.That(outline.effectColor.a,
+                Is.EqualTo(0.9f).Within(0.001f));
+            Assert.That(outline.effectDistance,
+                Is.EqualTo(new Vector2(1.5f, -1.5f)));
         }
     }
 }

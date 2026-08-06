@@ -16,10 +16,17 @@ namespace CityFlow.UI
         private const string CelestialShaderName =
             "CityFlow/Celestial Overlay";
         private const string HarvestButtonName = "CoinHarvestButton";
+        private const string CongestionDotName = "CongestionDot";
+        private const string TimeTextName = "TimeText";
+        private const string VehicleCountTextName = "VehicleCountText";
+        private const string CoinTextName = "CoinText";
         private const float DefaultBarHeight = 60f;
         private const float RefreshIntervalSeconds = 0.2f;
         private const float SunriseHour = 6f;
         private const float SunsetHour = 18f;
+        private const float CongestionDotSize = 12f;
+        private const float CongestionDotCenterX = 16f;
+        private const float TimeTextLeftInset = 34f;
 
         private static readonly Color DividerColor =
             new Color(0.92f, 0.12f, 0.14f, 1f);
@@ -58,6 +65,8 @@ namespace CityFlow.UI
 
             timeline?.transform.SetAsFirstSibling();
             CenterHarvestButton(topBar);
+            NormalizeCongestionDot(topBar);
+            ImproveHeaderTextReadability(topBar);
             timeline?.Initialize(cityFlowServices);
         }
 
@@ -163,6 +172,72 @@ namespace CityFlow.UI
             harvestRect.anchorMax = new Vector2(0.5f, 0.5f);
             harvestRect.pivot = new Vector2(0.5f, 0.5f);
             harvestRect.anchoredPosition = Vector2.zero;
+        }
+
+        private static void NormalizeCongestionDot(RectTransform topBar)
+        {
+            RectTransform dotRect =
+                topBar.Find(CongestionDotName) as RectTransform;
+            if (dotRect == null)
+            {
+                return;
+            }
+
+            dotRect.anchorMin = new Vector2(0f, 0.5f);
+            dotRect.anchorMax = new Vector2(0f, 0.5f);
+            dotRect.pivot = new Vector2(0.5f, 0.5f);
+            dotRect.anchoredPosition =
+                new Vector2(CongestionDotCenterX, 0f);
+            dotRect.sizeDelta =
+                new Vector2(CongestionDotSize, CongestionDotSize);
+
+            Image dotImage = dotRect.GetComponent<Image>();
+            Sprite circleSprite =
+                Resources.GetBuiltinResource<Sprite>("UI/Skin/Knob.psd");
+            if (dotImage != null && circleSprite != null)
+            {
+                dotImage.sprite = circleSprite;
+                dotImage.type = Image.Type.Simple;
+                dotImage.preserveAspect = true;
+            }
+
+            RectTransform timeRect =
+                topBar.Find(TimeTextName) as RectTransform;
+            if (timeRect == null)
+            {
+                return;
+            }
+
+            Vector2 offsetMin = timeRect.offsetMin;
+            offsetMin.x = Mathf.Max(offsetMin.x, TimeTextLeftInset);
+            timeRect.offsetMin = offsetMin;
+        }
+
+        private static void ImproveHeaderTextReadability(
+            RectTransform topBar)
+        {
+            AddTextOutline(topBar.Find(TimeTextName));
+            AddTextOutline(topBar.Find(VehicleCountTextName));
+            AddTextOutline(topBar.Find(CoinTextName));
+        }
+
+        private static void AddTextOutline(Transform textTransform)
+        {
+            if (textTransform == null ||
+                textTransform.GetComponent<Graphic>() == null)
+            {
+                return;
+            }
+
+            Outline outline = textTransform.GetComponent<Outline>();
+            if (outline == null)
+            {
+                outline = textTransform.gameObject.AddComponent<Outline>();
+            }
+
+            outline.effectColor = new Color(0f, 0f, 0f, 0.9f);
+            outline.effectDistance = new Vector2(1.5f, -1.5f);
+            outline.useGraphicAlpha = true;
         }
 
         private void Initialize(CityFlowServices cityFlowServices)

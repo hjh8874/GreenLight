@@ -2,6 +2,7 @@ Shader "CityFlow/Celestial Overlay"
 {
     Properties
     {
+        [HideInInspector] _MainTex ("Texture", 2D) = "white" {}
         [HDR] _Color ("Body Color", Color) = (1, 0.82, 0.32, 1)
     }
 
