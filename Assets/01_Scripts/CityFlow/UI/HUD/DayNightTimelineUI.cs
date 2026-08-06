@@ -29,7 +29,7 @@ namespace CityFlow.UI
         private const float CongestionDotSize = 12f;
         private const float CongestionDotCenterX = 16f;
         private const float TimeTextLeftInset = 34f;
-        private const float HeaderTextOutlineWidth = 0.22f;
+        private const float HeaderTextOutlineWidth = 0.35f;
 
         private static readonly Color DividerColor =
             new Color(0.92f, 0.12f, 0.14f, 1f);

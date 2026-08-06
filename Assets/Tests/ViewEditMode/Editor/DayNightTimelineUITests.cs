@@ -258,7 +258,7 @@ namespace CityFlow.Tests.ViewEditMode
             Assert.That(tmpText.outlineColor,
                 Is.EqualTo(new Color32(0, 0, 0, 255)));
             Assert.That(tmpText.outlineWidth,
-                Is.EqualTo(0.22f).Within(0.001f));
+                Is.EqualTo(0.35f).Within(0.001f));
             Assert.That(text.GetComponent<Outline>(), Is.Null);
         }
     }
