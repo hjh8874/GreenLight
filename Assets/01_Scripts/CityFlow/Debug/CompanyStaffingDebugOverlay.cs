@@ -25,6 +25,7 @@ namespace CityFlow.DebugTools
 #endif
 
         const float RescanInterval = 2f;
+        const long GoldPerClick = 100000;
 
         CityBootstrap _bootstrap;
         MainCityView _view;
@@ -123,7 +124,8 @@ namespace CityFlow.DebugTools
         {
             IGameCalendarService cal = services.GameCalendar;
             // 왼쪽 중앙 — 게임 자체 HUD(좌상단)와 겹치지 않게
-            float height = 130f + Mathf.Min(_companies.Count, 8) * 20f;
+            // 130 = 시계·배속, +44 = 통합해 온 지표 줄과 치트 버튼 줄
+            float height = 174f + Mathf.Min(_companies.Count, 8) * 20f;
             GUILayout.BeginArea(
                 new Rect(10, Screen.height * 0.5f - height * 0.5f, 340, height),
                 GUI.skin.box);
@@ -154,6 +156,28 @@ namespace CityFlow.DebugTools
             if (GUILayout.Button("x5")) Time.timeScale = 5f;
             if (GUILayout.Button("x20")) Time.timeScale = 20f;
             GUILayout.EndHorizontal();
+
+            // ── 구 DebugCityControls 통합 (그쪽은 삭제됨) ──
+            // 창 두 개가 배속·시계를 각자 그리며 겹쳤다. 겹치던 것은 위 시계 패널로
+            // 일원화하고, 저쪽에만 있던 지표와 치트를 여기로 옮긴 뒤 원본을 지웠다.
+            // 남겨두면 같은 치트 버튼이 두 벌 뜨고 금액도 서로 갈라진다.
+            var facility = services.Placement as IIntersectionFacilityService;
+            GUILayout.Label(
+                $"코인 {services.Economy?.Coins ?? 0:N0}" +
+                $" · 차량 {services.Stats?.ActiveVehicleCount ?? 0}" +
+                $" · 신호 {facility?.SignalTiles.Count ?? 0}개");
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button($"골드 +{GoldPerClick:N0}"))
+            {
+                services.Economy?.AddCoins(GoldPerClick, "debug");
+            }
+            if (GUILayout.Button("장치 초기화"))
+            {
+                ClearAllDevices(services);
+            }
+            GUILayout.EndHorizontal();
+
             GUILayout.Label($"회사 {_companies.Count}곳 · F3 토글");
 
             // 채용 현황 상시 목록 — 월드 라벨이 안 보여도 여기서 항상 파악 가능
@@ -174,6 +198,21 @@ namespace CityFlow.DebugTools
                 }
             }
             GUILayout.EndArea();
+        }
+
+        // 신호·로터리·입체교차·우선도로·일방통행·회전표지를 한 번에 비운다.
+        static void ClearAllDevices(CityFlowServices services)
+        {
+            var facility = services.Placement as IIntersectionFacilityService;
+            var rule = services.Placement as ITrafficRuleService;
+            if (facility == null || rule == null) return;
+
+            foreach (var t in new List<Vector2Int>(facility.SignalTiles)) facility.TryRemoveSignal(t);
+            foreach (var t in new List<Vector2Int>(facility.RoundaboutTiles)) facility.TryRemoveRoundabout(t);
+            foreach (var t in new List<Vector2Int>(facility.OverpassTiles)) facility.TryRemoveOverpass(t);
+            foreach (var t in new List<Vector2Int>(facility.PriorityRoadTiles)) facility.TryRemovePriorityRoad(t);
+            foreach (var t in new List<Vector2Int>(rule.OnewayTiles)) rule.TryRemoveOneway(t);
+            foreach (var t in new List<Vector2Int>(rule.TurnSignTiles)) rule.TryRemoveTurnSign(t);
         }
 
         static string CompanyStatusText(

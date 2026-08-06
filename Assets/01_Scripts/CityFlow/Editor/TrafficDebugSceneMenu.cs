@@ -8,7 +8,9 @@ namespace CityFlow.EditorTools
     // Tools/GreenLight/교통 디버그 씬 생성:
     // 현재 열린 (메인)씬을 <name>_Debug 로 복사하고 TrafficDebugRig 프리팹을 주입해 연다.
     //   리그 = 6종배치(SandboxPlacementControls) + 신호튜닝(DebugSignalTuner)
-    //        + 세이브격리(DebugDisableSaving) + HUD·골드·배속·초기화(DebugCityControls)
+    //        + 세이브격리(DebugDisableSaving)
+    //   HUD·골드·배속·초기화는 CompanyStaffingDebugOverlay 로 일원화됐다(자동 생성이라
+    //   리그에 넣을 필요가 없다. 예전 DebugCityControls 는 창이 겹쳐서 제거).
     // 항상 최신 메인에서 재생성하므로 디버그 씬이 낡지 않는다. 라이브 세이브(save_v1.json)는
     // 리그의 DebugDisableSaving가 IsSavingEnabled=false 로 완전 격리(오프라인 정산·자동저장 무력화).
     public static class TrafficDebugSceneMenu

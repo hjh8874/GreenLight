@@ -47,6 +47,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.BuildingConstructionOverlay
   labelTemplate: {fileID: 6019478577714353711}
   heightOffset: 1.2
+  workPuffPrefab: {fileID: 1688076354444117600, guid: f0ad7a5f1c59e164aa62b3689281c0f8, type: 3}
+  completePuffPrefab: {fileID: 395031058680739610, guid: b2f0b8902a31c8a46a1c4bb24ed9ea36, type: 3}
+  puffInterval: 0.7
+  workPuffScale: 0.2
+  workPuffSpeed: 0.55
+  completePuffScale: 1
+  fxHeightOffset: 0.1
+  smokeLoopPrefab: {fileID: 8656522925564163052, guid: e509867be4f82f246a95eca1ee5a2d61, type: 3}
+  hammerPrefab: {fileID: 1390497251767973401, guid: b3f81f1ef672b40dd98cb7155462db0a, type: 3}
+  hammerCount: 1
+  hammerRingRadius: 0.22
+  smokeLoopScale: 0.22
+  smokeLoopSpeed: 0.45
 --- !u!1 &5368569669655874264
 GameObject:
   m_ObjectHideFlags: 0

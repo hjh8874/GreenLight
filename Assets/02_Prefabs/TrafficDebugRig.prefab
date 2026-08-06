@@ -12,7 +12,6 @@ GameObject:
   - component: {fileID: 5628722541623322879}
   - component: {fileID: 432872090931682846}
   - component: {fileID: 3096688129782224386}
-  - component: {fileID: 8874705362200277460}
   m_Layer: 0
   m_Name: TrafficDebugRig
   m_TagString: Untagged
@@ -71,16 +70,3 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e4a7741f8dcbe43e9a0531da01f36e72, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.DebugDisableSaving
---- !u!114 &8874705362200277460
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2360460302723616342}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 729011219a5054277aa7a9586943b357, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.DebugTools.DebugCityControls
-  goldPerClick: 100000
