@@ -189,24 +189,98 @@ namespace CityFlow.UI.Editor
 
             Sprite offSprite = LoadSprite("UI_Etc/Toggle_Square_l_off.png");
             Sprite onSprite = LoadSprite("UI_Etc/Toggle_Square_l_on.png");
-            Image background = toggle.targetGraphic as Image;
+            Transform backgroundTransform = toggle.transform.Find("Background");
+            Image background = backgroundTransform != null
+                ? GetOrAddComponent<Image>(backgroundTransform.gameObject)
+                : toggle.targetGraphic as Image;
             if (background == null)
             {
-                background = GetOrAddComponent<Image>(toggle.gameObject);
-                toggle.targetGraphic = background;
+                GameObject backgroundObject = new GameObject(
+                    "Background",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image));
+                backgroundObject.transform.SetParent(toggle.transform, false);
+                Undo.RegisterCreatedObjectUndo(
+                    backgroundObject,
+                    "Create Toggle Background");
+                background = backgroundObject.GetComponent<Image>();
             }
 
+            toggle.targetGraphic = background;
             ApplyImage(background, offSprite, Color.white, false);
+            RectTransform backgroundRect = background.rectTransform;
+            backgroundRect.anchorMin = new Vector2(0f, 0.5f);
+            backgroundRect.anchorMax = new Vector2(0f, 0.5f);
+            backgroundRect.pivot = new Vector2(0.5f, 0.5f);
+            backgroundRect.anchoredPosition = new Vector2(18f, 0f);
+            backgroundRect.sizeDelta = new Vector2(30f, 30f);
+            background.preserveAspect = true;
             background.raycastTarget = true;
 
             Image checkmark = toggle.graphic as Image;
+            if (checkmark == null)
+            {
+                Transform checkmarkTransform =
+                    background.transform.Find("Checkmark");
+                GameObject checkmarkObject = checkmarkTransform != null
+                    ? checkmarkTransform.gameObject
+                    : new GameObject(
+                        "Checkmark",
+                        typeof(RectTransform),
+                        typeof(CanvasRenderer),
+                        typeof(Image));
+                if (checkmarkTransform == null)
+                {
+                    checkmarkObject.transform.SetParent(
+                        background.transform,
+                        false);
+                    Undo.RegisterCreatedObjectUndo(
+                        checkmarkObject,
+                        "Create Toggle Checkmark");
+                }
+
+                checkmark = GetOrAddComponent<Image>(checkmarkObject);
+            }
+
             if (checkmark != null)
             {
                 ApplyImage(checkmark, onSprite, Color.white, false);
+                RectTransform checkmarkRect = checkmark.rectTransform;
+                checkmarkRect.anchorMin = Vector2.zero;
+                checkmarkRect.anchorMax = Vector2.one;
+                checkmarkRect.offsetMin = Vector2.zero;
+                checkmarkRect.offsetMax = Vector2.zero;
+                checkmark.preserveAspect = true;
                 checkmark.raycastTarget = false;
+                toggle.graphic = checkmark;
             }
 
             TMP_Text text = toggle.GetComponentInChildren<TMP_Text>(true);
+            if (text == null)
+            {
+                Text legacyText = toggle.GetComponentInChildren<Text>(true);
+                GameObject labelObject;
+                if (legacyText != null)
+                {
+                    labelObject = legacyText.gameObject;
+                    Undo.DestroyObjectImmediate(legacyText);
+                }
+                else
+                {
+                    labelObject = new GameObject(
+                        "Label",
+                        typeof(RectTransform),
+                        typeof(CanvasRenderer));
+                    labelObject.transform.SetParent(toggle.transform, false);
+                    Undo.RegisterCreatedObjectUndo(
+                        labelObject,
+                        "Create Toggle Label");
+                }
+
+                text = GetOrAddComponent<TextMeshProUGUI>(labelObject);
+            }
+
             if (text != null)
             {
                 if (label != null)
@@ -215,6 +289,13 @@ namespace CityFlow.UI.Editor
                 }
 
                 StyleText(text, 16f, Color.white, FontStyles.Bold);
+                text.alignment = TextAlignmentOptions.MidlineLeft;
+                text.raycastTarget = false;
+                RectTransform labelRect = text.rectTransform;
+                labelRect.anchorMin = Vector2.zero;
+                labelRect.anchorMax = Vector2.one;
+                labelRect.offsetMin = new Vector2(42f, 0f);
+                labelRect.offsetMax = new Vector2(-4f, 0f);
             }
         }
 
