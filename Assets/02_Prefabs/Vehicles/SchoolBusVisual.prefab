@@ -10,6 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 610659321936267724}
   - component: {fileID: 3069171629827022017}
+  - component: {fileID: 2733275458332781636}
   m_Layer: 0
   m_Name: SchoolBusVisual
   m_TagString: Untagged
@@ -54,6 +55,22 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1, y: 0.38615128, z: 0.34621966}
   m_Center: {x: 0, y: 0, z: -0.17310983}
+--- !u!114 &2733275458332781636
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 507465280799779415}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: debfec37d9bec6045ade3710e7e1e47f, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.VehicleWheelDustSource
+  particleMaterial: {fileID: 2100000, guid: 7840d900dc0a4ed4dbcd26e23f064dd8, type: 2}
+  emissionDistance: 0.14
+  movementThreshold: 0.01
+  teleportDistance: 1.5
 --- !u!1001 &6128606247648389700
 PrefabInstance:
   m_ObjectHideFlags: 0
