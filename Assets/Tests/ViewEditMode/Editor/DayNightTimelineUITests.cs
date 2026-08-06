@@ -4,6 +4,7 @@ using CityFlow.UI;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 namespace CityFlow.Tests.ViewEditMode
@@ -34,11 +35,11 @@ namespace CityFlow.Tests.ViewEditMode
                     "TimeText");
                 RectTransform timeRect =
                     timeText.GetComponent<RectTransform>();
-                timeRect.anchorMin = Vector2.zero;
-                timeRect.anchorMax = Vector2.one;
-                timeRect.pivot = new Vector2(0.5f, 0.5f);
-                timeRect.anchoredPosition = new Vector2(10f, -7.5f);
-                timeRect.sizeDelta = new Vector2(-20f, -15f);
+                timeRect.anchorMin = new Vector2(0f, 1f);
+                timeRect.anchorMax = new Vector2(0f, 1f);
+                timeRect.pivot = new Vector2(0f, 1f);
+                timeRect.anchoredPosition = new Vector2(16f, -14f);
+                timeRect.sizeDelta = new Vector2(210f, 30f);
                 GameObject vehicleCountText = CreateHeaderText(
                     topBar.transform,
                     "VehicleCountText");
@@ -112,7 +113,12 @@ namespace CityFlow.Tests.ViewEditMode
                     congestionDot.GetComponent<Image>();
                 Assert.That(congestionDotImage.sprite, Is.Not.Null);
                 Assert.That(congestionDotImage.preserveAspect, Is.True);
-                Assert.That(timeRect.offsetMin.x,
+                Assert.That(timeRect.anchoredPosition.x,
+                    Is.GreaterThanOrEqualTo(34f));
+
+                timeRect.anchoredPosition = new Vector2(16f, -14f);
+                timeline.SendMessage("LateUpdate");
+                Assert.That(timeRect.anchoredPosition.x,
                     Is.GreaterThanOrEqualTo(34f));
 
                 AssertHeaderOutline(timeText);
@@ -134,6 +140,9 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     moon.material.shader.name,
                     Is.EqualTo("CityFlow/Celestial Overlay"));
+                Assert.That(
+                    moon.material.renderQueue,
+                    Is.EqualTo((int)RenderQueue.Transparent));
                 Assert.That(
                     divider.GetSiblingIndex(),
                     Is.GreaterThan(marker.GetSiblingIndex()));

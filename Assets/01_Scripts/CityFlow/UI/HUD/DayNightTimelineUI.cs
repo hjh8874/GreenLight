@@ -1,6 +1,7 @@
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 namespace CityFlow.UI
@@ -46,6 +47,8 @@ namespace CityFlow.UI
         private float nextRefreshTime;
         private float lastRenderedTimeOfDay01;
         private bool hasRenderedState;
+        private RectTransform topBarRect;
+        private bool headerLayoutSettled;
 
         public static void Ensure(
             RectTransform topBar,
@@ -208,9 +211,20 @@ namespace CityFlow.UI
                 return;
             }
 
-            Vector2 offsetMin = timeRect.offsetMin;
-            offsetMin.x = Mathf.Max(offsetMin.x, TimeTextLeftInset);
-            timeRect.offsetMin = offsetMin;
+            if (Mathf.Approximately(
+                timeRect.anchorMin.x,
+                timeRect.anchorMax.x))
+            {
+                Vector2 position = timeRect.anchoredPosition;
+                position.x = Mathf.Max(position.x, TimeTextLeftInset);
+                timeRect.anchoredPosition = position;
+            }
+            else
+            {
+                Vector2 offsetMin = timeRect.offsetMin;
+                offsetMin.x = Mathf.Max(offsetMin.x, TimeTextLeftInset);
+                timeRect.offsetMin = offsetMin;
+            }
         }
 
         private static void ImproveHeaderTextReadability(
@@ -242,6 +256,9 @@ namespace CityFlow.UI
 
         private void Initialize(CityFlowServices cityFlowServices)
         {
+            topBarRect = transform.parent as RectTransform;
+            headerLayoutSettled = false;
+
             if (ReferenceEquals(services, cityFlowServices))
             {
                 BindCalendar(cityFlowServices.GameCalendar);
@@ -348,7 +365,8 @@ namespace CityFlow.UI
             material = new Material(shader)
             {
                 name = $"{name} Celestial Overlay (Runtime)",
-                hideFlags = HideFlags.DontSave
+                hideFlags = HideFlags.DontSave,
+                renderQueue = (int)RenderQueue.Transparent
             };
             material.SetColor("_Color", color);
 
@@ -380,6 +398,18 @@ namespace CityFlow.UI
             nextRefreshTime =
                 Time.unscaledTime + RefreshIntervalSeconds;
             Refresh();
+        }
+
+        private void LateUpdate()
+        {
+            if (headerLayoutSettled || topBarRect == null)
+            {
+                return;
+            }
+
+            NormalizeCongestionDot(topBarRect);
+            ImproveHeaderTextReadability(topBarRect);
+            headerLayoutSettled = true;
         }
 
         private void Refresh(bool force = false)
