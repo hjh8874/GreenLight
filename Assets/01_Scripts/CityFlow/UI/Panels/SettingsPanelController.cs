@@ -57,7 +57,7 @@ namespace CityFlow.UI
         {
             if (audioMixer == null)
             {
-                Debug.LogError("[SettingsPanelController] AudioMixer가 할당되지 않았습니다. 인스펙터 또는 베이커에서 명시적으로 주입해야 합니다.");
+                Debug.LogWarning("[SettingsPanelController] AudioMixer가 할당되지 않았습니다. 인스펙터 또는 베이커에서 명시적으로 주입해야 합니다.");
             }
             BindButtons();
         }

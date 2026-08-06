@@ -47,7 +47,7 @@ namespace CityFlow.UI.Editor
             Transform[] all = Resources.FindObjectsOfTypeAll<Transform>();
             foreach (Transform t in all)
             {
-                if (t.name == "Build_Panel" && !EditorUtility.IsPersistent(t))
+                if (t.name == "Build_Panel" && !EditorUtility.IsPersistent(t) && t.gameObject.scene == EditorSceneManager.GetActiveScene())
                 {
                     buildPanel = t.gameObject;
                     break;
@@ -59,6 +59,8 @@ namespace CityFlow.UI.Editor
                 Debug.LogWarning("[BuildPanelStyleApplier] Build_Panel not found in active scene.");
                 return;
             }
+
+            Undo.RegisterFullObjectHierarchyUndo(buildPanel, "Apply Build Panel Style");
 
             Image bgImg = buildPanel.GetComponent<Image>();
             if (bgImg != null)
@@ -121,7 +123,11 @@ namespace CityFlow.UI.Editor
                 }
             }
 
-            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            if (buildPanel != null)
+            {
+                EditorUtility.SetDirty(buildPanel);
+                EditorSceneManager.MarkSceneDirty(buildPanel.scene);
+            }
             AssetDatabase.SaveAssets();
             Debug.LogWarning("SUCCESS_ALL_APPLIED: 3D Icons and UI styles successfully unified and mapped across all ScriptableObjects and Scene slots!");
         }
@@ -169,17 +175,6 @@ namespace CityFlow.UI.Editor
             BindSOIcon("Assets/05_ScriptableObjects/Buildings/Building_AutoRepair.asset", spGas, "buildingIcon");
 
             // 4. Update Scene Slot Icons directly
-            GameObject buildPanel = null;
-            Transform[] all = Resources.FindObjectsOfTypeAll<Transform>();
-            foreach (Transform t in all)
-            {
-                if (t.name == "Build_Panel" && !EditorUtility.IsPersistent(t))
-                {
-                    buildPanel = t.gameObject;
-                    break;
-                }
-            }
-
             if (buildPanel != null)
             {
                 SetSceneSlotIcon(buildPanel.transform, "Infra_Panel/Road_Slot", spRoad);
@@ -354,10 +349,10 @@ namespace CityFlow.UI.Editor
             Sprite frameList = LoadSprite("Frame/Frame_ListFrame01_White1.png");
 
             TooltipController tooltip = null;
-            Transform[] all = Resources.FindObjectsOfTypeAll<Transform>();
-            foreach (Transform t in all)
+            Transform[] all3 = Resources.FindObjectsOfTypeAll<Transform>();
+            foreach (Transform t in all3)
             {
-                if (!EditorUtility.IsPersistent(t))
+                if (!EditorUtility.IsPersistent(t) && t.gameObject.scene == EditorSceneManager.GetActiveScene())
                 {
                     TooltipController tc = t.GetComponent<TooltipController>();
                     if (tc != null)
@@ -370,9 +365,11 @@ namespace CityFlow.UI.Editor
 
             if (tooltip == null)
             {
-                Debug.LogWarning("[BuildPanelStyleApplier] No GameObject with TooltipController found in active scene.");
+                Debug.LogWarning("[BuildPanelStyleApplier] TooltipController not found in active scene.");
                 return;
             }
+
+            Undo.RegisterFullObjectHierarchyUndo(tooltip.gameObject, "Apply Tooltip Style");
 
             GameObject go = tooltip.gameObject;
             Image bgImg = go.GetComponent<Image>();
@@ -428,7 +425,11 @@ namespace CityFlow.UI.Editor
                 if (font != null) txt.font = font;
             }
 
-            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            if (tooltip != null)
+            {
+                EditorUtility.SetDirty(tooltip);
+                EditorSceneManager.MarkSceneDirty(tooltip.gameObject.scene);
+            }
             AssetDatabase.SaveAssets();
             Debug.LogWarning("SUCCESS_TOOLTIP_STYLED: ToolTip_Panel successfully polished and modernized!");
         }
