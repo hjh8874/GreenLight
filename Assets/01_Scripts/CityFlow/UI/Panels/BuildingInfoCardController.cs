@@ -29,6 +29,10 @@ namespace CityFlow.UI
         [SerializeField] private TMP_Text txtIncomePerMin;
         [SerializeField] private TMP_Text txtDelaySeconds;
 
+        [Header("Comment Data")]
+        [SerializeField]
+        private BuildingHoverCommentCatalogSO hoverCommentCatalog;
+
         [Header("Colors")]
         [SerializeField] private Color normalColor = Color.white;
         [SerializeField] private Color warningColor = new Color(1f, 0.3f, 0.3f);
@@ -78,6 +82,7 @@ namespace CityFlow.UI
         {
             services = cityFlowServices;
             populationSystem = FindAnyObjectByType<PopulationSystem>();
+            EnsureCommentCatalog();
             CacheMetricLabels();
             EnsureFloatingCanvas();
         }
@@ -97,6 +102,7 @@ namespace CityFlow.UI
                 return;
             }
 
+            EnsureCommentCatalog();
             EnsureFloatingCanvas();
 
             Vector2Int displayAnchor = ResolveDisplayAnchor(tile, type);
@@ -147,7 +153,8 @@ namespace CityFlow.UI
             EnsureFloatingCanvas();
             if (Camera.main == null) return;
 
-            Vector2Int size = TileFootprint.GetSize(currentType);
+            Vector2Int size = TileFootprint.GetSize(
+                ResolveFootprintType());
             Vector2 center = new Vector2(
                 currentTile.x + size.x * 0.5f,
                 currentTile.y + size.y * 0.5f);
@@ -222,6 +229,17 @@ namespace CityFlow.UI
                 : tile;
         }
 
+        private TileType ResolveFootprintType()
+        {
+            return currentType == TileType.UnderConstruction &&
+                   services?.TileData != null &&
+                   services.TileData.TryGetConstructionTargetType(
+                       currentTile,
+                       out TileType targetType)
+                ? targetType
+                : currentType;
+        }
+
         private void EnsureFloatingCanvas()
         {
             if (rootCanvas == null)
@@ -273,9 +291,21 @@ namespace CityFlow.UI
                     yield break;
                 }
 
+                if (!RefreshCurrentTileState())
+                {
+                    yield break;
+                }
+
                 // 코어 엔진에서 density/congestion 시드 수신
                 float density = GetTileDensity();
                 CongestionLevel congestion = GetTileCongestion();
+
+                if (currentType == TileType.UnderConstruction &&
+                    TryBindConstruction(congestion))
+                {
+                    yield return wait;
+                    continue;
+                }
 
                 if (currentType == TileType.SpecialBuilding &&
                     TryBindSpecialBuilding(congestion))
@@ -304,13 +334,39 @@ namespace CityFlow.UI
                     accumulatedDelay,
                     staffingFilled,
                     staffingCapacity,
-                    tilePopulation);
+                    tilePopulation,
+                    hoverCommentCatalog,
+                    ResolveCompanyTypeId());
 
                 // UI 텍스트 바인딩
                 BindDataToUI(data, density, congestion);
 
                 yield return wait;
             }
+        }
+
+        private bool RefreshCurrentTileState()
+        {
+            if (services?.TileData == null)
+            {
+                return true;
+            }
+
+            TileType observedType = services.TileData.GetTileType(currentTile);
+            if (observedType == currentType)
+            {
+                return true;
+            }
+
+            if (!TileFootprint.IsBuilding(observedType))
+            {
+                CloseCard();
+                return false;
+            }
+
+            currentType = observedType;
+            accumulatedDelay = 0f;
+            return true;
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -395,9 +451,15 @@ namespace CityFlow.UI
 
             if (txtStoryComment != null)
             {
-                txtStoryComment.text = congestion == CongestionLevel.Jam
-                    ? $"{option.Description} · 인접 도로 정체"
-                    : option.Description;
+                txtStoryComment.text =
+                    BuildingHoverCommentResolver.Resolve(
+                        hoverCommentCatalog,
+                        new BuildingHoverCommentContext(
+                            currentTile,
+                            currentType,
+                            congestion,
+                            option.DisplayName,
+                            specialBuildingId: building.BuildingId));
                 txtStoryComment.color = congestion == CongestionLevel.Jam
                     ? warningColor
                     : normalColor;
@@ -435,6 +497,101 @@ namespace CityFlow.UI
 
             return true;
         }
+
+        private bool TryBindConstruction(CongestionLevel congestion)
+        {
+            if (services?.TileData == null ||
+                !services.TileData.TryGetConstructionTargetType(
+                    currentTile,
+                    out TileType targetType))
+            {
+                return false;
+            }
+
+            float progress01 = 0f;
+            services.TileData.TryGetConstructionProgress01(
+                currentTile,
+                out progress01);
+
+            string targetName = ResolveConstructionTargetName(targetType);
+            ApplyConstructionMetricLabels();
+
+            if (txtBuildingName != null)
+            {
+                txtBuildingName.text = $"{targetName} 공사 중";
+            }
+
+            if (txtStoryComment != null)
+            {
+                txtStoryComment.text = BuildingHoverCommentResolver.Resolve(
+                    hoverCommentCatalog,
+                    new BuildingHoverCommentContext(
+                        currentTile,
+                        currentType,
+                        congestion,
+                        targetName,
+                        constructionProgress01: progress01));
+                txtStoryComment.color = congestion == CongestionLevel.Jam
+                    ? warningColor
+                    : normalColor;
+            }
+
+            if (txtTotalStaff != null)
+            {
+                txtTotalStaff.text =
+                    $"{Mathf.RoundToInt(progress01 * 100f)}%";
+                txtTotalStaff.color = positiveColor;
+            }
+
+            if (txtTardyStaff != null)
+            {
+                txtTardyStaff.text = targetName;
+                txtTardyStaff.color = normalColor;
+            }
+
+            if (txtIncomePerMin != null)
+            {
+                txtIncomePerMin.text = CongestionDisplayName(congestion);
+                txtIncomePerMin.color = congestion == CongestionLevel.Jam
+                    ? warningColor
+                    : normalColor;
+            }
+
+            if (txtDelaySeconds != null)
+            {
+                txtDelaySeconds.text = "진행 중";
+                txtDelaySeconds.color = normalColor;
+            }
+
+            return true;
+        }
+
+        private string ResolveConstructionTargetName(TileType targetType)
+        {
+            if (targetType == TileType.SpecialBuilding &&
+                services?.SpecialBuildings != null &&
+                services.SpecialBuildings.TryGetBuilding(
+                    currentTile,
+                    out SpecialBuildingInstance building) &&
+                services.SpecialBuildings.TryGetBuildOption(
+                    building.BuildingId,
+                    out SpecialBuildingBuildOption option))
+            {
+                return option.DisplayName;
+            }
+
+            return BuildingStoryDataFactory.ResolveBuildingName(
+                targetType,
+                currentTile);
+        }
+
+        private static string CongestionDisplayName(
+            CongestionLevel congestion) => congestion switch
+        {
+            CongestionLevel.Jam => "정체",
+            CongestionLevel.Slow => "서행",
+            _ => "원활"
+        };
 
         private void CacheMetricLabels()
         {
@@ -486,6 +643,59 @@ namespace CityFlow.UI
             }
         }
 
+        private void ApplyConstructionMetricLabels()
+        {
+            CacheMetricLabels();
+            if (labelTotalStaff != null)
+            {
+                labelTotalStaff.text = "공사 진행률";
+            }
+
+            if (labelTardyStaff != null)
+            {
+                labelTardyStaff.text = "완공 대상";
+            }
+
+            if (labelIncomePerMin != null)
+            {
+                labelIncomePerMin.text = "주변 교통";
+            }
+
+            if (labelDelaySeconds != null)
+            {
+                labelDelaySeconds.text = "건설 상태";
+            }
+        }
+
+        private void EnsureCommentCatalog()
+        {
+            if (hoverCommentCatalog != null)
+            {
+                return;
+            }
+
+            hoverCommentCatalog =
+                BuildingHoverCommentCatalogSO.LoadDefault();
+            if (hoverCommentCatalog == null)
+            {
+                Debug.LogWarning(
+                    "[BuildingInfoCard] BuildingHoverCommentCatalog was not " +
+                    "found. Built-in fallback comments will be used.",
+                    this);
+            }
+        }
+
+        private string ResolveCompanyTypeId()
+        {
+            return currentType == TileType.Office &&
+                   services?.Stats != null &&
+                   services.Stats.TryGetCompanyTypeId(
+                       currentTile,
+                       out string companyTypeId)
+                ? companyTypeId
+                : string.Empty;
+        }
+
         private static TMP_Text ResolveMetricLabel(TMP_Text valueText)
         {
             if (valueText == null || valueText.transform.parent == null)
@@ -520,7 +730,8 @@ namespace CityFlow.UI
 
             // 건물 크기에 따른 외곽 타일 순회
             float maxNeighborDensity = 0f;
-            Vector2Int size = TileFootprint.GetSize(currentType);
+            Vector2Int size = TileFootprint.GetSize(
+                ResolveFootprintType());
 
             // 상, 하 외곽 도로 검사
             for (int x = 0; x < size.x; x++)
@@ -548,7 +759,8 @@ namespace CityFlow.UI
 
             // 인접 도로 중 가장 심각한 혼잡도 채택
             CongestionLevel worstLevel = CongestionLevel.Free;
-            Vector2Int size = TileFootprint.GetSize(currentType);
+            Vector2Int size = TileFootprint.GetSize(
+                ResolveFootprintType());
 
             for (int x = 0; x < size.x; x++)
             {
