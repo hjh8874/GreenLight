@@ -11,6 +11,16 @@ namespace CityFlow.UI.Quests
 {
     public sealed class QuestBubbleUI : MonoBehaviour
     {
+        private static readonly Vector2 BubblePosition =
+            new(0f, -120f);
+        private static readonly Vector2 BubbleSize =
+            new(430f, 172f);
+        private static readonly Vector2 QuestControlCenter =
+            new(-29f, -149f);
+        private const float QuestControlSize = 58f;
+        private const float CloseLineThickness = 3f;
+        private const float CloseLineCornerRatio = 0.3f;
+
         private static readonly Color BubbleColor = new(0.075f, 0.10f, 0.12f, 0.97f);
         private static readonly Color AccentColor = new(0.25f, 0.76f, 0.70f, 1f);
 
@@ -112,11 +122,11 @@ namespace CityFlow.UI.Quests
         {
             GameObject panel = CreateUiObject("QuestBubble", transform, typeof(Image), typeof(Shadow));
             RectTransform rect = panel.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = new Vector2(28f, -104f);
-            rect.sizeDelta = new Vector2(430f, 172f);
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.anchoredPosition = BubblePosition;
+            rect.sizeDelta = BubbleSize;
 
             Image background = panel.GetComponent<Image>();
             background.color = BubbleColor;
@@ -188,18 +198,61 @@ namespace CityFlow.UI.Quests
             RectTransform closeRect = close.GetComponent<RectTransform>();
             closeRect.anchorMin = new Vector2(1f, 1f);
             closeRect.anchorMax = new Vector2(1f, 1f);
-            closeRect.pivot = new Vector2(1f, 1f);
-            closeRect.anchoredPosition = new Vector2(-10f, -10f);
-            closeRect.sizeDelta = new Vector2(34f, 34f);
+            closeRect.pivot = new Vector2(0.5f, 0.5f);
+            closeRect.anchoredPosition =
+                QuestControlCenter - BubblePosition;
+            closeRect.sizeDelta = new Vector2(
+                QuestControlSize,
+                QuestControlSize);
 
             Image closeImage = close.GetComponent<Image>();
             closeImage.color = new Color(0.18f, 0.22f, 0.24f, 0.95f);
             closeButton = close.GetComponent<Button>();
             closeButton.targetGraphic = closeImage;
 
-            TextMeshProUGUI closeLabel = CreateCenteredText("Label", close.transform, font, "×", 24f, Color.white);
-            closeLabel.raycastTarget = false;
+            float closeLineLength =
+                QuestControlSize *
+                (CloseLineCornerRatio * 2f) /
+                Mathf.Sqrt(2f);
+            CreateCloseLine(
+                "XLineForward",
+                close.transform,
+                closeLineLength,
+                45f);
+            CreateCloseLine(
+                "XLineBackward",
+                close.transform,
+                closeLineLength,
+                -45f);
             return panel;
+        }
+
+        private static void CreateCloseLine(
+            string name,
+            Transform parent,
+            float length,
+            float rotation)
+        {
+            GameObject line = CreateUiObject(
+                name,
+                parent,
+                typeof(Image));
+            RectTransform rect = line.GetComponent<RectTransform>();
+            rect.anchorMin = rect.anchorMax =
+                new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(
+                length,
+                CloseLineThickness);
+            rect.localRotation = Quaternion.Euler(
+                0f,
+                0f,
+                rotation);
+
+            Image image = line.GetComponent<Image>();
+            image.color = Color.white;
+            image.raycastTarget = false;
         }
 
         private GameObject CreateMinimizedButton(TMP_FontAsset font)
@@ -211,11 +264,13 @@ namespace CityFlow.UI.Quests
                 typeof(Button),
                 typeof(Shadow));
             RectTransform rect = buttonObject.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = new Vector2(28f, -104f);
-            rect.sizeDelta = new Vector2(58f, 58f);
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = QuestControlCenter;
+            rect.sizeDelta = new Vector2(
+                QuestControlSize,
+                QuestControlSize);
 
             Image image = buttonObject.GetComponent<Image>();
             image.color = AccentColor;

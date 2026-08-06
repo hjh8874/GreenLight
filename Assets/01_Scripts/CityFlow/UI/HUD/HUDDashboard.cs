@@ -51,6 +51,7 @@ namespace CityFlow.UI
         public void Initialize(CityFlowServices services)
         {
             _services = services;
+            DayNightTimelineUI.Ensure(transform as RectTransform, services);
             _cityStats = services.Stats;
             _populationSystem =
                 FindAnyObjectByType<PopulationSystem>();
