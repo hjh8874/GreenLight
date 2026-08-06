@@ -51,6 +51,9 @@ namespace CityFlow.UI
         private bool _isUpdatingBgm;
         private bool _isUpdatingSfx;
         private bool _hasPendingPreferenceSave;
+        private bool _hasLoadedAudioPreferences;
+        private float _savedBgmVolume = DefaultVolume;
+        private float _savedSfxVolume = DefaultVolume;
         private Coroutine _preferenceSaveCoroutine;
 
         public void Configure(
@@ -74,6 +77,8 @@ namespace CityFlow.UI
             {
                 audioMixer = mixer;
             }
+
+            LoadPreferencesAndApplyAudioState();
             BindButtons();
         }
 
@@ -93,19 +98,32 @@ namespace CityFlow.UI
                 }
             }
 
+            LoadPreferencesAndApplyAudioState();
             BindButtons();
+        }
 
-            // PlayerPrefs에서 저장된 소리 설정 불러오기
-            float savedBgm = Mathf.Clamp01(PlayerPrefs.GetFloat(BgmVolumePreferenceKey, DefaultVolume));
-            float savedSfx = Mathf.Clamp01(PlayerPrefs.GetFloat(SfxVolumePreferenceKey, DefaultVolume));
+        private void LoadPreferencesAndApplyAudioState()
+        {
+            if (!_hasLoadedAudioPreferences)
+            {
+                _savedBgmVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(
+                    BgmVolumePreferenceKey,
+                    DefaultVolume));
+                _savedSfxVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(
+                    SfxVolumePreferenceKey,
+                    DefaultVolume));
+                _hasLoadedAudioPreferences = true;
+            }
 
-            // 슬라이더 값 변경 시 OnBgmSliderChanged가 호출되어 믹서와 텍스트(%) 업데이트 됨
-            if (sldBgm != null) sldBgm.value = savedBgm;
-            if (sldSfx != null) sldSfx.value = savedSfx;
+            sldBgm?.SetValueWithoutNotify(_savedBgmVolume);
+            sldSfx?.SetValueWithoutNotify(_savedSfxVolume);
+            inputBgm?.SetTextWithoutNotify(
+                Mathf.RoundToInt(_savedBgmVolume * 100f).ToString());
+            inputSfx?.SetTextWithoutNotify(
+                Mathf.RoundToInt(_savedSfxVolume * 100f).ToString());
 
-            // 만약 슬라이더가 없더라도 믹서는 갱신되어야 함
-            UpdateMixerVolume(bgmParameterName, savedBgm);
-            UpdateMixerVolume(sfxParameterName, savedSfx);
+            UpdateMixerVolume(bgmParameterName, _savedBgmVolume);
+            UpdateMixerVolume(sfxParameterName, _savedSfxVolume);
         }
 
         private void BindButtons()
@@ -114,8 +132,6 @@ namespace CityFlow.UI
             {
                 return;
             }
-
-
 
             // 뮤트 토글 이벤트 바인딩
             if (tglMuteAudio != null)
@@ -138,7 +154,6 @@ namespace CityFlow.UI
             if (sldBgm != null)
             {
                 sldBgm.onValueChanged.AddListener(OnBgmSliderChanged);
-                OnBgmSliderChanged(sldBgm.value);
             }
             if (inputBgm != null)
             {
@@ -148,7 +163,6 @@ namespace CityFlow.UI
             if (sldSfx != null)
             {
                 sldSfx.onValueChanged.AddListener(OnSfxSliderChanged);
-                OnSfxSliderChanged(sldSfx.value);
             }
             if (inputSfx != null)
             {
@@ -165,6 +179,7 @@ namespace CityFlow.UI
 
             int percentage = Mathf.RoundToInt(value * 100f);
             if (inputBgm != null) inputBgm.text = percentage.ToString();
+            _savedBgmVolume = Mathf.Clamp01(value);
             UpdateMixerVolume(bgmParameterName, value);
 
             QueuePreferenceSave(BgmVolumePreferenceKey, value);
@@ -183,6 +198,7 @@ namespace CityFlow.UI
                 _isUpdatingBgm = true;
                 if (sldBgm != null) sldBgm.value = value;
                 if (inputBgm != null) inputBgm.text = percentage.ToString();
+                _savedBgmVolume = value;
                 UpdateMixerVolume(bgmParameterName, value);
 
                 QueuePreferenceSave(BgmVolumePreferenceKey, value);
@@ -204,6 +220,7 @@ namespace CityFlow.UI
 
             int percentage = Mathf.RoundToInt(value * 100f);
             if (inputSfx != null) inputSfx.text = percentage.ToString();
+            _savedSfxVolume = Mathf.Clamp01(value);
             UpdateMixerVolume(sfxParameterName, value);
 
             QueuePreferenceSave(SfxVolumePreferenceKey, value);
@@ -222,6 +239,7 @@ namespace CityFlow.UI
                 _isUpdatingSfx = true;
                 if (sldSfx != null) sldSfx.value = value;
                 if (inputSfx != null) inputSfx.text = percentage.ToString();
+                _savedSfxVolume = value;
                 UpdateMixerVolume(sfxParameterName, value);
 
                 QueuePreferenceSave(SfxVolumePreferenceKey, value);
