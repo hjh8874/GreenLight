@@ -346,7 +346,7 @@ namespace CityFlow.UI
             rect.anchorMax = new Vector2(0.5f, 1f);
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(3f, 0f);
+            rect.sizeDelta = new Vector2(4f, 0f);
 
             Image image = divider.GetComponent<Image>();
             image.color = DividerColor;
