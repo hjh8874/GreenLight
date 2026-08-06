@@ -48,7 +48,8 @@ namespace CityFlow.EditorTools
             {
                 Selection.activeGameObject = existingPopup.gameObject;
                 EditorGUIUtility.PingObject(existingPopup.gameObject);
-                throw new System.InvalidOperationException("[WeeklySettlementPopupBaker] The target canvas already contains a coin harvest popup.");
+                Debug.Log("[WeeklySettlementPopupBaker] The target canvas already contains a weekly settlement popup; reusing existing popup.");
+                return;
             }
 
             GameObject root = CreateUiObject(PopupName, canvas.transform, typeof(CanvasGroup));
@@ -224,7 +225,7 @@ namespace CityFlow.EditorTools
             rect.sizeDelta = Vector2.zero;
         }
 
-        private static Canvas FindTargetCanvas(Scene scene)
+        public static Canvas FindTargetCanvas(Scene scene)
         {
             Canvas fallback = null;
 

@@ -24,7 +24,7 @@ namespace CityFlow.EditorTools
                 return;
             }
 
-            Canvas canvas = activeScene.GetRootGameObjects()[0].GetComponentInChildren<Canvas>(true);
+            Canvas canvas = WeeklySettlementPopupBaker.FindTargetCanvas(activeScene);
             if (canvas == null)
             {
                 Debug.LogError("[ManualCoinHarvestUiBaker] No canvas found in the active scene.");
