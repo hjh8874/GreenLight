@@ -24,28 +24,40 @@ namespace CityFlow.EditorTools
                 return;
             }
 
-            WeeklySettlementPopupBaker.Bake();
-            BakeButton(activeScene);
+            Canvas canvas = activeScene.GetRootGameObjects()[0].GetComponentInChildren<Canvas>(true);
+            if (canvas == null)
+            {
+                Debug.LogError("[ManualCoinHarvestUiBaker] No canvas found in the active scene.");
+                return;
+            }
+            BakeIntoCanvas(canvas);
         }
 
-        private static void BakeButton(Scene activeScene)
+        public static void BakeIntoCanvas(Canvas canvas)
         {
-            CoinHarvestButton existingButton = FindInActiveScene<CoinHarvestButton>(activeScene);
+            if (canvas == null)
+                throw new System.ArgumentNullException(nameof(canvas));
+
+            WeeklySettlementPopupBaker.BakeIntoCanvas(canvas);
+            BakeButton(canvas);
+        }
+
+        private static void BakeButton(Canvas canvas)
+        {
+            CoinHarvestButton existingButton = canvas.GetComponentInChildren<CoinHarvestButton>(true);
 
             if (existingButton != null)
             {
-                UpdateExistingButton(activeScene, existingButton);
+                UpdateExistingButton(canvas, existingButton);
                 return;
             }
 
-            Transform topBar = FindTransform(activeScene, TopBarName);
+            Transform topBar = FindTransform(canvas.transform, TopBarName);
 
             if (topBar == null)
             {
-                Debug.LogError(
-                    $"[ManualCoinHarvestUiBaker] '{TopBarName}' was not found in " +
-                    $"scene '{activeScene.name}'.");
-                return;
+                throw new System.InvalidOperationException(
+                    $"[ManualCoinHarvestUiBaker] '{TopBarName}' was not found in canvas '{canvas.name}'.");
             }
 
             GameObject root = CreateUiObject(
@@ -90,17 +102,18 @@ namespace CityFlow.EditorTools
             controller.Configure(button, label, receipt);
 
             EditorUtility.SetDirty(root);
-            EditorSceneManager.MarkSceneDirty(activeScene);
+            if (canvas.gameObject.scene.IsValid())
+                EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
             Selection.activeGameObject = root;
             EditorGUIUtility.PingObject(root);
 
             Debug.Log(
                 $"[ManualCoinHarvestUiBaker] Coin harvest UI baked below " +
-                $"'{TopBarName}' in scene '{activeScene.name}'.");
+                $"'{TopBarName}' in canvas '{canvas.name}'.");
         }
 
         private static void UpdateExistingButton(
-            Scene activeScene,
+            Canvas canvas,
             CoinHarvestButton existingButton)
         {
             RectTransform existingRect =
@@ -111,7 +124,7 @@ namespace CityFlow.EditorTools
             ApplyButtonRect(existingRect);
 
             Transform receiptParent =
-                FindTransform(activeScene, TopBarName) ??
+                FindTransform(canvas.transform, TopBarName) ??
                 existingButton.transform.parent;
             TextMeshProUGUI receipt = FindReceipt(receiptParent);
             if (receipt == null && receiptParent != null)
@@ -133,12 +146,13 @@ namespace CityFlow.EditorTools
             {
                 EditorUtility.SetDirty(receipt);
             }
-            EditorSceneManager.MarkSceneDirty(activeScene);
+            if (canvas.gameObject.scene.IsValid())
+                EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
             Selection.activeGameObject = existingButton.gameObject;
             EditorGUIUtility.PingObject(existingButton.gameObject);
             Debug.Log(
                 $"[ManualCoinHarvestUiBaker] Updated existing coin harvest UI " +
-                $"in scene '{activeScene.name}'.");
+                $"in canvas '{canvas.name}'.");
         }
 
         private static TextMeshProUGUI CreateLabel(Transform parent)
@@ -229,36 +243,16 @@ namespace CityFlow.EditorTools
             return gameObject;
         }
 
-        private static Transform FindTransform(Scene scene, string targetName)
+        private static Transform FindTransform(Transform root, string targetName)
         {
-            foreach (GameObject root in scene.GetRootGameObjects())
+            Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
+            foreach (Transform candidate in transforms)
             {
-                Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
-
-                foreach (Transform candidate in transforms)
+                if (candidate.name == targetName)
                 {
-                    if (candidate.name == targetName)
-                    {
-                        return candidate;
-                    }
+                    return candidate;
                 }
             }
-
-            return null;
-        }
-
-        private static T FindInActiveScene<T>(Scene scene) where T : Component
-        {
-            foreach (GameObject root in scene.GetRootGameObjects())
-            {
-                T component = root.GetComponentInChildren<T>(true);
-
-                if (component != null)
-                {
-                    return component;
-                }
-            }
-
             return null;
         }
 

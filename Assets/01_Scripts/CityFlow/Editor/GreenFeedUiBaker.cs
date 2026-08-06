@@ -117,7 +117,9 @@ namespace CityFlow.EditorTools
             uiFont = LoadRequiredUiFont();
             if (uiFont == null)
             {
-                return null;
+                throw new System.InvalidOperationException(
+                    "[GreenFeedUiBaker] NanumGothic SDF.asset was not found or invalid. " +
+                    "Install the external font assets before baking the feed UI.");
             }
 
             Scene scene = canvas.gameObject.scene;

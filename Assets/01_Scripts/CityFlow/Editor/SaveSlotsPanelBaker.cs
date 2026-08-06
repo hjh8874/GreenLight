@@ -76,11 +76,10 @@ namespace CityFlow.EditorTools
 
             if (uiFont == null)
             {
-                Debug.LogError(
-                    $"[SaveSlotsPanelBaker] NanumGothic SDF.asset was not found or invalid at " +
+                throw new System.InvalidOperationException(
+                    "[SaveSlotsPanelBaker] NanumGothic SDF.asset was not found or invalid at " +
                     $"'{ExternalKoreanFontAsset.FontAssetPath}'. " +
                     "Install the external font assets before baking the save slot UI.");
-                return;
             }
 
             Transform settingsPanel = FindTransform(canvas.transform, "Settings_Panel")
@@ -90,9 +89,8 @@ namespace CityFlow.EditorTools
 
             if (settingsPanel == null)
             {
-                Debug.LogError(
-                    $"[SaveSlotsPanelBaker] Settings panel was not found in canvas.");
-                return;
+                throw new System.InvalidOperationException(
+                    "[SaveSlotsPanelBaker] Target Settings Panel was not found under the provided canvas.");
             }
 
             RemoveLegacyDeleteUi(canvas.transform);
