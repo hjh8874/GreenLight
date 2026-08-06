@@ -6,7 +6,6 @@ using UnityEngine;
 
 namespace CityFlow.Editor
 {
-    [InitializeOnLoad]
     public static class VehicleWheelDustPrefabBaker
     {
         private const string CatalogPath =
@@ -14,19 +13,9 @@ namespace CityFlow.Editor
         private const string DustMaterialPath =
             "Assets/99_Download/JMO Assets/Cartoon FX Remaster/CFXR Assets/Graphics/cfxr smoke cloud x4 ab.mat";
 
-        private static bool ensureScheduled;
-
-        static VehicleWheelDustPrefabBaker()
-        {
-            ScheduleEnsure();
-            EditorApplication.projectChanged += ScheduleEnsure;
-        }
-
         [MenuItem("Tools/GreenLight/Vehicles/Ensure Wheel Dust Sources")]
         public static void EnsureDustSources()
         {
-            ensureScheduled = false;
-
             VehicleVisualCatalogSO catalog =
                 AssetDatabase.LoadAssetAtPath<VehicleVisualCatalogSO>(
                     CatalogPath);
@@ -58,17 +47,6 @@ namespace CityFlow.Editor
                 Debug.Log(
                     "[VehicleWheelDustPrefabBaker] Wheel dust sources updated.");
             }
-        }
-
-        private static void ScheduleEnsure()
-        {
-            if (ensureScheduled)
-            {
-                return;
-            }
-
-            ensureScheduled = true;
-            EditorApplication.delayCall += EnsureDustSources;
         }
 
         private static bool EnsureDustSource(

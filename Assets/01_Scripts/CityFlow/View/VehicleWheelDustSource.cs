@@ -105,7 +105,7 @@ namespace CityFlow.View
             float rearX =
                 localBounds.min.x + localBounds.size.x * 0.14f;
             float halfTrack = localBounds.size.y * 0.3f;
-            float surfaceZ = localBounds.max.z - 0.01f;
+            float surfaceZ = localBounds.min.z + 0.01f;
 
             left = transform.TransformPoint(
                 new Vector3(rearX, halfTrack, surfaceZ));
@@ -124,18 +124,21 @@ namespace CityFlow.View
                  rendererIndex < renderers.Length;
                  rendererIndex++)
             {
-                Bounds worldBounds = renderers[rendererIndex].bounds;
-                Vector3 min = worldBounds.min;
-                Vector3 max = worldBounds.max;
+                Renderer renderer = renderers[rendererIndex];
+                Bounds rendererBounds = renderer.localBounds;
+                Vector3 min = rendererBounds.min;
+                Vector3 max = rendererBounds.max;
 
                 for (int corner = 0; corner < 8; corner++)
                 {
-                    Vector3 worldPoint = new(
+                    Vector3 rendererLocalPoint = new(
                         (corner & 1) == 0 ? min.x : max.x,
                         (corner & 2) == 0 ? min.y : max.y,
                         (corner & 4) == 0 ? min.z : max.z);
                     Vector3 localPoint =
-                        transform.InverseTransformPoint(worldPoint);
+                        transform.InverseTransformPoint(
+                            renderer.transform.TransformPoint(
+                                rendererLocalPoint));
 
                     if (!hasBounds)
                     {

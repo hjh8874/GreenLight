@@ -49,6 +49,11 @@ namespace CityFlow.View
                 return;
             }
 
+            if (!particles.isPlaying)
+            {
+                particles.Play(false);
+            }
+
             float clampedIntensity = Mathf.Clamp01(intensity);
             Color color = Color.Lerp(
                 new Color(0.76f, 0.72f, 0.64f, 0.38f),
