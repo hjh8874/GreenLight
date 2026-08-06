@@ -113,11 +113,29 @@ namespace CityFlow.Tests.ViewEditMode
                     congestionDot.GetComponent<Image>();
                 Assert.That(congestionDotImage.sprite, Is.Not.Null);
                 Assert.That(congestionDotImage.preserveAspect, Is.True);
+                Texture2D congestionDotTexture =
+                    congestionDotImage.sprite.texture;
+                Assert.That(
+                    congestionDotTexture.GetPixel(0, 0).a,
+                    Is.EqualTo(0f));
+                Assert.That(
+                    congestionDotTexture.GetPixel(
+                        congestionDotTexture.width / 2,
+                        congestionDotTexture.height / 2).a,
+                    Is.EqualTo(1f));
                 Assert.That(timeRect.anchoredPosition.x,
                     Is.GreaterThanOrEqualTo(34f));
 
                 timeRect.anchoredPosition = new Vector2(16f, -14f);
-                timeline.SendMessage("LateUpdate");
+                System.Reflection.MethodInfo lateUpdate =
+                    typeof(DayNightTimelineUI).GetMethod(
+                        "LateUpdate",
+                        System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.NonPublic);
+                Assert.That(lateUpdate, Is.Not.Null);
+                lateUpdate.Invoke(
+                    timeline.GetComponent<DayNightTimelineUI>(),
+                    null);
                 Assert.That(timeRect.anchoredPosition.x,
                     Is.GreaterThanOrEqualTo(34f));
 

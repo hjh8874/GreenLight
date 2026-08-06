@@ -28,6 +28,7 @@ namespace CityFlow.UI
         private const float SunsetHour = 18f;
         private const float CongestionDotSize = 12f;
         private const float CongestionDotCenterX = 16f;
+        private const int CongestionDotTextureSize = 32;
         private const float TimeTextLeftInset = 34f;
         private const float HeaderTextOutlineWidth = 0.3f;
         private const string HeaderTextOutlineKeyword = "OUTLINE_ON";
@@ -40,6 +41,8 @@ namespace CityFlow.UI
             new Color(0.82f, 0.9f, 1f, 1f);
         private static readonly Color HeaderTextOutlineColor =
             new Color(0f, 0f, 0f, 1f);
+
+        private static Sprite congestionDotSprite;
 
         private CityFlowServices services;
         private IGameCalendarService calendar;
@@ -200,11 +203,9 @@ namespace CityFlow.UI
                 new Vector2(CongestionDotSize, CongestionDotSize);
 
             Image dotImage = dotRect.GetComponent<Image>();
-            Sprite circleSprite =
-                Resources.GetBuiltinResource<Sprite>("UI/Skin/Knob.psd");
-            if (dotImage != null && circleSprite != null)
+            if (dotImage != null)
             {
-                dotImage.sprite = circleSprite;
+                dotImage.sprite = GetCongestionDotSprite();
                 dotImage.type = Image.Type.Simple;
                 dotImage.preserveAspect = true;
             }
@@ -230,6 +231,59 @@ namespace CityFlow.UI
                 offsetMin.x = Mathf.Max(offsetMin.x, TimeTextLeftInset);
                 timeRect.offsetMin = offsetMin;
             }
+        }
+
+        private static Sprite GetCongestionDotSprite()
+        {
+            if (congestionDotSprite != null)
+            {
+                return congestionDotSprite;
+            }
+
+            var texture = new Texture2D(
+                CongestionDotTextureSize,
+                CongestionDotTextureSize,
+                TextureFormat.RGBA32,
+                false)
+            {
+                name = "Congestion Dot Circle",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            var pixels = new Color32[
+                CongestionDotTextureSize * CongestionDotTextureSize];
+            float center = (CongestionDotTextureSize - 1) * 0.5f;
+            float radius = center;
+            for (int y = 0; y < CongestionDotTextureSize; y++)
+            {
+                for (int x = 0; x < CongestionDotTextureSize; x++)
+                {
+                    float distance = Vector2.Distance(
+                        new Vector2(x, y),
+                        new Vector2(center, center));
+                    byte alpha = (byte)Mathf.RoundToInt(
+                        Mathf.Clamp01(radius - distance + 0.5f) * 255f);
+                    pixels[y * CongestionDotTextureSize + x] =
+                        new Color32(255, 255, 255, alpha);
+                }
+            }
+
+            texture.SetPixels32(pixels);
+            texture.Apply(false, false);
+            congestionDotSprite = Sprite.Create(
+                texture,
+                new Rect(
+                    0f,
+                    0f,
+                    CongestionDotTextureSize,
+                    CongestionDotTextureSize),
+                new Vector2(0.5f, 0.5f),
+                CongestionDotTextureSize);
+            congestionDotSprite.name = "Congestion Dot Circle";
+            congestionDotSprite.hideFlags = HideFlags.HideAndDontSave;
+            return congestionDotSprite;
         }
 
         private static void ImproveHeaderTextReadability(
