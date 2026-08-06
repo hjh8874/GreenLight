@@ -157,9 +157,10 @@ namespace CityFlow.DebugTools
             if (GUILayout.Button("x20")) Time.timeScale = 20f;
             GUILayout.EndHorizontal();
 
-            // ── 구 DebugCityControls 통합 ──
+            // ── 구 DebugCityControls 통합 (그쪽은 삭제됨) ──
             // 창 두 개가 배속·시계를 각자 그리며 겹쳤다. 겹치던 것은 위 시계 패널로
-            // 일원화하고, 저쪽에만 있던 지표와 치트만 여기로 가져왔다.
+            // 일원화하고, 저쪽에만 있던 지표와 치트를 여기로 옮긴 뒤 원본을 지웠다.
+            // 남겨두면 같은 치트 버튼이 두 벌 뜨고 금액도 서로 갈라진다.
             var facility = services.Placement as IIntersectionFacilityService;
             GUILayout.Label(
                 $"코인 {services.Economy?.Coins ?? 0:N0}" +

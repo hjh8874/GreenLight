@@ -186,6 +186,10 @@ namespace CityFlow.UI
 
         // 공사 중이면 지어질 건물의 크기를, 완공 뒤라면 지어진 건물의 크기를 쓴다.
         // 덕분에 완공 poof 도 앵커 구석이 아니라 건물 한가운데서 터진다(캐시 불필요).
+        //
+        // 방향을 반드시 함께 본다. CityGrid 는 GetRotatedSize 로 칸을 점유하므로
+        // 동/서로 놓인 1x2 집은 실제로 2x1 이다. GetFootprintSize 만 쓰면 FX 중심과
+        // 망치 타점이 점유하지도 않은 칸을 가리킨다.
         private Vector2Int FootprintSize(Vector2Int tile)
         {
             IReadOnlyTileData tiles = _services?.TileData;
@@ -195,7 +199,8 @@ namespace CityFlow.UI
                 ? target
                 : tiles.GetTileType(tile);
 
-            Vector2Int size = tiles.GetFootprintSize(type);
+            Vector2Int size =
+                TileFootprint.GetRotatedSize(type, tiles.GetDirection(tile));
             return new Vector2Int(Mathf.Max(1, size.x), Mathf.Max(1, size.y));
         }
 
@@ -328,7 +333,10 @@ namespace CityFlow.UI
             _finished.Clear();
         }
 
-        // CFXR 프리팹은 clearBehavior=Destroy 라 재생이 끝나면 스스로 사라진다.
+        // 수명은 이쪽이 책임진다. "CFXR 이 clearBehavior=Destroy 로 스스로 지운다"에
+        // 기대고 있었는데, 꽂힌 게 CFXR_Effect 없는 자식 오브젝트라 0.7초마다 하나씩
+        // 영원히 쌓였다(리뷰 지적 2026-08-06). 어떤 파티클을 꽂아도 새지 않게
+        // 재생 길이를 재서 직접 파괴한다 — 프리팹 참조 실수에 다시 당하지 않는다.
         // ponytail: 풀링 없음 — 공사장은 한 자리 수고 간격도 0.7초다. 동시 공사가
         // 수십 개로 늘면 InfrastructureEffectPopView 처럼 큐 풀로 바꾼다.
         private void SpawnPuff(
@@ -349,6 +357,27 @@ namespace CityFlow.UI
             GameObject fx = Instantiate(prefab, position, rotation);
             fx.transform.localScale = prefab.transform.localScale * scale;
             ApplyParticleSpeed(fx, speed);
+            Destroy(fx, PlaybackSeconds(fx));
+        }
+
+        // 재생이 끝나는 시각 = (가장 긴 duration + 그 시스템의 최대 수명) / 재생 속도.
+        // 루프 파티클은 스스로 끝나지 않으므로 여기서 쓰면 안 된다(연기는 _siteFx
+        // 루트에 붙어 완공 때 함께 파괴된다).
+        private static float PlaybackSeconds(GameObject fx)
+        {
+            float longest = 0f;
+            ParticleSystem[] systems =
+                fx.GetComponentsInChildren<ParticleSystem>(true);
+            for (int i = 0; i < systems.Length; i++)
+            {
+                ParticleSystem.MainModule main = systems[i].main;
+                float span =
+                    (main.duration + main.startLifetime.constantMax) /
+                    Mathf.Max(0.01f, main.simulationSpeed);
+                longest = Mathf.Max(longest, span);
+            }
+
+            return longest + 0.5f;   // 여유 — 조금 늦게 지워지는 편이 잘리는 것보다 낫다
         }
 
         // 스케일만 줄이면 알갱이만 작아지고 뿜는 기세는 그대로다. 재생 속도는 따로 낮춘다.

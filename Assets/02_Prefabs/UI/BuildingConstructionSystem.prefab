@@ -47,7 +47,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.BuildingConstructionOverlay
   labelTemplate: {fileID: 6019478577714353711}
   heightOffset: 1.2
-  workPuffPrefab: {fileID: 200147755, guid: f0ad7a5f1c59e164aa62b3689281c0f8, type: 3}
+  workPuffPrefab: {fileID: 1688076354444117600, guid: f0ad7a5f1c59e164aa62b3689281c0f8, type: 3}
   completePuffPrefab: {fileID: 395031058680739610, guid: b2f0b8902a31c8a46a1c4bb24ed9ea36, type: 3}
   puffInterval: 0.7
   workPuffScale: 0.2
