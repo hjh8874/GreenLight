@@ -32,6 +32,10 @@ namespace CityFlow.UI
                 rect.pivot = new Vector2(0f, 0f);
             }
 
+            // 유저 지시에 따라 안정도와 수입 텍스트 라인을 완전히 숨김
+            if (txtIncome != null) txtIncome.gameObject.SetActive(false);
+            if (txtEffect != null) txtEffect.gameObject.SetActive(false);
+
             // 기본적으로 숨겨둠
             gameObject.SetActive(false);
             transform.localScale = Vector3.zero;
@@ -52,12 +56,12 @@ namespace CityFlow.UI
             if (tileData == null) return;
             
             gameObject.SetActive(true);
+            if (txtIncome != null) txtIncome.gameObject.SetActive(false);
+            if (txtEffect != null) txtEffect.gameObject.SetActive(false);
             
             if (txtName != null) txtName.text = tileData.BuildingName;
             if (txtCategory != null) txtCategory.text = $"분류: {tileData.Category}";
-            if (txtCost != null) txtCost.text = $"비용: {tileData.BuildCost} 코인";
-            if (txtIncome != null) txtIncome.text = $"수입: 분당 +{tileData.DailyCoinValue}";
-            if (txtEffect != null) txtEffect.text = $"안정도: +{tileData.ProsperityValue}";
+            if (txtCost != null) txtCost.text = $"비용: <color=#FFD700>{tileData.BuildCost}</color> 코인";
             if (txtDescription != null) txtDescription.text = tileData.BuildingDescription;
 
             // 켜지는 순간 랙 방지를 위해 즉시 위치 동기화
@@ -76,12 +80,12 @@ namespace CityFlow.UI
             if (infraData == null) return;
             
             gameObject.SetActive(true);
+            if (txtIncome != null) txtIncome.gameObject.SetActive(false);
+            if (txtEffect != null) txtEffect.gameObject.SetActive(false);
             
             if (txtName != null) txtName.text = infraData.InfrastructureName;
             if (txtCategory != null) txtCategory.text = $"분류: {infraData.Kind}";
-            if (txtCost != null) txtCost.text = $"비용: {infraData.Cost} 코인";
-            if (txtIncome != null) txtIncome.text = "유지비: 자동"; // 인프라는 별도 수입이 없으므로 안내 문구 대체
-            if (txtEffect != null) txtEffect.text = "효과: 교통 흐름 제어"; // 인프라 범용 효과
+            if (txtCost != null) txtCost.text = $"비용: <color=#FFD700>{infraData.Cost}</color> 코인";
             if (txtDescription != null) txtDescription.text = infraData.Description;
 
             if (Mouse.current != null)
@@ -101,19 +105,14 @@ namespace CityFlow.UI
             }
 
             gameObject.SetActive(true);
+            if (txtIncome != null) txtIncome.gameObject.SetActive(false);
+            if (txtEffect != null) txtEffect.gameObject.SetActive(false);
 
             if (txtName != null) txtName.text = option.DisplayName;
             if (txtCategory != null)
                 txtCategory.text = $"분류: {option.CategoryName}";
             if (txtCost != null)
-                txtCost.text = $"비용: {option.BuildCost:N0} 코인";
-            if (txtIncome != null)
-                txtIncome.text =
-                    $"방문: {option.VisitsPerPeriod}회 / {option.PeriodDays}일";
-            if (txtEffect != null)
-                txtEffect.text = option.IsUnlocked
-                    ? "상태: 건설 가능"
-                    : "상태: 연구 필요";
+                txtCost.text = $"비용: <color=#FFD700>{option.BuildCost:N0}</color> 코인";
             if (txtDescription != null)
                 txtDescription.text = option.Description;
 

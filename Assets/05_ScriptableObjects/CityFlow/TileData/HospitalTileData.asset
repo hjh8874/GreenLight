@@ -16,7 +16,7 @@ MonoBehaviour:
   buildingName: "\uBCD1\uC6D0"
   category: 5
   companyTypeId:
-  buildingIcon: {fileID: 0}
+  buildingIcon: {fileID: 21300000, guid: 9a0695fff5b083e45b1bc7c847f8bd58, type: 3}
   buildingPrefab: {fileID: 0}
   buildingDescription: "\uC8FC\uBCC0 \uC8FC\uAC70\uC9C0\uC5D0 \uC758\uB8CC \uD61C\uD0DD\uACFC
     \uC548\uC815\uB3C4 \uBCF4\uB108\uC2A4\uB97C \uC81C\uACF5\uD558\uB294 \uBCD1\uC6D0\uC785\uB2C8\uB2E4."
