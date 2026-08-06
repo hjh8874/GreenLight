@@ -208,6 +208,17 @@ namespace CityFlow.Bootstrap
             Save?.RegisterCitizenFeedSaveSource(citizenFeedSaveSource);
         }
 
+        public void RegisterCameraViewSaveSource(
+            ICameraViewSaveSource cameraViewSaveSource)
+        {
+            if (cameraViewSaveSource == null)
+            {
+                return;
+            }
+
+            Save?.RegisterCameraViewSaveSource(cameraViewSaveSource);
+        }
+
         public void RegisterRadioSaveSource(IRadioSaveSource radioSaveSource)
         {
             if (radioSaveSource == null)

@@ -76,17 +76,15 @@ namespace CityFlow.DebugTools
             bool stopB = busStops != null && busStops.TryPlaceBusStop(new Vector2Int(12, 11));
 
             EnsureCongestionFeedbackSystem();
-            _services.Events?.PublishHeatmapViewToggled(true);
             _built = true;
 
-            Debug.Log("[TrafficShowcaseBuilder] 쇼케이스 완료 — 관찰 포인트: 트럭 20%, 무신호 줄서기 vs 신호, 히트맵 발열, 효과 팝(2게임일 후), 정류장 커버 감축. "
+            Debug.Log("[TrafficShowcaseBuilder] 쇼케이스 완료 — 관찰 포인트: 트럭 20%, 무신호 줄서기 vs 신호, 효과 팝(2게임일 후), 정류장 커버 감축. "
                 + $"장치 signal={signal}, roundabout={roundabout}, stops={stopA}/{stopB}", this);
         }
 
         private void EnsureCongestionFeedbackSystem()
         {
-            if (FindFirstObjectByType<CityFlow.View.CongestionHeatmapOverlay>() != null &&
-                FindFirstObjectByType<CityFlow.View.InfrastructureEffectPopView>() != null)
+            if (FindFirstObjectByType<CityFlow.View.InfrastructureEffectPopView>() != null)
                 return;
 
             GameObject prefab = congestionFeedbackPrefab;
@@ -116,7 +114,7 @@ namespace CityFlow.DebugTools
             if (_services == null) return;
             var style = new GUIStyle(GUI.skin.label) { fontSize = 18, normal = { textColor = Color.white } };
             GUI.Label(new Rect(12, 70, 900, 30), _built
-                ? "F4 쇼케이스 생성 완료 — 히트맵/신호·로터리/무신호/정류장 커버를 관찰하세요."
+                ? "F4 쇼케이스 생성 완료 — 신호·로터리/무신호/정류장 커버를 관찰하세요."
                 : "F4 오늘 기능 종합 테스트 키트 생성 — 밀집 교통 회랑 + 신호/로터리/무신호 비교", style);
         }
     }

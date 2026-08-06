@@ -49,6 +49,30 @@ namespace CityFlow.UI
         private float savedSfxVolume = DefaultVolume;
         private Coroutine preferenceSaveCoroutine;
 
+        private void Awake()
+        {
+            ApplyInputTextReadability(bgmInput);
+            ApplyInputTextReadability(sfxInput);
+        }
+
+        private static void ApplyInputTextReadability(TMP_InputField input)
+        {
+            if (input == null)
+            {
+                return;
+            }
+
+            if (input.textComponent != null)
+            {
+                input.textComponent.color = Color.black;
+            }
+
+            if (input.placeholder is TMP_Text placeholder)
+            {
+                placeholder.color = new Color(0.2f, 0.2f, 0.2f, 0.7f);
+            }
+        }
+
         public void Configure(
             Toggle mute,
             Slider bgm,
@@ -64,6 +88,8 @@ namespace CityFlow.UI
             sfxSlider = sfx;
             sfxInput = sfxPercentage;
             audioMixer = mixer;
+            ApplyInputTextReadability(bgmInput);
+            ApplyInputTextReadability(sfxInput);
 
             if (Application.isPlaying)
             {

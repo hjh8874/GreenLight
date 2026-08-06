@@ -197,13 +197,13 @@ namespace CityFlow.UI.Editor
             LayerLabUiAssetCatalog.StyleText(
                 placeholder,
                 14f,
-                new Color(0.55f, 0.6f, 0.66f, 1f));
+                new Color(0.2f, 0.2f, 0.2f, 0.7f));
 
             TMP_Text text = CreateText(viewport, "Text", string.Empty);
             StretchRect(text.rectTransform, 0f, 0f);
             text.alignment = TextAlignmentOptions.Center;
             text.textWrappingMode = TextWrappingModes.NoWrap;
-            LayerLabUiAssetCatalog.StyleText(text, 14f, Color.white);
+            LayerLabUiAssetCatalog.StyleText(text, 14f, Color.black);
 
             input.textViewport = viewport;
             input.textComponent = (TextMeshProUGUI)text;

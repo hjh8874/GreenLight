@@ -29,6 +29,7 @@ namespace CityFlow.Save
             private set;
         }
         public ICitizenFeedSaveSource CitizenFeedSaveSource { get; private set; }
+        public ICameraViewSaveSource CameraViewSaveSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
         public ISaveClock Clock { get; private set; }
         public SaveSlotRepository SaveSlots { get; private set; }
@@ -51,6 +52,7 @@ namespace CityFlow.Save
         private SpecialBuildingVisitSaveData retainedSpecialBuildingVisits;
         private EmergencyIncidentSaveData retainedEmergencyIncidents;
         private CitizenFeedSaveData retainedCitizenFeed;
+        private CameraViewSaveData retainedCameraView;
         private readonly IWorldGridAccess worldGridAccess;
         private bool hasLoadedSave;
 
@@ -219,6 +221,17 @@ namespace CityFlow.Save
             }
         }
 
+        public void RegisterCameraViewSaveSource(
+            ICameraViewSaveSource cameraViewSaveSource)
+        {
+            CameraViewSaveSource = cameraViewSaveSource;
+
+            if (hasLoadedSave)
+            {
+                CameraViewSaveSource?.RestoreSnapshot(retainedCameraView);
+            }
+        }
+
         public GameSaveData CreateSnapshot()
         {
             return new GameSaveData
@@ -255,7 +268,9 @@ namespace CityFlow.Save
                     EmergencyIncidentSaveSource?.CreateSnapshot()
                     ?? retainedEmergencyIncidents,
                 CitizenFeed = CitizenFeedSaveSource?.CreateSnapshot()
-                    ?? retainedCitizenFeed
+                    ?? retainedCitizenFeed,
+                CameraView = CameraViewSaveSource?.CreateSnapshot()
+                    ?? retainedCameraView
             };
         }
 
@@ -370,6 +385,8 @@ namespace CityFlow.Save
                     saveData.EmergencyIncidents ??
                     new EmergencyIncidentSaveData());
             }
+
+            CameraViewSaveSource?.RestoreSnapshot(saveData.CameraView);
         }
 
         public bool Save(bool createAutomaticSlot = false)
@@ -523,6 +540,7 @@ namespace CityFlow.Save
             retainedEmergencyIncidents =
                 saveData?.EmergencyIncidents;
             retainedCitizenFeed = saveData?.CitizenFeed;
+            retainedCameraView = saveData?.CameraView;
         }
 
         private SpecialBuildingSaveData CreateRestoredSpecialBuildingData(

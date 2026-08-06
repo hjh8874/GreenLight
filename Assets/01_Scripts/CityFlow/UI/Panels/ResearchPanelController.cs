@@ -473,14 +473,22 @@ namespace CityFlow.UI
                 Mathf.Max(categoryCounts[1], categoryCounts[2]));
             float gridWidth = columnCount * CellWidth + Mathf.Max(0, columnCount - 1) * ColumnGap;
             float gridHeight = rowCount * CellHeight + Mathf.Max(0, rowCount - 1) * RowGap;
-            panel.anchorMin = new Vector2(0.5f, 0.5f);
-            panel.anchorMax = new Vector2(0.5f, 0.5f);
-            panel.pivot = new Vector2(0.5f, 0.5f);
+            bool useGeonSubPanelLayout =
+                panel.parent != null &&
+                panel.parent.name == "SubPanels_Right";
+            Vector2 anchor = useGeonSubPanelLayout
+                ? new Vector2(1f, 0f)
+                : new Vector2(0.5f, 0.5f);
+            panel.anchorMin = anchor;
+            panel.anchorMax = anchor;
+            panel.pivot = anchor;
+            panel.anchoredPosition = Vector2.zero;
+            panel.localScale = Vector3.one;
             panel.sizeDelta = new Vector2(
                 Mathf.Max(720f, gridWidth + PanelPadding * 2f),
                 HeaderHeight + gridHeight + PanelPadding * 2f);
-            // 부모(우측 독 서브패널)가 어디에 있든 화면 중앙 — 오버레이 캔버스는 픽셀 좌표
-            panel.position = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f);
+            // Geon 우측 서브패널 아래에서는 우하단 독에 맞추고,
+            // 독립 오버레이로 사용할 때만 기존 화면 중앙 배치를 유지한다.
 
             // 행 컨테이너~패널 사이의 모든 중간 부모를 패널에 꽉 채워 정렬한다 —
             // 프리팹의 중간 오프셋(스크롤 뷰포트 등)이 남으면 그리드가 배경 밖으로 밀린다.

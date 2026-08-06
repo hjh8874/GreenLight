@@ -32,8 +32,8 @@ namespace CityFlow.View
         private float boardHeight;
         private float titleBarHeight;
         private bool shouldFitBoardToScreen = true;
-        private bool isFloating = true;
-        private bool isAlwaysOnTop = true;
+        private bool isFloating;
+        private bool isAlwaysOnTop;
         private bool isMaximized;
         private bool isDockedToTop;
         private bool notifyFloatingEntry;
@@ -98,8 +98,8 @@ namespace CityFlow.View
                 ? FloatingWindowTitleBarController.TitleBarHeight
                 : 0f;
 
-            isFloating = PlayerPrefs.GetInt(FloatingPrefKey, 1) == 1;
-            isAlwaysOnTop = PlayerPrefs.GetInt(TopmostPrefKey, 1) == 1;
+            isFloating = PlayerPrefs.GetInt(FloatingPrefKey, 0) == 1;
+            isAlwaysOnTop = PlayerPrefs.GetInt(TopmostPrefKey, 0) == 1;
             presetIndex = Mathf.Clamp(
                 PlayerPrefs.GetInt(PresetPrefKey, 1),
                 0,

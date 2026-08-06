@@ -162,7 +162,7 @@ namespace CityFlow.UI.Editor
                 new Vector2(320f, 34f));
             LayerLabUiAssetCatalog.StyleToggle(
                 instance.GetComponent<Toggle>(),
-                "정체 뷰");
+                "실시간 정체");
         }
 
         private static GameObject InstantiateCongestionToggle(Transform parent)

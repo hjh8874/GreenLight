@@ -175,6 +175,77 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void Save_RoundTripsCameraZoom()
+        {
+            var repository =
+                new JsonSaveRepository(savePath, backupPath);
+            var source = new FakeCameraView
+            {
+                Current = new CameraViewSaveData
+                {
+                    HasZoom = true,
+                    NormalizedZoom01 = 0.35f
+                }
+            };
+            var service = new SaveService(
+                new FakeSim(new List<string>()),
+                repository,
+                new FakeClock());
+            service.RegisterCameraViewSaveSource(source);
+
+            Assert.IsTrue(service.Save());
+            Assert.IsTrue(
+                repository.TryLoad(out GameSaveData loaded));
+            Assert.IsTrue(loaded.CameraView.HasZoom);
+            Assert.AreEqual(
+                0.35f,
+                loaded.CameraView.NormalizedZoom01,
+                0.0001f);
+
+            source.Current = null;
+            service.RestoreSnapshot(loaded);
+
+            Assert.NotNull(source.Current);
+            Assert.AreEqual(
+                0.35f,
+                source.Current.NormalizedZoom01,
+                0.0001f);
+        }
+
+        [Test]
+        public void RegisterCameraViewSaveSource_AfterLoad_RestoresZoom()
+        {
+            var repository =
+                new JsonSaveRepository(savePath, backupPath);
+            var service = new SaveService(
+                new FakeSim(new List<string>()),
+                repository,
+                new FakeClock());
+
+            Assert.IsTrue(repository.TrySave(new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                Simulation = new SimSaveData(),
+                CameraView = new CameraViewSaveData
+                {
+                    HasZoom = true,
+                    NormalizedZoom01 = 0.7f
+                }
+            }));
+            Assert.IsTrue(service.TryLoadAndRestore());
+
+            var source = new FakeCameraView();
+            service.RegisterCameraViewSaveSource(source);
+
+            Assert.NotNull(source.Current);
+            Assert.IsTrue(source.Current.HasZoom);
+            Assert.AreEqual(
+                0.7f,
+                source.Current.NormalizedZoom01,
+                0.0001f);
+        }
+
+        [Test]
         public void RegisterSchoolBusSaveSource_AfterLoad_RestoresTripHistory()
         {
             var repository =
@@ -720,6 +791,18 @@ namespace CityFlow.Sim.Tests
 
             public void RestoreSnapshot(
                 SchoolBusSaveData snapshot)
+            {
+                Current = snapshot;
+            }
+        }
+
+        sealed class FakeCameraView : ICameraViewSaveSource
+        {
+            public CameraViewSaveData Current;
+
+            public CameraViewSaveData CreateSnapshot() => Current;
+
+            public void RestoreSnapshot(CameraViewSaveData snapshot)
             {
                 Current = snapshot;
             }

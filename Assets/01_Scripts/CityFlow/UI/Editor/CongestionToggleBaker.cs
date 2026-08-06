@@ -58,7 +58,7 @@ namespace CityFlow.UI.Editor
             labelRect.offsetMax = Vector2.zero;
 
             TextMeshProUGUI label = labelObject.GetComponent<TextMeshProUGUI>();
-            label.text = "정체 뷰";
+            label.text = "실시간 정체";
             label.alignment = TextAlignmentOptions.MidlineLeft;
             LayerLabUiAssetCatalog.StyleText(
                 label,
