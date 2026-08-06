@@ -68,11 +68,11 @@ namespace CityFlow.View
             var emit = new ParticleSystem.EmitParams
             {
                 position = position,
-                velocity = new Vector3(drift.x, drift.y, -0.015f),
+                velocity = new Vector3(drift.x, 0.015f, drift.y),
                 startColor = color,
                 startLifetime = Mathf.Lerp(0.24f, 0.35f, clampedIntensity),
                 startSize = Mathf.Lerp(0.07f, 0.12f, clampedIntensity),
-                rotation = phase % (Mathf.PI * 2f)
+                rotation = (phase * Mathf.Rad2Deg) % 360f
             };
             particles.Emit(emit, 1);
         }
