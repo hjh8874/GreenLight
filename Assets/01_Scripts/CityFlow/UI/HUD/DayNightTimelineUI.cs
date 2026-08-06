@@ -6,7 +6,7 @@ using UnityEngine.UI;
 namespace CityFlow.UI
 {
     /// <summary>
-    /// Displays the current in-game time as a moving sun or moon below the
+    /// Displays the current in-game time as a moving sun or moon inside the
     /// main HUD top bar. The sun runs from 06:00 to 18:00, and the moon
     /// runs from 18:00 to 06:00. Each icon crosses the center after six hours.
     /// </summary>
@@ -15,12 +15,12 @@ namespace CityFlow.UI
         private const string RootName = "DayNightTimeline";
         private const string CelestialShaderName =
             "CityFlow/Celestial Overlay";
+        private const string HarvestButtonName = "CoinHarvestButton";
         private const float DefaultBarHeight = 60f;
+        private const float RefreshIntervalSeconds = 0.2f;
         private const float SunriseHour = 6f;
         private const float SunsetHour = 18f;
 
-        private static readonly Color PanelColor =
-            new Color(0.055f, 0.075f, 0.095f, 0.94f);
         private static readonly Color DividerColor =
             new Color(0.92f, 0.12f, 0.14f, 1f);
         private static readonly Color SunColor =
@@ -36,6 +36,9 @@ namespace CityFlow.UI
         private GameObject moonIcon;
         private Material sunMaterial;
         private Material moonMaterial;
+        private float nextRefreshTime;
+        private float lastRenderedTimeOfDay01;
+        private bool hasRenderedState;
 
         public static void Ensure(
             RectTransform topBar,
@@ -47,17 +50,14 @@ namespace CityFlow.UI
                 return;
             }
 
-            Transform parent = topBar.parent;
-            if (parent == null)
-            {
-                return;
-            }
-
-            Transform existing = parent.Find(RootName);
+            RemoveLegacyTimeline(topBar);
+            Transform existing = topBar.Find(RootName);
             DayNightTimelineUI timeline = existing != null
                 ? existing.GetComponent<DayNightTimelineUI>()
-                : Create(topBar, parent);
+                : Create(topBar);
 
+            timeline?.transform.SetAsFirstSibling();
+            CenterHarvestButton(topBar);
             timeline?.Initialize(cityFlowServices);
         }
 
@@ -95,8 +95,7 @@ namespace CityFlow.UI
         }
 
         private static DayNightTimelineUI Create(
-            RectTransform topBar,
-            Transform parent)
+            RectTransform topBar)
         {
             float height = Mathf.Abs(topBar.sizeDelta.y);
             if (height < 1f)
@@ -112,44 +111,58 @@ namespace CityFlow.UI
             GameObject root = new GameObject(
                 RootName,
                 typeof(RectTransform),
-                typeof(CanvasRenderer),
-                typeof(Image),
-                typeof(CanvasGroup),
                 typeof(DayNightTimelineUI));
-            root.transform.SetParent(parent, false);
+            root.transform.SetParent(topBar, false);
             root.layer = topBar.gameObject.layer;
 
             RectTransform rootRect = root.GetComponent<RectTransform>();
-            rootRect.anchorMin = new Vector2(0f, 1f);
-            rootRect.anchorMax = new Vector2(1f, 1f);
-            rootRect.pivot = new Vector2(0.5f, 1f);
-            rootRect.anchoredPosition = new Vector2(0f, -height);
-            rootRect.sizeDelta = new Vector2(0f, height);
-
-            Image background = root.GetComponent<Image>();
-            background.color = PanelColor;
-            Graphic topBarGraphic = topBar.GetComponent<Graphic>();
-            background.raycastTarget =
-                topBarGraphic == null || topBarGraphic.raycastTarget;
-
-            CanvasGroup sourceGroup = topBar.GetComponent<CanvasGroup>();
-            CanvasGroup timelineGroup = root.GetComponent<CanvasGroup>();
-            timelineGroup.interactable =
-                sourceGroup == null || sourceGroup.interactable;
-            timelineGroup.blocksRaycasts =
-                sourceGroup == null || sourceGroup.blocksRaycasts;
-            timelineGroup.ignoreParentGroups =
-                sourceGroup != null && sourceGroup.ignoreParentGroups;
-
-            int targetSibling = Mathf.Min(
-                topBar.GetSiblingIndex() + 1,
-                parent.childCount - 1);
-            root.transform.SetSiblingIndex(targetSibling);
+            rootRect.anchorMin = Vector2.zero;
+            rootRect.anchorMax = Vector2.one;
+            rootRect.pivot = new Vector2(0.5f, 0.5f);
+            rootRect.anchoredPosition = Vector2.zero;
+            rootRect.sizeDelta = Vector2.zero;
+            root.transform.SetAsFirstSibling();
 
             DayNightTimelineUI timeline =
                 root.GetComponent<DayNightTimelineUI>();
-            timeline.BuildVisuals(rootRect);
+            timeline.BuildVisuals(rootRect, height);
             return timeline;
+        }
+
+        private static void RemoveLegacyTimeline(RectTransform topBar)
+        {
+            Transform parent = topBar.parent;
+            Transform legacy = parent != null
+                ? parent.Find(RootName)
+                : null;
+            if (legacy == null || legacy.parent == topBar)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(legacy.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(legacy.gameObject);
+            }
+        }
+
+        private static void CenterHarvestButton(RectTransform topBar)
+        {
+            RectTransform harvestRect =
+                topBar.Find(HarvestButtonName) as RectTransform;
+            if (harvestRect == null)
+            {
+                return;
+            }
+
+            harvestRect.anchorMin = new Vector2(0.5f, 0.5f);
+            harvestRect.anchorMax = new Vector2(0.5f, 0.5f);
+            harvestRect.pivot = new Vector2(0.5f, 0.5f);
+            harvestRect.anchoredPosition = Vector2.zero;
         }
 
         private void Initialize(CityFlowServices cityFlowServices)
@@ -170,18 +183,11 @@ namespace CityFlow.UI
             BindCalendar(services.GameCalendar);
         }
 
-        private void BuildVisuals(RectTransform rootRect)
+        private void BuildVisuals(
+            RectTransform rootRect,
+            float topBarHeight)
         {
-            iconSize = Mathf.Abs(rootRect.sizeDelta.y);
-            if (iconSize < 1f)
-            {
-                iconSize = rootRect.rect.height;
-            }
-
-            if (iconSize < 1f)
-            {
-                iconSize = DefaultBarHeight;
-            }
+            iconSize = Mathf.Max(1f, topBarHeight);
 
             GameObject marker = new GameObject(
                 "CelestialMarker",
@@ -207,7 +213,7 @@ namespace CityFlow.UI
                 MoonColor,
                 out moonMaterial);
             CreateDivider(rootRect);
-            Refresh();
+            Refresh(force: true);
         }
 
         private static void CreateDivider(RectTransform parent)
@@ -286,15 +292,22 @@ namespace CityFlow.UI
         private void BindCalendar(IGameCalendarService gameCalendar)
         {
             calendar = gameCalendar;
-            Refresh();
+            Refresh(force: true);
         }
 
         private void Update()
         {
+            if (Time.unscaledTime < nextRefreshTime)
+            {
+                return;
+            }
+
+            nextRefreshTime =
+                Time.unscaledTime + RefreshIntervalSeconds;
             Refresh();
         }
 
-        private void Refresh()
+        private void Refresh(bool force = false)
         {
             if (markerRect == null)
             {
@@ -302,6 +315,16 @@ namespace CityFlow.UI
             }
 
             float timeOfDay01 = calendar?.TimeOfDay01 ?? 0f;
+            if (!force && hasRenderedState &&
+                Mathf.Approximately(
+                    timeOfDay01,
+                    lastRenderedTimeOfDay01))
+            {
+                return;
+            }
+
+            hasRenderedState = true;
+            lastRenderedTimeOfDay01 = timeOfDay01;
             float position = CalculateTrackPosition(timeOfDay01);
             markerRect.anchorMin = markerRect.anchorMax =
                 new Vector2(position, 0.5f);

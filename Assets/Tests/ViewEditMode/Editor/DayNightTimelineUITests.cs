@@ -10,7 +10,7 @@ namespace CityFlow.Tests.ViewEditMode
     public sealed class DayNightTimelineUITests
     {
         [Test]
-        public void Ensure_CreatesOneTimelineDirectlyBelowTopBar()
+        public void Ensure_CreatesOneTimelineInsideTopBarBehindHudContent()
         {
             GameObject canvas = new GameObject("Canvas", typeof(RectTransform));
             GameObject topBar = new GameObject(
@@ -28,6 +28,21 @@ namespace CityFlow.Tests.ViewEditMode
                 topBarRect.pivot = new Vector2(0.5f, 1f);
                 topBarRect.sizeDelta = new Vector2(0f, 60f);
 
+                GameObject statusText = new GameObject(
+                    "StatusText",
+                    typeof(RectTransform));
+                statusText.transform.SetParent(topBar.transform, false);
+                GameObject harvest = new GameObject(
+                    "CoinHarvestButton",
+                    typeof(RectTransform));
+                harvest.transform.SetParent(topBar.transform, false);
+                RectTransform harvestRect =
+                    harvest.GetComponent<RectTransform>();
+                harvestRect.anchorMin = harvestRect.anchorMax =
+                    new Vector2(0.5f, 1f);
+                harvestRect.pivot = new Vector2(0.5f, 1f);
+                harvestRect.anchoredPosition = new Vector2(0f, -18f);
+
                 CityFlowServices services = new CityFlowServices(
                     new SimEventHub(),
                     null,
@@ -36,21 +51,31 @@ namespace CityFlow.Tests.ViewEditMode
                 DayNightTimelineUI.Ensure(topBarRect, services);
                 DayNightTimelineUI.Ensure(topBarRect, services);
 
-                Transform timeline = canvas.transform.Find("DayNightTimeline");
+                Transform timeline = topBar.transform.Find("DayNightTimeline");
                 Assert.That(timeline, Is.Not.Null);
-                Assert.That(CountNamedChildren(canvas.transform, "DayNightTimeline"),
+                Assert.That(canvas.transform.Find("DayNightTimeline"), Is.Null);
+                Assert.That(CountNamedChildren(topBar.transform, "DayNightTimeline"),
                     Is.EqualTo(1));
 
                 RectTransform timelineRect =
                     timeline.GetComponent<RectTransform>();
-                Assert.That(timelineRect.sizeDelta.y, Is.EqualTo(60f));
-                Assert.That(timelineRect.anchoredPosition.y, Is.EqualTo(-60f));
-                Assert.That(
-                    timeline.GetComponent<Image>().raycastTarget,
-                    Is.EqualTo(topBar.GetComponent<Image>().raycastTarget));
-                Assert.That(
-                    timeline.GetComponent<CanvasGroup>().blocksRaycasts,
-                    Is.EqualTo(topBar.GetComponent<CanvasGroup>().blocksRaycasts));
+                Assert.That(timelineRect.anchorMin, Is.EqualTo(Vector2.zero));
+                Assert.That(timelineRect.anchorMax, Is.EqualTo(Vector2.one));
+                Assert.That(timelineRect.sizeDelta, Is.EqualTo(Vector2.zero));
+                Assert.That(timeline.GetComponent<Graphic>(), Is.Null);
+                Assert.That(timeline.GetSiblingIndex(), Is.EqualTo(0));
+                Assert.That(statusText.transform.GetSiblingIndex(),
+                    Is.GreaterThan(timeline.GetSiblingIndex()));
+                Assert.That(harvest.transform.GetSiblingIndex(),
+                    Is.GreaterThan(timeline.GetSiblingIndex()));
+                Assert.That(harvestRect.anchorMin,
+                    Is.EqualTo(new Vector2(0.5f, 0.5f)));
+                Assert.That(harvestRect.anchorMax,
+                    Is.EqualTo(new Vector2(0.5f, 0.5f)));
+                Assert.That(harvestRect.pivot,
+                    Is.EqualTo(new Vector2(0.5f, 0.5f)));
+                Assert.That(harvestRect.anchoredPosition,
+                    Is.EqualTo(Vector2.zero));
 
                 RectTransform divider = timeline.Find("NoonDivider")
                     .GetComponent<RectTransform>();
@@ -75,6 +100,20 @@ namespace CityFlow.Tests.ViewEditMode
             {
                 Object.DestroyImmediate(canvas);
             }
+        }
+
+        [Test]
+        public void RefreshInterval_IsAtLeastPointTwoSeconds()
+        {
+            System.Reflection.FieldInfo field =
+                typeof(DayNightTimelineUI).GetField(
+                    "RefreshIntervalSeconds",
+                    System.Reflection.BindingFlags.NonPublic |
+                    System.Reflection.BindingFlags.Static);
+
+            Assert.That(field, Is.Not.Null);
+            Assert.That((float)field.GetRawConstantValue(),
+                Is.GreaterThanOrEqualTo(0.2f));
         }
 
         [TestCase(0f, false)]

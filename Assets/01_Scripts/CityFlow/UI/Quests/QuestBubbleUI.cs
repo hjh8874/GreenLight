@@ -12,11 +12,11 @@ namespace CityFlow.UI.Quests
     public sealed class QuestBubbleUI : MonoBehaviour
     {
         private static readonly Vector2 BubblePosition =
-            new(0f, -120f);
+            new(0f, -60f);
         private static readonly Vector2 BubbleSize =
             new(430f, 172f);
         private static readonly Vector2 QuestControlCenter =
-            new(-29f, -149f);
+            new(-29f, -89f);
         private const float QuestControlSize = 58f;
         private const float CloseLineThickness = 3f;
         private const float CloseLineCornerRatio = 0.3f;

@@ -7,7 +7,7 @@ namespace CityFlow.Tests.ViewEditMode
     public sealed class QuestBubbleUITests
     {
         [Test]
-        public void Create_PlacesExpandedAndMinimizedControlsBelowTimeline()
+        public void Create_AttachesExpandedAndMinimizedControlsToTopBar()
         {
             GameObject canvas = new GameObject(
                 "Canvas",
@@ -29,7 +29,7 @@ namespace CityFlow.Tests.ViewEditMode
 
                 Assert.That(
                     bubble.anchoredPosition,
-                    Is.EqualTo(new Vector2(0f, -120f)));
+                    Is.EqualTo(new Vector2(0f, -60f)));
                 Assert.That(
                     bubble.anchorMin,
                     Is.EqualTo(new Vector2(1f, 1f)));
@@ -38,7 +38,7 @@ namespace CityFlow.Tests.ViewEditMode
                     Is.EqualTo(new Vector2(1f, 1f)));
                 Assert.That(
                     minimized.anchoredPosition,
-                    Is.EqualTo(new Vector2(-29f, -149f)));
+                    Is.EqualTo(new Vector2(-29f, -89f)));
                 Assert.That(
                     minimized.anchorMin,
                     Is.EqualTo(new Vector2(1f, 1f)));

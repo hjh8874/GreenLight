@@ -10,7 +10,7 @@ namespace CityFlow.EditorTools
 {
     public static class SaveSlotsPanelBaker
     {
-        private const string HanScenePath = "Assets/00_Scenes/Debug/CityFlowIntegrated_han.unity";
+        private const string HanScenePath = "Assets/00_Scenes/CityFlowIntegrated_han.unity";
         private const string SettingsPanelName = "Setting_Panel ";
         private const string TargetCanvasName = "UI_MainCanvas";
         private const string ControllerRootName = "SaveSlotsUiRoot";
