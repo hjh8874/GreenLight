@@ -11,6 +11,7 @@ namespace CityFlow.EditorTools
     public static class SaveSlotsPanelBaker
     {
         private const string HanScenePath = "Assets/00_Scenes/CityFlowIntegrated_han.unity";
+        private const string SettingsPanelName = "Setting_Panel ";
         private const string TargetCanvasName = "UI_MainCanvas";
         private const string ControllerRootName = "SaveSlotsUiRoot";
         private const string OpenButtonName = "OpenSaveSlotsButton";
@@ -37,6 +38,11 @@ namespace CityFlow.EditorTools
             }
 
             BakeIntoScene(scene);
+
+            if (scene.isDirty && EditorSceneManager.SaveScene(scene))
+            {
+                Debug.Log($"[SaveSlotsPanelBaker] Saved baked scene: {scene.path}");
+            }
         }
 
         [MenuItem("Tools/GreenLight/UI/Bake Save Slots Panel", true)]
@@ -55,46 +61,30 @@ namespace CityFlow.EditorTools
 
         private static void BakeIntoScene(Scene scene)
         {
-            Canvas canvas = FindCanvas(scene);
-            if (canvas == null)
-            {
-                Debug.LogError(
-                    $"[SaveSlotsPanelBaker] Canvas '{TargetCanvasName}' was not found in '{scene.name}'.");
-                return;
-            }
-            BakeIntoCanvas(canvas);
-
-            EditorSceneManager.MarkSceneDirty(scene);
-            Debug.Log(
-                $"[SaveSlotsPanelBaker] Save slot UI baked into '{scene.name}'. " +
-                "Save and load entry buttons are ready, and the legacy delete-save button was removed.");
-        }
-
-        public static void BakeIntoCanvas(Canvas canvas)
-        {
             uiFont = ExternalKoreanFontAsset.LoadConfigured();
 
             if (uiFont == null)
             {
-                throw new System.InvalidOperationException(
-                    "[SaveSlotsPanelBaker] NanumGothic SDF.asset was not found or invalid at " +
+                Debug.LogError(
+                    $"[SaveSlotsPanelBaker] NanumGothic SDF.asset was not found or invalid at " +
                     $"'{ExternalKoreanFontAsset.FontAssetPath}'. " +
                     "Install the external font assets before baking the save slot UI.");
+                return;
             }
 
-            Transform settingsPanel = FindTransform(canvas.transform, "Settings_Panel")
-                ?? FindTransform(canvas.transform, "Setting_Panel")
-                ?? FindTransform(canvas.transform, "Setting_Panel ")
-                ?? FindTransform(canvas.transform, "Setting");
+            Transform settingsPanel = FindTransform(scene, SettingsPanelName)
+                ?? FindTransform(scene, SettingsPanelName.Trim());
+            Canvas canvas = FindCanvas(scene);
 
-            if (settingsPanel == null)
+            if (settingsPanel == null || canvas == null)
             {
-                throw new System.InvalidOperationException(
-                    "[SaveSlotsPanelBaker] Target Settings Panel was not found under the provided canvas.");
+                Debug.LogError(
+                    $"[SaveSlotsPanelBaker] Settings panel or canvas was not found in '{scene.name}'.");
+                return;
             }
 
-            RemoveLegacyDeleteUi(canvas.transform);
-            RemoveExistingBakedUi(canvas.transform);
+            RemoveLegacyDeleteUi(scene);
+            RemoveExistingBakedUi(scene);
 
             CanvasGroup settingsCanvasGroup = settingsPanel.GetComponent<CanvasGroup>()
                 ?? Undo.AddComponent<CanvasGroup>(settingsPanel.gameObject);
@@ -198,8 +188,8 @@ namespace CityFlow.EditorTools
                 out Button confirmNameButton,
                 out Button cancelNameButton);
 
-            ConfirmPopupController confirmPopup = FindComponent<ConfirmPopupController>(canvas.transform);
-            UIDockController dockController = FindComponent<UIDockController>(canvas.transform);
+            ConfirmPopupController confirmPopup = FindComponent<ConfirmPopupController>(scene);
+            UIDockController dockController = FindComponent<UIDockController>(scene);
             SerializedObject serializedController = new SerializedObject(controller);
             SetReference(serializedController, "openPanelButton", openButton);
             SetReference(serializedController, "loadPanelButton", loadButton);
@@ -226,8 +216,12 @@ namespace CityFlow.EditorTools
             nameDialog.SetActive(false);
             panelRoot.SetActive(false);
             EditorUtility.SetDirty(controllerRoot);
+            EditorSceneManager.MarkSceneDirty(scene);
             Selection.activeGameObject = openButton.gameObject;
             EditorGUIUtility.PingObject(openButton.gameObject);
+            Debug.Log(
+                $"[SaveSlotsPanelBaker] Save slot UI baked into '{scene.name}'. " +
+                "Save and load entry buttons are ready, and the legacy delete-save button was removed.");
         }
 
         private static RectTransform CreateCard(Transform parent)
@@ -662,9 +656,9 @@ namespace CityFlow.EditorTools
             serializedObject.FindProperty(propertyName).objectReferenceValue = value;
         }
 
-        private static void RemoveLegacyDeleteUi(Transform root)
+        private static void RemoveLegacyDeleteUi(Scene scene)
         {
-            SaveDataSettingsController[] controllers = root.GetComponentsInChildren<SaveDataSettingsController>(true);
+            SaveDataSettingsController[] controllers = FindComponents<SaveDataSettingsController>(scene);
 
             foreach (SaveDataSettingsController controller in controllers)
             {
@@ -678,7 +672,7 @@ namespace CityFlow.EditorTools
                 }
             }
 
-            Transform deleteButton = FindTransform(root, DeleteButtonName);
+            Transform deleteButton = FindTransform(scene, DeleteButtonName);
 
             if (deleteButton != null)
             {
@@ -686,23 +680,23 @@ namespace CityFlow.EditorTools
             }
         }
 
-        private static void RemoveExistingBakedUi(Transform root)
+        private static void RemoveExistingBakedUi(Scene scene)
         {
-            Transform controllerRoot = FindTransform(root, ControllerRootName);
+            Transform controllerRoot = FindTransform(scene, ControllerRootName);
 
             if (controllerRoot != null)
             {
                 Undo.DestroyObjectImmediate(controllerRoot.gameObject);
             }
 
-            Transform openButton = FindTransform(root, OpenButtonName);
+            Transform openButton = FindTransform(scene, OpenButtonName);
 
             if (openButton != null)
             {
                 Undo.DestroyObjectImmediate(openButton.gameObject);
             }
 
-            Transform loadButton = FindTransform(root, LoadButtonName);
+            Transform loadButton = FindTransform(scene, LoadButtonName);
 
             if (loadButton != null)
             {
@@ -730,21 +724,38 @@ namespace CityFlow.EditorTools
             return fallback;
         }
 
-        private static Transform FindTransform(Transform root, string objectName)
+        private static Transform FindTransform(Scene scene, string objectName)
         {
-            foreach (Transform transform in root.GetComponentsInChildren<Transform>(true))
+            foreach (GameObject root in scene.GetRootGameObjects())
             {
-                if (transform.name == objectName)
+                foreach (Transform transform in root.GetComponentsInChildren<Transform>(true))
                 {
-                    return transform;
+                    if (transform.name == objectName)
+                    {
+                        return transform;
+                    }
                 }
             }
+
             return null;
         }
 
-        private static T FindComponent<T>(Transform root) where T : Component
+        private static T FindComponent<T>(Scene scene) where T : Component
         {
-            return root.GetComponentInChildren<T>(true);
+            T[] components = FindComponents<T>(scene);
+            return components.Length > 0 ? components[0] : null;
+        }
+
+        private static T[] FindComponents<T>(Scene scene) where T : Component
+        {
+            var results = new System.Collections.Generic.List<T>();
+
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                results.AddRange(root.GetComponentsInChildren<T>(true));
+            }
+
+            return results.ToArray();
         }
 
         // Unity setup: Open CityFlowIntegrated_han and run Tools > GreenLight > UI > Bake Save Slots Panel.

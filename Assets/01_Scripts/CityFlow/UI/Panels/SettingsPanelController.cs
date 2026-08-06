@@ -1,9 +1,7 @@
-using CityFlow.Bootstrap;
+﻿using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
-using UnityEngine.Audio;
 
 namespace CityFlow.UI
 {
@@ -15,36 +13,14 @@ namespace CityFlow.UI
         [SerializeField] private Button btnTitleScene;
         [SerializeField] private string titleSceneName = "TitleScene";
 
-        [Header("Audio Control UI")]
-        [SerializeField] private Slider sldBgm;
-        [SerializeField] private TMP_InputField inputBgm;
-        [SerializeField] private Slider sldSfx;
-        [SerializeField] private TMP_InputField inputSfx;
-
-        [Header("Audio System")]
-        [SerializeField] private AudioMixer audioMixer;
-        [SerializeField] private string bgmParameterName = "BGMVolume";
-        [SerializeField] private string sfxParameterName = "SFXVolume";
-
         private CityFlowServices _services;
         private bool _isBound;
-        private bool _isUpdatingBgm;
-        private bool _isUpdatingSfx;
 
-        public void Configure(Toggle muteAudio, Button quitGame, Button titleScene,
-                              Slider bgmSlider = null, TMP_InputField bgmInput = null,
-                              Slider sfxSlider = null, TMP_InputField sfxInput = null,
-                              AudioMixer mixer = null)
+        public void Configure(Toggle muteAudio, Button quitGame, Button titleScene = null)
         {
-            if (muteAudio != null) tglMuteAudio = muteAudio;
-            if (quitGame != null) btnQuitGame = quitGame;
-            if (titleScene != null) btnTitleScene = titleScene;
-            if (bgmSlider != null) sldBgm = bgmSlider;
-            if (bgmInput != null) inputBgm = bgmInput;
-            if (sfxSlider != null) sldSfx = sfxSlider;
-            if (sfxInput != null) inputSfx = sfxInput;
-            if (mixer != null) audioMixer = mixer;
-
+            tglMuteAudio = muteAudio;
+            btnQuitGame = quitGame;
+            btnTitleScene = titleScene;
             BindButtons();
         }
 
@@ -55,126 +31,55 @@ namespace CityFlow.UI
 
         private void Start()
         {
-            if (audioMixer == null)
-            {
-                Debug.LogWarning("[SettingsPanelController] AudioMixer가 할당되지 않았습니다. 인스펙터 또는 베이커에서 명시적으로 주입해야 합니다.");
-            }
             BindButtons();
         }
 
         private void BindButtons()
         {
             if (_isBound)
+            {
                 return;
+            }
 
+
+
+            // 뮤트 토글 이벤트 바인딩
             if (tglMuteAudio != null)
+            {
                 tglMuteAudio.onValueChanged.AddListener(OnMuteToggleChanged);
+            }
 
+            // 종료 버튼 이벤트 바인딩
             if (btnQuitGame != null)
+            {
                 btnQuitGame.onClick.AddListener(OnQuitClicked);
+            }
 
+            // 타이틀 이동 버튼 이벤트 바인딩
             if (btnTitleScene != null)
+            {
                 btnTitleScene.onClick.AddListener(OnTitleSceneClicked);
-
-            // BGM Binding
-            if (sldBgm != null)
-            {
-                sldBgm.onValueChanged.AddListener(OnBgmSliderChanged);
-                // Initialize default
-                OnBgmSliderChanged(sldBgm.value);
             }
-            if (inputBgm != null)
-                inputBgm.onEndEdit.AddListener(OnBgmInputChanged);
-
-            // SFX Binding
-            if (sldSfx != null)
-            {
-                sldSfx.onValueChanged.AddListener(OnSfxSliderChanged);
-                // Initialize default
-                OnSfxSliderChanged(sldSfx.value);
-            }
-            if (inputSfx != null)
-                inputSfx.onEndEdit.AddListener(OnSfxInputChanged);
 
             _isBound = true;
         }
 
-        private void OnBgmSliderChanged(float value)
-        {
-            if (_isUpdatingBgm) return;
-            _isUpdatingBgm = true;
-
-            int percentage = Mathf.RoundToInt(value * 100f);
-            if (inputBgm != null) inputBgm.text = percentage.ToString();
-            UpdateMixerVolume(bgmParameterName, value);
-
-            _isUpdatingBgm = false;
-        }
-
-        private void OnBgmInputChanged(string text)
-        {
-            if (_isUpdatingBgm) return;
-            if (int.TryParse(text, out int percentage))
-            {
-                percentage = Mathf.Clamp(percentage, 0, 100);
-                float value = percentage / 100f;
-
-                _isUpdatingBgm = true;
-                if (sldBgm != null) sldBgm.value = value;
-                if (inputBgm != null) inputBgm.text = percentage.ToString();
-                UpdateMixerVolume(bgmParameterName, value);
-                _isUpdatingBgm = false;
-            }
-        }
-
-        private void OnSfxSliderChanged(float value)
-        {
-            if (_isUpdatingSfx) return;
-            _isUpdatingSfx = true;
-
-            int percentage = Mathf.RoundToInt(value * 100f);
-            if (inputSfx != null) inputSfx.text = percentage.ToString();
-            UpdateMixerVolume(sfxParameterName, value);
-
-            _isUpdatingSfx = false;
-        }
-
-        private void OnSfxInputChanged(string text)
-        {
-            if (_isUpdatingSfx) return;
-            if (int.TryParse(text, out int percentage))
-            {
-                percentage = Mathf.Clamp(percentage, 0, 100);
-                float value = percentage / 100f;
-
-                _isUpdatingSfx = true;
-                if (sldSfx != null) sldSfx.value = value;
-                if (inputSfx != null) inputSfx.text = percentage.ToString();
-                UpdateMixerVolume(sfxParameterName, value);
-                _isUpdatingSfx = false;
-            }
-        }
-
-        private void UpdateMixerVolume(string parameterName, float linearValue)
-        {
-            if (audioMixer != null)
-            {
-                // Convert linear (0-1) to Decibel (-80 to 0)
-                float db = linearValue > 0.0001f ? Mathf.Log10(linearValue) * 20f : -80f;
-                audioMixer.SetFloat(parameterName, db);
-            }
-        }
-
         private void OnMuteToggleChanged(bool isMuted)
         {
+            // 유니티 전체 사운드 리스너 볼륨 조절 (0 = 뮤트, 1 = 정상)
             AudioListener.volume = isMuted ? 0f : 1f;
+            Debug.Log($"[Settings] 전체 사운드 뮤트: {isMuted}");
         }
 
         private void OnQuitClicked()
         {
+            Debug.Log("[Settings] 게임 종료 버튼 클릭됨.");
+
 #if UNITY_EDITOR
+            // 에디터에서는 플레이 모드를 종료합니다.
             UnityEditor.EditorApplication.isPlaying = false;
 #else
+            // 실제 빌드에서는 프로그램을 종료합니다.
             Application.Quit();
 #endif
         }
@@ -183,18 +88,22 @@ namespace CityFlow.UI
         {
             if (!Application.CanStreamedLevelBeLoaded(titleSceneName))
             {
-                Debug.LogError($"[SettingsPanelController] '{titleSceneName}' 씬을 로드할 수 없습니다. Build Settings를 확인하세요.");
+                Debug.LogError($"[Settings] '{titleSceneName}' 씬을 로드할 수 없습니다. Build Settings에 추가되어 있는지 확인하세요.");
                 return;
             }
 
             if (_services == null)
             {
-                Debug.LogWarning("[SettingsPanelController] CityFlowServices가 주입되지 않았습니다. 저장을 건너뛰고 씬을 이동합니다.");
+                Debug.LogWarning("[Settings] CityFlowServices가 초기화되지 않아 저장을 건너뜁니다.");
             }
-            else if (_services.Save != null && !_services.Save.Save())
+            else
             {
-                Debug.LogError("[SettingsPanelController] 게임 저장에 실패하여 타이틀로 돌아갈 수 없습니다.");
-                return;
+                Debug.Log("[Settings] 게임 상태를 저장하고 타이틀 화면으로 이동합니다.");
+                if (_services.Save != null && !_services.Save.Save())
+                {
+                    Debug.LogError("[Settings] 게임 상태 저장에 실패했습니다. 진행 손실을 막기 위해 타이틀 화면으로 이동하지 않습니다.");
+                    return;
+                }
             }
 
             UnityEngine.SceneManagement.SceneManager.LoadScene(titleSceneName);
@@ -202,13 +111,12 @@ namespace CityFlow.UI
 
         private void OnDestroy()
         {
-            if (tglMuteAudio != null) tglMuteAudio.onValueChanged.RemoveListener(OnMuteToggleChanged);
-            if (btnQuitGame != null) btnQuitGame.onClick.RemoveListener(OnQuitClicked);
-            if (btnTitleScene != null) btnTitleScene.onClick.RemoveListener(OnTitleSceneClicked);
-            if (sldBgm != null) sldBgm.onValueChanged.RemoveListener(OnBgmSliderChanged);
-            if (inputBgm != null) inputBgm.onEndEdit.RemoveListener(OnBgmInputChanged);
-            if (sldSfx != null) sldSfx.onValueChanged.RemoveListener(OnSfxSliderChanged);
-            if (inputSfx != null) inputSfx.onEndEdit.RemoveListener(OnSfxInputChanged);
+            if (tglMuteAudio != null)
+                tglMuteAudio.onValueChanged.RemoveListener(OnMuteToggleChanged);
+            if (btnQuitGame != null)
+                btnQuitGame.onClick.RemoveListener(OnQuitClicked);
+            if (btnTitleScene != null)
+                btnTitleScene.onClick.RemoveListener(OnTitleSceneClicked);
         }
     }
 }

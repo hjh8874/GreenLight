@@ -24,6 +24,16 @@ namespace CityFlow.EditorTools
                 return;
             }
 
+            WeeklySettlementPopup existingPopup = FindInActiveScene<WeeklySettlementPopup>(activeScene);
+
+            if (existingPopup != null)
+            {
+                Selection.activeGameObject = existingPopup.gameObject;
+                EditorGUIUtility.PingObject(existingPopup.gameObject);
+                Debug.Log("[WeeklySettlementPopupBaker] The active scene already contains a coin harvest popup.");
+                return;
+            }
+
             Canvas canvas = FindTargetCanvas(activeScene);
 
             if (canvas == null)
@@ -31,24 +41,6 @@ namespace CityFlow.EditorTools
                 Debug.LogError(
                     $"[WeeklySettlementPopupBaker] Canvas '{TargetCanvasName}' was not found in " +
                     $"scene '{activeScene.name}'.");
-                return;
-            }
-
-            BakeIntoCanvas(canvas);
-        }
-
-        public static void BakeIntoCanvas(Canvas canvas)
-        {
-            if (canvas == null)
-                throw new System.ArgumentNullException(nameof(canvas));
-
-            WeeklySettlementPopup existingPopup = canvas.GetComponentInChildren<WeeklySettlementPopup>(true);
-
-            if (existingPopup != null)
-            {
-                Selection.activeGameObject = existingPopup.gameObject;
-                EditorGUIUtility.PingObject(existingPopup.gameObject);
-                Debug.Log("[WeeklySettlementPopupBaker] The target canvas already contains a weekly settlement popup; reusing existing popup.");
                 return;
             }
 
@@ -97,13 +89,13 @@ namespace CityFlow.EditorTools
             popup.Configure(canvasGroup, card, backdropButton, period, amount, balance);
 
             EditorUtility.SetDirty(root);
-            if (canvas.gameObject.scene.IsValid())
-                EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+            EditorSceneManager.MarkSceneDirty(activeScene);
             Selection.activeGameObject = root;
             EditorGUIUtility.PingObject(root);
 
             Debug.Log(
-                $"[WeeklySettlementPopupBaker] Coin harvest popup baked under '{canvas.name}'.");
+                $"[WeeklySettlementPopupBaker] Coin harvest popup baked under " +
+                $"'{canvas.name}' in scene '{activeScene.name}'.");
         }
 
         private static Button CreateBackdrop(Transform parent)
@@ -225,7 +217,7 @@ namespace CityFlow.EditorTools
             rect.sizeDelta = Vector2.zero;
         }
 
-        public static Canvas FindTargetCanvas(Scene scene)
+        private static Canvas FindTargetCanvas(Scene scene)
         {
             Canvas fallback = null;
 
@@ -247,6 +239,19 @@ namespace CityFlow.EditorTools
             return fallback;
         }
 
-        // FindTargetCanvas is used by Bake()
+        private static T FindInActiveScene<T>(Scene scene) where T : Component
+        {
+            foreach (GameObject root in scene.GetRootGameObjects())
+            {
+                T component = root.GetComponentInChildren<T>(true);
+
+                if (component != null)
+                {
+                    return component;
+                }
+            }
+
+            return null;
+        }
     }
 }

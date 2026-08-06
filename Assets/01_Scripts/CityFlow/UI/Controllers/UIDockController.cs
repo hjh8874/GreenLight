@@ -81,10 +81,6 @@ namespace CityFlow.UI
 
         private void Start()
         {
-            if (placementController == null)
-            {
-                placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
-            }
             BindButtons();
             LocalizeDockLabels();
             EnsureEscapeController();

@@ -15,7 +15,6 @@ MonoBehaviour:
   buildingId: road_001
   buildingName: "\uB3C4\uB85C"
   category: 1
-  companyTypeId: 
   buildingIcon: {fileID: 21300000, guid: 549ed784c3012464ca9bf96f4a17054e, type: 3}
   buildingPrefab: {fileID: 0}
   buildingDescription: "\uC774\uAC83\uB4E4\uC740 \uB3C4\uC2DC\uC758 \uB3D9\uB9E5
@@ -23,4 +22,3 @@ MonoBehaviour:
   buildCost: 50
   dailyCoinValue: 0
   prosperityValue: 0
-  requiredResearchId: 

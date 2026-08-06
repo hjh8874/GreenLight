@@ -88,7 +88,7 @@ namespace CityFlow.UI
             Button remove,
             Button school)
         {
-            if (placement != null) placementController = placement;
+            placementController = placement;
 
             // 테스트 씬용 임시 런타임 버튼 연결 (우리 1차 빌드 본 게임 UI와는 별개로 동작)
             if (road != null) road.onClick.AddListener(() => placementController.SetBuildType(TileType.Road));
@@ -114,16 +114,7 @@ namespace CityFlow.UI
 
             if (placementController == null)
             {
-                placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
-            }
-            if (tooltipController == null)
-            {
-                tooltipController = FindAnyObjectByType<TooltipController>(FindObjectsInactive.Include);
-            }
-
-            if (placementController == null)
-            {
-                Debug.LogError("[BuildPanelController] PlacementController가 할당되지 않았으며 씬에서도 찾을 수 없습니다.");
+                Debug.LogError("[BuildPanelController] PlacementController가 할당되지 않았습니다. 인스펙터를 확인해주세요.");
                 return;
             }
             ConfigureInfrastructureSlots();

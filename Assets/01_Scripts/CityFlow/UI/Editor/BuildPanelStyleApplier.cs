@@ -20,8 +20,17 @@ namespace CityFlow.UI.Editor
         [MenuItem("CityFlow/UI/Apply Build Panel Style & Icons")]
         public static void ApplyStyleAndIcons()
         {
+            GameObject buildPanel = FindBuildPanelInActiveScene();
+            if (buildPanel == null)
+            {
+                Debug.LogWarning("[BuildPanelStyleApplier] Build_Panel not found in active scene.");
+                return;
+            }
+
+            Undo.RegisterFullObjectHierarchyUndo(buildPanel, "Apply Build Panel Style");
+
             // 1. Bind Icons to ScriptableObjects and Scene Slots
-            ApplyBuildingIcons();
+            ApplyBuildingIcons(buildPanel);
 
             // 2. Style Panels and UI attributes
             TMP_FontAsset font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
@@ -42,25 +51,6 @@ namespace CityFlow.UI.Editor
                 PrefabUtility.UnloadPrefabContents(prefabContents);
                 Debug.Log($"[BuildPanelStyleApplier] Upgraded original prefab: {PrefabPath}");
             }
-
-            GameObject buildPanel = null;
-            Transform[] all = Resources.FindObjectsOfTypeAll<Transform>();
-            foreach (Transform t in all)
-            {
-                if (t.name == "Build_Panel" && !EditorUtility.IsPersistent(t) && t.gameObject.scene == EditorSceneManager.GetActiveScene())
-                {
-                    buildPanel = t.gameObject;
-                    break;
-                }
-            }
-
-            if (buildPanel == null)
-            {
-                Debug.LogWarning("[BuildPanelStyleApplier] Build_Panel not found in active scene.");
-                return;
-            }
-
-            Undo.RegisterFullObjectHierarchyUndo(buildPanel, "Apply Build Panel Style");
 
             Image bgImg = buildPanel.GetComponent<Image>();
             if (bgImg != null)
@@ -132,7 +122,23 @@ namespace CityFlow.UI.Editor
             Debug.LogWarning("SUCCESS_ALL_APPLIED: 3D Icons and UI styles successfully unified and mapped across all ScriptableObjects and Scene slots!");
         }
 
-        private static void ApplyBuildingIcons()
+        private static GameObject FindBuildPanelInActiveScene()
+        {
+            Transform[] allTransforms = Resources.FindObjectsOfTypeAll<Transform>();
+            foreach (Transform candidate in allTransforms)
+            {
+                if (candidate.name == "Build_Panel" &&
+                    !EditorUtility.IsPersistent(candidate) &&
+                    candidate.gameObject.scene == EditorSceneManager.GetActiveScene())
+                {
+                    return candidate.gameObject;
+                }
+            }
+
+            return null;
+        }
+
+        private static void ApplyBuildingIcons(GameObject buildPanel)
         {
             Sprite spRoad = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_road_iso_1785915435445-Photoroom.png");
             Sprite spSignal = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_signal_iso_1785915443773-Photoroom.png");
@@ -175,16 +181,13 @@ namespace CityFlow.UI.Editor
             BindSOIcon("Assets/05_ScriptableObjects/Buildings/Building_AutoRepair.asset", spGas, "buildingIcon");
 
             // 4. Update Scene Slot Icons directly
-            if (buildPanel != null)
-            {
-                SetSceneSlotIcon(buildPanel.transform, "Infra_Panel/Road_Slot", spRoad);
-                SetSceneSlotIcon(buildPanel.transform, "Infra_Panel/Signal-Slot", spSignal);
-                SetSceneSlotIcon(buildPanel.transform, "Infra_Panel/Roundabout_Slot", spRoundabout);
-                SetSceneSlotIcon(buildPanel.transform, "Dwelling_Panel/UI_BuildSlot (1)", spHouse);
-                SetSceneSlotIcon(buildPanel.transform, "Commerce_Panel/UI_BuildSlot (2)", spOffice);
-                SetSceneSlotIcon(buildPanel.transform, "Public_Panel/School_Slot", spSchool);
-                SetSceneSlotIcon(buildPanel.transform, "Public_Panel/Hospital_Slot", spHospital);
-            }
+            SetSceneSlotIcon(buildPanel.transform, "Infra_Panel/Road_Slot", spRoad);
+            SetSceneSlotIcon(buildPanel.transform, "Infra_Panel/Signal-Slot", spSignal);
+            SetSceneSlotIcon(buildPanel.transform, "Infra_Panel/Roundabout_Slot", spRoundabout);
+            SetSceneSlotIcon(buildPanel.transform, "Dwelling_Panel/UI_BuildSlot (1)", spHouse);
+            SetSceneSlotIcon(buildPanel.transform, "Commerce_Panel/UI_BuildSlot (2)", spOffice);
+            SetSceneSlotIcon(buildPanel.transform, "Public_Panel/School_Slot", spSchool);
+            SetSceneSlotIcon(buildPanel.transform, "Public_Panel/Hospital_Slot", spHospital);
         }
 
         private static void SetSceneSlotIcon(Transform root, string path, Sprite sp)
@@ -200,6 +203,7 @@ namespace CityFlow.UI.Editor
                 {
                     img.sprite = sp;
                     img.color = Color.white;
+                    EditorUtility.SetDirty(img);
                 }
             }
         }
@@ -214,6 +218,7 @@ namespace CityFlow.UI.Editor
             SerializedProperty prop = so.FindProperty(propName);
             if (prop != null)
             {
+                Undo.RecordObject(soAsset, "Bind Build Icon");
                 prop.objectReferenceValue = sprite;
                 so.ApplyModifiedProperties();
                 EditorUtility.SetDirty(soAsset);
@@ -442,10 +447,9 @@ namespace CityFlow.UI.Editor
             txt.fontStyle = style;
             txt.color = color;
             txt.lineSpacing = 2f;
-            txt.enableWordWrapping = true;
+            txt.textWrappingMode = TextWrappingModes.Normal;
             txt.raycastTarget = false;
             txt.gameObject.SetActive(true);
         }
     }
 }
-
