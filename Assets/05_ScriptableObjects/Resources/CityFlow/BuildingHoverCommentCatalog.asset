@@ -1,0 +1,181 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 24e6a59181b5497686ad1afe1fe0f141, type: 3}
+  m_Name: BuildingHoverCommentCatalog
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.Data.BuildingHoverCommentCatalogSO
+  tileProfiles:
+  - tileType: 2
+    comments:
+      normalComments:
+      - 주민들이 평온한 하루를 보내고 있습니다.
+      - 외출을 마친 주민들이 집으로 돌아오고 있습니다.
+      - 주거 환경이 안정적으로 유지되고 있습니다.
+      congestedComments:
+      - 주변 도로가 막혀 주민들의 외출과 귀가가 늦어지고 있습니다.
+      - 주택가 진입로 혼잡으로 생활 이동이 불편해졌습니다.
+      - 차량 정체가 주거지 접근을 어렵게 만들고 있습니다.
+  - tileType: 3
+    comments:
+      normalComments:
+      - 직원들이 각자의 업무에 집중하고 있습니다.
+      - 업무 일정이 차질 없이 진행되고 있습니다.
+      - 회사 주변 교통이 원활하게 흐르고 있습니다.
+      congestedComments:
+      - 주변 도로 정체로 직원들의 이동이 늦어지고 있습니다.
+      - 회사 진입로가 혼잡해 업무 차량이 지연되고 있습니다.
+      - 출퇴근 차량이 몰려 회사 주변이 붐비고 있습니다.
+  - tileType: 4
+    comments:
+      normalComments:
+      - 학생들의 수업이 차분하게 진행되고 있습니다.
+      - 학교 주변 등하교 흐름이 원활합니다.
+      - 오늘도 교정에 활기가 가득합니다.
+      congestedComments:
+      - 학교 주변 정체로 등하교 이동이 늦어지고 있습니다.
+      - 통학 차량이 몰려 학교 앞 도로가 붐비고 있습니다.
+      - 혼잡한 진입로 때문에 학생들의 이동이 불편합니다.
+  - tileType: 5
+    comments:
+      normalComments:
+      - 진료와 응급 대응이 안정적으로 운영되고 있습니다.
+      - 병원 진입로가 원활하게 유지되고 있습니다.
+      - 의료진이 차분하게 환자를 돌보고 있습니다.
+      congestedComments:
+      - 주변 정체로 환자와 응급 차량의 접근이 늦어지고 있습니다.
+      - 병원 진입로 혼잡으로 의료 차량 이동이 지연되고 있습니다.
+      - 병원 주변 도로가 막혀 신속한 접근이 어렵습니다.
+  companyProfiles:
+  - id: office
+    comments:
+      normalComments:
+      - 사무실의 업무 일정이 차질 없이 진행되고 있습니다.
+      - 직원들이 각자의 자리에서 업무에 집중하고 있습니다.
+      - 사무실 주변 출퇴근 흐름이 원활합니다.
+      congestedComments:
+      - 출퇴근 차량이 몰려 사무실 진입이 늦어지고 있습니다.
+      - 주변 정체로 직원과 업무 차량의 이동이 지연되고 있습니다.
+      - 사무실 앞 도로가 붐벼 방문 일정에 차질이 생기고 있습니다.
+  - id: factory
+    comments:
+      normalComments:
+      - 교대 근무와 생산 일정이 안정적으로 진행되고 있습니다.
+      - 생산 설비가 계획대로 가동되고 있습니다.
+      - 원자재와 완제품 운송이 원활합니다.
+      congestedComments:
+      - 주변 정체로 원자재 운송과 교대 이동이 늦어지고 있습니다.
+      - 공장 진입로가 막혀 물류 차량이 대기하고 있습니다.
+      - 도로 혼잡이 생산 일정에 부담을 주고 있습니다.
+  - id: warehouse
+    comments:
+      normalComments:
+      - 입고와 출고 작업이 순조롭게 진행되고 있습니다.
+      - 배송 차량이 계획대로 물류를 나르고 있습니다.
+      - 창고의 물류 흐름이 안정적으로 유지되고 있습니다.
+      congestedComments:
+      - 주변 정체로 배송 차량의 입출고가 늦어지고 있습니다.
+      - 창고 진입로가 막혀 물류 차량이 대기하고 있습니다.
+      - 도로 혼잡으로 배송 일정에 지연이 생기고 있습니다.
+  specialBuildingProfiles:
+  - id: mall
+    comments:
+      normalComments:
+      - 방문객들이 여유롭게 쇼핑을 즐기고 있습니다.
+      - 매장과 편의 시설이 활기차게 운영되고 있습니다.
+      - 쇼핑몰 방문 차량이 원활하게 드나들고 있습니다.
+      congestedComments:
+      - 방문 차량이 몰려 쇼핑몰 진입로가 붐비고 있습니다.
+      - 주변 정체로 방문객들의 도착이 늦어지고 있습니다.
+      - 쇼핑몰 주변 교통량이 크게 늘었습니다.
+  - id: petrol_station
+    comments:
+      normalComments:
+      - 차량들이 차례대로 연료를 보충하고 있습니다.
+      - 주유 시설이 안정적으로 운영되고 있습니다.
+      - 진입과 출차가 원활하게 이어지고 있습니다.
+      congestedComments:
+      - 대기 차량이 늘어 주유소 진입로가 붐비고 있습니다.
+      - 주변 정체로 주유 차량의 회전이 늦어지고 있습니다.
+      - 차량 행렬이 도로 흐름에 영향을 주고 있습니다.
+  - id: police_station
+    comments:
+      normalComments:
+      - 순찰 인력이 도시의 안전을 살피고 있습니다.
+      - 신고 대응과 순찰 업무가 안정적으로 진행되고 있습니다.
+      - 경찰 차량의 출동 경로가 원활합니다.
+      congestedComments:
+      - 주변 정체로 순찰과 신고 대응이 늦어질 수 있습니다.
+      - 경찰 차량의 출동 경로가 혼잡합니다.
+      - 도로 정체가 신속한 치안 대응을 방해하고 있습니다.
+  - id: video_store
+    comments:
+      normalComments:
+      - 시민들이 운동을 즐기며 활력을 되찾고 있습니다.
+      - 운동 시설과 프로그램이 원활하게 운영되고 있습니다.
+      - 헬스장을 찾는 이용객이 꾸준합니다.
+      congestedComments:
+      - 주변 정체로 헬스장 이용객의 이동이 늦어지고 있습니다.
+      - 방문 차량이 몰려 헬스장 주변이 붐비고 있습니다.
+      - 혼잡한 도로 때문에 운동 일정에 지연이 생기고 있습니다.
+  - id: pharmacy
+    comments:
+      normalComments:
+      - 시민들이 필요한 의약품을 편리하게 구하고 있습니다.
+      - 처방과 의약품 안내가 차분하게 이어지고 있습니다.
+      - 동네 건강을 위한 서비스가 안정적으로 운영되고 있습니다.
+      congestedComments:
+      - 주변 정체로 약국 방문이 늦어지고 있습니다.
+      - 약국 앞 도로가 붐벼 방문객의 접근이 어렵습니다.
+      - 혼잡한 교통이 의약품 이용에 불편을 주고 있습니다.
+  - id: coffee_shop
+    comments:
+      normalComments:
+      - 시민들이 커피와 함께 잠시 여유를 즐기고 있습니다.
+      - 주문과 좌석 이용이 원활하게 이어지고 있습니다.
+      - 커피숍에 고소한 향과 대화가 가득합니다.
+      congestedComments:
+      - 주변 정체로 커피숍 방문객의 도착이 늦어지고 있습니다.
+      - 방문 차량이 몰려 커피숍 주변이 붐비고 있습니다.
+      - 혼잡한 도로 때문에 주문 손님이 줄어들고 있습니다.
+  - id: cinema
+    comments:
+      normalComments:
+      - 관람객들이 예정된 상영을 즐기고 있습니다.
+      - 영화관의 상영 일정이 차질 없이 진행되고 있습니다.
+      - 매표소와 상영관이 활기차게 운영되고 있습니다.
+      congestedComments:
+      - 주변 정체로 상영 시간에 늦는 관람객이 생기고 있습니다.
+      - 영화관 진입로에 관람 차량이 몰리고 있습니다.
+      - 혼잡한 교통이 관람객의 이동을 늦추고 있습니다.
+  - id: auto_repair
+    comments:
+      normalComments:
+      - 정비사들이 차량을 꼼꼼하게 점검하고 있습니다.
+      - 수리와 점검 작업이 계획대로 진행되고 있습니다.
+      - 정비를 마친 차량들이 안전하게 출고되고 있습니다.
+      congestedComments:
+      - 주변 정체로 정비 차량의 입출고가 늦어지고 있습니다.
+      - 수리 대기 차량이 몰려 진입로가 붐비고 있습니다.
+      - 도로 혼잡이 차량 정비 일정에 영향을 주고 있습니다.
+  constructionProfile:
+    normalComments:
+    - '{building} 공사가 진행 중입니다. 현재 {progress}% 완료되었습니다.'
+    - '{building} 건설 현장이 계획대로 작업을 이어가고 있습니다. 진행률 {progress}%입니다.'
+    - '{building}의 기초와 시설을 준비하고 있습니다. 공정률은 {progress}%입니다.'
+    congestedComments:
+    - '{building} 공사가 진행 중이지만 주변 도로가 혼잡합니다. 현재 {progress}% 완료되었습니다.'
+    - '혼잡한 진입로를 지나 자재가 반입되고 있습니다. {building} 공정률은 {progress}%입니다.'
+    - '{building} 건설 차량의 접근이 늦어지고 있습니다. 현재 진행률은 {progress}%입니다.'
+  fallbackProfile:
+    normalComments:
+    - 건물이 정상적으로 운영되고 있습니다.
+    congestedComments:
+    - 주변 도로가 혼잡해 건물 이용에 불편이 생기고 있습니다.

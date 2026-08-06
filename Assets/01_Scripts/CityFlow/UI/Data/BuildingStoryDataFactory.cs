@@ -50,25 +50,6 @@ namespace CityFlow.UI.Data
             "아이들 건강센터"
         };
 
-        // ─── 스토리 코멘트 템플릿 ────────────────────────────────────
-        private static readonly string[] CongestionComments =
-        {
-            "오늘도 출근길 정체 때문에 {0}명이 지각했습니다!",
-            "교차로 신호가 길어서 {0}명이 늦었어요...",
-            "도로 확장이 시급합니다! {0}명이 지각 중.",
-            "출근 러시아워... {0}명이 발이 묶였습니다.",
-            "정체 구간을 피해갈 수 없어 {0}명이 지각!"
-        };
-
-        private static readonly string[] NormalComments =
-        {
-            "오늘은 출근길이 순조롭습니다!",
-            "도로 상태 양호. 모두 정시 출근!",
-            "쾌적한 출근, 직원들 기분 좋아요.",
-            "그린웨이브 덕분에 빠르게 도착했습니다!",
-            "원활한 교통 흐름, 생산성 최고!"
-        };
-
         /// <summary>
         /// 타일 좌표와 코어 엔진 신호(density, congestion)를 시드로 받아
         /// 건물 상세 카드용 BuildingStoryData를 즉석 역산 조립합니다.
@@ -89,7 +70,9 @@ namespace CityFlow.UI.Data
             float accumulatedDelay,
             int staffingFilled = -1,
             int staffingCapacity = -1,
-            int tilePopulation = -1)
+            int tilePopulation = -1,
+            BuildingHoverCommentCatalogSO commentCatalog = null,
+            string companyTypeId = "")
         {
             // 타일 좌표 기반 고정 시드 (같은 타일을 누르면 항상 같은 이름이 나오도록)
             int seed = tile.x * 1000 + tile.y;
@@ -111,9 +94,14 @@ namespace CityFlow.UI.Data
             int coinsPerPerson = 3 + (seed % 6);
             long incomePerMin = (long)(totalStaff * coinsPerPerson * (1f - density01 * 0.3f));
 
-            // 스토리 코멘트 조립
-            string storyComment = ComposeStoryComment(
-                congestion, tardyStaff, seed);
+            string storyComment = BuildingHoverCommentResolver.Resolve(
+                commentCatalog,
+                new BuildingHoverCommentContext(
+                    tile,
+                    type,
+                    congestion,
+                    buildingName,
+                    companyTypeId));
 
             return new BuildingStoryData(
                 buildingName,
@@ -122,6 +110,14 @@ namespace CityFlow.UI.Data
                 tardyStaff,
                 incomePerMin,
                 accumulatedDelay);
+        }
+
+        public static string ResolveBuildingName(
+            TileType type,
+            Vector2Int tile)
+        {
+            int seed = tile.x * 1000 + tile.y;
+            return PickName(type, seed);
         }
 
         private static string PickName(TileType type, int seed)
@@ -167,19 +163,5 @@ namespace CityFlow.UI.Data
             return baseCount;
         }
 
-        private static string ComposeStoryComment(
-            CongestionLevel congestion,
-            int tardyStaff,
-            int seed)
-        {
-            if (congestion == CongestionLevel.Jam || tardyStaff > 5)
-            {
-                string template = CongestionComments[
-                    Mathf.Abs(seed) % CongestionComments.Length];
-                return string.Format(template, tardyStaff);
-            }
-
-            return NormalComments[Mathf.Abs(seed) % NormalComments.Length];
-        }
     }
 }
