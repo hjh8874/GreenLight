@@ -1,4 +1,5 @@
-﻿using CityFlow.Bootstrap;
+using System.Collections;
+using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using UnityEngine;
 using UnityEngine.Audio;
@@ -9,6 +10,12 @@ namespace CityFlow.UI
 {
     public class SettingsPanelController : MonoBehaviour, ICityFlowServiceConsumer
     {
+        private const string BgmVolumePreferenceKey = "Settings_BGMVolume";
+        private const string SfxVolumePreferenceKey = "Settings_SFXVolume";
+        private const float DefaultVolume = 0.5f;
+        private const float MinimumLinearVolume = 0.0001f;
+        private const float PreferenceSaveDebounceSeconds = 0.2f;
+
         [Header("Settings UI")]
         [SerializeField] private Toggle tglMuteAudio;
         [SerializeField] private Button btnQuitGame;
@@ -30,6 +37,8 @@ namespace CityFlow.UI
         private bool _isBound;
         private bool _isUpdatingBgm;
         private bool _isUpdatingSfx;
+        private bool _hasPendingPreferenceSave;
+        private Coroutine _preferenceSaveCoroutine;
 
         public void Configure(
             Toggle muteAudio,
@@ -74,8 +83,8 @@ namespace CityFlow.UI
             BindButtons();
 
             // PlayerPrefs에서 저장된 소리 설정 불러오기
-            float savedBgm = PlayerPrefs.GetFloat("Settings_BGMVolume", 0.5f);
-            float savedSfx = PlayerPrefs.GetFloat("Settings_SFXVolume", 0.5f);
+            float savedBgm = Mathf.Clamp01(PlayerPrefs.GetFloat(BgmVolumePreferenceKey, DefaultVolume));
+            float savedSfx = Mathf.Clamp01(PlayerPrefs.GetFloat(SfxVolumePreferenceKey, DefaultVolume));
 
             // 슬라이더 값 변경 시 OnBgmSliderChanged가 호출되어 믹서와 텍스트(%) 업데이트 됨
             if (sldBgm != null) sldBgm.value = savedBgm;
@@ -145,8 +154,7 @@ namespace CityFlow.UI
             if (inputBgm != null) inputBgm.text = percentage.ToString();
             UpdateMixerVolume(bgmParameterName, value);
 
-            PlayerPrefs.SetFloat("Settings_BGMVolume", value);
-            PlayerPrefs.Save();
+            QueuePreferenceSave(BgmVolumePreferenceKey, value);
 
             _isUpdatingBgm = false;
         }
@@ -164,8 +172,7 @@ namespace CityFlow.UI
                 if (inputBgm != null) inputBgm.text = percentage.ToString();
                 UpdateMixerVolume(bgmParameterName, value);
 
-                PlayerPrefs.SetFloat("Settings_BGMVolume", value);
-                PlayerPrefs.Save();
+                QueuePreferenceSave(BgmVolumePreferenceKey, value);
                 _isUpdatingBgm = false;
             }
             else
@@ -186,8 +193,7 @@ namespace CityFlow.UI
             if (inputSfx != null) inputSfx.text = percentage.ToString();
             UpdateMixerVolume(sfxParameterName, value);
 
-            PlayerPrefs.SetFloat("Settings_SFXVolume", value);
-            PlayerPrefs.Save();
+            QueuePreferenceSave(SfxVolumePreferenceKey, value);
 
             _isUpdatingSfx = false;
         }
@@ -205,8 +211,7 @@ namespace CityFlow.UI
                 if (inputSfx != null) inputSfx.text = percentage.ToString();
                 UpdateMixerVolume(sfxParameterName, value);
 
-                PlayerPrefs.SetFloat("Settings_SFXVolume", value);
-                PlayerPrefs.Save();
+                QueuePreferenceSave(SfxVolumePreferenceKey, value);
                 _isUpdatingSfx = false;
             }
             else
@@ -223,9 +228,72 @@ namespace CityFlow.UI
             if (audioMixer != null)
             {
                 // Convert linear (0-1) to Decibel (-80 to 0)
-                float db = linearValue > 0.0001f ? Mathf.Log10(linearValue) * 20f : -80f;
+                float clampedValue = Mathf.Clamp01(linearValue);
+                float db = clampedValue > MinimumLinearVolume
+                    ? Mathf.Log10(clampedValue) * 20f
+                    : -80f;
                 audioMixer.SetFloat(parameterName, db);
             }
+        }
+
+        private void QueuePreferenceSave(string key, float value)
+        {
+            PlayerPrefs.SetFloat(key, Mathf.Clamp01(value));
+            _hasPendingPreferenceSave = true;
+
+            if (!Application.isPlaying || !isActiveAndEnabled)
+            {
+                FlushPendingPreferenceSave();
+                return;
+            }
+
+            if (_preferenceSaveCoroutine != null)
+                StopCoroutine(_preferenceSaveCoroutine);
+
+            _preferenceSaveCoroutine = StartCoroutine(SavePreferencesAfterDelay());
+        }
+
+        private IEnumerator SavePreferencesAfterDelay()
+        {
+            yield return new WaitForSecondsRealtime(PreferenceSaveDebounceSeconds);
+            _preferenceSaveCoroutine = null;
+            SavePendingPreferences();
+        }
+
+        private void FlushPendingPreferenceSave()
+        {
+            if (_preferenceSaveCoroutine != null)
+            {
+                StopCoroutine(_preferenceSaveCoroutine);
+                _preferenceSaveCoroutine = null;
+            }
+
+            SavePendingPreferences();
+        }
+
+        private void SavePendingPreferences()
+        {
+            if (!_hasPendingPreferenceSave)
+                return;
+
+            PlayerPrefs.Save();
+            _hasPendingPreferenceSave = false;
+        }
+
+        private void OnApplicationPause(bool isPaused)
+        {
+            if (isPaused)
+                FlushPendingPreferenceSave();
+        }
+
+        private void OnApplicationQuit()
+        {
+            FlushPendingPreferenceSave();
+        }
+
+        private void OnDisable()
+        {
+            FlushPendingPreferenceSave();
         }
 
         private void OnMuteToggleChanged(bool isMuted)
