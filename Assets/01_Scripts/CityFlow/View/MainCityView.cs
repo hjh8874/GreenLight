@@ -19,7 +19,8 @@ namespace CityFlow.View
     public sealed partial class MainCityView :
         MonoBehaviour,
         ICityFlowServiceConsumer,
-        IWorldCoordinateRoot
+        IWorldCoordinateRoot,
+        ICameraRotationController
     {
         [Header("Grid")]
         [SerializeField] private int width = GridUtil.DefaultWidth;
@@ -114,6 +115,9 @@ namespace CityFlow.View
 
         private const float OrthographicSizePerDistance = 0.9375f;
         private const float CameraYawStepDegrees = 90f;
+        private const string CameraZoomPreferenceKey =
+            "Camera_ZoomNormalized";
+        private const float CameraZoomSaveDebounceSeconds = 0.2f;
         private const int VehicleRenderQueue = (int)RenderQueue.Geometry + 10;
         private const float VehicleBodyLengthTiles = 0.38f;
         private const float VehicleBodyWidthTiles = 0.2f;
@@ -190,6 +194,10 @@ namespace CityFlow.View
         private Vector3 cameraTarget;
         private Vector3 cameraUpDirection;
         private float zoomDistance;
+        private float persistedZoom01;
+        private bool hasPersistedZoom;
+        private bool hasPendingZoomPreferenceSave;
+        private Coroutine zoomPreferenceSaveCoroutine;
         private float currentCameraYawDegrees;
         private float targetCameraYawDegrees;
         private float cameraYawVelocity;
@@ -257,6 +265,20 @@ namespace CityFlow.View
         public float FlowBurstSeconds => burstSeconds;
         public Color FlowBurstColor => flowBurstColor;
         public bool IsDriveViewActive => driveViewCamera != null && driveViewCamera.IsFollowing;
+
+        public bool TryRotateCamera(int stepDirection)
+        {
+            if (stepDirection == 0 || mainCamera == null || IsDriveViewActive)
+            {
+                return false;
+            }
+
+            float direction = invertCameraRotationDirection ? -1f : 1f;
+            targetCameraYawDegrees += Mathf.Sign(stepDirection) *
+                                      CameraYawStepDegrees *
+                                      direction;
+            return true;
+        }
 
         public void SetGridLineBrightness(float brightness)
         {
@@ -376,7 +398,11 @@ namespace CityFlow.View
                 zoomDistanceRange,
                 requiredDistance - minimumZoomDistance);
 
-            if (frameCamera)
+            if (hasPersistedZoom)
+            {
+                zoomDistance = GetZoomDistance(persistedZoom01);
+            }
+            else if (frameCamera)
             {
                 zoomDistance = Mathf.Max(
                     minimumZoomDistance,
@@ -600,6 +626,8 @@ namespace CityFlow.View
 
         private void OnDestroy()
         {
+            FlushPendingZoomPreferenceSave();
+
             if (driveViewCamera != null)
             {
                 ExitDriveView();
@@ -636,7 +664,10 @@ namespace CityFlow.View
                 height * tileSize * 0.5f,
                 0f));
             cameraUpDirection = (transform.up - transform.right).normalized;
-            zoomDistance = minimumZoomDistance;
+            LoadZoomPreference();
+            zoomDistance = hasPersistedZoom
+                ? GetZoomDistance(persistedZoom01)
+                : minimumZoomDistance;
             currentCameraYawDegrees = 0f;
             targetCameraYawDegrees = 0f;
             cameraYawVelocity = 0f;
@@ -683,8 +714,7 @@ namespace CityFlow.View
 
                     if (yawStep != 0)
                     {
-                        float direction = invertCameraRotationDirection ? -1f : 1f;
-                        targetCameraYawDegrees += yawStep * CameraYawStepDegrees * direction;
+                        TryRotateCamera(yawStep);
                     }
 
                     float nextZoomDistance = Mathf.Clamp(
@@ -694,6 +724,7 @@ namespace CityFlow.View
                     if (!Mathf.Approximately(nextZoomDistance, zoomDistance))
                     {
                         zoomDistance = nextZoomDistance;
+                        QueueZoomPreferenceSave();
                         cameraViewChanged = true;
                     }
                 }
@@ -721,6 +752,97 @@ namespace CityFlow.View
             }
 
             return cameraViewChanged;
+        }
+
+        private void LoadZoomPreference()
+        {
+            hasPersistedZoom = PlayerPrefs.HasKey(CameraZoomPreferenceKey);
+            persistedZoom01 = hasPersistedZoom
+                ? Mathf.Clamp01(PlayerPrefs.GetFloat(
+                    CameraZoomPreferenceKey,
+                    1f))
+                : 1f;
+        }
+
+        private float GetZoomDistance(float normalizedZoom01)
+        {
+            return Mathf.Lerp(
+                minimumZoomDistance + zoomDistanceRange,
+                minimumZoomDistance,
+                Mathf.Clamp01(normalizedZoom01));
+        }
+
+        private void QueueZoomPreferenceSave()
+        {
+            persistedZoom01 = 1f - Mathf.InverseLerp(
+                minimumZoomDistance,
+                minimumZoomDistance + zoomDistanceRange,
+                zoomDistance);
+            hasPersistedZoom = true;
+            PlayerPrefs.SetFloat(CameraZoomPreferenceKey, persistedZoom01);
+            hasPendingZoomPreferenceSave = true;
+
+            if (!Application.isPlaying || !isActiveAndEnabled)
+            {
+                FlushPendingZoomPreferenceSave();
+                return;
+            }
+
+            if (zoomPreferenceSaveCoroutine != null)
+            {
+                StopCoroutine(zoomPreferenceSaveCoroutine);
+            }
+
+            zoomPreferenceSaveCoroutine = StartCoroutine(
+                SaveZoomPreferenceAfterDelay());
+        }
+
+        private System.Collections.IEnumerator SaveZoomPreferenceAfterDelay()
+        {
+            yield return new WaitForSecondsRealtime(
+                CameraZoomSaveDebounceSeconds);
+            zoomPreferenceSaveCoroutine = null;
+            SavePendingZoomPreference();
+        }
+
+        private void FlushPendingZoomPreferenceSave()
+        {
+            if (zoomPreferenceSaveCoroutine != null)
+            {
+                StopCoroutine(zoomPreferenceSaveCoroutine);
+                zoomPreferenceSaveCoroutine = null;
+            }
+
+            SavePendingZoomPreference();
+        }
+
+        private void SavePendingZoomPreference()
+        {
+            if (!hasPendingZoomPreferenceSave)
+            {
+                return;
+            }
+
+            PlayerPrefs.Save();
+            hasPendingZoomPreferenceSave = false;
+        }
+
+        private void OnApplicationPause(bool isPaused)
+        {
+            if (isPaused)
+            {
+                FlushPendingZoomPreferenceSave();
+            }
+        }
+
+        private void OnApplicationQuit()
+        {
+            FlushPendingZoomPreferenceSave();
+        }
+
+        private void OnDisable()
+        {
+            FlushPendingZoomPreferenceSave();
         }
 
         private bool UpdateCameraRotation()

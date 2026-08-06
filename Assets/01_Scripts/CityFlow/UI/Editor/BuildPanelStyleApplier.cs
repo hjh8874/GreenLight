@@ -393,13 +393,13 @@ namespace CityFlow.UI.Editor
                 rt.anchorMin = new Vector2(0f, 0f);
                 rt.anchorMax = new Vector2(0f, 0f);
                 rt.pivot = new Vector2(0f, 0f);
-                rt.sizeDelta = new Vector2(380f, rt.sizeDelta.y);
+                rt.sizeDelta = new Vector2(420f, 0f);
             }
 
             VerticalLayoutGroup vlg = go.GetComponent<VerticalLayoutGroup>();
             if (vlg == null) vlg = go.AddComponent<VerticalLayoutGroup>();
-            vlg.padding = new RectOffset(18, 18, 18, 18);
-            vlg.spacing = 10f;
+            vlg.padding = new RectOffset(16, 16, 14, 14);
+            vlg.spacing = 6f;
             vlg.childAlignment = TextAnchor.UpperLeft;
             vlg.childControlWidth = true;
             vlg.childControlHeight = true;
@@ -412,10 +412,18 @@ namespace CityFlow.UI.Editor
             csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
             SerializedObject so = new SerializedObject(tooltip);
-            StyleTooltipText(so.FindProperty("txtName")?.objectReferenceValue as TextMeshProUGUI, font, 26f, FontStyles.Bold, new Color(1f, 0.85f, 0.3f, 1f));
-            StyleTooltipText(so.FindProperty("txtCategory")?.objectReferenceValue as TextMeshProUGUI, font, 18f, FontStyles.Bold, new Color(0.65f, 0.85f, 1f, 1f));
-            StyleTooltipText(so.FindProperty("txtCost")?.objectReferenceValue as TextMeshProUGUI, font, 20f, FontStyles.Bold, Color.white);
-            StyleTooltipText(so.FindProperty("txtDescription")?.objectReferenceValue as TextMeshProUGUI, font, 17f, FontStyles.Normal, new Color(0.92f, 0.92f, 0.92f, 1f));
+            StyleTooltipText(so.FindProperty("txtName")?.objectReferenceValue as TextMeshProUGUI, font, 20f, FontStyles.Bold, new Color(1f, 0.85f, 0.3f, 1f));
+            StyleTooltipText(so.FindProperty("txtCategory")?.objectReferenceValue as TextMeshProUGUI, font, 14f, FontStyles.Bold, new Color(0.65f, 0.85f, 1f, 1f));
+            StyleTooltipText(so.FindProperty("txtCost")?.objectReferenceValue as TextMeshProUGUI, font, 16f, FontStyles.Bold, Color.white);
+            TextMeshProUGUI description =
+                so.FindProperty("txtDescription")?.objectReferenceValue as
+                    TextMeshProUGUI;
+            StyleTooltipText(description, font, 14f, FontStyles.Normal, new Color(0.92f, 0.92f, 0.92f, 1f));
+            if (description != null)
+            {
+                description.textWrappingMode = TextWrappingModes.Normal;
+                description.overflowMode = TextOverflowModes.Overflow;
+            }
 
             TextMeshProUGUI txtIncome = so.FindProperty("txtIncome")?.objectReferenceValue as TextMeshProUGUI;
             if (txtIncome != null) txtIncome.gameObject.SetActive(false);

@@ -23,13 +23,17 @@ namespace CityFlow.UI
         [Tooltip("마우스 커서 위치에서 툴팁을 얼마나 떨어뜨릴지 결정합니다.")]
         [SerializeField] private Vector2 offset = new Vector2(30f, 30f);
 
+        private RectTransform tooltipRect;
+        private Canvas rootCanvas;
+
         private void Awake()
         {
             // 화면 하단에서 툴팁이 잘리지 않도록 기준점(Pivot)을 좌하단(0, 0)으로 강제 고정
-            RectTransform rect = GetComponent<RectTransform>();
-            if (rect != null)
+            tooltipRect = GetComponent<RectTransform>();
+            rootCanvas = GetComponentInParent<Canvas>();
+            if (tooltipRect != null)
             {
-                rect.pivot = new Vector2(0f, 0f);
+                tooltipRect.pivot = new Vector2(0f, 0f);
             }
 
             // 유저 지시에 따라 안정도와 수입 텍스트 라인을 완전히 숨김
@@ -46,8 +50,7 @@ namespace CityFlow.UI
             // 켜져 있을 때만 마우스 커서를 따라다님
             if (Mouse.current != null)
             {
-                Vector2 mousePos = Mouse.current.position.ReadValue();
-                transform.position = mousePos + offset;
+                UpdateTooltipPosition();
             }
         }
 
@@ -64,11 +67,7 @@ namespace CityFlow.UI
             if (txtCost != null) txtCost.text = $"비용: <color=#FFD700>{tileData.BuildCost}</color> 코인";
             if (txtDescription != null) txtDescription.text = tileData.BuildingDescription;
 
-            // 켜지는 순간 랙 방지를 위해 즉시 위치 동기화
-            if (Mouse.current != null)
-            {
-                transform.position = Mouse.current.position.ReadValue() + offset;
-            }
+            RefreshLayoutAndPosition();
 
             // DOTween 팝업 애니메이션
             transform.DOKill();
@@ -88,10 +87,7 @@ namespace CityFlow.UI
             if (txtCost != null) txtCost.text = $"비용: <color=#FFD700>{infraData.Cost}</color> 코인";
             if (txtDescription != null) txtDescription.text = infraData.Description;
 
-            if (Mouse.current != null)
-            {
-                transform.position = Mouse.current.position.ReadValue() + offset;
-            }
+            RefreshLayoutAndPosition();
 
             transform.DOKill();
             transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutBack);
@@ -116,11 +112,7 @@ namespace CityFlow.UI
             if (txtDescription != null)
                 txtDescription.text = option.Description;
 
-            if (Mouse.current != null)
-            {
-                transform.position =
-                    Mouse.current.position.ReadValue() + offset;
-            }
+            RefreshLayoutAndPosition();
 
             transform.DOKill();
             transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutBack);
@@ -134,6 +126,46 @@ namespace CityFlow.UI
             {
                 gameObject.SetActive(false);
             });
+        }
+
+        private void RefreshLayoutAndPosition()
+        {
+            if (tooltipRect == null)
+            {
+                tooltipRect = GetComponent<RectTransform>();
+            }
+
+            Canvas.ForceUpdateCanvases();
+            if (tooltipRect != null)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(tooltipRect);
+            }
+
+            UpdateTooltipPosition();
+        }
+
+        private void UpdateTooltipPosition()
+        {
+            if (Mouse.current == null || tooltipRect == null)
+            {
+                return;
+            }
+
+            Vector2 position = Mouse.current.position.ReadValue() + offset;
+            float scaleFactor = rootCanvas != null
+                ? Mathf.Max(0.01f, rootCanvas.scaleFactor)
+                : 1f;
+            Vector2 size = tooltipRect.rect.size * scaleFactor;
+            const float screenMargin = 8f;
+            position.x = Mathf.Clamp(
+                position.x,
+                screenMargin,
+                Mathf.Max(screenMargin, Screen.width - size.x - screenMargin));
+            position.y = Mathf.Clamp(
+                position.y,
+                screenMargin,
+                Mathf.Max(screenMargin, Screen.height - size.y - screenMargin));
+            transform.position = position;
         }
     }
 }

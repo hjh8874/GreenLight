@@ -1,56 +1,134 @@
-﻿using UnityEditor;
+using TMPro;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
-using CityFlow.UI;
-using TMPro;
 
 namespace CityFlow.UI.Editor
 {
     public static class CongestionToggleBaker
     {
-        private const string PrefabPath = "Assets/02_Prefabs/UI/UI_CongestionToggle.prefab";
-
         [MenuItem("CityFlow/Bake UI/UI_CongestionToggle")]
         public static void Bake()
         {
-            if (!AssetDatabase.IsValidFolder("Assets/02_Prefabs"))
-                AssetDatabase.CreateFolder("Assets", "02_Prefabs");
-            if (!AssetDatabase.IsValidFolder("Assets/02_Prefabs/UI"))
-                AssetDatabase.CreateFolder("Assets/02_Prefabs", "UI");
+            EnsurePrefabFolder();
 
-            GameObject root = new GameObject("UI_CongestionToggle", typeof(RectTransform));
+            GameObject root = new GameObject(
+                "UI_CongestionToggle",
+                typeof(RectTransform),
+                typeof(Toggle),
+                typeof(CongestionTogglePanelController));
             RectTransform rootRect = root.GetComponent<RectTransform>();
-            rootRect.sizeDelta = new Vector2(200f, 40f);
+            rootRect.sizeDelta = new Vector2(320f, 36f);
 
-            Toggle toggle = root.AddComponent<Toggle>();
+            GameObject backgroundObject = CreateGraphic(
+                "Background",
+                root.transform,
+                LayerLabUiAssetCatalog.LoadSprite(
+                    "UI_Etc/Toggle_Square_l_off.png"));
+            RectTransform backgroundRect =
+                backgroundObject.GetComponent<RectTransform>();
+            SetFixedRect(
+                backgroundRect,
+                new Vector2(0f, 0.5f),
+                new Vector2(18f, 0f),
+                new Vector2(30f, 30f));
 
-            GameObject bg = new GameObject("Background", typeof(RectTransform));
-            bg.transform.SetParent(root.transform, false);
-            Image bgImage = bg.AddComponent<Image>();
-            bgImage.color = new Color(0.2f, 0.2f, 0.2f, 1f);
-            toggle.targetGraphic = bgImage;
+            GameObject checkmarkObject = CreateGraphic(
+                "Checkmark",
+                backgroundObject.transform,
+                LayerLabUiAssetCatalog.LoadSprite(
+                    "UI_Etc/Toggle_Square_l_on.png"));
+            RectTransform checkmarkRect =
+                checkmarkObject.GetComponent<RectTransform>();
+            checkmarkRect.anchorMin = Vector2.zero;
+            checkmarkRect.anchorMax = Vector2.one;
+            checkmarkRect.offsetMin = Vector2.zero;
+            checkmarkRect.offsetMax = Vector2.zero;
 
-            GameObject checkmark = new GameObject("Checkmark", typeof(RectTransform));
-            checkmark.transform.SetParent(bg.transform, false);
-            Image checkImage = checkmark.AddComponent<Image>();
-            checkImage.color = Color.green;
-            toggle.graphic = checkImage;
+            GameObject labelObject = new GameObject(
+                "Label",
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(TextMeshProUGUI));
+            labelObject.transform.SetParent(root.transform, false);
+            RectTransform labelRect = labelObject.GetComponent<RectTransform>();
+            labelRect.anchorMin = new Vector2(0f, 0f);
+            labelRect.anchorMax = new Vector2(1f, 1f);
+            labelRect.offsetMin = new Vector2(42f, 0f);
+            labelRect.offsetMax = Vector2.zero;
 
-            GameObject label = new GameObject("Label", typeof(RectTransform));
-            label.transform.SetParent(root.transform, false);
-            TextMeshProUGUI text = label.AddComponent<TextMeshProUGUI>();
-            text.text = "Traffic View";
-            text.color = Color.white;
-            text.fontSize = 16;
-            text.alignment = TextAlignmentOptions.Center;
+            TextMeshProUGUI label = labelObject.GetComponent<TextMeshProUGUI>();
+            label.text = "정체 뷰";
+            label.alignment = TextAlignmentOptions.MidlineLeft;
+            LayerLabUiAssetCatalog.StyleText(
+                label,
+                16f,
+                Color.white,
+                FontStyles.Bold);
 
-            CongestionTogglePanelController controller = root.AddComponent<CongestionTogglePanelController>();
+            Toggle toggle = root.GetComponent<Toggle>();
+            toggle.targetGraphic = backgroundObject.GetComponent<Image>();
+            toggle.graphic = checkmarkObject.GetComponent<Image>();
+
+            CongestionTogglePanelController controller =
+                root.GetComponent<CongestionTogglePanelController>();
             controller.Configure(toggle);
 
-            PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
-            GameObject.DestroyImmediate(root);
+            PrefabUtility.SaveAsPrefabAsset(
+                root,
+                LayerLabUiAssetCatalog.CongestionTogglePrefabPath);
+            Object.DestroyImmediate(root);
+            AssetDatabase.SaveAssets();
+            Debug.Log(
+                $"[CongestionToggleBaker] Baked " +
+                LayerLabUiAssetCatalog.CongestionTogglePrefabPath);
+        }
 
-            Debug.Log($"[CongestionToggleBaker] Successfully baked prefab at {PrefabPath}");
+        private static GameObject CreateGraphic(
+            string name,
+            Transform parent,
+            Sprite sprite)
+        {
+            GameObject target = new GameObject(
+                name,
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(Image));
+            target.transform.SetParent(parent, false);
+            Image image = target.GetComponent<Image>();
+            LayerLabUiAssetCatalog.ApplyImage(
+                image,
+                sprite,
+                Color.white,
+                false);
+            image.preserveAspect = true;
+            return target;
+        }
+
+        private static void SetFixedRect(
+            RectTransform rect,
+            Vector2 anchor,
+            Vector2 position,
+            Vector2 size)
+        {
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+        }
+
+        private static void EnsurePrefabFolder()
+        {
+            if (!AssetDatabase.IsValidFolder("Assets/02_Prefabs"))
+            {
+                AssetDatabase.CreateFolder("Assets", "02_Prefabs");
+            }
+
+            if (!AssetDatabase.IsValidFolder("Assets/02_Prefabs/UI"))
+            {
+                AssetDatabase.CreateFolder("Assets/02_Prefabs", "UI");
+            }
         }
     }
 }
