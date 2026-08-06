@@ -9,6 +9,8 @@ namespace CityFlow.UI.Editor
     {
         private const string DockPath =
             "UI_MainCanvas/FloatingWindowContentRoot/Dock_Right";
+        private const string SubPanelsPath =
+            "UI_MainCanvas/FloatingWindowContentRoot/SubPanels_Right";
 
         [MenuItem("CityFlow/UI/Geon/Apply Dock Right Polish")]
         public static void Apply()
@@ -19,11 +21,22 @@ namespace CityFlow.UI.Editor
                 return;
             }
 
+            Transform subPanels =
+                LayerLabUiAssetCatalog.FindInGeonScene(SubPanelsPath);
+            if (subPanels == null)
+            {
+                return;
+            }
+
             Undo.RegisterFullObjectHierarchyUndo(
                 dock.gameObject,
                 "Apply Geon Dock Right Polish");
+            Undo.RecordObject(
+                subPanels,
+                "Move Geon Sub Panels");
 
             StyleDockFrame(dock);
+            StyleSubPanels(subPanels);
             StyleDockButton(
                 dock.Find("Build"),
                 "건설",
@@ -39,7 +52,7 @@ namespace CityFlow.UI.Editor
             StyleDockButton(
                 dock.Find("Setting"),
                 "설정",
-                "Button/Btn_Rectangle02_Gray.png");
+                "Button/Btn_Rectangle01_n_Blue.png");
 
             UIDockController controller = dock.GetComponent<UIDockController>();
             if (controller != null)
@@ -58,6 +71,16 @@ namespace CityFlow.UI.Editor
             LayerLabUiAssetCatalog.CompleteSceneChange(
                 dock.gameObject,
                 nameof(GeonDockRightPolishApplier));
+        }
+
+        private static void StyleSubPanels(Transform subPanels)
+        {
+            RectTransform rect = subPanels as RectTransform;
+            rect.anchorMin = new Vector2(1f, 0f);
+            rect.anchorMax = new Vector2(1f, 0f);
+            rect.pivot = new Vector2(1f, 0f);
+            rect.anchoredPosition = new Vector2(-130f, 440f);
+            rect.sizeDelta = new Vector2(200f, 240f);
         }
 
         private static void StyleDockFrame(Transform dock)

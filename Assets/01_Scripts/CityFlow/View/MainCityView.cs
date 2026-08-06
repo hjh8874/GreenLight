@@ -20,6 +20,7 @@ namespace CityFlow.View
         MonoBehaviour,
         ICityFlowServiceConsumer,
         IWorldCoordinateRoot,
+        ICameraViewSaveSource,
         ICameraRotationController
     {
         [Header("Grid")]
@@ -115,9 +116,6 @@ namespace CityFlow.View
 
         private const float OrthographicSizePerDistance = 0.9375f;
         private const float CameraYawStepDegrees = 90f;
-        private const string CameraZoomPreferenceKey =
-            "Camera_ZoomNormalized";
-        private const float CameraZoomSaveDebounceSeconds = 0.2f;
         private const int VehicleRenderQueue = (int)RenderQueue.Geometry + 10;
         private const float VehicleBodyLengthTiles = 0.38f;
         private const float VehicleBodyWidthTiles = 0.2f;
@@ -194,10 +192,7 @@ namespace CityFlow.View
         private Vector3 cameraTarget;
         private Vector3 cameraUpDirection;
         private float zoomDistance;
-        private float persistedZoom01;
-        private bool hasPersistedZoom;
-        private bool hasPendingZoomPreferenceSave;
-        private Coroutine zoomPreferenceSaveCoroutine;
+        private bool keepMaximumZoomOutDuringNewGameSetup;
         private float currentCameraYawDegrees;
         private float targetCameraYawDegrees;
         private float cameraYawVelocity;
@@ -239,6 +234,13 @@ namespace CityFlow.View
                 0.1f,
                 (minimumZoomDistance + zoomDistanceRange) *
                 OrthographicSizePerDistance);
+        public float GetOrthographicSize(float normalizedZoom01) =>
+            Mathf.Lerp(
+                MaximumOrthographicSize,
+                Mathf.Max(
+                    0.1f,
+                    minimumZoomDistance * OrthographicSizePerDistance),
+                Mathf.Clamp01(normalizedZoom01));
         public float LaneOffset => Mathf.Max(0f, laneOffset);
         public float IntersectionQueueInsetTiles =>
             Mathf.Max(0f, intersectionQueueInset);
@@ -336,10 +338,7 @@ namespace CityFlow.View
         }
         public float NormalizedZoom01 => IsDriveViewActive
             ? 1f
-            : 1f - Mathf.InverseLerp(
-                minimumZoomDistance,
-                minimumZoomDistance + zoomDistanceRange,
-                zoomDistance);
+            : GetStoredNormalizedZoom01();
         public Camera ActiveViewCamera => IsDriveViewActive
             ? driveViewCamera.ViewCamera
             : mainCamera;
@@ -398,9 +397,9 @@ namespace CityFlow.View
                 zoomDistanceRange,
                 requiredDistance - minimumZoomDistance);
 
-            if (hasPersistedZoom)
+            if (keepMaximumZoomOutDuringNewGameSetup)
             {
-                zoomDistance = GetZoomDistance(persistedZoom01);
+                zoomDistance = minimumZoomDistance + zoomDistanceRange;
             }
             else if (frameCamera)
             {
@@ -573,7 +572,9 @@ namespace CityFlow.View
             RefreshPriorityRoads();
             RefreshHighways();
             RefreshVehicles();
+            keepMaximumZoomOutDuringNewGameSetup = true;
             InitializeCameraView();
+            services.RegisterCameraViewSaveSource(this);
             driveViewCamera = gameObject.AddComponent<DriveViewCamera>();
             driveViewCamera.Init(transform, mainCamera);
             dockController = FindAnyObjectByType<UIDockController>(FindObjectsInactive.Include);
@@ -626,8 +627,6 @@ namespace CityFlow.View
 
         private void OnDestroy()
         {
-            FlushPendingZoomPreferenceSave();
-
             if (driveViewCamera != null)
             {
                 ExitDriveView();
@@ -664,10 +663,7 @@ namespace CityFlow.View
                 height * tileSize * 0.5f,
                 0f));
             cameraUpDirection = (transform.up - transform.right).normalized;
-            LoadZoomPreference();
-            zoomDistance = hasPersistedZoom
-                ? GetZoomDistance(persistedZoom01)
-                : minimumZoomDistance;
+            zoomDistance = minimumZoomDistance + zoomDistanceRange;
             currentCameraYawDegrees = 0f;
             targetCameraYawDegrees = 0f;
             cameraYawVelocity = 0f;
@@ -723,8 +719,8 @@ namespace CityFlow.View
                         minimumZoomDistance + zoomDistanceRange);
                     if (!Mathf.Approximately(nextZoomDistance, zoomDistance))
                     {
+                        keepMaximumZoomOutDuringNewGameSetup = false;
                         zoomDistance = nextZoomDistance;
-                        QueueZoomPreferenceSave();
                         cameraViewChanged = true;
                     }
                 }
@@ -752,97 +748,6 @@ namespace CityFlow.View
             }
 
             return cameraViewChanged;
-        }
-
-        private void LoadZoomPreference()
-        {
-            hasPersistedZoom = PlayerPrefs.HasKey(CameraZoomPreferenceKey);
-            persistedZoom01 = hasPersistedZoom
-                ? Mathf.Clamp01(PlayerPrefs.GetFloat(
-                    CameraZoomPreferenceKey,
-                    1f))
-                : 1f;
-        }
-
-        private float GetZoomDistance(float normalizedZoom01)
-        {
-            return Mathf.Lerp(
-                minimumZoomDistance + zoomDistanceRange,
-                minimumZoomDistance,
-                Mathf.Clamp01(normalizedZoom01));
-        }
-
-        private void QueueZoomPreferenceSave()
-        {
-            persistedZoom01 = 1f - Mathf.InverseLerp(
-                minimumZoomDistance,
-                minimumZoomDistance + zoomDistanceRange,
-                zoomDistance);
-            hasPersistedZoom = true;
-            PlayerPrefs.SetFloat(CameraZoomPreferenceKey, persistedZoom01);
-            hasPendingZoomPreferenceSave = true;
-
-            if (!Application.isPlaying || !isActiveAndEnabled)
-            {
-                FlushPendingZoomPreferenceSave();
-                return;
-            }
-
-            if (zoomPreferenceSaveCoroutine != null)
-            {
-                StopCoroutine(zoomPreferenceSaveCoroutine);
-            }
-
-            zoomPreferenceSaveCoroutine = StartCoroutine(
-                SaveZoomPreferenceAfterDelay());
-        }
-
-        private System.Collections.IEnumerator SaveZoomPreferenceAfterDelay()
-        {
-            yield return new WaitForSecondsRealtime(
-                CameraZoomSaveDebounceSeconds);
-            zoomPreferenceSaveCoroutine = null;
-            SavePendingZoomPreference();
-        }
-
-        private void FlushPendingZoomPreferenceSave()
-        {
-            if (zoomPreferenceSaveCoroutine != null)
-            {
-                StopCoroutine(zoomPreferenceSaveCoroutine);
-                zoomPreferenceSaveCoroutine = null;
-            }
-
-            SavePendingZoomPreference();
-        }
-
-        private void SavePendingZoomPreference()
-        {
-            if (!hasPendingZoomPreferenceSave)
-            {
-                return;
-            }
-
-            PlayerPrefs.Save();
-            hasPendingZoomPreferenceSave = false;
-        }
-
-        private void OnApplicationPause(bool isPaused)
-        {
-            if (isPaused)
-            {
-                FlushPendingZoomPreferenceSave();
-            }
-        }
-
-        private void OnApplicationQuit()
-        {
-            FlushPendingZoomPreferenceSave();
-        }
-
-        private void OnDisable()
-        {
-            FlushPendingZoomPreferenceSave();
         }
 
         private bool UpdateCameraRotation()
@@ -4629,6 +4534,54 @@ namespace CityFlow.View
         private void OnRestoreCompleted(RestoreCompletedEvent _)
         {
             RebuildRestoredVisuals();
+        }
+
+        public CameraViewSaveData CreateSnapshot()
+        {
+            return new CameraViewSaveData
+            {
+                HasZoom = true,
+                NormalizedZoom01 = GetStoredNormalizedZoom01()
+            };
+        }
+
+        public void RestoreSnapshot(CameraViewSaveData snapshot)
+        {
+            keepMaximumZoomOutDuringNewGameSetup = false;
+            float normalizedZoom01 = snapshot != null && snapshot.HasZoom
+                ? Mathf.Clamp01(snapshot.NormalizedZoom01)
+                : 0f;
+            ApplyNormalizedZoom(normalizedZoom01);
+            StartCoroutine(
+                ApplyRestoredZoomAtEndOfFrame(normalizedZoom01));
+        }
+
+        private float GetStoredNormalizedZoom01()
+        {
+            return 1f - Mathf.InverseLerp(
+                minimumZoomDistance,
+                minimumZoomDistance + zoomDistanceRange,
+                zoomDistance);
+        }
+
+        private void ApplyNormalizedZoom(float normalizedZoom01)
+        {
+            zoomDistance = Mathf.Lerp(
+                minimumZoomDistance + zoomDistanceRange,
+                minimumZoomDistance,
+                Mathf.Clamp01(normalizedZoom01));
+
+            if (mainCamera != null)
+            {
+                ApplyCameraView();
+            }
+        }
+
+        private System.Collections.IEnumerator
+            ApplyRestoredZoomAtEndOfFrame(float normalizedZoom01)
+        {
+            yield return new WaitForEndOfFrame();
+            ApplyNormalizedZoom(normalizedZoom01);
         }
 
         public Vector3 GetFlowBurstAnchor(Vector2Int tile, out Transform targetVehicle)

@@ -13,5 +13,22 @@ namespace CityFlow.Tests.ViewEditMode
             Assert.IsTrue(
                 FloatingHudLevelController.ShouldToggleOnClick(pointerOverUi: false));
         }
+
+        [Test]
+        public void DockMenu_RevealsRequestedPanels_InSmallFloatingPreset()
+        {
+            Assert.IsTrue(
+                FloatingHudLevelController.ShouldShowLargeLevel(
+                    isFloating: true,
+                    isRevealed: true,
+                    presetIndex: 0,
+                    UIDockController.MenuType.Build));
+            Assert.IsTrue(
+                FloatingHudLevelController.ShouldShowMediumLevel(
+                    isFloating: true,
+                    isRevealed: true,
+                    presetIndex: 0,
+                    UIDockController.MenuType.Settings));
+        }
     }
 }

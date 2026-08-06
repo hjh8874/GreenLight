@@ -39,6 +39,7 @@ namespace CityFlow.Sim.Quests
         public readonly int HouseCount;
         public readonly int OfficeCount;
         public readonly int SchoolCount;
+        public readonly bool HasConnectedCommute;
         public readonly long TotalArrivals;
         public readonly long PendingCoins;
         public readonly bool HasHarvested;
@@ -52,12 +53,14 @@ namespace CityFlow.Sim.Quests
             long totalArrivals,
             long pendingCoins,
             bool hasHarvested,
-            int jamTileCount)
+            int jamTileCount,
+            bool hasConnectedCommute = false)
         {
             RoadCount = Math.Max(0, roadCount);
             HouseCount = Math.Max(0, houseCount);
             OfficeCount = Math.Max(0, officeCount);
             SchoolCount = Math.Max(0, schoolCount);
+            HasConnectedCommute = hasConnectedCommute;
             TotalArrivals = Math.Max(0L, totalArrivals);
             PendingCoins = Math.Max(0L, pendingCoins);
             HasHarvested = hasHarvested;
@@ -280,7 +283,7 @@ namespace CityFlow.Sim.Quests
                     CityQuestId.BuildRoad => new QuestDefinition(id, "도로 건설을 계속해 주세요", "불러온 도시에는 아직 도로가 부족해요. 시민들이 이동할 수 있도록 도로를 3칸 이상 연결해 주세요.", 200, 0f, 0f),
                     CityQuestId.BuildHouse => new QuestDefinition(id, "주거지를 준비해 주세요", "불러온 도시에는 시민이 살 주거지가 아직 없어요. 도로 옆에 집을 지어 주세요.", 200, 0f, 0f),
                     CityQuestId.BuildOffice => new QuestDefinition(id, "일자리를 준비해 주세요", "불러온 도시에는 시민이 일할 회사가 아직 없어요. 도로 옆에 회사를 지어 주세요.", 200, 0f, 0f),
-                    CityQuestId.ConnectCommute => new QuestDefinition(id, "출근길을 다시 확인해 주세요", "집과 회사 사이의 길을 확인해 주세요. 차량 한 대가 회사에 도착하면 연결이 확인돼요.", 200, 0f, 0f),
+                    CityQuestId.ConnectCommute => new QuestDefinition(id, "출근길을 다시 확인해 주세요", "집과 회사 사이에 차량이 이동할 수 있도록 도로를 연결해 주세요.", 200, 0f, 0f),
                     CityQuestId.HarvestFirstIncome => new QuestDefinition(id, "쌓인 수익을 수확해 주세요", "도착 수익이 대기 중이에요. HARVEST 버튼을 눌러 재화를 받아 주세요.", 200, 0f, 0f),
                     _ => throw new ArgumentOutOfRangeException(nameof(id), id, null)
                 };
@@ -291,7 +294,7 @@ namespace CityFlow.Sim.Quests
                 CityQuestId.BuildRoad => new QuestDefinition(id, "이동할 길이 필요해요", "도시의 시작은 길이에요. 시민들이 이동할 수 있도록 도로를 3칸 이상 지어 주세요.", 200, 0f, 0f),
                 CityQuestId.BuildHouse => new QuestDefinition(id, "시민들이 살 집이 필요해요", "도로 옆에 시민들이 머물 수 있는 주거지를 지어 주세요.", 200, 0f, 0f),
                 CityQuestId.BuildOffice => new QuestDefinition(id, "일할 곳이 필요해요", "시민들이 일하고 도시가 수익을 얻을 수 있도록 회사를 지어 주세요.", 200, 0f, 0f),
-                CityQuestId.ConnectCommute => new QuestDefinition(id, "출근길을 연결해 주세요", "집과 회사가 도로로 이어져야 해요. 첫 차량이 회사에 도착하도록 길을 연결해 주세요.", 200, 0f, 0f),
+                CityQuestId.ConnectCommute => new QuestDefinition(id, "출근길을 연결해 주세요", "집과 회사 사이에 차량이 이동할 수 있도록 도로를 연결해 주세요.", 200, 0f, 0f),
                 CityQuestId.HarvestFirstIncome => new QuestDefinition(id, "첫 수익을 수확해 보세요", "첫 통근 수익이 생겼어요. HARVEST 버튼을 눌러 재화를 받아 보세요.", 200, 0f, 0f),
                 _ => throw new ArgumentOutOfRangeException(nameof(id), id, null)
             };
@@ -311,7 +314,7 @@ namespace CityFlow.Sim.Quests
             CityQuestId.BuildRoad => snapshot.RoadCount >= 3,
             CityQuestId.BuildHouse => snapshot.HouseCount >= 1,
             CityQuestId.BuildOffice => snapshot.OfficeCount >= 1,
-            CityQuestId.ConnectCommute => snapshot.TotalArrivals >= 1,
+            CityQuestId.ConnectCommute => snapshot.HasConnectedCommute,
             CityQuestId.HarvestFirstIncome => snapshot.HasHarvested,
             CityQuestId.BuildHousing => snapshot.HouseCount >= snapshot.OfficeCount,
             CityQuestId.AddOfficeCapacity => snapshot.OfficeCount > 0 && snapshot.HouseCount <= snapshot.OfficeCount * 6,

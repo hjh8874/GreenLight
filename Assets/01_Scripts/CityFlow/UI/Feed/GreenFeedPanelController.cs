@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -7,6 +8,11 @@ namespace CityFlow.UI.Feed
 {
     public sealed class GreenFeedPanelController : MonoBehaviour
     {
+        private const float TickerLeftAnchor = 0.565f;
+        private const float TickerRightAnchor = 0.85f;
+        private const float TickerOutlineWidth = 0.22f;
+        private const string TickerOutlineKeyword = "OUTLINE_ON";
+
         [Header("Panel")]
         [SerializeField] private RectTransform panelRect;
         [SerializeField] private CanvasGroup panelCanvasGroup;
@@ -43,7 +49,73 @@ namespace CityFlow.UI.Feed
 
         private void Awake()
         {
+            ConfigureTickerPresentation();
             SetOpenImmediate(false);
+        }
+
+        private void ConfigureTickerPresentation()
+        {
+            if (tickerView == null)
+            {
+                return;
+            }
+
+            RectTransform tickerRect =
+                tickerView.GetComponent<RectTransform>();
+            RectTransform topBar = transform.parent != null
+                ? transform.parent.Find("HUD_TopBar") as RectTransform
+                : null;
+            float topBarHeight = topBar != null && topBar.rect.height > 0f
+                ? topBar.rect.height
+                : 60f;
+            tickerRect.anchorMin = new Vector2(TickerLeftAnchor, 1f);
+            tickerRect.anchorMax = new Vector2(TickerRightAnchor, 1f);
+            tickerRect.pivot = new Vector2(0.5f, 1f);
+            tickerRect.anchoredPosition = Vector2.zero;
+            tickerRect.sizeDelta = new Vector2(0f, topBarHeight);
+
+            Image background = tickerView.GetComponent<Image>();
+            if (background != null)
+            {
+                Color color = background.color;
+                color.a = 0.52f;
+                background.color = color;
+            }
+
+            TMP_Text[] texts =
+                tickerView.GetComponentsInChildren<TMP_Text>(true);
+            for (int index = 0; index < texts.Length; index++)
+            {
+                texts[index].color = Color.white;
+                texts[index].fontWeight = FontWeight.SemiBold;
+                AddTickerTextOutline(texts[index]);
+            }
+        }
+
+        private static void AddTickerTextOutline(TMP_Text text)
+        {
+            if (text == null)
+            {
+                return;
+            }
+
+            if (text.font == null || text.fontSharedMaterial == null)
+            {
+                return;
+            }
+
+            Material outlineMaterial = text.fontMaterial;
+            if (outlineMaterial == null)
+            {
+                return;
+            }
+
+            Color outlineColor = Color.black;
+            outlineMaterial.EnableKeyword(TickerOutlineKeyword);
+            outlineMaterial.SetColor("_OutlineColor", outlineColor);
+            outlineMaterial.SetFloat("_OutlineWidth", TickerOutlineWidth);
+            text.UpdateMeshPadding();
+            text.SetMaterialDirty();
         }
 
         private void OnDisable()

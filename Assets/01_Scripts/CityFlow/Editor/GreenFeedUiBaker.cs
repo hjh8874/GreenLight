@@ -47,19 +47,15 @@ namespace CityFlow.EditorTools
         private static readonly Color TextMuted = new Color32(152, 164, 177, 255);
         private static readonly Color TextFaint = new Color32(106, 118, 132, 255);
 
-        // 같은 부모(FloatingWindowContentRoot)에 붙는 Dock_Right의 실측값이다.
-        // anchor·pivot (1,0) / anchoredPosition (-20,20) / sizeDelta (60,240)
-        // → 도크가 먹는 영역은 x -80~-20, y 20~260.
-        // 티커는 그 왼쪽에 나란히 앉힌다(겹치면 클릭이 서로 먹는다).
-        private const float DockLeftEdge = -80f;
-        private const float DockBottomEdge = 20f;
-        // 본문이 잘리지 않을 만큼 넓게. 520일 때 본문이 342px(≈28자)라
-        // 대부분의 템플릿 문장이 중간에서 끊겼다. 760이면 582px(≈48자)로
-        // 현재 가장 긴 문장(45자)까지 들어간다.
-        private static readonly Vector2 TickerSize = new Vector2(760f, 54f);
-        // 도크 왼쪽에 서므로 세로는 자유롭다 — 바닥에서 조금 띄워 올린다.
-        private static readonly Vector2 TickerPosition =
-            new Vector2(DockLeftEdge - 12f, DockBottomEdge + 58f);
+        // 상단 정보 바의 오른쪽 구간을 비율 앵커로 사용해 해상도가 달라도
+        // 플로팅·카메라 버튼 영역과 겹치지 않게 유지한다.
+        private static readonly Vector2 TickerAnchorMin =
+            new Vector2(0.565f, 1f);
+        private static readonly Vector2 TickerAnchorMax =
+            new Vector2(0.85f, 1f);
+        private static readonly Vector2 TickerSize = new Vector2(0f, 60f);
+        private static readonly Color TickerColor =
+            new Color32(23, 29, 38, 133);
 
         // 히스토리는 화면 중앙 팝업이다 — 자리를 옮기지 않으므로 열림/숨김
         // 좌표가 없다. 씬에서 잡아둔 위치가 곧 표시 위치다.
@@ -186,6 +182,7 @@ namespace CityFlow.EditorTools
                 content,
                 template,
                 ticker);
+            panel.gameObject.SetActive(false);
 
             // 통합 담당자가 밟는 절차는 이 메뉴 하나다. UI만 굽고 목록 설치가 빠지면
             // 신규 이벤트가 에러 없이 조용히 무동작이 되므로 여기서 함께 보장한다.
@@ -263,11 +260,12 @@ namespace CityFlow.EditorTools
             shadow.useGraphicAlpha = true;
 
             canvasGroup = panelObject.GetComponent<CanvasGroup>();
-            canvasGroup.alpha = 1f;
-            canvasGroup.interactable = true;
-            canvasGroup.blocksRaycasts = true;
+            canvasGroup.alpha = 0f;
+            canvasGroup.interactable = false;
+            canvasGroup.blocksRaycasts = false;
 
             CreateHeader(panel, controller);
+            panelObject.SetActive(false);
             return panel;
         }
 
@@ -656,15 +654,11 @@ namespace CityFlow.EditorTools
 
             GameObject tickerObject = ticker.gameObject;
             RectTransform tickerRect = tickerObject.GetComponent<RectTransform>();
-            tickerRect.anchorMin = new Vector2(1f, 0f);
-            tickerRect.anchorMax = new Vector2(1f, 0f);
-            tickerRect.pivot = new Vector2(1f, 0f);
-            tickerRect.anchoredPosition = TickerPosition;
-            tickerRect.sizeDelta = TickerSize;
+            ApplyTickerLayout(tickerRect);
 
             Image background = tickerObject.GetComponent<Image>();
             ApplySprite(background, TickerFramePath, Image.Type.Sliced, RowBorderScale);
-            background.color = PanelColor;
+            background.color = TickerColor;
             background.raycastTarget = true;
 
             // 티커는 본문이 전부다. 직업(122~174)을 빼고 시각 칸을 줄여
@@ -696,7 +690,56 @@ namespace CityFlow.EditorTools
                 controller,
                 GreenFeedHoverRelay.ClickAction.Toggle,
                 false);
+            TMP_Text[] tickerTexts =
+                tickerObject.GetComponentsInChildren<TMP_Text>(true);
+            for (int index = 0; index < tickerTexts.Length; index++)
+            {
+                ApplyTickerTextOutline(tickerTexts[index]);
+            }
             return ticker;
+        }
+
+        private static void ApplyTickerLayout(RectTransform tickerRect)
+        {
+            if (tickerRect == null)
+            {
+                return;
+            }
+
+            tickerRect.anchorMin = TickerAnchorMin;
+            tickerRect.anchorMax = TickerAnchorMax;
+            tickerRect.pivot = new Vector2(0.5f, 1f);
+            tickerRect.anchoredPosition = Vector2.zero;
+            tickerRect.sizeDelta = TickerSize;
+        }
+
+        private static void ApplyTickerTextOutline(TMP_Text text)
+        {
+            if (text == null)
+            {
+                return;
+            }
+
+            if (text.font == null || text.fontSharedMaterial == null)
+            {
+                return;
+            }
+
+            text.color = Color.white;
+            text.fontWeight = FontWeight.SemiBold;
+            text.outlineColor = Color.black;
+            text.outlineWidth = 0.22f;
+            Material outlineMaterial = text.fontMaterial;
+            if (outlineMaterial == null)
+            {
+                return;
+            }
+
+            outlineMaterial.EnableKeyword("OUTLINE_ON");
+            outlineMaterial.SetColor("_OutlineColor", Color.black);
+            outlineMaterial.SetFloat("_OutlineWidth", 0.22f);
+            text.UpdateMeshPadding();
+            text.SetMaterialDirty();
         }
 
         private static TMP_Text CreateText(
@@ -889,18 +932,16 @@ namespace CityFlow.EditorTools
         private readonly struct SavedLayout
         {
             private readonly RectSnapshot panel;
-            private readonly RectSnapshot ticker;
 
-            public SavedLayout(RectTransform panelRect, RectTransform tickerRect)
+            public SavedLayout(RectTransform panelRect)
             {
                 panel = new RectSnapshot(panelRect);
-                ticker = new RectSnapshot(tickerRect);
             }
 
             public void ApplyTo(RectTransform panelRect, RectTransform tickerRect)
             {
                 panel.ApplyTo(panelRect);
-                ticker.ApplyTo(tickerRect);
+                ApplyTickerLayout(tickerRect);
             }
         }
 
@@ -946,9 +987,7 @@ namespace CityFlow.EditorTools
             Transform panel = FindChild(existing, "GreenSNSPanel");
             if (panel == null) return false;
 
-            layout = new SavedLayout(
-                panel.GetComponent<RectTransform>(),
-                controller.TickerView.GetComponent<RectTransform>());
+            layout = new SavedLayout(panel.GetComponent<RectTransform>());
             return true;
         }
 

@@ -246,7 +246,35 @@ namespace CityFlow.Gameplay.Quests
                 Math.Max(totalArrivals, deliveredTotal),
                 pendingCoins,
                 hasHarvested,
-                jamTiles.Count);
+                jamTiles.Count,
+                HasConnectedCommute());
+        }
+
+        private bool HasConnectedCommute()
+        {
+            IReadOnlyCityStats stats = services?.Stats;
+            if (stats == null)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<Vector2Int, TileType> trackedTile in
+                     trackedQuestTiles)
+            {
+                if (trackedTile.Value != TileType.Office)
+                {
+                    continue;
+                }
+
+                IReadOnlyList<CommuterHomeCount> commuterHomes =
+                    stats.GetCompanyCommuterHomes(trackedTile.Key);
+                if (commuterHomes != null && commuterHomes.Count > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void RebuildGridState()

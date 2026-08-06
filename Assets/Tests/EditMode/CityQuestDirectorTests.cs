@@ -13,9 +13,19 @@ namespace CityFlow.Sim.Tests
             long arrivals = 0,
             long pending = 0,
             bool harvested = false,
-            int jams = 0)
+            int jams = 0,
+            bool connectedCommute = false)
         {
-            return new CityQuestSnapshot(roads, houses, offices, schools, arrivals, pending, harvested, jams);
+            return new CityQuestSnapshot(
+                roads,
+                houses,
+                offices,
+                schools,
+                arrivals,
+                pending,
+                harvested,
+                jams,
+                connectedCommute);
         }
 
         [Test]
@@ -44,7 +54,7 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
-        public void CommuteQuest_RequiresAnActualArrival()
+        public void CommuteQuest_RemainsUntilACommuteRouteIsConnected()
         {
             var director = new CityQuestDirector();
 
@@ -53,6 +63,28 @@ namespace CityFlow.Sim.Tests
                 0.5f);
 
             Assert.AreEqual(CityQuestId.ConnectCommute, director.ActiveQuest.Id);
+        }
+
+        [Test]
+        public void CommuteQuest_CompletesWhenRouteIsConnectedBeforeArrival()
+        {
+            var director = new CityQuestDirector();
+            director.RestoreTutorialStage(3);
+
+            director.Tick(
+                Snapshot(roads: 3, houses: 1, offices: 1),
+                0.5f);
+
+            Assert.AreEqual(CityQuestId.ConnectCommute, director.ActiveQuest.Id);
+            Assert.IsTrue(director.Tick(
+                Snapshot(
+                    roads: 3,
+                    houses: 1,
+                    offices: 1,
+                    connectedCommute: true),
+                0.5f));
+            Assert.IsNull(director.ActiveQuest);
+            Assert.AreEqual(4, director.TutorialStage);
         }
 
         [Test]
@@ -129,7 +161,15 @@ namespace CityFlow.Sim.Tests
         public void CongestionQuest_RequiresPersistentCondition()
         {
             var director = new CityQuestDirector();
-            CityQuestSnapshot tutorialDone = Snapshot(roads: 3, houses: 1, offices: 1, schools: 1, arrivals: 1, harvested: true, jams: 1);
+            CityQuestSnapshot tutorialDone = Snapshot(
+                roads: 3,
+                houses: 1,
+                offices: 1,
+                schools: 1,
+                arrivals: 1,
+                harvested: true,
+                jams: 1,
+                connectedCommute: true);
 
             Assert.IsFalse(director.Tick(tutorialDone, 9f));
             Assert.IsNull(director.ActiveQuest);
@@ -142,7 +182,14 @@ namespace CityFlow.Sim.Tests
         public void HigherPriorityNeed_WinsWhenSeveralAreEligible()
         {
             var director = new CityQuestDirector();
-            CityQuestSnapshot needs = Snapshot(roads: 3, houses: 7, offices: 1, arrivals: 1, harvested: true, jams: 1);
+            CityQuestSnapshot needs = Snapshot(
+                roads: 3,
+                houses: 7,
+                offices: 1,
+                arrivals: 1,
+                harvested: true,
+                jams: 1,
+                connectedCommute: true);
 
             director.Tick(needs, 10f);
 

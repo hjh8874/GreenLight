@@ -1,5 +1,6 @@
 ﻿using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -7,6 +8,8 @@ namespace CityFlow.UI
 {
     public class CongestionTogglePanelController : MonoBehaviour, ICityFlowServiceConsumer
     {
+        private const float OutlineWidth = 0.22f;
+
         [Header("UI References")]
         [SerializeField] private Toggle tglCongestionView;
 
@@ -32,9 +35,72 @@ namespace CityFlow.UI
             }
         }
 
+        private void Awake()
+        {
+            ConfigureTopBarPresentation();
+            BindToggle();
+        }
+
         private void Start()
         {
             BindToggle();
+        }
+
+        private void ConfigureTopBarPresentation()
+        {
+            if (transform.parent == null ||
+                transform.parent.name != "FloatingWindowContentRoot")
+            {
+                return;
+            }
+
+            RectTransform rect = transform as RectTransform;
+            RectTransform topBar =
+                transform.parent.Find("HUD_TopBar") as RectTransform;
+            float height = topBar != null && topBar.rect.height > 0f
+                ? topBar.rect.height
+                : 60f;
+            rect.anchorMin = new Vector2(0.36f, 1f);
+            rect.anchorMax = new Vector2(0.46f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(0f, height);
+
+            Image background = GetComponent<Image>();
+            if (background != null)
+            {
+                Color color = background.color;
+                color.a = 0.52f;
+                background.color = color;
+            }
+
+            TMP_Text[] labels = GetComponentsInChildren<TMP_Text>(true);
+            for (int index = 0; index < labels.Length; index++)
+            {
+                ApplyReadableText(labels[index]);
+            }
+        }
+
+        private static void ApplyReadableText(TMP_Text text)
+        {
+            text.color = Color.white;
+            text.fontWeight = FontWeight.SemiBold;
+            if (text.font == null || text.fontSharedMaterial == null)
+            {
+                return;
+            }
+
+            Material material = text.fontMaterial;
+            if (material == null)
+            {
+                return;
+            }
+
+            material.EnableKeyword("OUTLINE_ON");
+            material.SetColor("_OutlineColor", Color.black);
+            material.SetFloat("_OutlineWidth", OutlineWidth);
+            text.UpdateMeshPadding();
+            text.SetMaterialDirty();
         }
 
         private void BindToggle()

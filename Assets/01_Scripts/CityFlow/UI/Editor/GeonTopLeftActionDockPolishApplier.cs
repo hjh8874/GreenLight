@@ -1,4 +1,5 @@
 using TMPro;
+using CityFlow.UI.Controllers;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -37,6 +38,8 @@ namespace CityFlow.UI.Editor
             MoveToActionDock(cameraButton, actionDock);
             floatingButton.SetSiblingIndex(0);
             cameraButton.SetSiblingIndex(1);
+            LayerLabUiAssetCatalog.GetOrAddComponent<TopBarActionDockController>(
+                actionDock.gameObject);
 
             StyleActionButton(
                 floatingButton,
@@ -79,11 +82,11 @@ namespace CityFlow.UI.Editor
             }
 
             RectTransform rect = dockObject.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = new Vector2(12f, -72f);
-            rect.sizeDelta = new Vector2(204f, 64f);
+            rect.anchorMin = new Vector2(1f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(1f, 1f);
+            rect.anchoredPosition = new Vector2(-8f, 0f);
+            rect.sizeDelta = new Vector2(204f, 60f);
 
             Image background =
                 LayerLabUiAssetCatalog.GetOrAddComponent<Image>(dockObject);
@@ -91,13 +94,13 @@ namespace CityFlow.UI.Editor
                 background,
                 LayerLabUiAssetCatalog.LoadSprite(
                     "Frame/Frame_ListFrame01_White1.png"),
-                new Color(0.1f, 0.11f, 0.13f, 0.97f));
+                new Color(0.1f, 0.11f, 0.13f, 0.42f));
             background.raycastTarget = true;
 
             HorizontalLayoutGroup layout =
                 LayerLabUiAssetCatalog.GetOrAddComponent<HorizontalLayoutGroup>(
                     dockObject);
-            layout.padding = new RectOffset(8, 8, 10, 10);
+            layout.padding = new RectOffset(4, 4, 4, 4);
             layout.spacing = 8f;
             layout.childAlignment = TextAnchor.MiddleCenter;
             layout.childControlWidth = true;
@@ -198,6 +201,13 @@ namespace CityFlow.UI.Editor
                 button,
                 LayerLabUiAssetCatalog.LoadSprite(spritePath),
                 label);
+            Image image = button.targetGraphic as Image;
+            if (image != null)
+            {
+                Color color = image.color;
+                color.a = 0.62f;
+                image.color = color;
+            }
 
             LayoutElement layout =
                 LayerLabUiAssetCatalog.GetOrAddComponent<LayoutElement>(

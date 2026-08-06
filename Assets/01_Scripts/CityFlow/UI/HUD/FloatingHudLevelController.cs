@@ -22,6 +22,7 @@ namespace CityFlow.UI
         private bool _isFloating;
         private bool _isRevealed;
         private int _presetIndex;
+        private UIDockController.MenuType _activeMenu;
 
         public void Configure(
             CanvasGroup minimal,
@@ -161,10 +162,12 @@ namespace CityFlow.UI
 
         private void OnDockMenuChanged(UIDockController.MenuType menu)
         {
+            _activeMenu = menu;
             if (!_isFloating ||
                 _isRevealed ||
                 menu == UIDockController.MenuType.None)
             {
+                Apply();
                 return;
             }
 
@@ -175,13 +178,45 @@ namespace CityFlow.UI
         private void Apply()
         {
             SetCanvasGroup(minimalOverlay, true);
-            bool mVisible = !_isFloating || (_isRevealed && _presetIndex >= 1);
-            bool lVisible = !_isFloating || (_isRevealed && _presetIndex >= 2);
+            bool mVisible = ShouldShowMediumLevel(
+                _isFloating,
+                _isRevealed,
+                _presetIndex,
+                _activeMenu);
+            bool lVisible = ShouldShowLargeLevel(
+                _isFloating,
+                _isRevealed,
+                _presetIndex,
+                _activeMenu);
             ApplyObjects(mLevelObjects, mVisible);
             ApplyObjects(
                 lLevelObjects,
                 lVisible,
                 keepDockVisible: true);
+        }
+
+        public static bool ShouldShowMediumLevel(
+            bool isFloating,
+            bool isRevealed,
+            int presetIndex,
+            UIDockController.MenuType activeMenu)
+        {
+            return !isFloating ||
+                isRevealed &&
+                (presetIndex >= 1 ||
+                 activeMenu != UIDockController.MenuType.None);
+        }
+
+        public static bool ShouldShowLargeLevel(
+            bool isFloating,
+            bool isRevealed,
+            int presetIndex,
+            UIDockController.MenuType activeMenu)
+        {
+            return !isFloating ||
+                isRevealed &&
+                (presetIndex >= 2 ||
+                 activeMenu == UIDockController.MenuType.Build);
         }
 
         private static void ApplyObjects(

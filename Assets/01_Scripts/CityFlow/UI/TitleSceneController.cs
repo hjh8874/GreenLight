@@ -1,5 +1,7 @@
 using System.IO;
+using CityFlow.Contracts.Save;
 using CityFlow.Save;
+using CityFlow.View;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -25,6 +27,7 @@ namespace CityFlow.UI
         private System.Collections.IEnumerator Start()
         {
             Bootstrap.CityBootstrap.IsTitlePreviewMode = true;
+            previewNormalizedZoom01 = LoadPreviewZoom();
 
             // 백그라운드 씬(실제 게임) 로드 및 설정 (UI 숨김, 자동저장 방지)
             yield return StartCoroutine(LoadBackgroundSceneRoutine());
@@ -106,6 +109,7 @@ namespace CityFlow.UI
         private System.Collections.IEnumerator ForceQuarterViewRoutine(Scene loadedScene)
         {
             Camera mainCam = null;
+            MainCityView cityView = null;
             // 로드된 씬에서 카메라 찾기
             float timeout = 5f;
             while (mainCam == null && timeout > 0)
@@ -115,6 +119,7 @@ namespace CityFlow.UI
                     foreach (var root in loadedScene.GetRootGameObjects())
                     {
                         mainCam = root.GetComponentInChildren<Camera>(true);
+                        cityView ??= root.GetComponentInChildren<MainCityView>(true);
                         if (mainCam != null) break;
                     }
                 }
@@ -128,9 +133,14 @@ namespace CityFlow.UI
             // 카메라 각도 고정을 위한 컴포넌트 추가
             // 카메라 각도 고정을 위해 Update 루프에서 사용할 참조 저장
             forcedCamera = mainCam;
+            forcedCityView = cityView != null
+                ? cityView
+                : FindAnyObjectByType<MainCityView>(FindObjectsInactive.Include);
         }
 
         private Camera forcedCamera;
+        private MainCityView forcedCityView;
+        private float previewNormalizedZoom01;
 
         private void LateUpdate()
         {
@@ -138,7 +148,12 @@ namespace CityFlow.UI
 
             // [리뷰 반영] MainCityView의 위치/회전 제어와 경합하지 않도록 줌인(orthographicSize)만 덮어씁니다.
             forcedCamera.orthographic = true;
-            forcedCamera.orthographicSize = 6f; // 기존 12f에서 6f로 변경하여 50% 줌 인
+            if (forcedCityView != null)
+            {
+                forcedCamera.orthographicSize =
+                    forcedCityView.GetOrthographicSize(
+                        previewNormalizedZoom01);
+            }
         }
 
         // 새 게임 — 기존 저장과 백업을 제거해 게임 씬의 자동 불러오기 대상에서 제외한다.
@@ -251,6 +266,19 @@ namespace CityFlow.UI
         {
             return File.Exists(SaveFilePathProvider.GetDefaultSavePath())
                 || File.Exists(SaveFilePathProvider.GetDefaultBackupSavePath());
+        }
+
+        private static float LoadPreviewZoom()
+        {
+            var repository = new JsonSaveRepository();
+            if (!repository.TryLoad(out GameSaveData saveData) ||
+                saveData?.CameraView == null ||
+                !saveData.CameraView.HasZoom)
+            {
+                return 0f;
+            }
+
+            return Mathf.Clamp01(saveData.CameraView.NormalizedZoom01);
         }
     }
 }

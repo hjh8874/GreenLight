@@ -105,6 +105,33 @@ namespace CityFlow.UI
             SetButtonLabel(btnStats, "통계");
             SetButtonLabel(btnSettings, "설정");
             SetButtonLabel(btnFloatingMode, "플로팅");
+            MatchButtonStyle(btnSettings, btnResearch);
+        }
+
+        private static void MatchButtonStyle(Button target, Button source)
+        {
+            if (target == null || source == null)
+            {
+                return;
+            }
+
+            Image targetImage = target.targetGraphic as Image;
+            Image sourceImage = source.targetGraphic as Image;
+            if (targetImage != null && sourceImage != null)
+            {
+                targetImage.sprite = sourceImage.sprite;
+                targetImage.type = sourceImage.type;
+                targetImage.color = sourceImage.color;
+                targetImage.pixelsPerUnitMultiplier =
+                    sourceImage.pixelsPerUnitMultiplier;
+            }
+
+            target.colors = source.colors;
+            TMP_Text label = target.GetComponentInChildren<TMP_Text>(true);
+            if (label != null)
+            {
+                label.color = Color.white;
+            }
         }
 
         private static void SetButtonLabel(Button button, string text)
