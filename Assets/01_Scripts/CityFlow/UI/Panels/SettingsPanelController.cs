@@ -36,13 +36,13 @@ namespace CityFlow.UI
                               Slider sfxSlider = null, TMP_InputField sfxInput = null,
                               AudioMixer mixer = null)
         {
-            tglMuteAudio = muteAudio;
-            btnQuitGame = quitGame;
-            btnTitleScene = titleScene;
-            sldBgm = bgmSlider;
-            inputBgm = bgmInput;
-            sldSfx = sfxSlider;
-            inputSfx = sfxInput;
+            if (muteAudio != null) tglMuteAudio = muteAudio;
+            if (quitGame != null) btnQuitGame = quitGame;
+            if (titleScene != null) btnTitleScene = titleScene;
+            if (bgmSlider != null) sldBgm = bgmSlider;
+            if (bgmInput != null) inputBgm = bgmInput;
+            if (sfxSlider != null) sldSfx = sfxSlider;
+            if (sfxInput != null) inputSfx = sfxInput;
             if (mixer != null) audioMixer = mixer;
             
             BindButtons();
@@ -57,11 +57,7 @@ namespace CityFlow.UI
         {
             if (audioMixer == null)
             {
-                audioMixer = Resources.Load<AudioMixer>("Audio/MainMixer");
-                if (audioMixer == null)
-                {
-                    Debug.LogWarning("[SettingsPanelController] AudioMixer가 할당되지 않았으며 Resources에서도 찾을 수 없습니다. (베이킹 시 주입된 참조를 확인해주세요.)");
-                }
+                Debug.LogError("[SettingsPanelController] AudioMixer가 할당되지 않았습니다. 인스펙터 또는 베이커에서 명시적으로 주입해야 합니다.");
             }
             BindButtons();
         }
@@ -186,10 +182,20 @@ namespace CityFlow.UI
         private void OnTitleSceneClicked()
         {
             if (!Application.CanStreamedLevelBeLoaded(titleSceneName))
+            {
+                Debug.LogError($"[SettingsPanelController] '{titleSceneName}' 씬을 로드할 수 없습니다. Build Settings를 확인하세요.");
                 return;
+            }
 
-            if (_services != null && _services.Save != null && !_services.Save.Save())
+            if (_services == null)
+            {
+                Debug.LogWarning("[SettingsPanelController] CityFlowServices가 주입되지 않았습니다. 저장을 건너뛰고 씬을 이동합니다.");
+            }
+            else if (_services.Save != null && !_services.Save.Save())
+            {
+                Debug.LogError("[SettingsPanelController] 게임 저장에 실패하여 타이틀로 돌아갈 수 없습니다.");
                 return;
+            }
 
             UnityEngine.SceneManagement.SceneManager.LoadScene(titleSceneName);
         }

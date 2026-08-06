@@ -298,8 +298,9 @@ namespace CityFlow.UI.Editor
                 CityFlow.EditorTools.SaveSlotsPanelBaker.BakeIntoCanvas(canvas);
                 
                 CityFlow.EditorTools.WeeklySettlementPopupBaker.Bake();
-                CityFlow.UI.Editor.SignalControlBaker.BakePrefab();
-                CityFlow.UI.Editor.CongestionToggleBaker.Bake();
+                // [리뷰 반영] 아래 외부 베이커들은 메인 캔버스가 아닌 독립된 프리팹을 타겟으로 재생성하므로 메인 베이커 스코프에서 제거함
+                // CityFlow.UI.Editor.SignalControlBaker.BakePrefab();
+                // CityFlow.UI.Editor.CongestionToggleBaker.Bake();
 
                 // 수동 하베스트 UI는 최상단 HUD를 타겟하므로 여기서 호출
                 CityFlow.EditorTools.ManualCoinHarvestUiBaker.Bake();

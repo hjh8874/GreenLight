@@ -11,7 +11,6 @@ namespace CityFlow.EditorTools
     public static class SaveSlotsPanelBaker
     {
         private const string HanScenePath = "Assets/00_Scenes/CityFlowIntegrated_han.unity";
-        private const string SettingsPanelName = "Settings_Panel";
         private const string TargetCanvasName = "UI_MainCanvas";
         private const string ControllerRootName = "SaveSlotsUiRoot";
         private const string OpenButtonName = "OpenSaveSlotsButton";
@@ -21,11 +20,6 @@ namespace CityFlow.EditorTools
 
         [MenuItem("Tools/GreenLight/UI/Bake Save Slots Panel")]
         public static void Bake()
-        {
-            Bake(true);
-        }
-
-        public static void Bake(bool saveScene)
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
@@ -43,11 +37,6 @@ namespace CityFlow.EditorTools
             }
 
             BakeIntoScene(scene);
-
-            if (saveScene && scene.isDirty && EditorSceneManager.SaveScene(scene))
-            {
-                Debug.Log($"[SaveSlotsPanelBaker] Saved baked scene: {scene.path}");
-            }
         }
 
         [MenuItem("Tools/GreenLight/UI/Bake Save Slots Panel", true)]
@@ -675,14 +664,6 @@ namespace CityFlow.EditorTools
             serializedObject.FindProperty(propertyName).objectReferenceValue = value;
         }
 
-        private static void RemoveLegacyDeleteUi(Scene scene)
-        {
-            foreach (GameObject root in scene.GetRootGameObjects())
-            {
-                RemoveLegacyDeleteUi(root.transform);
-            }
-        }
-
         private static void RemoveLegacyDeleteUi(Transform root)
         {
             SaveDataSettingsController[] controllers = root.GetComponentsInChildren<SaveDataSettingsController>(true);
@@ -704,14 +685,6 @@ namespace CityFlow.EditorTools
             if (deleteButton != null)
             {
                 Undo.DestroyObjectImmediate(deleteButton.gameObject);
-            }
-        }
-
-        private static void RemoveExistingBakedUi(Scene scene)
-        {
-            foreach (GameObject root in scene.GetRootGameObjects())
-            {
-                RemoveExistingBakedUi(root.transform);
             }
         }
 
@@ -759,16 +732,6 @@ namespace CityFlow.EditorTools
             return fallback;
         }
 
-        private static Transform FindTransform(Scene scene, string objectName)
-        {
-            foreach (GameObject root in scene.GetRootGameObjects())
-            {
-                Transform found = FindTransform(root.transform, objectName);
-                if (found != null) return found;
-            }
-            return null;
-        }
-
         private static Transform FindTransform(Transform root, string objectName)
         {
             foreach (Transform transform in root.GetComponentsInChildren<Transform>(true))
@@ -781,27 +744,9 @@ namespace CityFlow.EditorTools
             return null;
         }
 
-        private static T FindComponent<T>(Scene scene) where T : Component
-        {
-            T[] components = FindComponents<T>(scene);
-            return components.Length > 0 ? components[0] : null;
-        }
-
         private static T FindComponent<T>(Transform root) where T : Component
         {
             return root.GetComponentInChildren<T>(true);
-        }
-
-        private static T[] FindComponents<T>(Scene scene) where T : Component
-        {
-            var results = new System.Collections.Generic.List<T>();
-
-            foreach (GameObject root in scene.GetRootGameObjects())
-            {
-                results.AddRange(root.GetComponentsInChildren<T>(true));
-            }
-
-            return results.ToArray();
         }
 
         // Unity setup: Open CityFlowIntegrated_han and run Tools > GreenLight > UI > Bake Save Slots Panel.

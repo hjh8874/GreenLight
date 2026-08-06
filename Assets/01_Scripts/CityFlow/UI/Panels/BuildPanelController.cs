@@ -88,7 +88,7 @@ namespace CityFlow.UI
             Button remove,
             Button school)
         {
-            placementController = placement;
+            if (placement != null) placementController = placement;
 
             // 테스트 씬용 임시 런타임 버튼 연결 (우리 1차 빌드 본 게임 UI와는 별개로 동작)
             if (road != null) road.onClick.AddListener(() => placementController.SetBuildType(TileType.Road));
