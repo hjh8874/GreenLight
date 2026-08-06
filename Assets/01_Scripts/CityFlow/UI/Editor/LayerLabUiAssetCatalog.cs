@@ -16,6 +16,8 @@ namespace CityFlow.UI.Editor
             "Assets/02_Prefabs/UI/UI_CameraRotationButton.prefab";
         internal const string CongestionTogglePrefabPath =
             "Assets/02_Prefabs/UI/UI_CongestionToggle.prefab";
+        internal const string AudioSettingsPrefabPath =
+            "Assets/02_Prefabs/UI/UI_AudioSettings.prefab";
         internal const string AudioMixerPath =
             "Assets/04_Audio/Mixers/CityAudioMixer.mixer";
 

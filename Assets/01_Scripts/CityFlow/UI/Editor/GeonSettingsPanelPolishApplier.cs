@@ -1,7 +1,6 @@
 using TMPro;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.Audio;
 using UnityEngine.UI;
 
 namespace CityFlow.UI.Editor
@@ -30,37 +29,28 @@ namespace CityFlow.UI.Editor
                 return;
             }
 
+            GameObject audioSettingsPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    LayerLabUiAssetCatalog.AudioSettingsPrefabPath);
+            if (audioSettingsPrefab == null)
+            {
+                Debug.LogError(
+                    "[GeonSettingsPanelPolishApplier] Audio settings prefab " +
+                    "is missing. Run its baker first.");
+                return;
+            }
+
             Undo.RegisterFullObjectHierarchyUndo(
                 panel.gameObject,
                 "Apply Geon Settings Panel Polish");
 
             StylePanel(panel);
             EnsureTitle(panel);
-            Toggle muteToggle = StyleMuteToggle(panel);
-            Button quitButton = StyleQuitButton(panel);
+            RemoveLegacyAudioControls(panel);
+            EnsureAudioSettings(panel, audioSettingsPrefab);
             EnsureCongestionToggle(panel);
-            CreateOrUpdateVolumeRow(
-                panel,
-                "BGM_Group",
-                "BGM",
-                -126f,
-                out Slider bgmSlider,
-                out TMP_InputField bgmInput);
-            CreateOrUpdateVolumeRow(
-                panel,
-                "SFX_Group",
-                "SFX",
-                -169f,
-                out Slider sfxSlider,
-                out TMP_InputField sfxInput);
-            BindController(
-                controller,
-                muteToggle,
-                quitButton,
-                bgmSlider,
-                bgmInput,
-                sfxSlider,
-                sfxInput);
+            Button quitButton = StyleQuitButton(panel);
+            BindController(controller, quitButton);
 
             LayerLabUiAssetCatalog.CompleteSceneChange(
                 panel.gameObject,
@@ -88,8 +78,8 @@ namespace CityFlow.UI.Editor
         private static void EnsureTitle(Transform panel)
         {
             TMP_Text title = EnsureText(panel, "Title", "설정");
-            RectTransform rect = title.rectTransform;
-            SetTopRect(rect, new Vector2(0f, -19f), new Vector2(330f, 30f));
+            SetTopRect(title.rectTransform, new Vector2(0f, -19f),
+                new Vector2(330f, 30f));
             title.alignment = TextAlignmentOptions.Center;
             LayerLabUiAssetCatalog.StyleText(
                 title,
@@ -98,46 +88,60 @@ namespace CityFlow.UI.Editor
                 FontStyles.Bold);
         }
 
-        private static Toggle StyleMuteToggle(Transform panel)
+        private static void RemoveLegacyAudioControls(Transform panel)
         {
-            Transform target = panel.Find("Sound");
-            Toggle toggle = target != null ? target.GetComponent<Toggle>() : null;
-            if (toggle == null)
-            {
-                Debug.LogError(
-                    "[GeonSettingsPanelPolishApplier] Legacy Sound toggle is missing.");
-                return null;
-            }
-
-            SetTopRect(
-                toggle.transform as RectTransform,
-                new Vector2(0f, -52f),
-                new Vector2(320f, 30f));
-            LayerLabUiAssetCatalog.StyleToggle(toggle, "전체 음소거");
-            return toggle;
+            RemoveChild(panel, "Sound");
+            RemoveChild(panel, "BGM_Group");
+            RemoveChild(panel, "SFX_Group");
         }
 
-        private static Button StyleQuitButton(Transform panel)
+        private static void RemoveChild(Transform parent, string name)
         {
-            Transform target = panel.Find("EndButton");
-            Button button = target != null ? target.GetComponent<Button>() : null;
-            if (button == null)
+            Transform child = parent.Find(name);
+            if (child != null)
             {
-                Debug.LogError(
-                    "[GeonSettingsPanelPolishApplier] Legacy EndButton is missing.");
-                return null;
+                Undo.DestroyObjectImmediate(child.gameObject);
+            }
+        }
+
+        private static void EnsureAudioSettings(
+            Transform panel,
+            GameObject prefab)
+        {
+            Transform existing = panel.Find("UI_AudioSettings");
+            GameObject instance = existing != null
+                ? existing.gameObject
+                : null;
+            if (instance != null &&
+                PrefabUtility.GetCorrespondingObjectFromSource(instance) !=
+                prefab)
+            {
+                Undo.DestroyObjectImmediate(instance);
+                instance = null;
+            }
+
+            if (instance == null)
+            {
+                instance = PrefabUtility.InstantiatePrefab(
+                    prefab,
+                    panel) as GameObject;
+                if (instance == null)
+                {
+                    Debug.LogError(
+                        "[GeonSettingsPanelPolishApplier] Failed to " +
+                        "instantiate UI_AudioSettings.");
+                    return;
+                }
+
+                Undo.RegisterCreatedObjectUndo(
+                    instance,
+                    "Create Audio Settings Panel");
             }
 
             SetTopRect(
-                button.transform as RectTransform,
-                new Vector2(0f, -218f),
-                new Vector2(180f, 30f));
-            LayerLabUiAssetCatalog.StyleButton(
-                button,
-                LayerLabUiAssetCatalog.LoadSprite(
-                    "Button/Btn_Rectangle02_Dark.png"),
-                "게임 종료");
-            return button;
+                instance.transform as RectTransform,
+                new Vector2(0f, -39f),
+                new Vector2(330f, 126f));
         }
 
         private static void EnsureCongestionToggle(Transform panel)
@@ -154,7 +158,7 @@ namespace CityFlow.UI.Editor
             instance.name = "CongestionViewToggle";
             SetTopRect(
                 instance.transform as RectTransform,
-                new Vector2(0f, -86f),
+                new Vector2(0f, -181f),
                 new Vector2(320f, 34f));
             LayerLabUiAssetCatalog.StyleToggle(
                 instance.GetComponent<Toggle>(),
@@ -186,205 +190,47 @@ namespace CityFlow.UI.Editor
             return instance;
         }
 
-        private static void CreateOrUpdateVolumeRow(
-            Transform panel,
-            string rowName,
-            string labelText,
-            float topPosition,
-            out Slider slider,
-            out TMP_InputField input)
+        private static Button StyleQuitButton(Transform panel)
         {
-            RectTransform row = EnsureRectTransform(panel, rowName);
+            Transform target = panel.Find("EndButton");
+            Button button = target != null ? target.GetComponent<Button>() : null;
+            if (button == null)
+            {
+                Debug.LogError(
+                    "[GeonSettingsPanelPolishApplier] Legacy EndButton is missing.");
+                return null;
+            }
+
             SetTopRect(
-                row,
-                new Vector2(0f, topPosition),
-                new Vector2(330f, 38f));
-
-            TMP_Text label = EnsureText(row, "Label", labelText);
-            SetFixedRect(
-                label.rectTransform,
-                new Vector2(0f, 0.5f),
-                new Vector2(26f, 0f),
-                new Vector2(52f, 30f));
-            label.alignment = TextAlignmentOptions.MidlineLeft;
-            LayerLabUiAssetCatalog.StyleText(
-                label,
-                15f,
-                Color.white,
-                FontStyles.Bold);
-
-            slider = EnsureSlider(row);
-            SetFixedRect(
-                slider.transform as RectTransform,
-                new Vector2(0.5f, 0.5f),
-                new Vector2(-3f, 0f),
-                new Vector2(208f, 26f));
-
-            input = EnsureInput(row);
-            SetFixedRect(
-                input.transform as RectTransform,
-                new Vector2(1f, 0.5f),
-                new Vector2(-28f, 0f),
-                new Vector2(56f, 30f));
-            if (string.IsNullOrEmpty(input.text))
-            {
-                input.SetTextWithoutNotify(
-                    Mathf.RoundToInt(slider.value * 100f).ToString());
-            }
-        }
-
-        private static Slider EnsureSlider(Transform parent)
-        {
-            Transform existing = parent.Find("Slider");
-            GameObject root = existing != null
-                ? existing.gameObject
-                : CreateRectObject(parent, "Slider");
-            Slider slider = LayerLabUiAssetCatalog.GetOrAddComponent<Slider>(root);
-
-            RectTransform background = EnsureRectTransform(root.transform, "Background");
-            StretchRect(background, 0f, 7f);
-            Image backgroundImage =
-                LayerLabUiAssetCatalog.GetOrAddComponent<Image>(background.gameObject);
-            LayerLabUiAssetCatalog.ApplyImage(
-                backgroundImage,
+                button.transform as RectTransform,
+                new Vector2(0f, -224f),
+                new Vector2(180f, 30f));
+            LayerLabUiAssetCatalog.StyleButton(
+                button,
                 LayerLabUiAssetCatalog.LoadSprite(
-                    "Slider/Slider02_FrontFrame.png"),
-                Color.white);
-            backgroundImage.raycastTarget = false;
-
-            RectTransform fillArea = EnsureRectTransform(root.transform, "Fill Area");
-            StretchRect(fillArea, 8f, 7f);
-            RectTransform fill = EnsureRectTransform(fillArea, "Fill");
-            StretchRect(fill, 0f, 0f);
-            Image fillImage =
-                LayerLabUiAssetCatalog.GetOrAddComponent<Image>(fill.gameObject);
-            LayerLabUiAssetCatalog.ApplyImage(
-                fillImage,
-                LayerLabUiAssetCatalog.LoadSprite("Slider/Slider02_Fill.png"),
-                Color.white);
-            fillImage.raycastTarget = false;
-
-            RectTransform handleArea = EnsureRectTransform(
-                root.transform,
-                "Handle Slide Area");
-            StretchRect(handleArea, 9f, 0f);
-            RectTransform handle = EnsureRectTransform(handleArea, "Handle");
-            SetFixedRect(
-                handle,
-                new Vector2(0.5f, 0.5f),
-                Vector2.zero,
-                new Vector2(24f, 24f));
-            Image handleImage =
-                LayerLabUiAssetCatalog.GetOrAddComponent<Image>(handle.gameObject);
-            LayerLabUiAssetCatalog.ApplyImage(
-                handleImage,
-                LayerLabUiAssetCatalog.LoadSprite("Slider/Slider03_Handle.png"),
-                Color.white,
-                false);
-            handleImage.preserveAspect = true;
-
-            slider.fillRect = fill;
-            slider.handleRect = handle;
-            slider.targetGraphic = handleImage;
-            slider.direction = Slider.Direction.LeftToRight;
-            slider.minValue = 0f;
-            slider.maxValue = 1f;
-            slider.wholeNumbers = false;
-            if (Mathf.Approximately(slider.value, 0f))
-            {
-                slider.value = 0.5f;
-            }
-
-            return slider;
-        }
-
-        private static TMP_InputField EnsureInput(Transform parent)
-        {
-            Transform existing = parent.Find("Input");
-            GameObject root = existing != null
-                ? existing.gameObject
-                : CreateRectObject(parent, "Input");
-            Image background =
-                LayerLabUiAssetCatalog.GetOrAddComponent<Image>(root);
-            LayerLabUiAssetCatalog.ApplyImage(
-                background,
-                LayerLabUiAssetCatalog.LoadSprite(
-                    "UI_Etc/Inputfield_Frame_Normal.png"),
-                Color.white);
-
-            TMP_InputField input =
-                LayerLabUiAssetCatalog.GetOrAddComponent<TMP_InputField>(root);
-            RectTransform viewport = EnsureRectTransform(root.transform, "Text Area");
-            viewport.anchorMin = Vector2.zero;
-            viewport.anchorMax = Vector2.one;
-            viewport.offsetMin = new Vector2(6f, 2f);
-            viewport.offsetMax = new Vector2(-6f, -2f);
-            LayerLabUiAssetCatalog.GetOrAddComponent<RectMask2D>(viewport.gameObject);
-
-            TMP_Text placeholder = EnsureText(viewport, "Placeholder", "50");
-            StretchRect(placeholder.rectTransform, 0f, 0f);
-            placeholder.alignment = TextAlignmentOptions.Center;
-            LayerLabUiAssetCatalog.StyleText(
-                placeholder,
-                14f,
-                new Color(0.55f, 0.6f, 0.66f, 1f));
-
-            TMP_Text text = EnsureText(viewport, "Text", string.Empty);
-            StretchRect(text.rectTransform, 0f, 0f);
-            text.alignment = TextAlignmentOptions.Center;
-            text.textWrappingMode = TextWrappingModes.NoWrap;
-            LayerLabUiAssetCatalog.StyleText(text, 14f, Color.white);
-
-            input.textViewport = viewport;
-            input.textComponent = text as TextMeshProUGUI;
-            input.placeholder = placeholder as TextMeshProUGUI;
-            input.contentType = TMP_InputField.ContentType.IntegerNumber;
-            input.lineType = TMP_InputField.LineType.SingleLine;
-            input.characterLimit = 3;
-            input.targetGraphic = background;
-            return input;
+                    "Button/Btn_Rectangle02_Dark.png"),
+                "게임 종료");
+            return button;
         }
 
         private static void BindController(
             SettingsPanelController controller,
-            Toggle muteToggle,
-            Button quitButton,
-            Slider bgmSlider,
-            TMP_InputField bgmInput,
-            Slider sfxSlider,
-            TMP_InputField sfxInput)
+            Button quitButton)
         {
             Undo.RecordObject(controller, "Bind Settings Panel Controls");
             SerializedObject serialized = new SerializedObject(controller);
-            SetObjectReference(serialized, "tglMuteAudio", muteToggle);
-            SetObjectReference(serialized, "btnQuitGame", quitButton);
-            SetObjectReference(serialized, "sldBgm", bgmSlider);
-            SetObjectReference(serialized, "inputBgm", bgmInput);
-            SetObjectReference(serialized, "sldSfx", sfxSlider);
-            SetObjectReference(serialized, "inputSfx", sfxInput);
-            SetObjectReference(
-                serialized,
-                "audioMixer",
-                AssetDatabase.LoadAssetAtPath<AudioMixer>(
-                    LayerLabUiAssetCatalog.AudioMixerPath));
-            serialized.ApplyModifiedProperties();
-        }
-
-        private static void SetObjectReference(
-            SerializedObject serialized,
-            string propertyName,
-            Object value)
-        {
-            SerializedProperty property = serialized.FindProperty(propertyName);
+            SerializedProperty property =
+                serialized.FindProperty("btnQuitGame");
             if (property == null)
             {
                 Debug.LogError(
-                    $"[GeonSettingsPanelPolishApplier] Missing property: " +
-                    propertyName);
+                    "[GeonSettingsPanelPolishApplier] Missing property: " +
+                    "btnQuitGame");
                 return;
             }
 
-            property.objectReferenceValue = value;
+            property.objectReferenceValue = quitButton;
+            serialized.ApplyModifiedProperties();
         }
 
         private static TMP_Text EnsureText(
@@ -406,16 +252,6 @@ namespace CityFlow.UI.Editor
             return text;
         }
 
-        private static RectTransform EnsureRectTransform(
-            Transform parent,
-            string name)
-        {
-            Transform existing = parent.Find(name);
-            return existing != null
-                ? existing as RectTransform
-                : CreateRectObject(parent, name).GetComponent<RectTransform>();
-        }
-
         private static GameObject CreateRectObject(Transform parent, string name)
         {
             GameObject target = new GameObject(name, typeof(RectTransform));
@@ -434,30 +270,6 @@ namespace CityFlow.UI.Editor
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = position;
             rect.sizeDelta = size;
-        }
-
-        private static void SetFixedRect(
-            RectTransform rect,
-            Vector2 anchor,
-            Vector2 position,
-            Vector2 size)
-        {
-            rect.anchorMin = anchor;
-            rect.anchorMax = anchor;
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = position;
-            rect.sizeDelta = size;
-        }
-
-        private static void StretchRect(
-            RectTransform rect,
-            float horizontalInset,
-            float verticalInset)
-        {
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(horizontalInset, verticalInset);
-            rect.offsetMax = new Vector2(-horizontalInset, -verticalInset);
         }
     }
 }
