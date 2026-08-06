@@ -13,14 +13,21 @@ MonoBehaviour:
   m_Name: BgmPlaylist
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Audio.BgmPlaylistSO
   tracks:
+  - {fileID: 8300000, guid: 62b68814b57038b458616ca66b4681c8, type: 3}
   - {fileID: 8300000, guid: be38a87c1a284834ba7bbccb40b094a5, type: 3}
   - {fileID: 8300000, guid: 301be5893e6c8054d95f38fd9b72f1dc, type: 3}
   - {fileID: 8300000, guid: 4ec29af9584c1d54caae212d152773d8, type: 3}
   - {fileID: 8300000, guid: 39b9684141501de469be9855a8e45a4d, type: 3}
+  - {fileID: 8300000, guid: f1f00f96822f1ea4094897aee8926d2d, type: 3}
+  - {fileID: 8300000, guid: 9fa1e933562af7c43bcd0110d8d26763, type: 3}
+  - {fileID: 8300000, guid: 6c9ea66fa80a12149bcf32c8705b959b, type: 3}
   - {fileID: 8300000, guid: d9dc9571cd2430e4eb876f8af45bf460, type: 3}
   - {fileID: 8300000, guid: e88d9c024bb52864f9b5d394486dc79e, type: 3}
+  - {fileID: 8300000, guid: 43527a009d1254c46b009d0f81adb1b7, type: 3}
   - {fileID: 8300000, guid: 7bcdcfd98e1de6f4f9fe74edb0b3db35, type: 3}
   - {fileID: 8300000, guid: 4975cd3d1ceeedc43bfaffdc226468dc, type: 3}
+  - {fileID: 8300000, guid: 1e44411c480f48b42b6262ec8080a969, type: 3}
+  - {fileID: 8300000, guid: dab78cfa929bf0c4ab1a4f9203a0e8ae, type: 3}
   - {fileID: 8300000, guid: 764ee659609b7fd408b810a3c0aa224f, type: 3}
   shuffle: 1
   crossfadeSeconds: 2
