@@ -296,7 +296,7 @@ namespace CityFlow.Tests.ViewEditMode
             Assert.That(image, Is.Not.Null);
             Assert.That(image.raycastTarget, Is.False);
             Assert.That(image.color.a,
-                Is.EqualTo(0.96f).Within(0.001f));
+                Is.EqualTo(0.88f).Within(0.001f));
         }
     }
 }

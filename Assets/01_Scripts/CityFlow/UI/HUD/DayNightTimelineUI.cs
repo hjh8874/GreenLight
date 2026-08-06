@@ -39,7 +39,7 @@ namespace CityFlow.UI
         private static readonly Color MoonColor =
             new Color(0.82f, 0.9f, 1f, 1f);
         private static readonly Color DefaultShieldColor =
-            new Color(0.08f, 0.16f, 0.22f, 0.96f);
+            new Color(0.08f, 0.16f, 0.22f, 0.88f);
 
         private CityFlowServices services;
         private IGameCalendarService calendar;
@@ -431,7 +431,7 @@ namespace CityFlow.UI
             if (topBarImage != null)
             {
                 shieldColor = topBarImage.color;
-                shieldColor.a = 0.96f;
+                shieldColor.a = 0.88f;
             }
 
             UpdateReadabilityShield(
