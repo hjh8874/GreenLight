@@ -3,6 +3,7 @@ using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.Sim;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace CityFlow.DebugTools
 {
@@ -19,6 +20,17 @@ namespace CityFlow.DebugTools
         private SimEngine _engine;
         private IIntersectionFacilityService _facility;
         private ITrafficRuleService _rule;
+        private bool _visible = true;
+
+        // F3 는 CompanyStaffingDebugOverlay, F4 는 TrafficShowcaseBuilder 가 쓴다.
+        private void Update()
+        {
+            Keyboard kb = Keyboard.current;
+            if (kb != null && kb.f2Key.wasPressedThisFrame)
+            {
+                _visible = !_visible;
+            }
+        }
 
         public void Initialize(CityFlowServices services)
         {
@@ -60,7 +72,7 @@ namespace CityFlow.DebugTools
 
         private void OnGUI()
         {
-            if (_services == null) return;
+            if (_services == null || !_visible) return;
 
             const float w = 300f;
             float x = Screen.width - w - 12f;
@@ -79,7 +91,7 @@ namespace CityFlow.DebugTools
             GUI.Label(new Rect(x, 34, w, 26), $"📅 {calText}", label);
             GUI.Label(new Rect(x, 58, w, 26), $"🚗 차량 {vehicles}   처리량 {delivered:F2}/s", label);
             GUI.Label(new Rect(x, 82, w, 26), $"🚦 신호 {signals}개", label);
-            GUI.Label(new Rect(x, 106, w, 26), $"⏱ 배속 x{Time.timeScale:0.##}", label);
+            GUI.Label(new Rect(x, 106, w, 26), $"⏱ 배속 x{Time.timeScale:0.##}   ·   F2 토글", label);
 
             // ── 버튼 ──
             if (GUI.Button(new Rect(x, 136, w, 30), $"골드 +{goldPerClick:N0}", btn)) AddGold();
