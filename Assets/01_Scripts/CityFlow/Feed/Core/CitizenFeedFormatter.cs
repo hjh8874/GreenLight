@@ -25,13 +25,15 @@ namespace CityFlow.Feed
                 match => ResolveToken(match.Groups["token"].Value, contextCopy, match.Value));
         }
 
-        public static string FormatTimestamp(
-            int year,
-            int month,
-            int day,
-            int hour)
+        /// <summary>
+        /// SNS 글의 시각. 연·월·일은 넣지 않는다 —
+        /// 한 줄 UI에 "Y1 M01 D03 17:00"은 들어가지 않아 잘리고, 날짜는 상단 HUD가
+        /// 이미 보여준다. 글에 필요한 건 "몇 시에 한 말인가"뿐이다.
+        /// 하루가 3분이라 시(hour)만 쓰면 여러 글이 같은 값으로 찍히므로 분까지 쓴다.
+        /// </summary>
+        public static string FormatTimestamp(int hour, int minute)
         {
-            return $"Y{year} M{month:00} D{day:00} {hour:00}:00";
+            return $"{hour:00}:{minute:00}";
         }
 
         public static CitizenFeedTimePeriod GetTimePeriod(int hour)
@@ -100,6 +102,10 @@ namespace CityFlow.Feed
             {
                 case "Location":
                     return $"{context.Tile.x + 1}-{context.Tile.y + 1} 교차로";
+                // 교차로가 아닌 자리를 가리킬 때 쓴다. 건물이 선 타일이나 구급 현장에
+                // {Location}을 쓰면 "3-5 교차로에 건물이 들어섰다"가 된다.
+                case "Spot":
+                    return $"{context.Tile.x + 1}-{context.Tile.y + 1} 일대";
                 case "DensityPercent":
                     return $"{context.Density01 * 100f:0}%";
                 case "Hour":

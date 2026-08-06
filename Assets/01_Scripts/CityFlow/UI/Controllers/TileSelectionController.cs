@@ -301,7 +301,12 @@ namespace CityFlow.UI
                 : GridUtil.IsInside(tile);
         }
 
-        private void SelectTile(Vector2Int coord)
+        /// <summary>
+        /// 외부에서 특정 타일을 선택시킨다(아이들북 피드의 글 클릭 등).
+        /// 하이라이트 표시와 분석 카드 열기가 함께 일어난다 —
+        /// 클릭 경로를 새로 만들지 않고 이 경로를 그대로 재사용한다.
+        /// </summary>
+        public void SelectTile(Vector2Int coord)
         {
             TileType selectedType = _services != null && _services.TileData != null
                 ? _services.TileData.GetTileType(coord)

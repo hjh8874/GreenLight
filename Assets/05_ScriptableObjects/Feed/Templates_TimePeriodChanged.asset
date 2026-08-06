@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_TimePeriodChanged
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 16
+  templates:
+  - templateId: TimePeriod_Office_Morning
+    text: "\uCD9C\uADFC\uAE38 \uC2DC\uC791\uC785\uB2C8\uB2E4. \uC624\uB298\uC740
+      \uBB34\uC0AC\uD788 \uAC08 \uC218 \uC788\uC744\uAE4C\uC694."
+    tone: 2
+    category: 3
+    weight: 1.2
+    allowedRoles: 00000000
+    allowedPersonalities: 
+    allowedTimePeriods: 01000000
+    followUpOnly: 0
+  - templateId: TimePeriod_Student_Morning
+    text: "\uC544\uCE68 \uB4F1\uAD63\uAE38. \uC624\uB298\uC740 \uC880 \uB35C \uBD90\uBCD0\uC73C\uBA74."
+    tone: 2
+    category: 3
+    weight: 1
+    allowedRoles: 06000000
+    allowedPersonalities: 
+    allowedTimePeriods: 01000000
+    followUpOnly: 0
+  - templateId: TimePeriod_Driver_Evening
+    text: "\uD1F4\uADFC \uC2DC\uAC04\uC785\uB2C8\uB2E4. \uB2E4\uB4E4 \uBB34\uC0AC\uD788
+      \uB4E4\uC5B4\uAC00\uC138\uC694."
+    tone: 2
+    category: 3
+    weight: 1.1
+    allowedRoles: 0b000000
+    allowedPersonalities: 
+    allowedTimePeriods: 03000000
+    followUpOnly: 0
+  - templateId: TimePeriod_Merchant_Evening
+    text: "\uD1F4\uADFC\uAE38 \uC190\uB2D8\uC774 \uB4E4\uC5B4\uC62C \uC2DC\uAC04\uC774\uB124\uC694.
+      \uC2AC\uC2AC \uC900\uBE44\uD569\uB2C8\uB2E4."
+    tone: 2
+    category: 4
+    weight: 1
+    allowedRoles: 03000000
+    allowedPersonalities: 
+    allowedTimePeriods: 03000000
+    followUpOnly: 0

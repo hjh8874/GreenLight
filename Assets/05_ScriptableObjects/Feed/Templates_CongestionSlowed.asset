@@ -23,6 +23,7 @@ MonoBehaviour:
     allowedRoles: 00000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Slow_Taxi_01
     text: "{Location} \uCC28\uB7C9 \uBC00\uB3C4 {DensityPercent}. \uC544\uC9C1 \uB9C9\uD788\uC9C4
       \uC54A\uC558\uC9C0\uB9CC \uC6B0\uD68C \uC900\uBE44\uAC00 \uD544\uC694\uD569\uB2C8\uB2E4."
@@ -32,6 +33,7 @@ MonoBehaviour:
     allowedRoles: 0200000005000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Slow_Resident_01
     text: "\uB3D9\uB124 \uB3C4\uB85C\uC5D0 \uCC28\uAC00 \uD558\uB098\uB458 \uB298\uC5B4\uB098\uB124\uC694.
       \uACE7 \uBD90\uBE4C \uC2DC\uAC04\uC778\uAC00 \uBD05\uB2C8\uB2E4."
@@ -41,6 +43,7 @@ MonoBehaviour:
     allowedRoles: 0a00000001000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0
   - templateId: Slow_Analyst_01
     text: "{Location}\uAC00 \uC6D0\uD65C \uB2E8\uACC4\uC5D0\uC11C \uC11C\uD589 \uB2E8\uACC4\uB85C
       \uBC14\uB00C\uC5C8\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uC720\uC785\uB7C9\uC744
@@ -51,3 +54,4 @@ MonoBehaviour:
     allowedRoles: 04000000
     allowedPersonalities: 
     allowedTimePeriods: 
+    followUpOnly: 0

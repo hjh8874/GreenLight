@@ -1,0 +1,56 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_EmergencyResolved
+  m_EditorClassIdentifier: CityFlow.Feed::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 15
+  templates:
+  - templateId: FollowUp_Emergency_01
+    text: "\uC544\uAE4C {Spot} \uC0AC\uC774\uB80C, \uC798 \uB9C8\uBB34\uB9AC\uB410\uB2E4\uACE0
+      \uD558\uB124\uC694. \uB2E4\uD589\uC785\uB2C8\uB2E4."
+    tone: 1
+    category: 1
+    weight: 4
+    allowedRoles: 
+    allowedPersonalities: 
+    allowedTimePeriods: 
+    followUpOnly: 1
+  - templateId: FollowUp_Emergency_02
+    text: "{Spot} \uC0C1\uD669 \uAD81\uAE08\uD574\uD588\uC5C8\uB294\uB370 \uBB34\uC0AC\uD788
+      \uB05D\uB0AC\uB2F5\uB2C8\uB2E4. \uD55C\uC228 \uB193\uC558\uC5B4\uC694."
+    tone: 1
+    category: 1
+    weight: 4
+    allowedRoles: 
+    allowedPersonalities: 
+    allowedTimePeriods: 
+    followUpOnly: 1
+  - templateId: EmergencyResolved_Resident_01
+    text: "{Spot} \uC0C1\uD669\uC740 \uC815\uB9AC\uB41C \uAC83 \uAC19\uC2B5\uB2C8\uB2E4.
+      \uC0AC\uC774\uB80C \uC18C\uB9AC\uAC00 \uBA4E\uC5C8\uC5B4\uC694."
+    tone: 1
+    category: 1
+    weight: 1
+    allowedRoles: 0a000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+    followUpOnly: 0
+  - templateId: EmergencyResolved_Taxi_01
+    text: "{Spot} \uD1B5\uC81C \uD480\uB838\uC2B5\uB2C8\uB2E4. \uC815\uC0C1 \uD1B5\uD589
+      \uAC00\uB2A5\uD569\uB2C8\uB2E4."
+    tone: 3
+    category: 1
+    weight: 1.2
+    allowedRoles: 02000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+    followUpOnly: 0

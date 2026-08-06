@@ -87,6 +87,37 @@ namespace CityFlow.Feed
         }
 
 #if UNITY_EDITOR
+        /// <summary>
+        /// 이미 만들어진 프로필에 신규 이벤트 지원을 더한다. 기존 항목은 건드리지 않는다.
+        /// 제너레이터의 LoadOrCreate는 에셋이 있으면 Configure를 다시 부르지 않으므로,
+        /// 이벤트가 추가돼도 옛 에셋의 preferredEvents는 그대로 남는다. 그러면
+        /// Supports()가 false를 돌려 신규 이벤트 글이 한 건도 생성되지 않는다.
+        /// </summary>
+        /// <returns>실제로 추가된 항목이 있으면 true.</returns>
+        public bool AddSupportedEvents(CitizenFeedEventType[] additionalEvents)
+        {
+            // 비어 있으면 Supports()가 이미 전부 허용이다. 채우면 오히려 좁아진다.
+            if (additionalEvents == null ||
+                preferredEvents == null ||
+                preferredEvents.Length == 0)
+            {
+                return false;
+            }
+
+            var merged = new List<CitizenFeedEventType>(preferredEvents);
+            bool changed = false;
+            foreach (CitizenFeedEventType candidate in additionalEvents)
+            {
+                if (merged.Contains(candidate)) continue;
+                merged.Add(candidate);
+                changed = true;
+            }
+
+            if (!changed) return false;
+            preferredEvents = merged.ToArray();
+            return true;
+        }
+
         public void Configure(
             string targetDisplayName,
             string targetAvatarInitial,

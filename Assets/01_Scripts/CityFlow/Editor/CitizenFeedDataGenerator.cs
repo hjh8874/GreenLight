@@ -135,6 +135,56 @@ namespace CityFlow.EditorTools
                     AllRoles(),
                     targetVehicleCountMultiplier: 2f));
 
+            // 흐름이 터지는 순간. 자주 일어나므로 쿨다운을 길게, 확률을 낮게 잡는다.
+            FeedEventRuleSO flowBurstRule = LoadOrCreate<FeedEventRuleSO>(
+                $"{RootFolder}/Rule_FlowBurst.asset",
+                asset => asset.Configure(
+                    CitizenFeedEventType.FlowBurst,
+                    0.35f,
+                    3f,
+                    45f,
+                    0f,
+                    AllRoles()));
+            FeedEventRuleSO buildingPlacedRule = LoadOrCreate<FeedEventRuleSO>(
+                $"{RootFolder}/Rule_BuildingPlaced.asset",
+                asset => asset.Configure(
+                    CitizenFeedEventType.BuildingPlaced,
+                    0.55f,
+                    1f,
+                    55f,
+                    0f,
+                    AllRoles()));
+            // 구급 출동은 드물고 눈에 띄는 사건이다 — 확률·점수를 높게 준다.
+            FeedEventRuleSO emergencyAlertRule = LoadOrCreate<FeedEventRuleSO>(
+                $"{RootFolder}/Rule_EmergencyAlert.asset",
+                asset => asset.Configure(
+                    CitizenFeedEventType.EmergencyAlert,
+                    1f,
+                    0.5f,
+                    85f,
+                    0f,
+                    AllRoles()));
+            // 해결 글은 반드시 나가야 인과가 보인다. 확률 1.0, 쿨다운 0.
+            FeedEventRuleSO emergencyResolvedRule = LoadOrCreate<FeedEventRuleSO>(
+                $"{RootFolder}/Rule_EmergencyResolved.asset",
+                asset => asset.Configure(
+                    CitizenFeedEventType.EmergencyResolved,
+                    1f,
+                    0f,
+                    90f,
+                    0f,
+                    AllRoles()));
+            // 시간대 훅은 "아무 일 없어도 도시가 말하게" 하는 용도라 존재감이 약해야 한다.
+            FeedEventRuleSO timePeriodRule = LoadOrCreate<FeedEventRuleSO>(
+                $"{RootFolder}/Rule_TimePeriodChanged.asset",
+                asset => asset.Configure(
+                    CitizenFeedEventType.TimePeriodChanged,
+                    0.5f,
+                    5f,
+                    40f,
+                    0f,
+                    AllRoles()));
+
             CitizenFeedEventType[] allEvents = AllEvents();
             FeedAuthorProfileSO officeWorker = LoadOrCreate<FeedAuthorProfileSO>(
                 $"{RootFolder}/Author_OfficeWorker.asset",
@@ -354,6 +404,17 @@ namespace CityFlow.EditorTools
                     new[] { ":|", "^^" },
                     new[] { "#오늘도정체", "#초록불은장식" }));
 
+            // LoadOrCreate는 에셋이 이미 있으면 Configure를 다시 부르지 않는다.
+            // 그래서 이벤트를 추가해도 옛 프로필의 preferredEvents는 그대로 남고,
+            // Supports()가 false를 돌려 신규 이벤트 글이 한 건도 안 나간다.
+            // 메뉴 이름이 "Create or Upgrade"인 만큼 여기서 실제로 업그레이드한다.
+            UpgradeAuthorsForNewEvents(new[]
+            {
+                officeWorker, parent, taxiDriver, merchant,
+                trafficEnthusiast, deliveryDriver, student, selfEmployed,
+                realEstateAgent, civicActivist, nightResident, anonymousDriver
+            });
+
             FeedTemplateCollectionSO congestionStartedTemplates = LoadOrCreateTemplateCollection(
                 CitizenFeedEventType.CongestionStarted,
                 CreateCongestionStartedTemplates());
@@ -383,9 +444,23 @@ namespace CityFlow.EditorTools
                 CitizenFeedEventType.VehicleSurge,
                 CreateVehicleSurgeTemplates());
 
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-            return new CitizenFeedV1Assets(
+            FeedTemplateCollectionSO flowBurstTemplates = LoadOrCreateTemplateCollection(
+                CitizenFeedEventType.FlowBurst,
+                CreateFlowBurstTemplates());
+            FeedTemplateCollectionSO buildingPlacedTemplates = LoadOrCreateTemplateCollection(
+                CitizenFeedEventType.BuildingPlaced,
+                CreateBuildingPlacedTemplates());
+            FeedTemplateCollectionSO emergencyAlertTemplates = LoadOrCreateTemplateCollection(
+                CitizenFeedEventType.EmergencyAlert,
+                CreateEmergencyAlertTemplates());
+            FeedTemplateCollectionSO emergencyResolvedTemplates = LoadOrCreateTemplateCollection(
+                CitizenFeedEventType.EmergencyResolved,
+                CreateEmergencyResolvedTemplates());
+            FeedTemplateCollectionSO timePeriodTemplates = LoadOrCreateTemplateCollection(
+                CitizenFeedEventType.TimePeriodChanged,
+                CreateTimePeriodTemplates());
+
+            var assembled = new CitizenFeedV1Assets(
                 settings,
                 new[]
                 {
@@ -398,7 +473,13 @@ namespace CityFlow.EditorTools
                     infrastructurePlacedRule,
                     infrastructureRemovedRule,
                     notableArrivalRule,
-                    vehicleSurgeRule
+                    vehicleSurgeRule,
+
+                    flowBurstRule,
+                    buildingPlacedRule,
+                    emergencyAlertRule,
+                    emergencyResolvedRule,
+                    timePeriodRule
                 },
                 new[]
                 {
@@ -426,8 +507,137 @@ namespace CityFlow.EditorTools
                     infrastructurePlacedTemplates,
                     infrastructureRemovedTemplates,
                     notableArrivalTemplates,
-                    vehicleSurgeTemplates
+                    vehicleSurgeTemplates,
+
+                    flowBurstTemplates,
+                    buildingPlacedTemplates,
+                    emergencyAlertTemplates,
+                    emergencyResolvedTemplates,
+                    timePeriodTemplates
                 });
+
+            // 목록과 통합 프리팹을 갱신한 뒤 저장한다. 씬의 직렬화 배열에 의존하지
+            // 않고 데이터가 전달되는 경로가 여기다.
+            FeedCatalogSO catalog = UpdateCatalog(assembled);
+            EnsureIntegrationPrefab(catalog);
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            return assembled;
+        }
+
+        /// <summary>
+        /// 폐기된 에셋인가. #164에서 제거된 Stability 계열이 파일로 남아 있다.
+        /// </summary>
+        private static bool IsDeprecated(string assetPath) =>
+            assetPath.Contains("_DEPRECATED");
+
+        /// <summary>
+        /// 폴더에 있는 에셋을 전부 모은다. 손으로 나열하지 않는 이유는 하나다 —
+        /// 나열을 빠뜨리면 그 이벤트가 조용히 무동작이 된다. 실제로 Rule_JobChanged
+        /// (#207 이직 피드)가 제너레이터 배열에 빠져 있어, 제너레이터를 돌리면
+        /// ApplyToActiveScene의 Configure가 배열을 통째로 교체하며 그 규칙을 날렸다.
+        /// </summary>
+        private static T[] CollectGenerated<T>() where T : ScriptableObject
+        {
+            string[] guids = AssetDatabase.FindAssets(
+                $"t:{typeof(T).Name}", new[] { RootFolder });
+            var found = new System.Collections.Generic.List<T>(guids.Length);
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                if (IsDeprecated(path)) continue;
+                T asset = AssetDatabase.LoadAssetAtPath<T>(path);
+                if (asset != null) found.Add(asset);
+            }
+
+            return found.ToArray();
+        }
+
+        /// <summary>
+        /// 목록을 만들거나 갱신한다. 내용이 실제로 바뀌었을 때만 버전을 올린다 —
+        /// 제너레이터를 여러 번 돌린다고 버전이 계속 오르면 추적 의미가 없다.
+        /// </summary>
+        private static FeedCatalogSO UpdateCatalog(CitizenFeedV1Assets assets)
+        {
+            string path = $"{RootFolder}/FeedCatalog.asset";
+            FeedCatalogSO catalog = AssetDatabase.LoadAssetAtPath<FeedCatalogSO>(path);
+            bool isNew = catalog == null;
+            if (isNew)
+            {
+                catalog = ScriptableObject.CreateInstance<FeedCatalogSO>();
+                AssetDatabase.CreateAsset(catalog, path);
+            }
+
+            // 이번 실행이 만든 것만이 아니라 폴더 전체를 담는다.
+            FeedEventRuleSO[] rules = CollectGenerated<FeedEventRuleSO>();
+            FeedTemplateCollectionSO[] templates = CollectGenerated<FeedTemplateCollectionSO>();
+            FeedAuthorProfileSO[] catalogAuthors = CollectGenerated<FeedAuthorProfileSO>();
+
+            bool changed = isNew
+                || catalog.Rules.Length != rules.Length
+                || catalog.Authors.Length != catalogAuthors.Length
+                || catalog.TemplateCollections.Length != templates.Length
+                || catalog.Settings != assets.Settings;
+
+            catalog.Configure(
+                changed ? catalog.CatalogVersion + (isNew ? 0 : 1) : catalog.CatalogVersion,
+                assets.Settings,
+                rules,
+                catalogAuthors,
+                templates);
+            EditorUtility.SetDirty(catalog);
+
+            if (changed)
+            {
+                Debug.Log(
+                    $"[CitizenFeedDataGenerator] 목록 v{catalog.CatalogVersion} — " +
+                    $"규칙 {rules.Length} · 템플릿 {templates.Length} " +
+                    $"· 작성자 {catalogAuthors.Length}");
+            }
+
+            return catalog;
+        }
+
+        /// <summary>
+        /// 통합 담당자가 배치할 프리팹 하나를 만든다. 이미 있으면 목록 참조만 갱신한다.
+        /// </summary>
+        private static void EnsureIntegrationPrefab(FeedCatalogSO catalog)
+        {
+            const string prefabFolder = "Assets/02_Prefabs/Feed";
+            const string prefabPath = prefabFolder + "/CitizenFeedIntegration.prefab";
+            EnsureFolder(prefabFolder);
+
+            GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (existing != null)
+            {
+                var installed = existing.GetComponent<CitizenFeedIntegrationInstaller>();
+                if (installed != null)
+                {
+                    var so = new SerializedObject(installed);
+                    so.FindProperty("catalog").objectReferenceValue = catalog;
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                    EditorUtility.SetDirty(existing);
+                }
+
+                return;
+            }
+
+            var root = new GameObject("CitizenFeedIntegration");
+            try
+            {
+                var installer = root.AddComponent<CitizenFeedIntegrationInstaller>();
+                var so = new SerializedObject(installer);
+                so.FindProperty("catalog").objectReferenceValue = catalog;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
+                Debug.Log(
+                    $"[CitizenFeedDataGenerator] 통합 프리팹을 만들었습니다: {prefabPath}");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+            }
         }
 
         private static void ApplyToActiveScene(CitizenFeedV1Assets assets)
@@ -519,10 +729,44 @@ namespace CityFlow.EditorTools
             };
         }
 
+        /// <summary>
+        /// 이어받는 문구. followUpOnly=true라 장부에서 작성자가 나왔을 때만 뽑힌다.
+        /// 역할을 비워 누구든 자기가 한 말을 이어받을 수 있게 하고, 가중치를 높게 줘서
+        /// 이어받기 상황에선 이쪽이 뽑히게 한다 — 안 그러면 평범한 해결 문구가 나와
+        /// 인과관계가 글에 안 드러난다.
+        /// </summary>
+        private static CitizenFeedTemplateEntry CreateFollowUpTemplate(
+            string templateId,
+            string text)
+        {
+            CitizenFeedTemplateEntry entry = new CitizenFeedTemplateEntry();
+            entry.Configure(
+                templateId,
+                text,
+                CitizenFeedTone.Praise,
+                4f,
+                Array.Empty<CitizenFeedRole>(),
+                null,
+                CitizenFeedCategory.TrafficReport,
+                null,
+                targetFollowUpOnly: true);
+            return entry;
+        }
+
         private static CitizenFeedTemplateEntry[] CreateCongestionResolvedTemplates()
         {
             return new[]
             {
+                CreateFollowUpTemplate(
+                    "FollowUp_Congestion_01",
+                    "제가 저번에 말한 {Location}, 이제 좀 괜찮아졌네요. 신경 써주셔서 고맙습니다."),
+                CreateFollowUpTemplate(
+                    "FollowUp_Congestion_02",
+                    // {Location}은 항상 "…교차로"로 끝나 받침이 없다. "이"가 아니라 "가".
+                    "아까 그렇게 막히던 {Location}, 드디어 뚫렸습니다. 말한 보람이 있네요."),
+                CreateFollowUpTemplate(
+                    "FollowUp_Congestion_03",
+                    "{Location} 불평했던 사람인데요, 오늘은 그냥 지나갔습니다. 이런 날도 있군요."),
                 CreateTemplate(
                     "Resolved_Office_01",
                     "{Location}가 드디어 움직이네요. 오늘은 제시간에 도착할 수 있겠습니다.",
@@ -846,6 +1090,168 @@ namespace CityFlow.EditorTools
             };
         }
 
+        private static CitizenFeedTemplateEntry[] CreateFlowBurstTemplates()
+        {
+            return new[]
+            {
+                CreateTemplate(
+                    "FlowBurst_Taxi_01",
+                    "{Location} 흐름이 갑자기 확 풀렸습니다. 지금이 지나갈 타이밍이에요.",
+                    CitizenFeedTone.Information,
+                    1.2f,
+                    CitizenFeedRole.TaxiDriver),
+                CreateTemplate(
+                    "FlowBurst_Enthusiast_01",
+                    "{Location} 방금 신호 타이밍이 딱 맞아떨어졌습니다. 이런 순간이 좋아요.",
+                    CitizenFeedTone.Praise,
+                    1f,
+                    CitizenFeedRole.TrafficEnthusiast),
+                CreateTemplate(
+                    "FlowBurst_Driver_01",
+                    "{Location}에서 한 번에 쭉 빠졌습니다. 오늘 운이 좋네요.",
+                    CitizenFeedTone.Praise,
+                    1f,
+                    CitizenFeedRole.Driver),
+                CreateTemplate(
+                    "FlowBurst_Delivery_01",
+                    "{Location} 뚫린 김에 배달 두 건 더 잡았습니다.",
+                    CitizenFeedTone.Neutral,
+                    0.9f,
+                    CitizenFeedRole.DeliveryDriver)
+            };
+        }
+
+        private static CitizenFeedTemplateEntry[] CreateBuildingPlacedTemplates()
+        {
+            return new[]
+            {
+                CreateTemplate(
+                    "Placed_Resident_01",
+                    "{Spot}에 뭔가 새로 생겼네요. 동네가 조금씩 달라집니다.",
+                    CitizenFeedTone.Neutral,
+                    1.1f,
+                    CitizenFeedRole.Resident),
+                CreateTemplate(
+                    "Placed_RealEstate_01",
+                    "{Spot} 신축 확인했습니다. 주변 유동인구에 영향이 있겠네요.",
+                    CitizenFeedTone.Information,
+                    1.2f,
+                    CitizenFeedRole.RealEstateAgent),
+                CreateTemplate(
+                    "Placed_Merchant_01",
+                    "{Spot}에 건물이 들어섰습니다. 손님이 좀 늘었으면 좋겠는데요.",
+                    CitizenFeedTone.Neutral,
+                    1f,
+                    CitizenFeedRole.Merchant),
+                CreateTemplate(
+                    "Placed_Activist_01",
+                    "{Spot} 공사 끝났네요. 이제 진입로 정리만 되면 좋겠습니다.",
+                    CitizenFeedTone.Question,
+                    0.9f,
+                    CitizenFeedRole.CivicActivist)
+            };
+        }
+
+        private static CitizenFeedTemplateEntry[] CreateEmergencyAlertTemplates()
+        {
+            return new[]
+            {
+                CreateTemplate(
+                    "Emergency_Resident_01",
+                    "{Spot} 쪽에서 사이렌 소리가 납니다. 무슨 일이죠?",
+                    CitizenFeedTone.Question,
+                    1.3f,
+                    CitizenFeedRole.Resident),
+                CreateTemplate(
+                    "Emergency_Taxi_01",
+                    "{Spot} 구급차 지나갑니다. 길 좀 비켜주세요.",
+                    CitizenFeedTone.Information,
+                    1.3f,
+                    CitizenFeedRole.TaxiDriver),
+                CreateTemplate(
+                    "Emergency_Parent_01",
+                    "{Spot}에 구급차가 갔어요. 별일 아니었으면 좋겠네요.",
+                    CitizenFeedTone.Complaint,
+                    1.1f,
+                    CitizenFeedRole.Parent),
+                CreateTemplate(
+                    "Emergency_Activist_01",
+                    "{Spot} 긴급 상황입니다. 이 구간 진입로가 좁은 게 계속 마음에 걸렸는데요.",
+                    CitizenFeedTone.Complaint,
+                    1f,
+                    CitizenFeedRole.CivicActivist)
+            };
+        }
+
+        private static CitizenFeedTemplateEntry[] CreateEmergencyResolvedTemplates()
+        {
+            return new[]
+            {
+                CreateFollowUpTemplate(
+                    "FollowUp_Emergency_01",
+                    "아까 {Spot} 사이렌, 잘 마무리됐다고 하네요. 다행입니다."),
+                CreateFollowUpTemplate(
+                    "FollowUp_Emergency_02",
+                    "{Spot} 상황 궁금해했었는데 무사히 끝났답니다. 한숨 놓았어요."),
+                CreateTemplate(
+                    "EmergencyResolved_Resident_01",
+                    "{Spot} 상황은 정리된 것 같습니다. 사이렌 소리가 멎었어요.",
+                    CitizenFeedTone.Praise,
+                    1f,
+                    CitizenFeedRole.Resident),
+                CreateTemplate(
+                    "EmergencyResolved_Taxi_01",
+                    "{Spot} 통제 풀렸습니다. 정상 통행 가능합니다.",
+                    CitizenFeedTone.Information,
+                    1.2f,
+                    CitizenFeedRole.TaxiDriver)
+            };
+        }
+
+        private static CitizenFeedTemplateEntry[] CreateTimePeriodTemplates()
+        {
+            // 시간대 훅은 장소가 없다 — {Location}을 쓰면 안 된다.
+            return new[]
+            {
+                CreateDetailedTemplate(
+                    "TimePeriod_Office_Morning",
+                    "출근길 시작입니다. 오늘은 무사히 갈 수 있을까요.",
+                    CitizenFeedTone.Neutral,
+                    1.2f,
+                    CitizenFeedCategory.CommuteExperience,
+                    new[] { CitizenFeedRole.OfficeWorker },
+                    null,
+                    new[] { CitizenFeedTimePeriod.MorningRush }),
+                CreateDetailedTemplate(
+                    "TimePeriod_Student_Morning",
+                    "아침 등굣길. 오늘은 좀 덜 붐볐으면.",
+                    CitizenFeedTone.Neutral,
+                    1f,
+                    CitizenFeedCategory.CommuteExperience,
+                    new[] { CitizenFeedRole.Student },
+                    null,
+                    new[] { CitizenFeedTimePeriod.MorningRush }),
+                CreateDetailedTemplate(
+                    "TimePeriod_Driver_Evening",
+                    "퇴근 시간입니다. 다들 무사히 들어가세요.",
+                    CitizenFeedTone.Neutral,
+                    1.1f,
+                    CitizenFeedCategory.CommuteExperience,
+                    new[] { CitizenFeedRole.Driver },
+                    null,
+                    new[] { CitizenFeedTimePeriod.EveningRush }),
+                CreateDetailedTemplate(
+                    "TimePeriod_Merchant_Evening",
+                    "퇴근길 손님이 들어올 시간이네요. 슬슬 준비합니다.",
+                    CitizenFeedTone.Neutral,
+                    1f,
+                    CitizenFeedCategory.EconomyReaction,
+                    new[] { CitizenFeedRole.Merchant },
+                    null,
+                    new[] { CitizenFeedTimePeriod.EveningRush })
+            };
+        }
+
         private static CitizenFeedTemplateEntry CreateTemplate(
             string templateId,
             string text,
@@ -902,6 +1308,37 @@ namespace CityFlow.EditorTools
             collection.AddMissingTemplates(defaultTemplates);
             EditorUtility.SetDirty(collection);
             return collection;
+        }
+
+        /// <summary>
+        /// 기존 프로필에 이번 버전에서 추가된 이벤트 지원을 병합한다.
+        /// 나머지 필드(가중치·활동시간·성향)는 손대지 않는다 — 손으로 튜닝했을 수 있다.
+        /// </summary>
+        private static void UpgradeAuthorsForNewEvents(FeedAuthorProfileSO[] profiles)
+        {
+            CitizenFeedEventType[] newEvents =
+            {
+                CitizenFeedEventType.FlowBurst,
+                CitizenFeedEventType.BuildingPlaced,
+                CitizenFeedEventType.EmergencyAlert,
+                CitizenFeedEventType.EmergencyResolved,
+                CitizenFeedEventType.TimePeriodChanged
+            };
+
+            int upgraded = 0;
+            foreach (FeedAuthorProfileSO profile in profiles)
+            {
+                if (profile == null) continue;
+                if (!profile.AddSupportedEvents(newEvents)) continue;
+                EditorUtility.SetDirty(profile);
+                upgraded++;
+            }
+
+            if (upgraded > 0)
+            {
+                Debug.Log(
+                    $"[CitizenFeedDataGenerator] 작성자 프로필 {upgraded}개에 신규 이벤트 지원을 추가했습니다.");
+            }
         }
 
         private static T LoadOrCreate<T>(string assetPath, Action<T> configureNewAsset)

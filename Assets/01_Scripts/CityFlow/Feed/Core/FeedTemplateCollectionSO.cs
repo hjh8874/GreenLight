@@ -15,12 +15,17 @@ namespace CityFlow.Feed
         [SerializeField] private CitizenFeedRole[] allowedRoles = Array.Empty<CitizenFeedRole>();
         [SerializeField] private CitizenFeedPersonality[] allowedPersonalities = Array.Empty<CitizenFeedPersonality>();
         [SerializeField] private CitizenFeedTimePeriod[] allowedTimePeriods = Array.Empty<CitizenFeedTimePeriod>();
+        // "제가 저번에 말한 그곳" 류의 이어받는 문구. 앞선 불만을 전제하므로
+        // 장부에서 작성자가 나온 경우에만 쓸 수 있다. 기존 에셋은 false로 들어와
+        // 동작이 바뀌지 않는다.
+        [SerializeField] private bool followUpOnly;
 
         public string TemplateId => templateId;
         public string Text => text;
         public CitizenFeedTone Tone => tone;
         public CitizenFeedCategory Category => category;
         public float Weight => weight;
+        public bool FollowUpOnly => followUpOnly;
 
         public bool Allows(FeedAuthorProfileSO author, CitizenFeedTimePeriod timePeriod)
         {
@@ -47,7 +52,8 @@ namespace CityFlow.Feed
             CitizenFeedRole[] targetAllowedRoles,
             CitizenFeedPersonality[] targetAllowedPersonalities = null,
             CitizenFeedCategory targetCategory = CitizenFeedCategory.TrafficReport,
-            CitizenFeedTimePeriod[] targetAllowedTimePeriods = null)
+            CitizenFeedTimePeriod[] targetAllowedTimePeriods = null,
+            bool targetFollowUpOnly = false)
         {
             templateId = targetTemplateId;
             text = targetText;
@@ -57,6 +63,7 @@ namespace CityFlow.Feed
             allowedRoles = targetAllowedRoles ?? Array.Empty<CitizenFeedRole>();
             allowedPersonalities = targetAllowedPersonalities ?? Array.Empty<CitizenFeedPersonality>();
             allowedTimePeriods = targetAllowedTimePeriods ?? Array.Empty<CitizenFeedTimePeriod>();
+            followUpOnly = targetFollowUpOnly;
         }
 #endif
     }

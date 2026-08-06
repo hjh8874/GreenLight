@@ -12,7 +12,15 @@ namespace CityFlow.Feed
         InfrastructureRemoved = 8,
         NotableArrival = 9,
         VehicleSurge = 10,
-        JobChanged = 11
+        JobChanged = 11,
+
+        // 이미 발행되고 있었으나 피드가 듣지 않던 신호들. 숫자를 새로 잇는다 —
+        // 기존 값을 바꾸면 직렬화된 규칙 SO가 조용히 다른 이벤트를 가리킨다.
+        FlowBurst = 12,
+        BuildingPlaced = 13,
+        EmergencyAlert = 14,
+        EmergencyResolved = 15,
+        TimePeriodChanged = 16
     }
 
     public enum CitizenFeedRole

@@ -1,0 +1,56 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: facaf13c7db04d25ae3a34761c4ab26d, type: 3}
+  m_Name: Templates_FlowBurst
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Feed.FeedTemplateCollectionSO
+  eventType: 12
+  templates:
+  - templateId: FlowBurst_Taxi_01
+    text: "{Location} \uD750\uB984\uC774 \uAC11\uC790\uAE30 \uD655 \uD480\uB838\uC2B5\uB2C8\uB2E4.
+      \uC9C0\uAE08\uC774 \uC9C0\uB098\uAC08 \uD0C0\uC774\uBC0D\uC774\uC5D0\uC694."
+    tone: 3
+    category: 1
+    weight: 1.2
+    allowedRoles: 02000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+    followUpOnly: 0
+  - templateId: FlowBurst_Enthusiast_01
+    text: "{Location} \uBC29\uAE08 \uC2E0\uD638 \uD0C0\uC774\uBC0D\uC774 \uB531 \uB9DE\uC544\uB5A8\uC5B4\uC84C\uC2B5\uB2C8\uB2E4.
+      \uC774\uB7F0 \uC21C\uAC04\uC774 \uC88B\uC544\uC694."
+    tone: 1
+    category: 1
+    weight: 1
+    allowedRoles: 04000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+    followUpOnly: 0
+  - templateId: FlowBurst_Driver_01
+    text: "{Location}\uC5D0\uC11C \uD55C \uBC88\uC5D0 \uCB49 \uBE60\uC84C\uC2B5\uB2C8\uB2E4.
+      \uC624\uB298 \uC6B4\uC774 \uC88B\uB124\uC694."
+    tone: 1
+    category: 1
+    weight: 1
+    allowedRoles: 0b000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+    followUpOnly: 0
+  - templateId: FlowBurst_Delivery_01
+    text: "{Location} \uB6AB\uB9B0 \uAE40\uC5D0 \uBC30\uB2EC \uB450 \uAC74 \uB354
+      \uC7A1\uC558\uC2B5\uB2C8\uB2E4."
+    tone: 2
+    category: 1
+    weight: 0.9
+    allowedRoles: 05000000
+    allowedPersonalities: 
+    allowedTimePeriods: 
+    followUpOnly: 0

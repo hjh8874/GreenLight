@@ -132,6 +132,36 @@ namespace CityFlow.Feed
                 gameHour);
         }
 
+        /// <summary>
+        /// 타일 하나만 있으면 되는 사건용(흐름 폭발·건물 설치·구급 출동/결말).
+        /// ForInfrastructure가 이미 범용 타일 컨텍스트라 그대로 위임한다.
+        /// </summary>
+        public static CitizenFeedContext ForTile(
+            CitizenFeedEventType eventType,
+            Vector2Int tile,
+            int gameHour)
+        {
+            return ForInfrastructure(
+                eventType,
+                tile,
+                CitizenFeedInfrastructureType.None,
+                false,
+                gameHour);
+        }
+
+        /// <summary>
+        /// 시간대 진입은 장소가 없다. VehicleSurge와 같은 이유로 타일은 zero다.
+        /// </summary>
+        public static CitizenFeedContext ForTimePeriod(int gameHour)
+        {
+            return ForInfrastructure(
+                CitizenFeedEventType.TimePeriodChanged,
+                Vector2Int.zero,
+                CitizenFeedInfrastructureType.None,
+                false,
+                gameHour);
+        }
+
         public static CitizenFeedContext ForArrival(
             Vector2Int destination,
             float routeDistanceTiles,
@@ -207,6 +237,15 @@ namespace CityFlow.Feed
     {
         public CitizenFeedEventType EventType { get; }
         public Vector2Int Tile { get; }
+
+        /// <summary>
+        /// 글이 실제로 어딘가를 가리키는가. 시간대 훅과 차량 급증은 도시 전체 이야기라
+        /// Tile이 Vector2Int.zero인데, 이걸 좌표로 믿으면 클릭 시 격자 모서리가 열린다.
+        /// (0,0)은 유효한 타일이라 값만 보고는 구분할 수 없어 이벤트 종류로 판단한다.
+        /// </summary>
+        public bool HasLocation =>
+            EventType != CitizenFeedEventType.TimePeriodChanged &&
+            EventType != CitizenFeedEventType.VehicleSurge;
         public string AuthorName { get; }
         public string RoleLabel { get; }
         public string Message { get; }

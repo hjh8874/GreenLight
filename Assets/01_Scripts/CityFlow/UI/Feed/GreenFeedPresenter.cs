@@ -86,7 +86,9 @@ namespace CityFlow.UI.Feed
                 post.Message,
                 post.Timestamp,
                 post.AvatarInitial,
-                post.AccentColor);
+                post.AccentColor,
+                post.HasLocation,
+                post.Tile);
         }
 
         // Unity setup: The Green SNS baker connects the service and panel references.

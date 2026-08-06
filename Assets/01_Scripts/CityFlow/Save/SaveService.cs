@@ -28,6 +28,7 @@ namespace CityFlow.Save
             get;
             private set;
         }
+        public ICitizenFeedSaveSource CitizenFeedSaveSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
         public ISaveClock Clock { get; private set; }
         public SaveSlotRepository SaveSlots { get; private set; }
@@ -49,6 +50,7 @@ namespace CityFlow.Save
         private SpecialBuildingSaveData retainedSpecialBuildings;
         private SpecialBuildingVisitSaveData retainedSpecialBuildingVisits;
         private EmergencyIncidentSaveData retainedEmergencyIncidents;
+        private CitizenFeedSaveData retainedCitizenFeed;
         private readonly IWorldGridAccess worldGridAccess;
         private bool hasLoadedSave;
 
@@ -205,6 +207,18 @@ namespace CityFlow.Save
             }
         }
 
+        public void RegisterCitizenFeedSaveSource(
+            ICitizenFeedSaveSource citizenFeedSaveSource)
+        {
+            CitizenFeedSaveSource = citizenFeedSaveSource;
+
+            if (hasLoadedSave)
+            {
+                CitizenFeedSaveSource?.RestoreSnapshot(
+                    retainedCitizenFeed ?? new CitizenFeedSaveData());
+            }
+        }
+
         public GameSaveData CreateSnapshot()
         {
             return new GameSaveData
@@ -239,7 +253,9 @@ namespace CityFlow.Save
                     ?? retainedSpecialBuildingVisits,
                 EmergencyIncidents =
                     EmergencyIncidentSaveSource?.CreateSnapshot()
-                    ?? retainedEmergencyIncidents
+                    ?? retainedEmergencyIncidents,
+                CitizenFeed = CitizenFeedSaveSource?.CreateSnapshot()
+                    ?? retainedCitizenFeed
             };
         }
 
@@ -310,6 +326,15 @@ namespace CityFlow.Save
             if (saveData.Calendar != null)
             {
                 GameCalendarSaveSource?.RestoreSnapshot(saveData.Calendar);
+            }
+
+            // 반드시 달력 복원 뒤에 온다. 피드 장부는 복원 즉시 현재 게임 시각으로
+            // 24시간 만료를 판정하는데, 달력이 아직 이전 런타임 값이면 저장 시점과
+            // 무관한 기준으로 항목을 버리거나 남긴다.
+            if (CitizenFeedSaveSource != null)
+            {
+                CitizenFeedSaveSource.RestoreSnapshot(
+                    saveData.CitizenFeed ?? new CitizenFeedSaveData());
             }
 
             if (RadioSaveSource != null)
@@ -497,6 +522,7 @@ namespace CityFlow.Save
                 CreateRestoredSpecialBuildingVisitData(saveData);
             retainedEmergencyIncidents =
                 saveData?.EmergencyIncidents;
+            retainedCitizenFeed = saveData?.CitizenFeed;
         }
 
         private SpecialBuildingSaveData CreateRestoredSpecialBuildingData(
