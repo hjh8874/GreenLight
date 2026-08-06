@@ -291,6 +291,11 @@ namespace CityFlow.UI
                     yield break;
                 }
 
+                if (!RefreshCurrentTileState())
+                {
+                    yield break;
+                }
+
                 // 코어 엔진에서 density/congestion 시드 수신
                 float density = GetTileDensity();
                 CongestionLevel congestion = GetTileCongestion();
@@ -338,6 +343,30 @@ namespace CityFlow.UI
 
                 yield return wait;
             }
+        }
+
+        private bool RefreshCurrentTileState()
+        {
+            if (services?.TileData == null)
+            {
+                return true;
+            }
+
+            TileType observedType = services.TileData.GetTileType(currentTile);
+            if (observedType == currentType)
+            {
+                return true;
+            }
+
+            if (!TileFootprint.IsBuilding(observedType))
+            {
+                CloseCard();
+                return false;
+            }
+
+            currentType = observedType;
+            accumulatedDelay = 0f;
+            return true;
         }
 
         // ═══════════════════════════════════════════════════════════════
