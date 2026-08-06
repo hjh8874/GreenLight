@@ -21068,6 +21068,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 430970949}
     m_Modifications:
+    - target: {fileID: 40428235891646648, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 40428235891646648, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: -157
+      objectReference: {fileID: 0}
     - target: {fileID: 549636408785286043, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
       propertyPath: m_Name
       value: UI_AudioSettings
@@ -21160,9 +21168,37 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2207758240514681103, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2207758240514681103, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2207758240514681103, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchorMin.x
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3492092805400890055, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
       propertyPath: m_TextStyleHashCode
       value: -1183493901
+      objectReference: {fileID: 0}
+    - target: {fileID: 4698435908896380896, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4698435908896380896, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4986124152870160737, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4986124152870160737, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5123933780104791820, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
       propertyPath: m_TextStyleHashCode
@@ -21171,6 +21207,18 @@ PrefabInstance:
     - target: {fileID: 7859364043439559761, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
       propertyPath: m_TextStyleHashCode
       value: -1183493901
+      objectReference: {fileID: 0}
+    - target: {fileID: 8367728899873132657, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8367728899873132657, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8367728899873132657, guid: abc9ac8757aaa4d41a642395617ce858, type: 3}
+      propertyPath: m_AnchorMin.x
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
