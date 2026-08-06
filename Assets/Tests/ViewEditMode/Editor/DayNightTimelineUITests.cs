@@ -255,14 +255,15 @@ namespace CityFlow.Tests.ViewEditMode
         {
             TMP_Text tmpText = text.GetComponent<TMP_Text>();
             Assert.That(tmpText, Is.Not.Null);
-
-            Outline outline = text.GetComponent<Outline>();
-            Assert.That(outline, Is.Not.Null);
-            Assert.That(outline.effectColor,
+            Assert.That(text.GetComponent<Outline>(), Is.Null);
+            Assert.That(tmpText.fontMaterial, Is.Not.Null);
+            Assert.That(
+                tmpText.fontMaterial.IsKeywordEnabled("OUTLINE_ON"),
+                Is.True);
+            Assert.That(tmpText.fontMaterial.GetColor("_OutlineColor"),
                 Is.EqualTo(new Color(0f, 0f, 0f, 1f)));
-            Assert.That(outline.effectDistance,
-                Is.EqualTo(new Vector2(2.5f, -2.5f)));
-            Assert.That(outline.useGraphicAlpha, Is.False);
+            Assert.That(tmpText.fontMaterial.GetFloat("_OutlineWidth"),
+                Is.EqualTo(0.3f).Within(0.001f));
         }
     }
 }
