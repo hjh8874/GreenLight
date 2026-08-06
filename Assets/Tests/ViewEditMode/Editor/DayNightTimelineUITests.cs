@@ -129,6 +129,7 @@ namespace CityFlow.Tests.ViewEditMode
                     .GetComponent<RectTransform>();
                 Assert.That(divider.anchorMin.x, Is.EqualTo(0.5f));
                 Assert.That(divider.anchorMax.x, Is.EqualTo(0.5f));
+                Assert.That(divider.sizeDelta.x, Is.EqualTo(3f));
 
                 RectTransform marker = timeline.Find("CelestialMarker")
                     .GetComponent<RectTransform>();
