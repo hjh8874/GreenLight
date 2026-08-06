@@ -14,13 +14,13 @@ namespace CityFlow.UI
         [SerializeField] private Button btnQuitGame;
         [SerializeField] private Button btnTitleScene;
         [SerializeField] private string titleSceneName = "TitleScene";
-        
+
         [Header("Audio Control UI")]
         [SerializeField] private Slider sldBgm;
         [SerializeField] private TMP_InputField inputBgm;
         [SerializeField] private Slider sldSfx;
         [SerializeField] private TMP_InputField inputSfx;
-        
+
         [Header("Audio System")]
         [SerializeField] private AudioMixer audioMixer;
         [SerializeField] private string bgmParameterName = "BGMVolume";
@@ -31,8 +31,8 @@ namespace CityFlow.UI
         private bool _isUpdatingBgm;
         private bool _isUpdatingSfx;
 
-        public void Configure(Toggle muteAudio, Button quitGame, Button titleScene, 
-                              Slider bgmSlider = null, TMP_InputField bgmInput = null, 
+        public void Configure(Toggle muteAudio, Button quitGame, Button titleScene,
+                              Slider bgmSlider = null, TMP_InputField bgmInput = null,
                               Slider sfxSlider = null, TMP_InputField sfxInput = null,
                               AudioMixer mixer = null)
         {
@@ -44,7 +44,7 @@ namespace CityFlow.UI
             if (sfxSlider != null) sldSfx = sfxSlider;
             if (sfxInput != null) inputSfx = sfxInput;
             if (mixer != null) audioMixer = mixer;
-            
+
             BindButtons();
         }
 
@@ -118,7 +118,7 @@ namespace CityFlow.UI
             {
                 percentage = Mathf.Clamp(percentage, 0, 100);
                 float value = percentage / 100f;
-                
+
                 _isUpdatingBgm = true;
                 if (sldBgm != null) sldBgm.value = value;
                 if (inputBgm != null) inputBgm.text = percentage.ToString();
@@ -146,7 +146,7 @@ namespace CityFlow.UI
             {
                 percentage = Mathf.Clamp(percentage, 0, 100);
                 float value = percentage / 100f;
-                
+
                 _isUpdatingSfx = true;
                 if (sldSfx != null) sldSfx.value = value;
                 if (inputSfx != null) inputSfx.text = percentage.ToString();

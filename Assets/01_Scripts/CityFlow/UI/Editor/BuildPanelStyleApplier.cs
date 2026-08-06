@@ -132,12 +132,12 @@ namespace CityFlow.UI.Editor
             Sprite spSignal = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_signal_iso_1785915443773-Photoroom.png");
             Sprite spRoundabout = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_roundabout_iso_1785915452640-Photoroom.png");
             Sprite spBusStop = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_busstop_iso_1785915463602-Photoroom.png");
-            
+
             Sprite spHouse = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_house_iso_1785915491088-Photoroom.png");
             Sprite spSchool = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_school_iso_1785915501151-Photoroom.png");
             Sprite spHospital = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_hospital_iso_1785915510971-Photoroom.png");
             Sprite spPolice = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_police_iso_1785915519487-Photoroom.png");
-            
+
             Sprite spOffice = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_office_iso_1785915547357-Photoroom.png");
             Sprite spShopping = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_shopping_iso_1785915556845-Photoroom.png");
             Sprite spGas = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/03_Art/Icon/icon_gasstation_iso_1785915565450-Photoroom.png");
@@ -214,7 +214,7 @@ namespace CityFlow.UI.Editor
             if (sprite == null) return;
             ScriptableObject soAsset = AssetDatabase.LoadAssetAtPath<ScriptableObject>(assetPath);
             if (soAsset == null) return;
-            
+
             SerializedObject so = new SerializedObject(soAsset);
             SerializedProperty prop = so.FindProperty(propName);
             if (prop != null)

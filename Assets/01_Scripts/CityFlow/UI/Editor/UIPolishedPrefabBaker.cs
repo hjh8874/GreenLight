@@ -8,7 +8,7 @@ namespace CityFlow.UI.Editor
     /// <summary>
     /// GUI-MonoRound 에셋 팩과 NanumGothic 폰트가 적용된 고품질 UI 프리팹을 자동 생성합니다.
     /// 메뉴: CityFlow/UI/🎨 Polished UI 프리팹 굽기
-    /// 
+    ///
     /// 생성되는 프리팹:
     ///   - Assets/02_Prefabs/UI/Elements/UI_StandardPanel.prefab
     ///   - Assets/02_Prefabs/UI/Elements/UI_StandardButton.prefab
@@ -64,9 +64,9 @@ namespace CityFlow.UI.Editor
         private static readonly Color ColorTopBarBg    = HexColor("#1A1C20"); // City Night
         private static readonly Color ColorPanelBg     = HexColor("#2C303A"); // Asphalt Gray
         private static readonly Color ColorDockBg      = HexColor("#1A1C20"); // City Night
-        private static readonly Color ColorTextDark    = HexColor("#1A1C20"); 
+        private static readonly Color ColorTextDark    = HexColor("#1A1C20");
         private static readonly Color ColorTextLight   = HexColor("#F5F7FA"); // Cloud White
-        private static readonly Color ColorTextMuted   = HexColor("#8B95A6"); 
+        private static readonly Color ColorTextMuted   = HexColor("#8B95A6");
         private static readonly Color ColorAccentGreen = HexColor("#2ECC71"); // GreenLight Mint
         private static readonly Color ColorAccentBlue  = HexColor("#3498DB"); // Blue
         private static readonly Color ColorTrafficRed  = HexColor("#E74C3C"); // Traffic Red

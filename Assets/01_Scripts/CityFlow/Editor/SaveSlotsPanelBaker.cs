@@ -63,7 +63,7 @@ namespace CityFlow.EditorTools
                 return;
             }
             BakeIntoCanvas(canvas);
-            
+
             EditorSceneManager.MarkSceneDirty(scene);
             Debug.Log(
                 $"[SaveSlotsPanelBaker] Save slot UI baked into '{scene.name}'. " +
