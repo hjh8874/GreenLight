@@ -146,6 +146,22 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     divider.GetSiblingIndex(),
                     Is.GreaterThan(marker.GetSiblingIndex()));
+
+                AssertReadabilityShield(
+                    timeline,
+                    "TimeTextReadabilityShield",
+                    marker,
+                    divider);
+                AssertReadabilityShield(
+                    timeline,
+                    "VehicleCountTextReadabilityShield",
+                    marker,
+                    divider);
+                AssertReadabilityShield(
+                    timeline,
+                    "CoinTextReadabilityShield",
+                    marker,
+                    divider);
             }
             finally
             {
@@ -259,6 +275,28 @@ namespace CityFlow.Tests.ViewEditMode
                 Is.EqualTo(0.9f).Within(0.001f));
             Assert.That(outline.effectDistance,
                 Is.EqualTo(new Vector2(1.5f, -1.5f)));
+        }
+
+        private static void AssertReadabilityShield(
+            Transform timeline,
+            string shieldName,
+            RectTransform marker,
+            RectTransform divider)
+        {
+            Transform shield = timeline.Find(shieldName);
+            Assert.That(shield, Is.Not.Null);
+            Assert.That(
+                shield.GetSiblingIndex(),
+                Is.GreaterThan(marker.GetSiblingIndex()));
+            Assert.That(
+                shield.GetSiblingIndex(),
+                Is.LessThan(divider.GetSiblingIndex()));
+
+            Image image = shield.GetComponent<Image>();
+            Assert.That(image, Is.Not.Null);
+            Assert.That(image.raycastTarget, Is.False);
+            Assert.That(image.color.a,
+                Is.EqualTo(0.96f).Within(0.001f));
         }
     }
 }
