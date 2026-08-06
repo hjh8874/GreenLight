@@ -208,15 +208,26 @@ namespace CityFlow.UI.Editor
             }
 
             toggle.targetGraphic = background;
-            ApplyImage(background, offSprite, Color.white, false);
+            ApplyImage(
+                background,
+                offSprite,
+                Color.white,
+                false);
             RectTransform backgroundRect = background.rectTransform;
             backgroundRect.anchorMin = new Vector2(0f, 0.5f);
             backgroundRect.anchorMax = new Vector2(0f, 0.5f);
             backgroundRect.pivot = new Vector2(0.5f, 0.5f);
             backgroundRect.anchoredPosition = new Vector2(18f, 0f);
-            backgroundRect.sizeDelta = new Vector2(30f, 30f);
+            backgroundRect.sizeDelta = new Vector2(32f, 32f);
             background.preserveAspect = true;
             background.raycastTarget = true;
+
+            Outline outline = GetOrAddComponent<Outline>(
+                background.gameObject);
+            outline.effectColor = new Color(0.45f, 1f, 0.86f, 1f);
+            outline.effectDistance = new Vector2(2f, -2f);
+            outline.useGraphicAlpha = false;
+            StyleBrightToggleFrame(background.transform);
 
             Image checkmark = toggle.graphic as Image;
             if (checkmark == null)
@@ -297,6 +308,97 @@ namespace CityFlow.UI.Editor
                 labelRect.offsetMin = new Vector2(42f, 0f);
                 labelRect.offsetMax = new Vector2(-4f, 0f);
             }
+        }
+
+        private static void StyleBrightToggleFrame(Transform parent)
+        {
+            Transform frameTransform = parent.Find("BrightFrame");
+            GameObject frameObject = frameTransform != null
+                ? frameTransform.gameObject
+                : new GameObject("BrightFrame", typeof(RectTransform));
+            if (frameTransform == null)
+            {
+                frameObject.transform.SetParent(parent, false);
+                Undo.RegisterCreatedObjectUndo(
+                    frameObject,
+                    "Create Bright Toggle Frame");
+            }
+
+            RectTransform frameRect =
+                frameObject.GetComponent<RectTransform>();
+            frameRect.anchorMin = Vector2.zero;
+            frameRect.anchorMax = Vector2.one;
+            frameRect.offsetMin = new Vector2(2f, 2f);
+            frameRect.offsetMax = new Vector2(-2f, -2f);
+            frameObject.transform.SetAsLastSibling();
+
+            Color frameColor = new Color(0.45f, 1f, 0.86f, 1f);
+            StyleToggleFrameEdge(
+                frameObject.transform,
+                "Top",
+                new Vector2(0f, 1f),
+                Vector2.one,
+                new Vector2(0f, 3f),
+                frameColor);
+            StyleToggleFrameEdge(
+                frameObject.transform,
+                "Bottom",
+                Vector2.zero,
+                new Vector2(1f, 0f),
+                new Vector2(0f, 3f),
+                frameColor);
+            StyleToggleFrameEdge(
+                frameObject.transform,
+                "Left",
+                Vector2.zero,
+                new Vector2(0f, 1f),
+                new Vector2(3f, 0f),
+                frameColor);
+            StyleToggleFrameEdge(
+                frameObject.transform,
+                "Right",
+                new Vector2(1f, 0f),
+                Vector2.one,
+                new Vector2(3f, 0f),
+                frameColor);
+        }
+
+        private static void StyleToggleFrameEdge(
+            Transform parent,
+            string name,
+            Vector2 anchorMin,
+            Vector2 anchorMax,
+            Vector2 sizeDelta,
+            Color color)
+        {
+            Transform edgeTransform = parent.Find(name);
+            GameObject edgeObject = edgeTransform != null
+                ? edgeTransform.gameObject
+                : new GameObject(
+                    name,
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image));
+            if (edgeTransform == null)
+            {
+                edgeObject.transform.SetParent(parent, false);
+                Undo.RegisterCreatedObjectUndo(
+                    edgeObject,
+                    "Create Toggle Frame Edge");
+            }
+
+            RectTransform edgeRect =
+                edgeObject.GetComponent<RectTransform>();
+            edgeRect.anchorMin = anchorMin;
+            edgeRect.anchorMax = anchorMax;
+            edgeRect.pivot = new Vector2(0.5f, 0.5f);
+            edgeRect.anchoredPosition = Vector2.zero;
+            edgeRect.sizeDelta = sizeDelta;
+
+            Image image = GetOrAddComponent<Image>(edgeObject);
+            image.sprite = null;
+            image.color = color;
+            image.raycastTarget = false;
         }
 
         internal static void CompleteSceneChange(GameObject root, string label)

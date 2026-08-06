@@ -16,6 +16,19 @@ namespace CityFlow.UI
         private const float MinimumLinearVolume = 0.0001f;
         private const float PreferenceSaveDebounceSeconds = 0.2f;
 
+        private static readonly string[] AdditionalBgmParameterNames =
+        {
+            "RadioVolume"
+        };
+
+        private static readonly string[] AdditionalSfxParameterNames =
+        {
+            "UIVolume",
+            "FacilityVolume",
+            "AmbienceVolume",
+            "CongestionVolume"
+        };
+
         [Header("Settings UI")]
         [SerializeField] private Toggle tglMuteAudio;
         [SerializeField] private Button btnQuitGame;
@@ -233,6 +246,29 @@ namespace CityFlow.UI
                     ? Mathf.Log10(clampedValue) * 20f
                     : -80f;
                 audioMixer.SetFloat(parameterName, db);
+
+                if (parameterName == bgmParameterName)
+                {
+                    UpdateAdditionalMixerVolumes(
+                        AdditionalBgmParameterNames,
+                        db);
+                }
+                else if (parameterName == sfxParameterName)
+                {
+                    UpdateAdditionalMixerVolumes(
+                        AdditionalSfxParameterNames,
+                        db);
+                }
+            }
+        }
+
+        private void UpdateAdditionalMixerVolumes(
+            string[] parameterNames,
+            float db)
+        {
+            for (int index = 0; index < parameterNames.Length; index++)
+            {
+                audioMixer.SetFloat(parameterNames[index], db);
             }
         }
 

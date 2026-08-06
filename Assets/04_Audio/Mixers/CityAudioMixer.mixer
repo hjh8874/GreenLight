@@ -138,6 +138,16 @@ AudioMixerController:
     name: BGMVolume
   - guid: 8767e83f07c9b7644bdb9d9ed2cc1167
     name: SFXVolume
+  - guid: 9a96deefbe9622640b0214bbcc4e83c2
+    name: RadioVolume
+  - guid: 6e84fc4e45db2df4bb76220e30ae50f4
+    name: UIVolume
+  - guid: 00af183b8fe72fd43a6e80aa062781cf
+    name: FacilityVolume
+  - guid: 1e4f1dcdf901ca6478ba686a3e78b923
+    name: AmbienceVolume
+  - guid: 2a6094bf20b566a4cacb49e2bde9e14e
+    name: CongestionVolume
   m_AudioMixerGroupViews: []
   m_CurrentViewIndex: 0
   m_TargetSnapshot: {fileID: 24500006}
