@@ -29,7 +29,7 @@ namespace CityFlow.UI
         private const float CongestionDotSize = 12f;
         private const float CongestionDotCenterX = 16f;
         private const float TimeTextLeftInset = 34f;
-        private const float HeaderTextOutlineWidth = 0.35f;
+        private const float HeaderTextOutlineDistance = 2.5f;
 
         private static readonly Color DividerColor =
             new Color(0.92f, 0.12f, 0.14f, 1f);
@@ -37,8 +37,8 @@ namespace CityFlow.UI
             new Color(1f, 0.82f, 0.32f, 1f);
         private static readonly Color MoonColor =
             new Color(0.82f, 0.9f, 1f, 1f);
-        private static readonly Color32 HeaderTextOutlineColor =
-            new Color32(0, 0, 0, 255);
+        private static readonly Color HeaderTextOutlineColor =
+            new Color(0f, 0f, 0f, 1f);
 
         private CityFlowServices services;
         private IGameCalendarService calendar;
@@ -242,13 +242,22 @@ namespace CityFlow.UI
         private static void AddTextOutline(Transform textTransform)
         {
             if (textTransform == null ||
-                textTransform.GetComponent<TMP_Text>() is not TMP_Text text)
+                textTransform.GetComponent<Graphic>() == null)
             {
                 return;
             }
 
-            text.outlineColor = HeaderTextOutlineColor;
-            text.outlineWidth = HeaderTextOutlineWidth;
+            Outline outline = textTransform.GetComponent<Outline>();
+            if (outline == null)
+            {
+                outline = textTransform.gameObject.AddComponent<Outline>();
+            }
+
+            outline.effectColor = HeaderTextOutlineColor;
+            outline.effectDistance = new Vector2(
+                HeaderTextOutlineDistance,
+                -HeaderTextOutlineDistance);
+            outline.useGraphicAlpha = false;
         }
 
         private void Initialize(CityFlowServices cityFlowServices)
