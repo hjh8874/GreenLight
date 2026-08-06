@@ -4605,7 +4605,7 @@ MonoBehaviour:
   inputBgm: {fileID: 0}
   sldSfx: {fileID: 0}
   inputSfx: {fileID: 0}
-  audioMixer: {fileID: 0}
+  audioMixer: {fileID: 24100000, guid: 1f8828438f65e15488cc2c2ab28e81d7, type: 2}
   bgmParameterName: BGMVolume
   sfxParameterName: SFXVolume
 --- !u!225 &430970953
