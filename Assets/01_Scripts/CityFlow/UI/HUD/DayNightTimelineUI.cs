@@ -29,8 +29,7 @@ namespace CityFlow.UI
         private const float CongestionDotSize = 12f;
         private const float CongestionDotCenterX = 16f;
         private const float TimeTextLeftInset = 34f;
-        private const float ShieldHorizontalPadding = 6f;
-        private const float ShieldVerticalPadding = 2f;
+        private const float HeaderTextOutlineWidth = 0.22f;
 
         private static readonly Color DividerColor =
             new Color(0.92f, 0.12f, 0.14f, 1f);
@@ -38,8 +37,8 @@ namespace CityFlow.UI
             new Color(1f, 0.82f, 0.32f, 1f);
         private static readonly Color MoonColor =
             new Color(0.82f, 0.9f, 1f, 1f);
-        private static readonly Color DefaultShieldColor =
-            new Color(0.08f, 0.16f, 0.22f, 0.88f);
+        private static readonly Color32 HeaderTextOutlineColor =
+            new Color32(0, 0, 0, 255);
 
         private CityFlowServices services;
         private IGameCalendarService calendar;
@@ -243,20 +242,13 @@ namespace CityFlow.UI
         private static void AddTextOutline(Transform textTransform)
         {
             if (textTransform == null ||
-                textTransform.GetComponent<Graphic>() == null)
+                textTransform.GetComponent<TMP_Text>() is not TMP_Text text)
             {
                 return;
             }
 
-            Outline outline = textTransform.GetComponent<Outline>();
-            if (outline == null)
-            {
-                outline = textTransform.gameObject.AddComponent<Outline>();
-            }
-
-            outline.effectColor = new Color(0f, 0f, 0f, 0.9f);
-            outline.effectDistance = new Vector2(1.5f, -1.5f);
-            outline.useGraphicAlpha = true;
+            text.outlineColor = HeaderTextOutlineColor;
+            text.outlineWidth = HeaderTextOutlineWidth;
         }
 
         private void Initialize(CityFlowServices cityFlowServices)
@@ -414,110 +406,7 @@ namespace CityFlow.UI
 
             NormalizeCongestionDot(topBarRect);
             ImproveHeaderTextReadability(topBarRect);
-            UpdateReadabilityShields(topBarRect);
             headerLayoutSettled = true;
-        }
-
-        private void UpdateReadabilityShields(RectTransform topBar)
-        {
-            RectTransform rootRect = transform as RectTransform;
-            if (rootRect == null)
-            {
-                return;
-            }
-
-            Color shieldColor = DefaultShieldColor;
-            Image topBarImage = topBar.GetComponent<Image>();
-            if (topBarImage != null)
-            {
-                shieldColor = topBarImage.color;
-                shieldColor.a = 0.88f;
-            }
-
-            UpdateReadabilityShield(
-                rootRect,
-                topBar.Find(TimeTextName),
-                shieldColor);
-            UpdateReadabilityShield(
-                rootRect,
-                topBar.Find(VehicleCountTextName),
-                shieldColor);
-            UpdateReadabilityShield(
-                rootRect,
-                topBar.Find(CoinTextName),
-                shieldColor);
-        }
-
-        private static void UpdateReadabilityShield(
-            RectTransform rootRect,
-            Transform textTransform,
-            Color color)
-        {
-            if (textTransform == null ||
-                textTransform.GetComponent<TMP_Text>() is not TMP_Text text)
-            {
-                return;
-            }
-
-            RectTransform textRect = text.rectTransform;
-            Vector3[] worldCorners = new Vector3[4];
-            textRect.GetWorldCorners(worldCorners);
-
-            Vector3 bottomLeft =
-                rootRect.InverseTransformPoint(worldCorners[0]);
-            Vector3 topLeft =
-                rootRect.InverseTransformPoint(worldCorners[1]);
-            float availableWidth = Vector3.Distance(
-                worldCorners[1],
-                worldCorners[2]) / Mathf.Max(
-                0.0001f,
-                rootRect.lossyScale.x);
-            float preferredWidth = text.preferredWidth;
-            float width = Mathf.Min(
-                availableWidth,
-                preferredWidth) + ShieldHorizontalPadding * 2f;
-            float height = Vector3.Distance(
-                bottomLeft,
-                topLeft) + ShieldVerticalPadding * 2f;
-            Vector3 leftCenter = (bottomLeft + topLeft) * 0.5f;
-
-            string shieldName = $"{textTransform.name}ReadabilityShield";
-            Transform existing = rootRect.Find(shieldName);
-            GameObject shieldObject;
-            if (existing == null)
-            {
-                shieldObject = new GameObject(
-                    shieldName,
-                    typeof(RectTransform),
-                    typeof(CanvasRenderer),
-                    typeof(Image));
-                shieldObject.transform.SetParent(rootRect, false);
-                shieldObject.layer = rootRect.gameObject.layer;
-            }
-            else
-            {
-                shieldObject = existing.gameObject;
-            }
-
-            RectTransform shieldRect =
-                shieldObject.GetComponent<RectTransform>();
-            shieldRect.anchorMin = new Vector2(0.5f, 0.5f);
-            shieldRect.anchorMax = new Vector2(0.5f, 0.5f);
-            shieldRect.pivot = new Vector2(0.5f, 0.5f);
-            shieldRect.anchoredPosition = new Vector2(
-                leftCenter.x + width * 0.5f - ShieldHorizontalPadding,
-                leftCenter.y);
-            shieldRect.sizeDelta = new Vector2(width, height);
-
-            Image image = shieldObject.GetComponent<Image>();
-            image.color = color;
-            image.raycastTarget = false;
-
-            Transform divider = rootRect.Find("NoonDivider");
-            if (divider != null)
-            {
-                shieldRect.SetSiblingIndex(divider.GetSiblingIndex());
-            }
         }
 
         private void Refresh(bool force = false)

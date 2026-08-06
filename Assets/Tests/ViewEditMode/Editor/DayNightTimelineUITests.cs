@@ -146,22 +146,6 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     divider.GetSiblingIndex(),
                     Is.GreaterThan(marker.GetSiblingIndex()));
-
-                AssertReadabilityShield(
-                    timeline,
-                    "TimeTextReadabilityShield",
-                    marker,
-                    divider);
-                AssertReadabilityShield(
-                    timeline,
-                    "VehicleCountTextReadabilityShield",
-                    marker,
-                    divider);
-                AssertReadabilityShield(
-                    timeline,
-                    "CoinTextReadabilityShield",
-                    marker,
-                    divider);
             }
             finally
             {
@@ -269,34 +253,13 @@ namespace CityFlow.Tests.ViewEditMode
 
         private static void AssertHeaderOutline(GameObject text)
         {
-            Outline outline = text.GetComponent<Outline>();
-            Assert.That(outline, Is.Not.Null);
-            Assert.That(outline.effectColor.a,
-                Is.EqualTo(0.9f).Within(0.001f));
-            Assert.That(outline.effectDistance,
-                Is.EqualTo(new Vector2(1.5f, -1.5f)));
-        }
-
-        private static void AssertReadabilityShield(
-            Transform timeline,
-            string shieldName,
-            RectTransform marker,
-            RectTransform divider)
-        {
-            Transform shield = timeline.Find(shieldName);
-            Assert.That(shield, Is.Not.Null);
-            Assert.That(
-                shield.GetSiblingIndex(),
-                Is.GreaterThan(marker.GetSiblingIndex()));
-            Assert.That(
-                shield.GetSiblingIndex(),
-                Is.LessThan(divider.GetSiblingIndex()));
-
-            Image image = shield.GetComponent<Image>();
-            Assert.That(image, Is.Not.Null);
-            Assert.That(image.raycastTarget, Is.False);
-            Assert.That(image.color.a,
-                Is.EqualTo(0.88f).Within(0.001f));
+            TMP_Text tmpText = text.GetComponent<TMP_Text>();
+            Assert.That(tmpText, Is.Not.Null);
+            Assert.That(tmpText.outlineColor,
+                Is.EqualTo(new Color32(0, 0, 0, 255)));
+            Assert.That(tmpText.outlineWidth,
+                Is.EqualTo(0.22f).Within(0.001f));
+            Assert.That(text.GetComponent<Outline>(), Is.Null);
         }
     }
 }
