@@ -15,6 +15,8 @@ namespace CityFlow.EditorTools
         private const string TargetCanvasName = "UI_MainCanvas";
         private const string ContentRootName = "FloatingWindowContentRoot";
         private const string FeedRootName = "GreenSNSFeedDock";
+        private const string IntegrationPrefabPath =
+            "Assets/02_Prefabs/Feed/CitizenFeedIntegration.prefab";
 
         // 화면에 노출되는 SNS 이름. 클래스·오브젝트 이름(GreenFeed*)은 그대로 둔다 —
         // 브랜딩만 바꾸는 데 파일 전체를 개명할 이유가 없다.
@@ -185,6 +187,10 @@ namespace CityFlow.EditorTools
                 template,
                 ticker);
 
+            // 통합 담당자가 밟는 절차는 이 메뉴 하나다. UI만 굽고 목록 설치가 빠지면
+            // 신규 이벤트가 에러 없이 조용히 무동작이 되므로 여기서 함께 보장한다.
+            EnsureIntegrationInstaller(scene);
+
             EditorUtility.SetDirty(root);
             EditorUtility.SetDirty(controller);
             EditorSceneManager.MarkSceneDirty(scene);
@@ -193,6 +199,33 @@ namespace CityFlow.EditorTools
             Debug.Log(
                 $"[GreenFeedUiBaker] '{AppName}' 피드를 '{scene.name}'에 구웠습니다. " +
                 "우하단 도크 왼쪽의 한 줄 티커를 누르면 중앙에 히스토리가 열립니다.");
+        }
+
+        /// <summary>
+        /// 씬에 <see cref="CitizenFeedIntegrationInstaller"/>가 없으면 통합 프리팹을 배치한다.
+        /// 이미 있으면(수동 배치·이전 베이킹) 손대지 않는다.
+        /// </summary>
+        private static void EnsureIntegrationInstaller(Scene scene)
+        {
+            if (FindInActiveScene<CitizenFeedIntegrationInstaller>(scene) != null)
+            {
+                return;
+            }
+
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(IntegrationPrefabPath);
+            if (prefab == null)
+            {
+                Debug.LogError(
+                    $"[GreenFeedUiBaker] 통합 프리팹을 찾지 못했습니다: {IntegrationPrefabPath}. " +
+                    "신규 이벤트 규칙·템플릿이 설치되지 않습니다.");
+                return;
+            }
+
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+            Undo.RegisterCreatedObjectUndo(instance, "Bake Green SNS Feed");
+            Debug.Log(
+                $"[GreenFeedUiBaker] 목록 설치 프리팹 '{instance.name}'을 '{scene.name}'에 배치했습니다.",
+                instance);
         }
 
         [MenuItem("Tools/GreenLight/UI/Bake Green SNS Feed", true)]
