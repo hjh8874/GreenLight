@@ -2680,8 +2680,8 @@ namespace CityFlow.EditorTools.Balance
                 0,
                 EditorGUILayout.IntField(
                     new GUIContent(
-                        "연구 비용",
-                        "연구 시작 시 한 번 지불하는 재화입니다."),
+                        "연구 가격 (재화)",
+                        "인게임 연구 카드에 표시되며 연구 시작 시 한 번 지불합니다."),
                     cost.intValue));
             duration.intValue = Mathf.Max(
                 0,
@@ -2692,9 +2692,14 @@ namespace CityFlow.EditorTools.Balance
                     duration.intValue));
 
             EditorGUILayout.HelpBox(
-                duration.intValue == 0
+                $"인게임 표시 가격: " +
+                (cost.intValue == 0
+                    ? "무료"
+                    : $"{cost.intValue:N0} 재화") +
+                "\n" +
+                (duration.intValue == 0
                     ? "연구 시작 즉시 완료됩니다."
-                    : $"게임 시간으로 {duration.intValue}시간 뒤 완료됩니다.",
+                    : $"게임 시간으로 {duration.intValue}시간 뒤 완료됩니다."),
                 MessageType.Info);
         }
 
