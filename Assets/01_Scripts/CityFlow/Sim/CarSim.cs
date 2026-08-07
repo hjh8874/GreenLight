@@ -37,6 +37,10 @@ namespace CityFlow.Sim
     internal sealed class CarSim : ICarRouteProvider
     {
         internal const int FreeFlowStreakCap = 3;
+        // 연결 배수는 ArrivalEvent.Coins에 반영된다. 따라서 DistanceRewardService의
+        // 거리 보너스도 이 금액을 기준으로 계산되어 연결 배수와 복리로 적용된다.
+        private static readonly float[] FreeFlowStreakBonus =
+            { 0f, 0f, 1f, 3f };
         private const float JumpThresholdHours = 1f;
         private const float StaleSpecialJourneyHours = 24f;
         private const int VehicleRetryDelayTicks = 10;
@@ -845,10 +849,20 @@ namespace CityFlow.Sim
                     events.QueueTripArrival(
                         new VehicleTripArrivedEvent(completedTrip));
                 }
+                int freeFlowStreakMax =
+                    Mathf.Clamp(
+                        _freeFlowStreakMax[arrival.CarId],
+                        0,
+                        FreeFlowStreakCap);
                 _scheduler.NotifyArrived(car);
                 ResetCarRuntimeState(arrival.CarId);
                 if (paidArrival)
-                    events.QueueArrival(new ArrivalEvent(car.Work, _cfg.CoinPerTrip));
+                {
+                    int coins = CalculateFreeFlowReward(
+                        _cfg.CoinPerTrip,
+                        freeFlowStreakMax);
+                    events.QueueArrival(new ArrivalEvent(car.Work, coins));
+                }
             }
             ProcessLivenessWatchdog(net);
             roadTraffic?.ProcessLivenessWatchdog(
@@ -1845,7 +1859,19 @@ namespace CityFlow.Sim
             events.QueueTripArrival(new VehicleTripArrivedEvent(completed));
             // 방문 도착 보상. ArrivalEvent 를 타면 주간 적립·HUD·피드·퀘스트가 기존 구독으로 따라온다.
             if (completed.RewardCoins > 0)
-                events.QueueArrival(new ArrivalEvent(completed.Destination, completed.RewardCoins));
+            {
+                int freeFlowStreakMax =
+                    Mathf.Clamp(
+                        _freeFlowStreakMax[carId],
+                        0,
+                        FreeFlowStreakCap);
+                events.QueueArrival(
+                    new ArrivalEvent(
+                        completed.Destination,
+                        CalculateFreeFlowReward(
+                            completed.RewardCoins,
+                            freeFlowStreakMax)));
+            }
             ResetCarRuntimeState(carId);
 
             if (journey.TryBeginContinuation())
@@ -1970,6 +1996,23 @@ namespace CityFlow.Sim
                 journey.ReplaceRoutes(currentRoute, continuation);
                 RegisterSpecialViewRoute(journey);
             }
+        }
+
+        internal static int CalculateFreeFlowReward(
+            int baseCoins,
+            int freeFlowStreakMax)
+        {
+            if (baseCoins <= 0)
+            {
+                return 0;
+            }
+
+            int stage = Mathf.Clamp(
+                freeFlowStreakMax,
+                0,
+                FreeFlowStreakCap);
+            return Mathf.RoundToInt(
+                baseCoins * (1f + FreeFlowStreakBonus[stage]));
         }
 
         private void CancelAllSpecialJourneys()

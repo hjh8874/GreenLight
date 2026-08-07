@@ -291,5 +291,57 @@ namespace CityFlow.Sim.Tests
                 Assert.AreEqual(carId, cars[node], $"carId={carId}, node={node}");
             }
         }
+
+        [Test]
+        public void FreeFlowReward_StageOneUsesOneTimesBaseReward()
+        {
+            Assert.AreEqual(10, CarSim.CalculateFreeFlowReward(10, 1));
+        }
+
+        [Test]
+        public void FreeFlowReward_StageTwoUsesTwoTimesBaseReward()
+        {
+            Assert.AreEqual(20, CarSim.CalculateFreeFlowReward(10, 2));
+        }
+
+        [Test]
+        public void FreeFlowReward_StageThreeUsesFourTimesBaseReward()
+        {
+            Assert.AreEqual(40, CarSim.CalculateFreeFlowReward(10, 3));
+        }
+
+        [Test]
+        public void FreeFlowReward_ArrivalReadsMaxWhenCurrentWasReset()
+        {
+            CarSim sim = BuildCommuteCity(
+                CarSimTests.Cfg(),
+                true,
+                out RoadQueueNetwork queues,
+                out _);
+            var hub = new SimEventHub();
+            var events = new SimEventBuffer(hub);
+            int paidCoins = 0;
+            hub.Arrival += message => paidCoins = message.Coins;
+
+            FieldInfo maxField = typeof(CarSim).GetField(
+                "_freeFlowStreakMax",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo currentField = typeof(CarSim).GetField(
+                "_freeFlowStreak",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            int[] max = (int[])maxField.GetValue(sim);
+            int[] current = (int[])currentField.GetValue(sim);
+            max[0] = 3;
+            current[0] = 0;
+
+            for (int tick = 0; tick < 120 && paidCoins == 0; tick++)
+            {
+                sim.Step(1L, 7f, queues, events, null, tick);
+                events.Drain();
+            }
+
+            Assert.AreEqual(40, paidCoins,
+                "도착 보상은 현재 연결이 아니라 통근 최대 연결을 읽어야 한다");
+        }
     }
 }
