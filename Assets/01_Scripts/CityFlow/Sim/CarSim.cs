@@ -1114,10 +1114,17 @@ namespace CityFlow.Sim
         {
             if (carId < 0 || carId >= CarCount) return true; // 버스 등 외부 에이전트
             CommuteCar car = _scheduler.Cars[carId];
-            if (car.SpeedFactorNumerator >= 60) return true; // 표준 = 무비용 경로(기존 비트 동일)
+            Vector2Int currentTile = CurrentTileForSpeedCredit(carId);
+            int effectiveNumerator = _demands == null
+                ? car.SpeedFactorNumerator
+                : _demands.GetEffectiveSchoolZoneNumerator(
+                    car.SpeedFactorNumerator,
+                    currentTile,
+                    _lastHour);
+            if (effectiveNumerator >= 60) return true; // 표준 = 무비용 경로(스쿨존 밖)
             if (!_creditAccrued[carId])
             {
-                car.SpeedCredit = Math.Min(120, car.SpeedCredit + car.SpeedFactorNumerator);
+                car.SpeedCredit = Math.Min(120, car.SpeedCredit + effectiveNumerator);
                 _creditAccrued[carId] = true;
             }
             if (car.SpeedCredit < 60)
@@ -1128,6 +1135,21 @@ namespace CityFlow.Sim
             car.SpeedCredit -= 60;
             _creditWaiting[carId] = false; // 늦은 서비스 라운드에서 허가되면 대기 해제
             return true;
+        }
+
+        private Vector2Int CurrentTileForSpeedCredit(int carId)
+        {
+            if (!TryRoute(carId, out List<Vector2Int> route) ||
+                route.Count == 0)
+            {
+                return default;
+            }
+
+            int tileIndex = Mathf.Clamp(
+                _tileIndices[carId],
+                0,
+                route.Count - 1);
+            return route[tileIndex];
         }
 
         private void TryEnqueueDepartures(RoadQueueNetwork net)

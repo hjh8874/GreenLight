@@ -44,6 +44,8 @@ namespace CityFlow.Sim
         readonly List<Demand> _demands = new(128);
         readonly Dictionary<Vector2Int, CompanyCapacityState> _companies = new(16);
         readonly HashSet<Vector2Int> _schools = new();
+        readonly SchoolZoneMap _schoolZoneMap;
+        CityGrid _schoolZoneGrid;
         readonly Dictionary<Vector2Int, int> _effectiveCapacityBySink = new(16);
         readonly Dictionary<Vector2Int, int> _assignedBySink = new(16);
         // 홈타일+sink종류 → 배정 sink. sink 철거/도로 단절 때만 해제해 차량 순간이동을 막는다.
@@ -72,6 +74,9 @@ namespace CityFlow.Sim
         public DemandMap(SimConfig config)
         {
             _config = config;
+            _schoolZoneMap = new SchoolZoneMap(
+                config.GridWidth,
+                config.GridHeight);
         }
 
         // 집별 통근자 감축 주입점. null은 기존 CarsPerHouse 동작을 유지한다.
@@ -112,6 +117,7 @@ namespace CityFlow.Sim
             if (type == TileType.School)
             {
                 _schools.Add(tile);
+                RebuildSchoolZoneMap();
                 return;
             }
             if (type != TileType.Office)
@@ -156,6 +162,7 @@ namespace CityFlow.Sim
             if (type == TileType.School)
             {
                 _schools.Add(tile);
+                RebuildSchoolZoneMap();
                 return;
             }
             if (type != TileType.Office)
@@ -230,7 +237,10 @@ namespace CityFlow.Sim
         internal void RemoveCompany(Vector2Int tile)
         {
             _companies.Remove(tile);
-            _schools.Remove(tile);
+            if (_schools.Remove(tile))
+            {
+                RebuildSchoolZoneMap();
+            }
             _effectiveCapacityBySink.Remove(tile);
             _assignedBySink.Remove(tile);
         }
@@ -239,6 +249,7 @@ namespace CityFlow.Sim
         {
             _companies.Clear();
             _schools.Clear();
+            RebuildSchoolZoneMap();
             _effectiveCapacityBySink.Clear();
             _assignedBySink.Clear();
         }
@@ -329,6 +340,8 @@ namespace CityFlow.Sim
 
         public void Reassign(CityGrid grid, RoadNetwork net)
         {
+            _schoolZoneGrid = grid;
+            RebuildSchoolZoneMap();
             _demands.Clear();
             _effectiveCapacityBySink.Clear();
             _assignedBySink.Clear();
@@ -369,6 +382,24 @@ namespace CityFlow.Sim
                     net
                 );
             }
+        }
+
+        internal bool IsSchoolZone(Vector2Int tile) =>
+            _schoolZoneMap.IsSchoolZone(tile);
+
+        internal int GetEffectiveSchoolZoneNumerator(
+            int vehicleNumerator,
+            Vector2Int tile,
+            float gameHour) =>
+            _schoolZoneMap.GetEffectiveNumerator(
+                vehicleNumerator,
+                tile,
+                gameHour,
+                _config);
+
+        private void RebuildSchoolZoneMap()
+        {
+            _schoolZoneMap.Rebuild(_schools, _schoolZoneGrid);
         }
 
         // flat 순서(y, x)로 특정 종류 타일 수집 → 배정·tie-break가 결정론적.

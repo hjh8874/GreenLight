@@ -730,7 +730,7 @@ namespace CityFlow.Sim
 
             if (!_grid.TryRemove(tile, out var removed, out Vector2Int anchor)) return false;
             _construction.Cancel(anchor);   // 공사 중 철거 — 사이트 제거(환불은 UI 층 기존 경로)
-            if (removed == TileType.Office)
+            if (removed == TileType.Office || removed == TileType.School)
                 _demand.RemoveCompany(anchor);
             if (TileFootprint.IsBuilding(removed))
             {
