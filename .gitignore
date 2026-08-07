@@ -125,8 +125,25 @@ Assets/99_Download.meta
 # Local Codex instructions
 /AGENTS.md
 
-# Local generated artifacts
-/output/
+# Local generated artifacts and Unity player builds
+/[Oo]utput/
+/[Dd]ist/
+/[Rr]elease/
+/[Ee]xports/
+/[Pp]layer[Bb]uild/
+/[Pp]layer[Bb]uilds/
+
+# Standalone player files accidentally built at the repository root
+/*.exe
+/UnityPlayer.dll
+/GameAssembly.dll
+/WinPixEventRuntime.dll
+/baselib.dll
+/*_Data/
+/*_BurstDebugInformation_DoNotShip/
+/BackUpThisFolder_ButDontShipItWithYourGame/
+/MonoBleedingEdge/
+/*.symbols.zip
 
 # 교통 디버그 씬은 Tools/GreenLight 메뉴로 재생성되는 산출물 — 커밋 안 함
 Assets/00_Scenes/*_Debug.unity

@@ -12,11 +12,17 @@ namespace CityFlow.Tests.ViewEditMode
             GameObject canvas = new GameObject(
                 "Canvas",
                 typeof(RectTransform));
+            GameObject topBar = new GameObject(
+                "HUD_TopBar",
+                typeof(RectTransform));
+            topBar.transform.SetParent(canvas.transform, false);
+            topBar.GetComponent<RectTransform>().sizeDelta =
+                new Vector2(0f, 60f);
 
             try
             {
                 QuestBubbleUI controller =
-                    QuestBubbleUI.Create(canvas.transform);
+                    QuestBubbleUI.Create(canvas.transform, topBar.GetComponent<RectTransform>());
                 RectTransform bubble = controller.transform
                     .Find("QuestBubble")
                     .GetComponent<RectTransform>();
@@ -26,6 +32,8 @@ namespace CityFlow.Tests.ViewEditMode
                 RectTransform minimized = controller.transform
                     .Find("QuestMinimizedButton")
                     .GetComponent<RectTransform>();
+
+                Assert.That(controller.transform.parent, Is.EqualTo(canvas.transform));
 
                 Assert.That(
                     bubble.anchoredPosition,

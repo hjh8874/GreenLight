@@ -84,7 +84,11 @@ namespace CityFlow.Gameplay.Quests
                 return;
             }
 
-            questUI = QuestBubbleUI.Create(canvas.transform);
+            RectTransform topBar = FindQuestTopBar(canvas);
+            Transform questParent = topBar != null && topBar.parent != null
+                ? topBar.parent
+                : canvas.transform;
+            questUI = QuestBubbleUI.Create(questParent, topBar);
             BindQuestUI();
         }
 
@@ -114,6 +118,21 @@ namespace CityFlow.Gameplay.Quests
                 if (canvas.isRootCanvas)
                 {
                     return canvas;
+                }
+            }
+
+            return null;
+        }
+
+        private static RectTransform FindQuestTopBar(Canvas canvas)
+        {
+            RectTransform[] rects =
+                canvas.GetComponentsInChildren<RectTransform>(true);
+            foreach (RectTransform rect in rects)
+            {
+                if (rect.name == "HUD_TopBar")
+                {
+                    return rect;
                 }
             }
 

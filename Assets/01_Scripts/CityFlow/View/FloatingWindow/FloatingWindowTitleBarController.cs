@@ -49,6 +49,7 @@ namespace CityFlow.View
             floatingWindowService = service;
             windowController = controller;
 
+            SynchronizeCanvasScaling();
             BindButtons();
             if (moveHandle != null)
             {
@@ -63,6 +64,7 @@ namespace CityFlow.View
 
         private void Update()
         {
+            SynchronizeCanvasScaling();
             ApplyContentInset();
 
             if (floatingWindowService == null || windowController == null)
@@ -118,14 +120,56 @@ namespace CityFlow.View
                 return;
             }
 
-            float scaleFactor = Mathf.Max(0.01f, contentCanvas.scaleFactor);
             float reservedHeight = floatingWindowService != null
                 && floatingWindowService.IsFloating
                 && !floatingWindowService.IsMaximized
                     ? TitleBarHeight
                     : 0f;
-            contentRoot.offsetMin = Vector2.zero;
-            contentRoot.offsetMax = new Vector2(0f, -reservedHeight / scaleFactor);
+            ApplyTopInset(contentRoot, contentCanvas, reservedHeight);
+        }
+
+        internal static void ApplyTopInset(
+            RectTransform target,
+            Canvas canvas,
+            float pixelHeight)
+        {
+            if (target == null || canvas == null)
+            {
+                return;
+            }
+
+            float inset = Mathf.Max(0f, pixelHeight);
+            target.anchorMin = Vector2.zero;
+            target.anchorMax = Vector2.one;
+            target.pivot = new Vector2(0.5f, 0.5f);
+            target.anchoredPosition = new Vector2(0f, -inset * 0.5f);
+            target.sizeDelta = new Vector2(0f, -inset);
+        }
+
+        private void SynchronizeCanvasScaling()
+        {
+            if (contentCanvas == null)
+            {
+                return;
+            }
+
+            CanvasScaler source = contentCanvas.GetComponent<CanvasScaler>();
+            CanvasScaler target = GetComponent<CanvasScaler>();
+            if (source == null || target == null)
+            {
+                return;
+            }
+
+            target.uiScaleMode = source.uiScaleMode;
+            target.referencePixelsPerUnit = source.referencePixelsPerUnit;
+            target.scaleFactor = source.scaleFactor;
+            target.referenceResolution = source.referenceResolution;
+            target.screenMatchMode = source.screenMatchMode;
+            target.matchWidthOrHeight = source.matchWidthOrHeight;
+            target.physicalUnit = source.physicalUnit;
+            target.fallbackScreenDPI = source.fallbackScreenDPI;
+            target.defaultSpriteDPI = source.defaultSpriteDPI;
+            target.dynamicPixelsPerUnit = source.dynamicPixelsPerUnit;
         }
 
         private void OnDestroy()

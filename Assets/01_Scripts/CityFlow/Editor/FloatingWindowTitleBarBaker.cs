@@ -129,7 +129,25 @@ namespace CityFlow.Editor
             canvas.sortingOrder = 32760;
 
             CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            CanvasScaler contentScaler =
+                contentCanvas.GetComponent<CanvasScaler>();
+            if (contentScaler != null)
+            {
+                scaler.uiScaleMode = contentScaler.uiScaleMode;
+                scaler.referencePixelsPerUnit =
+                    contentScaler.referencePixelsPerUnit;
+                scaler.scaleFactor = contentScaler.scaleFactor;
+                scaler.referenceResolution =
+                    contentScaler.referenceResolution;
+                scaler.screenMatchMode = contentScaler.screenMatchMode;
+                scaler.matchWidthOrHeight =
+                    contentScaler.matchWidthOrHeight;
+                scaler.physicalUnit = contentScaler.physicalUnit;
+                scaler.fallbackScreenDPI = contentScaler.fallbackScreenDPI;
+                scaler.defaultSpriteDPI = contentScaler.defaultSpriteDPI;
+                scaler.dynamicPixelsPerUnit =
+                    contentScaler.dynamicPixelsPerUnit;
+            }
 
             GameObject panel = CreateUiObject(
                 "TitleBar",

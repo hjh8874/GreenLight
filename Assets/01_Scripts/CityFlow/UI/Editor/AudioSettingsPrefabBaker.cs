@@ -121,7 +121,7 @@ namespace CityFlow.UI.Editor
                 new Vector2(1f, 0.5f),
                 new Vector2(-28f, 0f),
                 new Vector2(56f, 30f));
-            input.SetTextWithoutNotify("50");
+            input.SetTextWithoutNotify("30");
         }
 
         private static Slider CreateSlider(Transform parent)
@@ -170,7 +170,7 @@ namespace CityFlow.UI.Editor
             slider.targetGraphic = handleImage;
             slider.minValue = 0f;
             slider.maxValue = 1f;
-            slider.value = 0.5f;
+            slider.value = 0.3f;
             return slider;
         }
 
@@ -191,7 +191,7 @@ namespace CityFlow.UI.Editor
             viewport.offsetMax = new Vector2(-6f, -2f);
             viewport.gameObject.AddComponent<RectMask2D>();
 
-            TMP_Text placeholder = CreateText(viewport, "Placeholder", "50");
+            TMP_Text placeholder = CreateText(viewport, "Placeholder", "30");
             StretchRect(placeholder.rectTransform, 0f, 0f);
             placeholder.alignment = TextAlignmentOptions.Center;
             LayerLabUiAssetCatalog.StyleText(

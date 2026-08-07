@@ -23,6 +23,8 @@ namespace CityFlow.UI
         private const string VehicleCountTextName = "VehicleCountText";
         private const string CoinTextName = "CoinText";
         private const float DefaultBarHeight = 60f;
+        private const float HarvestButtonWidth = 160f;
+        private const float HarvestButtonHeight = 44f;
         private const float RefreshIntervalSeconds = 0.2f;
         private const float SunriseHour = 6f;
         private const float SunsetHour = 18f;
@@ -183,6 +185,9 @@ namespace CityFlow.UI
             harvestRect.anchorMax = new Vector2(0.5f, 0.5f);
             harvestRect.pivot = new Vector2(0.5f, 0.5f);
             harvestRect.anchoredPosition = Vector2.zero;
+            harvestRect.sizeDelta = new Vector2(
+                HarvestButtonWidth,
+                HarvestButtonHeight);
         }
 
         private static void NormalizeCongestionDot(RectTransform topBar)

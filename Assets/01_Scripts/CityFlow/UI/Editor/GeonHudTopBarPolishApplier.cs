@@ -27,9 +27,9 @@ namespace CityFlow.UI.Editor
                 LayerLabUiAssetCatalog.GetOrAddComponent<Image>(hud.gameObject);
             LayerLabUiAssetCatalog.ApplyImage(
                 background,
-                LayerLabUiAssetCatalog.LoadSprite(
-                    "Frame/Frame_Panel_TopBar.png"),
-                new Color(0.12f, 0.14f, 0.18f, 0.97f));
+                null,
+                new Color(0.12f, 0.14f, 0.18f, 0.97f),
+                false);
             background.raycastTarget = true;
 
             ConfigureHudText(

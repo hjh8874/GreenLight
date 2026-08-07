@@ -491,6 +491,28 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void PlacementPreviewMaterial_UsesBuildIncludedShader()
+        {
+            Material material =
+                PlacementVisualManager
+                    .CreateLightingIndependentPreviewMaterial(
+                        "PlacementPreviewMaterialTest");
+
+            try
+            {
+                Assert.That(material.shader, Is.Not.Null);
+                Assert.That(
+                    material.shader.name,
+                    Is.EqualTo("GreenLight/CityFlow Opaque Unlit"),
+                    "배치 미리보기는 Resources에 포함되어 빌드에서도 유지되는 셰이더를 사용해야 한다.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
         public void GhostRotation_UsesCurrentPlacementDirection()
         {
             var ghostObject = new GameObject("RotatingGhost");

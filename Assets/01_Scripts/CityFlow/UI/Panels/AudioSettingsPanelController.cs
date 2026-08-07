@@ -12,7 +12,7 @@ namespace CityFlow.UI
             "Settings_BGMVolume";
         private const string SfxVolumePreferenceKey =
             "Settings_SFXVolume";
-        private const float DefaultVolume = 0.5f;
+        private const float DefaultVolume = 0.3f;
         private const float MinimumLinearVolume = 0.0001f;
         private const float PreferenceSaveDebounceSeconds = 0.2f;
 
@@ -139,12 +139,10 @@ namespace CityFlow.UI
 
         private void LoadPreferencesAndApplyAudioState()
         {
-            savedBgmVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(
-                BgmVolumePreferenceKey,
-                DefaultVolume));
-            savedSfxVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(
-                SfxVolumePreferenceKey,
-                DefaultVolume));
+            savedBgmVolume = LoadVolumePreference(
+                BgmVolumePreferenceKey);
+            savedSfxVolume = LoadVolumePreference(
+                SfxVolumePreferenceKey);
 
             bgmSlider?.SetValueWithoutNotify(savedBgmVolume);
             sfxSlider?.SetValueWithoutNotify(savedSfxVolume);
@@ -156,6 +154,13 @@ namespace CityFlow.UI
             ApplyMixerVolume(BgmParameterNames, savedBgmVolume);
             ApplyMixerVolume(SfxParameterNames, savedSfxVolume);
             ApplyMuteState(muteToggle != null && muteToggle.isOn);
+        }
+
+        internal static float LoadVolumePreference(string key)
+        {
+            return Mathf.Clamp01(PlayerPrefs.GetFloat(
+                key,
+                DefaultVolume));
         }
 
         private void BindControls()
