@@ -87,6 +87,7 @@ namespace CityFlow.Sim
         private readonly int[] _freeFlowStreakMax;
         private readonly int[] _freeFlowCountedIntersection;
         private readonly bool[] _freeFlowTripActive;
+        private readonly FreeFlowStreakLedger _freeFlowStreakLedger;
         private readonly int[] _offNetworkBlockedTicks;
         private readonly List<Vector2Int> _originAccessRoads = new(8);
         private readonly List<Vector2Int> _destinationAccessRoads = new(8);
@@ -198,9 +199,12 @@ namespace CityFlow.Sim
             }
         }
 
-        public CarSim(in SimConfig cfg)
+        public CarSim(
+            in SimConfig cfg,
+            FreeFlowStreakLedger freeFlowStreakLedger = null)
         {
             _cfg = cfg;
+            _freeFlowStreakLedger = freeFlowStreakLedger;
             int maxCars = Math.Max(1, cfg.MaxSimCars);
             int requestedSpecialVehicleLimit =
                 cfg.MaxConcurrentSpecialTrips > 0
@@ -1007,7 +1011,27 @@ namespace CityFlow.Sim
                     // normal progress over time, not that it hit a traffic stop.
                     // A physical stop has no credit-wait marker and resets the streak.
                     if (!_creditWaiting[carId])
+                    {
+                        if (_freeFlowStreak[carId] > 0)
+                        {
+                            int resetTileIndex = previousIndex + 1;
+                            if (resetTileIndex >= route.Count ||
+                                !_grid.IsIntersection(route[resetTileIndex]))
+                            {
+                                resetTileIndex = previousIndex;
+                            }
+
+                            if (resetTileIndex >= 0 &&
+                                resetTileIndex < route.Count &&
+                                _grid.IsIntersection(route[resetTileIndex]))
+                            {
+                                _freeFlowStreakLedger?.RecordReset(
+                                    route[resetTileIndex]);
+                            }
+                        }
+
                         _freeFlowStreak[carId] = 0;
+                    }
                     continue;
                 }
 

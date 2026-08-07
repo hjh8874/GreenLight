@@ -17,6 +17,12 @@ namespace CityFlow.View
         [SerializeField] private GameObject stageTwoPrefab;
         [SerializeField] private GameObject stageThreeGlowPrefab;
         [SerializeField] private GameObject stageThreeStarsPrefab;
+        [SerializeField] private Color bottleneckMarkerColor =
+            new Color(1f, 0.72f, 0.28f, 1f);
+        [SerializeField, Min(0.01f)] private float bottleneckMarkerScale = 0.35f;
+        [SerializeField, Min(0.01f)] private float bottleneckMarkerFadeSeconds = 1.5f;
+        [SerializeField, Range(0f, 1f)] private float bottleneckMarkerThreshold = 0.1f;
+        [SerializeField] private GameObject bottleneckMarkerPrefab;
 
         public Color GetTint(int stage)
         {
@@ -37,5 +43,12 @@ namespace CityFlow.View
         public GameObject StageTwoPrefab => stageTwoPrefab;
         public GameObject StageThreeGlowPrefab => stageThreeGlowPrefab;
         public GameObject StageThreeStarsPrefab => stageThreeStarsPrefab;
+        public Color BottleneckMarkerColor => bottleneckMarkerColor;
+        public float BottleneckMarkerScale => Mathf.Max(0.01f, bottleneckMarkerScale);
+        public float BottleneckMarkerFadeSeconds =>
+            Mathf.Max(0.01f, bottleneckMarkerFadeSeconds);
+        public float BottleneckMarkerThreshold =>
+            Mathf.Clamp01(bottleneckMarkerThreshold);
+        public GameObject BottleneckMarkerPrefab => bottleneckMarkerPrefab;
     }
 }

@@ -5,11 +5,20 @@ namespace CityFlow.View
 {
     public sealed partial class MainCityView
     {
+        private BottleneckMarkerView bottleneckMarkerView;
+
         private void LateUpdate()
         {
             if (simEngine == null)
             {
                 return;
+            }
+
+            if (bottleneckMarkerView == null)
+            {
+                bottleneckMarkerView =
+                    gameObject.AddComponent<BottleneckMarkerView>();
+                bottleneckMarkerView.Initialize(services);
             }
 
             for (int index = 0; index < carSimMirrors.Count; index++)

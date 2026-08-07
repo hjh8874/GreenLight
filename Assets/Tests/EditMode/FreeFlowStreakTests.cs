@@ -14,7 +14,8 @@ namespace CityFlow.Sim.Tests
             SimConfig cfg,
             bool intersections,
             out RoadQueueNetwork queues,
-            out List<Vector2Int> intersectionRouteTiles)
+            out List<Vector2Int> intersectionRouteTiles,
+            FreeFlowStreakLedger ledger = null)
         {
             int width = 10;
             var grid = new CityGrid(width, intersections ? 5 : 3);
@@ -55,7 +56,7 @@ namespace CityFlow.Sim.Tests
                 Assert.GreaterOrEqual(routeIntersections, 3);
             }
 
-            var sim = new CarSim(cfg);
+            var sim = new CarSim(cfg, ledger);
             sim.Rebuild(demands, planner, queues, grid: grid, roadNetwork: roads);
             return sim;
         }
@@ -342,6 +343,83 @@ namespace CityFlow.Sim.Tests
 
             Assert.AreEqual(40, paidCoins,
                 "도착 보상은 현재 연결이 아니라 통근 최대 연결을 읽어야 한다");
+        }
+
+        [Test]
+        public void FreeFlowLedger_ResetIncreasesTheIntersectionIntensity()
+        {
+            var ledger = new FreeFlowStreakLedger(10, 10);
+            ledger.RecordReset(V(2, 3));
+
+            Assert.AreEqual(0.125f,
+                ledger.GetBottleneckIntensity(V(2, 3)),
+                0.0001f);
+        }
+
+        [Test]
+        public void FreeFlowLedger_DecaysAfterEachTick()
+        {
+            var ledger = new FreeFlowStreakLedger(10, 10);
+            ledger.RecordReset(V(2, 3));
+            float initial = ledger.GetBottleneckIntensity(V(2, 3));
+
+            for (int tick = 0; tick < 10; tick++)
+                ledger.Decay();
+
+            float expected = initial * Mathf.Pow(0.995f, 10);
+            Assert.AreEqual(expected,
+                ledger.GetBottleneckIntensity(V(2, 3)),
+                0.0001f);
+        }
+
+        [Test]
+        public void FreeFlowLedger_WithNoResetHasZeroIntensity()
+        {
+            var ledger = new FreeFlowStreakLedger(10, 10);
+            Assert.AreEqual(0f,
+                ledger.GetBottleneckIntensity(V(2, 3)));
+        }
+
+        [Test]
+        public void FreeFlowLedger_CarSimResetRecordsTheBlockedIntersection()
+        {
+            var ledger = new FreeFlowStreakLedger(10, 5);
+            CarSim sim = BuildCommuteCity(
+                CarSimTests.Cfg(),
+                true,
+                out RoadQueueNetwork queues,
+                out List<Vector2Int> intersections,
+                ledger);
+            var gate = new BlockingSignalGate(intersections[1]);
+            var events = new SimEventBuffer(new SimEventHub());
+            int tick = 0;
+
+            for (; tick < 100; tick++)
+            {
+                sim.Step(1L, 7f, queues, events, gate, tick);
+                events.Drain();
+                if (sim.GetCar(0).FreeFlowStreak == 1)
+                    break;
+            }
+
+            gate.Closed = true;
+            bool resetObserved = false;
+            for (int attempt = 0; attempt < 40; attempt++, tick++)
+            {
+                sim.Step(1L, 7f, queues, events, gate, tick);
+                events.Drain();
+                if (!sim.GetCar(0).WaitingForSpeedCredit &&
+                    sim.GetCar(0).FreeFlowStreak == 0)
+                {
+                    resetObserved = true;
+                    break;
+                }
+            }
+
+            Assert.IsTrue(resetObserved);
+            Assert.Greater(
+                ledger.GetBottleneckIntensity(intersections[1]),
+                0f);
         }
     }
 }

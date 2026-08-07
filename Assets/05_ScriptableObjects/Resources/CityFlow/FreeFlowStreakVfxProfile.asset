@@ -19,3 +19,8 @@ MonoBehaviour:
   stageTwoPrefab: {fileID: 100000, guid: 5b8e4d6003c345844ba510013ead9315, type: 3}
   stageThreeGlowPrefab: {fileID: 9144393426468053557, guid: 50534ff883a833e4e8070d3105087d27, type: 3}
   stageThreeStarsPrefab: {fileID: 100000, guid: a8bc4c8952534334bbfcf03c2547fdb3, type: 3}
+  bottleneckMarkerColor: {r: 1, g: 0.72, b: 0.28, a: 1}
+  bottleneckMarkerScale: 0.35
+  bottleneckMarkerFadeSeconds: 1.5
+  bottleneckMarkerThreshold: 0.1
+  bottleneckMarkerPrefab: {fileID: 9144393426468053557, guid: 50534ff883a833e4e8070d3105087d27, type: 3}

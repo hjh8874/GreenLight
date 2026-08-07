@@ -32,6 +32,7 @@ namespace CityFlow.Sim
         readonly SignalGateAdapter _signalGate;
         readonly CongestionLevel[] _carCongestion;
         readonly CongestionLedger _congestionLedger;
+        readonly FreeFlowStreakLedger _freeFlowStreakLedger;
         readonly InfrastructureEffectTracker _infrastructureEffectTracker;
         readonly SignalMap _signals = new SignalMap();
         // 배치 모드(AutoDetectSignals=false) 소유 상태: flat 정렬 유지 = SignalMap 순회 순서(결정론).
@@ -97,6 +98,7 @@ namespace CityFlow.Sim
         internal RoadQueueNetwork RoadQueuesForTest => _roadQueues;
         internal DemandMap DemandForTest => _demand;
         public IRoadTrafficService RoadTraffic => _roadTraffic;
+        public IFreeFlowStreakLedger FreeFlowStreaks => _freeFlowStreakLedger;
         public VehicleFootprint StandardVehicleFootprint =>
             _standardVehicleFootprint;
         internal int ConstructionSiteCountForTest => _construction.Count;
@@ -130,7 +132,10 @@ namespace CityFlow.Sim
                 _roadQueues,
                 () => TickInterval,
                 () => TickProgress01);
-            _carSim = new CarSim(config);
+            _freeFlowStreakLedger = new FreeFlowStreakLedger(
+                config.GridWidth,
+                config.GridHeight);
+            _carSim = new CarSim(config, _freeFlowStreakLedger);
             _deviceState = new DeviceStateAdapter(this);
             _signalGate = new SignalGateAdapter(this);
             _carCongestion = new CongestionLevel[config.GridWidth * config.GridHeight];
@@ -325,6 +330,7 @@ namespace CityFlow.Sim
                 _signalGate,
                 StepCount,
                 _roadTraffic);
+            _freeFlowStreakLedger.Decay();
             if (_carSim.HasCompletedRetirements)
             {
                 _buildingAssignmentChangePending = true;

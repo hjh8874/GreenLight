@@ -38,6 +38,7 @@ namespace CityFlow.Bootstrap
         public IRoadTrafficService RoadTraffic { get; private set; }
         public IRoadRoutePlanningService RoadRoutePlanning { get; private set; }
         public IBusLineService BusLines { get; private set; }
+        public IFreeFlowStreakLedger FreeFlowStreaks { get; private set; }
         public IEmergencyIncidentSaveSource EmergencyIncidents
         {
             get;
@@ -432,6 +433,23 @@ namespace CityFlow.Bootstrap
 
             RoadTraffic = roadTraffic;
             RoadTrafficRegistered?.Invoke(roadTraffic);
+            return true;
+        }
+
+        public bool RegisterFreeFlowStreaks(
+            IFreeFlowStreakLedger freeFlowStreaks)
+        {
+            if (freeFlowStreaks == null)
+            {
+                return false;
+            }
+
+            if (FreeFlowStreaks != null)
+            {
+                return ReferenceEquals(FreeFlowStreaks, freeFlowStreaks);
+            }
+
+            FreeFlowStreaks = freeFlowStreaks;
             return true;
         }
 
