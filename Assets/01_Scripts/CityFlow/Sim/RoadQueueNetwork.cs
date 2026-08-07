@@ -98,6 +98,10 @@ namespace CityFlow.Sim
         private readonly int _gridlockValveTicks;
         private readonly int _unsignaledIntersectionRoundCap;
         private readonly int[] _cars;
+        // carId는 CarSim의 runtime vehicle capacity 범위(상시 통근차 + 특수 transient)다.
+        // queue node 수(_cars.Length)는 맵 타일 수 × 방향 × queue capacity라 훨씬 크므로,
+        // 역인덱스는 node 풀 크기가 아닌 CarSim과 같은 차량 상한으로 잡는다.
+        private readonly int[] _nodeByCarId;
         private readonly int[] _occupancyUnits;
         private readonly float[] _lengthTiles;
         private readonly float[] _minimumGapTiles;
@@ -180,6 +184,14 @@ namespace CityFlow.Sim
             // 노드 풀은 설정 용량을 메모리 상한으로 유지한다. 물리 수용 판정만 effectiveCapacity를 쓴다.
             int maxCars = checked(queueCount * _capacity);
             _cars = new int[maxCars];
+            int maxSimCars = Math.Max(1, cfg.MaxSimCars);
+            int requestedSpecialVehicleLimit = cfg.MaxConcurrentSpecialTrips > 0
+                ? cfg.MaxConcurrentSpecialTrips
+                : 8;
+            int specialTransientCapacity = Math.Min(
+                requestedSpecialVehicleLimit,
+                maxSimCars);
+            _nodeByCarId = new int[maxSimCars + specialTransientCapacity];
             _occupancyUnits = new int[maxCars];
             _lengthTiles = new float[maxCars];
             _minimumGapTiles = new float[maxCars];
@@ -213,6 +225,7 @@ namespace CityFlow.Sim
 
             Array.Fill(_heads, NoNode);
             Array.Fill(_tails, NoNode);
+            Array.Fill(_nodeByCarId, NoNode);
             Array.Fill(_highwayPartners, NoNode);
             Array.Fill(_roundaboutCenters, NoNode);
             Array.Fill(_roundaboutArmSides, NoNode);
@@ -379,6 +392,8 @@ namespace CityFlow.Sim
                 || !CanAcceptNormally(queue, safeOccupancyUnits)
                 || !TryAllocateNode(out node)) return false;
             _cars[node] = carId;
+            if (carId >= 0 && carId < _nodeByCarId.Length)
+                _nodeByCarId[carId] = node;
             _occupancyUnits[node] = safeOccupancyUnits;
             _lengthTiles[node] = footprint.LengthTiles;
             _minimumGapTiles[node] = footprint.MinimumGapTiles;
@@ -761,6 +776,7 @@ namespace CityFlow.Sim
         {
             Array.Fill(_heads, NoNode);
             Array.Fill(_tails, NoNode);
+            Array.Fill(_nodeByCarId, NoNode);
             Array.Clear(_counts, 0, _counts.Length);
             Array.Clear(_usedUnits, 0, _usedUnits.Length);
             for (int tile = 0; tile < _roundaboutStates.Length; tile++)
@@ -788,6 +804,13 @@ namespace CityFlow.Sim
         {
             int node = FindAllocatedNode(carId);
             return node == NoNode ? 0 : _blockedTicks[node];
+        }
+
+        internal bool MovedThisTick(int carId)
+        {
+            if (carId < 0 || carId >= _nodeByCarId.Length) return false;
+            int node = _nodeByCarId[carId];
+            return node != NoNode && _movedThisTick[node];
         }
 
         internal bool TryRemoveCarForRescue(int carId)
@@ -1967,6 +1990,9 @@ namespace CityFlow.Sim
 
         private void ReleaseNode(int node)
         {
+            int carId = _cars[node];
+            if (carId >= 0 && carId < _nodeByCarId.Length)
+                _nodeByCarId[carId] = NoNode;
             _cars[node] = NoNode;
             _occupancyUnits[node] = 1;
             _lengthTiles[node] = _standardFootprint.LengthTiles;
