@@ -19,6 +19,10 @@ MonoBehaviour:
   routeRetrySeconds: 2
   maximumOutboundRouteRetries: 3
   maximumReturnRouteRetries: 5
+  enableDailyPatrol: 1
+  patrolStartHour: 10
+  patrolAreaSize: 40
+  patrolVehiclesPerStation: 1
   vehicleFootprintProfile: {fileID: 11400000, guid: 3b090c7283c648fc88a9333d9a8ee8f4, type: 2}
   vehicleVisualPrefab: {fileID: 2545326737731236443, guid: a5c1b9e9995db554baae648c8cdaa6bd, type: 3}
   visualScale: 1

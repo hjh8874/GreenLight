@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 3977551247164470602}
   - component: {fileID: 301624549472081602}
   - component: {fileID: 5836847090167453391}
+  - component: {fileID: 7257795658638342814}
   m_Layer: 0
   m_Name: PoliceContent
   m_TagString: Untagged
@@ -46,6 +47,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.PoliceCallSystem
   config: {fileID: 11400000, guid: 42347488eab867a45a49bc7767484fce, type: 2}
+  patrolScheduler: {fileID: 7257795658638342814}
   testTarget: {x: 100, y: 100}
   testExternalRequestId: police_test
 --- !u!114 &5836847090167453391
@@ -63,3 +65,17 @@ MonoBehaviour:
   callSystem: {fileID: 301624549472081602}
   config: {fileID: 11400000, guid: 42347488eab867a45a49bc7767484fce, type: 2}
   policeVehiclePrefab: {fileID: 7089500712238427475, guid: c64c9b33705a0294bb08609ad1c94144, type: 3}
+  patrolScheduler: {fileID: 7257795658638342814}
+--- !u!114 &7257795658638342814
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6177610085408367806}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ea8f7178a4bb40b68c830b2b9c1338f4, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.PolicePatrolScheduler
+  config: {fileID: 11400000, guid: 42347488eab867a45a49bc7767484fce, type: 2}

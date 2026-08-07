@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Content.Transit;
@@ -44,13 +45,22 @@ namespace CityFlow.Content
         private Vector2Int homeStation;
         private int stationParkingSlot;
         private bool hasHomeStation;
+        private bool patrolling;
+        private bool patrolParkingRequested;
+        private PolicePatrolPlan patrolPlan;
+        private long patrolTotalDay;
 
         public int CallId => assigned ? call.CallId : -1;
         public bool IsAssigned => assigned;
+        public bool IsPatrolling => patrolling;
+        public bool IsBusy => assigned || patrolling;
         public bool HasHomeStation => hasHomeStation;
         public Vector2Int HomeStation => homeStation;
         public int StationParkingSlot => stationParkingSlot;
         public PoliceDispatchConfigSO Config => config;
+
+        internal event Action<PoliceVehicleAgent, PolicePatrolEvent>
+            PatrolEnded;
 
         public void Initialize(CityFlowServices cityServices)
         {
@@ -97,6 +107,8 @@ namespace CityFlow.Content
             stationParkingSlot = Mathf.Max(0, parkingSlot);
             hasHomeStation = true;
             assigned = false;
+            patrolling = false;
+            patrolParkingRequested = false;
             stage = TravelStage.None;
             retryRemainingSeconds = 0f;
             routeFailureCount = 0;
@@ -108,6 +120,52 @@ namespace CityFlow.Content
                 config.VehiclesPerStation,
                 immediate: true);
             return true;
+        }
+
+        internal bool TryStartPatrol(
+            PolicePatrolPlan plan,
+            long totalDay)
+        {
+            if (!initialized || !hasHomeStation || IsBusy ||
+                !plan.IsValid)
+            {
+                return false;
+            }
+
+            patrolParkingRequested = false;
+            patrolPlan = plan;
+            patrolTotalDay = Math.Max(0L, totalDay);
+            retryRemainingSeconds = 0f;
+            routeFailureCount = 0;
+            stage = TravelStage.None;
+            ConfigurePatrolRouteDefaults();
+            if (route.ConfigurePreplannedRoadRoute(
+                    homeStation,
+                    plan.Route) &&
+                route.StartRoute())
+            {
+                patrolling = true;
+                return true;
+            }
+
+            patrolParkingRequested = false;
+            route.StopRoute();
+            worldView.ShowParkedAtHome(
+                homeStation,
+                stationParkingSlot,
+                config.VehiclesPerStation,
+                immediate: true);
+            return false;
+        }
+
+        internal bool TryGetHomeAccessRoad(
+            out Vector2Int accessRoad)
+        {
+            accessRoad = default;
+            return initialized && hasHomeStation &&
+                   route.TryGetAccessRoadForStop(
+                       homeStation,
+                       out accessRoad);
         }
 
         public bool Assign(
@@ -126,16 +184,19 @@ namespace CityFlow.Content
                 return false;
             }
 
+            bool dispatchingFromPatrolRoad =
+                InterruptPatrolForDispatch();
             call = targetCall;
             callSystem = owner;
             assigned = true;
             stage = TravelStage.Outbound;
             retryRemainingSeconds = 0f;
             routeFailureCount = 0;
-            hasDepartedStation = false;
+            hasDepartedStation = dispatchingFromPatrolRoad;
             ConfigureRouteDefaults();
             worldView.PrepareRoadsideTargetStop();
-            StartCurrentStage(preferCurrentRoad: false);
+            StartCurrentStage(
+                preferCurrentRoad: dispatchingFromPatrolRoad);
             return true;
         }
 
@@ -214,6 +275,8 @@ namespace CityFlow.Content
         public void Release()
         {
             assigned = false;
+            patrolling = false;
+            patrolParkingRequested = false;
             retryRemainingSeconds = 0f;
             routeFailureCount = 0;
             hasDepartedStation = false;
@@ -308,6 +371,18 @@ namespace CityFlow.Content
             route.UseRoadsideStopApproach = true;
             route.RoadsideStopSetbackTiles = 1;
             route.RoadsideStopFilter = IsRoadsideTarget;
+            route.AvoidImmediateUTurn = true;
+        }
+
+        private void ConfigurePatrolRouteDefaults()
+        {
+            route.LoopRoute = false;
+            route.SecondsPerTile = config.TravelSecondsPerTile;
+            route.StopWaitSeconds = 0f;
+            route.UseRoadsideStopApproach = false;
+            route.RoadsideStopSetbackTiles = 0;
+            route.RoadsideStopFilter = null;
+            route.AvoidImmediateUTurn = false;
         }
 
         private bool StartCurrentStage(bool preferCurrentRoad)
@@ -379,6 +454,12 @@ namespace CityFlow.Content
 
         private void HandleStopArrived(Vector2Int stop, int _)
         {
+            if (patrolling && stop == homeStation)
+            {
+                BeginPatrolParking();
+                return;
+            }
+
             if (!assigned || callSystem == null)
             {
                 return;
@@ -411,6 +492,14 @@ namespace CityFlow.Content
 
         private void HandleRouteUnavailable()
         {
+            if (patrolling)
+            {
+                FinishPatrol(
+                    PolicePatrolOutcome.RouteUnavailable,
+                    parkImmediately: true);
+                return;
+            }
+
             if (!assigned || callSystem == null)
             {
                 return;
@@ -447,6 +536,83 @@ namespace CityFlow.Content
             {
                 hasDepartedStation = true;
             }
+        }
+
+        private void BeginPatrolParking()
+        {
+            if (!patrolling || patrolParkingRequested)
+            {
+                return;
+            }
+
+            patrolParkingRequested = true;
+            worldView.ShowParkedAtHome(
+                homeStation,
+                stationParkingSlot,
+                config.VehiclesPerStation,
+                immediate: false,
+                onParked: () =>
+                {
+                    if (patrolling)
+                    {
+                        FinishPatrol(
+                            PolicePatrolOutcome.Completed,
+                            parkImmediately: false);
+                    }
+                });
+        }
+
+        private bool InterruptPatrolForDispatch()
+        {
+            if (!patrolling)
+            {
+                return false;
+            }
+
+            bool isOnRoad = IsRoad(route.CurrentTile);
+            PolicePatrolEvent patrolEvent = CreatePatrolEvent(
+                PolicePatrolOutcome.InterruptedByDispatch);
+            patrolling = false;
+            patrolParkingRequested = false;
+            route.StopRoute();
+            PatrolEnded?.Invoke(this, patrolEvent);
+            return isOnRoad;
+        }
+
+        private void FinishPatrol(
+            PolicePatrolOutcome outcome,
+            bool parkImmediately)
+        {
+            if (!patrolling)
+            {
+                return;
+            }
+
+            PolicePatrolEvent patrolEvent = CreatePatrolEvent(outcome);
+            patrolling = false;
+            patrolParkingRequested = false;
+            route.StopRoute();
+            if (parkImmediately)
+            {
+                worldView.ShowParkedAtHome(
+                    homeStation,
+                    stationParkingSlot,
+                    config.VehiclesPerStation,
+                    immediate: true);
+            }
+
+            PatrolEnded?.Invoke(this, patrolEvent);
+        }
+
+        private PolicePatrolEvent CreatePatrolEvent(
+            PolicePatrolOutcome outcome)
+        {
+            return new PolicePatrolEvent(
+                homeStation,
+                patrolTotalDay,
+                patrolPlan.UsedLoop,
+                patrolPlan.Route.TileCount,
+                outcome);
         }
 
         private void RecoverAtStation()

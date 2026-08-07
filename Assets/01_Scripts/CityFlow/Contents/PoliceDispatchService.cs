@@ -9,7 +9,8 @@ namespace CityFlow.Content
 {
     public sealed class PoliceDispatchService :
         MonoBehaviour,
-        ICityFlowServiceConsumer
+        ICityFlowServiceConsumer,
+        IPolicePatrolService
     {
         private const string PoliceStationBuildingId =
             "police_station";
@@ -23,11 +24,16 @@ namespace CityFlow.Content
         [SerializeField]
         private GameObject policeVehiclePrefab;
 
+        [SerializeField]
+        private PolicePatrolScheduler patrolScheduler;
+
         private readonly Dictionary<int, PoliceVehicleAgent>
             activeVehicles = new();
         private readonly Dictionary<Vector2Int, List<PoliceVehicleAgent>>
             stationVehicles = new();
         private readonly List<Vector2Int> stationReleaseBuffer = new();
+        private readonly List<Vector2Int> orderedStationBuffer = new();
+        private readonly PolicePatrolRoutePlanner patrolPlanner = new();
 
         private CityFlowServices services;
         private ISpecialBuildingService specialBuildings;
@@ -52,6 +58,9 @@ namespace CityFlow.Content
             }
         }
 
+        public event Action<PolicePatrolEvent> PatrolStarted;
+        public event Action<PolicePatrolEvent> PatrolFinished;
+
         public void Initialize(CityFlowServices cityServices)
         {
             if (!isActiveAndEnabled || initialized)
@@ -73,6 +82,14 @@ namespace CityFlow.Content
             }
 
             services = cityServices;
+            if (!services.RegisterPolicePatrol(this))
+            {
+                Debug.LogError(
+                    "[PoliceDispatchService] Another police patrol service is already registered.",
+                    this);
+                return;
+            }
+
             initialized = true;
             Subscribe();
             BindSpecialBuildings(services.SpecialBuildings);
@@ -130,6 +147,7 @@ namespace CityFlow.Content
         {
             callSystem ??= GetComponent<PoliceCallSystem>();
             config ??= callSystem?.Config;
+            patrolScheduler ??= GetComponent<PolicePatrolScheduler>();
         }
 
         private void Subscribe()
@@ -142,6 +160,10 @@ namespace CityFlow.Content
             callSystem.CallCreated += HandleCallChanged;
             callSystem.CallChanged += HandleCallChanged;
             callSystem.CallRemoved += HandleCallRemoved;
+            if (patrolScheduler != null)
+            {
+                patrolScheduler.PatrolDue += HandlePatrolDue;
+            }
             services.SpecialBuildingsRegistered +=
                 HandleSpecialBuildingsRegistered;
             if (services.Save != null)
@@ -163,6 +185,10 @@ namespace CityFlow.Content
             callSystem.CallCreated -= HandleCallChanged;
             callSystem.CallChanged -= HandleCallChanged;
             callSystem.CallRemoved -= HandleCallRemoved;
+            if (patrolScheduler != null)
+            {
+                patrolScheduler.PatrolDue -= HandlePatrolDue;
+            }
             services.SpecialBuildingsRegistered -=
                 HandleSpecialBuildingsRegistered;
             if (services.Save != null)
@@ -258,6 +284,133 @@ namespace CityFlow.Content
         {
             ReleaseVehicle(call.CallId);
             fleetSyncPending = true;
+        }
+
+        public bool TryStartPatrol(Vector2Int station)
+        {
+            long totalDay = Math.Max(
+                0L,
+                services?.GameCalendar?.TotalDays ?? 0L);
+            return TryStartPatrol(
+                station,
+                totalDay,
+                out _);
+        }
+
+        private void HandlePatrolDue(long totalDay)
+        {
+            SynchronizeStationFleet();
+            orderedStationBuffer.Clear();
+            foreach (Vector2Int station in stationVehicles.Keys)
+            {
+                orderedStationBuffer.Add(station);
+            }
+
+            orderedStationBuffer.Sort(CompareCoordinates);
+            for (int stationIndex = 0;
+                 stationIndex < orderedStationBuffer.Count;
+                 stationIndex++)
+            {
+                Vector2Int station =
+                    orderedStationBuffer[stationIndex];
+                bool startedAny = false;
+                PolicePatrolOutcome lastOutcome =
+                    PolicePatrolOutcome.SkippedNoVehicle;
+                for (int patrolIndex = 0;
+                     patrolIndex < config.PatrolVehiclesPerStation;
+                     patrolIndex++)
+                {
+                    if (!TryStartPatrol(
+                            station,
+                            totalDay,
+                            out lastOutcome))
+                    {
+                        break;
+                    }
+
+                    startedAny = true;
+                }
+
+                if (!startedAny)
+                {
+                    PatrolFinished?.Invoke(
+                        new PolicePatrolEvent(
+                            station,
+                            totalDay,
+                            false,
+                            0,
+                            lastOutcome));
+                    Debug.LogWarning(
+                        $"[PoliceDispatchService] Daily patrol skipped at {station}: {lastOutcome}.",
+                        this);
+                }
+            }
+
+            orderedStationBuffer.Clear();
+        }
+
+        private bool TryStartPatrol(
+            Vector2Int station,
+            long totalDay,
+            out PolicePatrolOutcome failureOutcome)
+        {
+            failureOutcome = PolicePatrolOutcome.SkippedNoVehicle;
+            SynchronizeStationFleet();
+            if (!stationVehicles.TryGetValue(
+                    station,
+                    out List<PoliceVehicleAgent> vehicles))
+            {
+                return false;
+            }
+
+            PoliceVehicleAgent agent = null;
+            for (int index = 0; index < vehicles.Count; index++)
+            {
+                if (vehicles[index] != null &&
+                    !vehicles[index].IsBusy)
+                {
+                    agent = vehicles[index];
+                    break;
+                }
+            }
+
+            if (agent == null)
+            {
+                return false;
+            }
+
+            if (!agent.TryGetHomeAccessRoad(out Vector2Int accessRoad) ||
+                !patrolPlanner.TryBuildPlan(
+                    station,
+                    accessRoad,
+                    config.PatrolAreaSize,
+                    services.TileData,
+                    services.WorldGrid,
+                    out PolicePatrolPlan plan))
+            {
+                failureOutcome = PolicePatrolOutcome.SkippedNoRoute;
+                return false;
+            }
+
+            if (!agent.TryStartPatrol(plan, totalDay))
+            {
+                failureOutcome = PolicePatrolOutcome.RouteUnavailable;
+                return false;
+            }
+
+            PolicePatrolEvent patrolEvent = new(
+                station,
+                totalDay,
+                plan.UsedLoop,
+                plan.Route.TileCount,
+                PolicePatrolOutcome.Started);
+            PatrolStarted?.Invoke(patrolEvent);
+            Debug.Log(
+                $"[PoliceDispatchService] Patrol started at {station}. " +
+                $"loop={plan.UsedLoop}, routeTiles={plan.Route.TileCount}, " +
+                $"chunks={plan.ScannedChunkCount}, scannedTiles={plan.ScannedTileCount}.",
+                this);
+            return true;
         }
 
         private void SynchronizeActiveCalls()
@@ -382,6 +535,7 @@ namespace CityFlow.Content
             PoliceVehicleAgent agent =
                 instance.GetComponent<PoliceVehicleAgent>();
             agent.Initialize(services);
+            agent.PatrolEnded += HandlePatrolEnded;
             if (agent.PrepareAtStation(station, parkingSlot))
             {
                 return agent;
@@ -389,6 +543,17 @@ namespace CityFlow.Content
 
             DestroyVehicle(agent);
             return null;
+        }
+
+        private void HandlePatrolEnded(
+            PoliceVehicleAgent _,
+            PolicePatrolEvent patrolEvent)
+        {
+            PatrolFinished?.Invoke(patrolEvent);
+            Debug.Log(
+                $"[PoliceDispatchService] Patrol finished at {patrolEvent.Station}: " +
+                $"{patrolEvent.Outcome}.",
+                this);
         }
 
         private PoliceVehicleAgent FindVehicle(
@@ -468,6 +633,7 @@ namespace CityFlow.Content
                 return;
             }
 
+            agent.PatrolEnded -= HandlePatrolEnded;
             agent.Release();
             if (Application.isPlaying)
             {
@@ -477,6 +643,26 @@ namespace CityFlow.Content
             {
                 DestroyImmediate(agent.gameObject);
             }
+        }
+
+
+        [ContextMenu("Testing/Start Daily Patrol Now")]
+        private void StartDailyPatrolFromContextMenu()
+        {
+            HandlePatrolDue(
+                Math.Max(
+                    0L,
+                    services?.GameCalendar?.TotalDays ?? 0L));
+        }
+
+        private static int CompareCoordinates(
+            Vector2Int left,
+            Vector2Int right)
+        {
+            int yCompare = left.y.CompareTo(right.y);
+            return yCompare != 0
+                ? yCompare
+                : left.x.CompareTo(right.x);
         }
 
         // Unity setup: this component is prewired in PoliceContent.prefab.

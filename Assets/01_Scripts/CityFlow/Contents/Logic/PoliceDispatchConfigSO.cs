@@ -33,6 +33,19 @@ namespace CityFlow.Content
         [SerializeField, Min(1)]
         private int maximumReturnRouteRetries = 5;
 
+        [Header("Daily Patrol")]
+        [SerializeField]
+        private bool enableDailyPatrol = true;
+
+        [SerializeField, Range(0, 23)]
+        private int patrolStartHour = 10;
+
+        [SerializeField, Min(20)]
+        private int patrolAreaSize = 40;
+
+        [SerializeField, Min(1)]
+        private int patrolVehiclesPerStation = 1;
+
         [Header("Traffic")]
         [SerializeField]
         private VehicleFootprintProfileSO vehicleFootprintProfile;
@@ -62,6 +75,14 @@ namespace CityFlow.Content
             Mathf.Max(1, maximumOutboundRouteRetries);
         public int MaximumReturnRouteRetries =>
             Mathf.Max(1, maximumReturnRouteRetries);
+        public bool EnableDailyPatrol => enableDailyPatrol;
+        public int PatrolStartHour =>
+            Mathf.Clamp(patrolStartHour, 0, 23);
+        public int PatrolAreaSize => Mathf.Max(20, patrolAreaSize);
+        public int PatrolVehiclesPerStation => Mathf.Clamp(
+            patrolVehiclesPerStation,
+            1,
+            VehiclesPerStation);
         public VehicleFootprint VehicleFootprint =>
             vehicleFootprintProfile != null
                 ? vehicleFootprintProfile.Footprint
@@ -92,6 +113,12 @@ namespace CityFlow.Content
             maximumReturnRouteRetries = Mathf.Max(
                 1,
                 maximumReturnRouteRetries);
+            patrolStartHour = Mathf.Clamp(patrolStartHour, 0, 23);
+            patrolAreaSize = Mathf.Max(20, patrolAreaSize);
+            patrolVehiclesPerStation = Mathf.Clamp(
+                patrolVehiclesPerStation,
+                1,
+                VehiclesPerStation);
             visualScale = Mathf.Max(0.01f, visualScale);
         }
 #endif

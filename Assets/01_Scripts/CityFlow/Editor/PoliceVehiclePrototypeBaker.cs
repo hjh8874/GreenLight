@@ -142,6 +142,14 @@ namespace CityFlow.EditorTools
                 .intValue = 3;
             serialized.FindProperty("maximumReturnRouteRetries")
                 .intValue = 5;
+            serialized.FindProperty("enableDailyPatrol")
+                .boolValue = true;
+            serialized.FindProperty("patrolStartHour")
+                .intValue = 10;
+            serialized.FindProperty("patrolAreaSize")
+                .intValue = 40;
+            serialized.FindProperty("patrolVehiclesPerStation")
+                .intValue = 1;
             serialized.FindProperty("vehicleFootprintProfile")
                 .objectReferenceValue = standardFootprint;
             serialized.FindProperty("vehicleVisualPrefab")
@@ -205,15 +213,20 @@ namespace CityFlow.EditorTools
                     root.AddComponent<PoliceCallSystem>();
                 PoliceDispatchService dispatch =
                     root.AddComponent<PoliceDispatchService>();
+                PolicePatrolScheduler patrol =
+                    root.AddComponent<PolicePatrolScheduler>();
 
                 SetReference(calls, "config", config);
+                SetReference(calls, "patrolScheduler", patrol);
                 SetVector2Int(calls, "testTarget", new Vector2Int(100, 100));
                 SetReference(dispatch, "callSystem", calls);
                 SetReference(dispatch, "config", config);
+                SetReference(dispatch, "patrolScheduler", patrol);
                 SetReference(
                     dispatch,
                     "policeVehiclePrefab",
                     vehiclePrefab);
+                SetReference(patrol, "config", config);
 
                 PrefabUtility.SaveAsPrefabAsset(
                     root,

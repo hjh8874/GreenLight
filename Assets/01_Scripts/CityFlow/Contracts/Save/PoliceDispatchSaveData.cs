@@ -22,6 +22,8 @@ namespace CityFlow.Contracts.Save
     public sealed class PoliceDispatchSaveData
     {
         public int NextCallId = 1;
+        public bool HasLastPatrolTotalDay;
+        public long LastPatrolTotalDay;
         public PoliceCallEntrySaveData[] ActiveCalls =
             Array.Empty<PoliceCallEntrySaveData>();
     }

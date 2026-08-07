@@ -77,6 +77,7 @@ namespace CityFlow.Content.Transit
         private readonly List<Vector2Int> stopAccessRoads = new();
         private readonly List<Vector2Int> currentRoadPath = new();
         private readonly List<Vector2Int> roadTrafficPath = new();
+        private readonly List<Vector2Int> preplannedRoadPath = new();
         private readonly List<Vector2Int> candidateRoadPath = new();
         private readonly List<Vector2Int> validationRoadPath = new();
         private readonly List<Vector2Int> validationLoopRoadPath = new();
@@ -126,6 +127,8 @@ namespace CityFlow.Content.Transit
         private int roadsideStopSetbackTiles;
         private Vector2Int preferredInitialAccessRoad;
         private bool hasPreferredInitialAccessRoad;
+        private bool hasPreplannedRoadPath;
+        private bool preplannedRouteOnly;
 
         public IReadOnlyList<Vector2Int> Stops => stops;
         public IReadOnlyList<Vector2Int> CurrentRoadPath => currentRoadPath;
@@ -422,6 +425,37 @@ namespace CityFlow.Content.Transit
 
             return stops.Count >= 2 ||
                    (stops.Count == 1 && loopRoute);
+        }
+
+        public bool ConfigurePreplannedRoadRoute(
+            Vector2Int homeStop,
+            RoadRoutePlan roadRoute)
+        {
+            StopRoute();
+            if (!IsValidPreplannedRoadPath(roadRoute.Tiles))
+            {
+                return false;
+            }
+
+            stops.Clear();
+            stopAccessRoads.Clear();
+            stops.Add(homeStop);
+            stops.Add(homeStop);
+            preplannedRoadPath.Clear();
+            for (int index = 0; index < roadRoute.TileCount; index++)
+            {
+                preplannedRoadPath.Add(roadRoute.Tiles[index]);
+            }
+
+            hasPreplannedRoadPath = true;
+            preplannedRouteOnly = true;
+            loopRoute = false;
+            CurrentTile = homeStop;
+            currentStopIndex = 0;
+            currentRoadPathIndex = 0;
+            State = BusRouteState.Idle;
+            TileChanged?.Invoke(CurrentTile);
+            return true;
         }
 
         public bool TryGetAccessRoadForStop(
@@ -1039,12 +1073,15 @@ namespace CityFlow.Content.Transit
 
             currentRoadPath.Clear();
             roadTrafficPath.Clear();
+            preplannedRoadPath.Clear();
             currentRoadPathIndex = 0;
             hasDepartureStop = false;
             hasForbiddenDepartureTile = false;
             hasCurrentStopAccessRoad = false;
             currentSegmentUsesRoadsideStop = false;
             hasPreferredInitialAccessRoad = false;
+            hasPreplannedRoadPath = false;
+            preplannedRouteOnly = false;
             pendingOffRoadStopIndex = -1;
 
             ReleaseRoadTrafficAgent();
@@ -1056,6 +1093,12 @@ namespace CityFlow.Content.Transit
         {
             if (!routeRequested || stops.Count == 0)
             {
+                return false;
+            }
+
+            if (preplannedRouteOnly && !hasPreplannedRoadPath)
+            {
+                SetRouteUnavailable();
                 return false;
             }
 
@@ -1453,6 +1496,66 @@ namespace CityFlow.Content.Transit
             return true;
         }
 
+        private bool TryUsePreplannedRoadPath(
+            Vector2Int startRoad,
+            Vector2Int destinationStop,
+            out Vector2Int endRoad)
+        {
+            endRoad = default;
+            hasPreplannedRoadPath = false;
+            if (preplannedRoadPath.Count < 2 ||
+                preplannedRoadPath[0] != startRoad ||
+                !TryFindAccessRoad(destinationStop, out endRoad) ||
+                preplannedRoadPath[preplannedRoadPath.Count - 1] !=
+                endRoad ||
+                !IsValidPreplannedRoadPath(preplannedRoadPath))
+            {
+                preplannedRoadPath.Clear();
+                return false;
+            }
+
+            currentRoadPath.Clear();
+            for (int index = 0;
+                 index < preplannedRoadPath.Count;
+                 index++)
+            {
+                currentRoadPath.Add(preplannedRoadPath[index]);
+            }
+
+            preplannedRoadPath.Clear();
+            return true;
+        }
+
+        private bool IsValidPreplannedRoadPath(
+            IReadOnlyList<Vector2Int> path)
+        {
+            if (path == null || path.Count < 2)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < path.Count; index++)
+            {
+                if (!IsRoad(path[index]))
+                {
+                    return false;
+                }
+
+                if (index == 0)
+                {
+                    continue;
+                }
+
+                Vector2Int delta = path[index] - path[index - 1];
+                if (Mathf.Abs(delta.x) + Mathf.Abs(delta.y) != 1)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         private bool TryFindRoadsideStopAtRoad(
             Vector2Int roadTile,
             out int stopIndex)
@@ -1773,7 +1876,14 @@ namespace CityFlow.Content.Transit
             bool foundPath;
             Vector2Int endRoad = default;
 
-            if (currentSegmentUsesRoadsideStop)
+            if (hasPreplannedRoadPath)
+            {
+                foundPath = TryUsePreplannedRoadPath(
+                    startRoad,
+                    destinationStop,
+                    out endRoad);
+            }
+            else if (currentSegmentUsesRoadsideStop)
             {
                 foundPath = TryFindRoadsidePath(
                     startRoad,

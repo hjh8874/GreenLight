@@ -48,6 +48,11 @@ namespace CityFlow.Bootstrap
             get;
             private set;
         }
+        public IPolicePatrolService PolicePatrol
+        {
+            get;
+            private set;
+        }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
@@ -71,6 +76,8 @@ namespace CityFlow.Bootstrap
         public event Action<IBusLineService> BusLinesRegistered;
         public event Action<IPoliceDispatchService>
             PoliceDispatchRegistered;
+        public event Action<IPolicePatrolService>
+            PolicePatrolRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -279,6 +286,24 @@ namespace CityFlow.Bootstrap
             }
 
             PoliceDispatchRegistered?.Invoke(policeDispatch);
+            return true;
+        }
+
+        public bool RegisterPolicePatrol(
+            IPolicePatrolService policePatrol)
+        {
+            if (policePatrol == null)
+            {
+                return false;
+            }
+
+            if (PolicePatrol != null)
+            {
+                return ReferenceEquals(PolicePatrol, policePatrol);
+            }
+
+            PolicePatrol = policePatrol;
+            PolicePatrolRegistered?.Invoke(policePatrol);
             return true;
         }
 

@@ -19,6 +19,9 @@ namespace CityFlow.Content
         [SerializeField]
         private PoliceDispatchConfigSO config;
 
+        [SerializeField]
+        private PolicePatrolScheduler patrolScheduler;
+
         [Header("Play Mode Test")]
         [SerializeField]
         private Vector2Int testTarget;
@@ -62,6 +65,7 @@ namespace CityFlow.Content
 
             services = cityServices;
             tileData = cityServices.TileData;
+            patrolScheduler ??= GetComponent<PolicePatrolScheduler>();
             if (!services.RegisterPoliceDispatch(this))
             {
                 Debug.LogError(
@@ -293,6 +297,11 @@ namespace CityFlow.Content
             return new PoliceDispatchSaveData
             {
                 NextCallId = nextCallId,
+                HasLastPatrolTotalDay =
+                    patrolScheduler != null &&
+                    patrolScheduler.LastScheduledTotalDay >= 0L,
+                LastPatrolTotalDay =
+                    patrolScheduler?.LastScheduledTotalDay ?? 0L,
                 ActiveCalls = entries
             };
         }
@@ -301,6 +310,10 @@ namespace CityFlow.Content
         {
             calls.Clear();
             nextCallId = Mathf.Max(1, snapshot?.NextCallId ?? 1);
+            patrolScheduler ??= GetComponent<PolicePatrolScheduler>();
+            patrolScheduler?.RestoreLastScheduledDay(
+                snapshot?.HasLastPatrolTotalDay == true,
+                snapshot?.LastPatrolTotalDay ?? 0L);
             PoliceCallEntrySaveData[] entries = snapshot?.ActiveCalls;
             if (entries == null)
             {
