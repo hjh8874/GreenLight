@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CityFlow.Configs;
 using CityFlow.Contracts;
 using CityFlow.Gameplay.Research;
 using TMPro;
@@ -1108,10 +1109,8 @@ namespace CityFlow.UI
             SpecialBuildingBuildOption[] specialOptions =
                 specialBuildings?.CreateBuildOptionSnapshot() ??
                 Array.Empty<SpecialBuildingBuildOption>();
-            BuildSlotController[] buildSlots =
-                FindObjectsByType<BuildSlotController>(
-                    FindObjectsInactive.Include,
-                    FindObjectsSortMode.None);
+            TileDataSO[] generalBuildings =
+                CreateDeterministicGeneralBuildingSnapshot();
 
             for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
             {
@@ -1124,7 +1123,7 @@ namespace CityFlow.UI
                 Sprite icon = ResolveResearchIcon(
                     row.Entry?.researchId,
                     specialOptions,
-                    buildSlots);
+                    generalBuildings);
                 row.IconImage.sprite = icon;
                 row.IconImage.color = Color.white;
                 row.IconBadge.SetActive(icon != null);
@@ -1132,10 +1131,72 @@ namespace CityFlow.UI
             }
         }
 
+        private static TileDataSO[]
+            CreateDeterministicGeneralBuildingSnapshot()
+        {
+            BuildSlotController[] buildSlots =
+                FindObjectsByType<BuildSlotController>(
+                    FindObjectsInactive.Include,
+                    FindObjectsSortMode.None);
+            var uniqueBuildings = new HashSet<TileDataSO>();
+            var buildings = new List<TileDataSO>();
+
+            for (int index = 0; index < buildSlots.Length; index++)
+            {
+                TileDataSO tileData = buildSlots[index]?.TileData;
+                if (tileData == null || !uniqueBuildings.Add(tileData))
+                {
+                    continue;
+                }
+
+                buildings.Add(tileData);
+            }
+
+            buildings.Sort(CompareGeneralBuildingData);
+            return buildings.ToArray();
+        }
+
+        private static int CompareGeneralBuildingData(
+            TileDataSO left,
+            TileDataSO right)
+        {
+            int comparison = string.Compare(
+                left?.RequiredResearchId?.Trim(),
+                right?.RequiredResearchId?.Trim(),
+                StringComparison.Ordinal);
+            if (comparison != 0) return comparison;
+
+            comparison = string.Compare(
+                left?.BuildingId?.Trim(),
+                right?.BuildingId?.Trim(),
+                StringComparison.Ordinal);
+            if (comparison != 0) return comparison;
+
+            comparison = string.Compare(
+                left != null ? left.name : string.Empty,
+                right != null ? right.name : string.Empty,
+                StringComparison.Ordinal);
+            if (comparison != 0) return comparison;
+
+            comparison = string.Compare(
+                left?.BuildingName?.Trim(),
+                right?.BuildingName?.Trim(),
+                StringComparison.Ordinal);
+            if (comparison != 0) return comparison;
+
+            comparison = string.Compare(
+                left?.BuildingIcon != null ? left.BuildingIcon.name : string.Empty,
+                right?.BuildingIcon != null ? right.BuildingIcon.name : string.Empty,
+                StringComparison.Ordinal);
+            if (comparison != 0) return comparison;
+
+            return (left?.BuildCost ?? 0).CompareTo(right?.BuildCost ?? 0);
+        }
+
         private static Sprite ResolveResearchIcon(
             string researchId,
             IReadOnlyList<SpecialBuildingBuildOption> specialOptions,
-            IReadOnlyList<BuildSlotController> buildSlots)
+            IReadOnlyList<TileDataSO> generalBuildings)
         {
             if (string.IsNullOrWhiteSpace(researchId)) return null;
             string normalizedId = researchId.Trim();
@@ -1153,25 +1214,43 @@ namespace CityFlow.UI
                 }
             }
 
-            for (int index = 0; index < buildSlots.Count; index++)
+            TileDataSO selectedBuilding = null;
+            var duplicateBuildingIds = new List<string>();
+            for (int index = 0; index < generalBuildings.Count; index++)
             {
-                BuildSlotController slot = buildSlots[index];
-                if (slot == null || slot.TileData == null)
+                TileDataSO tileData = generalBuildings[index];
+                if (tileData == null || tileData.BuildingIcon == null ||
+                    !string.Equals(
+                        tileData.RequiredResearchId?.Trim(),
+                        normalizedId,
+                        StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                if (string.Equals(
-                        slot.TileData.RequiredResearchId,
-                        normalizedId,
-                        StringComparison.Ordinal) &&
-                    slot.TileData.BuildingIcon != null)
+                if (selectedBuilding == null)
                 {
-                    return slot.TileData.BuildingIcon;
+                    selectedBuilding = tileData;
                 }
+
+                duplicateBuildingIds.Add(
+                    string.IsNullOrWhiteSpace(tileData.BuildingId)
+                        ? tileData.name
+                        : tileData.BuildingId.Trim());
             }
 
-            return null;
+            if (duplicateBuildingIds.Count > 1)
+            {
+                Debug.LogWarning(
+                    "[ResearchPanelController] Multiple TileDataSO assets " +
+                    $"use research ID '{normalizedId}'. Selected " +
+                    $"'{duplicateBuildingIds[0]}' deterministically. " +
+                    $"Duplicates: {string.Join(", ", duplicateBuildingIds)}.");
+            }
+
+            return selectedBuilding != null
+                ? selectedBuilding.BuildingIcon
+                : null;
         }
 
         private static void LayoutResearchCardContent(
