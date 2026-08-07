@@ -21,6 +21,7 @@ namespace CityFlow.UI
         [SerializeField] private AnalysisCardController analysisCard;
         [SerializeField] private BuildingInfoCardController buildingInfoCard;
         [SerializeField] private PlacementController placementController;
+        [SerializeField] private UIDockController dockController;
         private InfrastructurePlacementCoordinator _infraCoordinator;
         private MainCityView _mainCityView;
 
@@ -29,6 +30,7 @@ namespace CityFlow.UI
         private Vector2Int? _selectedCoord;
         private Vector2Int? _suppressedHoverBuildingCoord;
         private PlacementController _subscribedPlacementController;
+        private UIDockController _subscribedDockController;
         private bool _suppressSelectionUntilPrimaryRelease;
 
         [Header("Visuals")]
@@ -82,6 +84,16 @@ namespace CityFlow.UI
             {
                 buildingInfoCard = FindAnyObjectByType<BuildingInfoCardController>(FindObjectsInactive.Include);
             }
+            if (dockController == null)
+            {
+                SetDockController(
+                    FindAnyObjectByType<UIDockController>(
+                        FindObjectsInactive.Include));
+            }
+            else
+            {
+                SubscribeDockEvents();
+            }
             // 시작 시 상세 카드와 하이라이트 박스는 숨겨둡니다.
             DisableLegacyHighlight();
             DeselectTile();
@@ -90,16 +102,19 @@ namespace CityFlow.UI
         private void OnEnable()
         {
             SubscribePlacementEvents();
+            SubscribeDockEvents();
         }
 
         private void OnDisable()
         {
             UnsubscribePlacementEvents();
+            UnsubscribeDockEvents();
         }
 
         private void OnDestroy()
         {
             UnsubscribePlacementEvents();
+            UnsubscribeDockEvents();
             ClearSelectedVisual();
         }
 
@@ -119,7 +134,9 @@ namespace CityFlow.UI
             }
 
             // 동적 생성되는 컨트롤러들을 위해 Update에서 지연 검색 지원 (최적화: 0.5초 스로틀링)
-            if (placementController == null || _infraCoordinator == null)
+            if (placementController == null ||
+                _infraCoordinator == null ||
+                dockController == null)
             {
                 _searchTimer += Time.deltaTime;
                 if (_searchTimer >= 0.5f)
@@ -134,6 +151,12 @@ namespace CityFlow.UI
                     if (_infraCoordinator == null)
                     {
                         _infraCoordinator = FindAnyObjectByType<InfrastructurePlacementCoordinator>(FindObjectsInactive.Include);
+                    }
+                    if (dockController == null)
+                    {
+                        SetDockController(
+                            FindAnyObjectByType<UIDockController>(
+                                FindObjectsInactive.Include));
                     }
                 }
             }
@@ -403,6 +426,54 @@ namespace CityFlow.UI
             if (highlightBox != null) highlightBox.SetActive(false);
             if (analysisCard != null) analysisCard.CloseCard();
             HideBuildingInfoCard();
+        }
+
+        private void SetDockController(UIDockController controller)
+        {
+            if (ReferenceEquals(dockController, controller))
+            {
+                SubscribeDockEvents();
+                return;
+            }
+
+            UnsubscribeDockEvents();
+            dockController = controller;
+            SubscribeDockEvents();
+        }
+
+        private void SubscribeDockEvents()
+        {
+            if (!isActiveAndEnabled ||
+                dockController == null ||
+                ReferenceEquals(_subscribedDockController, dockController))
+            {
+                return;
+            }
+
+            UnsubscribeDockEvents();
+            _subscribedDockController = dockController;
+            _subscribedDockController.MenuChanged += HandleDockMenuChanged;
+        }
+
+        private void UnsubscribeDockEvents()
+        {
+            if (_subscribedDockController == null)
+            {
+                return;
+            }
+
+            _subscribedDockController.MenuChanged -= HandleDockMenuChanged;
+            _subscribedDockController = null;
+        }
+
+        private void HandleDockMenuChanged(UIDockController.MenuType menu)
+        {
+            if (menu == UIDockController.MenuType.None)
+            {
+                return;
+            }
+
+            DismissSelectionAndSuppressCurrentHover();
         }
 
         private void SetPlacementController(
