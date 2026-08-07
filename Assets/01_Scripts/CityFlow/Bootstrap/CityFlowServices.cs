@@ -43,6 +43,11 @@ namespace CityFlow.Bootstrap
             get;
             private set;
         }
+        public IPoliceDispatchService PoliceDispatch
+        {
+            get;
+            private set;
+        }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
@@ -64,6 +69,8 @@ namespace CityFlow.Bootstrap
         public event Action<IRoadRoutePlanningService>
             RoadRoutePlanningRegistered;
         public event Action<IBusLineService> BusLinesRegistered;
+        public event Action<IPoliceDispatchService>
+            PoliceDispatchRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -247,6 +254,31 @@ namespace CityFlow.Bootstrap
             EmergencyIncidents = emergencyIncidentSaveSource;
             Save?.RegisterEmergencyIncidentSaveSource(
                 emergencyIncidentSaveSource);
+            return true;
+        }
+
+        public bool RegisterPoliceDispatch(
+            IPoliceDispatchService policeDispatch)
+        {
+            if (policeDispatch == null)
+            {
+                return false;
+            }
+
+            if (PoliceDispatch != null)
+            {
+                return ReferenceEquals(
+                    PoliceDispatch,
+                    policeDispatch);
+            }
+
+            PoliceDispatch = policeDispatch;
+            if (policeDispatch is IPoliceDispatchSaveSource saveSource)
+            {
+                Save?.RegisterPoliceDispatchSaveSource(saveSource);
+            }
+
+            PoliceDispatchRegistered?.Invoke(policeDispatch);
             return true;
         }
 

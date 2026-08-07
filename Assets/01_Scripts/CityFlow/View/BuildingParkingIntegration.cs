@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CityFlow.Contracts;
 using UnityEngine;
 
 namespace CityFlow.View
@@ -33,6 +34,28 @@ namespace CityFlow.View
                 visual?.Object == null)
             {
                 return false;
+            }
+
+            BuildingParkingLayout layout =
+                visual.Object.GetComponentInChildren<
+                    BuildingParkingLayout>(true);
+            if (layout != null &&
+                layout.TryGetParkingPose(
+                    Mathf.Max(0, slotIndex),
+                    out BuildingParkingPose authoredPose))
+            {
+                localPosition = transform.InverseTransformPoint(
+                    authoredPose.WorldPosition);
+                localForward = transform.InverseTransformDirection(
+                    authoredPose.WorldForward);
+                localForward.z = 0f;
+                if (localForward.sqrMagnitude <= 0.0001f)
+                {
+                    return false;
+                }
+
+                localForward.Normalize();
+                return true;
             }
 
             Transform slot = visual.Object.transform.Find(
@@ -90,6 +113,54 @@ namespace CityFlow.View
             }
 
             return false;
+        }
+
+        public bool TryReserveBuildingParkingPose(
+            Vector2Int buildingTile,
+            int slotIndex,
+            Transform requestingVehicle,
+            out Vector3 localPosition,
+            out Vector3 localForward)
+        {
+            localPosition = default;
+            localForward = default;
+            if (slotIndex < 0 || requestingVehicle == null)
+            {
+                return false;
+            }
+
+            if (tileData != null &&
+                tileData.TryGetFootprintAnchor(
+                    buildingTile,
+                    out Vector2Int anchor))
+            {
+                buildingTile = anchor;
+            }
+
+            var key = (buildingTile, slotIndex);
+            if (parkingReservations.TryGetValue(
+                    key,
+                    out Transform reservation) &&
+                reservation != null &&
+                !IsSameVehicle(reservation, requestingVehicle))
+            {
+                return false;
+            }
+
+            if (!TryGetBuildingParkingPose(
+                    buildingTile,
+                    slotIndex,
+                    out localPosition,
+                    out localForward) ||
+                IsParkingPoseOccupied(
+                    localPosition,
+                    requestingVehicle))
+            {
+                return false;
+            }
+
+            parkingReservations[key] = requestingVehicle;
+            return true;
         }
 
         public bool TryReserveFirstFreeBuildingParkingPose(

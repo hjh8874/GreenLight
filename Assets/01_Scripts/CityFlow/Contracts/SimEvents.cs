@@ -126,6 +126,10 @@ namespace CityFlow.Contracts
             EmergencyIncidentAlerted;
         public event Action<EmergencyIncidentOutcomeEvent>
             EmergencyIncidentOutcomeReported;
+        public event Action<PoliceDispatchAlertEvent>
+            PoliceDispatchAlerted;
+        public event Action<PoliceDispatchOutcomeEvent>
+            PoliceDispatchOutcomeReported;
 
         public bool IsCongestionViewEnabled { get; private set; } = false;
         public bool IsHeatmapViewEnabled { get; private set; } = false;
@@ -161,6 +165,12 @@ namespace CityFlow.Contracts
 
         public void Publish(EmergencyIncidentOutcomeEvent e) =>
             EmergencyIncidentOutcomeReported?.Invoke(e);
+
+        public void Publish(PoliceDispatchAlertEvent e) =>
+            PoliceDispatchAlerted?.Invoke(e);
+
+        public void Publish(PoliceDispatchOutcomeEvent e) =>
+            PoliceDispatchOutcomeReported?.Invoke(e);
 
         public void PublishCongestionViewToggled(bool isOn)
         {

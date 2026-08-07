@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CityFlow.Contracts;
 using UnityEngine;
 
 namespace CityFlow.Content
@@ -8,7 +9,8 @@ namespace CityFlow.Content
         menuName =
             "CityFlow/Emergency/Incident Config")]
     public sealed class EmergencyIncidentConfigSO :
-        ScriptableObject
+        ScriptableObject,
+        IResponseVehiclePresentationConfig
     {
         [Header("Spawn")]
         [SerializeField, Min(0.1f)]
@@ -107,6 +109,7 @@ namespace CityFlow.Content
             Mathf.Max(1, maximumReturnRouteRetries);
         public GameObject VehicleVisualPrefab =>
             vehicleVisualPrefab;
+        public string VehicleDisplayName => "Ambulance";
         public float VisualScale =>
             Mathf.Max(0.01f, visualScale);
         public float VisualDepth => visualDepth;
@@ -114,6 +117,11 @@ namespace CityFlow.Content
             Mathf.Max(0.05f, vehicleLengthTiles);
         public float VehicleWidthTiles =>
             Mathf.Max(0.05f, vehicleWidthTiles);
+        public VehicleFootprint VehicleFootprint => new(
+            VehicleSizeClass.Standard,
+            VehicleLengthTiles,
+            VehicleWidthTiles,
+            0.11f);
 
 #if UNITY_EDITOR
         private void OnValidate()

@@ -1,0 +1,85 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &7089500712238427475
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4479133406533131871}
+  - component: {fileID: 8706444278130153869}
+  - component: {fileID: 4670605025064558629}
+  - component: {fileID: 6453794021880128438}
+  m_Layer: 0
+  m_Name: PoliceVehicle
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4479133406533131871
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7089500712238427475}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8706444278130153869
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7089500712238427475}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8c4d02a002001664a850814f1611aa1b, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.Transit.BusRoute
+  gridWidth: 20
+  gridHeight: 20
+  secondsPerTile: 0.45
+  stopWaitSeconds: 2
+  loopRoute: 0
+  autoStart: 0
+  avoidImmediateUTurn: 1
+--- !u!114 &4670605025064558629
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7089500712238427475}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d3b44f8b20e01334090db3a6618e3824, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Content.PoliceVehicleAgent
+  route: {fileID: 8706444278130153869}
+  config: {fileID: 11400000, guid: 42347488eab867a45a49bc7767484fce, type: 2}
+  worldView: {fileID: 6453794021880128438}
+--- !u!114 &6453794021880128438
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7089500712238427475}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 261a3e39d01d43bda4b7b7e56bdff26c, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.AmbulanceWorldView
+  route: {fileID: 8706444278130153869}
+  config: {fileID: 0}
+  cityView: {fileID: 0}
