@@ -19,7 +19,11 @@ namespace CityFlow.UI
         private const float ColumnGap = 14f;
         private const float RowGap = 12f;
         private const float ConnectorThickness = 4f;
-        private const float HeaderHeight = 136f;
+        // HeaderHeight includes the summary, category tabs, lane labels, and
+        // breathing room before the first card. Keeping those regions inside
+        // one anchored band prevents text and cards from overlapping when the
+        // panel is shown at different Canvas scales.
+        private const float HeaderHeight = 160f;
         private const float PanelPadding = 16f;
 
         [SerializeField] private ResearchCatalogSO catalog;
@@ -36,6 +40,8 @@ namespace CityFlow.UI
             public TMP_Text ProgressText;
             public TMP_Text StateText;
             public TMP_Text CategoryText;
+            public GameObject IconBadge;
+            public Image IconImage;
             public Image AccentImage;
             public Image StateBadgeImage;
             public bool IsUnlocked;
@@ -50,6 +56,7 @@ namespace CityFlow.UI
         private CityFlowServices services;
         private IResearchUnlockService research;
         private IEconomyService economy;
+        private ISpecialBuildingService specialBuildings;
         private UIDockController dockController;
         private bool warnedMissingResearch;
 
@@ -67,8 +74,10 @@ namespace CityFlow.UI
 
             BindResearch(services.Research);
             BindEconomy(services.Economy);
+            BindSpecialBuildings(services.SpecialBuildings);
             services.ResearchRegistered += BindResearch;
             services.EconomyRegistered += BindEconomy;
+            services.SpecialBuildingsRegistered += BindSpecialBuildings;
             if (research == null && !warnedMissingResearch)
             {
                 warnedMissingResearch = true;
@@ -131,6 +140,7 @@ namespace CityFlow.UI
         private void OnDestroy()
         {
             ReleaseCatalogPresentation();
+            ReleaseCatalogStyleResources();
             Unbind();
         }
 
@@ -140,6 +150,7 @@ namespace CityFlow.UI
             {
                 services.ResearchRegistered -= BindResearch;
                 services.EconomyRegistered -= BindEconomy;
+                services.SpecialBuildingsRegistered -= BindSpecialBuildings;
             }
             if (research != null)
             {
@@ -149,6 +160,7 @@ namespace CityFlow.UI
                 research = null;
             }
             BindEconomy(null);
+            BindSpecialBuildings(null);
             services = null;
         }
 
@@ -179,6 +191,24 @@ namespace CityFlow.UI
 
         private void OnCoinsChanged(long _) => RefreshAll();
         private void OnResearchUnlocked(string _) => RefreshAll();
+
+        private void BindSpecialBuildings(ISpecialBuildingService service)
+        {
+            if (ReferenceEquals(specialBuildings, service)) return;
+            if (specialBuildings != null)
+            {
+                specialBuildings.BuildOptionsChanged -=
+                    RefreshResearchIcons;
+            }
+
+            specialBuildings = service;
+            if (specialBuildings != null)
+            {
+                specialBuildings.BuildOptionsChanged +=
+                    RefreshResearchIcons;
+            }
+            RefreshResearchIcons();
+        }
 
         private void BuildRows()
         {
@@ -214,6 +244,7 @@ namespace CityFlow.UI
                 };
                 // 노드 카드 배경 — 상태색은 RefreshAll이 칠한다
                 Image card = instance.GetComponent<Image>() ?? instance.AddComponent<Image>();
+                ApplyRoundedSurface(card);
                 Button button = instance.GetComponent<Button>() ?? instance.AddComponent<Button>();
                 button.targetGraphic = card;
                 Outline outline = instance.GetComponent<Outline>() ?? instance.AddComponent<Outline>();
@@ -233,6 +264,7 @@ namespace CityFlow.UI
                 });
                 rows.Add(row);
             }
+            RefreshResearchIcons();
             LayoutRows(byId);
             ApplyCatalogSelection();
         }
@@ -361,24 +393,28 @@ namespace CityFlow.UI
 
         private string CreateStateText(Row row)
         {
-            if (row.IsUnlocked) return "완료";
-            if (row.IsResearching) return "연구 중";
-            if (!row.IsReady) return "잠김";
-            if (!string.IsNullOrEmpty(research?.ActiveResearchId))
-                return "다른 연구 진행 중";
-            if (!CanAfford(row.Entry))
-                return $"재화 부족 · 비용 {Mathf.Max(0, row.Entry.researchCost):N0}";
-
             int cost = Mathf.Max(0, row.Entry.researchCost);
+            string priceText = cost == 0
+                ? "무료"
+                : $"비용 {cost:N0}";
+
+            if (row.IsUnlocked) return $"{priceText} · 완료";
+            if (row.IsResearching) return $"{priceText} · 연구 중";
+            if (!row.IsReady) return $"{priceText} · 잠김";
+            if (!string.IsNullOrEmpty(research?.ActiveResearchId))
+                return $"{priceText} · 다른 연구 진행 중";
+            if (!CanAfford(row.Entry))
+                return $"{priceText} · 재화 부족";
+
             int duration = Mathf.Max(
                 0,
                 row.Entry.researchDurationHours);
             if (duration == 0)
             {
-                return $"연구 가능 · 비용 {cost:N0}";
+                return $"{priceText} · 연구 가능";
             }
 
-            return $"연구 가능 · 비용 {cost:N0} · {duration}시간";
+            return $"{priceText} · 연구 가능 · {duration}시간";
         }
 
         private bool CanAfford(ResearchEntry entry)
@@ -532,8 +568,13 @@ namespace CityFlow.UI
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
             Image image = bg.GetComponent<Image>();
-            image.color = new Color(0.08f, 0.09f, 0.11f, 0.97f);
+            image.color = new Color(0.07f, 0.10f, 0.13f, 0.97f);
             image.raycastTarget = true;   // 뒤 맵 클릭 차단
+            ApplyRoundedSurface(image);
+            ApplySoftShadow(
+                image,
+                0.30f,
+                new Vector2(0f, -5f));
         }
 
         private void CreateConnector(Row parent, Row child)

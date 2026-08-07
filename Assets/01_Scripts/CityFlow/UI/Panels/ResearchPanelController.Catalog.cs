@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using CityFlow.Configs;
+using CityFlow.Contracts;
 using CityFlow.Gameplay.Research;
 using TMPro;
 using UnityEngine;
@@ -26,6 +28,16 @@ namespace CityFlow.UI
         private const float CategoryListWidth = 500f;
         private const float CategoryCellHeight = 108f;
         private const float CategoryRowGap = 12f;
+        private const int GeneratedRoundedSpriteSize = 32;
+        private const float GeneratedRoundedRadius = 10f;
+        private const float ResearchIconBadgeSize = 46f;
+        private const float ResearchIconTextLeft = 64f;
+        [Header("Presentation")]
+        [Tooltip("선택 사항입니다. 비워 두면 프로토타입 9-Slice 라운드 이미지를 자동 생성합니다.")]
+        [SerializeField] private Sprite roundedSurfaceSprite;
+        private Sprite resolvedRoundedSurfaceSprite;
+        private Sprite generatedRoundedSurfaceSprite;
+        private Texture2D generatedRoundedSurfaceTexture;
         private Button unlockMenuButton;
         private RectTransform categoryBar;
         private RectTransform laneHeaderBar;
@@ -75,6 +87,12 @@ namespace CityFlow.UI
 
             unlockMenuButton.name = "Unlock";
             SetButtonLabel(unlockMenuButton, "닫기");
+            ApplyRoundedSurface(
+                unlockMenuButton.targetGraphic as Image);
+            ApplySoftShadow(
+                unlockMenuButton.targetGraphic as Graphic,
+                0.26f,
+                new Vector2(0f, -3f));
             PositionUnlockButton(unlockMenuButton);
             EnsureCategoryBar(styleSource);
             EnsureCatalogHeader(styleSource);
@@ -442,13 +460,16 @@ namespace CityFlow.UI
                     typeof(RectTransform));
                 tabs.transform.SetParent(transform, false);
                 categoryBar = tabs.GetComponent<RectTransform>();
-                categoryBar.anchorMin = new Vector2(0f, 1f);
-                categoryBar.anchorMax = new Vector2(0f, 1f);
-                categoryBar.pivot = new Vector2(0f, 1f);
-                categoryBar.anchoredPosition =
-                    new Vector2(PanelPadding, -94f);
-                categoryBar.sizeDelta = new Vector2(630f, 34f);
             }
+
+            // Existing scene instances may carry old prefab offsets. Reapply
+            // the anchor contract every time so runtime layout is deterministic.
+            categoryBar.anchorMin = new Vector2(0f, 1f);
+            categoryBar.anchorMax = new Vector2(0f, 1f);
+            categoryBar.pivot = new Vector2(0f, 1f);
+            categoryBar.anchoredPosition =
+                new Vector2(PanelPadding, -102f);
+            categoryBar.sizeDelta = new Vector2(630f, 34f);
 
             if (categoryTabs.Count > 0)
             {
@@ -530,6 +551,7 @@ namespace CityFlow.UI
             Image templateImage = rowTemplate.GetComponent<Image>();
             templateImage.color =
                 new Color(0.21f, 0.22f, 0.26f, 1f);
+            ApplyRoundedSurface(templateImage);
             rowTemplate.GetComponent<Button>().targetGraphic =
                 templateImage;
 
@@ -613,7 +635,7 @@ namespace CityFlow.UI
             return text;
         }
 
-        private static Button CreateButton(
+        private Button CreateButton(
             string name,
             Transform parent,
             string label,
@@ -629,8 +651,20 @@ namespace CityFlow.UI
             buttonObject.transform.SetParent(parent, false);
             Image image = buttonObject.GetComponent<Image>();
             image.color = color;
+            ApplyRoundedSurface(image);
+            ApplySoftShadow(
+                image,
+                0.20f,
+                new Vector2(0f, -2f));
             Button button = buttonObject.GetComponent<Button>();
             button.targetGraphic = image;
+            ColorBlock colors = button.colors;
+            colors.normalColor = new Color(0.94f, 0.97f, 1f, 1f);
+            colors.highlightedColor = Color.white;
+            colors.pressedColor = new Color(0.86f, 0.90f, 0.94f, 1f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.colorMultiplier = 1f;
+            button.colors = colors;
 
             TMP_Text text = CreateText(
                 "Label",
@@ -642,8 +676,8 @@ namespace CityFlow.UI
             RectTransform textRect = text.rectTransform;
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(8f, 2f);
-            textRect.offsetMax = new Vector2(-8f, -2f);
+            textRect.offsetMin = new Vector2(10f, 4f);
+            textRect.offsetMax = new Vector2(-10f, -4f);
             return button;
         }
 
@@ -727,8 +761,8 @@ namespace CityFlow.UI
             rect.anchorMin = new Vector2(1f, 1f);
             rect.anchorMax = new Vector2(1f, 1f);
             rect.pivot = new Vector2(1f, 1f);
-            rect.anchoredPosition = new Vector2(-20f, -18f);
-            rect.sizeDelta = new Vector2(108f, 38f);
+            rect.anchoredPosition = new Vector2(-18f, -16f);
+            rect.sizeDelta = new Vector2(108f, 40f);
         }
 
         private static void SetHeaderVisible(
@@ -755,8 +789,8 @@ namespace CityFlow.UI
                 if (image != null)
                 {
                     image.color = selected
-                        ? new Color(0.08f, 0.52f, 0.42f, 1f)
-                        : new Color(0.14f, 0.16f, 0.19f, 1f);
+                        ? new Color(0.10f, 0.60f, 0.47f, 1f)
+                        : new Color(0.17f, 0.21f, 0.27f, 1f);
                 }
             }
         }
@@ -770,7 +804,7 @@ namespace CityFlow.UI
                 : null;
             if (image != null)
             {
-                image.color = new Color(0.72f, 0.24f, 0.22f, 1f);
+                image.color = new Color(0.82f, 0.31f, 0.30f, 1f);
             }
         }
 
@@ -790,10 +824,17 @@ namespace CityFlow.UI
                     typeof(Image));
                 header.transform.SetParent(transform, false);
                 headerSurface = header.GetComponent<RectTransform>();
-                Image image = header.GetComponent<Image>();
-                image.color = new Color(0.10f, 0.13f, 0.16f, 0.98f);
-                image.raycastTarget = false;
             }
+
+            Image headerImage = headerSurface.GetComponent<Image>() ??
+                                headerSurface.gameObject.AddComponent<Image>();
+            headerImage.color = new Color(0.10f, 0.15f, 0.19f, 0.98f);
+            headerImage.raycastTarget = false;
+            ApplyRoundedSurface(headerImage);
+            ApplySoftShadow(
+                headerImage,
+                0.24f,
+                new Vector2(0f, -3f));
 
             catalogTitleText = FindOrCreateHeaderText(
                 "Title",
@@ -850,22 +891,22 @@ namespace CityFlow.UI
             headerSurface.anchorMin = new Vector2(0f, 1f);
             headerSurface.anchorMax = new Vector2(1f, 1f);
             headerSurface.pivot = new Vector2(0.5f, 1f);
-            headerSurface.offsetMin = new Vector2(10f, -88f);
-            headerSurface.offsetMax = new Vector2(-10f, -8f);
+            headerSurface.offsetMin = new Vector2(12f, -94f);
+            headerSurface.offsetMax = new Vector2(-12f, -10f);
 
             LayoutHeaderText(
                 catalogTitleText,
-                new Vector2(14f, -12f),
+                new Vector2(16f, -14f),
                 new Vector2(360f, 26f),
                 TextAlignmentOptions.TopLeft);
             LayoutHeaderText(
                 catalogSubtitleText,
-                new Vector2(14f, -39f),
+                new Vector2(16f, -42f),
                 new Vector2(520f, 22f),
                 TextAlignmentOptions.TopLeft);
             LayoutHeaderText(
                 activeResearchText,
-                new Vector2(318f, -65f),
+                new Vector2(318f, -69f),
                 new Vector2(330f, 24f),
                 TextAlignmentOptions.MidlineRight);
 
@@ -881,12 +922,12 @@ namespace CityFlow.UI
             }
             LayoutHeaderText(
                 populationText,
-                new Vector2(14f, -65f),
+                new Vector2(16f, -69f),
                 new Vector2(126f, 24f),
                 TextAlignmentOptions.MidlineLeft);
             LayoutHeaderText(
                 unlockProgressText,
-                new Vector2(148f, -65f),
+                new Vector2(150f, -69f),
                 new Vector2(142f, 24f),
                 TextAlignmentOptions.MidlineLeft);
 
@@ -895,7 +936,7 @@ namespace CityFlow.UI
                 categoryBar.SetParent(panel, false);
                 categoryBar.SetAsLastSibling();
                 categoryBar.anchoredPosition =
-                    new Vector2(PanelPadding, -94f);
+                    new Vector2(PanelPadding, -102f);
             }
             if (unlockMenuButton != null)
             {
@@ -925,6 +966,7 @@ namespace CityFlow.UI
         {
             RectTransform cardRect = GetRect(row.Instance);
             cardRect.sizeDelta = new Vector2(CellWidth, CellHeight);
+            EnsureResearchIcon(row);
             LayoutResearchCardContent(row, CellHeight);
 
             Transform accent = row.Instance.transform.Find("Accent");
@@ -980,6 +1022,7 @@ namespace CityFlow.UI
             }
             row.StateBadgeImage = stateBadge.GetComponent<Image>();
             row.StateBadgeImage.raycastTarget = false;
+            ApplyRoundedSurface(row.StateBadgeImage);
             if (row.StateText != null)
             {
                 stateBadge.SetSiblingIndex(
@@ -1007,25 +1050,236 @@ namespace CityFlow.UI
             }
         }
 
+        private void EnsureResearchIcon(Row row)
+        {
+            Transform badge = row.Instance.transform.Find("BuildingIconBadge");
+            if (badge == null)
+            {
+                var badgeObject = new GameObject(
+                    "BuildingIconBadge",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image));
+                badgeObject.transform.SetParent(row.Instance.transform, false);
+                badge = badgeObject.transform;
+            }
+
+            row.IconBadge = badge.gameObject;
+            Image badgeImage = badge.GetComponent<Image>();
+            badgeImage.color = new Color(0.10f, 0.14f, 0.19f, 0.88f);
+            badgeImage.raycastTarget = false;
+            ApplyRoundedSurface(badgeImage);
+
+            RectTransform badgeRect = badge as RectTransform;
+            badgeRect.anchorMin = new Vector2(0f, 1f);
+            badgeRect.anchorMax = new Vector2(0f, 1f);
+            badgeRect.pivot = new Vector2(0f, 1f);
+            badgeRect.anchoredPosition = new Vector2(10f, -9f);
+            badgeRect.sizeDelta = new Vector2(
+                ResearchIconBadgeSize,
+                ResearchIconBadgeSize);
+
+            Transform icon = badge.Find("Icon");
+            if (icon == null)
+            {
+                var iconObject = new GameObject(
+                    "Icon",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image));
+                iconObject.transform.SetParent(badge, false);
+                icon = iconObject.transform;
+            }
+
+            row.IconImage = icon.GetComponent<Image>();
+            row.IconImage.raycastTarget = false;
+            row.IconImage.preserveAspect = true;
+            RectTransform iconRect = icon as RectTransform;
+            iconRect.anchorMin = Vector2.zero;
+            iconRect.anchorMax = Vector2.one;
+            iconRect.offsetMin = Vector2.one;
+            iconRect.offsetMax = -Vector2.one;
+            row.IconBadge.SetActive(false);
+        }
+
+        private void RefreshResearchIcons()
+        {
+            if (rows.Count == 0) return;
+
+            SpecialBuildingBuildOption[] specialOptions =
+                specialBuildings?.CreateBuildOptionSnapshot() ??
+                Array.Empty<SpecialBuildingBuildOption>();
+            TileDataSO[] generalBuildings =
+                CreateDeterministicGeneralBuildingSnapshot();
+
+            for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+            {
+                Row row = rows[rowIndex];
+                if (row?.IconImage == null || row.IconBadge == null)
+                {
+                    continue;
+                }
+
+                Sprite icon = ResolveResearchIcon(
+                    row.Entry?.researchId,
+                    specialOptions,
+                    generalBuildings);
+                row.IconImage.sprite = icon;
+                row.IconImage.color = Color.white;
+                row.IconBadge.SetActive(icon != null);
+                LayoutResearchCardContent(row, CellHeight);
+            }
+        }
+
+        private static TileDataSO[]
+            CreateDeterministicGeneralBuildingSnapshot()
+        {
+            BuildSlotController[] buildSlots =
+                FindObjectsByType<BuildSlotController>(
+                    FindObjectsInactive.Include,
+                    FindObjectsSortMode.None);
+            var uniqueBuildings = new HashSet<TileDataSO>();
+            var buildings = new List<TileDataSO>();
+
+            for (int index = 0; index < buildSlots.Length; index++)
+            {
+                TileDataSO tileData = buildSlots[index]?.TileData;
+                if (tileData == null || !uniqueBuildings.Add(tileData))
+                {
+                    continue;
+                }
+
+                buildings.Add(tileData);
+            }
+
+            buildings.Sort(CompareGeneralBuildingData);
+            return buildings.ToArray();
+        }
+
+        private static int CompareGeneralBuildingData(
+            TileDataSO left,
+            TileDataSO right)
+        {
+            int comparison = string.Compare(
+                left?.RequiredResearchId?.Trim(),
+                right?.RequiredResearchId?.Trim(),
+                StringComparison.Ordinal);
+            if (comparison != 0) return comparison;
+
+            comparison = string.Compare(
+                left?.BuildingId?.Trim(),
+                right?.BuildingId?.Trim(),
+                StringComparison.Ordinal);
+            if (comparison != 0) return comparison;
+
+            comparison = string.Compare(
+                left != null ? left.name : string.Empty,
+                right != null ? right.name : string.Empty,
+                StringComparison.Ordinal);
+            if (comparison != 0) return comparison;
+
+            comparison = string.Compare(
+                left?.BuildingName?.Trim(),
+                right?.BuildingName?.Trim(),
+                StringComparison.Ordinal);
+            if (comparison != 0) return comparison;
+
+            comparison = string.Compare(
+                left?.BuildingIcon != null ? left.BuildingIcon.name : string.Empty,
+                right?.BuildingIcon != null ? right.BuildingIcon.name : string.Empty,
+                StringComparison.Ordinal);
+            if (comparison != 0) return comparison;
+
+            return (left?.BuildCost ?? 0).CompareTo(right?.BuildCost ?? 0);
+        }
+
+        private static Sprite ResolveResearchIcon(
+            string researchId,
+            IReadOnlyList<SpecialBuildingBuildOption> specialOptions,
+            IReadOnlyList<TileDataSO> generalBuildings)
+        {
+            if (string.IsNullOrWhiteSpace(researchId)) return null;
+            string normalizedId = researchId.Trim();
+
+            for (int index = 0; index < specialOptions.Count; index++)
+            {
+                SpecialBuildingBuildOption option = specialOptions[index];
+                if (string.Equals(
+                        option.RequiredResearchId,
+                        normalizedId,
+                        StringComparison.Ordinal) &&
+                    option.Icon != null)
+                {
+                    return option.Icon;
+                }
+            }
+
+            TileDataSO selectedBuilding = null;
+            var duplicateBuildingIds = new List<string>();
+            for (int index = 0; index < generalBuildings.Count; index++)
+            {
+                TileDataSO tileData = generalBuildings[index];
+                if (tileData == null || tileData.BuildingIcon == null ||
+                    !string.Equals(
+                        tileData.RequiredResearchId?.Trim(),
+                        normalizedId,
+                        StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (selectedBuilding == null)
+                {
+                    selectedBuilding = tileData;
+                }
+
+                duplicateBuildingIds.Add(
+                    string.IsNullOrWhiteSpace(tileData.BuildingId)
+                        ? tileData.name
+                        : tileData.BuildingId.Trim());
+            }
+
+            if (duplicateBuildingIds.Count > 1)
+            {
+                Debug.LogWarning(
+                    "[ResearchPanelController] Multiple TileDataSO assets " +
+                    $"use research ID '{normalizedId}'. Selected " +
+                    $"'{duplicateBuildingIds[0]}' deterministically. " +
+                    $"Duplicates: {string.Join(", ", duplicateBuildingIds)}.");
+            }
+
+            return selectedBuilding != null
+                ? selectedBuilding.BuildingIcon
+                : null;
+        }
+
         private static void LayoutResearchCardContent(
             Row row,
             float cardHeight)
         {
-            float nameTop = 10f;
-            float nameBottom = 34f;
-            float progressTop = 38f;
-            float progressBottom = 68f;
-            float stateTop = 72f;
+            float nameLeft = row.IconBadge != null &&
+                             row.IconBadge.activeSelf
+                ? ResearchIconTextLeft
+                : 14f;
+            float progressLeft = row.IconBadge != null &&
+                                 row.IconBadge.activeSelf
+                ? ResearchIconTextLeft
+                : 14f;
+            float nameTop = 12f;
+            float nameBottom = 36f;
+            float progressTop = 42f;
+            float progressBottom = 70f;
+            float stateTop = 76f;
             float stateBottom = cardHeight - 6f;
             LayoutCardLabel(
                 row.NameText,
-                new Vector2(14f, -nameTop),
+                new Vector2(nameLeft, -nameTop),
                 new Vector2(-14f, -nameBottom),
                 16f,
                 TextAlignmentOptions.TopLeft);
             LayoutCardLabel(
                 row.ProgressText,
-                new Vector2(14f, -progressTop),
+                new Vector2(progressLeft, -progressTop),
                 new Vector2(-14f, -progressBottom),
                 13.5f,
                 TextAlignmentOptions.TopLeft);
@@ -1049,9 +1303,140 @@ namespace CityFlow.UI
             rect.anchorMin = new Vector2(1f, 1f);
             rect.anchorMax = new Vector2(1f, 1f);
             rect.pivot = new Vector2(1f, 1f);
-            float top = 72f;
+            float top = 74f;
             rect.anchoredPosition = new Vector2(-10f, -top);
             rect.sizeDelta = new Vector2(174f, 26f);
+        }
+
+        private void ApplyRoundedSurface(Image image)
+        {
+            if (image == null) return;
+            Sprite sprite = ResolveRoundedSurfaceSprite();
+            if (sprite == null) return;
+
+            image.sprite = sprite;
+            image.type = Image.Type.Sliced;
+            image.preserveAspect = false;
+            image.pixelsPerUnitMultiplier = 1f;
+        }
+
+        private static void ApplySoftShadow(
+            Graphic graphic,
+            float alpha,
+            Vector2 distance)
+        {
+            if (graphic == null) return;
+
+            Shadow shadow = graphic.GetComponent<Shadow>() ??
+                            graphic.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0.01f, 0.03f, 0.06f, alpha);
+            shadow.effectDistance = distance;
+            shadow.useGraphicAlpha = true;
+        }
+
+        private Sprite ResolveRoundedSurfaceSprite()
+        {
+            if (roundedSurfaceSprite != null)
+            {
+                return roundedSurfaceSprite;
+            }
+            if (resolvedRoundedSurfaceSprite != null)
+            {
+                return resolvedRoundedSurfaceSprite;
+            }
+
+            resolvedRoundedSurfaceSprite =
+                CreateGeneratedRoundedSurfaceSprite();
+            return resolvedRoundedSurfaceSprite;
+        }
+
+        private Sprite CreateGeneratedRoundedSurfaceSprite()
+        {
+            int size = GeneratedRoundedSpriteSize;
+            float half = size * 0.5f;
+            float inner = half - GeneratedRoundedRadius;
+            var pixels = new Color32[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = Mathf.Max(
+                        Mathf.Abs(x + 0.5f - half) - inner,
+                        0f);
+                    float dy = Mathf.Max(
+                        Mathf.Abs(y + 0.5f - half) - inner,
+                        0f);
+                    float edgeDistance =
+                        Mathf.Sqrt(dx * dx + dy * dy) -
+                        GeneratedRoundedRadius;
+                    byte alpha = (byte)Mathf.RoundToInt(
+                        Mathf.Clamp01(0.5f - edgeDistance) * 255f);
+                    pixels[y * size + x] =
+                        new Color32(255, 255, 255, alpha);
+                }
+            }
+
+            generatedRoundedSurfaceTexture = new Texture2D(
+                size,
+                size,
+                TextureFormat.RGBA32,
+                false,
+                true)
+            {
+                name = "ResearchPanel_RoundedSurface",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            generatedRoundedSurfaceTexture.SetPixels32(pixels);
+            generatedRoundedSurfaceTexture.Apply(false, true);
+
+            generatedRoundedSurfaceSprite = Sprite.Create(
+                generatedRoundedSurfaceTexture,
+                new Rect(0f, 0f, size, size),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect,
+                new Vector4(
+                    GeneratedRoundedRadius,
+                    GeneratedRoundedRadius,
+                    GeneratedRoundedRadius,
+                    GeneratedRoundedRadius));
+            generatedRoundedSurfaceSprite.name =
+                "ResearchPanel_RoundedSurface";
+            generatedRoundedSurfaceSprite.hideFlags =
+                HideFlags.HideAndDontSave;
+            return generatedRoundedSurfaceSprite;
+        }
+
+        private void ReleaseCatalogStyleResources()
+        {
+            if (generatedRoundedSurfaceSprite != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(generatedRoundedSurfaceSprite);
+                }
+                else
+                {
+                    DestroyImmediate(generatedRoundedSurfaceSprite);
+                }
+                generatedRoundedSurfaceSprite = null;
+            }
+            if (generatedRoundedSurfaceTexture != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(generatedRoundedSurfaceTexture);
+                }
+                else
+                {
+                    DestroyImmediate(generatedRoundedSurfaceTexture);
+                }
+                generatedRoundedSurfaceTexture = null;
+            }
+            resolvedRoundedSurfaceSprite = null;
         }
 
         private static void LayoutCardLabel(

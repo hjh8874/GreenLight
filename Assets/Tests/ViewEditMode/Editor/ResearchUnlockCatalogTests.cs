@@ -1,4 +1,5 @@
 using CityFlow.Bootstrap;
+using CityFlow.Configs;
 using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.Gameplay.Research;
@@ -7,6 +8,7 @@ using NUnit.Framework;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -223,14 +225,24 @@ public class ResearchUnlockCatalogTests
             Assert.IsTrue(
                 row.Instance.GetComponent<Button>().interactable);
             Assert.AreEqual(
-                "연구 가능 · 비용 500 · 24시간",
+                "비용 500 · 연구 가능 · 24시간",
                 row.StateText.text);
+            Assert.AreEqual(
+                "비용 500 · 잠김",
+                controller.RowsForTest[1].StateText.text);
             AssertReadable(row.NameText.color);
             AssertReadable(row.ProgressText.color);
             AssertReadable(row.StateText.color);
             Assert.NotNull(row.Instance.GetComponent<Outline>());
             Assert.NotNull(row.AccentImage);
             Assert.NotNull(row.StateBadgeImage);
+            Image roundedCard = row.Instance.GetComponent<Image>();
+            Assert.NotNull(roundedCard.sprite);
+            Assert.AreEqual(Image.Type.Sliced, roundedCard.type);
+            Assert.NotNull(row.StateBadgeImage.sprite);
+            Assert.AreEqual(
+                Image.Type.Sliced,
+                row.StateBadgeImage.type);
             Assert.NotNull(row.CategoryText);
             Assert.AreEqual("상업", row.CategoryText.text);
             Assert.IsFalse(row.CategoryText.gameObject.activeSelf);
@@ -247,6 +259,16 @@ public class ResearchUnlockCatalogTests
             Assert.AreEqual("상업", laneLabels[0].text);
             Assert.AreEqual("인프라", laneLabels[1].text);
             Assert.AreEqual("공공", laneLabels[2].text);
+            RectTransform laneHeaderRect =
+                laneHeaders.GetComponent<RectTransform>();
+            RectTransform overviewCardRect =
+                row.Instance.GetComponent<RectTransform>();
+            float laneHeaderBottom =
+                laneHeaderRect.anchoredPosition.y - laneHeaderRect.rect.height;
+            Assert.That(
+                laneHeaderBottom - overviewCardRect.anchoredPosition.y,
+                Is.GreaterThanOrEqualTo(8f),
+                "Overview cards must keep readable vertical space below the lane headers.");
             Assert.That(row.NameText.rectTransform.rect.height, Is.GreaterThan(0f));
             Assert.That(row.ProgressText.rectTransform.rect.height, Is.GreaterThan(0f));
             Assert.That(row.StateText.rectTransform.rect.height, Is.GreaterThan(0f));
@@ -264,6 +286,13 @@ public class ResearchUnlockCatalogTests
             Button[] categoryButtons = owner.transform
                 .Find("CategoryTabs")
                 .GetComponentsInChildren<Button>(true);
+            Assert.That(
+                categoryButtons,
+                Has.All.Matches<Button>(button =>
+                    button.targetGraphic is Image image &&
+                    image.sprite != null &&
+                    image.type == Image.Type.Sliced &&
+                    button.GetComponent<Shadow>() != null));
             categoryButtons[1].onClick.Invoke();
             RectTransform filteredCard =
                 row.Instance.GetComponent<RectTransform>();
@@ -279,6 +308,193 @@ public class ResearchUnlockCatalogTests
         {
             Object.DestroyImmediate(owner);
             Object.DestroyImmediate(serviceOwner);
+        }
+    }
+
+    [Test]
+    public void MatchingBuildSlot_ReusesConstructionIconBesideResearchName()
+    {
+        var owner = new GameObject("panel");
+        var serviceOwner = new GameObject("research");
+        var slotOwner = new GameObject("build-slot");
+        var texture = new Texture2D(2, 2);
+        Sprite icon = Sprite.Create(
+            texture,
+            new Rect(0f, 0f, 2f, 2f),
+            new Vector2(0.5f, 0.5f));
+        TileDataSO tileData = ScriptableObject.CreateInstance<TileDataSO>();
+        ResearchCatalogSO catalog = null;
+        try
+        {
+            CreateButton(owner.transform, "Upgrade", "Upgrade");
+            CityFlowServices services =
+                CreateServicesWithReadyResearch(serviceOwner, out catalog);
+
+            tileData.Initialize(
+                "ready",
+                "Ready Building",
+                TileType.House,
+                100,
+                1,
+                1,
+                string.Empty);
+            var tileSerialized = new UnityEditor.SerializedObject(tileData);
+            tileSerialized.FindProperty("buildingIcon").objectReferenceValue =
+                icon;
+            tileSerialized.FindProperty("requiredResearchId").stringValue =
+                "research_ready";
+            tileSerialized.ApplyModifiedPropertiesWithoutUndo();
+
+            BuildSlotController slot =
+                slotOwner.AddComponent<BuildSlotController>();
+            SetPrivate(slot, "tileData", tileData);
+
+            var controller =
+                owner.AddComponent<ResearchPanelController>();
+            SetPrivate(controller, "catalog", catalog);
+            controller.Initialize(services);
+
+            ResearchPanelController.Row row =
+                controller.RowsForTest[0];
+            Assert.NotNull(row.IconImage);
+            Assert.AreSame(icon, row.IconImage.sprite);
+            Assert.IsTrue(row.IconBadge.activeSelf);
+            Assert.IsTrue(row.IconImage.preserveAspect);
+            RectTransform badgeRect =
+                row.IconBadge.GetComponent<RectTransform>();
+            Assert.That(badgeRect.sizeDelta.x, Is.GreaterThanOrEqualTo(44f));
+            Assert.That(badgeRect.sizeDelta.y, Is.GreaterThanOrEqualTo(44f));
+            Assert.That(
+                row.NameText.rectTransform.offsetMin.x,
+                Is.GreaterThanOrEqualTo(62f));
+            Assert.That(
+                row.ProgressText.rectTransform.offsetMin.x,
+                Is.GreaterThanOrEqualTo(62f));
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(serviceOwner);
+            Object.DestroyImmediate(slotOwner);
+            Object.DestroyImmediate(tileData);
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(icon);
+            Object.DestroyImmediate(texture);
+        }
+    }
+
+    [Test]
+    public void ResearchWithoutMatchingBuildSlot_KeepsTextLayoutAndNoIcon()
+    {
+        var owner = new GameObject("panel");
+        var serviceOwner = new GameObject("research");
+        ResearchCatalogSO catalog = null;
+        try
+        {
+            CreateButton(owner.transform, "Upgrade", "Upgrade");
+            CityFlowServices services =
+                CreateServicesWithReadyResearch(serviceOwner, out catalog);
+
+            var controller =
+                owner.AddComponent<ResearchPanelController>();
+            SetPrivate(controller, "catalog", catalog);
+            controller.Initialize(services);
+
+            ResearchPanelController.Row row =
+                controller.RowsForTest[2];
+            Assert.AreEqual(
+                "research_infrastructure",
+                row.Entry.researchId);
+            Assert.IsFalse(row.IconBadge.activeSelf);
+            Assert.IsNull(row.IconImage.sprite);
+            Assert.That(
+                row.NameText.rectTransform.offsetMin.x,
+                Is.EqualTo(14f).Within(0.01f));
+            Assert.That(
+                row.ProgressText.rectTransform.offsetMin.x,
+                Is.EqualTo(14f).Within(0.01f));
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(serviceOwner);
+            Object.DestroyImmediate(catalog);
+        }
+    }
+
+    [Test]
+    public void DuplicateGeneralBuildingResearchIds_SelectLowestBuildingId()
+    {
+        var owner = new GameObject("panel");
+        var serviceOwner = new GameObject("research");
+        var firstSlotOwner = new GameObject("first-slot");
+        var secondSlotOwner = new GameObject("second-slot");
+        var firstTexture = new Texture2D(2, 2);
+        var secondTexture = new Texture2D(2, 2);
+        Sprite firstIcon = Sprite.Create(
+            firstTexture,
+            new Rect(0f, 0f, 2f, 2f),
+            new Vector2(0.5f, 0.5f));
+        Sprite secondIcon = Sprite.Create(
+            secondTexture,
+            new Rect(0f, 0f, 2f, 2f),
+            new Vector2(0.5f, 0.5f));
+        TileDataSO firstData = ScriptableObject.CreateInstance<TileDataSO>();
+        TileDataSO secondData = ScriptableObject.CreateInstance<TileDataSO>();
+        ResearchCatalogSO catalog = null;
+        try
+        {
+            CreateButton(owner.transform, "Upgrade", "Upgrade");
+            CityFlowServices services =
+                CreateServicesWithReadyResearch(serviceOwner, out catalog);
+            ConfigureTileData(
+                firstData,
+                "zeta-building",
+                "research_ready",
+                firstIcon);
+            ConfigureTileData(
+                secondData,
+                "alpha-building",
+                "research_ready",
+                secondIcon);
+            SetPrivate(
+                firstSlotOwner.AddComponent<BuildSlotController>(),
+                "tileData",
+                firstData);
+            SetPrivate(
+                secondSlotOwner.AddComponent<BuildSlotController>(),
+                "tileData",
+                secondData);
+
+            LogAssert.Expect(
+                LogType.Warning,
+                "[ResearchPanelController] Multiple TileDataSO assets " +
+                "use research ID 'research_ready'. Selected " +
+                "'alpha-building' deterministically. Duplicates: " +
+                "alpha-building, zeta-building.");
+
+            var controller =
+                owner.AddComponent<ResearchPanelController>();
+            SetPrivate(controller, "catalog", catalog);
+            controller.Initialize(services);
+
+            Assert.AreSame(
+                secondIcon,
+                controller.RowsForTest[0].IconImage.sprite);
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+            Object.DestroyImmediate(serviceOwner);
+            Object.DestroyImmediate(firstSlotOwner);
+            Object.DestroyImmediate(secondSlotOwner);
+            Object.DestroyImmediate(firstData);
+            Object.DestroyImmediate(secondData);
+            Object.DestroyImmediate(catalog);
+            Object.DestroyImmediate(firstIcon);
+            Object.DestroyImmediate(secondIcon);
+            Object.DestroyImmediate(firstTexture);
+            Object.DestroyImmediate(secondTexture);
         }
     }
 
@@ -545,6 +761,27 @@ public class ResearchUnlockCatalogTests
             new ResearchConditionInputs(1, 0, null);
         research.Initialize(services);
         return services;
+    }
+
+    private static void ConfigureTileData(
+        TileDataSO tileData,
+        string buildingId,
+        string researchId,
+        Sprite icon)
+    {
+        tileData.Initialize(
+            buildingId,
+            buildingId,
+            TileType.House,
+            100,
+            1,
+            1,
+            string.Empty);
+        var serialized = new SerializedObject(tileData);
+        serialized.FindProperty("buildingIcon").objectReferenceValue = icon;
+        serialized.FindProperty("requiredResearchId").stringValue =
+            researchId;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
     }
 
     private static Button CreateButton(
