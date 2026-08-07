@@ -70,6 +70,8 @@ namespace CityFlow.UI
         // UI 플로팅 좌표 변환용 캐싱
         private Canvas rootCanvas;
         private RectTransform parentRectTransform;
+        private HUDDashboard hudDashboard;
+        private readonly Vector3[] hudWorldCorners = new Vector3[4];
 
         /// <summary>현재 카드가 활성 상태인지 외부에서 확인할 수 있는 프로퍼티.</summary>
         public bool IsOpen => gameObject.activeSelf && !isClosing;
@@ -190,6 +192,7 @@ namespace CityFlow.UI
             if (RectTransformUtility.ScreenPointToLocalPointInRectangle(parentRectTransform, screenPos, uiCamera, out Vector2 localPoint))
             {
                 RectTransform myRect = (RectTransform)transform;
+                Rect playableRect = ResolvePlayableLocalRect(uiCamera);
 
                 // --- 캔버스 밖으로 벗어남 방지 (Clamping) ---
                 // Pivot이 (0.5, 0) 이므로 좌/우 여백은 width/2, 상단 여백은 height 전체, 하단 여백은 0
@@ -198,18 +201,84 @@ namespace CityFlow.UI
                 float width = myRect.rect.width;
                 float height = myRect.rect.height;
 
-                float minX = parentRectTransform.rect.xMin + (width * pivotX);
-                float maxX = parentRectTransform.rect.xMax - (width * (1f - pivotX));
-                float minY = parentRectTransform.rect.yMin + (height * pivotY);
-                float maxY = parentRectTransform.rect.yMax - (height * (1f - pivotY));
+                float minX = playableRect.xMin + (width * pivotX);
+                float maxX = playableRect.xMax - (width * (1f - pivotX));
+                float minY = playableRect.yMin + (height * pivotY);
+                float maxY = playableRect.yMax - (height * (1f - pivotY));
 
                 // 여백을 20픽셀 정도 두어 모서리에 너무 바짝 붙지 않게 조정
                 float padding = 20f;
-                localPoint.x = Mathf.Clamp(localPoint.x, minX + padding, maxX - padding);
-                localPoint.y = Mathf.Clamp(localPoint.y, minY + padding, maxY - padding);
+                localPoint.x = ClampToRange(
+                    localPoint.x,
+                    minX + padding,
+                    maxX - padding);
+                localPoint.y = ClampToRange(
+                    localPoint.y,
+                    minY + padding,
+                    maxY - padding);
 
                 myRect.localPosition = localPoint;
             }
+        }
+
+        private Rect ResolvePlayableLocalRect(Camera uiCamera)
+        {
+            Rect playableRect = parentRectTransform.rect;
+            Rect safeArea = Screen.safeArea;
+            if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    parentRectTransform,
+                    safeArea.min,
+                    uiCamera,
+                    out Vector2 safeMin) &&
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    parentRectTransform,
+                    safeArea.max,
+                    uiCamera,
+                    out Vector2 safeMax))
+            {
+                playableRect.xMin = Mathf.Max(
+                    playableRect.xMin,
+                    Mathf.Min(safeMin.x, safeMax.x));
+                playableRect.xMax = Mathf.Min(
+                    playableRect.xMax,
+                    Mathf.Max(safeMin.x, safeMax.x));
+                playableRect.yMin = Mathf.Max(
+                    playableRect.yMin,
+                    Mathf.Min(safeMin.y, safeMax.y));
+                playableRect.yMax = Mathf.Min(
+                    playableRect.yMax,
+                    Mathf.Max(safeMin.y, safeMax.y));
+            }
+
+            hudDashboard ??= FindAnyObjectByType<HUDDashboard>(
+                FindObjectsInactive.Include);
+            RectTransform topBarRect =
+                hudDashboard != null && hudDashboard.gameObject.activeInHierarchy
+                    ? hudDashboard.transform as RectTransform
+                    : null;
+            if (topBarRect == null)
+            {
+                return playableRect;
+            }
+
+            topBarRect.GetWorldCorners(hudWorldCorners);
+            Vector3 bottomLeft = parentRectTransform.InverseTransformPoint(
+                hudWorldCorners[0]);
+            Vector3 bottomRight = parentRectTransform.InverseTransformPoint(
+                hudWorldCorners[3]);
+            float topBarBottom = Mathf.Min(bottomLeft.y, bottomRight.y);
+            playableRect.yMax = Mathf.Min(playableRect.yMax, topBarBottom);
+            return playableRect;
+        }
+
+        private static float ClampToRange(
+            float value,
+            float minimum,
+            float maximum)
+        {
+            return maximum >= minimum
+                ? Mathf.Clamp(value, minimum, maximum)
+                : (minimum + maximum) * 0.5f;
         }
 
         private Vector2Int ResolveDisplayAnchor(

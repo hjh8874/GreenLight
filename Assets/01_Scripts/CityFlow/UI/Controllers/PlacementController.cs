@@ -52,6 +52,7 @@ namespace CityFlow.UI
         public CityFlow.Content.PopulationConfigSO PopulationConfig => populationConfig;
         public CityFlow.Content.BuildingDefinitionSO HospitalDefinition => hospitalDefinition;
         public event Action PlacementSucceeded;
+        public event Action<Vector2Int, TileType> PlacementConfirmed;
         public event Action PlacementRejected;
         public event Action DemolitionSucceeded;
 
@@ -437,6 +438,7 @@ namespace CityFlow.UI
 
             if (placed)
             {
+                PlacementConfirmed?.Invoke(coord, _currentType);
                 PlacementSucceeded?.Invoke();
             }
             else
@@ -488,6 +490,7 @@ namespace CityFlow.UI
                     _currentCompanyTypeId);
                 if (placed)
                 {
+                    PlacementConfirmed?.Invoke(coord, _currentType);
                     PlacementSucceeded?.Invoke();
                 }
             }
