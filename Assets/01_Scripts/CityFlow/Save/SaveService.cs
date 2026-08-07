@@ -28,6 +28,11 @@ namespace CityFlow.Save
             get;
             private set;
         }
+        public IPoliceDispatchSaveSource PoliceDispatchSaveSource
+        {
+            get;
+            private set;
+        }
         public ICitizenFeedSaveSource CitizenFeedSaveSource { get; private set; }
         public ICameraViewSaveSource CameraViewSaveSource { get; private set; }
         public JsonSaveRepository Repository { get; private set; }
@@ -51,6 +56,7 @@ namespace CityFlow.Save
         private SpecialBuildingSaveData retainedSpecialBuildings;
         private SpecialBuildingVisitSaveData retainedSpecialBuildingVisits;
         private EmergencyIncidentSaveData retainedEmergencyIncidents;
+        private PoliceDispatchSaveData retainedPoliceDispatch;
         private CitizenFeedSaveData retainedCitizenFeed;
         private CameraViewSaveData retainedCameraView;
         private readonly IWorldGridAccess worldGridAccess;
@@ -209,6 +215,19 @@ namespace CityFlow.Save
             }
         }
 
+        public void RegisterPoliceDispatchSaveSource(
+            IPoliceDispatchSaveSource policeDispatchSaveSource)
+        {
+            PoliceDispatchSaveSource = policeDispatchSaveSource;
+
+            if (hasLoadedSave)
+            {
+                PoliceDispatchSaveSource?.RestoreSnapshot(
+                    retainedPoliceDispatch ??
+                    new PoliceDispatchSaveData());
+            }
+        }
+
         public void RegisterCitizenFeedSaveSource(
             ICitizenFeedSaveSource citizenFeedSaveSource)
         {
@@ -267,6 +286,9 @@ namespace CityFlow.Save
                 EmergencyIncidents =
                     EmergencyIncidentSaveSource?.CreateSnapshot()
                     ?? retainedEmergencyIncidents,
+                PoliceDispatch =
+                    PoliceDispatchSaveSource?.CreateSnapshot()
+                    ?? retainedPoliceDispatch,
                 CitizenFeed = CitizenFeedSaveSource?.CreateSnapshot()
                     ?? retainedCitizenFeed,
                 CameraView = CameraViewSaveSource?.CreateSnapshot()
@@ -384,6 +406,13 @@ namespace CityFlow.Save
                 EmergencyIncidentSaveSource.RestoreSnapshot(
                     saveData.EmergencyIncidents ??
                     new EmergencyIncidentSaveData());
+            }
+
+            if (PoliceDispatchSaveSource != null)
+            {
+                PoliceDispatchSaveSource.RestoreSnapshot(
+                    saveData.PoliceDispatch ??
+                    new PoliceDispatchSaveData());
             }
 
             CameraViewSaveSource?.RestoreSnapshot(saveData.CameraView);
@@ -539,6 +568,8 @@ namespace CityFlow.Save
                 CreateRestoredSpecialBuildingVisitData(saveData);
             retainedEmergencyIncidents =
                 saveData?.EmergencyIncidents;
+            retainedPoliceDispatch =
+                saveData?.PoliceDispatch;
             retainedCitizenFeed = saveData?.CitizenFeed;
             retainedCameraView = saveData?.CameraView;
         }

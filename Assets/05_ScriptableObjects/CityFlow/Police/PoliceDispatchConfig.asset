@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3cea3ffb9d3d745489607b5631e0c43f, type: 3}
+  m_Name: PoliceDispatchConfig
+  m_EditorClassIdentifier: CityFlow.Content::CityFlow.Content.PoliceDispatchConfigSO
+  vehiclesPerStation: 2
+  maximumActiveCalls: 8
+  travelSecondsPerTile: 0.45
+  defaultHandlingSeconds: 2
+  routeRetrySeconds: 2
+  maximumOutboundRouteRetries: 3
+  maximumReturnRouteRetries: 5
+  enableDailyPatrol: 1
+  patrolStartHour: 10
+  patrolAreaSize: 40
+  patrolVehiclesPerStation: 1
+  vehicleFootprintProfile: {fileID: 11400000, guid: 3b090c7283c648fc88a9333d9a8ee8f4, type: 2}
+  vehicleVisualPrefab: {fileID: 2545326737731236443, guid: a5c1b9e9995db554baae648c8cdaa6bd, type: 3}
+  visualScale: 1
+  visualDepth: -0.38

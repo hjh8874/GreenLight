@@ -43,6 +43,16 @@ namespace CityFlow.Bootstrap
             get;
             private set;
         }
+        public IPoliceDispatchService PoliceDispatch
+        {
+            get;
+            private set;
+        }
+        public IPolicePatrolService PolicePatrol
+        {
+            get;
+            private set;
+        }
 
         public event Action<IEconomyService> EconomyRegistered;
         public event Action<IGameCalendarService> GameCalendarRegistered;
@@ -64,6 +74,10 @@ namespace CityFlow.Bootstrap
         public event Action<IRoadRoutePlanningService>
             RoadRoutePlanningRegistered;
         public event Action<IBusLineService> BusLinesRegistered;
+        public event Action<IPoliceDispatchService>
+            PoliceDispatchRegistered;
+        public event Action<IPolicePatrolService>
+            PolicePatrolRegistered;
 
         public CityFlowServices(
             SimEventHub events,
@@ -247,6 +261,49 @@ namespace CityFlow.Bootstrap
             EmergencyIncidents = emergencyIncidentSaveSource;
             Save?.RegisterEmergencyIncidentSaveSource(
                 emergencyIncidentSaveSource);
+            return true;
+        }
+
+        public bool RegisterPoliceDispatch(
+            IPoliceDispatchService policeDispatch)
+        {
+            if (policeDispatch == null)
+            {
+                return false;
+            }
+
+            if (PoliceDispatch != null)
+            {
+                return ReferenceEquals(
+                    PoliceDispatch,
+                    policeDispatch);
+            }
+
+            PoliceDispatch = policeDispatch;
+            if (policeDispatch is IPoliceDispatchSaveSource saveSource)
+            {
+                Save?.RegisterPoliceDispatchSaveSource(saveSource);
+            }
+
+            PoliceDispatchRegistered?.Invoke(policeDispatch);
+            return true;
+        }
+
+        public bool RegisterPolicePatrol(
+            IPolicePatrolService policePatrol)
+        {
+            if (policePatrol == null)
+            {
+                return false;
+            }
+
+            if (PolicePatrol != null)
+            {
+                return ReferenceEquals(PolicePatrol, policePatrol);
+            }
+
+            PolicePatrol = policePatrol;
+            PolicePatrolRegistered?.Invoke(policePatrol);
             return true;
         }
 

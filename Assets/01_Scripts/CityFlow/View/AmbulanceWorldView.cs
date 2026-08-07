@@ -24,6 +24,9 @@ namespace CityFlow.View
         [SerializeField]
         private MainCityView cityView;
 
+        private IResponseVehiclePresentationConfig
+            configuredPresentation;
+
         private readonly List<Vector2Int> routeRoadTiles = new();
         private readonly List<int> routePathToRoadIndex = new();
         private readonly BusRoutePolylineMotion routeMotion = new();
@@ -80,10 +83,27 @@ namespace CityFlow.View
         private Vector3 incidentParkingPosition;
         private Vector3 departureParkingPosition;
         private bool useDepartureParkingAnchor;
+        private Vector2Int reservedParkingBuilding;
+        private int reservedParkingSlot = -1;
 
         public bool HasVisibleAmbulance =>
             visual != null &&
             visual.gameObject.activeInHierarchy;
+
+        private IResponseVehiclePresentationConfig
+            PresentationConfig =>
+                configuredPresentation ?? config;
+
+        public void ConfigurePresentation(
+            IResponseVehiclePresentationConfig presentation)
+        {
+            if (presentation == null)
+            {
+                return;
+            }
+
+            configuredPresentation = presentation;
+        }
 
         public void Initialize(CityFlowServices services)
         {
@@ -116,6 +136,7 @@ namespace CityFlow.View
         {
             Unsubscribe();
             ClearPendingParkingRequest();
+            ReleaseParkingReservation();
             cityView?.RemoveVehiclePresentation(this);
             cityView?.UnregisterExternalSelectableVehicle(
                 this);
@@ -125,6 +146,7 @@ namespace CityFlow.View
         {
             Unsubscribe();
             ClearPendingParkingRequest();
+            ReleaseParkingReservation();
             cityView?.RemoveVehiclePresentation(this);
             cityView?.UnregisterExternalSelectableVehicle(
                 this);
@@ -363,22 +385,25 @@ namespace CityFlow.View
                 return;
             }
 
-            if (config?.VehicleVisualPrefab == null ||
+            IResponseVehiclePresentationConfig presentation =
+                PresentationConfig;
+            if (presentation?.VehicleVisualPrefab == null ||
                 cityView == null)
             {
                 return;
             }
 
             GameObject instance = Instantiate(
-                config.VehicleVisualPrefab,
+                presentation.VehicleVisualPrefab,
                 cityView.transform);
-            instance.name = "AmbulanceVisual";
+            instance.name =
+                $"{presentation.VehicleDisplayName}Visual";
             VehicleVisualUtility.PrepareLit(instance);
             visual = instance.transform;
             visual.localScale =
                 CalculateVisualScale(
                     visual,
-                    config,
+                    presentation,
                     cityView.TileSize);
             nightLighting =
                 VehicleNightLighting.Attach(
@@ -397,6 +422,17 @@ namespace CityFlow.View
         internal static Vector3 CalculateVisualScale(
             Transform visualRoot,
             EmergencyIncidentConfigSO visualConfig,
+            float tileSize)
+        {
+            return CalculateVisualScale(
+                visualRoot,
+                (IResponseVehiclePresentationConfig)visualConfig,
+                tileSize);
+        }
+
+        internal static Vector3 CalculateVisualScale(
+            Transform visualRoot,
+            IResponseVehiclePresentationConfig visualConfig,
             float tileSize)
         {
             float fallbackScale =
@@ -425,11 +461,13 @@ namespace CityFlow.View
                     0.0001f,
                     modelBounds.size.y);
 
+            VehicleFootprint footprint =
+                visualConfig.VehicleFootprint;
             float widthScale =
-                visualConfig.VehicleWidthTiles *
+                footprint.WidthTiles *
                 safeTileSize / modelWidth;
             float lengthScale =
-                visualConfig.VehicleLengthTiles *
+                footprint.LengthTiles *
                 safeTileSize / modelLength;
 
             return new Vector3(
@@ -508,8 +546,29 @@ namespace CityFlow.View
             ShowParkedAtBuilding(
                 hospital,
                 parkingSlot,
+                config != null
+                    ? config.AmbulancesPerHospital
+                    : 1,
                 immediate,
                 isHospital: true,
+                reserveSlot: true,
+                onParked: onParked);
+        }
+
+        public void ShowParkedAtHome(
+            Vector2Int homeBuilding,
+            int parkingSlot,
+            int parkingSlotCount,
+            bool immediate,
+            Action onParked = null)
+        {
+            ShowParkedAtBuilding(
+                homeBuilding,
+                parkingSlot,
+                parkingSlotCount,
+                immediate,
+                isHospital: true,
+                reserveSlot: true,
                 onParked: onParked);
         }
 
@@ -520,6 +579,8 @@ namespace CityFlow.View
             if (!TryResolveBuildingParkingPose(
                     incidentTile,
                     parkingSlot,
+                    1,
+                    false,
                     out Vector3 position,
                     out _))
             {
@@ -536,11 +597,21 @@ namespace CityFlow.View
             hasIncidentParkingPose = false;
         }
 
+        public void PrepareRoadsideTargetStop()
+        {
+            PrepareRoadsideIncidentStop();
+        }
+
         public void PrepareRoadsideDeparture()
         {
             hasIncidentParkingPose = false;
             useDepartureParkingAnchor = false;
             isParkedOffRoad = false;
+        }
+
+        public void PrepareHomewardDeparture()
+        {
+            PrepareRoadsideDeparture();
         }
 
         public void ShowParkedAtIncident(
@@ -552,16 +623,36 @@ namespace CityFlow.View
             ShowParkedAtBuilding(
                 incidentTile,
                 parkingSlot,
+                1,
                 immediate,
                 isHospital: false,
+                reserveSlot: false,
+                onParked: onParked);
+        }
+
+        public void ShowParkedAtTarget(
+            Vector2Int targetTile,
+            int parkingSlot,
+            bool immediate,
+            Action onParked = null)
+        {
+            ShowParkedAtBuilding(
+                targetTile,
+                parkingSlot,
+                1,
+                immediate,
+                isHospital: false,
+                reserveSlot: false,
                 onParked: onParked);
         }
 
         private void ShowParkedAtBuilding(
             Vector2Int building,
             int parkingSlot,
+            int parkingSlotCount,
             bool immediate,
             bool isHospital,
+            bool reserveSlot,
             Action onParked)
         {
             EnsureVisual();
@@ -575,6 +666,8 @@ namespace CityFlow.View
             if (!TryResolveBuildingParkingPose(
                     building,
                     parkingSlot,
+                    parkingSlotCount,
+                    reserveSlot,
                     out Vector3 targetPosition,
                     out Vector3 targetForward))
             {
@@ -945,6 +1038,8 @@ namespace CityFlow.View
         private bool TryResolveBuildingParkingPose(
             Vector2Int building,
             int parkingSlot,
+            int parkingSlotCount,
+            bool reserveSlot,
             out Vector3 position,
             out Vector3 forward)
         {
@@ -955,11 +1050,18 @@ namespace CityFlow.View
                 return false;
             }
 
-            if (cityView.TryGetBuildingParkingPose(
+            bool hasAuthoredPose = reserveSlot && visual != null
+                ? TryReserveParkingPose(
                     building,
                     parkingSlot,
                     out position,
-                    out forward))
+                    out forward)
+                : cityView.TryGetBuildingParkingPose(
+                    building,
+                    parkingSlot,
+                    out position,
+                    out forward);
+            if (hasAuthoredPose)
             {
                 position.z = GetVisualSurfaceDepth();
                 return true;
@@ -991,7 +1093,7 @@ namespace CityFlow.View
                     Vector2 slotOffset =
                         PolylineMath.ParkingSlotOffset(
                             parkingSlot,
-                            1,
+                            Mathf.Max(1, parkingSlotCount),
                             0.32f);
                     position =
                         buildingCenter +
@@ -1008,6 +1110,56 @@ namespace CityFlow.View
             position = buildingCenter;
             forward = Vector3.up;
             return true;
+        }
+
+        private bool TryReserveParkingPose(
+            Vector2Int building,
+            int parkingSlot,
+            out Vector3 position,
+            out Vector3 forward)
+        {
+            position = default;
+            forward = default;
+            if (cityView == null || visual == null)
+            {
+                return false;
+            }
+
+            if (reservedParkingSlot >= 0 &&
+                (reservedParkingBuilding != building ||
+                 reservedParkingSlot != parkingSlot))
+            {
+                ReleaseParkingReservation();
+            }
+
+            if (!cityView.TryReserveBuildingParkingPose(
+                    building,
+                    parkingSlot,
+                    visual,
+                    out position,
+                    out forward))
+            {
+                return false;
+            }
+
+            reservedParkingBuilding = building;
+            reservedParkingSlot = parkingSlot;
+            return true;
+        }
+
+        private void ReleaseParkingReservation()
+        {
+            if (reservedParkingSlot < 0 || cityView == null)
+            {
+                return;
+            }
+
+            cityView.ReleaseBuildingParkingReservation(
+                reservedParkingBuilding,
+                reservedParkingSlot,
+                visual);
+            reservedParkingSlot = -1;
+            reservedParkingBuilding = default;
         }
 
         private void DestroyVisual()
@@ -1408,7 +1560,7 @@ namespace CityFlow.View
                 0.01f,
                 route != null
                     ? route.SecondsPerTile
-                    : config?.TravelSecondsPerTile ??
+                    : PresentationConfig?.TravelSecondsPerTile ??
                       0.45f);
         }
 
@@ -1424,12 +1576,21 @@ namespace CityFlow.View
         {
             return ResolveVisualSurfaceDepth(
                 cityView,
-                config);
+                PresentationConfig);
         }
 
         internal static float ResolveVisualSurfaceDepth(
             MainCityView targetCityView,
             EmergencyIncidentConfigSO visualConfig)
+        {
+            return ResolveVisualSurfaceDepth(
+                targetCityView,
+                (IResponseVehiclePresentationConfig)visualConfig);
+        }
+
+        internal static float ResolveVisualSurfaceDepth(
+            MainCityView targetCityView,
+            IResponseVehiclePresentationConfig visualConfig)
         {
             return targetCityView != null
                 ? targetCityView.VehicleGroundZ
