@@ -51,6 +51,34 @@ namespace CityFlow.Tests.ViewEditMode
             }
         }
 
+        [TestCase(0.75f, 27f)]
+        [TestCase(1f, 36f)]
+        [TestCase(2f, 72f)]
+        public void TitleBarHoverZone_MatchesScaledVisibleHeight(
+            float scaleFactor,
+            float expectedPhysicalHeight)
+        {
+            float physicalHeight =
+                FloatingWindowTitleBarController
+                    .CalculatePhysicalTitleBarHeight(scaleFactor);
+
+            Assert.That(
+                physicalHeight,
+                Is.EqualTo(expectedPhysicalHeight).Within(0.00001f));
+            Assert.That(
+                FloatingWindowTitleBarController.IsCursorInsideTopZone(
+                    1000f - expectedPhysicalHeight,
+                    1000f,
+                    physicalHeight),
+                Is.True);
+            Assert.That(
+                FloatingWindowTitleBarController.IsCursorInsideTopZone(
+                    1000f - expectedPhysicalHeight - 0.01f,
+                    1000f,
+                    physicalHeight),
+                Is.False);
+        }
+
         [Test]
         public void ActionDock_ReparentsUnderHudTopBar()
         {

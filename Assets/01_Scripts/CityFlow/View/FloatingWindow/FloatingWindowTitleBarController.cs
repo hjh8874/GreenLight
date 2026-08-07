@@ -184,7 +184,11 @@ namespace CityFlow.View
                 return false;
             }
 
-            return localCursor.y >= windowSize.y - TitleBarHeight - RevealDistance;
+            float zoneHeight = GetPhysicalTitleBarHeight() + RevealDistance;
+            return IsCursorInsideTopZone(
+                localCursor.y,
+                windowSize.y,
+                zoneHeight);
         }
 
         private bool IsCursorAtMaximizedRevealEdge()
@@ -204,7 +208,37 @@ namespace CityFlow.View
                 return false;
             }
 
-            return localCursor.y >= windowSize.y - TitleBarHeight;
+            return IsCursorInsideTopZone(
+                localCursor.y,
+                windowSize.y,
+                GetPhysicalTitleBarHeight());
+        }
+
+        private float GetPhysicalTitleBarHeight()
+        {
+            Canvas titleBarCanvas = GetComponent<Canvas>();
+            float scaleFactor = titleBarCanvas != null
+                ? titleBarCanvas.scaleFactor
+                : 1f;
+            return CalculatePhysicalTitleBarHeight(scaleFactor);
+        }
+
+        internal static float CalculatePhysicalTitleBarHeight(
+            float canvasScaleFactor)
+        {
+            float validScaleFactor = canvasScaleFactor > 0f
+                ? canvasScaleFactor
+                : 1f;
+            return TitleBarHeight * validScaleFactor;
+        }
+
+        internal static bool IsCursorInsideTopZone(
+            float localCursorY,
+            float windowHeight,
+            float zoneHeight)
+        {
+            return localCursorY >=
+                   windowHeight - Mathf.Max(0f, zoneHeight);
         }
 
         private bool TryGetLocalCursor(
