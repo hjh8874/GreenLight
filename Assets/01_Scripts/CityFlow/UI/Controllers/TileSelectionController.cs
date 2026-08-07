@@ -27,6 +27,9 @@ namespace CityFlow.UI
         private float _searchTimer = 0f;
         private Vector2Int? _lastHoveredBuildingCoord;
         private Vector2Int? _selectedCoord;
+        private Vector2Int? _suppressedHoverBuildingCoord;
+        private PlacementController _subscribedPlacementController;
+        private bool _suppressSelectionUntilPrimaryRelease;
 
         [Header("Visuals")]
         [Tooltip("타일을 선택했을 때 바닥에 표시될 강조(하이라이트) 박스")]
@@ -48,7 +51,7 @@ namespace CityFlow.UI
             GameObject highlight)
         {
             analysisCard = analysis;
-            placementController = placement;
+            SetPlacementController(placement);
             ClearSelectedVisual();
             highlightBox = highlight;
             DisableLegacyHighlight();
@@ -63,7 +66,13 @@ namespace CityFlow.UI
         {
             if (placementController == null)
             {
-                placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
+                SetPlacementController(
+                    FindAnyObjectByType<PlacementController>(
+                        FindObjectsInactive.Include));
+            }
+            else
+            {
+                SubscribePlacementEvents();
             }
             if (_infraCoordinator == null)
             {
@@ -78,8 +87,19 @@ namespace CityFlow.UI
             DeselectTile();
         }
 
+        private void OnEnable()
+        {
+            SubscribePlacementEvents();
+        }
+
+        private void OnDisable()
+        {
+            UnsubscribePlacementEvents();
+        }
+
         private void OnDestroy()
         {
+            UnsubscribePlacementEvents();
             ClearSelectedVisual();
         }
 
@@ -92,6 +112,12 @@ namespace CityFlow.UI
                 return;
             }
 
+            if (IsDismissInputPressed())
+            {
+                DismissSelectionAndSuppressCurrentHover();
+                return;
+            }
+
             // 동적 생성되는 컨트롤러들을 위해 Update에서 지연 검색 지원 (최적화: 0.5초 스로틀링)
             if (placementController == null || _infraCoordinator == null)
             {
@@ -101,7 +127,9 @@ namespace CityFlow.UI
                     _searchTimer = 0f;
                     if (placementController == null)
                     {
-                        placementController = FindAnyObjectByType<PlacementController>(FindObjectsInactive.Include);
+                        SetPlacementController(
+                            FindAnyObjectByType<PlacementController>(
+                                FindObjectsInactive.Include));
                     }
                     if (_infraCoordinator == null)
                     {
@@ -120,7 +148,13 @@ namespace CityFlow.UI
             }
 
             // --- 2. Hover 감지 (방치형 건물 정보 팝업용) ---
+            UpdatePlacementClickSuppression();
             HandleHover();
+
+            if (_suppressSelectionUntilPrimaryRelease)
+            {
+                return;
+            }
 
             // 3. 마우스 좌클릭 감지 (New Input System)
             if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
@@ -195,6 +229,13 @@ namespace CityFlow.UI
                     TileType type = _services.TileData.GetTileType(coord);
                     if (TileFootprint.IsBuilding(type))
                     {
+                        if (_suppressedHoverBuildingCoord == coord)
+                        {
+                            HideBuildingInfoCard();
+                            return;
+                        }
+
+                        _suppressedHoverBuildingCoord = null;
                         // 새로운 건물 위에 올라갔을 때만 연다 (중복 호출 방지)
                         ShowBuildingInfoCard(coord, type);
                         return;
@@ -203,6 +244,7 @@ namespace CityFlow.UI
             }
 
             // 건물이 아닌 곳이거나 허공이면 닫기
+            _suppressedHoverBuildingCoord = null;
             HideBuildingInfoCard();
         }
 
@@ -313,6 +355,7 @@ namespace CityFlow.UI
                 : TileType.Empty;
 
             ClearSelectedVisual();
+            _suppressedHoverBuildingCoord = null;
             _selectedCoord = coord;
 
             DisableLegacyHighlight();
@@ -360,6 +403,96 @@ namespace CityFlow.UI
             if (highlightBox != null) highlightBox.SetActive(false);
             if (analysisCard != null) analysisCard.CloseCard();
             HideBuildingInfoCard();
+        }
+
+        private void SetPlacementController(
+            PlacementController controller)
+        {
+            if (ReferenceEquals(placementController, controller))
+            {
+                SubscribePlacementEvents();
+                return;
+            }
+
+            UnsubscribePlacementEvents();
+            placementController = controller;
+            SubscribePlacementEvents();
+        }
+
+        private void SubscribePlacementEvents()
+        {
+            if (!isActiveAndEnabled ||
+                placementController == null ||
+                ReferenceEquals(
+                    _subscribedPlacementController,
+                    placementController))
+            {
+                return;
+            }
+
+            UnsubscribePlacementEvents();
+            _subscribedPlacementController = placementController;
+            _subscribedPlacementController.PlacementConfirmed +=
+                HandlePlacementConfirmed;
+        }
+
+        private void UnsubscribePlacementEvents()
+        {
+            if (_subscribedPlacementController == null)
+            {
+                return;
+            }
+
+            _subscribedPlacementController.PlacementConfirmed -=
+                HandlePlacementConfirmed;
+            _subscribedPlacementController = null;
+        }
+
+        private void HandlePlacementConfirmed(
+            Vector2Int coord,
+            TileType type)
+        {
+            if (!TileFootprint.IsBuilding(type))
+            {
+                return;
+            }
+
+            DeselectTile();
+            _suppressedHoverBuildingCoord = ResolveVisualAnchor(coord);
+            _suppressSelectionUntilPrimaryRelease = true;
+        }
+
+        private void UpdatePlacementClickSuppression()
+        {
+            if (!_suppressSelectionUntilPrimaryRelease ||
+                (Mouse.current != null &&
+                 Mouse.current.leftButton.isPressed))
+            {
+                return;
+            }
+
+            _suppressSelectionUntilPrimaryRelease = false;
+        }
+
+        private static bool IsDismissInputPressed()
+        {
+            bool escapePressed =
+                Keyboard.current != null &&
+                Keyboard.current.escapeKey.wasPressedThisFrame;
+            bool rightClickPressed =
+                Mouse.current != null &&
+                Mouse.current.rightButton.wasPressedThisFrame;
+            return escapePressed || rightClickPressed;
+        }
+
+        private void DismissSelectionAndSuppressCurrentHover()
+        {
+            Vector2Int? buildingToSuppress =
+                TryGetSelectedBuilding(out Vector2Int selected, out _)
+                    ? selected
+                    : _lastHoveredBuildingCoord;
+            DeselectTile();
+            _suppressedHoverBuildingCoord = buildingToSuppress;
         }
 
         private void ClearSelectionIfRemoved()

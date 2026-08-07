@@ -2126,6 +2126,103 @@ namespace Tests.EditMode
             }
         }
 
+        [Test]
+        public void BuildingPlacementConfirmation_ClearsSelectionAndSuppressesReopen()
+        {
+            var owner = new GameObject(
+                "BuildingPlacementSelectionReset");
+            TileSelectionController selection =
+                owner.AddComponent<TileSelectionController>();
+            Vector2Int placedTile = new(12, 15);
+
+            try
+            {
+                SetPrivateField(
+                    selection,
+                    "_selectedCoord",
+                    (Vector2Int?)new Vector2Int(4, 5));
+                MethodInfo handlePlacement =
+                    typeof(TileSelectionController).GetMethod(
+                        "HandlePlacementConfirmed",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+
+                Assert.That(handlePlacement, Is.Not.Null);
+                handlePlacement.Invoke(
+                    selection,
+                    new object[]
+                    {
+                        placedTile,
+                        TileType.House
+                    });
+
+                Assert.That(
+                    GetPrivateField<Vector2Int?>(
+                        selection,
+                        "_selectedCoord"),
+                    Is.Null);
+                Assert.That(
+                    GetPrivateField<Vector2Int?>(
+                        selection,
+                        "_suppressedHoverBuildingCoord"),
+                    Is.EqualTo(placedTile));
+                Assert.That(
+                    GetPrivateField<bool>(
+                        selection,
+                        "_suppressSelectionUntilPrimaryRelease"),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+            }
+        }
+
+        [Test]
+        public void DismissSelection_SuppressesCurrentBuildingHover()
+        {
+            var owner = new GameObject(
+                "BuildingSelectionDismiss");
+            TileSelectionController selection =
+                owner.AddComponent<TileSelectionController>();
+            Vector2Int selectedTile = new(7, 9);
+
+            try
+            {
+                SetPrivateField(
+                    selection,
+                    "_selectedCoord",
+                    (Vector2Int?)selectedTile);
+                SetPrivateField(
+                    selection,
+                    "_lastHoveredBuildingCoord",
+                    (Vector2Int?)selectedTile);
+                MethodInfo dismiss =
+                    typeof(TileSelectionController).GetMethod(
+                        "DismissSelectionAndSuppressCurrentHover",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+
+                Assert.That(dismiss, Is.Not.Null);
+                dismiss.Invoke(selection, null);
+
+                Assert.That(
+                    GetPrivateField<Vector2Int?>(
+                        selection,
+                        "_selectedCoord"),
+                    Is.Null);
+                Assert.That(
+                    GetPrivateField<Vector2Int?>(
+                        selection,
+                        "_suppressedHoverBuildingCoord"),
+                    Is.EqualTo(selectedTile));
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
+            }
+        }
+
         private sealed class TestTileData : IReadOnlyTileData
         {
             public CongestionLevel GetCongestion(Vector2Int tile) => CongestionLevel.Free;
@@ -2441,6 +2538,18 @@ namespace Tests.EditMode
                 BindingFlags.Instance);
             Assert.NotNull(field);
             field.SetValue(target, value);
+        }
+
+        private static TValue GetPrivateField<TValue>(
+            object target,
+            string fieldName)
+        {
+            FieldInfo field = target.GetType().GetField(
+                fieldName,
+                BindingFlags.NonPublic |
+                BindingFlags.Instance);
+            Assert.That(field, Is.Not.Null);
+            return (TValue)field.GetValue(target);
         }
 
         private sealed class TestCoordinateSpace : IWorldCoordinateSpace
