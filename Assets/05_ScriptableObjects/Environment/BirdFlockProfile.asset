@@ -1,0 +1,83 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f983cbce544b3b749a6dbd89e74a0678, type: 3}
+  m_Name: BirdFlockProfile
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.Environment.BirdFlockProfileSO
+  maximumBirds: 14
+  minimumVisibleBirds: 7
+  densityByZoom:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 0.5
+      value: 0.85
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 0.65
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  hideInDriveView: 1
+  visibleStartHour: 0
+  visibleEndHour: 24
+  flockIntervalGameHours: 2
+  minimumCrossingSeconds: 4.5
+  maximumCrossingSeconds: 6.5
+  minimumAltitude: 2.4
+  maximumAltitude: 4.2
+  formationSpacing: 0.22
+  formationJitter: 0.08
+  edgePadding: 1.5
+  villageBirdCount: 4
+  villageBirdArrivalStaggerSeconds: 0.75
+  villageBirdMinimumArrivalSeconds: 3.5
+  villageBirdMaximumArrivalSeconds: 5.5
+  villageBirdMinimumPerchedSeconds: 8
+  villageBirdMaximumPerchedSeconds: 16
+  villageBirdTakeoffSeconds: 1.25
+  villageBirdMinimumDepartureSeconds: 3.5
+  villageBirdMaximumDepartureSeconds: 5.5
+  villageBirdMinimumReturnDelaySeconds: 1.5
+  villageBirdMaximumReturnDelaySeconds: 4
+  villageBirdPerchedAltitude: 0.12
+  villageBirdSpawnAreaRatio: 0.28
+  viewAreaMultiplier: 1.25
+  followSharpness: 5
+  birdColor: {r: 0.12, g: 0.15, b: 0.17, a: 1}
+  minimumSize: 0.21
+  maximumSize: 0.315
+  minimumFlapFrequency: 3.2
+  maximumFlapFrequency: 5.2
+  minimumWingScale: 0.62
+  bobHeight: 0.025
+  deterministicSeed: 7319
