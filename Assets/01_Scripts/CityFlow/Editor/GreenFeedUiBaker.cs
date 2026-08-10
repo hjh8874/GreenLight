@@ -20,8 +20,11 @@ namespace CityFlow.EditorTools
 
         // 화면에 노출되는 SNS 이름. 클래스·오브젝트 이름(GreenFeed*)은 그대로 둔다 —
         // 브랜딩만 바꾸는 데 파일 전체를 개명할 이유가 없다.
-        private const string AppName = "아이들북";
-        private const string AppTagline = "우리 동네 소식";
+        // 이름은 브랜드로 짧게 가고, 정체(SNS)는 부제와 형태(아바타·작성자·시각)가 말한다.
+        // Cities: Skylines 의 Chirper 와 같은 구조 — 새소리가 트위터를 설명하지 않듯
+        // "빵빵"도 설명하지 않는다. 부제가 "누가 쓰는지"를 명시한다.
+        private const string AppName = "빵빵";
+        private const string AppTagline = "시민들의 한마디";
 
         // 다른 베이커(SignalControlBaker·GeonSignalUIAssembler)와 같은 팩·같은 상수명이다.
         private const string MonoRound =
@@ -33,7 +36,9 @@ namespace CityFlow.EditorTools
         private const string AvatarCirclePath = MonoRound + "Frame/Frame_Basic_Circle_112.png";
         private const string CloseButtonPath = MonoRound + "Button/Btn_Basic_Circle_White.png";
         private const string CloseIconPath = MonoRound + "Icon_PictoIcons/pictoicon_close.png";
-        private const string AppIconPath = MonoRound + "Icon_PictoIcons/pictoicon_book.png";
+        // 책 아이콘은 "아이들북" 시절의 잔재다. 이름이 브랜드(빵빵)로 바뀌면
+        // 정체를 설명하는 건 부제와 아이콘뿐이라, 말풍선이 SNS 신호로 가장 정확하다.
+        private const string AppIconPath = MonoRound + "Icon_PictoIcons/pictoicon_chat.png";
 
         // 네이비 + 연두. 표면은 기존 UI와 같은 계열로 맞춘다 —
         // 타이틀바 Color32(25,30,35,248), 퀘스트 말풍선 (0.075,0.10,0.12,0.97).
@@ -59,6 +64,9 @@ namespace CityFlow.EditorTools
         private static readonly Vector2 PanelSize = new Vector2(640f, 520f);
 
         private const float RowHeight = 44f;
+        // 히스토리 행 시작 높이. Bind 가 Clamp(72 + 본문높이, 112, 172)로 다시 정하므로
+        // 그 하한과 맞춰 둔다 — 어긋나면 첫 프레임에 행이 튄다.
+        private const float MultilineRowHeight = 112f;
         private const float HeaderHeight = 52f;
         // Label_Rectangle의 9-slice 보더는 28px이라 44px 행에선 위아래가 겹친다.
         // 배율 2로 나눠 유효 보더를 14px로 낮춘다.
@@ -131,7 +139,8 @@ namespace CityFlow.EditorTools
                 "도시의 새로운 소식이 여기에 표시됩니다.",
                 "방금",
                 "김",
-                new Color(0.20f, 0.78f, 0.55f, 1f));
+                new Color(0.20f, 0.78f, 0.55f, 1f),
+                compact: false);
             // 히스토리 행만 클릭하면 그 지점으로 간다. 템플릿에 붙이면
             // AddPost가 Instantiate할 때 런타임 글에 그대로 따라간다.
             // 미리보기 행도 복사본이라 같이 붙지만 좌표가 없어 아무 일도 하지 않고,
@@ -442,6 +451,11 @@ namespace CityFlow.EditorTools
             return scrollRect;
         }
 
+        // compact=true  : 티커. 한 줄 고정, 넘치면 말줄임. 화면 하단 한 줄짜리 마퀴다.
+        // compact=false : 히스토리 행. 본문이 헤더 아래로 내려가 줄바꿈하고,
+        //                 GreenFeedPostView.Bind 가 텍스트 길이에 맞춰 높이를 늘린다.
+        //                 (그 경로는 원래 있었는데 모든 행을 compact 로 구워 꺼져 있었다 —
+        //                  "아이들북 텍스트를 전부 읽을 수 없음"의 원인.)
         private static GreenFeedPostView CreatePost(
             Transform parent,
             string objectName,
@@ -450,7 +464,8 @@ namespace CityFlow.EditorTools
             string message,
             string timestamp,
             string avatarInitial,
-            Color accentColor)
+            Color accentColor,
+            bool compact = true)
         {
             GameObject root = CreateUiObject(
                 objectName,
@@ -466,7 +481,9 @@ namespace CityFlow.EditorTools
             background.raycastTarget = true;
 
             LayoutElement layout = root.GetComponent<LayoutElement>();
-            layout.preferredHeight = RowHeight;
+            // 히스토리 행의 최종 높이는 Bind 가 본문 길이로 다시 정한다(112~172).
+            // 여기 값은 베이크 시점의 시작값일 뿐이다.
+            layout.preferredHeight = compact ? RowHeight : MultilineRowHeight;
             layout.flexibleWidth = 1f;
 
             // 작성자 색을 3px 막대 대신 원형 아바타가 들고 간다 — 둥근 행 배경에
@@ -475,9 +492,16 @@ namespace CityFlow.EditorTools
             // (avatar 슬롯은 Bind가 0.32배 어둡게 만들어서 라이트 테마엔 안 맞다).
             GameObject avatarObject = CreateUiObject("Avatar", root.transform, typeof(Image));
             RectTransform avatarRect = avatarObject.GetComponent<RectTransform>();
-            avatarRect.anchoredPosition = new Vector2(10f, 0f);
             avatarRect.sizeDelta = new Vector2(28f, 28f);
-            SetLeftCenter(avatarRect);
+            if (compact)
+            {
+                avatarRect.anchoredPosition = new Vector2(10f, 0f);
+                SetLeftCenter(avatarRect);
+            }
+            else
+            {
+                SetLeftTop(avatarRect, new Vector2(10f, -12f));
+            }
             Image accent = avatarObject.GetComponent<Image>();
             ApplySprite(accent, AvatarCirclePath, Image.Type.Simple);
             accent.raycastTarget = false;
@@ -503,7 +527,8 @@ namespace CityFlow.EditorTools
                 FontStyles.Bold,
                 TextStrong,
                 TextAlignmentOptions.MidlineLeft);
-            SetLeftCenter(authorText.rectTransform);
+            if (compact) SetLeftCenter(authorText.rectTransform);
+            else SetLeftTop(authorText.rectTransform, new Vector2(46f, -14f));
 
             TMP_Text occupationText = CreateText(
                 root.transform,
@@ -515,7 +540,8 @@ namespace CityFlow.EditorTools
                 FontStyles.Normal,
                 TextFaint,
                 TextAlignmentOptions.MidlineLeft);
-            SetLeftCenter(occupationText.rectTransform);
+            if (compact) SetLeftCenter(occupationText.rectTransform);
+            else SetLeftTop(occupationText.rectTransform, new Vector2(122f, -14f));
 
             TMP_Text timeText = CreateText(
                 root.transform,
@@ -530,9 +556,15 @@ namespace CityFlow.EditorTools
                 TextFaint,
                 TextAlignmentOptions.MidlineRight);
             RectTransform timeRect = timeText.rectTransform;
-            timeRect.anchorMin = new Vector2(1f, 0.5f);
-            timeRect.anchorMax = new Vector2(1f, 0.5f);
-            timeRect.pivot = new Vector2(1f, 0.5f);
+            // 티커는 한 줄이라 세로 중앙, 히스토리는 헤더 줄이 위에 있으므로 상단에 붙인다.
+            float timeAnchorY = compact ? 0.5f : 1f;
+            timeRect.anchorMin = new Vector2(1f, timeAnchorY);
+            timeRect.anchorMax = new Vector2(1f, timeAnchorY);
+            timeRect.pivot = new Vector2(1f, timeAnchorY);
+            if (!compact)
+            {
+                timeRect.anchoredPosition = new Vector2(-12f, -14f);
+            }
 
             TMP_Text messageText = CreateText(
                 root.transform,
@@ -545,14 +577,30 @@ namespace CityFlow.EditorTools
                 TextMuted,
                 TextAlignmentOptions.MidlineLeft);
             RectTransform messageRect = messageText.rectTransform;
-            // 이름·직업(왼쪽 180)과 시각(오른쪽 74) 사이를 본문이 다 먹는다.
-            messageRect.anchorMin = new Vector2(0f, 0.5f);
-            messageRect.anchorMax = new Vector2(1f, 0.5f);
-            messageRect.pivot = new Vector2(0.5f, 0.5f);
-            messageRect.offsetMin = new Vector2(180f, -9f);
-            messageRect.offsetMax = new Vector2(-58f, 9f);
-            messageText.textWrappingMode = TextWrappingModes.NoWrap;
-            messageText.overflowMode = TextOverflowModes.Ellipsis;
+            if (compact)
+            {
+                // 티커: 이름·직업(왼쪽 180)과 시각(오른쪽 74) 사이를 본문이 다 먹는다.
+                messageRect.anchorMin = new Vector2(0f, 0.5f);
+                messageRect.anchorMax = new Vector2(1f, 0.5f);
+                messageRect.pivot = new Vector2(0.5f, 0.5f);
+                messageRect.offsetMin = new Vector2(180f, -9f);
+                messageRect.offsetMax = new Vector2(-58f, 9f);
+                messageText.textWrappingMode = TextWrappingModes.NoWrap;
+                messageText.overflowMode = TextOverflowModes.Ellipsis;
+            }
+            else
+            {
+                // 히스토리: 헤더 줄(아바타·이름·직업·시각) 아래로 본문을 내리고 가로 전체를 준다.
+                // 위아래로 늘어나야 하므로 세로도 stretch 로 잡고, 높이는 Bind 가 정한다.
+                messageRect.anchorMin = new Vector2(0f, 0f);
+                messageRect.anchorMax = new Vector2(1f, 1f);
+                messageRect.pivot = new Vector2(0.5f, 0.5f);
+                messageRect.offsetMin = new Vector2(46f, 12f);    // 아바타 폭만큼 들여쓰기
+                messageRect.offsetMax = new Vector2(-16f, -34f);  // 헤더 줄 높이만큼 내림
+                messageText.alignment = TextAlignmentOptions.TopLeft;
+                messageText.textWrappingMode = TextWrappingModes.Normal;
+                messageText.overflowMode = TextOverflowModes.Overflow;
+            }
 
             // 행마다 둥근 흰 카드가 서고 레이아웃이 간격을 주므로 구분선은 없앴다.
             GreenFeedPostView view = root.GetComponent<GreenFeedPostView>();
@@ -565,7 +613,7 @@ namespace CityFlow.EditorTools
                 messageText,
                 timeText,
                 layout,
-                true);
+                compact);
             view.Bind(authorName, occupation, message, timestamp, avatarInitial, accentColor);
             return view;
         }
@@ -798,6 +846,16 @@ namespace CityFlow.EditorTools
             rect.anchorMin = new Vector2(0f, 0.5f);
             rect.anchorMax = new Vector2(0f, 0.5f);
             rect.pivot = new Vector2(0f, 0.5f);
+        }
+
+        // 히스토리 행은 높이가 본문에 따라 늘어난다. 헤더 요소(아바타·이름·직업)를
+        // 세로 중앙에 두면 행이 커질 때 같이 내려가므로 top-left 로 고정한다.
+        private static void SetLeftTop(RectTransform rect, Vector2 anchoredPosition)
+        {
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = anchoredPosition;
         }
 
         // 헤더는 위쪽 스트레치라 아이콘도 top-left 기준으로 잡아야 세로가 맞는다.
