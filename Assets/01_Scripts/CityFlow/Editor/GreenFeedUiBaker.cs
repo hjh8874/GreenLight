@@ -15,6 +15,8 @@ namespace CityFlow.EditorTools
         private const string TargetCanvasName = "UI_MainCanvas";
         private const string ContentRootName = "FloatingWindowContentRoot";
         private const string FeedRootName = "GreenSNSFeedDock";
+        // 티커는 도크 밖(HUD_TopBar)에 붙으므로 이름으로 따로 정리해야 한다.
+        private const string TickerObjectName = "FeedTicker";
         private const string IntegrationPrefabPath =
             "Assets/02_Prefabs/Feed/CitizenFeedIntegration.prefab";
 
@@ -585,7 +587,13 @@ namespace CityFlow.EditorTools
                 messageRect.pivot = new Vector2(0.5f, 0.5f);
                 messageRect.offsetMin = new Vector2(180f, -9f);
                 messageRect.offsetMax = new Vector2(-58f, 9f);
-                messageText.textWrappingMode = TextWrappingModes.NoWrap;
+                // ⚠️ NoWrap + Ellipsis 로는 말줄임표가 붙지 않는다(TMP 실측 2026-08-10:
+                // 잘리기만 하고 '…' 이 안 나온다). 한 줄을 유지하면서 '…' 을 얻으려면
+                // 줄바꿈을 켜고 maxVisibleLines 로 한 줄에 가둬야 한다.
+                // 티커 문구의 86%가 잘리는데(본문칸 334px = 한글 29자, 문구 중앙값 41자)
+                // 표시가 없으면 문장이 이상하게 끝난 걸로 읽힌다 — '…' 이 "누르면 더 있다"는 신호다.
+                messageText.textWrappingMode = TextWrappingModes.Normal;
+                messageText.maxVisibleLines = 1;
                 messageText.overflowMode = TextOverflowModes.Ellipsis;
             }
             else
@@ -690,7 +698,7 @@ namespace CityFlow.EditorTools
         {
             GreenFeedPostView ticker = CreatePost(
                 parent,
-                "FeedTicker",
+                TickerObjectName,
                 "김시민",
                 "시민",
                 "도시의 새로운 소식이 여기에 표시됩니다.",
@@ -1072,6 +1080,33 @@ namespace CityFlow.EditorTools
             if (existing != null)
             {
                 Undo.DestroyObjectImmediate(existing.gameObject);
+            }
+
+            // 티커는 도크가 아니라 HUD_TopBar 아래에 붙는다(CreateTicker 참조).
+            // 도크만 지우면 티커가 살아남아 재베이크마다 하나씩 쌓인다 —
+            // 실측 2026-08-10: 한 번 다시 굽자 FeedTicker 가 2개가 됐고,
+            // 겹친 낡은 티커가 옛 설정(Truncate)을 그대로 들고 있었다.
+            // 이름으로 전부 훑어 지운다. 하나만 찾고 끝내면 3개째부터 또 남는다.
+            RemoveAllByName(scene, TickerObjectName);
+        }
+
+        private static void RemoveAllByName(Scene scene, string objectName)
+        {
+            GameObject[] roots = scene.GetRootGameObjects();
+            for (int i = 0; i < roots.Length; i++)
+            {
+                Transform[] all =
+                    roots[i].GetComponentsInChildren<Transform>(true);
+                for (int j = 0; j < all.Length; j++)
+                {
+                    Transform candidate = all[j];
+                    if (candidate == null || candidate.name != objectName)
+                    {
+                        continue;
+                    }
+
+                    Undo.DestroyObjectImmediate(candidate.gameObject);
+                }
             }
         }
 
