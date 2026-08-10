@@ -7,7 +7,7 @@ namespace CityFlow.UI
 {
     public sealed class HiringStatusIndicatorView : MonoBehaviour
     {
-        private const float CanvasSize = 160f;
+        private const float CanvasSize = 128f;
         private const float FirstSlotRotation = -113f;
 
         [Header("Layer Lab")]
@@ -146,7 +146,7 @@ namespace CityFlow.UI
             textRect.anchorMax = new Vector2(0.5f, 0.5f);
             textRect.pivot = new Vector2(0.5f, 0.5f);
             textRect.anchoredPosition = Vector2.zero;
-            textRect.sizeDelta = new Vector2(72f, 24f);
+            textRect.sizeDelta = new Vector2(80f, 28f);
 
             _statusText = textObject.GetComponent<TextMeshProUGUI>();
             if (fontAsset != null)
@@ -154,11 +154,13 @@ namespace CityFlow.UI
                 _statusText.font = fontAsset;
             }
             _statusText.enableAutoSizing = true;
-            _statusText.fontSizeMin = 8f;
-            _statusText.fontSizeMax = 13f;
+            _statusText.fontSizeMin = 10f;
+            _statusText.fontSizeMax = 15f;
             _statusText.fontStyle = FontStyles.Bold;
             _statusText.alignment = TextAlignmentOptions.Center;
             _statusText.color = Color.white;
+            _statusText.outlineColor = new Color32(12, 18, 24, 255);
+            _statusText.outlineWidth = 0.18f;
             _statusText.textWrappingMode = TextWrappingModes.NoWrap;
             _statusText.raycastTarget = false;
         }

@@ -185,7 +185,7 @@ namespace CityFlow.UI
 
             if (pendingText != null && !isCountingUp)
             {
-                pendingText.text = $"수확  {DisplayedPendingCoins:N0}";
+                pendingText.text = $"세금  {DisplayedPendingCoins:N0}";
             }
 
             if (harvestButton != null)
@@ -208,7 +208,7 @@ namespace CityFlow.UI
                     System.Math.Round(progress * amount));
                 if (pendingText != null)
                 {
-                    pendingText.text = $"수확  +{shown:N0}";
+                    pendingText.text = $"세금  +{shown:N0}";
                 }
 
                 yield return null;
@@ -216,7 +216,7 @@ namespace CityFlow.UI
 
             if (pendingText != null)
             {
-                pendingText.text = $"수확  +{amount:N0}";
+                pendingText.text = $"세금  +{amount:N0}";
             }
 
             yield return new WaitForSecondsRealtime(CountUpAfterglowDuration);

@@ -8,6 +8,8 @@ namespace CityFlow.UI
 {
     public sealed class UIDockController : MonoBehaviour
     {
+        private const float SubPanelDockGap = 50f;
+
         public enum MenuType { None, Build, Research, Stats, Settings, Floating }
 
         [Header("Menu Buttons (Dock_Right)")]
@@ -266,6 +268,7 @@ namespace CityFlow.UI
             if (panelStats != null) panelStats.SetActive(_currentMenu == MenuType.Stats);
             if (panelSettings != null) panelSettings.SetActive(_currentMenu == MenuType.Settings);
             if (panelFloating != null) panelFloating.SetActive(_currentMenu == MenuType.Floating);
+            AlignActiveSubPanelToDock();
             BuildModeCursorFeedback.SetBuilding(
                 this,
                 _currentMenu == MenuType.Build);
@@ -281,6 +284,46 @@ namespace CityFlow.UI
             {
                 placementController.ToggleBuildMode(false);
             }
+        }
+
+        private void AlignActiveSubPanelToDock()
+        {
+            GameObject activePanel = _currentMenu switch
+            {
+                MenuType.Research => panelResearch,
+                MenuType.Stats => panelStats,
+                MenuType.Settings => panelSettings,
+                MenuType.Floating => panelFloating,
+                _ => null
+            };
+
+            if (activePanel == null ||
+                !activePanel.TryGetComponent(out RectTransform panelRect) ||
+                !TryGetComponent(out RectTransform dockRect))
+            {
+                return;
+            }
+
+            Canvas.ForceUpdateCanvases();
+
+            Vector3[] dockCorners = new Vector3[4];
+            Vector3[] panelCorners = new Vector3[4];
+            RectTransform alignmentRect = panelRect;
+            if (_currentMenu == MenuType.Stats &&
+                activePanel.TryGetComponent(out StatsPanelController statsPanel))
+            {
+                alignmentRect = statsPanel.PanelAlignmentRect;
+            }
+
+            dockRect.GetWorldCorners(dockCorners);
+            alignmentRect.GetWorldCorners(panelCorners);
+
+            Vector3 dockLeftCenter = (dockCorners[0] + dockCorners[1]) * 0.5f;
+            Vector3 panelRightCenter = (panelCorners[2] + panelCorners[3]) * 0.5f;
+            Vector3 gap = dockRect.TransformVector(
+                Vector3.left * SubPanelDockGap);
+
+            panelRect.position += dockLeftCenter + gap - panelRightCenter;
         }
 
         private void OnDisable()
