@@ -90,10 +90,6 @@ namespace CityFlow.UI.Data
                 tardyStaff = Mathf.Max(0, staffingCapacity - staffingFilled);
             }
 
-            // 분당 수입: 인원 기반 합성 (인당 3~8코인, density 보정)
-            int coinsPerPerson = 3 + (seed % 6);
-            long incomePerMin = (long)(totalStaff * coinsPerPerson * (1f - density01 * 0.3f));
-
             string storyComment = BuildingHoverCommentResolver.Resolve(
                 commentCatalog,
                 new BuildingHoverCommentContext(
@@ -108,7 +104,6 @@ namespace CityFlow.UI.Data
                 storyComment,
                 totalStaff,
                 tardyStaff,
-                incomePerMin,
                 accumulatedDelay);
         }
 

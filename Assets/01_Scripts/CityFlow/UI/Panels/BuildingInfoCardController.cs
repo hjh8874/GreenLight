@@ -492,11 +492,14 @@ namespace CityFlow.UI
                     : normalColor;
             }
 
-            if (txtIncomePerMin != null)
-            {
-                txtIncomePerMin.text = $"+{data.IncomePerMin:N0}";
-                txtIncomePerMin.color = positiveColor;
-            }
+            // 예상 수익 제거(2026-08-10). 이 값은 시뮬레이션이 아니라
+            // 타일 좌표 해시로 만든 합성값이었다 —
+            // BuildingStoryDataFactory: coinsPerPerson = 3 + (seed % 6)
+            // 실제 경제(EconomyService·DistanceRewardService)와 연결이 없어서,
+            // 플레이어가 "+120"을 보고 기대해도 그 돈은 들어오지 않는다.
+            // 없는 정보를 보여주느니 행을 접는다. 슬롯 자체는 특수 건물(방문 수용량)과
+            // 공사 중(주변 교통)이 재사용하므로 지우지 않는다.
+            SetMetricRowVisible(txtIncomePerMin, false);
 
             if (txtDelaySeconds != null)
             {
@@ -570,6 +573,8 @@ namespace CityFlow.UI
                 txtTardyStaff.color = normalColor;
             }
 
+            // 일반 건물 경로가 접어둔 행을 특수 건물에서는 다시 편다(방문 수용량).
+            SetMetricRowVisible(txtIncomePerMin, true);
             if (txtIncomePerMin != null)
             {
                 txtIncomePerMin.text = option.VisitorCapacity > 0
@@ -737,6 +742,8 @@ namespace CityFlow.UI
         private void ApplyConstructionMetricLabels()
         {
             CacheMetricLabels();
+            // 일반 건물 경로가 접어둔 행을 공사 중 표시에서는 다시 편다(주변 교통).
+            SetMetricRowVisible(txtIncomePerMin, true);
             if (labelTotalStaff != null)
             {
                 labelTotalStaff.text = "공사 진행률";
@@ -785,6 +792,23 @@ namespace CityFlow.UI
                        out string companyTypeId)
                 ? companyTypeId
                 : string.Empty;
+        }
+
+        // 값과 라벨은 같은 부모(행) 아래 있다 — 행 단위로 접고 편다.
+        // 일반 건물에서 예상 수익을 숨기되, 같은 슬롯을 쓰는 특수 건물·공사 중
+        // 표시는 살아 있어야 하므로 각 경로가 명시적으로 다시 켠다.
+        private static void SetMetricRowVisible(TMP_Text valueText, bool visible)
+        {
+            if (valueText == null || valueText.transform.parent == null)
+            {
+                return;
+            }
+
+            GameObject row = valueText.transform.parent.gameObject;
+            if (row.activeSelf != visible)
+            {
+                row.SetActive(visible);
+            }
         }
 
         private static TMP_Text ResolveMetricLabel(TMP_Text valueText)
