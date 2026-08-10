@@ -59,7 +59,7 @@ namespace CityFlow.UI
 
         [Header("Placement Diagnostics")]
         [Tooltip("Logs the caller and stack trace whenever active placement mode is turned off.")]
-        [SerializeField] private bool logPlacementModeDiagnostics = true;
+        [SerializeField] private bool logPlacementModeDiagnostics;
 
         public bool IsBuildingMode => _isBuildingMode;
         public CityFlow.Content.PopulationConfigSO PopulationConfig => populationConfig;
@@ -441,7 +441,14 @@ namespace CityFlow.UI
 
             if (_inputHandler.IsPointerOverBlockingUI())
             {
-                ClearPendingPlacements();
+                if (_currentType == TileType.Road)
+                {
+                    _roadStrokeLastAcceptedCoord = null;
+                }
+                else
+                {
+                    ClearPendingPlacements();
+                }
                 _inputHandler.ResetPlacementDragState();
                 _visualManager.SetGhostActive(false);
                 _costLabelManager.SetCostLabelActive(false);
@@ -624,7 +631,6 @@ namespace CityFlow.UI
                 return;
             }
 
-            ClearPendingPlacements();
             _roadStrokeLastAcceptedCoord = null;
         }
 
@@ -728,12 +734,15 @@ namespace CityFlow.UI
                 return false;
             }
 
+            PendingPlacementRequest oldestRequest =
+                _pendingPlacements.Peek();
             float backlogAge =
                 Time.unscaledTime -
-                _pendingPlacements.Peek().EnqueuedAt;
-            if (!IsPlacementBacklogStale(
+                oldestRequest.EnqueuedAt;
+            if (!ShouldDiscardStalePlacementBacklog(
+                    oldestRequest.Type,
                     Time.unscaledTime,
-                    _pendingPlacements.Peek().EnqueuedAt,
+                    oldestRequest.EnqueuedAt,
                     maximumPlacementBacklogSeconds))
             {
                 return false;
@@ -776,6 +785,19 @@ namespace CityFlow.UI
         {
             return currentTime - enqueuedAt >
                 Mathf.Max(0.05f, maximumAge);
+        }
+
+        internal static bool ShouldDiscardStalePlacementBacklog(
+            TileType type,
+            float currentTime,
+            float enqueuedAt,
+            float maximumAge)
+        {
+            return type != TileType.Road &&
+                IsPlacementBacklogStale(
+                    currentTime,
+                    enqueuedAt,
+                    maximumAge);
         }
 
         internal static bool ShouldCollapsePlacementBacklog(

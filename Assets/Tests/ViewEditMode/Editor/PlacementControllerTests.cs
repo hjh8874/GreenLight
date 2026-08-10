@@ -65,6 +65,7 @@ namespace Tests.EditMode
         private sealed class CountingPlacementService : IPlacementService
         {
             public int RemoveCalls { get; private set; }
+            public List<Vector2Int> PlacedTiles { get; } = new();
 
             public bool CanPlace(
                 Vector2Int tile,
@@ -74,7 +75,11 @@ namespace Tests.EditMode
             public bool Place(
                 Vector2Int tile,
                 TileType type,
-                PlacementDirection direction = PlacementDirection.North) => true;
+                PlacementDirection direction = PlacementDirection.North)
+            {
+                PlacedTiles.Add(tile);
+                return true;
+            }
 
             public bool Remove(Vector2Int tile)
             {
@@ -2632,6 +2637,69 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void RoadStrokeRelease_DrainsEveryAcceptedTileInOrder()
+        {
+            var go = new GameObject("RoadStrokeQueueController");
+            var controller = go.AddComponent<PlacementController>();
+            var placement = new CountingPlacementService();
+
+            try
+            {
+                controller.SetFakeMode(false);
+                controller.Initialize(new CityFlowServices(
+                    new SimEventHub(),
+                    new TestTileData(),
+                    placement));
+                controller.SetBuildType(TileType.Road);
+
+                MethodInfo handlePlace = typeof(PlacementController).GetMethod(
+                    "HandlePlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo handleDrag = typeof(PlacementController).GetMethod(
+                    "HandleDragPlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo endStroke = typeof(PlacementController).GetMethod(
+                    "HandlePlacementStrokeEnded",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo processQueue = typeof(PlacementController).GetMethod(
+                    "ProcessPendingPlacements",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+
+                handlePlace.Invoke(
+                    controller,
+                    new object[] { new Vector2Int(0, 0) });
+                handleDrag.Invoke(
+                    controller,
+                    new object[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(0, 3)
+                    });
+                endStroke.Invoke(controller, null);
+
+                for (int index = 0; index < 3; index++)
+                {
+                    SetPrivateField(controller, "_nextPlacementTime", 0f);
+                    processQueue.Invoke(controller, null);
+                }
+
+                CollectionAssert.AreEqual(
+                    new[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(0, 1),
+                        new Vector2Int(0, 2),
+                        new Vector2Int(0, 3)
+                    },
+                    placement.PlacedTiles);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
         public void PlacementBacklogPolicy_DropsStaleAndExcessiveRequests()
         {
             Assert.IsFalse(
@@ -2641,6 +2709,18 @@ namespace Tests.EditMode
                     maximumAge: 0.35f));
             Assert.IsTrue(
                 PlacementController.IsPlacementBacklogStale(
+                    currentTime: 1.5f,
+                    enqueuedAt: 1f,
+                    maximumAge: 0.35f));
+            Assert.IsFalse(
+                PlacementController.ShouldDiscardStalePlacementBacklog(
+                    TileType.Road,
+                    currentTime: 1.5f,
+                    enqueuedAt: 1f,
+                    maximumAge: 0.35f));
+            Assert.IsTrue(
+                PlacementController.ShouldDiscardStalePlacementBacklog(
+                    TileType.House,
                     currentTime: 1.5f,
                     enqueuedAt: 1f,
                     maximumAge: 0.35f));
