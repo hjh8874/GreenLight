@@ -8,8 +8,6 @@ namespace CityFlow.UI.Feed
 {
     public sealed class GreenFeedPanelController : MonoBehaviour
     {
-        private const float TickerLeftAnchor = 0.565f;
-        private const float TickerRightAnchor = 0.85f;
         private const float TickerOutlineWidth = 0.22f;
         private const string TickerOutlineKeyword = "OUTLINE_ON";
 
@@ -62,17 +60,27 @@ namespace CityFlow.UI.Feed
 
             RectTransform tickerRect =
                 tickerView.GetComponent<RectTransform>();
-            RectTransform topBar = transform.parent != null
-                ? transform.parent.Find("HUD_TopBar") as RectTransform
-                : null;
+            RectTransform topBar = FindTopBar();
+            if (topBar != null && tickerRect.parent != topBar)
+            {
+                tickerRect.SetParent(topBar, false);
+            }
+
             float topBarHeight = topBar != null && topBar.rect.height > 0f
                 ? topBar.rect.height
-                : 60f;
-            tickerRect.anchorMin = new Vector2(TickerLeftAnchor, 1f);
-            tickerRect.anchorMax = new Vector2(TickerRightAnchor, 1f);
-            tickerRect.pivot = new Vector2(0.5f, 1f);
-            tickerRect.anchoredPosition = Vector2.zero;
-            tickerRect.sizeDelta = new Vector2(0f, topBarHeight);
+                : HudTopBarLayout.TopBarHeight;
+            tickerRect.anchorMin = new Vector2(0.5f, 0.5f);
+            tickerRect.anchorMax = new Vector2(1f, 0.5f);
+            tickerRect.pivot = new Vector2(0.5f, 0.5f);
+            tickerRect.offsetMin = new Vector2(
+                HudTopBarLayout.HarvestButtonWidth * 0.5f +
+                HudTopBarLayout.HorizontalGap,
+                -(topBarHeight * 0.5f - HudTopBarLayout.VerticalInset));
+            tickerRect.offsetMax = new Vector2(
+                -(HudTopBarLayout.ActionDockWidth +
+                  HudTopBarLayout.ActionDockRightInset +
+                  HudTopBarLayout.HorizontalGap),
+                topBarHeight * 0.5f - HudTopBarLayout.VerticalInset);
 
             Image background = tickerView.GetComponent<Image>();
             if (background != null)
@@ -90,6 +98,44 @@ namespace CityFlow.UI.Feed
                 texts[index].fontWeight = FontWeight.SemiBold;
                 AddTickerTextOutline(texts[index]);
             }
+        }
+
+        public void AttachTickerToTopBar(RectTransform topBar)
+        {
+            if (tickerView == null || topBar == null)
+            {
+                return;
+            }
+
+            RectTransform tickerRect =
+                tickerView.GetComponent<RectTransform>();
+            if (tickerRect.parent != topBar)
+            {
+                tickerRect.SetParent(topBar, false);
+            }
+
+            ConfigureTickerPresentation();
+        }
+
+        private RectTransform FindTopBar()
+        {
+            Canvas canvas = GetComponentInParent<Canvas>();
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            RectTransform[] rects =
+                canvas.GetComponentsInChildren<RectTransform>(true);
+            for (int index = 0; index < rects.Length; index++)
+            {
+                if (rects[index].name == "HUD_TopBar")
+                {
+                    return rects[index];
+                }
+            }
+
+            return null;
         }
 
         private static void AddTickerTextOutline(TMP_Text text)

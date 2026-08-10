@@ -12,6 +12,11 @@ namespace CityFlow.UI
     // 엔진·경제 로직 무연결. 세이브는 파일 존재 여부만 읽는다(이어하기 활성 판정).
     public sealed class TitleSceneController : MonoBehaviour
     {
+        private const string FloatingTitleBarCanvasName =
+            "FloatingWindowTitleBarCanvas";
+        private const string TitleContentRootName =
+            "FloatingWindowTitleContentRoot";
+
         [Header("Scene Flow")]
         [Tooltip("시작하기가 로드할 게임 씬 이름. Build Settings에 등록돼 있어야 로드된다. (주석님 메인씬)")]
         [SerializeField] private string gameSceneName = "CityFlowIntegrated_cmt";
@@ -63,7 +68,12 @@ namespace CityFlow.UI
             // 따라서 렌더링(Canvas)과 터치(GraphicRaycaster) 기능만 꺼줍니다.
             foreach (var root in scene.GetRootGameObjects())
             {
-                if (root.name.Contains("Canvas") || root.name.Contains("UI") || root.name.Contains("Popup"))
+                bool isFloatingTitleBar =
+                    root.name == FloatingTitleBarCanvasName;
+                if (!isFloatingTitleBar
+                    && (root.name.Contains("Canvas")
+                        || root.name.Contains("UI")
+                        || root.name.Contains("Popup")))
                 {
                     var canvases = root.GetComponentsInChildren<Canvas>(true);
                     foreach (var c in canvases) c.enabled = false;
@@ -81,6 +91,8 @@ namespace CityFlow.UI
                     if (inputModule != null) inputModule.enabled = false;
                 }
             }
+
+            ConfigureFloatingTitleContent();
 
             // 게임이 라이브로 돌아가면서 자동 저장되는 것을 방지하기 위해 AutoSaveService 파괴
             var autoSave = FindAnyObjectByType<CityFlow.Gameplay.Save.AutoSaveService>(FindObjectsInactive.Include);
@@ -141,9 +153,14 @@ namespace CityFlow.UI
         private Camera forcedCamera;
         private MainCityView forcedCityView;
         private float previewNormalizedZoom01;
+        private Canvas titleCanvas;
+        private RectTransform titleContentRoot;
+        private FloatingWindowService floatingWindowService;
 
         private void LateUpdate()
         {
+            ApplyFloatingTitleInset();
+
             if (forcedCamera == null) return;
 
             // [리뷰 반영] MainCityView의 위치/회전 제어와 경합하지 않도록 줌인(orthographicSize)만 덮어씁니다.
@@ -154,6 +171,92 @@ namespace CityFlow.UI
                     forcedCityView.GetOrthographicSize(
                         previewNormalizedZoom01);
             }
+        }
+
+        private void ConfigureFloatingTitleContent()
+        {
+            foreach (GameObject root in gameObject.scene.GetRootGameObjects())
+            {
+                Canvas[] canvases = root.GetComponentsInChildren<Canvas>(true);
+                foreach (Canvas canvas in canvases)
+                {
+                    if (canvas.name == "TitleCanvas")
+                    {
+                        titleCanvas = canvas;
+                        break;
+                    }
+                }
+
+                if (titleCanvas != null)
+                {
+                    break;
+                }
+            }
+
+            if (titleCanvas == null)
+            {
+                return;
+            }
+
+            titleContentRoot = titleCanvas.transform.Find(TitleContentRootName)
+                as RectTransform;
+            if (titleContentRoot == null)
+            {
+                GameObject contentObject = new GameObject(
+                    TitleContentRootName,
+                    typeof(RectTransform));
+                titleContentRoot = contentObject.GetComponent<RectTransform>();
+                titleContentRoot.SetParent(titleCanvas.transform, false);
+
+                Transform[] children = new Transform[
+                    titleCanvas.transform.childCount - 1];
+                int childIndex = 0;
+                for (int index = 0;
+                    index < titleCanvas.transform.childCount;
+                    index++)
+                {
+                    Transform child = titleCanvas.transform.GetChild(index);
+                    if (child != titleContentRoot)
+                    {
+                        children[childIndex++] = child;
+                    }
+                }
+
+                for (int index = 0; index < childIndex; index++)
+                {
+                    children[index].SetParent(titleContentRoot, false);
+                }
+
+                titleContentRoot.SetAsFirstSibling();
+            }
+
+            floatingWindowService = FindAnyObjectByType<FloatingWindowService>(
+                FindObjectsInactive.Include);
+            ApplyFloatingTitleInset();
+        }
+
+        private void ApplyFloatingTitleInset()
+        {
+            if (titleCanvas == null || titleContentRoot == null)
+            {
+                return;
+            }
+
+            if (floatingWindowService == null)
+            {
+                floatingWindowService = FindAnyObjectByType<FloatingWindowService>(
+                    FindObjectsInactive.Include);
+            }
+
+            float reservedHeight = floatingWindowService != null
+                && floatingWindowService.IsFloating
+                && !floatingWindowService.IsMaximized
+                    ? FloatingWindowTitleBarController.TitleBarHeight
+                    : 0f;
+            FloatingWindowTitleBarController.ApplyTopInset(
+                titleContentRoot,
+                titleCanvas,
+                reservedHeight);
         }
 
         // 새 게임 — 기존 저장과 백업을 제거해 게임 씬의 자동 불러오기 대상에서 제외한다.

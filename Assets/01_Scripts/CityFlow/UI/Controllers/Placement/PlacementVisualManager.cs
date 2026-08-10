@@ -655,6 +655,8 @@ namespace CityFlow.UI.Controllers.Placement
                 string materialName)
         {
             Shader shader =
+                Resources.Load<Shader>("CityFlowOpaqueUnlit") ??
+                Shader.Find("GreenLight/CityFlow Opaque Unlit") ??
                 Shader.Find("Universal Render Pipeline/Unlit") ??
                 Shader.Find("Unlit/Color") ??
                 Shader.Find("Sprites/Default");
@@ -711,13 +713,7 @@ namespace CityFlow.UI.Controllers.Placement
                         name = $"{source.name} (Placement Preview)",
                         hideFlags = HideFlags.HideAndDontSave
                     };
-                    Texture sourceTexture = source.mainTexture;
-                    if (sourceTexture != null)
-                    {
-                        copy.mainTexture = sourceTexture;
-                        copy.mainTextureScale = source.mainTextureScale;
-                        copy.mainTextureOffset = source.mainTextureOffset;
-                    }
+                    CopyPreviewTexture(source, copy);
                     materials[materialIndex] = copy;
                     _buildingPreviewMaterialCopies.Add(copy);
                     changed = true;
@@ -728,6 +724,41 @@ namespace CityFlow.UI.Controllers.Placement
                     renderer.sharedMaterials = materials;
                 }
             }
+        }
+
+        private static void CopyPreviewTexture(
+            Material source,
+            Material destination)
+        {
+            int sourceProperty =
+                source.HasTexture("_BaseMap")
+                    ? Shader.PropertyToID("_BaseMap")
+                    : source.HasTexture("_MainTex")
+                        ? Shader.PropertyToID("_MainTex")
+                        : -1;
+            if (sourceProperty < 0)
+            {
+                return;
+            }
+
+            Texture texture = source.GetTexture(sourceProperty);
+            if (texture == null ||
+                !destination.HasTexture("_BaseMap"))
+            {
+                return;
+            }
+
+            int destinationProperty =
+                Shader.PropertyToID("_BaseMap");
+            destination.SetTexture(
+                destinationProperty,
+                texture);
+            destination.SetTextureScale(
+                destinationProperty,
+                source.GetTextureScale(sourceProperty));
+            destination.SetTextureOffset(
+                destinationProperty,
+                source.GetTextureOffset(sourceProperty));
         }
 
         private void ClearBuildingPreview()

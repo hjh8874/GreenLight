@@ -26,7 +26,10 @@ namespace CityFlow.UI.Editor
                 contentRoot.gameObject,
                 "Apply Geon Top Left Action Dock Polish");
 
-            Transform actionDock = EnsureActionDock(contentRoot);
+            Transform topBar = contentRoot.Find("HUD_TopBar");
+            Transform actionDock = EnsureActionDock(
+                topBar != null ? topBar : contentRoot,
+                contentRoot);
             Transform floatingButton = FindFloatingButton(contentRoot, actionDock);
             Transform cameraButton = FindCameraButton(contentRoot, actionDock);
             if (floatingButton == null || cameraButton == null)
@@ -56,13 +59,23 @@ namespace CityFlow.UI.Editor
                 nameof(GeonTopLeftActionDockPolishApplier));
         }
 
-        private static Transform EnsureActionDock(Transform contentRoot)
+        private static Transform EnsureActionDock(
+            Transform parent,
+            Transform contentRoot)
         {
-            Transform existing = contentRoot.Find(ActionDockName);
+            Transform existing = parent.Find(ActionDockName)
+                ?? contentRoot.Find(ActionDockName);
             GameObject dockObject;
             if (existing != null)
             {
                 dockObject = existing.gameObject;
+                if (existing.parent != parent)
+                {
+                    Undo.SetTransformParent(
+                        existing,
+                        parent,
+                        "Parent Top Left Action Dock");
+                }
             }
             else
             {
@@ -77,16 +90,21 @@ namespace CityFlow.UI.Editor
                     "Create Top Left Action Dock");
                 Undo.SetTransformParent(
                     dockObject.transform,
-                    contentRoot,
+                    parent,
                     "Parent Top Left Action Dock");
             }
 
             RectTransform rect = dockObject.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(1f, 1f);
-            rect.anchorMax = new Vector2(1f, 1f);
-            rect.pivot = new Vector2(1f, 1f);
-            rect.anchoredPosition = new Vector2(-8f, 0f);
-            rect.sizeDelta = new Vector2(204f, 60f);
+            rect.anchorMin = new Vector2(1f, 0.5f);
+            rect.anchorMax = new Vector2(1f, 0.5f);
+            rect.pivot = new Vector2(1f, 0.5f);
+            rect.anchoredPosition = new Vector2(
+                -HudTopBarLayout.ActionDockRightInset,
+                0f);
+            rect.sizeDelta = new Vector2(
+                HudTopBarLayout.ActionDockWidth,
+                HudTopBarLayout.TopBarHeight -
+                HudTopBarLayout.VerticalInset * 2f);
 
             Image background =
                 LayerLabUiAssetCatalog.GetOrAddComponent<Image>(dockObject);
@@ -100,8 +118,8 @@ namespace CityFlow.UI.Editor
             HorizontalLayoutGroup layout =
                 LayerLabUiAssetCatalog.GetOrAddComponent<HorizontalLayoutGroup>(
                     dockObject);
-            layout.padding = new RectOffset(4, 4, 4, 4);
-            layout.spacing = 8f;
+            layout.padding = new RectOffset(6, 6, 6, 6);
+            layout.spacing = 6f;
             layout.childAlignment = TextAnchor.MiddleCenter;
             layout.childControlWidth = true;
             layout.childControlHeight = true;
@@ -188,7 +206,9 @@ namespace CityFlow.UI.Editor
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(90f, 44f);
+            rect.sizeDelta = new Vector2(
+                HudTopBarLayout.ActionButtonWidth,
+                HudTopBarLayout.ActionButtonHeight);
         }
 
         private static void StyleActionButton(
@@ -212,11 +232,11 @@ namespace CityFlow.UI.Editor
             LayoutElement layout =
                 LayerLabUiAssetCatalog.GetOrAddComponent<LayoutElement>(
                     target.gameObject);
-            layout.minWidth = 90f;
-            layout.preferredWidth = 90f;
+            layout.minWidth = HudTopBarLayout.ActionButtonWidth;
+            layout.preferredWidth = HudTopBarLayout.ActionButtonWidth;
             layout.flexibleWidth = 0f;
-            layout.minHeight = 44f;
-            layout.preferredHeight = 44f;
+            layout.minHeight = HudTopBarLayout.ActionButtonHeight;
+            layout.preferredHeight = HudTopBarLayout.ActionButtonHeight;
             layout.flexibleHeight = 0f;
 
             TMP_Text text = target.GetComponentInChildren<TMP_Text>(true);

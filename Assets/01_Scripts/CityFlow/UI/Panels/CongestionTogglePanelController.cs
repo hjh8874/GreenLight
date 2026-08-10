@@ -8,7 +8,12 @@ namespace CityFlow.UI
 {
     public class CongestionTogglePanelController : MonoBehaviour, ICityFlowServiceConsumer
     {
-        private const float OutlineWidth = 0.22f;
+        private const float PanelWidth = 156f;
+        private const float PanelHeight = 52f;
+        private const float LabelFontSize = 18f;
+        private const float LabelLeftInset = 35f;
+        private static readonly Color CheckboxFrameColor =
+            new Color(0.22f, 0.82f, 0.66f, 1f);
 
         [Header("UI References")]
         [SerializeField] private Toggle tglCongestionView;
@@ -43,64 +48,91 @@ namespace CityFlow.UI
 
         private void Start()
         {
+            ConfigureTopBarPresentation();
             BindToggle();
         }
 
         private void ConfigureTopBarPresentation()
         {
-            if (transform.parent == null ||
-                transform.parent.name != "FloatingWindowContentRoot")
+            RectTransform rect = transform as RectTransform;
+            Transform currentParent = transform.parent;
+            if (currentParent == null ||
+                (currentParent.name != "HUD_TopBar" &&
+                 currentParent.name != "FloatingWindowContentRoot"))
             {
                 return;
             }
 
-            RectTransform rect = transform as RectTransform;
-            RectTransform topBar =
-                transform.parent.Find("HUD_TopBar") as RectTransform;
-            float height = topBar != null && topBar.rect.height > 0f
-                ? topBar.rect.height
-                : 60f;
-            rect.anchorMin = new Vector2(0.36f, 1f);
-            rect.anchorMax = new Vector2(0.46f, 1f);
-            rect.pivot = new Vector2(0.5f, 1f);
-            rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(0f, height);
+            RectTransform topBar = FindTopBar();
+            if (rect == null || topBar == null)
+            {
+                return;
+            }
+
+            if (rect.parent != topBar)
+            {
+                rect.SetParent(topBar, false);
+            }
+
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(1f, 0.5f);
+            rect.anchoredPosition = new Vector2(
+                -(HudTopBarLayout.HarvestButtonWidth * 0.5f +
+                  HudTopBarLayout.HorizontalGap),
+                0f);
+            rect.sizeDelta = new Vector2(PanelWidth, PanelHeight);
 
             Image background = GetComponent<Image>();
             if (background != null)
             {
                 Color color = background.color;
-                color.a = 0.52f;
+                color.a = 0.9f;
                 background.color = color;
             }
 
-            TMP_Text[] labels = GetComponentsInChildren<TMP_Text>(true);
-            for (int index = 0; index < labels.Length; index++)
+            Image checkboxFrame = transform.Find("CheckboxFrame")
+                ?.GetComponent<Image>();
+            if (checkboxFrame != null)
             {
-                ApplyReadableText(labels[index]);
+                checkboxFrame.enabled = true;
+                checkboxFrame.color = CheckboxFrameColor;
+            }
+
+            TMP_Text label = transform.Find("Label")?.GetComponent<TMP_Text>();
+            if (label != null)
+            {
+                label.enableAutoSizing = false;
+                label.fontSize = LabelFontSize;
+                label.fontWeight = FontWeight.SemiBold;
+                label.characterSpacing = 2f;
+
+                RectTransform labelRect = label.rectTransform;
+                labelRect.offsetMin = new Vector2(LabelLeftInset, 2f);
+                labelRect.offsetMax = new Vector2(-1f, -2f);
             }
         }
 
-        private static void ApplyReadableText(TMP_Text text)
+        private RectTransform FindTopBar()
         {
-            text.color = Color.white;
-            text.fontWeight = FontWeight.SemiBold;
-            if (text.font == null || text.fontSharedMaterial == null)
+            if (transform.parent is RectTransform directParent &&
+                directParent.name == "HUD_TopBar")
             {
-                return;
+                return directParent;
             }
 
-            Material material = text.fontMaterial;
-            if (material == null)
+            Transform current = transform.parent;
+            while (current != null)
             {
-                return;
+                if (current.Find("HUD_TopBar") is RectTransform topBar)
+                {
+                    return topBar;
+                }
+
+                current = current.parent;
             }
 
-            material.EnableKeyword("OUTLINE_ON");
-            material.SetColor("_OutlineColor", Color.black);
-            material.SetFloat("_OutlineWidth", OutlineWidth);
-            text.UpdateMeshPadding();
-            text.SetMaterialDirty();
+            return null;
         }
 
         private void BindToggle()

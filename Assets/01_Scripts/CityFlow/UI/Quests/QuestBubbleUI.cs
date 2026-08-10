@@ -11,12 +11,10 @@ namespace CityFlow.UI.Quests
 {
     public sealed class QuestBubbleUI : MonoBehaviour
     {
-        private static readonly Vector2 BubblePosition =
-            new(0f, -60f);
         private static readonly Vector2 BubbleSize =
             new(430f, 172f);
-        private static readonly Vector2 QuestControlCenter =
-            new(-29f, -89f);
+        private static readonly Vector2 QuestControlOffset =
+            new(-29f, -29f);
         private const float QuestControlSize = 58f;
         private const float CloseLineThickness = 3f;
         private const float CloseLineCornerRatio = 0.3f;
@@ -44,8 +42,18 @@ namespace CityFlow.UI.Quests
         private TextMeshProUGUI messageText;
         private TextMeshProUGUI categoryText;
         private TextMeshProUGUI minimizedLabel;
+        private RectTransform anchorTopBar;
+        private RectTransform bubbleRect;
+        private RectTransform minimizedButtonRect;
 
         public static QuestBubbleUI Create(Transform canvasTransform)
+        {
+            return Create(canvasTransform, null);
+        }
+
+        public static QuestBubbleUI Create(
+            Transform canvasTransform,
+            RectTransform topBar)
         {
             GameObject root = CreateUiObject("QuestBubbleUI", canvasTransform);
             RectTransform rootRect = root.GetComponent<RectTransform>();
@@ -56,8 +64,15 @@ namespace CityFlow.UI.Quests
             root.transform.SetAsLastSibling();
 
             QuestBubbleUI controller = root.AddComponent<QuestBubbleUI>();
+            controller.anchorTopBar = topBar;
             controller.BuildVisuals(FindSceneFont());
+            controller.ApplyAnchorLayout();
             return controller;
+        }
+
+        private void LateUpdate()
+        {
+            ApplyAnchorLayout();
         }
 
         public void Bind(CityQuestSystem system)
@@ -122,10 +137,11 @@ namespace CityFlow.UI.Quests
         {
             GameObject panel = CreateUiObject("QuestBubble", transform, typeof(Image), typeof(Shadow));
             RectTransform rect = panel.GetComponent<RectTransform>();
+            bubbleRect = rect;
             rect.anchorMin = new Vector2(1f, 1f);
             rect.anchorMax = new Vector2(1f, 1f);
             rect.pivot = new Vector2(1f, 1f);
-            rect.anchoredPosition = BubblePosition;
+            rect.anchoredPosition = Vector2.zero;
             rect.sizeDelta = BubbleSize;
 
             Image background = panel.GetComponent<Image>();
@@ -199,8 +215,7 @@ namespace CityFlow.UI.Quests
             closeRect.anchorMin = new Vector2(1f, 1f);
             closeRect.anchorMax = new Vector2(1f, 1f);
             closeRect.pivot = new Vector2(0.5f, 0.5f);
-            closeRect.anchoredPosition =
-                QuestControlCenter - BubblePosition;
+            closeRect.anchoredPosition = QuestControlOffset;
             closeRect.sizeDelta = new Vector2(
                 QuestControlSize,
                 QuestControlSize);
@@ -264,10 +279,11 @@ namespace CityFlow.UI.Quests
                 typeof(Button),
                 typeof(Shadow));
             RectTransform rect = buttonObject.GetComponent<RectTransform>();
+            minimizedButtonRect = rect;
             rect.anchorMin = new Vector2(1f, 1f);
             rect.anchorMax = new Vector2(1f, 1f);
             rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.anchoredPosition = QuestControlCenter;
+            rect.anchoredPosition = QuestControlOffset;
             rect.sizeDelta = new Vector2(
                 QuestControlSize,
                 QuestControlSize);
@@ -291,6 +307,35 @@ namespace CityFlow.UI.Quests
             minimizedLabel.fontStyle = FontStyles.Bold;
             minimizedLabel.raycastTarget = false;
             return buttonObject;
+        }
+
+        private void ApplyAnchorLayout()
+        {
+            float topBarHeight = anchorTopBar != null
+                ? anchorTopBar.rect.height
+                : 60f;
+
+            if (bubbleRect != null)
+            {
+                bubbleRect.anchorMin = new Vector2(1f, 1f);
+                bubbleRect.anchorMax = new Vector2(1f, 1f);
+                bubbleRect.pivot = new Vector2(1f, 1f);
+                bubbleRect.anchoredPosition =
+                    new Vector2(
+                        0f,
+                        -topBarHeight);
+            }
+
+            if (minimizedButtonRect != null)
+            {
+                minimizedButtonRect.anchorMin = new Vector2(1f, 1f);
+                minimizedButtonRect.anchorMax = new Vector2(1f, 1f);
+                minimizedButtonRect.pivot = new Vector2(0.5f, 0.5f);
+                minimizedButtonRect.anchoredPosition =
+                    new Vector2(
+                        QuestControlOffset.x,
+                        -topBarHeight + QuestControlOffset.y);
+            }
         }
 
         private void Update()

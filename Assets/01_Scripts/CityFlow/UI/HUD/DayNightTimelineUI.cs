@@ -22,7 +22,6 @@ namespace CityFlow.UI
         private const string TimeTextName = "TimeText";
         private const string VehicleCountTextName = "VehicleCountText";
         private const string CoinTextName = "CoinText";
-        private const float DefaultBarHeight = 60f;
         private const float RefreshIntervalSeconds = 0.2f;
         private const float SunriseHour = 6f;
         private const float SunsetHour = 18f;
@@ -125,7 +124,7 @@ namespace CityFlow.UI
 
             if (height < 1f)
             {
-                height = DefaultBarHeight;
+                height = HudTopBarLayout.TopBarHeight;
             }
 
             GameObject root = new GameObject(
@@ -183,6 +182,9 @@ namespace CityFlow.UI
             harvestRect.anchorMax = new Vector2(0.5f, 0.5f);
             harvestRect.pivot = new Vector2(0.5f, 0.5f);
             harvestRect.anchoredPosition = Vector2.zero;
+            harvestRect.sizeDelta = new Vector2(
+                HudTopBarLayout.HarvestButtonWidth,
+                HudTopBarLayout.HarvestButtonHeight);
         }
 
         private static void NormalizeCongestionDot(RectTransform topBar)

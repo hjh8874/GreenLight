@@ -96,6 +96,8 @@ namespace CityFlow.Tests.ViewEditMode
                     Is.EqualTo(new Vector2(0.5f, 0.5f)));
                 Assert.That(harvestRect.anchoredPosition,
                     Is.EqualTo(Vector2.zero));
+                Assert.That(harvestRect.sizeDelta,
+                    Is.EqualTo(new Vector2(160f, 44f)));
 
                 RectTransform congestionDotRect =
                     congestionDot.GetComponent<RectTransform>();
@@ -152,7 +154,8 @@ namespace CityFlow.Tests.ViewEditMode
                 RectTransform marker = timeline.Find("CelestialMarker")
                     .GetComponent<RectTransform>();
                 Assert.That(marker.sizeDelta, Is.EqualTo(new Vector2(60f, 60f)));
-                Assert.That(marker.anchoredPosition.x, Is.EqualTo(0f));
+                Assert.That(marker.anchoredPosition,
+                    Is.EqualTo(Vector2.zero));
                 RawImage moon = marker.Find("Moon")
                     .GetComponent<RawImage>();
                 Assert.That(moon, Is.Not.Null);

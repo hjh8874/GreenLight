@@ -49,11 +49,6 @@ namespace CityFlow.EditorTools
 
         // 상단 정보 바의 오른쪽 구간을 비율 앵커로 사용해 해상도가 달라도
         // 플로팅·카메라 버튼 영역과 겹치지 않게 유지한다.
-        private static readonly Vector2 TickerAnchorMin =
-            new Vector2(0.565f, 1f);
-        private static readonly Vector2 TickerAnchorMax =
-            new Vector2(0.85f, 1f);
-        private static readonly Vector2 TickerSize = new Vector2(0f, 60f);
         private static readonly Color TickerColor =
             new Color32(23, 29, 38, 133);
 
@@ -167,7 +162,10 @@ namespace CityFlow.EditorTools
                 controller,
                 GreenFeedHoverRelay.ClickAction.Passive,
                 true);
-            GreenFeedPostView ticker = CreateTicker(root.transform, controller);
+            Transform topBar = FindTransform(scene, "HUD_TopBar");
+            GreenFeedPostView ticker = CreateTicker(
+                topBar != null ? topBar : root.transform,
+                controller);
 
             if (hasSavedLayout)
             {
@@ -706,11 +704,20 @@ namespace CityFlow.EditorTools
                 return;
             }
 
-            tickerRect.anchorMin = TickerAnchorMin;
-            tickerRect.anchorMax = TickerAnchorMax;
-            tickerRect.pivot = new Vector2(0.5f, 1f);
-            tickerRect.anchoredPosition = Vector2.zero;
-            tickerRect.sizeDelta = TickerSize;
+            tickerRect.anchorMin = new Vector2(0.5f, 0.5f);
+            tickerRect.anchorMax = new Vector2(1f, 0.5f);
+            tickerRect.pivot = new Vector2(0.5f, 0.5f);
+            tickerRect.offsetMin = new Vector2(
+                HudTopBarLayout.HarvestButtonWidth * 0.5f +
+                HudTopBarLayout.HorizontalGap,
+                -(HudTopBarLayout.TopBarHeight * 0.5f -
+                  HudTopBarLayout.VerticalInset));
+            tickerRect.offsetMax = new Vector2(
+                -(HudTopBarLayout.ActionDockWidth +
+                  HudTopBarLayout.ActionDockRightInset +
+                  HudTopBarLayout.HorizontalGap),
+                HudTopBarLayout.TopBarHeight * 0.5f -
+                HudTopBarLayout.VerticalInset);
         }
 
         private static void ApplyTickerTextOutline(TMP_Text text)
