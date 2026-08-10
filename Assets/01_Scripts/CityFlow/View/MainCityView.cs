@@ -583,7 +583,12 @@ namespace CityFlow.View
 
             if (dockController != null)
             {
-                if (placementController != null) placementController.IsBuildMenuOpen = () => dockController.CurrentMenu == UIDockController.MenuType.Build;
+                if (placementController != null)
+                {
+                    placementController.IsBuildMenuOpen = () => dockController.CurrentMenu == UIDockController.MenuType.Build;
+                    placementController.BuildingPlacementCompleted -= dockController.CloseAllPanels;
+                    placementController.BuildingPlacementCompleted += dockController.CloseAllPanels;
+                }
                 if (infrastructurePlacementCoordinator != null) infrastructurePlacementCoordinator.IsBuildMenuOpen = () => dockController.CurrentMenu == UIDockController.MenuType.Build;
             }
 
@@ -627,6 +632,12 @@ namespace CityFlow.View
 
         private void OnDestroy()
         {
+            if (placementController != null && dockController != null)
+            {
+                placementController.BuildingPlacementCompleted -=
+                    dockController.CloseAllPanels;
+            }
+
             if (driveViewCamera != null)
             {
                 ExitDriveView();

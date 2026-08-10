@@ -11,6 +11,7 @@ namespace CityFlow.UI.Controllers.Placement
         public event Func<Vector2Int, bool> OnDemolishRequested;
         public event Action<Vector2Int> OnPlaceRequested;
         public event Action<Vector2Int, Vector2Int> OnDragPlaceRequested;
+        public event Action OnPlacementStrokeEnded;
         public event Action OnPlacementRejected;
         public event Action OnCancelPlacementRequested;
 
@@ -153,7 +154,12 @@ namespace CityFlow.UI.Controllers.Placement
 
                 if (Mouse.current.leftButton.wasReleasedThisFrame)
                 {
+                    bool hadActiveStroke = _lastPlacedCoord.HasValue;
                     _lastPlacedCoord = null;
+                    if (hadActiveStroke)
+                    {
+                        OnPlacementStrokeEnded?.Invoke();
+                    }
                 }
             }
         }

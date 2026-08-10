@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using TMPro;
@@ -48,11 +49,24 @@ namespace CityFlow.UI
         [SerializeField] private CityFlow.Content.PopulationConfigSO populationConfig;
         [SerializeField] private CityFlow.Content.BuildingDefinitionSO hospitalDefinition;
 
+        [Header("Placement Timing")]
+        [Tooltip("Minimum real-time interval between successful road or building placements.")]
+        [SerializeField, Min(0f)] private float placementIntervalSeconds = 0.15f;
+        [Tooltip("Maximum number of placement requests retained while input is faster than construction.")]
+        [SerializeField, Min(1)] private int maximumQueuedPlacements = 3;
+        [Tooltip("Queued placement requests older than this real-time duration are discarded.")]
+        [SerializeField, Min(0.05f)] private float maximumPlacementBacklogSeconds = 0.35f;
+
+        [Header("Placement Diagnostics")]
+        [Tooltip("Logs the caller and stack trace whenever active placement mode is turned off.")]
+        [SerializeField] private bool logPlacementModeDiagnostics;
+
         public bool IsBuildingMode => _isBuildingMode;
         public CityFlow.Content.PopulationConfigSO PopulationConfig => populationConfig;
         public CityFlow.Content.BuildingDefinitionSO HospitalDefinition => hospitalDefinition;
         public event Action PlacementSucceeded;
         public event Action<Vector2Int, TileType> PlacementConfirmed;
+        public event Action BuildingPlacementCompleted;
         public event Action PlacementRejected;
         public event Action DemolitionSucceeded;
 
@@ -68,6 +82,10 @@ namespace CityFlow.UI
         private PlacementCostLabelManager _costLabelManager;
         private MainCityView _cityView;
         private Vector2Int? _lastModelPreviewCoord;
+        private readonly Queue<PendingPlacementRequest> _pendingPlacements = new();
+        private readonly HashSet<Vector2Int> _queuedPlacementCoordinates = new();
+        private float _nextPlacementTime;
+        private Vector2Int? _roadStrokeLastAcceptedCoord;
 
         public Func<bool> IsBuildMenuOpen { get; set; }
 
@@ -110,6 +128,7 @@ namespace CityFlow.UI
             _inputHandler.OnDemolishRequested += HandleDemolish;
             _inputHandler.OnPlaceRequested += HandlePlace;
             _inputHandler.OnDragPlaceRequested += HandleDragPlace;
+            _inputHandler.OnPlacementStrokeEnded += HandlePlacementStrokeEnded;
             _inputHandler.OnPlacementRejected += HandlePlacementRejected;
             _inputHandler.OnCancelPlacementRequested += CancelPlacement;
 
@@ -133,6 +152,7 @@ namespace CityFlow.UI
                 _inputHandler.OnDemolishRequested -= HandleDemolish;
                 _inputHandler.OnPlaceRequested -= HandlePlace;
                 _inputHandler.OnDragPlaceRequested -= HandleDragPlace;
+                _inputHandler.OnPlacementStrokeEnded -= HandlePlacementStrokeEnded;
                 _inputHandler.OnPlacementRejected -= HandlePlacementRejected;
                 _inputHandler.OnCancelPlacementRequested -= CancelPlacement;
             }
@@ -160,6 +180,7 @@ namespace CityFlow.UI
         public void SetBuildType(TileType type)
         {
             EnsureManagers();
+            ClearPendingPlacements();
             if (!IsTileTypeUnlocked(type))
             {
                 ToggleBuildMode(false);
@@ -211,6 +232,7 @@ namespace CityFlow.UI
 
         public bool SetSpecialBuilding(string buildingId)
         {
+            ClearPendingPlacements();
             string normalizedId = buildingId?.Trim() ?? string.Empty;
             _currentType = TileType.SpecialBuilding;
             _currentSpecialBuildingId = normalizedId;
@@ -258,7 +280,32 @@ namespace CityFlow.UI
 
         public void ToggleBuildMode(bool isOn)
         {
+            EnsureManagers();
+            bool wasBuildingMode = _isBuildingMode;
             _isBuildingMode = isOn;
+
+            if (Application.isPlaying &&
+                logPlacementModeDiagnostics &&
+                wasBuildingMode &&
+                !isOn)
+            {
+                System.Diagnostics.StackFrame callerFrame =
+                    new System.Diagnostics.StackTrace(1, false)
+                        .GetFrame(0);
+                string caller =
+                    callerFrame?.GetMethod()?.DeclaringType?.Name +
+                    "." +
+                    callerFrame?.GetMethod()?.Name;
+                Debug.LogWarning(
+                    "[PlacementModeDiagnostics] Build mode turned off. " +
+                    $"caller={caller}, type={_currentType}, " +
+                    $"componentEnabled={enabled}, " +
+                    $"activeInHierarchy={gameObject.activeInHierarchy}, " +
+                    $"buildMenuOpen={IsBuildMenuOpen?.Invoke() ?? false}, " +
+                    $"frame={Time.frameCount}\n" +
+                    StackTraceUtility.ExtractStackTrace(),
+                    this);
+            }
 
             if (isOn)
             {
@@ -276,6 +323,7 @@ namespace CityFlow.UI
 
             if (!isOn)
             {
+                ClearPendingPlacements();
                 _visualManager.HideBenefitHighlights();
                 _visualManager.SetBuildingPreview(null);
                 _lastModelPreviewCoord = null;
@@ -335,6 +383,20 @@ namespace CityFlow.UI
 
         private void OnDisable()
         {
+            if (Application.isPlaying &&
+                logPlacementModeDiagnostics &&
+                _isBuildingMode)
+            {
+                Debug.LogWarning(
+                    "[PlacementModeDiagnostics] PlacementController was disabled " +
+                    $"while build mode remained active. type={_currentType}, " +
+                    $"activeInHierarchy={gameObject.activeInHierarchy}, " +
+                    $"frame={Time.frameCount}\n" +
+                    StackTraceUtility.ExtractStackTrace(),
+                    this);
+            }
+
+            ClearPendingPlacements();
             BuildModeCursorFeedback.SetBuilding(this, false);
             _visualManager?.HideBenefitHighlights();
             _visualManager?.SetGhostActive(false);
@@ -379,10 +441,7 @@ namespace CityFlow.UI
 
             if (_inputHandler.IsPointerOverBlockingUI())
             {
-                _inputHandler.ResetPlacementDragState();
-                _visualManager.SetGhostActive(false);
-                _costLabelManager.SetCostLabelActive(false);
-                _visualManager.HideBenefitHighlights();
+                HandlePointerOverBlockingUI();
                 return;
             }
 
@@ -402,6 +461,7 @@ namespace CityFlow.UI
             }
 
             _inputHandler.UpdatePlacementInput(canPlace, gridCoord);
+            ProcessPendingPlacements();
 
             _visualManager.SetGhostActive(true);
 
@@ -440,6 +500,24 @@ namespace CityFlow.UI
             _costLabelManager.UpdateCost(cost, affordable, canPlace, Time.deltaTime);
         }
 
+        private void HandlePointerOverBlockingUI()
+        {
+            if (_currentType == TileType.Road)
+            {
+                _roadStrokeLastAcceptedCoord = null;
+                ProcessPendingPlacements();
+            }
+            else
+            {
+                ClearPendingPlacements();
+            }
+
+            _inputHandler.ResetPlacementDragState();
+            _visualManager.SetGhostActive(false);
+            _costLabelManager.SetCostLabelActive(false);
+            _visualManager.HideBenefitHighlights();
+        }
+
         private void HandleRotate()
         {
             if (!TileFootprint.IsBuilding(_currentType))
@@ -464,73 +542,291 @@ namespace CityFlow.UI
 
         private void HandlePlace(Vector2Int coord)
         {
-            bool placed = _actionDispatcher.PlaceInfrastructure(
+            if (_currentType == TileType.Road)
+            {
+                _roadStrokeLastAcceptedCoord = null;
+            }
+
+            EnqueuePlacement(
                 coord,
-                _currentType,
                 _currentDirection,
-                _services,
-                _currentSpecialBuildingId,
-                _currentCompanyTypeId);
-            _lastModelPreviewCoord = null;
-
-            if (placed)
-            {
-                PlacementConfirmed?.Invoke(coord, _currentType);
-                PlacementSucceeded?.Invoke();
-            }
-            else
-            {
-                PlacementRejected?.Invoke();
-            }
-
-            if (placed && _currentType != TileType.Road)
-            {
-                CancelPlacement();
-            }
+                notifyOnRejected: true);
+            ProcessPendingPlacements();
         }
 
         private void HandleDragPlace(Vector2Int from, Vector2Int to)
         {
-            Vector2Int cursor = from;
+            Vector2Int cursor =
+                _currentType == TileType.Road &&
+                _roadStrokeLastAcceptedCoord.HasValue
+                    ? _roadStrokeLastAcceptedCoord.Value
+                    : from;
 
             while (cursor.x != to.x)
             {
                 cursor.x += Math.Sign(to.x - cursor.x);
-                TryPlaceDragTile(cursor);
+                if (!EnqueuePlacement(
+                        cursor,
+                        ResolvePlacementDirection(cursor),
+                        notifyOnRejected: false))
+                {
+                    _lastModelPreviewCoord = null;
+                    return;
+                }
             }
 
             while (cursor.y != to.y)
             {
                 cursor.y += Math.Sign(to.y - cursor.y);
-                TryPlaceDragTile(cursor);
+                if (!EnqueuePlacement(
+                        cursor,
+                        ResolvePlacementDirection(cursor),
+                        notifyOnRejected: false))
+                {
+                    _lastModelPreviewCoord = null;
+                    return;
+                }
             }
 
             _lastModelPreviewCoord = null;
         }
 
-        private void TryPlaceDragTile(Vector2Int coord)
+        private bool EnqueuePlacement(
+            Vector2Int coord,
+            PlacementDirection direction,
+            bool notifyOnRejected)
         {
-            PlacementDirection direction = ResolvePlacementDirection(coord);
-            if (_actionDispatcher.CheckCanPlace(
-                    coord,
-                    _currentType,
-                    direction,
-                    _services,
-                    _currentSpecialBuildingId))
+            DiscardStalePlacementBacklog();
+            if (_currentType == TileType.Road &&
+                !CanAcceptRoadPlacement(
+                    _pendingPlacements.Count,
+                    maximumQueuedPlacements))
             {
-                bool placed = _actionDispatcher.PlaceInfrastructure(
+                return false;
+            }
+
+            if (!_queuedPlacementCoordinates.Add(coord))
+            {
+                return true;
+            }
+
+            _pendingPlacements.Enqueue(
+                new PendingPlacementRequest(
                     coord,
                     _currentType,
                     direction,
-                    _services,
                     _currentSpecialBuildingId,
-                    _currentCompanyTypeId);
-                if (placed)
-                {
-                    PlacementConfirmed?.Invoke(coord, _currentType);
-                    PlacementSucceeded?.Invoke();
-                }
+                    _currentCompanyTypeId,
+                    notifyOnRejected,
+                    Time.unscaledTime));
+            if (_currentType == TileType.Road)
+            {
+                _roadStrokeLastAcceptedCoord = coord;
             }
+            else
+            {
+                CollapsePlacementBacklogToLatest();
+            }
+
+            return true;
+        }
+
+        private void HandlePlacementStrokeEnded()
+        {
+            if (_currentType != TileType.Road)
+            {
+                return;
+            }
+
+            _roadStrokeLastAcceptedCoord = null;
+        }
+
+        private void ProcessPendingPlacements()
+        {
+            const int MaxRequestsCheckedPerFrame = 32;
+
+            if (_pendingPlacements.Count == 0)
+            {
+                return;
+            }
+
+            if (DiscardStalePlacementBacklog() ||
+                Time.unscaledTime < _nextPlacementTime)
+            {
+                return;
+            }
+
+            int checkedRequestCount = 0;
+            while (_pendingPlacements.Count > 0 &&
+                   checkedRequestCount < MaxRequestsCheckedPerFrame)
+            {
+                checkedRequestCount++;
+                PendingPlacementRequest request =
+                    _pendingPlacements.Dequeue();
+                _queuedPlacementCoordinates.Remove(request.Coord);
+
+                if (!_actionDispatcher.CheckCanPlace(
+                        request.Coord,
+                        request.Type,
+                        request.Direction,
+                        _services,
+                        request.SpecialBuildingId))
+                {
+                    if (request.NotifyOnRejected)
+                    {
+                        PlacementRejected?.Invoke();
+                    }
+
+                    continue;
+                }
+
+                bool placed = _actionDispatcher.PlaceInfrastructure(
+                    request.Coord,
+                    request.Type,
+                    request.Direction,
+                    _services,
+                    request.SpecialBuildingId,
+                    request.CompanyTypeId);
+                _lastModelPreviewCoord = null;
+
+                if (!placed)
+                {
+                    if (request.NotifyOnRejected)
+                    {
+                        PlacementRejected?.Invoke();
+                    }
+
+                    continue;
+                }
+
+                PlacementConfirmed?.Invoke(
+                    request.Coord,
+                    request.Type);
+                PlacementSucceeded?.Invoke();
+
+                if (TileFootprint.IsBuilding(request.Type))
+                {
+                    ToggleBuildMode(false);
+                    BuildingPlacementCompleted?.Invoke();
+                }
+
+                if (Application.isPlaying &&
+                    logPlacementModeDiagnostics)
+                {
+                    Debug.Log(
+                        "[PlacementModeDiagnostics] Placement completed. " +
+                        $"type={request.Type}, coord={request.Coord}, " +
+                        $"buildMode={_isBuildingMode}, " +
+                        $"componentEnabled={enabled}, " +
+                        $"activeInHierarchy={gameObject.activeInHierarchy}, " +
+                        $"buildMenuOpen={IsBuildMenuOpen?.Invoke() ?? false}, " +
+                        $"frame={Time.frameCount}",
+                        this);
+                }
+
+                if (_isBuildingMode)
+                {
+                    _nextPlacementTime =
+                        Time.unscaledTime +
+                        Mathf.Max(0f, placementIntervalSeconds);
+                }
+                return;
+            }
+        }
+
+        private bool DiscardStalePlacementBacklog()
+        {
+            if (_pendingPlacements.Count == 0)
+            {
+                return false;
+            }
+
+            PendingPlacementRequest oldestRequest =
+                _pendingPlacements.Peek();
+            float backlogAge =
+                Time.unscaledTime -
+                oldestRequest.EnqueuedAt;
+            if (!ShouldDiscardStalePlacementBacklog(
+                    oldestRequest.Type,
+                    Time.unscaledTime,
+                    oldestRequest.EnqueuedAt,
+                    maximumPlacementBacklogSeconds))
+            {
+                return false;
+            }
+
+            int discardedCount = _pendingPlacements.Count;
+            ClearPendingPlacements();
+            Debug.LogWarning(
+                "[PlacementController] Discarded stale placement backlog. " +
+                $"count={discardedCount}, age={backlogAge:F2}s.",
+                this);
+            return true;
+        }
+
+        private void CollapsePlacementBacklogToLatest()
+        {
+            int capacity = Mathf.Max(1, maximumQueuedPlacements);
+            if (!ShouldCollapsePlacementBacklog(
+                    _pendingPlacements.Count,
+                    capacity))
+            {
+                return;
+            }
+
+            PendingPlacementRequest latest = default;
+            while (_pendingPlacements.Count > 0)
+            {
+                latest = _pendingPlacements.Dequeue();
+            }
+
+            _queuedPlacementCoordinates.Clear();
+            _pendingPlacements.Enqueue(latest);
+            _queuedPlacementCoordinates.Add(latest.Coord);
+        }
+
+        internal static bool IsPlacementBacklogStale(
+            float currentTime,
+            float enqueuedAt,
+            float maximumAge)
+        {
+            return currentTime - enqueuedAt >
+                Mathf.Max(0.05f, maximumAge);
+        }
+
+        internal static bool ShouldDiscardStalePlacementBacklog(
+            TileType type,
+            float currentTime,
+            float enqueuedAt,
+            float maximumAge)
+        {
+            return type != TileType.Road &&
+                IsPlacementBacklogStale(
+                    currentTime,
+                    enqueuedAt,
+                    maximumAge);
+        }
+
+        internal static bool ShouldCollapsePlacementBacklog(
+            int pendingCount,
+            int maximumCount)
+        {
+            return pendingCount > Mathf.Max(1, maximumCount);
+        }
+
+        internal static bool CanAcceptRoadPlacement(
+            int pendingCount,
+            int maximumCount)
+        {
+            return pendingCount < Mathf.Max(1, maximumCount);
+        }
+
+        private void ClearPendingPlacements()
+        {
+            _pendingPlacements.Clear();
+            _queuedPlacementCoordinates.Clear();
+            _nextPlacementTime = 0f;
+            _roadStrokeLastAcceptedCoord = null;
         }
 
         private void HandlePlacementRejected()
@@ -870,6 +1166,35 @@ namespace CityFlow.UI
                     _currentType,
                     _currentDirection)
                 : null;
+        }
+
+        private readonly struct PendingPlacementRequest
+        {
+            public PendingPlacementRequest(
+                Vector2Int coord,
+                TileType type,
+                PlacementDirection direction,
+                string specialBuildingId,
+                string companyTypeId,
+                bool notifyOnRejected,
+                float enqueuedAt)
+            {
+                Coord = coord;
+                Type = type;
+                Direction = direction;
+                SpecialBuildingId = specialBuildingId;
+                CompanyTypeId = companyTypeId;
+                NotifyOnRejected = notifyOnRejected;
+                EnqueuedAt = enqueuedAt;
+            }
+
+            public Vector2Int Coord { get; }
+            public TileType Type { get; }
+            public PlacementDirection Direction { get; }
+            public string SpecialBuildingId { get; }
+            public string CompanyTypeId { get; }
+            public bool NotifyOnRejected { get; }
+            public float EnqueuedAt { get; }
         }
     }
 }

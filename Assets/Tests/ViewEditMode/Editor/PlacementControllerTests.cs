@@ -65,6 +65,7 @@ namespace Tests.EditMode
         private sealed class CountingPlacementService : IPlacementService
         {
             public int RemoveCalls { get; private set; }
+            public List<Vector2Int> PlacedTiles { get; } = new();
 
             public bool CanPlace(
                 Vector2Int tile,
@@ -74,7 +75,11 @@ namespace Tests.EditMode
             public bool Place(
                 Vector2Int tile,
                 TileType type,
-                PlacementDirection direction = PlacementDirection.North) => true;
+                PlacementDirection direction = PlacementDirection.North)
+            {
+                PlacedTiles.Add(tile);
+                return true;
+            }
 
             public bool Remove(Vector2Int tile)
             {
@@ -157,12 +162,21 @@ namespace Tests.EditMode
             var mouse = InputSystem.AddDevice<Mouse>();
             try
             {
+                mouse.MakeCurrent();
+                InputSystem.Update();
                 using (StateEvent.From(mouse, out var eventPtr))
                 {
+                    mouse.position.WriteValueIntoEvent(
+                        new Vector2(10000f, 10000f),
+                        eventPtr);
                     mouse.rightButton.WriteValueIntoEvent(1f, eventPtr);
                     InputSystem.QueueEvent(eventPtr);
                 }
                 InputSystem.Update();
+                SetPrivateField(
+                    handler,
+                    "_rightClickStartCoord",
+                    (Vector2Int?)target);
 
                 handler.UpdateGlobalInput(
                     true,
@@ -2090,10 +2104,12 @@ namespace Tests.EditMode
             var mouse = InputSystem.AddDevice<Mouse>();
             try
             {
-                // Reflection to set internal state
-                SetPrivateField(coordinator, "_isBuildingMode", true); // Required for Update to not return immediately
+                SetPrivateField(coordinator, "_isBuildingMode", true);
                 SetPrivateField(coordinator, "_isDemolishMode", true);
-                SetPrivateField(coordinator, "_rightClickStartCoord", new Vector2Int(0, 0));
+                SetPrivateField(
+                    coordinator,
+                    "_rightClickStartCoord",
+                    new Vector2Int(0, 0));
 
                 using (StateEvent.From(mouse, out var eventPtr))
                 {
@@ -2102,15 +2118,21 @@ namespace Tests.EditMode
                 }
                 InputSystem.Update();
 
-                isMenuOpen = false; // Simulate menu closing during drag
+                isMenuOpen = false;
 
-                var updateMethod = typeof(InfrastructurePlacementCoordinator).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
+                var updateMethod = typeof(InfrastructurePlacementCoordinator).GetMethod(
+                    "Update",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
                 updateMethod.Invoke(coordinator, null);
 
-                var startCoordField = typeof(InfrastructurePlacementCoordinator).GetField("_rightClickStartCoord", BindingFlags.NonPublic | BindingFlags.Instance);
+                var startCoordField = typeof(InfrastructurePlacementCoordinator).GetField(
+                    "_rightClickStartCoord",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
                 var startCoord = startCoordField.GetValue(coordinator);
 
-                Assert.IsNull(startCoord, "Demolition drag should stop and reset when menu closes.");
+                Assert.IsNull(
+                    startCoord,
+                    "Demolition drag should stop and reset when menu closes.");
             }
             finally
             {
@@ -2191,8 +2213,8 @@ namespace Tests.EditMode
 
                 object startCoord = typeof(
                     InfrastructurePlacementCoordinator).GetField(
-                    "_rightClickStartCoord",
-                    BindingFlags.NonPublic | BindingFlags.Instance)
+                        "_rightClickStartCoord",
+                        BindingFlags.NonPublic | BindingFlags.Instance)
                     .GetValue(coordinator);
 
                 Assert.IsNull(
@@ -2461,7 +2483,7 @@ namespace Tests.EditMode
         }
 
         [Test]
-        public void HandlePlace_SinglePlacement_CancelsOnSuccess()
+        public void HandlePlace_BuildingPlacement_ExitsPlacementModeOnSuccess()
         {
             var go = new GameObject("Controller");
             var controller = go.AddComponent<PlacementController>();
@@ -2469,6 +2491,9 @@ namespace Tests.EditMode
 
             try
             {
+                bool buildingPlacementCompleted = false;
+                controller.BuildingPlacementCompleted +=
+                    () => buildingPlacementCompleted = true;
                 var economy = new TestEconomyService { Coins = 100 };
                 var services = new CityFlowServices(
                     new SimEventHub(),
@@ -2499,7 +2524,10 @@ namespace Tests.EditMode
 
                 Assert.IsFalse(
                     controller.IsBuildingMode,
-                    "성공한 단발 건물 배치 뒤에는 배치 모드를 종료해야 한다.");
+                    "Building placement must exit placement mode after success.");
+                Assert.IsTrue(
+                    buildingPlacementCompleted,
+                    "Building placement must request closing the build menu.");
             }
             finally
             {
@@ -2607,6 +2635,173 @@ namespace Tests.EditMode
                 Object.DestroyImmediate(go);
             }
         }
+
+        [Test]
+        public void RoadStrokeRelease_DrainsEveryAcceptedTileInOrder()
+        {
+            var go = new GameObject("RoadStrokeQueueController");
+            var controller = go.AddComponent<PlacementController>();
+            var placement = new CountingPlacementService();
+
+            try
+            {
+                controller.SetFakeMode(false);
+                controller.Initialize(new CityFlowServices(
+                    new SimEventHub(),
+                    new TestTileData(),
+                    placement));
+                controller.SetBuildType(TileType.Road);
+
+                MethodInfo handlePlace = typeof(PlacementController).GetMethod(
+                    "HandlePlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo handleDrag = typeof(PlacementController).GetMethod(
+                    "HandleDragPlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo endStroke = typeof(PlacementController).GetMethod(
+                    "HandlePlacementStrokeEnded",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo processQueue = typeof(PlacementController).GetMethod(
+                    "ProcessPendingPlacements",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+
+                handlePlace.Invoke(
+                    controller,
+                    new object[] { new Vector2Int(0, 0) });
+                handleDrag.Invoke(
+                    controller,
+                    new object[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(0, 3)
+                    });
+                endStroke.Invoke(controller, null);
+
+                for (int index = 0; index < 3; index++)
+                {
+                    SetPrivateField(controller, "_nextPlacementTime", 0f);
+                    processQueue.Invoke(controller, null);
+                }
+
+                CollectionAssert.AreEqual(
+                    new[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(0, 1),
+                        new Vector2Int(0, 2),
+                        new Vector2Int(0, 3)
+                    },
+                    placement.PlacedTiles);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void PointerOverBlockingUI_DrainsAcceptedRoadTilesInOrder()
+        {
+            var go = new GameObject("RoadBlockingUiQueueController");
+            var controller = go.AddComponent<PlacementController>();
+            var placement = new CountingPlacementService();
+
+            try
+            {
+                controller.SetFakeMode(false);
+                controller.Initialize(new CityFlowServices(
+                    new SimEventHub(),
+                    new TestTileData(),
+                    placement));
+                controller.SetBuildType(TileType.Road);
+
+                MethodInfo handlePlace = typeof(PlacementController).GetMethod(
+                    "HandlePlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo handleDrag = typeof(PlacementController).GetMethod(
+                    "HandleDragPlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo handleBlockingUi =
+                    typeof(PlacementController).GetMethod(
+                        "HandlePointerOverBlockingUI",
+                        BindingFlags.NonPublic | BindingFlags.Instance);
+
+                handlePlace.Invoke(
+                    controller,
+                    new object[] { new Vector2Int(0, 0) });
+                handleDrag.Invoke(
+                    controller,
+                    new object[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(0, 3)
+                    });
+
+                for (int index = 0; index < 3; index++)
+                {
+                    SetPrivateField(controller, "_nextPlacementTime", 0f);
+                    handleBlockingUi.Invoke(controller, null);
+                }
+
+                CollectionAssert.AreEqual(
+                    new[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(0, 1),
+                        new Vector2Int(0, 2),
+                        new Vector2Int(0, 3)
+                    },
+                    placement.PlacedTiles);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void PlacementBacklogPolicy_DropsStaleAndExcessiveRequests()
+        {
+            Assert.IsFalse(
+                PlacementController.IsPlacementBacklogStale(
+                    currentTime: 1.2f,
+                    enqueuedAt: 1f,
+                    maximumAge: 0.35f));
+            Assert.IsTrue(
+                PlacementController.IsPlacementBacklogStale(
+                    currentTime: 1.5f,
+                    enqueuedAt: 1f,
+                    maximumAge: 0.35f));
+            Assert.IsFalse(
+                PlacementController.ShouldDiscardStalePlacementBacklog(
+                    TileType.Road,
+                    currentTime: 1.5f,
+                    enqueuedAt: 1f,
+                    maximumAge: 0.35f));
+            Assert.IsTrue(
+                PlacementController.ShouldDiscardStalePlacementBacklog(
+                    TileType.House,
+                    currentTime: 1.5f,
+                    enqueuedAt: 1f,
+                    maximumAge: 0.35f));
+            Assert.IsFalse(
+                PlacementController.ShouldCollapsePlacementBacklog(
+                    pendingCount: 3,
+                    maximumCount: 3));
+            Assert.IsTrue(
+                PlacementController.ShouldCollapsePlacementBacklog(
+                    pendingCount: 4,
+                    maximumCount: 3));
+            Assert.IsTrue(
+                PlacementController.CanAcceptRoadPlacement(
+                    pendingCount: 2,
+                    maximumCount: 3));
+            Assert.IsFalse(
+                PlacementController.CanAcceptRoadPlacement(
+                    pendingCount: 3,
+                    maximumCount: 3));
+        }
+
         private static void SetPrivateField<TTarget, TValue>(
             TTarget target,
             string fieldName,
