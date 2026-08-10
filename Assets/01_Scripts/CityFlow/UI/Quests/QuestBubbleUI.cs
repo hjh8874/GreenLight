@@ -44,6 +44,11 @@ namespace CityFlow.UI.Quests
         private TextMeshProUGUI minimizedLabel;
         private RectTransform anchorTopBar;
         private RectTransform bubbleRect;
+
+        // 축하 연출이 "팝업이 사라진 자리"를 알아야 한다. 루트 RectTransform 은
+        // 캔버스 전체로 stretch 되므로 그걸 쓰면 화면 중앙에서 터진다
+        // (리뷰 #251). 실제 말풍선 Rect 를 읽기 전용으로 준다.
+        public RectTransform BubbleRect => bubbleRect;
         private RectTransform minimizedButtonRect;
 
         public static QuestBubbleUI Create(Transform canvasTransform)

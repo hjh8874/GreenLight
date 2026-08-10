@@ -110,9 +110,9 @@ namespace CityFlow.Gameplay.Quests
                 clearBurst = gameObject.AddComponent<QuestClearBurst>();
             }
 
-            clearBurst.SetAnchor(questUI != null
-                ? questUI.transform as RectTransform
-                : null);
+            // 루트가 아니라 실제 말풍선 Rect 를 넘긴다 — 루트는 캔버스 전체 stretch 라
+            // 그걸 쓰면 컨페티가 화면 중앙에서 터진다(리뷰 #251).
+            clearBurst.SetAnchor(questUI != null ? questUI.BubbleRect : null);
 
             if (burstSubscribed || questSystem == null)
             {

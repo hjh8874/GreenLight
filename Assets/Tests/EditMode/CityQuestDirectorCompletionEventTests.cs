@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using CityFlow.Sim.Quests;
 using NUnit.Framework;
@@ -110,5 +111,47 @@ namespace CityFlow.Sim.Tests
                 fired[1],
                 "서로 다른 퀘스트가 완료돼야 한다");
         }
+
+        // 리뷰 #251 [P1]: CityQuestSystem.Initialize() 가 director 를 새로 만든다.
+        // 지연 구독 + bool 가드였을 때는 두 번째 인스턴스부터 구독이 안 붙어
+        // 연출이 영구 무음이 됐다. 교체해도 계속 울리는지 고정한다.
+        //
+        // CityQuestSystem 은 MonoBehaviour 라 여기서 못 만든다. 대신 그 클래스가
+        // 하는 일(교체 시 이전 구독 해제 + 새 인스턴스 구독)을 같은 형태로 재현해,
+        // director 를 갈아끼워도 이벤트가 유실되지 않는다는 계약을 검증한다.
+        [Test]
+        public void QuestCompleted_SurvivesDirectorReplacement()
+        {
+            var fired = new List<CityQuestId>();
+            Action<CityQuestId> handler = id => fired.Add(id);
+
+            var first = new CityQuestDirector();
+            first.QuestCompleted += handler;
+            first.Tick(Empty(), 1f);
+            first.Tick(WithRoads(), 1f);
+            Assert.AreEqual(1, fired.Count, "전제: 첫 director 에서 울린다");
+
+            // 교체 — 이전 구독을 끊고 새 인스턴스에 붙인다(ReplaceDirector 와 동형).
+            first.QuestCompleted -= handler;
+            var second = new CityQuestDirector();
+            second.QuestCompleted += handler;
+
+            second.Tick(Empty(), 1f);
+            second.Tick(WithRoads(), 1f);
+
+            Assert.AreEqual(
+                2,
+                fired.Count,
+                "교체된 director 에서도 정확히 한 번 더 울려야 한다");
+
+            // 끊어진 옛 director 는 더 이상 울리면 안 된다(중복 연출 방지).
+            first.Tick(Empty(), 1f);
+            first.Tick(WithRoads(), 1f);
+            Assert.AreEqual(
+                2,
+                fired.Count,
+                "교체 전 director 는 구독이 끊겨 울리지 않아야 한다");
+        }
+
     }
 }
