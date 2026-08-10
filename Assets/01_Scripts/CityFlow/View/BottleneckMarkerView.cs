@@ -103,11 +103,15 @@ namespace CityFlow.View
             }
             markers.Clear();
 
+            // GridWidth/GridHeight 는 이미 월드 좌표 범위다(200×200).
+            // 여기에 GridOrigin(기본 90,90)을 더하면 검사 범위가 90..289 로 밀려
+            // 왼쪽·아래 해금 영역이 영구 누락되고 나머지 절반은 존재하지 않는 타일을 헛돈다.
+            // 월드 타일을 그대로 쓴다 — IsSharedCarIntersection·GridToLocal 둘 다 월드 좌표를 받는다.
             for (int y = 0; y < simEngine.GridHeight; y++)
             {
                 for (int x = 0; x < simEngine.GridWidth; x++)
                 {
-                    Vector2Int tile = new Vector2Int(x, y) + mainView.GridOrigin;
+                    Vector2Int tile = new Vector2Int(x, y);
                     if (!simEngine.IsSharedCarIntersection(tile))
                     {
                         continue;
