@@ -28,10 +28,19 @@ namespace CityFlow.Sim
         // 이번 틱 credit 부족으로 자발 대기 중 — 뷰는 이걸 "심이 잡은 정지"와 구분해
         // 천장을 끄지 않고 감속 순항으로 흘린다(M1-3).
         public bool WaitingForSpeedCredit { get; internal set; }
+        // 무정차로 연속 통과한 교차로 수(0..FreeFlowStreakCap). 판정·리셋은 Sim 단독.
+        public int FreeFlowStreak { get; internal set; }
+        // 이번 통근 중 도달한 최대 연결 단계(0..FreeFlowStreakCap). 보상은 이 값을 읽는다.
+        public int FreeFlowStreakMax { get; internal set; }
     }
 
     internal sealed class CarSim : ICarRouteProvider
     {
+        internal const int FreeFlowStreakCap = 3;
+        // 연결 배수는 ArrivalEvent.Coins에 반영된다. 따라서 DistanceRewardService의
+        // 거리 보너스도 이 금액을 기준으로 계산되어 연결 배수와 복리로 적용된다.
+        private static readonly float[] FreeFlowStreakBonus =
+            { 0f, 0f, 1f, 3f };
         private const float JumpThresholdHours = 1f;
         private const float StaleSpecialJourneyHours = 24f;
         private const int VehicleRetryDelayTicks = 10;
@@ -74,6 +83,11 @@ namespace CityFlow.Sim
         private readonly bool[] _creditAccrued;
         // 이번 틱 credit 거부 마킹(스냅샷 WaitingForSpeedCredit 원천). Step 진입 시 Clear.
         private readonly bool[] _creditWaiting;
+        private readonly int[] _freeFlowStreak;
+        private readonly int[] _freeFlowStreakMax;
+        private readonly int[] _freeFlowCountedIntersection;
+        private readonly bool[] _freeFlowTripActive;
+        private readonly FreeFlowStreakLedger _freeFlowStreakLedger;
         private readonly int[] _offNetworkBlockedTicks;
         private readonly List<Vector2Int> _originAccessRoads = new(8);
         private readonly List<Vector2Int> _destinationAccessRoads = new(8);
@@ -185,9 +199,12 @@ namespace CityFlow.Sim
             }
         }
 
-        public CarSim(in SimConfig cfg)
+        public CarSim(
+            in SimConfig cfg,
+            FreeFlowStreakLedger freeFlowStreakLedger = null)
         {
             _cfg = cfg;
+            _freeFlowStreakLedger = freeFlowStreakLedger;
             int maxCars = Math.Max(1, cfg.MaxSimCars);
             int requestedSpecialVehicleLimit =
                 cfg.MaxConcurrentSpecialTrips > 0
@@ -219,12 +236,17 @@ namespace CityFlow.Sim
                 new int[_runtimeVehicleCapacity];
             _creditAccrued = new bool[_runtimeVehicleCapacity];
             _creditWaiting = new bool[_runtimeVehicleCapacity];
+            _freeFlowStreak = new int[_runtimeVehicleCapacity];
+            _freeFlowStreakMax = new int[_runtimeVehicleCapacity];
+            _freeFlowCountedIntersection = new int[_runtimeVehicleCapacity];
+            _freeFlowTripActive = new bool[_runtimeVehicleCapacity];
             Array.Fill(_queueSlots, -1);
             Array.Clear(_queueOffsets, 0, _queueOffsets.Length);
             Array.Fill(_intersectionProgress, -1f);
             Array.Clear(_linkProgress, 0, _linkProgress.Length);
             Array.Fill(_roundaboutProgress, -1f);
             Array.Fill(_rescueViewRouteIndices, -1);
+            Array.Fill(_freeFlowCountedIntersection, -1);
         }
 
         internal void ClearPopulation()
@@ -244,6 +266,10 @@ namespace CityFlow.Sim
             Array.Fill(_rescueViewRouteIndices, -1);
             Array.Clear(_rescueStages, 0, _rescueStages.Length);
             Array.Clear(_offNetworkBlockedTicks, 0, _offNetworkBlockedTicks.Length);
+            Array.Clear(_freeFlowStreak, 0, _freeFlowStreak.Length);
+            Array.Clear(_freeFlowStreakMax, 0, _freeFlowStreakMax.Length);
+            Array.Fill(_freeFlowCountedIntersection, -1);
+            Array.Clear(_freeFlowTripActive, 0, _freeFlowTripActive.Length);
             _hasLastHour = false;
             _needsSnap = false;
             _populationInitialized = false;
@@ -520,6 +546,13 @@ namespace CityFlow.Sim
             Array.Fill(_rescueViewRouteIndices, -1);
             Array.Clear(_rescueStages, 0, _rescueStages.Length);
             Array.Clear(_offNetworkBlockedTicks, 0, _offNetworkBlockedTicks.Length);
+            if (!preserveExistingAssignments)
+            {
+                Array.Clear(_freeFlowStreak, 0, _freeFlowStreak.Length);
+                Array.Clear(_freeFlowStreakMax, 0, _freeFlowStreakMax.Length);
+                Array.Fill(_freeFlowCountedIntersection, -1);
+                Array.Clear(_freeFlowTripActive, 0, _freeFlowTripActive.Length);
+            }
             // preserve 리빌드: 진행 중 rescue 상태를 새 car 인덱스로 재적용한다. 뷰 리스트는
             // 통째로 복사됐으므로 rescue 뷰 인덱스도 그대로 유효하다. (non-preserve는
             // 라우팅이 바뀐 리빌드라 rescue 경로 자체가 무효 — 기존대로 폐기.)
@@ -746,6 +779,10 @@ namespace CityFlow.Sim
                     Array.Fill(_rescueViewRouteIndices, -1);
                     Array.Clear(_rescueStages, 0, _rescueStages.Length);
                     Array.Clear(_offNetworkBlockedTicks, 0, _offNetworkBlockedTicks.Length);
+                    Array.Clear(_freeFlowStreak, 0, _freeFlowStreak.Length);
+                    Array.Clear(_freeFlowStreakMax, 0, _freeFlowStreakMax.Length);
+                    Array.Fill(_freeFlowCountedIntersection, -1);
+                    Array.Clear(_freeFlowTripActive, 0, _freeFlowTripActive.Length);
                 }
                 else
                 {
@@ -787,6 +824,7 @@ namespace CityFlow.Sim
                 roadTraffic ?? (ICarRouteProvider)this,
                 signalGate,
                 tick);
+            UpdateFreeFlowStreaks(net);
             int externalArrivals = roadTraffic?.ProcessArrivals() ?? 0;
             result.Arrivals = Math.Max(
                 0,
@@ -815,10 +853,20 @@ namespace CityFlow.Sim
                     events.QueueTripArrival(
                         new VehicleTripArrivedEvent(completedTrip));
                 }
+                int freeFlowStreakMax =
+                    Mathf.Clamp(
+                        _freeFlowStreakMax[arrival.CarId],
+                        0,
+                        FreeFlowStreakCap);
                 _scheduler.NotifyArrived(car);
                 ResetCarRuntimeState(arrival.CarId);
                 if (paidArrival)
-                    events.QueueArrival(new ArrivalEvent(car.Work, _cfg.CoinPerTrip));
+                {
+                    int coins = CalculateFreeFlowReward(
+                        _cfg.CoinPerTrip,
+                        freeFlowStreakMax);
+                    events.QueueArrival(new ArrivalEvent(car.Work, coins));
+                }
             }
             ProcessLivenessWatchdog(net);
             roadTraffic?.ProcessLivenessWatchdog(
@@ -905,7 +953,9 @@ namespace CityFlow.Sim
                     LinkProgress01 = _linkProgress[index],
                     RoundaboutProgress01 = _roundaboutProgress[index],
                     SpeedFactorNumerator = car.SpeedFactorNumerator,
-                    WaitingForSpeedCredit = _creditWaiting[index]
+                    WaitingForSpeedCredit = _creditWaiting[index],
+                    FreeFlowStreak = _freeFlowStreak[index],
+                    FreeFlowStreakMax = _freeFlowStreakMax[index]
                 };
             }
 
@@ -937,8 +987,75 @@ namespace CityFlow.Sim
                 LinkProgress01 = _linkProgress[index],
                 RoundaboutProgress01 = _roundaboutProgress[index],
                 SpeedFactorNumerator = car.SpeedFactorNumerator,
-                WaitingForSpeedCredit = _creditWaiting[index]
+                WaitingForSpeedCredit = _creditWaiting[index],
+                FreeFlowStreak = _freeFlowStreak[index],
+                FreeFlowStreakMax = _freeFlowStreakMax[index]
             };
+        }
+
+        private void UpdateFreeFlowStreaks(RoadQueueNetwork net)
+        {
+            for (int carId = 0; carId < CarCount; carId++)
+            {
+                if (!_enqueued[carId]
+                    || !TryRoute(carId, out List<Vector2Int> route))
+                {
+                    continue;
+                }
+
+                int previousIndex = _tileIndices[carId];
+                bool moved = net.MovedThisTick(carId);
+                if (!moved)
+                {
+                    // WaitingForSpeedCredit means the slow vehicle is still making
+                    // normal progress over time, not that it hit a traffic stop.
+                    // A physical stop has no credit-wait marker and resets the streak.
+                    if (!_creditWaiting[carId])
+                    {
+                        if (_freeFlowStreak[carId] > 0)
+                        {
+                            int resetTileIndex = previousIndex + 1;
+                            if (resetTileIndex >= route.Count ||
+                                !_grid.IsIntersection(route[resetTileIndex]))
+                            {
+                                resetTileIndex = previousIndex;
+                            }
+
+                            if (resetTileIndex >= 0 &&
+                                resetTileIndex < route.Count &&
+                                _grid.IsIntersection(route[resetTileIndex]))
+                            {
+                                _freeFlowStreakLedger?.RecordReset(
+                                    route[resetTileIndex]);
+                            }
+                        }
+
+                        _freeFlowStreak[carId] = 0;
+                    }
+                    continue;
+                }
+
+                if (previousIndex < 0
+                    || previousIndex >= route.Count
+                    || _grid == null
+                    || !_grid.IsIntersection(route[previousIndex]))
+                {
+                    _freeFlowCountedIntersection[carId] = -1;
+                    continue;
+                }
+
+                // IntersectionAdvance can move through multiple internal stages while
+                // the route index is unchanged. Count that intersection once per route
+                // index, while still using MovedThisTick as the sole movement signal.
+                if (_freeFlowCountedIntersection[carId] == previousIndex) continue;
+                _freeFlowCountedIntersection[carId] = previousIndex;
+                _freeFlowStreak[carId] = Mathf.Min(
+                    _freeFlowStreak[carId] + 1,
+                    FreeFlowStreakCap);
+                _freeFlowStreakMax[carId] = Mathf.Max(
+                    _freeFlowStreakMax[carId],
+                    _freeFlowStreak[carId]);
+            }
         }
 
         public bool TryGetNextTile(int carId, Vector2Int current, out Vector2Int next, out Dir entryDirAtNext)
@@ -1041,6 +1158,12 @@ namespace CityFlow.Sim
                 _intersectionProgress[i] = -1f;
                 _linkProgress[i] = 0f;
                 _roundaboutProgress[i] = -1f;
+                if (!_freeFlowTripActive[i])
+                {
+                    _freeFlowStreak[i] = 0;
+                    _freeFlowStreakMax[i] = 0;
+                    _freeFlowTripActive[i] = true;
+                }
             }
         }
 
@@ -1760,7 +1883,19 @@ namespace CityFlow.Sim
             events.QueueTripArrival(new VehicleTripArrivedEvent(completed));
             // 방문 도착 보상. ArrivalEvent 를 타면 주간 적립·HUD·피드·퀘스트가 기존 구독으로 따라온다.
             if (completed.RewardCoins > 0)
-                events.QueueArrival(new ArrivalEvent(completed.Destination, completed.RewardCoins));
+            {
+                int freeFlowStreakMax =
+                    Mathf.Clamp(
+                        _freeFlowStreakMax[carId],
+                        0,
+                        FreeFlowStreakCap);
+                events.QueueArrival(
+                    new ArrivalEvent(
+                        completed.Destination,
+                        CalculateFreeFlowReward(
+                            completed.RewardCoins,
+                            freeFlowStreakMax)));
+            }
             ResetCarRuntimeState(carId);
 
             if (journey.TryBeginContinuation())
@@ -1887,6 +2022,23 @@ namespace CityFlow.Sim
             }
         }
 
+        internal static int CalculateFreeFlowReward(
+            int baseCoins,
+            int freeFlowStreakMax)
+        {
+            if (baseCoins <= 0)
+            {
+                return 0;
+            }
+
+            int stage = Mathf.Clamp(
+                freeFlowStreakMax,
+                0,
+                FreeFlowStreakCap);
+            return Mathf.RoundToInt(
+                baseCoins * (1f + FreeFlowStreakBonus[stage]));
+        }
+
         private void CancelAllSpecialJourneys()
         {
             var active = new List<SpecialTripJourney>(
@@ -1944,6 +2096,8 @@ namespace CityFlow.Sim
             _rescueViewRouteIndices[carId] = -1;
             _rescueStages[carId] = 0;
             _offNetworkBlockedTicks[carId] = 0;
+            _freeFlowCountedIntersection[carId] = -1;
+            _freeFlowTripActive[carId] = false;
         }
 
         private int FindCarIndex(CommuteCar target)

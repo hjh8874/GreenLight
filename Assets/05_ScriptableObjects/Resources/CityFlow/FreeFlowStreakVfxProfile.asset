@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b04b882f2444f59a49c1c6b7c6e4a10, type: 3}
+  m_Name: FreeFlowStreakVfxProfile
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.FreeFlowStreakVfxProfileSO
+  stageOneTint: {r: 0.82, g: 1, b: 0.82, a: 1}
+  stageTwoTint: {r: 0.55, g: 1, b: 0.58, a: 1}
+  stageThreeTint: {r: 0.18, g: 1, b: 0.28, a: 1}
+  vfxScale: 0.45
+  stageTwoPrefab: {fileID: 100000, guid: 5b8e4d6003c345844ba510013ead9315, type: 3}
+  stageThreeGlowPrefab: {fileID: 9144393426468053557, guid: 50534ff883a833e4e8070d3105087d27, type: 3}
+  stageThreeStarsPrefab: {fileID: 100000, guid: a8bc4c8952534334bbfcf03c2547fdb3, type: 3}
+  bottleneckMarkerColor: {r: 1, g: 0.72, b: 0.28, a: 1}
+  bottleneckMarkerScale: 0.35
+  bottleneckMarkerFadeSeconds: 1.5
+  bottleneckMarkerThreshold: 0.1
+  bottleneckMarkerPrefab: {fileID: 9144393426468053557, guid: 50534ff883a833e4e8070d3105087d27, type: 3}

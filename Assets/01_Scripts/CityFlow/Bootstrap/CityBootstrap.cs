@@ -102,6 +102,7 @@ namespace CityFlow.Bootstrap
                 Services.RegisterVehicleTrips(simEngine);
                 Services.RegisterRoadTraffic(simEngine.RoadTraffic);
                 Services.RegisterRoadRoutePlanning(simEngine);
+                Services.RegisterFreeFlowStreaks(simEngine.FreeFlowStreaks);
             }
 
             worldGridConsumer?.Initialize(Services);
