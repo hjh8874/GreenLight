@@ -12,6 +12,9 @@ namespace CityFlow.UI
         MonoBehaviour,
         ICityFlowServiceConsumer
     {
+        private static readonly Vector4 CategoryTabRaycastPadding =
+            new(8f, 3f, 8f, 3f);
+
         [Header("System References")]
         [Tooltip("씬에 배치된 PlacementManager (PlacementController) 오브젝트 연결")]
         [SerializeField] private PlacementController placementController;
@@ -139,6 +142,7 @@ namespace CityFlow.UI
                 int index = i; // 클로저 이슈 방지
                 if (categoryTabs[i] != null)
                 {
+                    ConfigureCategoryTabHitArea(categoryTabs[i]);
                     categoryTabs[i].onClick.AddListener(() => ShowCategory(index));
                 }
             }
@@ -537,6 +541,21 @@ namespace CityFlow.UI
                         label.text = titles[i];
                     }
                 }
+            }
+        }
+
+        private static void ConfigureCategoryTabHitArea(Button tab)
+        {
+            if (tab.targetGraphic is Image image)
+            {
+                image.raycastPadding = CategoryTabRaycastPadding;
+            }
+
+            TMPro.TMP_Text[] labels =
+                tab.GetComponentsInChildren<TMPro.TMP_Text>(true);
+            for (int index = 0; index < labels.Length; index++)
+            {
+                labels[index].raycastTarget = false;
             }
         }
 

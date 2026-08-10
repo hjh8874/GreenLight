@@ -72,6 +72,15 @@ namespace CityFlow.UI
             });
         }
 
+        public void HideImmediate()
+        {
+            transform.DOKill();
+            transform.localScale = Vector3.one;
+            gameObject.SetActive(false);
+            _onYes = null;
+            _onNo = null;
+        }
+
         private void OnYesClicked()
         {
             _onYes?.Invoke();

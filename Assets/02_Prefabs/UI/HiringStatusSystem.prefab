@@ -45,7 +45,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fffe4c78cb6964737aa8dce343295f1b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.HiringStatusOverlay
-  labelTemplate: {fileID: 6019478577714353711}
+  indicatorTemplate: {fileID: 3281055459271331342}
   heightOffset: 1.2
 --- !u!1 &5368569669655874264
 GameObject:
@@ -58,6 +58,7 @@ GameObject:
   - component: {fileID: 2430921168144096501}
   - component: {fileID: 942410097397139213}
   - component: {fileID: 6019478577714353711}
+  - component: {fileID: 3281055459271331342}
   m_Layer: 0
   m_Name: HiringLabelTemplate
   m_TagString: Untagged
@@ -91,7 +92,7 @@ MeshRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5368569669655874264}
-  m_Enabled: 1
+  m_Enabled: 0
   m_CastShadows: 0
   m_ReceiveShadows: 0
   m_DynamicOccludee: 1
@@ -140,7 +141,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 5368569669655874264}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9541d86e2fd84c1d9990edf0852d74ab, type: 3}
   m_Name: 
@@ -228,3 +229,19 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_renderer: {fileID: 942410097397139213}
   m_maskType: 0
+--- !u!114 &3281055459271331342
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5368569669655874264}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e7dd34d873bda548bb42d83725f5f64, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CityFlow.UI.HiringStatusIndicatorView
+  segmentSprite: {fileID: 21300000, guid: 3bde0d04e04fe462bb9132a6a509a237, type: 3}
+  fontAsset: {fileID: 11400000, guid: b4d0fcf3db685475bbd46fde9e8bd8a5, type: 2}
+  vacantColor: {r: 1, g: 1, b: 1, a: 1}
+  filledColor: {r: 0.4117647, g: 0.654902, b: 0.76862746, a: 1}

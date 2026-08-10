@@ -82,7 +82,13 @@ namespace CityFlow.UI
 
         private void EnsureManagers()
         {
-            if (_managersInitialized) return;
+            if (AreManagersReady())
+            {
+                _managersInitialized = true;
+                return;
+            }
+
+            ReleaseManagers();
 
             var uiRaycastBlocker = new UIRaycastBlocker();
 
@@ -108,6 +114,37 @@ namespace CityFlow.UI
             _inputHandler.OnCancelPlacementRequested += CancelPlacement;
 
             _managersInitialized = true;
+        }
+
+        private bool AreManagersReady()
+        {
+            return _managersInitialized &&
+                   _inputHandler != null &&
+                   _visualManager != null &&
+                   _costLabelManager != null &&
+                   _actionDispatcher != null;
+        }
+
+        private void ReleaseManagers()
+        {
+            if (_inputHandler != null)
+            {
+                _inputHandler.OnRotateRequested -= HandleRotate;
+                _inputHandler.OnDemolishRequested -= HandleDemolish;
+                _inputHandler.OnPlaceRequested -= HandlePlace;
+                _inputHandler.OnDragPlaceRequested -= HandleDragPlace;
+                _inputHandler.OnPlacementRejected -= HandlePlacementRejected;
+                _inputHandler.OnCancelPlacementRequested -= CancelPlacement;
+            }
+
+            _visualManager?.Cleanup();
+            _costLabelManager?.Cleanup();
+
+            _inputHandler = null;
+            _visualManager = null;
+            _costLabelManager = null;
+            _actionDispatcher = null;
+            _managersInitialized = false;
         }
 
         public void Initialize(CityFlowServices services)
@@ -308,12 +345,12 @@ namespace CityFlow.UI
 
         private void OnDestroy()
         {
-            _visualManager?.Cleanup();
-            _costLabelManager?.Cleanup();
+            ReleaseManagers();
         }
 
         private void Update()
         {
+            EnsureManagers();
 
             IWorldCoordinateSpace coordinateSpace =
                 _services?.WorldCoordinates;

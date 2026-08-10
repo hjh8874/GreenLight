@@ -8,6 +8,9 @@ namespace CityFlow.UI.Editor
 {
     public static class BuildPanelStyleApplier
     {
+        private static readonly Vector4 CategoryTabRaycastPadding =
+            new(8f, 3f, 8f, 3f);
+
         private const string SpriteRoot = "Assets/99_Download/Layer Lab/GUI-MonoRound/ResourcesData/Sprites/Components/";
         private const string FontPath = "Assets/99_Download/Fonts/NanumGothic SDF.asset";
         private const string PrefabPath = "Assets/02_Prefabs/UI_BuildSlot.prefab";
@@ -77,6 +80,7 @@ namespace CityFlow.UI.Editor
                         tabImg.type = Image.Type.Sliced;
                         tabImg.color = Color.white;
                         tabImg.raycastTarget = true;
+                        tabImg.raycastPadding = CategoryTabRaycastPadding;
                     }
 
                     TextMeshProUGUI label = tabTrans.GetComponentInChildren<TextMeshProUGUI>(true);
@@ -88,6 +92,7 @@ namespace CityFlow.UI.Editor
                         label.fontStyle = FontStyles.Bold;
                         label.color = Color.white;
                         label.alignment = TextAlignmentOptions.Center;
+                        label.raycastTarget = false;
                     }
                 }
             }

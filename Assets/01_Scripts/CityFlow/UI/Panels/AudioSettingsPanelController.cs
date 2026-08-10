@@ -15,6 +15,22 @@ namespace CityFlow.UI
         private const float DefaultVolume = 0.5f;
         private const float MinimumLinearVolume = 0.0001f;
         private const float PreferenceSaveDebounceSeconds = 0.2f;
+        private const float BgmRowVerticalPosition = -77f;
+        private const float SfxRowVerticalPosition = -120f;
+        private static readonly Color InputTextColor =
+            new(0.05f, 0.07f, 0.09f, 1f);
+        private static readonly Color InputPlaceholderColor =
+            new(0.18f, 0.22f, 0.26f, 0.72f);
+        private static readonly Color VolumeLabelColor =
+            new(0.94f, 0.97f, 1f, 1f);
+        private static readonly Color SliderTrackColor =
+            new(0.8f, 0.86f, 0.9f, 1f);
+        private static readonly Color SliderFillColor =
+            new(0.48f, 1f, 0.86f, 1f);
+        private static readonly Color SliderHandleColor =
+            new(0.96f, 1f, 1f, 1f);
+        private static readonly Color InputBackgroundColor =
+            new(0.94f, 0.97f, 1f, 1f);
 
         private static readonly string[] BgmParameterNames =
         {
@@ -51,8 +67,72 @@ namespace CityFlow.UI
 
         private void Awake()
         {
+            ApplyVolumeRowPosition(bgmSlider, BgmRowVerticalPosition);
+            ApplyVolumeRowPosition(sfxSlider, SfxRowVerticalPosition);
+            ApplyControlReadability(bgmSlider, bgmInput);
+            ApplyControlReadability(sfxSlider, sfxInput);
             ApplyInputTextReadability(bgmInput);
             ApplyInputTextReadability(sfxInput);
+        }
+
+        private static void ApplyVolumeRowPosition(
+            Slider slider,
+            float verticalPosition)
+        {
+            RectTransform row = slider != null
+                ? slider.transform.parent as RectTransform
+                : null;
+            if (row != null)
+            {
+                row.anchoredPosition = new Vector2(
+                    row.anchoredPosition.x,
+                    verticalPosition);
+            }
+        }
+
+        private static void ApplyControlReadability(
+            Slider slider,
+            TMP_InputField input)
+        {
+            if (slider != null)
+            {
+                TMP_Text label = slider.transform.parent != null
+                    ? slider.transform.parent.Find("Label")
+                        ?.GetComponent<TMP_Text>()
+                    : null;
+                if (label != null)
+                {
+                    label.color = VolumeLabelColor;
+                    label.fontSize = 16f;
+                    label.fontStyle = FontStyles.Bold;
+                }
+
+                ApplyImageColor(
+                    slider.transform.Find("Background"),
+                    SliderTrackColor);
+                ApplyImageColor(
+                    slider.transform.Find("Fill Area/Fill"),
+                    SliderFillColor);
+                ApplyImageColor(
+                    slider.transform.Find("Handle Slide Area/Handle"),
+                    SliderHandleColor);
+            }
+
+            if (input != null && input.targetGraphic is Image background)
+            {
+                background.color = InputBackgroundColor;
+            }
+        }
+
+        private static void ApplyImageColor(
+            Transform target,
+            Color color)
+        {
+            Image image = target != null ? target.GetComponent<Image>() : null;
+            if (image != null)
+            {
+                image.color = color;
+            }
         }
 
         private static void ApplyInputTextReadability(TMP_InputField input)
@@ -64,12 +144,16 @@ namespace CityFlow.UI
 
             if (input.textComponent != null)
             {
-                input.textComponent.color = Color.black;
+                input.textComponent.color = InputTextColor;
+                input.textComponent.fontSize = 15f;
+                input.textComponent.fontStyle = FontStyles.Bold;
             }
 
             if (input.placeholder is TMP_Text placeholder)
             {
-                placeholder.color = new Color(0.2f, 0.2f, 0.2f, 0.7f);
+                placeholder.color = InputPlaceholderColor;
+                placeholder.fontSize = 15f;
+                placeholder.fontStyle = FontStyles.Bold;
             }
         }
 
@@ -88,6 +172,10 @@ namespace CityFlow.UI
             sfxSlider = sfx;
             sfxInput = sfxPercentage;
             audioMixer = mixer;
+            ApplyVolumeRowPosition(bgmSlider, BgmRowVerticalPosition);
+            ApplyVolumeRowPosition(sfxSlider, SfxRowVerticalPosition);
+            ApplyControlReadability(bgmSlider, bgmInput);
+            ApplyControlReadability(sfxSlider, sfxInput);
             ApplyInputTextReadability(bgmInput);
             ApplyInputTextReadability(sfxInput);
 
@@ -394,3 +482,4 @@ namespace CityFlow.UI
         }
     }
 }
+

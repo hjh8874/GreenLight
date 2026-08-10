@@ -2,8 +2,8 @@ using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
-using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace CityFlow.UI
 {
@@ -12,20 +12,29 @@ namespace CityFlow.UI
     public sealed class HiringStatusOverlay
         : MonoBehaviour, ICityFlowServiceConsumer
     {
-        [Header("Label")]
-        [SerializeField] private TextMeshPro labelTemplate;
+        private const float RefreshInterval = 0.2f;
+        private const int OverlaySortingOrder = -10;
+
+        [Header("Indicator")]
+        [SerializeField] private HiringStatusIndicatorView indicatorTemplate;
         [SerializeField] private float heightOffset = 1.2f;
 
         private CityFlowServices _services;
         private readonly HashSet<Vector2Int> _trackedAnchors = new();
-        private readonly Dictionary<Vector2Int, TextMeshPro> _labels = new();
+        private readonly Dictionary<Vector2Int, HiringStatusIndicatorView>
+            _indicators = new();
         private readonly List<Vector2Int> _removedAnchors = new();
         private bool _subscribed;
+        private float _nextRefreshTime;
+        private BuildingInfoCardController _buildingInfoCard;
+        private Vector2Int? _suppressedAnchor;
+        private RectTransform _overlayCanvasRect;
 
         public void Initialize(CityFlowServices services)
         {
             Unsubscribe();
             _services = services;
+            BindBuildingInfoCard();
 
             if (_services?.Events == null) return;
             _services.Events.Placed += OnPlaced;
@@ -34,6 +43,7 @@ namespace CityFlow.UI
                 _services.Save.RestoreCompleted += OnRestoreCompleted;
             }
             _subscribed = true;
+            _nextRefreshTime = 0f;
 
             CollectExistingSites();
         }
@@ -47,11 +57,14 @@ namespace CityFlow.UI
         {
             IReadOnlyTileData tiles = _services?.TileData;
             IWorldGridAccess grid = _services?.WorldGrid;
-            if (tiles == null || grid == null) return;
+            if (tiles == null) return;
 
-            for (int y = 0; y < grid.WorldHeight; y++)
+            int worldWidth = grid?.WorldWidth ?? GridUtil.DefaultWidth;
+            int worldHeight = grid?.WorldHeight ?? GridUtil.DefaultHeight;
+
+            for (int y = 0; y < worldHeight; y++)
             {
-                for (int x = 0; x < grid.WorldWidth; x++)
+                for (int x = 0; x < worldWidth; x++)
                 {
                     var tile = new Vector2Int(x, y);
                     TryRegister(tile);
@@ -79,21 +92,73 @@ namespace CityFlow.UI
                     out CompanyStaffing staffing)) return;
 
             _trackedAnchors.Add(anchor);
-            RefreshLabel(anchor, staffing);
+            RefreshIndicator(
+                anchor,
+                staffing,
+                _services.WorldCoordinates,
+                Camera.main);
         }
 
-        private TextMeshPro CreateLabel(Vector2Int tile)
+        private HiringStatusIndicatorView CreateIndicator(Vector2Int tile)
         {
-            if (labelTemplate == null) return null;
+            if (indicatorTemplate == null) return null;
 
-            TextMeshPro label =
-                Instantiate(labelTemplate, labelTemplate.transform.parent);
-            label.name = $"HiringStatus_{tile.x}_{tile.y}";
-            label.gameObject.SetActive(true);
-            return label;
+            EnsureOverlayCanvas();
+            if (_overlayCanvasRect == null) return null;
+
+            HiringStatusIndicatorView indicator = Instantiate(
+                indicatorTemplate,
+                _overlayCanvasRect);
+            indicator.name = $"HiringStatus_{tile.x}_{tile.y}";
+            indicator.gameObject.SetActive(true);
+            return indicator;
+        }
+
+        private void EnsureOverlayCanvas()
+        {
+            if (_overlayCanvasRect != null)
+            {
+                return;
+            }
+
+            var canvasObject = new GameObject(
+                "HiringStatusCanvas",
+                typeof(RectTransform),
+                typeof(Canvas),
+                typeof(CanvasScaler));
+            canvasObject.transform.SetParent(transform, false);
+
+            Canvas canvas = canvasObject.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.overrideSorting = true;
+            canvas.sortingOrder = OverlaySortingOrder;
+
+            CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.screenMatchMode =
+                CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
+
+            _overlayCanvasRect =
+                canvasObject.GetComponent<RectTransform>();
         }
 
         private void Update()
+        {
+            if (_trackedAnchors.Count == 0) return;
+
+            UpdateIndicatorScreenPositions(Camera.main);
+            if (Time.unscaledTime < _nextRefreshTime)
+            {
+                return;
+            }
+
+            _nextRefreshTime = Time.unscaledTime + RefreshInterval;
+            RefreshTrackedCompanies();
+        }
+
+        private void RefreshTrackedCompanies()
         {
             if (_trackedAnchors.Count == 0) return;
 
@@ -112,69 +177,211 @@ namespace CityFlow.UI
                     continue;
                 }
 
-                RefreshLabel(anchor, staffing, space, cam);
+                RefreshIndicator(anchor, staffing, space, cam);
             }
 
             for (int i = 0; i < _removedAnchors.Count; i++)
             {
                 Vector2Int anchor = _removedAnchors[i];
-                RemoveLabel(anchor);
+                RemoveIndicator(anchor);
                 _trackedAnchors.Remove(anchor);
             }
 
             _removedAnchors.Clear();
         }
 
-        private void RefreshLabel(
+        private void RefreshIndicator(
             Vector2Int anchor,
             CompanyStaffing staffing,
             IWorldCoordinateSpace space = null,
             Camera cam = null)
         {
-            if (staffing.Filled >= staffing.Capacity)
+            if (staffing.Capacity <= 0 ||
+                staffing.Filled >= staffing.Capacity)
             {
-                RemoveLabel(anchor);
+                RemoveIndicator(anchor);
                 return;
             }
 
-            if (!_labels.TryGetValue(anchor, out TextMeshPro label) || label == null)
+            if (!_indicators.TryGetValue(
+                    anchor,
+                    out HiringStatusIndicatorView indicator) ||
+                indicator == null)
             {
-                label = CreateLabel(anchor);
-                if (label == null) return;
-                _labels[anchor] = label;
+                indicator = CreateIndicator(anchor);
+                if (indicator == null) return;
+                _indicators[anchor] = indicator;
             }
 
-            label.text = $"채용중 {staffing.Filled}/{staffing.Capacity}";
-            if (space != null)
+            indicator.Configure(staffing.Filled, staffing.Capacity);
+            UpdateIndicatorScreenPosition(
+                anchor,
+                indicator,
+                space,
+                cam);
+        }
+
+        private void UpdateIndicatorScreenPositions(Camera cam)
+        {
+            IWorldCoordinateSpace space = _services?.WorldCoordinates;
+
+            foreach (KeyValuePair<Vector2Int, HiringStatusIndicatorView>
+                     entry in _indicators)
             {
-                label.transform.position =
-                    space.GridToWorld(anchor, heightOffset);
-                if (space.Plane == WorldCoordinatePlane.XY)
+                if (entry.Value != null)
                 {
-                    label.transform.rotation = space.CoordinateRotation;
-                }
-                else if (cam != null)
-                {
-                    label.transform.rotation = cam.transform.rotation;
+                    UpdateIndicatorScreenPosition(
+                        entry.Key,
+                        entry.Value,
+                        space,
+                        cam);
                 }
             }
         }
 
-        private void RemoveLabel(Vector2Int anchor)
+        private void UpdateIndicatorScreenPosition(
+            Vector2Int anchor,
+            HiringStatusIndicatorView indicator,
+            IWorldCoordinateSpace space,
+            Camera cam)
         {
-            if (_labels.TryGetValue(anchor, out TextMeshPro label) &&
-                label != null)
+            bool projected = indicator.TrySetScreenPosition(
+                _overlayCanvasRect,
+                cam,
+                ResolveIndicatorPosition(anchor, space));
+            bool shouldShow = projected &&
+                              (!_suppressedAnchor.HasValue ||
+                               _suppressedAnchor.Value != anchor);
+            if (indicator.gameObject.activeSelf != shouldShow)
             {
-                Destroy(label.gameObject);
+                indicator.gameObject.SetActive(shouldShow);
+            }
+        }
+
+        private Vector3 ResolveIndicatorPosition(
+            Vector2Int anchor,
+            IWorldCoordinateSpace space)
+        {
+            Vector2Int footprint = TileFootprint.GetSize(TileType.Office);
+            Vector2Int far = anchor + footprint - Vector2Int.one;
+            if (space != null)
+            {
+                return (space.GridToWorld(anchor, heightOffset) +
+                        space.GridToWorld(far, heightOffset)) * 0.5f;
             }
 
-            _labels.Remove(anchor);
+            return (GridUtil.GridToWorld(anchor) +
+                    GridUtil.GridToWorld(far)) * 0.5f +
+                   Vector3.back * heightOffset;
+        }
+
+        private void RemoveIndicator(Vector2Int anchor)
+        {
+            if (_indicators.TryGetValue(
+                    anchor,
+                    out HiringStatusIndicatorView indicator) &&
+                indicator != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(indicator.gameObject);
+                }
+                else
+                {
+                    DestroyImmediate(indicator.gameObject);
+                }
+            }
+
+            _indicators.Remove(anchor);
         }
 
         private void OnDestroy() => Unsubscribe();
 
+        private void BindBuildingInfoCard()
+        {
+            _buildingInfoCard = FindAnyObjectByType<BuildingInfoCardController>(
+                FindObjectsInactive.Include);
+            if (_buildingInfoCard == null)
+            {
+                return;
+            }
+
+            _buildingInfoCard.VisibilityChanged +=
+                OnBuildingInfoVisibilityChanged;
+            if (_buildingInfoCard.IsVisible)
+            {
+                OnBuildingInfoVisibilityChanged(
+                    _buildingInfoCard.DisplayedTile,
+                    true);
+            }
+        }
+
+        private void OnBuildingInfoVisibilityChanged(
+            Vector2Int anchor,
+            bool visible)
+        {
+            if (visible)
+            {
+                if (_suppressedAnchor.HasValue &&
+                    _suppressedAnchor.Value != anchor)
+                {
+                    Vector2Int previousAnchor = _suppressedAnchor.Value;
+                    _suppressedAnchor = null;
+                    RefreshIndicatorForAnchor(previousAnchor);
+                }
+
+                _suppressedAnchor = anchor;
+                if (_indicators.TryGetValue(
+                        anchor,
+                        out HiringStatusIndicatorView indicator) &&
+                    indicator != null)
+                {
+                    indicator.gameObject.SetActive(false);
+                }
+
+                return;
+            }
+
+            if (!_suppressedAnchor.HasValue ||
+                _suppressedAnchor.Value != anchor)
+            {
+                return;
+            }
+
+            _suppressedAnchor = null;
+            RefreshIndicatorForAnchor(anchor);
+        }
+
+        private void RefreshIndicatorForAnchor(Vector2Int anchor)
+        {
+            IReadOnlyCityStats stats = _services?.Stats;
+            if (stats == null ||
+                !stats.TryGetCompanyStaffing(
+                    anchor,
+                    out CompanyStaffing staffing))
+            {
+                RemoveIndicator(anchor);
+                _trackedAnchors.Remove(anchor);
+                return;
+            }
+
+            RefreshIndicator(
+                anchor,
+                staffing,
+                _services?.WorldCoordinates,
+                Camera.main);
+        }
+
         private void Unsubscribe()
         {
+            if (_buildingInfoCard != null)
+            {
+                _buildingInfoCard.VisibilityChanged -=
+                    OnBuildingInfoVisibilityChanged;
+                _buildingInfoCard = null;
+            }
+
+            _suppressedAnchor = null;
             if (_subscribed && _services?.Events != null)
             {
                 _services.Events.Placed -= OnPlaced;

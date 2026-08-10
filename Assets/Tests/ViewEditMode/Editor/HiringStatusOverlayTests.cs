@@ -4,9 +4,8 @@ using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.UI;
 using NUnit.Framework;
-using TMPro;
 using UnityEngine;
-using UnityEngine.TestTools;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 // 이름 필터로 돌린다: run_tests(group_names=[".*HiringStatusOverlayTests.*"])
@@ -64,6 +63,177 @@ public class HiringStatusOverlayTests
     }
 
     [Test]
+    public void Initialize_WithoutWorldServices_UsesGridUtilFallback()
+    {
+        RunWithOverlay((overlay, tiles, stats, services) =>
+        {
+            var anchor = new Vector2Int(2, 3);
+            tiles.AddOffice(anchor);
+            stats.SetStaffing(anchor, 2, 6);
+
+            overlay.Initialize(services);
+
+            HiringStatusIndicatorView indicator =
+                IndicatorAt(overlay, anchor);
+            Vector3 expectedPosition =
+                (GridUtil.GridToWorld(anchor) +
+                 GridUtil.GridToWorld(anchor + Vector2Int.one)) * 0.5f +
+                Vector3.back * 1.2f;
+            Camera cam = Camera.main;
+            RectTransform canvasRect = OverlayCanvasRect(overlay);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                canvasRect,
+                cam.WorldToScreenPoint(expectedPosition),
+                null,
+                out Vector2 expectedLocalPosition);
+
+            Assert.AreEqual(1, LabelCount(overlay));
+            Assert.AreEqual(6, indicator.SegmentCount);
+            Assert.AreEqual(2, indicator.FilledSegmentCount);
+            Assert.That(
+                ((RectTransform)indicator.transform).anchoredPosition,
+                Is.EqualTo(expectedLocalPosition));
+            Assert.AreEqual(
+                RenderMode.ScreenSpaceOverlay,
+                canvasRect.GetComponent<Canvas>().renderMode);
+        });
+    }
+
+    [Test]
+    public void Update_HidesIndicator_WhenBuildingIsBehindCamera()
+    {
+        RunWithOverlay((overlay, tiles, stats, services) =>
+        {
+            var anchor = new Vector2Int(2, 3);
+            tiles.AddOffice(anchor);
+            stats.SetStaffing(anchor, 2, 6);
+            overlay.Initialize(services);
+
+            HiringStatusIndicatorView indicator =
+                IndicatorAt(overlay, anchor);
+            Assert.IsTrue(indicator.gameObject.activeSelf);
+
+            Camera cam = Camera.main;
+            Vector3 previousPosition = cam.transform.position;
+            Quaternion previousRotation = cam.transform.rotation;
+            try
+            {
+                cam.transform.SetPositionAndRotation(
+                    new Vector3(0f, 0f, 10f),
+                    Quaternion.identity);
+                InvokeScreenPositionUpdate(overlay, cam);
+
+                Assert.IsFalse(indicator.gameObject.activeSelf);
+            }
+            finally
+            {
+                cam.transform.SetPositionAndRotation(
+                    previousPosition,
+                    previousRotation);
+            }
+        });
+    }
+
+    [Test]
+    public void Initialize_ConfiguresSixSegments_FromOfficeStaffing()
+    {
+        RunWithOverlay((overlay, tiles, stats, services) =>
+        {
+            var anchor = new Vector2Int(2, 2);
+            tiles.AddOffice(anchor);
+            stats.SetStaffing(anchor, 1, 6);
+            services.RegisterWorldGrid(new FakeWorldGrid(6, 6));
+
+            overlay.Initialize(services);
+
+            HiringStatusIndicatorView indicator =
+                IndicatorAt(overlay, anchor);
+            Assert.AreEqual(6, indicator.SegmentCount);
+            Assert.AreEqual(1, indicator.FilledSegmentCount);
+            Assert.AreEqual("채용 중", indicator.StatusText);
+
+            List<Image> slots = IndicatorSlots(indicator);
+            Assert.That(
+                slots,
+                Has.All.Matches<Image>(slot =>
+                    slot.type == Image.Type.Simple));
+            Assert.That(
+                Mathf.Abs(Mathf.DeltaAngle(
+                    slots[0].rectTransform.localEulerAngles.z,
+                    slots[1].rectTransform.localEulerAngles.z)),
+                Is.EqualTo(60f).Within(0.01f));
+        });
+    }
+
+    [TestCase(2, 4)]
+    [TestCase(3, 5)]
+    public void Initialize_UsesActualCompanyCapacity(
+        int filled,
+        int capacity)
+    {
+        RunWithOverlay((overlay, tiles, stats, services) =>
+        {
+            var anchor = new Vector2Int(1, 1);
+            tiles.AddOffice(anchor);
+            stats.SetStaffing(anchor, filled, capacity);
+            services.RegisterWorldGrid(new FakeWorldGrid(4, 4));
+
+            overlay.Initialize(services);
+
+            HiringStatusIndicatorView indicator =
+                IndicatorAt(overlay, anchor);
+            Assert.AreEqual(capacity, indicator.SegmentCount);
+            Assert.AreEqual(filled, indicator.FilledSegmentCount);
+            Assert.AreEqual("채용 중", indicator.StatusText);
+        });
+    }
+
+    [Test]
+    public void BuildingInfoVisibility_HidesOnlyMatchingCompanyIndicator()
+    {
+        RunWithOverlay((overlay, tiles, stats, services) =>
+        {
+            var first = new Vector2Int(0, 0);
+            var second = new Vector2Int(4, 4);
+            tiles.AddOffice(first);
+            tiles.AddOffice(second);
+            stats.SetStaffing(first, 1, 6);
+            stats.SetStaffing(second, 2, 6);
+            services.RegisterWorldGrid(new FakeWorldGrid(8, 8));
+            overlay.Initialize(services);
+
+            InvokeBuildingInfoVisibility(overlay, first, true);
+
+            Assert.IsFalse(IndicatorAt(overlay, first).gameObject.activeSelf);
+            Assert.IsTrue(IndicatorAt(overlay, second).gameObject.activeSelf);
+
+            InvokeBuildingInfoVisibility(overlay, first, false);
+
+            Assert.IsTrue(IndicatorAt(overlay, first).gameObject.activeSelf);
+            Assert.IsTrue(IndicatorAt(overlay, second).gameObject.activeSelf);
+        });
+    }
+
+    [Test]
+    public void BuildingInfoClose_DoesNotRestoreFullyStaffedIndicator()
+    {
+        RunWithOverlay((overlay, tiles, stats, services) =>
+        {
+            var anchor = new Vector2Int(2, 2);
+            tiles.AddOffice(anchor);
+            stats.SetStaffing(anchor, 1, 6);
+            services.RegisterWorldGrid(new FakeWorldGrid(6, 6));
+            overlay.Initialize(services);
+
+            InvokeBuildingInfoVisibility(overlay, anchor, true);
+            stats.SetStaffing(anchor, 6, 6);
+            InvokeBuildingInfoVisibility(overlay, anchor, false);
+
+            Assert.AreEqual(0, LabelCount(overlay));
+        });
+    }
+
+    [Test]
     public void Update_RemovesLabel_WhenStaffingLookupFails()
     {
         RunWithOverlay((overlay, tiles, stats, services) =>
@@ -76,11 +246,7 @@ public class HiringStatusOverlayTests
             Assert.AreEqual(1, LabelCount(overlay));
 
             stats.Remove(anchor);
-            LogAssert.Expect(
-                LogType.Error,
-                new System.Text.RegularExpressions.Regex(
-                    "HiringStatus_1_2: Destroy may not be called from edit mode!"));
-            InvokeUpdate(overlay);
+            InvokeRefresh(overlay);
 
             Assert.AreEqual(0, LabelCount(overlay),
                 "철거로 staffing 조회가 실패하면 라벨을 제거해야 한다");
@@ -102,16 +268,12 @@ public class HiringStatusOverlayTests
             Assert.AreEqual(1, LabelCount(overlay));
 
             stats.SetStaffing(anchor, 2, 2);
-            LogAssert.Expect(
-                LogType.Error,
-                new System.Text.RegularExpressions.Regex(
-                    "HiringStatus_1_2: Destroy may not be called from edit mode!"));
-            InvokeUpdate(overlay);
+            InvokeRefresh(overlay);
             Assert.AreEqual(0, LabelCount(overlay),
                 "정원이 차면 라벨만 제거하고 회사 앵커는 계속 추적해야 한다");
 
             stats.SetStaffing(anchor, 1, 2);
-            InvokeUpdate(overlay);
+            InvokeRefresh(overlay);
             Assert.AreEqual(1, LabelCount(overlay),
                 "추적 중인 회사의 인력이 줄면 다음 폴링에서 라벨을 재생성해야 한다");
         });
@@ -121,14 +283,21 @@ public class HiringStatusOverlayTests
         Action<HiringStatusOverlay, FakeTileData, FakeStats, CityFlowServices> test)
     {
         var owner = new GameObject("overlay");
-        var templateOwner = new GameObject("template");
+        var templateOwner = new GameObject(
+            "template",
+            typeof(RectTransform));
+        var cameraOwner = new GameObject("camera", typeof(Camera));
         try
         {
-            TextMeshPro template = templateOwner.AddComponent<TextMeshPro>();
-            template.gameObject.SetActive(false);
+            cameraOwner.tag = "MainCamera";
+            cameraOwner.transform.position = new Vector3(0f, 0f, -10f);
+
+            HiringStatusIndicatorView template =
+                templateOwner.AddComponent<HiringStatusIndicatorView>();
+            templateOwner.SetActive(false);
 
             var overlay = owner.AddComponent<HiringStatusOverlay>();
-            SetPrivate(overlay, "labelTemplate", template);
+            SetPrivate(overlay, "indicatorTemplate", template);
 
             var tiles = new FakeTileData();
             var stats = new FakeStats();
@@ -138,19 +307,66 @@ public class HiringStatusOverlayTests
         }
         finally
         {
+            HiringStatusIndicatorView[] indicators =
+                Object.FindObjectsByType<HiringStatusIndicatorView>(
+                    FindObjectsInactive.Include,
+                    FindObjectsSortMode.None);
+            for (int index = 0; index < indicators.Length; index++)
+            {
+                if (indicators[index] != null)
+                {
+                    Object.DestroyImmediate(indicators[index].gameObject);
+                }
+            }
+
             Object.DestroyImmediate(owner);
-            Object.DestroyImmediate(templateOwner);
+            Object.DestroyImmediate(cameraOwner);
         }
+    }
+
+    static RectTransform OverlayCanvasRect(HiringStatusOverlay overlay)
+    {
+        var field = typeof(HiringStatusOverlay).GetField(
+            "_overlayCanvasRect",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        return (RectTransform)field.GetValue(overlay);
     }
 
     static int LabelCount(HiringStatusOverlay overlay)
     {
         var field = typeof(HiringStatusOverlay).GetField(
-            "_labels",
+            "_indicators",
             System.Reflection.BindingFlags.Instance |
             System.Reflection.BindingFlags.NonPublic);
-        var labels = (Dictionary<Vector2Int, TextMeshPro>)field.GetValue(overlay);
-        return labels.Count;
+        var indicators =
+            (Dictionary<Vector2Int, HiringStatusIndicatorView>)
+            field.GetValue(overlay);
+        return indicators.Count;
+    }
+
+    static HiringStatusIndicatorView IndicatorAt(
+        HiringStatusOverlay overlay,
+        Vector2Int anchor)
+    {
+        var field = typeof(HiringStatusOverlay).GetField(
+            "_indicators",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        var indicators =
+            (Dictionary<Vector2Int, HiringStatusIndicatorView>)
+            field.GetValue(overlay);
+        return indicators[anchor];
+    }
+
+    static List<Image> IndicatorSlots(
+        HiringStatusIndicatorView indicator)
+    {
+        var field = typeof(HiringStatusIndicatorView).GetField(
+            "_segments",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic);
+        return (List<Image>)field.GetValue(indicator);
     }
 
     static int TrackedAnchorCount(HiringStatusOverlay overlay)
@@ -163,13 +379,36 @@ public class HiringStatusOverlayTests
         return anchors.Count;
     }
 
-    static void InvokeUpdate(HiringStatusOverlay overlay)
+    static void InvokeRefresh(HiringStatusOverlay overlay)
     {
         typeof(HiringStatusOverlay).GetMethod(
-            "Update",
+            "RefreshTrackedCompanies",
             System.Reflection.BindingFlags.Instance |
             System.Reflection.BindingFlags.NonPublic)
             .Invoke(overlay, null);
+    }
+
+    static void InvokeBuildingInfoVisibility(
+        HiringStatusOverlay overlay,
+        Vector2Int anchor,
+        bool visible)
+    {
+        typeof(HiringStatusOverlay).GetMethod(
+            "OnBuildingInfoVisibilityChanged",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)
+            .Invoke(overlay, new object[] { anchor, visible });
+    }
+
+    static void InvokeScreenPositionUpdate(
+        HiringStatusOverlay overlay,
+        Camera cam)
+    {
+        typeof(HiringStatusOverlay).GetMethod(
+            "UpdateIndicatorScreenPositions",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)
+            .Invoke(overlay, new object[] { cam });
     }
 
     static void SetPrivate(object target, string field, object value)

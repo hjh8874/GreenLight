@@ -8,6 +8,9 @@ namespace CityFlow.UI
     public class SettingsPanelController : MonoBehaviour,
         ICityFlowServiceConsumer
     {
+        private const string RedundantCongestionToggleName =
+            "CongestionViewToggle";
+
         [Header("Settings UI")]
         [SerializeField] private Button btnQuitGame;
         [SerializeField] private Button btnTitleScene;
@@ -15,6 +18,27 @@ namespace CityFlow.UI
 
         private CityFlowServices services;
         private bool isBound;
+
+        private void Awake()
+        {
+            RemoveRedundantCongestionToggle();
+        }
+
+        private void RemoveRedundantCongestionToggle()
+        {
+            Transform redundantToggle =
+                transform.Find(RedundantCongestionToggleName);
+            if (redundantToggle == null)
+            {
+                return;
+            }
+
+            redundantToggle.gameObject.SetActive(false);
+            if (Application.isPlaying)
+            {
+                Destroy(redundantToggle.gameObject);
+            }
+        }
 
         public void Configure(
             Button quitGame,

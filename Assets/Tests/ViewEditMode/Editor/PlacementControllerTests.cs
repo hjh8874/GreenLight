@@ -307,6 +307,64 @@ namespace Tests.EditMode
             }
         }
 
+        [Test]
+        public void Initialize_WhenManagerReferencesAreLost_RebuildsManagers()
+        {
+            var go = new GameObject("ControllerWithLostManagers");
+            var controller = go.AddComponent<PlacementController>();
+
+            try
+            {
+                SetPrivateField<PlacementController, PlacementInputHandler>(
+                    controller,
+                    "_inputHandler",
+                    null);
+                SetPrivateField<PlacementController, PlacementVisualManager>(
+                    controller,
+                    "_visualManager",
+                    null);
+                SetPrivateField<PlacementController, PlacementCostLabelManager>(
+                    controller,
+                    "_costLabelManager",
+                    null);
+                SetPrivateField<PlacementController, PlacementActionDispatcher>(
+                    controller,
+                    "_actionDispatcher",
+                    null);
+                SetPrivateField(
+                    controller,
+                    "_managersInitialized",
+                    true);
+
+                Assert.DoesNotThrow(() => controller.Initialize(null));
+
+                Assert.That(
+                    GetPrivateField<PlacementInputHandler>(
+                        controller,
+                        "_inputHandler"),
+                    Is.Not.Null);
+                Assert.That(
+                    GetPrivateField<PlacementVisualManager>(
+                        controller,
+                        "_visualManager"),
+                    Is.Not.Null);
+                Assert.That(
+                    GetPrivateField<PlacementCostLabelManager>(
+                        controller,
+                        "_costLabelManager"),
+                    Is.Not.Null);
+                Assert.That(
+                    GetPrivateField<PlacementActionDispatcher>(
+                        controller,
+                        "_actionDispatcher"),
+                    Is.Not.Null);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
         [TestCase(TileType.House)]
         [TestCase(TileType.Office)]
         [TestCase(TileType.School)]
@@ -2679,3 +2737,4 @@ namespace Tests.EditMode
         }
     }
 }
+
