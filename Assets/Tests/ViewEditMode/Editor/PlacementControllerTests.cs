@@ -2700,6 +2700,66 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void PointerOverBlockingUI_DrainsAcceptedRoadTilesInOrder()
+        {
+            var go = new GameObject("RoadBlockingUiQueueController");
+            var controller = go.AddComponent<PlacementController>();
+            var placement = new CountingPlacementService();
+
+            try
+            {
+                controller.SetFakeMode(false);
+                controller.Initialize(new CityFlowServices(
+                    new SimEventHub(),
+                    new TestTileData(),
+                    placement));
+                controller.SetBuildType(TileType.Road);
+
+                MethodInfo handlePlace = typeof(PlacementController).GetMethod(
+                    "HandlePlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo handleDrag = typeof(PlacementController).GetMethod(
+                    "HandleDragPlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo handleBlockingUi =
+                    typeof(PlacementController).GetMethod(
+                        "HandlePointerOverBlockingUI",
+                        BindingFlags.NonPublic | BindingFlags.Instance);
+
+                handlePlace.Invoke(
+                    controller,
+                    new object[] { new Vector2Int(0, 0) });
+                handleDrag.Invoke(
+                    controller,
+                    new object[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(0, 3)
+                    });
+
+                for (int index = 0; index < 3; index++)
+                {
+                    SetPrivateField(controller, "_nextPlacementTime", 0f);
+                    handleBlockingUi.Invoke(controller, null);
+                }
+
+                CollectionAssert.AreEqual(
+                    new[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(0, 1),
+                        new Vector2Int(0, 2),
+                        new Vector2Int(0, 3)
+                    },
+                    placement.PlacedTiles);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
         public void PlacementBacklogPolicy_DropsStaleAndExcessiveRequests()
         {
             Assert.IsFalse(

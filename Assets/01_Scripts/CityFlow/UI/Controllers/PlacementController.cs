@@ -441,18 +441,7 @@ namespace CityFlow.UI
 
             if (_inputHandler.IsPointerOverBlockingUI())
             {
-                if (_currentType == TileType.Road)
-                {
-                    _roadStrokeLastAcceptedCoord = null;
-                }
-                else
-                {
-                    ClearPendingPlacements();
-                }
-                _inputHandler.ResetPlacementDragState();
-                _visualManager.SetGhostActive(false);
-                _costLabelManager.SetCostLabelActive(false);
-                _visualManager.HideBenefitHighlights();
+                HandlePointerOverBlockingUI();
                 return;
             }
 
@@ -509,6 +498,24 @@ namespace CityFlow.UI
                 _services);
             bool affordable = _services?.Economy == null || _services.Economy.Coins >= cost;
             _costLabelManager.UpdateCost(cost, affordable, canPlace, Time.deltaTime);
+        }
+
+        private void HandlePointerOverBlockingUI()
+        {
+            if (_currentType == TileType.Road)
+            {
+                _roadStrokeLastAcceptedCoord = null;
+                ProcessPendingPlacements();
+            }
+            else
+            {
+                ClearPendingPlacements();
+            }
+
+            _inputHandler.ResetPlacementDragState();
+            _visualManager.SetGhostActive(false);
+            _costLabelManager.SetCostLabelActive(false);
+            _visualManager.HideBenefitHighlights();
         }
 
         private void HandleRotate()
