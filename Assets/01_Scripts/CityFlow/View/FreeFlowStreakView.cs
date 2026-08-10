@@ -32,6 +32,19 @@ namespace CityFlow.View
             propertyBlock = new MaterialPropertyBlock();
         }
 
+        // 차량 오브젝트는 풀링된다(CarMotion.TakeFreeVehicle / DeactivateCommuteVehicle).
+        // 이 컴포넌트는 재사용되는 오브젝트에 그대로 붙어 있으므로, 캐시를 비우지 않으면
+        // 다음 차량이 이전 차량의 CarStyle 색으로 복원된다 —
+        // "전부 흰색"은 막아도 "옆 차 색"이 남는다.
+        // appliedStage 도 함께 되돌린다. 안 그러면 재사용된 차의 단계가 우연히
+        // 이전과 같을 때 ApplyStage 가 조기 반환해 틴트·VFX 가 이전 상태로 이어진다.
+        // (같은 부류의 방어가 CarMotion.cs:842 "하드 리셋(캐시 가드 우회)"에 이미 있다.)
+        private void OnEnable()
+        {
+            originalColorsCached = false;
+            appliedStage = -1;
+        }
+
         internal void ApplySnapshot(CarSnapshot snapshot)
         {
             ApplyStage(snapshot.FreeFlowStreak);

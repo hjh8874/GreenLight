@@ -10,8 +10,12 @@ namespace CityFlow.Sim
         private const float DecayMultiplier = 0.995f;
         // 플레이테스트 전 임시값: 강도 포화 누적량은 이후 밸런스 조정 대상이다.
         private const float IntensityScale = 8f;
-        // 이 값 밑으로 내려간 누적은 화면에도 안 보이고(표시 임계 0.1 = 누적 0.8)
-        // 되살아날 일도 없다. 사전에서 빼서 감쇠 대상에서 제외한다.
+        // 이 값 밑으로 내려간 누적은 사전에서 빼서 감쇠 대상에서 제외한다.
+        // ⚠️ 안전 마진이 뷰의 표시 임계에 의존한다. 표시 임계는 코드 상수가 아니라
+        // FreeFlowStreakVfxProfileSO.bottleneckMarkerThreshold(기본 0.1) 이므로
+        // 디자이너가 바꿀 수 있다. 기본값이면 누적 0.8 에서 보이기 시작해 80배 여유지만,
+        // 임계를 0.00125(= PruneThreshold / IntensityScale) 미만으로 내리면
+        // 가장 옅은 병목이 영영 안 보인다 — 그때는 이 값도 같이 내려야 한다.
         private const float PruneThreshold = 0.01f;
 
         private readonly int width;
