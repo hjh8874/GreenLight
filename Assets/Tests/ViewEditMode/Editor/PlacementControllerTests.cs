@@ -2478,7 +2478,7 @@ namespace Tests.EditMode
         }
 
         [Test]
-        public void HandlePlace_BuildingPlacement_KeepsPlacementModeOnSuccess()
+        public void HandlePlace_BuildingPlacement_ExitsPlacementModeOnSuccess()
         {
             var go = new GameObject("Controller");
             var controller = go.AddComponent<PlacementController>();
@@ -2486,6 +2486,9 @@ namespace Tests.EditMode
 
             try
             {
+                bool buildingPlacementCompleted = false;
+                controller.BuildingPlacementCompleted +=
+                    () => buildingPlacementCompleted = true;
                 var economy = new TestEconomyService { Coins = 100 };
                 var services = new CityFlowServices(
                     new SimEventHub(),
@@ -2514,9 +2517,12 @@ namespace Tests.EditMode
                     BindingFlags.NonPublic | BindingFlags.Instance);
                 updateMethod.Invoke(controller, new object[] { new Vector2Int(0, 0) });
 
-                Assert.IsTrue(
+                Assert.IsFalse(
                     controller.IsBuildingMode,
-                    "Building placement must remain selected for continuous building.");
+                    "Building placement must exit placement mode after success.");
+                Assert.IsTrue(
+                    buildingPlacementCompleted,
+                    "Building placement must request closing the build menu.");
             }
             finally
             {

@@ -66,6 +66,7 @@ namespace CityFlow.UI
         public CityFlow.Content.BuildingDefinitionSO HospitalDefinition => hospitalDefinition;
         public event Action PlacementSucceeded;
         public event Action<Vector2Int, TileType> PlacementConfirmed;
+        public event Action BuildingPlacementCompleted;
         public event Action PlacementRejected;
         public event Action DemolitionSucceeded;
 
@@ -690,6 +691,12 @@ namespace CityFlow.UI
                     request.Type);
                 PlacementSucceeded?.Invoke();
 
+                if (TileFootprint.IsBuilding(request.Type))
+                {
+                    ToggleBuildMode(false);
+                    BuildingPlacementCompleted?.Invoke();
+                }
+
                 if (Application.isPlaying &&
                     logPlacementModeDiagnostics)
                 {
@@ -704,9 +711,12 @@ namespace CityFlow.UI
                         this);
                 }
 
-                _nextPlacementTime =
-                    Time.unscaledTime +
-                    Mathf.Max(0f, placementIntervalSeconds);
+                if (_isBuildingMode)
+                {
+                    _nextPlacementTime =
+                        Time.unscaledTime +
+                        Mathf.Max(0f, placementIntervalSeconds);
+                }
                 return;
             }
         }
