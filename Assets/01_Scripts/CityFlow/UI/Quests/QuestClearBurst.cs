@@ -1,22 +1,16 @@
-using CityFlow.Bootstrap;
-using CityFlow.Gameplay.Quests;
 using CityFlow.Managers;
-using CityFlow.Sim.Quests;
 using DG.Tweening;
 using UnityEngine;
 
 namespace CityFlow.UI.Quests
 {
-    // 퀘스트 클리어 축하 연출. 팝업이 사라지는 그 자리에서 컨페티가 터지고
+    // 퀘스트 클리어 축하 연출. 팝업이 사라지는 자리에서 컨페티가 터지고
     // 카메라가 살짝 흔들린다.
     //
-    // FlowBurstJuice 와 같은 구조다 — 이벤트만 듣는 독립 유닛이라
-    // 팝업(QuestBubbleUI) 교체·재생성에 흔들리지 않는다.
-    //
-    // ⚠️ CityQuestSystem.ViewStateChanged 가 아니라 QuestCompleted 를 듣는다.
-    // ViewStateChanged 는 "지금 보여줄 퀘스트"가 바뀔 때마다 울려서
-    // 우선순위 끼어들기·세이브 복원에서도 발생한다 — 거기 걸면 엉뚱할 때 터진다.
-    public sealed class QuestClearBurst : MonoBehaviour, ICityFlowServiceConsumer
+    // 이 컴포넌트는 "언제 터질지"를 모른다. 순수 연출 유닛이라
+    // 퀘스트 시스템 타입을 참조하지 않는다 — 호출은 QuestRuntimeHost 가 한다.
+    // (리뷰 #251: UI 가 구현 타입을 직접 탐색하면 Contracts 경계를 우회한다.)
+    public sealed class QuestClearBurst : MonoBehaviour
     {
         private const string ConfettiResourcePath =
             "CityFlow/FX_QuestClearConfetti";
@@ -26,29 +20,28 @@ namespace CityFlow.UI.Quests
         // 퀘스트 클리어는 자주 일어나므로 더 조심해야 한다.
         private const float ShakeStrength = 0.18f;
         private const float ConfettiLifetimeSeconds = 3f;
+        // 파티클을 카메라 앞 몇 유닛에 놓을지. 2D 직교라 값 자체는 중요하지 않고
+        // 근/원평면 사이이기만 하면 된다.
+        private const float ConfettiCameraDistance = 10f;
 
-        [SerializeField] private RectTransform burstAnchor;
-
-        private CityQuestSystemBridge bridge;
         private GameObject confettiPrefab;
+        private RectTransform anchor;
+        private Canvas anchorCanvas;
         private Tween shakeTween;
 
-        public void Initialize(CityFlowServices services)
+        private void Awake()
         {
-            if (!isActiveAndEnabled)
-            {
-                return;
-            }
-
             confettiPrefab = Resources.Load<GameObject>(ConfettiResourcePath);
-            bridge = new CityQuestSystemBridge(this);
-            bridge.Bind();
         }
 
-        private void OnDestroy()
+        // 터질 자리를 알려준다. 퀘스트 팝업은 런타임에 생성되므로
+        // 인스펙터로는 꽂을 수 없다 — 생성한 쪽이 넘겨준다.
+        internal void SetAnchor(RectTransform value)
         {
-            bridge?.Unbind();
-            shakeTween?.Kill(complete: true);
+            anchor = value;
+            anchorCanvas = value != null
+                ? value.GetComponentInParent<Canvas>()
+                : null;
         }
 
         internal void PlayBurst()
@@ -66,17 +59,37 @@ namespace CityFlow.UI.Quests
                 return;
             }
 
-            // 팝업이 사라지는 자리에서 터진다. 앵커가 없으면 화면 중앙.
-            Transform parent = burstAnchor != null
-                ? burstAnchor
-                : transform;
             GameObject instance = Instantiate(
                 confettiPrefab,
-                parent.position,
-                Quaternion.identity,
-                parent);
+                ResolveBurstWorldPosition(),
+                Quaternion.identity);
             instance.name = "QuestClearConfetti";
             Destroy(instance, ConfettiLifetimeSeconds);
+        }
+
+        // 파티클은 월드 공간에 둔다. UI 캔버스의 자식으로 넣으면
+        // Screen Space - Overlay 에서는 렌더되지 않거나 스케일이 어긋난다
+        // (리뷰 #251 자동검증 지적). 앵커의 화면 좌표를 월드로 되돌려 쓴다.
+        private Vector3 ResolveBurstWorldPosition()
+        {
+            Camera cam = Camera.main;
+            if (cam == null || anchor == null)
+            {
+                return transform.position;
+            }
+
+            Camera uiCamera =
+                anchorCanvas != null &&
+                anchorCanvas.renderMode != RenderMode.ScreenSpaceOverlay
+                    ? anchorCanvas.worldCamera
+                    : null;
+            Vector3 screenPoint = RectTransformUtility.WorldToScreenPoint(
+                uiCamera,
+                anchor.position);
+            return cam.ScreenToWorldPoint(new Vector3(
+                screenPoint.x,
+                screenPoint.y,
+                ConfettiCameraDistance));
         }
 
         private void ShakeCamera()
@@ -95,48 +108,9 @@ namespace CityFlow.UI.Quests
                 .SetUpdate(true);
         }
 
-        // 씬에 CityQuestSystem 이 언제 생기는지 보장되지 않아 지연 바인딩한다.
-        private sealed class CityQuestSystemBridge
+        private void OnDestroy()
         {
-            private readonly QuestClearBurst owner;
-            private CityQuestSystem system;
-
-            internal CityQuestSystemBridge(QuestClearBurst owner)
-            {
-                this.owner = owner;
-            }
-
-            internal void Bind()
-            {
-                if (system != null)
-                {
-                    return;
-                }
-
-                system = Object.FindFirstObjectByType<CityQuestSystem>();
-                if (system == null)
-                {
-                    return;
-                }
-
-                system.QuestCompleted += OnQuestCompleted;
-            }
-
-            internal void Unbind()
-            {
-                if (system == null)
-                {
-                    return;
-                }
-
-                system.QuestCompleted -= OnQuestCompleted;
-                system = null;
-            }
-
-            private void OnQuestCompleted(CityQuestId id)
-            {
-                owner.PlayBurst();
-            }
+            shakeTween?.Kill(complete: true);
         }
     }
 }
