@@ -604,7 +604,8 @@ namespace CityFlow.UI
 
             Image image = GetComponent<Image>() ?? gameObject.AddComponent<Image>();
             image.color = Color.clear;
-            image.raycastTarget = false;
+            // 검은 배경은 제거하되 투명 영역을 통한 월드 클릭은 차단한다.
+            image.raycastTarget = true;
         }
 
         private void CreateTrafficStatusChip(TMP_Text styleSource)

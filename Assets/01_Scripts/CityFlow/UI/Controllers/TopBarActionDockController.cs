@@ -30,20 +30,15 @@ namespace CityFlow.UI.Controllers
                     rect.SetParent(topBar, false);
                 }
 
-                float topBarHeight = topBar.rect.height > 0f
-                    ? topBar.rect.height
-                    : HudTopBarLayout.TopBarHeight;
-                rect.anchorMin = new Vector2(1f, 0.5f);
-                rect.anchorMax = new Vector2(1f, 0.5f);
-                rect.pivot = new Vector2(1f, 0.5f);
+                rect.anchorMin = new Vector2(0f, 0f);
+                rect.anchorMax = new Vector2(0f, 0f);
+                rect.pivot = new Vector2(0f, 1f);
                 rect.anchoredPosition = new Vector2(
-                    -HudTopBarLayout.ActionDockRightInset,
-                    0f);
+                    HudTopBarLayout.ActionDockLeftInset,
+                    -HudTopBarLayout.ActionDockTopGap);
                 rect.sizeDelta = new Vector2(
                     HudTopBarLayout.ActionDockWidth,
-                    Mathf.Max(
-                        1f,
-                        topBarHeight - HudTopBarLayout.VerticalInset * 2f));
+                    HudTopBarLayout.ActionDockHeight);
             }
 
             Image background = GetComponent<Image>();
@@ -71,7 +66,7 @@ namespace CityFlow.UI.Controllers
             Sprite cameraButtonSprite = FindCameraButtonSprite();
             for (int index = 0; index < buttons.Length; index++)
             {
-                if (hasTopBar)
+                if (hasTopBar && buttons[index].transform.parent == transform)
                 {
                     ApplyButtonLayout(buttons[index]);
                 }

@@ -106,21 +106,23 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(dock.transform.parent, Is.SameAs(topBar.transform));
                 Assert.That(
                     dockRect.anchorMin,
-                    Is.EqualTo(new Vector2(1f, 0.5f)));
+                    Is.EqualTo(new Vector2(0f, 0f)));
                 Assert.That(
                     dockRect.anchorMax,
-                    Is.EqualTo(new Vector2(1f, 0.5f)));
+                    Is.EqualTo(new Vector2(0f, 0f)));
+                Assert.That(
+                    dockRect.pivot,
+                    Is.EqualTo(new Vector2(0f, 1f)));
                 Assert.That(
                     dockRect.anchoredPosition,
                     Is.EqualTo(new Vector2(
-                        -HudTopBarLayout.ActionDockRightInset,
-                        0f)));
+                        HudTopBarLayout.ActionDockLeftInset,
+                        -HudTopBarLayout.ActionDockTopGap)));
                 Assert.That(
                     dockRect.sizeDelta,
                     Is.EqualTo(new Vector2(
                         HudTopBarLayout.ActionDockWidth,
-                        HudTopBarLayout.TopBarHeight -
-                        HudTopBarLayout.VerticalInset * 2f)));
+                        HudTopBarLayout.ActionDockHeight)));
                 Assert.That(topBar.GetComponent<RectMask2D>(), Is.Null);
             }
             finally

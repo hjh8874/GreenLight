@@ -35,6 +35,13 @@ namespace CityFlow.UI
 
         public MenuType CurrentMenu => _currentMenu;
         public bool IsAnyMenuOpen => _currentMenu != MenuType.None;
+        public bool HasExternalUiReferences =>
+            btnFloatingMode != null &&
+            panelBuild != null &&
+            panelResearch != null &&
+            panelStats != null &&
+            panelSettings != null &&
+            panelFloating != null;
 
         public event Action<MenuType> MenuChanged;
 
@@ -67,6 +74,47 @@ namespace CityFlow.UI
         public void RebindResearchPanel(GameObject researchPanel)
         {
             panelResearch = researchPanel;
+        }
+
+        /// <summary>
+        /// Prefab 인스턴스는 Scene 오브젝트 참조를 직렬화할 수 없으므로
+        /// UI_MainCanvasRoot의 런타임 Binder가 배치 컨트롤러를 다시 주입합니다.
+        /// </summary>
+        public void RebindPlacementController(PlacementController placement)
+        {
+            if (placement != null)
+            {
+                placementController = placement;
+            }
+        }
+
+        public void RebindExternalUi(
+            Button floatingButton,
+            GameObject buildPanel,
+            GameObject researchPanel,
+            GameObject statsPanel,
+            GameObject settingsPanel,
+            GameObject floatingPanel)
+        {
+            bool bindFloatingButton =
+                _isBound &&
+                btnFloatingMode == null &&
+                floatingButton != null;
+
+            btnFloatingMode = floatingButton ?? btnFloatingMode;
+            panelBuild = buildPanel ?? panelBuild;
+            panelResearch = researchPanel ?? panelResearch;
+            panelStats = statsPanel ?? panelStats;
+            panelSettings = settingsPanel ?? panelSettings;
+            panelFloating = floatingPanel ?? panelFloating;
+
+            if (bindFloatingButton)
+            {
+                btnFloatingMode.onClick.AddListener(
+                    () => ToggleMenu(MenuType.Floating));
+                SetButtonLabel(btnFloatingMode, "플로팅");
+                MatchButtonStyle(btnFloatingMode, btnResearch);
+            }
         }
 
         private void Awake()

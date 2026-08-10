@@ -42,6 +42,23 @@ namespace CityFlow.UI.Feed
         [SerializeField] private TileSelectionController tileSelection;
 
         public GreenFeedPanelController Controller => controller;
+        public TileSelectionController TileSelection => tileSelection;
+        public ClickAction Action => clickAction;
+
+        public void RebindRuntimeReferences(
+            GreenFeedPanelController targetController,
+            TileSelectionController targetTileSelection)
+        {
+            if (targetController != null)
+            {
+                controller = targetController;
+            }
+
+            if (targetTileSelection != null)
+            {
+                tileSelection = targetTileSelection;
+            }
+        }
 
         public void Configure(
             GreenFeedPanelController targetController,

@@ -20,6 +20,10 @@ public class StatsPanelPresentationTests
                 owner.AddComponent<StatsPanelController>();
             controller.Configure(null, null);
 
+            Image ownerBackdrop = owner.GetComponent<Image>();
+            Assert.That(ownerBackdrop.color.a, Is.EqualTo(0f));
+            Assert.That(ownerBackdrop.raycastTarget, Is.True);
+
             RectTransform dashboard = controller.DashboardRootForTest;
             Assert.NotNull(dashboard);
             Assert.That(dashboard.rect.width, Is.LessThanOrEqualTo(540f));

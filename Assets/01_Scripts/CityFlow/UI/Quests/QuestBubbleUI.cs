@@ -16,7 +16,8 @@ namespace CityFlow.UI.Quests
         private static readonly Vector2 QuestControlOffset =
             new(-29f, -29f);
         private const float QuestControlSize = 58f;
-        private const float CloseLineThickness = 3f;
+        private const float CloseTouchPadding = 7f;
+        private const float CloseLineThickness = 4f;
         private const float CloseLineCornerRatio = 0.3f;
 
         private static readonly Color BubbleColor = new(0.075f, 0.10f, 0.12f, 0.97f);
@@ -221,9 +222,25 @@ namespace CityFlow.UI.Quests
                 QuestControlSize);
 
             Image closeImage = close.GetComponent<Image>();
-            closeImage.color = new Color(0.18f, 0.22f, 0.24f, 0.95f);
+            Color closeNormalColor =
+                new(0.18f, 0.25f, 0.27f, 1f);
+            closeImage.color = closeNormalColor;
+            closeImage.raycastPadding = new Vector4(
+                -CloseTouchPadding,
+                -CloseTouchPadding,
+                -CloseTouchPadding,
+                -CloseTouchPadding);
             closeButton = close.GetComponent<Button>();
             closeButton.targetGraphic = closeImage;
+            ColorBlock closeColors = closeButton.colors;
+            closeColors.normalColor = closeNormalColor;
+            closeColors.highlightedColor =
+                new Color(0.25f, 0.55f, 0.52f, 1f);
+            closeColors.pressedColor =
+                new Color(0.15f, 0.70f, 0.60f, 1f);
+            closeColors.selectedColor = closeColors.highlightedColor;
+            closeColors.fadeDuration = 0.08f;
+            closeButton.colors = closeColors;
 
             float closeLineLength =
                 QuestControlSize *

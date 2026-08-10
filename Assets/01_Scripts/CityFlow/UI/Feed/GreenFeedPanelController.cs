@@ -45,6 +45,17 @@ namespace CityFlow.UI.Feed
         public bool IsOpen { get; private set; }
         public GreenFeedPostView TickerView => tickerView;
 
+        public void RebindTicker(GreenFeedPostView targetTickerView)
+        {
+            if (targetTickerView == null)
+            {
+                return;
+            }
+
+            tickerView = targetTickerView;
+            ConfigureTickerPresentation();
+        }
+
         private void Awake()
         {
             ConfigureTickerPresentation();

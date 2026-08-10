@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using CityFlow.UI.Controllers;
+using CityFlow.UI.Feed;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -21,18 +23,20 @@ namespace CityFlow.UI.Editor
 
         private const string DownloadRoot = "Assets/99_Download/";
 
+        // 자식 모듈부터 저장해야 부모 Prefab이 실제 nested Prefab 인스턴스를
+        // 포함할 수 있다. 배열 순서는 의존성 순서다.
         private static readonly ModuleSpec[] Modules =
         {
-            new(
-                "UI_MainCanvasRoot.prefab",
-                "UI_MainCanvas"),
-            new(
-                "UI_HudTopBar.prefab",
-                "UI_MainCanvas/FloatingWindowContentRoot/HUD_TopBar"),
             new(
                 "UI_TopLeftActionDock.prefab",
                 "UI_MainCanvas/FloatingWindowContentRoot/HUD_TopBar/" +
                 "TopLeftActionDock"),
+            new(
+                "UI_HudTopBar.prefab",
+                "UI_MainCanvas/FloatingWindowContentRoot/HUD_TopBar",
+                new NestedModuleSpec(
+                    "TopLeftActionDock",
+                    "UI_TopLeftActionDock.prefab")),
             new(
                 "UI_DockRight.prefab",
                 "UI_MainCanvas/FloatingWindowContentRoot/Dock_Right"),
@@ -45,12 +49,41 @@ namespace CityFlow.UI.Editor
                 "Setting_Panel "),
             new(
                 "UI_GreenFeedDock.prefab",
-                "UI_MainCanvas/FloatingWindowContentRoot/GreenSNSFeedDock")
+                "UI_MainCanvas/FloatingWindowContentRoot/GreenSNSFeedDock"),
+            new(
+                "UI_MainCanvasRoot.prefab",
+                "UI_MainCanvas",
+                new NestedModuleSpec(
+                    "FloatingWindowContentRoot/HUD_TopBar",
+                    "UI_HudTopBar.prefab"),
+                new NestedModuleSpec(
+                    "FloatingWindowContentRoot/Dock_Right",
+                    "UI_DockRight.prefab"),
+                new NestedModuleSpec(
+                    "FloatingWindowContentRoot/Build_Panel",
+                    "UI_BuildPanel.prefab"),
+                new NestedModuleSpec(
+                    "FloatingWindowContentRoot/SubPanels_Right/Setting_Panel ",
+                    "UI_SettingsPanel.prefab"),
+                new NestedModuleSpec(
+                    "FloatingWindowContentRoot/GreenSNSFeedDock",
+                    "UI_GreenFeedDock.prefab"))
         };
 
-        [MenuItem("CityFlow/UI/Prefabs/Bake Gameplay UI Prefabs")]
+        [MenuItem("CityFlow/UI/Prefabs/Migrate Gameplay UI To Nested Prefabs")]
         public static void BakeAll()
         {
+            bool confirmed = EditorUtility.DisplayDialog(
+                "Gameplay UI Prefab 마이그레이션",
+                "통합 Scene을 읽어 Gameplay UI Prefab을 덮어씁니다. " +
+                "초기 마이그레이션 또는 의도적인 재생성에만 사용하세요.",
+                "Prefab 재생성",
+                "취소");
+            if (!confirmed)
+            {
+                return;
+            }
+
             BakeAllInternal();
         }
 
@@ -115,6 +148,7 @@ namespace CityFlow.UI.Editor
                         $"UI_MainCanvas was not found in '{SourceScenePath}'.");
                 }
 
+                ValidateRuntimeBindingContracts(sourceScene);
                 EnsureFolder(OutputRoot);
                 EnsureFolder(SharedAssetRoot);
 
@@ -172,6 +206,11 @@ namespace CityFlow.UI.Editor
                 RemapDownloadedAssets(clone, dependencyMap);
                 ClearExternalSceneReferences(clone);
                 RestoreRectTransforms(source, clone.transform);
+                ReplaceNestedModules(clone, module);
+                if (module.IsRoot)
+                {
+                    clone.AddComponent<GameplayUiRuntimeBinder>();
+                }
                 clone.hideFlags = HideFlags.None;
 
                 string prefabPath =
@@ -187,11 +226,155 @@ namespace CityFlow.UI.Editor
                         $"'{prefabPath}'.");
                 }
 
-                RestoreSavedPrefabLayout(source, prefabPath);
+                if (module.NestedModules.Count == 0)
+                {
+                    RestoreSavedPrefabLayout(source, prefabPath);
+                }
             }
             finally
             {
                 Object.DestroyImmediate(clone);
+            }
+        }
+
+        private static void ReplaceNestedModules(
+            GameObject clone,
+            ModuleSpec module)
+        {
+            for (int index = 0;
+                 index < module.NestedModules.Count;
+                 index++)
+            {
+                NestedModuleSpec nested = module.NestedModules[index];
+                Transform current = clone.transform.Find(nested.RelativePath);
+                if (current == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Nested UI source was not found: " +
+                        $"'{module.FileName}/{nested.RelativePath}'.");
+                }
+
+                string nestedPath = $"{OutputRoot}/{nested.FileName}";
+                GameObject nestedAsset =
+                    AssetDatabase.LoadAssetAtPath<GameObject>(nestedPath);
+                if (nestedAsset == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Nested UI prefab was not baked first: " +
+                        $"'{nestedPath}'.");
+                }
+
+                Transform parent = current.parent;
+                int siblingIndex = current.GetSiblingIndex();
+                GameObject instance = PrefabUtility.InstantiatePrefab(
+                    nestedAsset,
+                    parent) as GameObject;
+                if (instance == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to instantiate nested UI prefab: " +
+                        $"'{nestedPath}'.");
+                }
+
+                instance.name = current.name;
+                instance.transform.SetSiblingIndex(siblingIndex);
+                RestoreRectTransforms(current, instance.transform);
+
+                Dictionary<Object, Object> referenceMap = new();
+                BuildHierarchyReferenceMap(
+                    current,
+                    instance.transform,
+                    referenceMap);
+                RemapHierarchyReferences(clone, referenceMap);
+                Object.DestroyImmediate(current.gameObject);
+            }
+        }
+
+        private static void BuildHierarchyReferenceMap(
+            Transform source,
+            Transform destination,
+            IDictionary<Object, Object> map)
+        {
+            map[source.gameObject] = destination.gameObject;
+            Component[] sourceComponents =
+                source.GetComponents<Component>();
+            Component[] destinationComponents =
+                destination.GetComponents<Component>();
+            if (sourceComponents.Length != destinationComponents.Length)
+            {
+                throw new InvalidOperationException(
+                    $"Nested UI component count changed below " +
+                    $"'{source.name}'.");
+            }
+
+            for (int index = 0; index < sourceComponents.Length; index++)
+            {
+                Component sourceComponent = sourceComponents[index];
+                Component destinationComponent = destinationComponents[index];
+                if (sourceComponent == null || destinationComponent == null ||
+                    sourceComponent.GetType() != destinationComponent.GetType())
+                {
+                    throw new InvalidOperationException(
+                        $"Nested UI component layout changed below " +
+                        $"'{source.name}'.");
+                }
+
+                map[sourceComponent] = destinationComponent;
+            }
+
+            if (source.childCount != destination.childCount)
+            {
+                throw new InvalidOperationException(
+                    $"Nested UI hierarchy changed below '{source.name}'.");
+            }
+
+            for (int index = 0; index < source.childCount; index++)
+            {
+                BuildHierarchyReferenceMap(
+                    source.GetChild(index),
+                    destination.GetChild(index),
+                    map);
+            }
+        }
+
+        private static void RemapHierarchyReferences(
+            GameObject root,
+            IReadOnlyDictionary<Object, Object> map)
+        {
+            Component[] components = root.GetComponentsInChildren<Component>(
+                true);
+            for (int index = 0; index < components.Length; index++)
+            {
+                Component component = components[index];
+                if (component == null)
+                {
+                    continue;
+                }
+
+                SerializedObject serialized = new(component);
+                SerializedProperty property = serialized.GetIterator();
+                bool changed = false;
+                while (property.NextVisible(true))
+                {
+                    if (property.propertyType !=
+                        SerializedPropertyType.ObjectReference)
+                    {
+                        continue;
+                    }
+
+                    Object reference = property.objectReferenceValue;
+                    if (reference != null &&
+                        map.TryGetValue(reference, out Object replacement))
+                    {
+                        property.objectReferenceValue = replacement;
+                        changed = true;
+                    }
+                }
+
+                if (changed)
+                {
+                    serialized.ApplyModifiedPropertiesWithoutUndo();
+                }
             }
         }
 
@@ -401,6 +584,16 @@ namespace CityFlow.UI.Editor
 
         private static void ClearExternalSceneReferences(GameObject root)
         {
+            IReadOnlyList<string> missingContracts =
+                FindMissingRuntimeBindingContracts(root);
+            if (missingContracts.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"External Scene references have no runtime binding " +
+                    $"contract below '{root.name}': " +
+                    string.Join(", ", missingContracts));
+            }
+
             Component[] components = root.GetComponentsInChildren<Component>(
                 true);
             for (int index = 0; index < components.Length; index++)
@@ -431,6 +624,13 @@ namespace CityFlow.UI.Editor
                         continue;
                     }
 
+                    if (!IsRuntimeReboundReference(
+                            component,
+                            property.propertyPath))
+                    {
+                        continue;
+                    }
+
                     property.objectReferenceValue = null;
                     changed = true;
                 }
@@ -440,6 +640,140 @@ namespace CityFlow.UI.Editor
                     serialized.ApplyModifiedPropertiesWithoutUndo();
                 }
             }
+        }
+
+        private static void ValidateRuntimeBindingContracts(Scene sourceScene)
+        {
+            List<string> missingContracts = new();
+            for (int index = 0; index < Modules.Length; index++)
+            {
+                ModuleSpec module = Modules[index];
+                Transform source = FindByPath(
+                    sourceScene,
+                    module.HierarchyPath);
+                if (source == null)
+                {
+                    missingContracts.Add(
+                        $"{module.FileName}: hierarchy not found " +
+                        $"({module.HierarchyPath})");
+                    continue;
+                }
+
+                GameObject clone = Object.Instantiate(source.gameObject);
+                clone.name = source.gameObject.name;
+                clone.hideFlags = HideFlags.HideAndDontSave;
+                try
+                {
+                    IReadOnlyList<string> moduleMissing =
+                        FindMissingRuntimeBindingContracts(clone);
+                    for (int missingIndex = 0;
+                         missingIndex < moduleMissing.Count;
+                         missingIndex++)
+                    {
+                        missingContracts.Add(
+                            $"{module.FileName}: " +
+                            moduleMissing[missingIndex]);
+                    }
+                }
+                finally
+                {
+                    Object.DestroyImmediate(clone);
+                }
+            }
+
+            if (missingContracts.Count == 0)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                "Gameplay UI Prefab migration stopped before writing any " +
+                "assets. Missing runtime binding contracts:\n- " +
+                string.Join("\n- ", missingContracts));
+        }
+
+        private static IReadOnlyList<string>
+            FindMissingRuntimeBindingContracts(GameObject root)
+        {
+            List<string> missingContracts = new();
+            Component[] components = root.GetComponentsInChildren<Component>(
+                true);
+            for (int index = 0; index < components.Length; index++)
+            {
+                Component component = components[index];
+                if (component == null)
+                {
+                    missingContracts.Add(
+                        $"Missing Script below '{root.name}'");
+                    continue;
+                }
+
+                SerializedObject serialized = new(component);
+                SerializedProperty property = serialized.GetIterator();
+                bool enterChildren = true;
+                while (property.NextVisible(enterChildren))
+                {
+                    enterChildren = false;
+                    if (property.propertyType !=
+                        SerializedPropertyType.ObjectReference ||
+                        !IsExternalSceneReference(
+                            root,
+                            property.objectReferenceValue) ||
+                        IsRuntimeReboundReference(
+                            component,
+                            property.propertyPath))
+                    {
+                        continue;
+                    }
+
+                    missingContracts.Add(
+                        $"{component.GetType().Name}." +
+                        property.propertyPath);
+                }
+            }
+
+            return missingContracts
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        private static bool IsRuntimeReboundReference(
+            Component component,
+            string propertyPath)
+        {
+            if (propertyPath == "placementController" &&
+                (component is UIDockController ||
+                 component is BuildPanelController))
+            {
+                return true;
+            }
+
+            if (component is UIDockController &&
+                (propertyPath == "btnFloatingMode" ||
+                 propertyPath == "panelBuild" ||
+                 propertyPath == "panelResearch" ||
+                 propertyPath == "panelStats" ||
+                 propertyPath == "panelSettings" ||
+                 propertyPath == "panelFloating"))
+            {
+                return true;
+            }
+
+            if (component is BuildPanelController &&
+                propertyPath == "tooltipController")
+            {
+                return true;
+            }
+
+            if (component is GreenFeedHoverRelay &&
+                (propertyPath == "controller" ||
+                 propertyPath == "tileSelection"))
+            {
+                return true;
+            }
+
+            return component is GreenFeedPanelController &&
+                propertyPath == "tickerView";
         }
 
         private static void RestoreRectTransforms(
@@ -612,14 +946,36 @@ namespace CityFlow.UI.Editor
 
         private readonly struct ModuleSpec
         {
-            public ModuleSpec(string fileName, string hierarchyPath)
+            public ModuleSpec(
+                string fileName,
+                string hierarchyPath,
+                params NestedModuleSpec[] nestedModules)
             {
                 FileName = fileName;
                 HierarchyPath = hierarchyPath;
+                NestedModules = nestedModules ??
+                    Array.Empty<NestedModuleSpec>();
             }
 
             public string FileName { get; }
             public string HierarchyPath { get; }
+            public IReadOnlyList<NestedModuleSpec> NestedModules { get; }
+            public bool IsRoot => string.Equals(
+                FileName,
+                "UI_MainCanvasRoot.prefab",
+                StringComparison.Ordinal);
+        }
+
+        private readonly struct NestedModuleSpec
+        {
+            public NestedModuleSpec(string relativePath, string fileName)
+            {
+                RelativePath = relativePath;
+                FileName = fileName;
+            }
+
+            public string RelativePath { get; }
+            public string FileName { get; }
         }
 
         private sealed class DependencyMap

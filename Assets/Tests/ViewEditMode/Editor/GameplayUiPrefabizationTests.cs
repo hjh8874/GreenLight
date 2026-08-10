@@ -3,59 +3,40 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using CityFlow.UI;
+using CityFlow.UI.Controllers;
+using CityFlow.UI.Feed;
 using NUnit.Framework;
-using TMPro;
 using UnityEditor;
-using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 
 namespace CityFlow.Tests.ViewEditMode
 {
     public sealed class GameplayUiPrefabizationTests
     {
-        private const string SourceScenePath =
-            "Assets/00_Scenes/CityFlowIntegrated_cmt.unity";
         private const string OutputRoot =
             "Assets/02_Prefabs/UI/Gameplay";
         private const string SharedAssetRoot =
             "Assets/02_Prefabs/UI/Shared/LayerLab";
         private const string DownloadRoot = "Assets/99_Download/";
 
-        private static readonly ModuleSpec[] Modules =
+        private static readonly string[] PrefabNames =
         {
-            new(
-                "UI_MainCanvasRoot.prefab",
-                "UI_MainCanvas"),
-            new(
-                "UI_HudTopBar.prefab",
-                "UI_MainCanvas/FloatingWindowContentRoot/HUD_TopBar"),
-            new(
-                "UI_TopLeftActionDock.prefab",
-                "UI_MainCanvas/FloatingWindowContentRoot/HUD_TopBar/" +
-                "TopLeftActionDock"),
-            new(
-                "UI_DockRight.prefab",
-                "UI_MainCanvas/FloatingWindowContentRoot/Dock_Right"),
-            new(
-                "UI_BuildPanel.prefab",
-                "UI_MainCanvas/FloatingWindowContentRoot/Build_Panel"),
-            new(
-                "UI_SettingsPanel.prefab",
-                "UI_MainCanvas/FloatingWindowContentRoot/SubPanels_Right/" +
-                "Setting_Panel "),
-            new(
-                "UI_GreenFeedDock.prefab",
-                "UI_MainCanvas/FloatingWindowContentRoot/GreenSNSFeedDock")
+            "UI_MainCanvasRoot.prefab",
+            "UI_HudTopBar.prefab",
+            "UI_TopLeftActionDock.prefab",
+            "UI_DockRight.prefab",
+            "UI_BuildPanel.prefab",
+            "UI_SettingsPanel.prefab",
+            "UI_GreenFeedDock.prefab"
         };
 
         [Test]
         public void GeneratedPrefabs_ExistWithoutMissingScripts()
         {
-            for (int index = 0; index < Modules.Length; index++)
+            for (int index = 0; index < PrefabNames.Length; index++)
             {
-                string path = $"{OutputRoot}/{Modules[index].FileName}";
+                string path = $"{OutputRoot}/{PrefabNames[index]}";
                 GameObject prefab =
                     AssetDatabase.LoadAssetAtPath<GameObject>(path);
 
@@ -121,357 +102,149 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
-        public void GeneratedPrefabs_MatchSourceVisualHierarchy()
+        public void GeneratedRoot_UsesNestedModulePrefabs()
         {
-            Scene sourceScene = SceneManager.GetSceneByPath(SourceScenePath);
-            bool openedScene = !sourceScene.IsValid() || !sourceScene.isLoaded;
-            if (openedScene)
-            {
-                sourceScene = EditorSceneManager.OpenScene(
-                    SourceScenePath,
-                    OpenSceneMode.Additive);
-            }
+            AssertNestedPrefab(
+                "UI_MainCanvasRoot.prefab",
+                "FloatingWindowContentRoot/HUD_TopBar",
+                "UI_HudTopBar.prefab");
+            AssertNestedPrefab(
+                "UI_MainCanvasRoot.prefab",
+                "FloatingWindowContentRoot/Dock_Right",
+                "UI_DockRight.prefab");
+            AssertNestedPrefab(
+                "UI_MainCanvasRoot.prefab",
+                "FloatingWindowContentRoot/Build_Panel",
+                "UI_BuildPanel.prefab");
+            AssertNestedPrefab(
+                "UI_MainCanvasRoot.prefab",
+                "FloatingWindowContentRoot/SubPanels_Right/Setting_Panel ",
+                "UI_SettingsPanel.prefab");
+            AssertNestedPrefab(
+                "UI_MainCanvasRoot.prefab",
+                "FloatingWindowContentRoot/GreenSNSFeedDock",
+                "UI_GreenFeedDock.prefab");
+            AssertNestedPrefab(
+                "UI_HudTopBar.prefab",
+                "TopLeftActionDock",
+                "UI_TopLeftActionDock.prefab");
+        }
 
+        [Test]
+        public void GeneratedRoot_AutomaticallyBindsPlacementController()
+        {
+            GameObject placementOwner = new("PlacementController");
+            GameObject selectionOwner = new("TileSelectionController");
+            GameObject rootInstance = null;
             try
             {
-                for (int index = 0; index < Modules.Length; index++)
-                {
-                    ModuleSpec module = Modules[index];
-                    Transform source = FindByPath(
-                        sourceScene,
-                        module.HierarchyPath);
-                    string prefabPath =
-                        $"{OutputRoot}/{module.FileName}";
-                    GameObject prefab =
-                        AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                PlacementController placement =
+                    placementOwner.AddComponent<PlacementController>();
+                TileSelectionController tileSelection =
+                    selectionOwner.AddComponent<TileSelectionController>();
+                GameObject rootAsset = AssetDatabase.LoadAssetAtPath<GameObject>(
+                    $"{OutputRoot}/UI_MainCanvasRoot.prefab");
+                Assert.That(rootAsset, Is.Not.Null);
 
-                    Assert.That(source, Is.Not.Null, module.HierarchyPath);
-                    Assert.That(prefab, Is.Not.Null, prefabPath);
-                    CompareVisualTree(
-                        source,
-                        prefab.transform,
-                        module.HierarchyPath,
-                        false,
-                        false);
-                }
+                rootInstance = PrefabUtility.InstantiatePrefab(rootAsset)
+                    as GameObject;
+                Assert.That(rootInstance, Is.Not.Null);
+
+                GameplayUiRuntimeBinder binder =
+                    rootInstance.GetComponent<GameplayUiRuntimeBinder>();
+                Assert.That(binder, Is.Not.Null);
+                Assert.That(binder.BindRuntimeReferences(), Is.True);
+                Assert.That(binder.IsPlacementBound, Is.True);
+                Assert.That(binder.IsDockUiBound, Is.True);
+                Assert.That(binder.IsBuildPanelBound, Is.True);
+                Assert.That(binder.IsGreenFeedBound, Is.True);
+
+                AssertPlacementReference(
+                    rootInstance.GetComponentInChildren<UIDockController>(true),
+                    placement);
+                AssertPlacementReference(
+                    rootInstance.GetComponentInChildren<BuildPanelController>(
+                        true),
+                    placement);
+                AssertGreenFeedReferences(rootInstance, tileSelection);
+                Assert.That(
+                    rootInstance.GetComponentInChildren<UIDockController>(true)
+                        .HasExternalUiReferences,
+                    Is.True);
+                Assert.That(
+                    rootInstance.GetComponentInChildren<BuildPanelController>(
+                        true).HasRuntimeReferences,
+                    Is.True);
             }
             finally
             {
-                if (openedScene && sourceScene.IsValid() &&
-                    sourceScene.isLoaded)
+                if (rootInstance != null)
                 {
-                    EditorSceneManager.CloseScene(sourceScene, true);
+                    UnityEngine.Object.DestroyImmediate(rootInstance);
                 }
+
+                UnityEngine.Object.DestroyImmediate(placementOwner);
+                UnityEngine.Object.DestroyImmediate(selectionOwner);
             }
         }
 
-        private static void CompareVisualTree(
-            Transform source,
-            Transform prefab,
-            string path,
-            bool compareName = true,
-            bool compareRectTransform = true)
+        private static void AssertGreenFeedReferences(
+            GameObject root,
+            TileSelectionController expectedTileSelection)
         {
-            if (compareName)
+            GreenFeedPanelController controller =
+                root.GetComponentInChildren<GreenFeedPanelController>(true);
+            Assert.That(controller, Is.Not.Null);
+
+            GreenFeedHoverRelay[] relays =
+                root.GetComponentsInChildren<GreenFeedHoverRelay>(true);
+            Assert.That(relays, Is.Not.Empty);
+            for (int index = 0; index < relays.Length; index++)
             {
-                Assert.That(prefab.name, Is.EqualTo(source.name), path);
-            }
-            Assert.That(
-                prefab.gameObject.activeSelf,
-                Is.EqualTo(source.gameObject.activeSelf),
-                path);
-            Assert.That(prefab.childCount, Is.EqualTo(source.childCount), path);
-
-            CompareComponentTypes(source, prefab, path);
-            if (compareRectTransform)
-            {
-                CompareRectTransform(source as RectTransform,
-                    prefab as RectTransform, path);
-            }
-            CompareImage(source.GetComponent<Image>(),
-                prefab.GetComponent<Image>(), path);
-            CompareText(source.GetComponent<TMP_Text>(),
-                prefab.GetComponent<TMP_Text>(), path);
-            CompareLayout(source.GetComponent<LayoutGroup>(),
-                prefab.GetComponent<LayoutGroup>(), path);
-            CompareLayoutElement(source.GetComponent<LayoutElement>(),
-                prefab.GetComponent<LayoutElement>(), path);
-            CompareSlider(source.GetComponent<Slider>(),
-                prefab.GetComponent<Slider>(), path);
-
-            for (int index = 0; index < source.childCount; index++)
-            {
-                Transform sourceChild = source.GetChild(index);
-                Transform prefabChild = prefab.GetChild(index);
-                CompareVisualTree(
-                    sourceChild,
-                    prefabChild,
-                    $"{path}/{sourceChild.name}");
-            }
-        }
-
-        private static void CompareComponentTypes(
-            Transform source,
-            Transform prefab,
-            string path)
-        {
-            string[] sourceTypes = source.GetComponents<Component>()
-                .Select(component => component?.GetType().FullName ??
-                    "<Missing Script>")
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToArray();
-            string[] prefabTypes = prefab.GetComponents<Component>()
-                .Select(component => component?.GetType().FullName ??
-                    "<Missing Script>")
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToArray();
-            Assert.That(prefabTypes, Is.EqualTo(sourceTypes), path);
-        }
-
-        private static void CompareRectTransform(
-            RectTransform source,
-            RectTransform prefab,
-            string path)
-        {
-            Assert.That(prefab == null, Is.EqualTo(source == null), path);
-            if (source == null)
-            {
-                return;
-            }
-
-            bool sourceIsSliderDriven = IsSliderDriven(source);
-            bool prefabIsSliderDriven = IsSliderDriven(prefab);
-            Assert.That(prefabIsSliderDriven,
-                Is.EqualTo(sourceIsSliderDriven), path);
-            if (sourceIsSliderDriven)
-            {
-                return;
-            }
-
-            AssertVector(prefab.anchorMin, source.anchorMin,
-                $"{path}.anchorMin");
-            AssertVector(prefab.anchorMax, source.anchorMax,
-                $"{path}.anchorMax");
-            AssertVector(prefab.pivot, source.pivot,
-                $"{path}.pivot");
-            AssertVector(
-                prefab.anchoredPosition,
-                source.anchoredPosition,
-                $"{path}.anchoredPosition");
-            AssertVector(prefab.sizeDelta, source.sizeDelta,
-                $"{path}.sizeDelta");
-            AssertVector(prefab.localScale, source.localScale,
-                $"{path}.localScale");
-        }
-
-        private static void CompareImage(
-            Image source,
-            Image prefab,
-            string path)
-        {
-            Assert.That(prefab == null, Is.EqualTo(source == null), path);
-            if (source == null)
-            {
-                return;
-            }
-
-            SerializedObject sourceSerialized = new(source);
-            SerializedObject prefabSerialized = new(prefab);
-            SerializedProperty sourceSprite =
-                sourceSerialized.FindProperty("m_Sprite");
-            SerializedProperty prefabSprite =
-                prefabSerialized.FindProperty("m_Sprite");
-
-            AssertColor(
-                prefabSerialized.FindProperty("m_Color").colorValue,
-                sourceSerialized.FindProperty("m_Color").colorValue,
-                $"{path}.imageColor");
-            Assert.That(
-                prefabSerialized.FindProperty("m_Type").intValue,
-                Is.EqualTo(
-                    sourceSerialized.FindProperty("m_Type").intValue),
-                path);
-            Assert.That(
-                prefabSerialized.FindProperty("m_RaycastTarget").boolValue,
-                Is.EqualTo(sourceSerialized
-                    .FindProperty("m_RaycastTarget").boolValue),
-                path);
-            Assert.That(
-                prefabSprite.objectReferenceValue?.name,
-                Is.EqualTo(sourceSprite.objectReferenceValue?.name),
-                path);
-        }
-
-        private static void CompareText(
-            TMP_Text source,
-            TMP_Text prefab,
-            string path)
-        {
-            Assert.That(prefab == null, Is.EqualTo(source == null), path);
-            if (source == null)
-            {
-                return;
-            }
-
-            Assert.That(prefab.text, Is.EqualTo(source.text), path);
-            Assert.That(prefab.fontSize, Is.EqualTo(source.fontSize), path);
-            Assert.That(prefab.fontStyle, Is.EqualTo(source.fontStyle), path);
-            Assert.That(prefab.alignment, Is.EqualTo(source.alignment), path);
-            Assert.That(
-                prefab.raycastTarget,
-                Is.EqualTo(source.raycastTarget),
-                path);
-            Assert.That(
-                prefab.font?.name,
-                Is.EqualTo(source.font?.name),
-                path);
-            AssertColor(prefab.color, source.color, path);
-        }
-
-        private static void CompareLayout(
-            LayoutGroup source,
-            LayoutGroup prefab,
-            string path)
-        {
-            Assert.That(prefab == null, Is.EqualTo(source == null), path);
-            if (source == null)
-            {
-                return;
-            }
-
-            Assert.That(prefab.padding.left,
-                Is.EqualTo(source.padding.left), path);
-            Assert.That(prefab.padding.right,
-                Is.EqualTo(source.padding.right), path);
-            Assert.That(prefab.padding.top,
-                Is.EqualTo(source.padding.top), path);
-            Assert.That(prefab.padding.bottom,
-                Is.EqualTo(source.padding.bottom), path);
-            Assert.That(
-                prefab.childAlignment,
-                Is.EqualTo(source.childAlignment),
-                path);
-
-            if (source is HorizontalOrVerticalLayoutGroup sourceLinear &&
-                prefab is HorizontalOrVerticalLayoutGroup prefabLinear)
-            {
-                Assert.That(
-                    prefabLinear.spacing,
-                    Is.EqualTo(sourceLinear.spacing),
-                    path);
-            }
-
-            if (source is GridLayoutGroup sourceGrid &&
-                prefab is GridLayoutGroup prefabGrid)
-            {
-                AssertVector(prefabGrid.cellSize,
-                    sourceGrid.cellSize, path);
-                AssertVector(prefabGrid.spacing,
-                    sourceGrid.spacing, path);
-                Assert.That(prefabGrid.constraint,
-                    Is.EqualTo(sourceGrid.constraint), path);
-                Assert.That(prefabGrid.constraintCount,
-                    Is.EqualTo(sourceGrid.constraintCount), path);
-            }
-        }
-
-        private static void CompareLayoutElement(
-            LayoutElement source,
-            LayoutElement prefab,
-            string path)
-        {
-            Assert.That(prefab == null, Is.EqualTo(source == null), path);
-            if (source == null)
-            {
-                return;
-            }
-
-            Assert.That(prefab.minWidth, Is.EqualTo(source.minWidth), path);
-            Assert.That(prefab.minHeight, Is.EqualTo(source.minHeight), path);
-            Assert.That(prefab.preferredWidth,
-                Is.EqualTo(source.preferredWidth), path);
-            Assert.That(prefab.preferredHeight,
-                Is.EqualTo(source.preferredHeight), path);
-            Assert.That(prefab.flexibleWidth,
-                Is.EqualTo(source.flexibleWidth), path);
-            Assert.That(prefab.flexibleHeight,
-                Is.EqualTo(source.flexibleHeight), path);
-        }
-
-        private static void CompareSlider(
-            Slider source,
-            Slider prefab,
-            string path)
-        {
-            Assert.That(prefab == null, Is.EqualTo(source == null), path);
-            if (source == null)
-            {
-                return;
-            }
-
-            SerializedObject sourceSerialized = new(source);
-            SerializedObject prefabSerialized = new(prefab);
-            string[] comparableProperties =
-            {
-                "m_MinValue",
-                "m_MaxValue",
-                "m_WholeNumbers",
-                "m_Value",
-                "m_Direction"
-            };
-            for (int index = 0;
-                 index < comparableProperties.Length;
-                 index++)
-            {
-                string propertyName = comparableProperties[index];
-                Assert.That(
-                    prefabSerialized.FindProperty(propertyName)
-                        .boxedValue,
-                    Is.EqualTo(sourceSerialized
-                        .FindProperty(propertyName).boxedValue),
-                    $"{path}.{propertyName}");
-            }
-
-            Assert.That(
-                prefab.fillRect?.name,
-                Is.EqualTo(source.fillRect?.name),
-                $"{path}.fillRect");
-            Assert.That(
-                prefab.handleRect?.name,
-                Is.EqualTo(source.handleRect?.name),
-                $"{path}.handleRect");
-        }
-
-        private static bool IsSliderDriven(RectTransform target)
-        {
-            Slider slider = target.GetComponentInParent<Slider>(true);
-            return slider != null &&
-                (slider.fillRect == target || slider.handleRect == target);
-        }
-
-        private static Transform FindByPath(
-            Scene scene,
-            string hierarchyPath)
-        {
-            string[] segments = hierarchyPath.Split('/');
-            GameObject root = scene.GetRootGameObjects().FirstOrDefault(
-                candidate => candidate.name == segments[0]);
-            if (root == null)
-            {
-                return null;
-            }
-
-            Transform current = root.transform;
-            for (int index = 1; index < segments.Length; index++)
-            {
-                current = current.Find(segments[index]);
-                if (current == null)
+                Assert.That(relays[index].Controller, Is.SameAs(controller));
+                if (relays[index].Action ==
+                    GreenFeedHoverRelay.ClickAction.Locate)
                 {
-                    return null;
+                    Assert.That(
+                        relays[index].TileSelection,
+                        Is.SameAs(expectedTileSelection));
                 }
             }
 
-            return current;
+            Assert.That(controller.TickerView, Is.Not.Null);
+        }
+
+        private static void AssertNestedPrefab(
+            string ownerFileName,
+            string relativePath,
+            string expectedFileName)
+        {
+            string ownerPath = $"{OutputRoot}/{ownerFileName}";
+            GameObject owner =
+                AssetDatabase.LoadAssetAtPath<GameObject>(ownerPath);
+            Assert.That(owner, Is.Not.Null, ownerPath);
+
+            Transform nested = owner.transform.Find(relativePath);
+            Assert.That(nested, Is.Not.Null, $"{ownerPath}/{relativePath}");
+            string actualPath =
+                PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(
+                    nested.gameObject);
+            Assert.That(
+                actualPath,
+                Is.EqualTo($"{OutputRoot}/{expectedFileName}"),
+                $"{ownerPath}/{relativePath}");
+        }
+
+        private static void AssertPlacementReference(
+            Component target,
+            PlacementController expected)
+        {
+            Assert.That(target, Is.Not.Null);
+            SerializedObject serialized = new(target);
+            SerializedProperty property =
+                serialized.FindProperty("placementController");
+            Assert.That(property, Is.Not.Null);
+            Assert.That(property.objectReferenceValue, Is.SameAs(expected));
         }
 
         private static string GetHierarchyPath(
@@ -493,48 +266,6 @@ namespace CityFlow.Tests.ViewEditMode
 
             segments.Reverse();
             return string.Join("/", segments);
-        }
-
-        private static void AssertVector(
-            Vector2 actual,
-            Vector2 expected,
-            string path)
-        {
-            Assert.That(actual.x, Is.EqualTo(expected.x).Within(0.001f), path);
-            Assert.That(actual.y, Is.EqualTo(expected.y).Within(0.001f), path);
-        }
-
-        private static void AssertVector(
-            Vector3 actual,
-            Vector3 expected,
-            string path)
-        {
-            Assert.That(actual.x, Is.EqualTo(expected.x).Within(0.001f), path);
-            Assert.That(actual.y, Is.EqualTo(expected.y).Within(0.001f), path);
-            Assert.That(actual.z, Is.EqualTo(expected.z).Within(0.001f), path);
-        }
-
-        private static void AssertColor(
-            Color actual,
-            Color expected,
-            string path)
-        {
-            Assert.That(actual.r, Is.EqualTo(expected.r).Within(0.001f), path);
-            Assert.That(actual.g, Is.EqualTo(expected.g).Within(0.001f), path);
-            Assert.That(actual.b, Is.EqualTo(expected.b).Within(0.001f), path);
-            Assert.That(actual.a, Is.EqualTo(expected.a).Within(0.001f), path);
-        }
-
-        private readonly struct ModuleSpec
-        {
-            public ModuleSpec(string fileName, string hierarchyPath)
-            {
-                FileName = fileName;
-                HierarchyPath = hierarchyPath;
-            }
-
-            public string FileName { get; }
-            public string HierarchyPath { get; }
         }
     }
 }
