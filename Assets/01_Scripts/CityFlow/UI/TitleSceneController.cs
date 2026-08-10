@@ -12,6 +12,8 @@ namespace CityFlow.UI
     // 엔진·경제 로직 무연결. 세이브는 파일 존재 여부만 읽는다(이어하기 활성 판정).
     public sealed class TitleSceneController : MonoBehaviour
     {
+        private const string EnhancementsResourcePath =
+            "CityFlow/UI/UI_TitleSceneEnhancements";
         private const string FloatingTitleBarCanvasName =
             "FloatingWindowTitleBarCanvas";
         private const string TitleContentRootName =
@@ -28,11 +30,22 @@ namespace CityFlow.UI
         [SerializeField] private GameObject settingsPanel;
         [Tooltip("새 게임 시 띄울 경고 팝업(옵션).")]
         [SerializeField] private ConfirmPopupController confirmPopup;
+        [Tooltip("타이틀 보조 UI를 설치할 Canvas. 비어 있으면 기존 UI 참조의 부모 Canvas를 사용합니다.")]
+        [SerializeField] private Canvas titleCanvas;
+        [Tooltip("비활성화할 언어 버튼. 비어 있으면 OnLanguageClicked 이벤트 연결로 찾습니다.")]
+        [SerializeField] private Button languageButton;
+        [Tooltip("로고와 유사한 색상의 배경에서도 글자가 보이도록 " +
+                 "로고 뒤 명암 패널을 표시합니다.")]
+        [SerializeField] private bool showLogoBackdrop = true;
+
+        private TitleSceneEnhancementsView enhancementsView;
 
         private System.Collections.IEnumerator Start()
         {
             Bootstrap.CityBootstrap.IsTitlePreviewMode = true;
             previewNormalizedZoom01 = LoadPreviewZoom();
+            InstallTitleEnhancements();
+            DisableLanguageButton();
 
             // 백그라운드 씬(실제 게임) 로드 및 설정 (UI 숨김, 자동저장 방지)
             yield return StartCoroutine(LoadBackgroundSceneRoutine());
@@ -153,7 +166,6 @@ namespace CityFlow.UI
         private Camera forcedCamera;
         private MainCityView forcedCityView;
         private float previewNormalizedZoom01;
-        private Canvas titleCanvas;
         private RectTransform titleContentRoot;
         private FloatingWindowService floatingWindowService;
 
@@ -175,24 +187,7 @@ namespace CityFlow.UI
 
         private void ConfigureFloatingTitleContent()
         {
-            foreach (GameObject root in gameObject.scene.GetRootGameObjects())
-            {
-                Canvas[] canvases = root.GetComponentsInChildren<Canvas>(true);
-                foreach (Canvas canvas in canvases)
-                {
-                    if (canvas.name == "TitleCanvas")
-                    {
-                        titleCanvas = canvas;
-                        break;
-                    }
-                }
-
-                if (titleCanvas != null)
-                {
-                    break;
-                }
-            }
-
+            titleCanvas = ResolveTitleCanvas();
             if (titleCanvas == null)
             {
                 return;
@@ -267,7 +262,10 @@ namespace CityFlow.UI
             {
                 if (confirmPopup != null)
                 {
-                    confirmPopup.Show("새로하기를 누르시면 지금까지 진행한 내용이 모두 지워집니다. 계속하시겠습니까?", ExecuteStartNewGame);
+                    ShowConfirmation(
+                        "새로하기를 누르시면 지금까지 진행한 내용이 " +
+                        "모두 지워집니다. 계속하시겠습니까?",
+                        ExecuteStartNewGame);
                 }
                 else
                 {
@@ -315,17 +313,159 @@ namespace CityFlow.UI
 
         public void OnSettings()
         {
+            InstallTitleEnhancements();
+            if (enhancementsView != null)
+            {
+                bool visible = !enhancementsView.IsSettingsVisible;
+                if (visible)
+                {
+                    HideConfirmationImmediately();
+                }
+
+                enhancementsView.SetSettingsVisible(visible);
+                return;
+            }
+
             if (settingsPanel != null)
             {
-                settingsPanel.SetActive(!settingsPanel.activeSelf);
+                bool visible = !settingsPanel.activeSelf;
+                if (visible)
+                {
+                    HideConfirmationImmediately();
+                }
+
+                settingsPanel.SetActive(visible);
             }
+        }
+
+        private void CloseSettings()
+        {
+            enhancementsView?.SetSettingsVisible(false);
+            if (settingsPanel != null)
+            {
+                settingsPanel.SetActive(false);
+            }
+        }
+
+        private void HideConfirmationImmediately()
+        {
+            if (confirmPopup != null &&
+                confirmPopup.gameObject.activeSelf)
+            {
+                confirmPopup.HideImmediate();
+            }
+        }
+
+        private void ShowConfirmation(
+            string message,
+            System.Action onConfirm)
+        {
+            CloseSettings();
+            confirmPopup.Show(message, onConfirm);
+        }
+
+        private void InstallTitleEnhancements()
+        {
+            if (enhancementsView != null)
+            {
+                return;
+            }
+
+            Canvas resolvedCanvas = ResolveTitleCanvas();
+            GameObject prefab = Resources.Load<GameObject>(
+                EnhancementsResourcePath);
+            if (resolvedCanvas == null || prefab == null)
+            {
+                Debug.LogWarning(
+                    "[TitleScene] 타이틀 보조 UI를 설치할 수 없습니다. " +
+                    $"Canvas={resolvedCanvas != null}, " +
+                    $"Prefab={prefab != null}.");
+                return;
+            }
+
+            GameObject instance = Instantiate(
+                prefab,
+                resolvedCanvas.transform,
+                false);
+            instance.name = "UI_TitleSceneEnhancements";
+            enhancementsView =
+                instance.GetComponent<TitleSceneEnhancementsView>();
+            enhancementsView?.Initialize(showLogoBackdrop);
+        }
+
+        private void DisableLanguageButton()
+        {
+            Button button = ResolveLanguageButton();
+            if (button != null)
+            {
+                button.interactable = false;
+            }
+        }
+
+        private Canvas ResolveTitleCanvas()
+        {
+            if (titleCanvas != null)
+            {
+                return titleCanvas;
+            }
+
+            titleCanvas = GetComponentInParent<Canvas>();
+            titleCanvas ??= confirmPopup != null
+                ? confirmPopup.GetComponentInParent<Canvas>(true)
+                : null;
+            titleCanvas ??= continueButton != null
+                ? continueButton.GetComponentInParent<Canvas>(true)
+                : null;
+            titleCanvas ??= settingsPanel != null
+                ? settingsPanel.GetComponentInParent<Canvas>(true)
+                : null;
+            return titleCanvas;
+        }
+
+        private Button ResolveLanguageButton()
+        {
+            if (languageButton != null)
+            {
+                return languageButton;
+            }
+
+            Canvas canvas = ResolveTitleCanvas();
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            Button[] buttons = canvas.GetComponentsInChildren<Button>(true);
+            for (int buttonIndex = 0;
+                 buttonIndex < buttons.Length;
+                 buttonIndex++)
+            {
+                Button candidate = buttons[buttonIndex];
+                int listenerCount =
+                    candidate.onClick.GetPersistentEventCount();
+                for (int listenerIndex = 0;
+                     listenerIndex < listenerCount;
+                     listenerIndex++)
+                {
+                    if (candidate.onClick.GetPersistentTarget(listenerIndex) ==
+                            this &&
+                        candidate.onClick.GetPersistentMethodName(
+                            listenerIndex) == nameof(OnLanguageClicked))
+                    {
+                        languageButton = candidate;
+                        return languageButton;
+                    }
+                }
+            }
+
+            return null;
         }
 
         public void OnQuit()
         {
             if (confirmPopup != null)
             {
-                confirmPopup.Show("게임을 끄시겠습니까?", ExecuteQuit);
+                ShowConfirmation("게임을 끄시겠습니까?", ExecuteQuit);
             }
             else
             {
@@ -385,3 +525,4 @@ namespace CityFlow.UI
         }
     }
 }
+

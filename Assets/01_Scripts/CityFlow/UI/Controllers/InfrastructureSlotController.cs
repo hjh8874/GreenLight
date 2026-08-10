@@ -15,6 +15,7 @@ namespace CityFlow.UI.Controllers
         
         [Header("UI References (Self)")]
         [SerializeField] private Image iconImage;
+        [SerializeField] private TextMeshProUGUI nameText;
         [SerializeField] private TextMeshProUGUI costText;
         [SerializeField] private Button btnBuy;
 
@@ -76,6 +77,7 @@ namespace CityFlow.UI.Controllers
             }
 
             Transform iconTransform = transform.Find("Icon");
+            Transform nameTransform = transform.Find("NameText");
             Transform costTransform = transform.Find("CostText");
 
             if (iconTransform != null)
@@ -88,33 +90,35 @@ namespace CityFlow.UI.Controllers
                 costText = costTransform.GetComponent<TextMeshProUGUI>();
             }
 
+            if (nameTransform != null)
+            {
+                nameText = nameTransform.GetComponent<TextMeshProUGUI>();
+            }
+            else if (costText != null)
+            {
+                GameObject nameObject = Instantiate(
+                    costText.gameObject,
+                    costText.transform.parent,
+                    false);
+                nameObject.name = "NameText";
+                nameText = nameObject.GetComponent<TextMeshProUGUI>();
+            }
+
         }
 
         private void NormalizeLayout()
         {
-            if (costText != null)
-            {
-                RectTransform costRect = costText.rectTransform;
-                costRect.anchorMin = new Vector2(0.5f, 1f);
-                costRect.anchorMax = new Vector2(0.5f, 1f);
-                costRect.pivot = new Vector2(0.5f, 1f);
-                costRect.anchoredPosition = new Vector2(0f, -8f);
-                costRect.sizeDelta = new Vector2(100f, 30f);
-                costText.enableAutoSizing = true;
-                costText.fontSizeMin = 14f;
-                costText.fontSizeMax = 22f;
-                costText.alignment = TextAlignmentOptions.Center;
-                costText.textWrappingMode = TextWrappingModes.NoWrap;
-            }
+            ConfigureTextLayout(nameText, 62f, 13f);
+            ConfigureTextLayout(costText, 42f, 15f);
 
             if (iconImage != null)
             {
                 RectTransform iconRect = iconImage.rectTransform;
-                iconRect.anchorMin = new Vector2(0.5f, 1f);
-                iconRect.anchorMax = new Vector2(0.5f, 1f);
-                iconRect.pivot = new Vector2(0.5f, 1f);
-                iconRect.anchoredPosition = new Vector2(0f, -42f);
-                iconRect.sizeDelta = new Vector2(84f, 72f);
+                iconRect.anchorMin = new Vector2(0.5f, 0.5f);
+                iconRect.anchorMax = new Vector2(0.5f, 0.5f);
+                iconRect.pivot = new Vector2(0.5f, 0.5f);
+                iconRect.anchoredPosition = new Vector2(0f, -3f);
+                iconRect.sizeDelta = new Vector2(68f, 68f);
             }
 
             if (btnBuy != null)
@@ -138,11 +142,46 @@ namespace CityFlow.UI.Controllers
             }
         }
 
+        private static void ConfigureTextLayout(
+            TextMeshProUGUI text,
+            float verticalPosition,
+            float maximumFontSize)
+        {
+            if (text == null)
+            {
+                return;
+            }
+
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = new Vector2(0f, verticalPosition);
+            rect.sizeDelta = new Vector2(96f, 20f);
+
+            text.enableAutoSizing = true;
+            text.fontSizeMin = 10f;
+            text.fontSizeMax = maximumFontSize;
+            text.alignment = TextAlignmentOptions.Center;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
+            text.raycastTarget = false;
+        }
+
         private void ApplyData()
         {
             if (infraData == null)
             {
+                if (nameText != null)
+                {
+                    nameText.text = string.Empty;
+                }
+
                 return;
+            }
+
+            if (nameText != null)
+            {
+                nameText.text = infraData.InfrastructureName;
             }
 
             if (iconImage != null)
@@ -160,7 +199,7 @@ namespace CityFlow.UI.Controllers
                 TextMeshProUGUI buttonLabel = btnBuy.GetComponentInChildren<TextMeshProUGUI>(true);
                 if (buttonLabel != null)
                 {
-                    buttonLabel.text = infraData.InfrastructureName;
+                    buttonLabel.text = "건설";
                 }
             }
         }

@@ -48,7 +48,7 @@ namespace CityFlow.UI.Editor
             EnsureTitle(panel);
             RemoveLegacyAudioControls(panel);
             EnsureAudioSettings(panel, audioSettingsPrefab);
-            EnsureCongestionToggle(panel);
+            RemoveChild(panel, "CongestionViewToggle");
             Button quitButton = StyleQuitButton(panel);
             BindController(controller, quitButton);
 
@@ -83,9 +83,11 @@ namespace CityFlow.UI.Editor
             title.alignment = TextAlignmentOptions.Center;
             LayerLabUiAssetCatalog.StyleText(
                 title,
-                22f,
-                new Color(1f, 0.84f, 0.3f, 1f),
+                24f,
+                new Color(1f, 0.92f, 0.46f, 1f),
                 FontStyles.Bold);
+            title.outlineColor = new Color32(20, 24, 30, 255);
+            title.outlineWidth = 0.18f;
         }
 
         private static void RemoveLegacyAudioControls(Transform panel)
@@ -142,52 +144,6 @@ namespace CityFlow.UI.Editor
                 instance.transform as RectTransform,
                 new Vector2(0f, -39f),
                 new Vector2(330f, 126f));
-        }
-
-        private static void EnsureCongestionToggle(Transform panel)
-        {
-            Transform existing = panel.Find("CongestionViewToggle");
-            GameObject instance = existing != null
-                ? existing.gameObject
-                : InstantiateCongestionToggle(panel);
-            if (instance == null)
-            {
-                return;
-            }
-
-            instance.name = "CongestionViewToggle";
-            SetTopRect(
-                instance.transform as RectTransform,
-                new Vector2(0f, -181f),
-                new Vector2(320f, 34f));
-            LayerLabUiAssetCatalog.StyleToggle(
-                instance.GetComponent<Toggle>(),
-                "실시간 정체");
-        }
-
-        private static GameObject InstantiateCongestionToggle(Transform parent)
-        {
-            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
-                LayerLabUiAssetCatalog.CongestionTogglePrefabPath);
-            if (prefab == null)
-            {
-                Debug.LogError(
-                    "[GeonSettingsPanelPolishApplier] Congestion toggle prefab " +
-                    "is missing. Run its baker first.");
-                return null;
-            }
-
-            GameObject instance = PrefabUtility.InstantiatePrefab(
-                prefab,
-                parent) as GameObject;
-            if (instance != null)
-            {
-                Undo.RegisterCreatedObjectUndo(
-                    instance,
-                    "Create Congestion View Toggle");
-            }
-
-            return instance;
         }
 
         private static Button StyleQuitButton(Transform panel)

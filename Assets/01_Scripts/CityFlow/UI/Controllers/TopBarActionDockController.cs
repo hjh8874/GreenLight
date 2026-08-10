@@ -22,31 +22,29 @@ namespace CityFlow.UI.Controllers
         {
             RectTransform rect = transform as RectTransform;
             RectTransform topBar = FindTopBar();
-            if (rect == null || topBar == null)
+            bool hasTopBar = rect != null && topBar != null;
+            if (hasTopBar)
             {
-                return;
+                if (rect.parent != topBar)
+                {
+                    rect.SetParent(topBar, false);
+                }
+
+                float topBarHeight = topBar.rect.height > 0f
+                    ? topBar.rect.height
+                    : HudTopBarLayout.TopBarHeight;
+                rect.anchorMin = new Vector2(1f, 0.5f);
+                rect.anchorMax = new Vector2(1f, 0.5f);
+                rect.pivot = new Vector2(1f, 0.5f);
+                rect.anchoredPosition = new Vector2(
+                    -HudTopBarLayout.ActionDockRightInset,
+                    0f);
+                rect.sizeDelta = new Vector2(
+                    HudTopBarLayout.ActionDockWidth,
+                    Mathf.Max(
+                        1f,
+                        topBarHeight - HudTopBarLayout.VerticalInset * 2f));
             }
-
-            if (rect.parent != topBar)
-            {
-                rect.SetParent(topBar, false);
-            }
-
-            float topBarHeight = topBar != null && topBar.rect.height > 0f
-                ? topBar.rect.height
-                : HudTopBarLayout.TopBarHeight;
-
-            rect.anchorMin = new Vector2(1f, 0.5f);
-            rect.anchorMax = new Vector2(1f, 0.5f);
-            rect.pivot = new Vector2(1f, 0.5f);
-            rect.anchoredPosition = new Vector2(
-                -HudTopBarLayout.ActionDockRightInset,
-                0f);
-            rect.sizeDelta = new Vector2(
-                HudTopBarLayout.ActionDockWidth,
-                Mathf.Max(
-                    1f,
-                    topBarHeight - HudTopBarLayout.VerticalInset * 2f));
 
             Image background = GetComponent<Image>();
             if (background != null)
@@ -60,36 +58,22 @@ namespace CityFlow.UI.Controllers
                 GetComponent<HorizontalLayoutGroup>();
             if (layout != null)
             {
-                layout.padding = new RectOffset(6, 6, 6, 6);
-                layout.spacing = 6f;
-                layout.childAlignment = TextAnchor.MiddleCenter;
+                layout.padding = hasTopBar
+                    ? new RectOffset(6, 6, 6, 6)
+                    : new RectOffset(4, 4, 4, 4);
+                layout.spacing = hasTopBar ? 6f : 8f;
+                layout.childAlignment = hasTopBar
+                    ? TextAnchor.MiddleCenter
+                    : TextAnchor.UpperCenter;
             }
 
             Button[] buttons = GetComponentsInChildren<Button>(true);
+            Sprite cameraButtonSprite = FindCameraButtonSprite();
             for (int index = 0; index < buttons.Length; index++)
             {
-                RectTransform buttonRect =
-                    buttons[index].transform as RectTransform;
-                if (buttonRect != null)
+                if (hasTopBar)
                 {
-                    buttonRect.sizeDelta =
-                        new Vector2(
-                            HudTopBarLayout.ActionButtonWidth,
-                            HudTopBarLayout.ActionButtonHeight);
-                }
-
-                LayoutElement layoutElement =
-                    buttons[index].GetComponent<LayoutElement>();
-                if (layoutElement != null)
-                {
-                    layoutElement.minWidth =
-                        HudTopBarLayout.ActionButtonWidth;
-                    layoutElement.preferredWidth =
-                        HudTopBarLayout.ActionButtonWidth;
-                    layoutElement.minHeight =
-                        HudTopBarLayout.ActionButtonHeight;
-                    layoutElement.preferredHeight =
-                        HudTopBarLayout.ActionButtonHeight;
+                    ApplyButtonLayout(buttons[index]);
                 }
 
                 Image image = buttons[index].targetGraphic as Image;
@@ -108,16 +92,44 @@ namespace CityFlow.UI.Controllers
                 image.color = color;
             }
 
-            GreenFeedPanelController feed =
-                FindAnyObjectByType<GreenFeedPanelController>(
-                    FindObjectsInactive.Include);
-            feed?.AttachTickerToTopBar(topBar);
+            ApplyFloatingButtonSprite(cameraButtonSprite);
+
+            if (topBar != null)
+            {
+                GreenFeedPanelController feed =
+                    FindAnyObjectByType<GreenFeedPanelController>(
+                        FindObjectsInactive.Include);
+                feed?.AttachTickerToTopBar(topBar);
+            }
+        }
+
+        private static void ApplyButtonLayout(Button button)
+        {
+            RectTransform buttonRect = button.transform as RectTransform;
+            if (buttonRect != null)
+            {
+                buttonRect.sizeDelta = new Vector2(
+                    HudTopBarLayout.ActionButtonWidth,
+                    HudTopBarLayout.ActionButtonHeight);
+            }
+
+            LayoutElement layoutElement =
+                button.GetComponent<LayoutElement>();
+            if (layoutElement == null)
+            {
+                return;
+            }
+
+            layoutElement.minWidth = HudTopBarLayout.ActionButtonWidth;
+            layoutElement.preferredWidth = HudTopBarLayout.ActionButtonWidth;
+            layoutElement.minHeight = HudTopBarLayout.ActionButtonHeight;
+            layoutElement.preferredHeight = HudTopBarLayout.ActionButtonHeight;
         }
 
         private RectTransform FindTopBar()
         {
-            if (transform.parent is RectTransform parent
-                && parent.name == "HUD_TopBar")
+            if (transform.parent is RectTransform parent &&
+                parent.name == "HUD_TopBar")
             {
                 return parent;
             }
@@ -136,5 +148,41 @@ namespace CityFlow.UI.Controllers
 
             return null;
         }
+
+        private Sprite FindCameraButtonSprite()
+        {
+            Transform cameraGroup = transform.Find("CameraRotateButton");
+            Button cameraButton = cameraGroup != null
+                ? cameraGroup.GetComponentInChildren<Button>(true)
+                : null;
+            Image image = cameraButton != null
+                ? cameraButton.targetGraphic as Image
+                : null;
+            return image != null ? image.sprite : null;
+        }
+
+        private void ApplyFloatingButtonSprite(Sprite sprite)
+        {
+            if (sprite == null)
+            {
+                return;
+            }
+
+            Transform floating = transform.Find("Btn_Floating");
+            Button button = floating != null
+                ? floating.GetComponent<Button>()
+                : null;
+            Image image = button != null
+                ? button.targetGraphic as Image
+                : null;
+            if (image == null)
+            {
+                return;
+            }
+
+            image.sprite = sprite;
+            image.type = Image.Type.Sliced;
+        }
     }
 }
+

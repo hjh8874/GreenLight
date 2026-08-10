@@ -336,9 +336,7 @@ namespace CityFlow.UI
                 return;
             }
 
-            coinText.text =
-                $"재화: {_currentCoins:N0}  " +
-                $"대기: {_pendingCoins:N0}";
+            coinText.text = $"재화: {_currentCoins:N0}";
         }
     }
 }

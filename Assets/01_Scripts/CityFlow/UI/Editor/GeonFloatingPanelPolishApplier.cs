@@ -36,9 +36,9 @@ namespace CityFlow.UI.Editor
                                         panel.Find("Floating Toggle");
             if (toggleTransform != null)
             {
-                LayerLabUiAssetCatalog.StyleToggle(
-                    toggleTransform.GetComponent<Toggle>(),
-                    "플로팅 모드");
+                Toggle toggle = toggleTransform.GetComponent<Toggle>();
+                LayerLabUiAssetCatalog.StyleToggle(toggle, "플로팅 모드");
+                StyleToggleReadability(toggle);
             }
 
             StylePreset(panel.Find("S_Button"), "S");
@@ -75,6 +75,36 @@ namespace CityFlow.UI.Editor
                 LayerLabUiAssetCatalog.LoadSprite(
                     "Button/Btn_Rectangle02_Dark.png"),
                 label);
+        }
+
+        private static void StyleToggleReadability(Toggle toggle)
+        {
+            if (toggle == null)
+            {
+                return;
+            }
+
+            TMP_Text label = toggle.GetComponentInChildren<TMP_Text>(true);
+            if (label != null)
+            {
+                LayerLabUiAssetCatalog.StyleText(
+                    label,
+                    16f,
+                    Color.white,
+                    FontStyles.Bold);
+                label.alignment = TextAlignmentOptions.MidlineLeft;
+            }
+
+            Image background = toggle.targetGraphic as Image;
+            if (background != null)
+            {
+                background.color = new Color(0.12f, 0.16f, 0.2f, 1f);
+            }
+
+            if (toggle.graphic is Image checkmark)
+            {
+                checkmark.color = new Color(0.45f, 1f, 0.86f, 1f);
+            }
         }
     }
 }

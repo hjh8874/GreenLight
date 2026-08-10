@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using CityFlow.Bootstrap;
 using CityFlow.Content;
@@ -66,6 +67,7 @@ namespace CityFlow.UI
         private string defaultIncomeLabel;
         private string defaultDelayLabel;
         private bool metricLabelsCached;
+        private bool visibilityPublished;
 
         // UI 플로팅 좌표 변환용 캐싱
         private Canvas rootCanvas;
@@ -75,6 +77,9 @@ namespace CityFlow.UI
 
         /// <summary>현재 카드가 활성 상태인지 외부에서 확인할 수 있는 프로퍼티.</summary>
         public bool IsOpen => gameObject.activeSelf && !isClosing;
+        public bool IsVisible => visibilityPublished;
+        public Vector2Int DisplayedTile => currentTile;
+        public event Action<Vector2Int, bool> VisibilityChanged;
 
         // ═══════════════════════════════════════════════════════════════
         // ICityFlowServiceConsumer 구현
@@ -117,6 +122,11 @@ namespace CityFlow.UI
                 return;
             }
 
+            if (visibilityPublished && currentTile != displayAnchor)
+            {
+                PublishVisibility(false);
+            }
+
             isClosing = false;
             currentTile = displayAnchor;
             currentType = type;
@@ -130,6 +140,7 @@ namespace CityFlow.UI
             }
 
             gameObject.SetActive(true);
+            PublishVisibility(true);
             UpdateFloatingPosition(); // 팝업 애니메이션 시작 전 초기 위치 세팅
 
             // DOTween 팝업 애니메이션
@@ -341,6 +352,17 @@ namespace CityFlow.UI
             {
                 gameObject.SetActive(false);
             });
+        }
+
+        private void PublishVisibility(bool visible)
+        {
+            if (visibilityPublished == visible)
+            {
+                return;
+            }
+
+            visibilityPublished = visible;
+            VisibilityChanged?.Invoke(currentTile, visible);
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -919,6 +941,7 @@ namespace CityFlow.UI
         private void OnDisable()
         {
             StopUpdateRoutine();
+            PublishVisibility(false);
         }
     }
 }

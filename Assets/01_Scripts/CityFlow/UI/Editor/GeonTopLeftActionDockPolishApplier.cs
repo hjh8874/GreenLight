@@ -37,8 +37,18 @@ namespace CityFlow.UI.Editor
                 return;
             }
 
-            MoveToActionDock(floatingButton, actionDock);
-            MoveToActionDock(cameraButton, actionDock);
+            MoveToActionDock(
+                floatingButton,
+                actionDock,
+                new Vector2(
+                    HudTopBarLayout.ActionButtonWidth,
+                    HudTopBarLayout.ActionButtonHeight));
+            MoveToActionDock(
+                cameraButton,
+                actionDock,
+                new Vector2(
+                    HudTopBarLayout.ActionButtonWidth,
+                    HudTopBarLayout.ActionButtonHeight));
             floatingButton.SetSiblingIndex(0);
             cameraButton.SetSiblingIndex(1);
             LayerLabUiAssetCatalog.GetOrAddComponent<TopBarActionDockController>(
@@ -47,11 +57,8 @@ namespace CityFlow.UI.Editor
             StyleActionButton(
                 floatingButton,
                 "플로팅",
-                "Button/Btn_Rectangle02_Dark.png");
-            StyleActionButton(
-                cameraButton,
-                "카메라 회전",
                 "Button/Btn_Rectangle01_n_Green.png");
+            StyleCameraButtonGroup(cameraButton);
 
             actionDock.SetAsLastSibling();
             LayerLabUiAssetCatalog.CompleteSceneChange(
@@ -65,6 +72,7 @@ namespace CityFlow.UI.Editor
         {
             Transform existing = parent.Find(ActionDockName)
                 ?? contentRoot.Find(ActionDockName);
+            bool created = existing == null;
             GameObject dockObject;
             if (existing != null)
             {
@@ -94,17 +102,20 @@ namespace CityFlow.UI.Editor
                     "Parent Top Left Action Dock");
             }
 
-            RectTransform rect = dockObject.GetComponent<RectTransform>();
-            rect.anchorMin = new Vector2(1f, 0.5f);
-            rect.anchorMax = new Vector2(1f, 0.5f);
-            rect.pivot = new Vector2(1f, 0.5f);
-            rect.anchoredPosition = new Vector2(
-                -HudTopBarLayout.ActionDockRightInset,
-                0f);
-            rect.sizeDelta = new Vector2(
-                HudTopBarLayout.ActionDockWidth,
-                HudTopBarLayout.TopBarHeight -
-                HudTopBarLayout.VerticalInset * 2f);
+            if (created)
+            {
+                RectTransform rect = dockObject.GetComponent<RectTransform>();
+                rect.anchorMin = new Vector2(1f, 0.5f);
+                rect.anchorMax = new Vector2(1f, 0.5f);
+                rect.pivot = new Vector2(1f, 0.5f);
+                rect.anchoredPosition = new Vector2(
+                    -HudTopBarLayout.ActionDockRightInset,
+                    0f);
+                rect.sizeDelta = new Vector2(
+                    HudTopBarLayout.ActionDockWidth,
+                    HudTopBarLayout.TopBarHeight -
+                    HudTopBarLayout.VerticalInset * 2f);
+            }
 
             Image background =
                 LayerLabUiAssetCatalog.GetOrAddComponent<Image>(dockObject);
@@ -190,7 +201,8 @@ namespace CityFlow.UI.Editor
 
         private static void MoveToActionDock(
             Transform button,
-            Transform actionDock)
+            Transform actionDock,
+            Vector2 size)
         {
             if (button.parent != actionDock)
             {
@@ -206,9 +218,7 @@ namespace CityFlow.UI.Editor
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(
-                HudTopBarLayout.ActionButtonWidth,
-                HudTopBarLayout.ActionButtonHeight);
+            rect.sizeDelta = size;
         }
 
         private static void StyleActionButton(
@@ -251,5 +261,59 @@ namespace CityFlow.UI.Editor
                 text.textWrappingMode = TextWrappingModes.NoWrap;
             }
         }
+
+        private static void StyleCameraButtonGroup(Transform target)
+        {
+            LayoutElement groupLayout =
+                LayerLabUiAssetCatalog.GetOrAddComponent<LayoutElement>(
+                    target.gameObject);
+            groupLayout.minWidth = HudTopBarLayout.ActionButtonWidth;
+            groupLayout.preferredWidth = HudTopBarLayout.ActionButtonWidth;
+            groupLayout.flexibleWidth = 0f;
+            groupLayout.minHeight = HudTopBarLayout.ActionButtonHeight;
+            groupLayout.preferredHeight = HudTopBarLayout.ActionButtonHeight;
+            groupLayout.flexibleHeight = 0f;
+
+            Image panelBackground =
+                LayerLabUiAssetCatalog.GetOrAddComponent<Image>(
+                    target.gameObject);
+            LayerLabUiAssetCatalog.ApplyImage(
+                panelBackground,
+                LayerLabUiAssetCatalog.LoadSprite(
+                    "Button/Btn_Rectangle01_n_Green.png"),
+                new Color(1f, 1f, 1f, 0.62f));
+
+            Button[] buttons = target.GetComponentsInChildren<Button>(true);
+            Sprite backgroundSprite = LayerLabUiAssetCatalog.LoadSprite(
+                "Button/Btn_Rectangle01_n_Green.png");
+            for (int index = 0; index < buttons.Length; index++)
+            {
+                Image image = buttons[index].targetGraphic as Image;
+                if (image == null)
+                {
+                    image = buttons[index].GetComponent<Image>();
+                }
+
+                LayerLabUiAssetCatalog.ApplyImage(
+                    image,
+                    backgroundSprite,
+                    new Color(1f, 1f, 1f, 0.62f));
+            }
+
+            TMP_Text[] labels = target.GetComponentsInChildren<TMP_Text>(true);
+            for (int index = 0; index < labels.Length; index++)
+            {
+                labels[index].gameObject.SetActive(true);
+                labels[index].text = "카메라 회전";
+                LayerLabUiAssetCatalog.StyleText(
+                    labels[index],
+                    13f,
+                    Color.white,
+                    FontStyles.Bold);
+                labels[index].alignment = TextAlignmentOptions.Center;
+                labels[index].textWrappingMode = TextWrappingModes.NoWrap;
+            }
+        }
     }
 }
+

@@ -48,7 +48,7 @@ namespace CityFlow.UI.Editor
                 hud.Find("CoinText"),
                 new Vector2(480f, -14f),
                 new Vector2(280f, 30f),
-                "재화: 0  대기: 0",
+                "재화: 0",
                 new Color(1f, 0.84f, 0.3f, 1f));
 
             DisableUnusedLegacyHudElement(hud.Find("StabilityText"));
@@ -125,3 +125,4 @@ namespace CityFlow.UI.Editor
         }
     }
 }
+

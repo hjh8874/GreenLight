@@ -1,4 +1,5 @@
 using CityFlow.View;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -15,6 +16,11 @@ namespace CityFlow.UI
         private bool isBound;
         private FloatingWindowService floatingService;
 
+        private void Awake()
+        {
+            ApplyFloatingToggleReadability();
+        }
+
         private void Start()
         {
             FindAndSubscribeService();
@@ -24,7 +30,54 @@ namespace CityFlow.UI
 
         private void OnEnable()
         {
+            ApplyFloatingToggleReadability();
             SyncFloatingUI();
+        }
+
+        private void ApplyFloatingToggleReadability()
+        {
+            if (tglFloatingMode == null)
+            {
+                return;
+            }
+
+            TMP_Text tmpLabel =
+                tglFloatingMode.GetComponentInChildren<TMP_Text>(true);
+            if (tmpLabel != null)
+            {
+                tmpLabel.color = Color.white;
+                tmpLabel.fontSize = 16f;
+                tmpLabel.fontStyle = FontStyles.Bold;
+            }
+
+            Text legacyLabel =
+                tglFloatingMode.GetComponentInChildren<Text>(true);
+            if (legacyLabel != null)
+            {
+                legacyLabel.color = Color.white;
+                legacyLabel.fontSize = 16;
+                legacyLabel.fontStyle = FontStyle.Bold;
+            }
+
+            Image background = tglFloatingMode.targetGraphic as Image;
+            if (background != null)
+            {
+                background.color = new Color(0.12f, 0.16f, 0.2f, 1f);
+                Outline outline = background.GetComponent<Outline>();
+                if (outline == null)
+                {
+                    outline = background.gameObject.AddComponent<Outline>();
+                }
+
+                outline.effectColor = new Color(0.45f, 1f, 0.86f, 1f);
+                outline.effectDistance = new Vector2(1f, -1f);
+                outline.useGraphicAlpha = false;
+            }
+
+            if (tglFloatingMode.graphic is Image checkmark)
+            {
+                checkmark.color = new Color(0.45f, 1f, 0.86f, 1f);
+            }
         }
 
         private void OnDestroy()

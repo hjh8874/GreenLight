@@ -34,14 +34,14 @@ namespace CityFlow.UI.Editor
                 root.transform,
                 "BGM_Group",
                 "BGM",
-                -61f,
+                -77f,
                 out Slider bgmSlider,
                 out TMP_InputField bgmInput);
             CreateVolumeRow(
                 root.transform,
                 "SFX_Group",
                 "SFX",
-                -104f,
+                -120f,
                 out Slider sfxSlider,
                 out TMP_InputField sfxInput);
 
@@ -104,8 +104,8 @@ namespace CityFlow.UI.Editor
             label.alignment = TextAlignmentOptions.MidlineLeft;
             LayerLabUiAssetCatalog.StyleText(
                 label,
-                15f,
-                Color.white,
+                16f,
+                new Color(0.94f, 0.97f, 1f, 1f),
                 FontStyles.Bold);
 
             slider = CreateSlider(row);
@@ -136,6 +136,7 @@ namespace CityFlow.UI.Editor
             Image backgroundImage = AddImage(
                 background.gameObject,
                 "Slider/Slider02_FrontFrame.png");
+            backgroundImage.color = new Color(0.8f, 0.86f, 0.9f, 1f);
             backgroundImage.raycastTarget = false;
 
             RectTransform fillArea = CreateRectObject(
@@ -147,6 +148,7 @@ namespace CityFlow.UI.Editor
             Image fillImage = AddImage(
                 fill.gameObject,
                 "Slider/Slider02_Fill.png");
+            fillImage.color = new Color(0.48f, 1f, 0.86f, 1f);
             fillImage.raycastTarget = false;
 
             RectTransform handleArea = CreateRectObject(
@@ -163,6 +165,7 @@ namespace CityFlow.UI.Editor
                 handle.gameObject,
                 "Slider/Slider03_Handle.png",
                 false);
+            handleImage.color = new Color(0.96f, 1f, 1f, 1f);
             handleImage.preserveAspect = true;
 
             slider.fillRect = fill;
@@ -180,6 +183,7 @@ namespace CityFlow.UI.Editor
             Image background = AddImage(
                 root,
                 "UI_Etc/Inputfield_Frame_Normal.png");
+            background.color = new Color(0.94f, 0.97f, 1f, 1f);
             TMP_InputField input = root.AddComponent<TMP_InputField>();
 
             RectTransform viewport = CreateRectObject(
@@ -196,14 +200,19 @@ namespace CityFlow.UI.Editor
             placeholder.alignment = TextAlignmentOptions.Center;
             LayerLabUiAssetCatalog.StyleText(
                 placeholder,
-                14f,
-                new Color(0.2f, 0.2f, 0.2f, 0.7f));
+                15f,
+                new Color(0.18f, 0.22f, 0.26f, 0.72f),
+                FontStyles.Bold);
 
             TMP_Text text = CreateText(viewport, "Text", string.Empty);
             StretchRect(text.rectTransform, 0f, 0f);
             text.alignment = TextAlignmentOptions.Center;
             text.textWrappingMode = TextWrappingModes.NoWrap;
-            LayerLabUiAssetCatalog.StyleText(text, 14f, Color.black);
+            LayerLabUiAssetCatalog.StyleText(
+                text,
+                15f,
+                new Color(0.05f, 0.07f, 0.09f, 1f),
+                FontStyles.Bold);
 
             input.textViewport = viewport;
             input.textComponent = (TextMeshProUGUI)text;

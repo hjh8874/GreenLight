@@ -15,6 +15,7 @@ namespace CityFlow.UI
         
         [Header("UI References (Self)")]
         [SerializeField] private Image iconImage;
+        [SerializeField] private TextMeshProUGUI nameText;
         [SerializeField] private TextMeshProUGUI costText;
         [SerializeField] private Button btnBuy;
 
@@ -36,6 +37,7 @@ namespace CityFlow.UI
             _tooltipController = tooltip;
 
             ResolveReferences();
+            NormalizeLayout();
 
             ApplyPresentation();
 
@@ -99,6 +101,7 @@ namespace CityFlow.UI
         private void ResolveReferences()
         {
             Transform iconTransform = transform.Find("Icon");
+            Transform nameTransform = transform.Find("NameText");
             Transform costTransform = transform.Find("CostText");
             Transform buyTransform = transform.Find("Btn_Buy");
 
@@ -110,6 +113,20 @@ namespace CityFlow.UI
             if (costTransform != null)
             {
                 costText = costTransform.GetComponent<TextMeshProUGUI>();
+            }
+
+            if (nameTransform != null)
+            {
+                nameText = nameTransform.GetComponent<TextMeshProUGUI>();
+            }
+            else if (costText != null)
+            {
+                GameObject nameObject = Instantiate(
+                    costText.gameObject,
+                    costText.transform.parent,
+                    false);
+                nameObject.name = "NameText";
+                nameText = nameObject.GetComponent<TextMeshProUGUI>();
             }
 
             if (buyTransform != null)
@@ -124,12 +141,58 @@ namespace CityFlow.UI
             }
         }
 
+        private void NormalizeLayout()
+        {
+            ConfigureTextLayout(nameText, 62f, 13f);
+            ConfigureTextLayout(costText, 42f, 15f);
+
+            if (iconImage != null)
+            {
+                RectTransform iconRect = iconImage.rectTransform;
+                iconRect.anchorMin = new Vector2(0.5f, 0.5f);
+                iconRect.anchorMax = new Vector2(0.5f, 0.5f);
+                iconRect.pivot = new Vector2(0.5f, 0.5f);
+                iconRect.anchoredPosition = new Vector2(0f, -3f);
+                iconRect.sizeDelta = new Vector2(68f, 68f);
+            }
+        }
+
+        private static void ConfigureTextLayout(
+            TextMeshProUGUI text,
+            float verticalPosition,
+            float maximumFontSize)
+        {
+            if (text == null)
+            {
+                return;
+            }
+
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = new Vector2(0f, verticalPosition);
+            rect.sizeDelta = new Vector2(96f, 20f);
+
+            text.enableAutoSizing = true;
+            text.fontSizeMin = 10f;
+            text.fontSizeMax = maximumFontSize;
+            text.alignment = TextAlignmentOptions.Center;
+            text.textWrappingMode = TextWrappingModes.NoWrap;
+            text.raycastTarget = false;
+        }
+
         private void ApplyPresentation()
         {
             ResolveReferences();
 
             if (_usesSpecialBuilding)
             {
+                if (nameText != null)
+                {
+                    nameText.text = _specialBuilding.DisplayName;
+                }
+
                 if (iconImage != null)
                 {
                     iconImage.sprite = _specialBuilding.Icon;
@@ -162,6 +225,11 @@ namespace CityFlow.UI
 
             if (tileData == null)
             {
+                if (nameText != null)
+                {
+                    nameText.text = string.Empty;
+                }
+
                 return;
             }
 
@@ -169,6 +237,11 @@ namespace CityFlow.UI
                 _placementController == null ||
                 _placementController.IsTileTypeUnlocked(
                     tileData.Category);
+
+            if (nameText != null)
+            {
+                nameText.text = tileData.BuildingName;
+            }
 
             if (iconImage != null)
             {

@@ -128,6 +128,8 @@ namespace CityFlow.View
                 return;
             }
 
+            propertyBlock ??= new MaterialPropertyBlock();
+
             Color color = level switch
             {
                 CongestionLevel.Jam => jamColor,
