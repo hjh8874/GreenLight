@@ -49,11 +49,6 @@ namespace CityFlow.EditorTools
 
         // 상단 정보 바의 오른쪽 구간을 비율 앵커로 사용해 해상도가 달라도
         // 플로팅·카메라 버튼 영역과 겹치지 않게 유지한다.
-        private const float HarvestButtonWidth = 160f;
-        private const float ActionDockWidth = 196f;
-        private const float ActionDockRightInset = 8f;
-        private const float TickerGap = 8f;
-        private const float TickerVerticalInset = 4f;
         private static readonly Color TickerColor =
             new Color32(23, 29, 38, 133);
 
@@ -713,11 +708,16 @@ namespace CityFlow.EditorTools
             tickerRect.anchorMax = new Vector2(1f, 0.5f);
             tickerRect.pivot = new Vector2(0.5f, 0.5f);
             tickerRect.offsetMin = new Vector2(
-                HarvestButtonWidth * 0.5f + TickerGap,
-                -26f);
+                HudTopBarLayout.HarvestButtonWidth * 0.5f +
+                HudTopBarLayout.HorizontalGap,
+                -(HudTopBarLayout.TopBarHeight * 0.5f -
+                  HudTopBarLayout.VerticalInset));
             tickerRect.offsetMax = new Vector2(
-                -(ActionDockWidth + ActionDockRightInset + TickerGap),
-                26f);
+                -(HudTopBarLayout.ActionDockWidth +
+                  HudTopBarLayout.ActionDockRightInset +
+                  HudTopBarLayout.HorizontalGap),
+                HudTopBarLayout.TopBarHeight * 0.5f -
+                HudTopBarLayout.VerticalInset);
         }
 
         private static void ApplyTickerTextOutline(TMP_Text text)

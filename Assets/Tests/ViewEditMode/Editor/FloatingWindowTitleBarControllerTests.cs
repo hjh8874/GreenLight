@@ -110,10 +110,18 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     dockRect.anchorMax,
                     Is.EqualTo(new Vector2(1f, 0.5f)));
-                Assert.That(dockRect.anchoredPosition, Is.EqualTo(new Vector2(-8f, 0f)));
+                Assert.That(
+                    dockRect.anchoredPosition,
+                    Is.EqualTo(new Vector2(
+                        -HudTopBarLayout.ActionDockRightInset,
+                        0f)));
                 Assert.That(
                     dockRect.sizeDelta,
-                    Is.EqualTo(new Vector2(196f, 52f)));
+                    Is.EqualTo(new Vector2(
+                        HudTopBarLayout.ActionDockWidth,
+                        HudTopBarLayout.TopBarHeight -
+                        HudTopBarLayout.VerticalInset * 2f)));
+                Assert.That(topBar.GetComponent<RectMask2D>(), Is.Null);
             }
             finally
             {
@@ -163,9 +171,55 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(rect.pivot,
                     Is.EqualTo(new Vector2(1f, 0.5f)));
                 Assert.That(rect.anchoredPosition,
-                    Is.EqualTo(new Vector2(-88f, 0f)));
+                    Is.EqualTo(new Vector2(
+                        -(HudTopBarLayout.HarvestButtonWidth * 0.5f +
+                          HudTopBarLayout.HorizontalGap),
+                        0f)));
                 Assert.That(rect.sizeDelta,
                     Is.EqualTo(new Vector2(156f, 52f)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void CongestionToggle_OutsideFloatingContent_IsNotReparented()
+        {
+            GameObject root = new GameObject(
+                "OtherSceneCanvasRoot",
+                typeof(RectTransform));
+            GameObject topBar = new GameObject(
+                "HUD_TopBar",
+                typeof(RectTransform));
+            GameObject settingsPanel = new GameObject(
+                "SettingsPanel",
+                typeof(RectTransform));
+            GameObject toggle = new GameObject(
+                "CongestionToggle",
+                typeof(RectTransform),
+                typeof(Image),
+                typeof(Toggle));
+            topBar.transform.SetParent(root.transform, false);
+            settingsPanel.transform.SetParent(root.transform, false);
+            toggle.transform.SetParent(settingsPanel.transform, false);
+
+            try
+            {
+                CongestionTogglePanelController controller =
+                    toggle.AddComponent<CongestionTogglePanelController>();
+                System.Reflection.MethodInfo configure =
+                    typeof(CongestionTogglePanelController).GetMethod(
+                        "ConfigureTopBarPresentation",
+                        System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.NonPublic);
+                Assert.That(configure, Is.Not.Null);
+                configure.Invoke(controller, null);
+
+                Assert.That(
+                    toggle.transform.parent,
+                    Is.SameAs(settingsPanel.transform));
             }
             finally
             {

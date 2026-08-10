@@ -98,8 +98,13 @@ namespace CityFlow.UI.Editor
             rect.anchorMin = new Vector2(1f, 0.5f);
             rect.anchorMax = new Vector2(1f, 0.5f);
             rect.pivot = new Vector2(1f, 0.5f);
-            rect.anchoredPosition = new Vector2(-8f, 0f);
-            rect.sizeDelta = new Vector2(196f, 52f);
+            rect.anchoredPosition = new Vector2(
+                -HudTopBarLayout.ActionDockRightInset,
+                0f);
+            rect.sizeDelta = new Vector2(
+                HudTopBarLayout.ActionDockWidth,
+                HudTopBarLayout.TopBarHeight -
+                HudTopBarLayout.VerticalInset * 2f);
 
             Image background =
                 LayerLabUiAssetCatalog.GetOrAddComponent<Image>(dockObject);
@@ -201,7 +206,9 @@ namespace CityFlow.UI.Editor
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(86f, 40f);
+            rect.sizeDelta = new Vector2(
+                HudTopBarLayout.ActionButtonWidth,
+                HudTopBarLayout.ActionButtonHeight);
         }
 
         private static void StyleActionButton(
@@ -225,11 +232,11 @@ namespace CityFlow.UI.Editor
             LayoutElement layout =
                 LayerLabUiAssetCatalog.GetOrAddComponent<LayoutElement>(
                     target.gameObject);
-            layout.minWidth = 86f;
-            layout.preferredWidth = 86f;
+            layout.minWidth = HudTopBarLayout.ActionButtonWidth;
+            layout.preferredWidth = HudTopBarLayout.ActionButtonWidth;
             layout.flexibleWidth = 0f;
-            layout.minHeight = 40f;
-            layout.preferredHeight = 40f;
+            layout.minHeight = HudTopBarLayout.ActionButtonHeight;
+            layout.preferredHeight = HudTopBarLayout.ActionButtonHeight;
             layout.flexibleHeight = 0f;
 
             TMP_Text text = target.GetComponentInChildren<TMP_Text>(true);

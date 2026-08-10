@@ -8,11 +8,6 @@ namespace CityFlow.UI.Feed
 {
     public sealed class GreenFeedPanelController : MonoBehaviour
     {
-        private const float HarvestButtonWidth = 160f;
-        private const float ActionDockWidth = 196f;
-        private const float ActionDockRightInset = 8f;
-        private const float HorizontalGap = 8f;
-        private const float VerticalInset = 4f;
         private const float TickerOutlineWidth = 0.22f;
         private const string TickerOutlineKeyword = "OUTLINE_ON";
 
@@ -73,16 +68,19 @@ namespace CityFlow.UI.Feed
 
             float topBarHeight = topBar != null && topBar.rect.height > 0f
                 ? topBar.rect.height
-                : 60f;
+                : HudTopBarLayout.TopBarHeight;
             tickerRect.anchorMin = new Vector2(0.5f, 0.5f);
             tickerRect.anchorMax = new Vector2(1f, 0.5f);
             tickerRect.pivot = new Vector2(0.5f, 0.5f);
             tickerRect.offsetMin = new Vector2(
-                HarvestButtonWidth * 0.5f + HorizontalGap,
-                -(topBarHeight * 0.5f - VerticalInset));
+                HudTopBarLayout.HarvestButtonWidth * 0.5f +
+                HudTopBarLayout.HorizontalGap,
+                -(topBarHeight * 0.5f - HudTopBarLayout.VerticalInset));
             tickerRect.offsetMax = new Vector2(
-                -(ActionDockWidth + ActionDockRightInset + HorizontalGap),
-                topBarHeight * 0.5f - VerticalInset);
+                -(HudTopBarLayout.ActionDockWidth +
+                  HudTopBarLayout.ActionDockRightInset +
+                  HudTopBarLayout.HorizontalGap),
+                topBarHeight * 0.5f - HudTopBarLayout.VerticalInset);
 
             Image background = tickerView.GetComponent<Image>();
             if (background != null)

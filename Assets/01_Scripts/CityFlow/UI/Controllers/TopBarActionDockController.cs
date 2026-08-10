@@ -6,12 +6,6 @@ namespace CityFlow.UI.Controllers
 {
     public sealed class TopBarActionDockController : MonoBehaviour
     {
-        private const float RightInset = 8f;
-        private const float DefaultTopBarHeight = 60f;
-        private const float DockWidth = 196f;
-        private const float DockVerticalInset = 4f;
-        private const float ButtonWidth = 86f;
-        private const float ButtonHeight = 40f;
         private const float ButtonAlpha = 0.62f;
 
         private void Awake()
@@ -38,26 +32,21 @@ namespace CityFlow.UI.Controllers
                 rect.SetParent(topBar, false);
             }
 
-            RectMask2D topBarMask = topBar.GetComponent<RectMask2D>();
-            if (topBarMask == null)
-            {
-                topBarMask = topBar.gameObject.AddComponent<RectMask2D>();
-            }
-
-            topBarMask.padding = Vector4.zero;
-            topBarMask.softness = Vector2Int.zero;
-
             float topBarHeight = topBar != null && topBar.rect.height > 0f
                 ? topBar.rect.height
-                : DefaultTopBarHeight;
+                : HudTopBarLayout.TopBarHeight;
 
             rect.anchorMin = new Vector2(1f, 0.5f);
             rect.anchorMax = new Vector2(1f, 0.5f);
             rect.pivot = new Vector2(1f, 0.5f);
-            rect.anchoredPosition = new Vector2(-RightInset, 0f);
+            rect.anchoredPosition = new Vector2(
+                -HudTopBarLayout.ActionDockRightInset,
+                0f);
             rect.sizeDelta = new Vector2(
-                DockWidth,
-                Mathf.Max(1f, topBarHeight - DockVerticalInset * 2f));
+                HudTopBarLayout.ActionDockWidth,
+                Mathf.Max(
+                    1f,
+                    topBarHeight - HudTopBarLayout.VerticalInset * 2f));
 
             Image background = GetComponent<Image>();
             if (background != null)
@@ -84,17 +73,23 @@ namespace CityFlow.UI.Controllers
                 if (buttonRect != null)
                 {
                     buttonRect.sizeDelta =
-                        new Vector2(ButtonWidth, ButtonHeight);
+                        new Vector2(
+                            HudTopBarLayout.ActionButtonWidth,
+                            HudTopBarLayout.ActionButtonHeight);
                 }
 
                 LayoutElement layoutElement =
                     buttons[index].GetComponent<LayoutElement>();
                 if (layoutElement != null)
                 {
-                    layoutElement.minWidth = ButtonWidth;
-                    layoutElement.preferredWidth = ButtonWidth;
-                    layoutElement.minHeight = ButtonHeight;
-                    layoutElement.preferredHeight = ButtonHeight;
+                    layoutElement.minWidth =
+                        HudTopBarLayout.ActionButtonWidth;
+                    layoutElement.preferredWidth =
+                        HudTopBarLayout.ActionButtonWidth;
+                    layoutElement.minHeight =
+                        HudTopBarLayout.ActionButtonHeight;
+                    layoutElement.preferredHeight =
+                        HudTopBarLayout.ActionButtonHeight;
                 }
 
                 Image image = buttons[index].targetGraphic as Image;

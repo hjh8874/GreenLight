@@ -16,14 +16,14 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
-        public void LoadVolumePreference_UsesThirtyPercentForFirstRun()
+        public void LoadVolumePreference_UsesDefaultForFirstRun()
         {
             PlayerPrefs.DeleteKey(TestPreferenceKey);
 
             Assert.That(
                 AudioSettingsPanelController.LoadVolumePreference(
                     TestPreferenceKey),
-                Is.EqualTo(0.3f).Within(0.0001f));
+                Is.EqualTo(0.5f).Within(0.0001f));
         }
 
         [Test]

@@ -10,8 +10,6 @@ namespace CityFlow.UI
     {
         private const float PanelWidth = 156f;
         private const float PanelHeight = 52f;
-        private const float HarvestButtonWidth = 160f;
-        private const float HorizontalGap = 8f;
         private const float LabelFontSize = 18f;
         private const float LabelLeftInset = 35f;
         private static readonly Color CheckboxFrameColor =
@@ -57,6 +55,14 @@ namespace CityFlow.UI
         private void ConfigureTopBarPresentation()
         {
             RectTransform rect = transform as RectTransform;
+            Transform currentParent = transform.parent;
+            if (currentParent == null ||
+                (currentParent.name != "HUD_TopBar" &&
+                 currentParent.name != "FloatingWindowContentRoot"))
+            {
+                return;
+            }
+
             RectTransform topBar = FindTopBar();
             if (rect == null || topBar == null)
             {
@@ -72,7 +78,8 @@ namespace CityFlow.UI
             rect.anchorMax = new Vector2(0.5f, 0.5f);
             rect.pivot = new Vector2(1f, 0.5f);
             rect.anchoredPosition = new Vector2(
-                -(HarvestButtonWidth * 0.5f + HorizontalGap),
+                -(HudTopBarLayout.HarvestButtonWidth * 0.5f +
+                  HudTopBarLayout.HorizontalGap),
                 0f);
             rect.sizeDelta = new Vector2(PanelWidth, PanelHeight);
 

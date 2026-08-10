@@ -12,7 +12,7 @@ namespace CityFlow.UI
             "Settings_BGMVolume";
         private const string SfxVolumePreferenceKey =
             "Settings_SFXVolume";
-        private const float DefaultVolume = 0.3f;
+        private const float DefaultVolume = 0.5f;
         private const float MinimumLinearVolume = 0.0001f;
         private const float PreferenceSaveDebounceSeconds = 0.2f;
 
