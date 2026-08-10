@@ -19,7 +19,6 @@ namespace CityFlow.UI.Data
         public readonly int TardyStaff;
 
         /// <summary>분당 수입 (코인)</summary>
-        public readonly long IncomePerMin;
 
         /// <summary>평균 출근 지연 시간 (초 단위, 실시간 증가)</summary>
         public readonly float DelaySeconds;
@@ -29,14 +28,12 @@ namespace CityFlow.UI.Data
             string storyComment,
             int totalStaff,
             int tardyStaff,
-            long incomePerMin,
             float delaySeconds)
         {
             BuildingName = buildingName;
             StoryComment = storyComment;
             TotalStaff = totalStaff;
             TardyStaff = tardyStaff;
-            IncomePerMin = incomePerMin;
             DelaySeconds = delaySeconds;
         }
     }
