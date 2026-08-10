@@ -149,5 +149,70 @@ namespace CityFlow.Sim.Tests
                 "철거된 도로는 스쿨존에서 빠져야 한다");
         }
 
+
+        // ── 무정차 연결(#241)과의 상호작용 ──
+        // 스쿨존은 "감속"이지 "정지"가 아니다. 따라서 FreeFlowStreak 이 끊기면 안 된다.
+        // 근거: 스쿨존 감속은 TryConsumeAdvanceCredit 에서 _creditWaiting=true 를 세우고,
+        // UpdateFreeFlowStreaks 는 !moved 여도 _creditWaiting 이면 리셋하지 않는다.
+        // 두 기능이 서로 모순되지 않는다는 것을 이 테스트가 고정한다.
+        [Test]
+        public void SchoolZone_SlowdownDoesNotBreakFreeFlowStreak()
+        {
+            SimConfig config = SchoolConfig();
+            // 학교는 2x2 풋프린트다. (4,4) 앵커가 (5,5)까지 차지하므로 높이 7이 필요하다.
+            var grid = new CityGrid(10, 7);
+            for (int x = 0; x < 10; x++)
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road), $"main road x={x}");
+            foreach (int x in new[] { 2, 4, 6 })
+            {
+                Assert.IsTrue(grid.Place(V(x, 1), TileType.Road));
+                Assert.IsTrue(grid.Place(V(x, 3), TileType.Road));
+                Assert.IsTrue(grid.IsIntersection(V(x, 2)));
+            }
+
+            Assert.IsTrue(grid.Place(V(0, 0), TileType.House), "house");
+            Assert.IsTrue(grid.Place(V(8, 0), TileType.Office), "office");
+
+            // 경로 한복판(4,2)에 붙여 학교를 세운다 → 반경 2 안에 주 간선이 들어온다.
+            Assert.IsTrue(grid.Place(V(4, 4), TileType.School), "school");
+
+            var roads = new RoadNetwork(grid);
+            var demands = new DemandMap(config);
+            demands.RegisterCompany(V(4, 4), TileType.School, 0d);
+            demands.Reassign(grid, roads);
+
+            // 전제: 주 간선 위에 실제로 스쿨존이 걸려 있어야 이 테스트가 의미를 갖는다.
+            Assert.IsTrue(
+                demands.IsSchoolZone(V(4, 2)),
+                "전제 실패: 경로 위에 스쿨존이 없다");
+
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, roads, grid, config);
+            var queues = new RoadQueueNetwork(grid.Width, grid.Height, config);
+            queues.RebuildTopology(grid);
+            var sim = new CarSim(config);
+            sim.Rebuild(demands, planner, queues, grid: grid, roadNetwork: roads);
+
+            // 등교 시간(7.5~8.5)에 굴린다 — 스쿨존이 활성인 시간대다.
+            var events = new SimEventBuffer(new SimEventHub());
+            int bestStreak = 0;
+            for (int tick = 0; tick < 200; tick++)
+            {
+                sim.Step(1L, 8f, queues, events, null, tick);
+                events.Drain();
+                for (int i = 0; i < sim.CarCount; i++)
+                {
+                    CarSnapshot snapshot = sim.GetCar(i);
+                    if (snapshot.FreeFlowStreakMax > bestStreak)
+                        bestStreak = snapshot.FreeFlowStreakMax;
+                }
+            }
+
+            Assert.GreaterOrEqual(
+                bestStreak,
+                2,
+                "스쿨존을 지나도 무정차 연결이 쌓여야 한다(감속은 정지가 아니다)");
+        }
+
     }
 }
