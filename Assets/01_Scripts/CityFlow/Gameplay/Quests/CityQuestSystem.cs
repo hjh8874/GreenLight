@@ -40,11 +40,12 @@ namespace CityFlow.Gameplay.Quests
         private readonly Dictionary<Vector2Int, TileType> trackedQuestTiles =
             new();
 
-        private CityQuestDirector director = new();
+        private CityQuestDirector director = CreateDirector();
         private CityFlowServices services;
         private IWorldGridService worldGrid;
         private IWeeklyEconomyService weeklyEconomy;
         private IReadOnlyDeliveredProgress deliveredProgress;
+        private bool directorSubscribed;
         private float evaluationElapsed;
         private long totalArrivals;
         private long pendingCoins;
@@ -60,6 +61,9 @@ namespace CityFlow.Gameplay.Quests
         private bool gridStateRebuildPending;
 
         public event Action<CityQuestViewState> ViewStateChanged;
+        // 퀘스트가 실제로 달성된 순간만 울린다. ViewStateChanged 와 구분해야 하는 이유는
+        // CityQuestDirector.QuestCompleted 주석 참조.
+        public event Action<CityQuestId> QuestCompleted;
 
         public CityQuestViewState CurrentViewState =>
             new CityQuestViewState(director.ActiveQuest, director.IsMinimized);
@@ -224,8 +228,29 @@ namespace CityFlow.Gameplay.Quests
             UnbindServices();
         }
 
+        private static CityQuestDirector CreateDirector() => new();
+
+        // director 는 필드 초기화로 만들어지므로 구독을 Awake 로 미루지 않는다.
+        // RestoreTutorialStage 등으로 교체되지 않는 단일 인스턴스다.
+        private void EnsureDirectorSubscription()
+        {
+            if (directorSubscribed || director == null)
+            {
+                return;
+            }
+
+            directorSubscribed = true;
+            director.QuestCompleted += OnDirectorQuestCompleted;
+        }
+
+        private void OnDirectorQuestCompleted(CityQuestId id)
+        {
+            QuestCompleted?.Invoke(id);
+        }
+
         private void Evaluate(float elapsed)
         {
+            EnsureDirectorSubscription();
             CityQuestSnapshot snapshot = CaptureSnapshot();
 
             if (director.Tick(snapshot, elapsed))
