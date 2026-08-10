@@ -18,6 +18,7 @@ namespace CityFlow.UI.Controllers
         [SerializeField] private SpriteRenderer ghostRenderer;
         [SerializeField] private Color colorValid = new Color(0f, 1f, 0f, 0.5f);
         [SerializeField] private Color colorInvalid = new Color(1f, 0f, 0f, 0.5f);
+        [SerializeField, Min(0f)] private float placementIntervalSeconds = 0.15f;
 
         private CityFlowServices _services;
         private IEconomyService _economy;
@@ -38,6 +39,7 @@ namespace CityFlow.UI.Controllers
         private bool _wasOriginalBuildingMode = false;
         private Vector2Int? _lastRemovedCoord;
         private Vector2Int? _rightClickStartCoord;
+        private float _nextPlacementTime;
         private Vector2Int? _pendingHighwayStart;
         private Vector2Int? _lastPreviewCursor;
         private GameObject _placementPreview;
@@ -95,6 +97,7 @@ namespace CityFlow.UI.Controllers
             }
 
             CancelPlacement(); // Ensure clean state
+            _nextPlacementTime = 0f;
             _currentData = data;
             _isBuildingMode = true;
             _isDemolishMode = false;
@@ -270,7 +273,9 @@ namespace CityFlow.UI.Controllers
                     ghostColor);
             }
 
-            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+            if (Mouse.current != null &&
+                Mouse.current.leftButton.wasPressedThisFrame &&
+                Time.unscaledTime >= _nextPlacementTime)
             {
                 if (Time.frameCount > _frameStarted + 1) // Ensure it's not the exact frame we clicked the UI button
                 {
@@ -307,7 +312,8 @@ namespace CityFlow.UI.Controllers
                 _rightClickStartCoord = GetMouseGridCoordinate();
             }
 
-            if (!mouse.rightButton.isPressed || !_rightClickStartCoord.HasValue)
+            if (!mouse.rightButton.isPressed ||
+                !_rightClickStartCoord.HasValue)
             {
                 return false;
             }
@@ -321,7 +327,8 @@ namespace CityFlow.UI.Controllers
             Vector2Int currentCoord = GetMouseGridCoordinate();
             UpdateGhostPosition(currentCoord);
 
-            if (!_lastRemovedCoord.HasValue || _lastRemovedCoord.Value != currentCoord)
+            if (!_lastRemovedCoord.HasValue ||
+                _lastRemovedCoord.Value != currentCoord)
             {
                 bool removed = _originalPlacementController != null
                     ? _originalPlacementController.TryDemolishAt(currentCoord)
@@ -671,13 +678,9 @@ namespace CityFlow.UI.Controllers
 
             Debug.Log($"[InfrastructurePlacementCoordinator] Successfully placed {_currentData.InfrastructureName} at {coord} for {cost} coins.");
             PlacementSucceeded?.Invoke();
-            CompletePlacement();
-        }
-
-        private void CompletePlacement()
-        {
-            _wasOriginalBuildingMode = false;
-            CancelPlacement();
+            _nextPlacementTime =
+                Time.unscaledTime +
+                Mathf.Max(0f, placementIntervalSeconds);
         }
 
         private bool TryCommitBusStopRegistration(

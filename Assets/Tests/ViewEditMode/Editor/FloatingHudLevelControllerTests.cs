@@ -15,6 +15,15 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
+        public void BuildMenuMapClick_DoesNotToggleFloatingHud()
+        {
+            Assert.IsFalse(
+                FloatingHudLevelController.ShouldToggleOnClick(
+                    pointerOverUi: false,
+                    UIDockController.MenuType.Build));
+        }
+
+        [Test]
         public void DockMenu_RevealsRequestedPanels_InSmallFloatingPreset()
         {
             Assert.IsTrue(

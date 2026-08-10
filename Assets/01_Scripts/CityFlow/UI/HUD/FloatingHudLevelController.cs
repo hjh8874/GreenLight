@@ -117,7 +117,7 @@ namespace CityFlow.UI
             // revealed states; only a click outside UI reveals/toggles the map.
             bool pointerOverUi = EventSystem.current != null &&
                 EventSystem.current.IsPointerOverGameObject();
-            if (!ShouldToggleOnClick(pointerOverUi))
+            if (!ShouldToggleOnClick(pointerOverUi, _activeMenu))
             {
                 return;
             }
@@ -132,7 +132,17 @@ namespace CityFlow.UI
 
         public static bool ShouldToggleOnClick(bool pointerOverUi)
         {
-            return !pointerOverUi;
+            return ShouldToggleOnClick(
+                pointerOverUi,
+                UIDockController.MenuType.None);
+        }
+
+        public static bool ShouldToggleOnClick(
+            bool pointerOverUi,
+            UIDockController.MenuType activeMenu)
+        {
+            return !pointerOverUi &&
+                activeMenu != UIDockController.MenuType.Build;
         }
 
         private void OnFloatingStateChanged(bool floating)
