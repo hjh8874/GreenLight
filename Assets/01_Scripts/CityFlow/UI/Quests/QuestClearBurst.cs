@@ -32,6 +32,14 @@ namespace CityFlow.UI.Quests
         private void Awake()
         {
             confettiPrefab = Resources.Load<GameObject>(ConfettiResourcePath);
+            if (confettiPrefab == null)
+            {
+                // 조용히 실패하면 "흔들림만 나고 컨페티가 없다"는 증상만 남아
+                // 원인을 찾기 어렵다(리뷰 #251 P1).
+                Debug.LogWarning(
+                    $"[QuestClearBurst] 컨페티 프리팹을 찾지 못했다: Resources/{ConfettiResourcePath}. " +
+                    "카메라 흔들림과 효과음만 재생된다.");
+            }
         }
 
         // 터질 자리를 알려준다. 퀘스트 팝업은 런타임에 생성되므로
