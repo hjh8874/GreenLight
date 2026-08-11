@@ -204,6 +204,12 @@ namespace CityFlow.Sim.Quests
             eligibleSeconds.Clear();
         }
 
+        // 퀘스트가 실제로 "달성되어" 끝난 순간만 알린다.
+        // ViewStateChanged 로는 이걸 알 수 없다 — 그건 "지금 보여줄 퀘스트"가 바뀔 때마다
+        // 울리므로 우선순위 끼어들기·세이브 복원에서도 발생한다.
+        // 축하 연출을 그 신호에 걸면 엉뚱한 순간에 터진다.
+        public event Action<CityQuestId> QuestCompleted;
+
         private void CompleteActiveQuest()
         {
             CityQuestId completedId = activeDefinition.Presentation.Id;
@@ -220,6 +226,7 @@ namespace CityFlow.Sim.Quests
             activeDefinition = null;
             IsMinimized = false;
             nextQuestDelay = 3f;
+            QuestCompleted?.Invoke(completedId);
         }
 
         private void SkipSatisfiedTutorials(in CityQuestSnapshot snapshot)

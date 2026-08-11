@@ -40,7 +40,9 @@ namespace CityFlow.Gameplay.Quests
         private readonly Dictionary<Vector2Int, TileType> trackedQuestTiles =
             new();
 
-        private CityQuestDirector director = new();
+        // Initialize 전에도 CurrentViewState 가 director 를 읽으므로 항상 살아 있어야 한다.
+        // 구독은 ReplaceDirector 가 책임진다(Awake 에서 최초 1회).
+        private CityQuestDirector director;
         private CityFlowServices services;
         private IWorldGridService worldGrid;
         private IWeeklyEconomyService weeklyEconomy;
@@ -60,9 +62,20 @@ namespace CityFlow.Gameplay.Quests
         private bool gridStateRebuildPending;
 
         public event Action<CityQuestViewState> ViewStateChanged;
+        // 퀘스트가 실제로 달성된 순간만 울린다. ViewStateChanged 와 구분해야 하는 이유는
+        // CityQuestDirector.QuestCompleted 주석 참조.
+        public event Action<CityQuestId> QuestCompleted;
 
         public CityQuestViewState CurrentViewState =>
             new CityQuestViewState(director.ActiveQuest, director.IsMinimized);
+
+        private void Awake()
+        {
+            if (director == null)
+            {
+                ReplaceDirector(new CityQuestDirector());
+            }
+        }
 
         public void Initialize(CityFlowServices cityFlowServices)
         {
@@ -74,7 +87,7 @@ namespace CityFlow.Gameplay.Quests
 
             UnbindServices();
             services = cityFlowServices;
-            director = new CityQuestDirector();
+            ReplaceDirector(new CityQuestDirector());
             evaluationElapsed = EvaluationInterval;
             totalArrivals = 0L;
             pendingCoins = 0L;
@@ -222,6 +235,30 @@ namespace CityFlow.Gameplay.Quests
         private void OnDestroy()
         {
             UnbindServices();
+        }
+
+        // director 는 Initialize() 마다 새로 만들어진다(L81). 지연 구독 + bool 가드로는
+        // 두 번째 인스턴스부터 구독이 안 붙어 연출이 영구 무음이 된다
+        // (리뷰 #251 — 세 리뷰어가 독립적으로 지적).
+        // 그래서 "생성과 구독을 한곳에서" 처리한다. 교체 시 이전 구독도 끊는다.
+        private void ReplaceDirector(CityQuestDirector next)
+        {
+            if (director != null)
+            {
+                director.QuestCompleted -= OnDirectorQuestCompleted;
+            }
+
+            director = next;
+
+            if (director != null)
+            {
+                director.QuestCompleted += OnDirectorQuestCompleted;
+            }
+        }
+
+        private void OnDirectorQuestCompleted(CityQuestId id)
+        {
+            QuestCompleted?.Invoke(id);
         }
 
         private void Evaluate(float elapsed)
