@@ -769,9 +769,7 @@ namespace CityFlow.EditorTools
                 -(HudTopBarLayout.TopBarHeight * 0.5f -
                   HudTopBarLayout.VerticalInset));
             tickerRect.offsetMax = new Vector2(
-                -(HudTopBarLayout.ActionDockWidth +
-                  HudTopBarLayout.ActionDockRightInset +
-                  HudTopBarLayout.HorizontalGap),
+                -HudTopBarLayout.HorizontalGap,
                 HudTopBarLayout.TopBarHeight * 0.5f -
                 HudTopBarLayout.VerticalInset);
         }

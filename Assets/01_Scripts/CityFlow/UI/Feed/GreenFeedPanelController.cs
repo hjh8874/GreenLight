@@ -88,9 +88,7 @@ namespace CityFlow.UI.Feed
                 HudTopBarLayout.HorizontalGap,
                 -(topBarHeight * 0.5f - HudTopBarLayout.VerticalInset));
             tickerRect.offsetMax = new Vector2(
-                -(HudTopBarLayout.ActionDockWidth +
-                  HudTopBarLayout.ActionDockRightInset +
-                  HudTopBarLayout.HorizontalGap),
+                -HudTopBarLayout.HorizontalGap,
                 topBarHeight * 0.5f - HudTopBarLayout.VerticalInset);
 
             Image background = tickerView.GetComponent<Image>();
