@@ -17,8 +17,6 @@ namespace CityFlow.UI
         private const float DashboardWidth = 540f;
         private const float DashboardHeight = 360f;
 
-        private static readonly Color BackdropColor =
-            new(0.015f, 0.025f, 0.035f, 0.78f);
         private static readonly Color DashboardColor =
             new(0.055f, 0.075f, 0.095f, 0.985f);
         private static readonly Color SurfaceColor =
@@ -65,6 +63,10 @@ namespace CityFlow.UI
         private TMP_Text _pendingIncomeText;
 
         internal RectTransform DashboardRootForTest => _dashboardRoot;
+        internal RectTransform PanelAlignmentRect =>
+            _dashboardRoot != null
+                ? _dashboardRoot
+                : transform as RectTransform;
         internal IReadOnlyList<Image> IncomeBarsForTest => _incomeBars;
 
         private readonly struct ArrivalCoinSample
@@ -510,6 +512,11 @@ namespace CityFlow.UI
                 new Vector2(DashboardWidth, DashboardHeight),
                 true);
             _dashboardRoot = dashboard.GetComponent<RectTransform>();
+            Image dashboardImage = dashboard.GetComponent<Image>();
+            if (dashboardImage != null)
+            {
+                dashboardImage.raycastTarget = true;
+            }
 
             CreateText(
                 "Title",
@@ -596,7 +603,8 @@ namespace CityFlow.UI
             }
 
             Image image = GetComponent<Image>() ?? gameObject.AddComponent<Image>();
-            image.color = BackdropColor;
+            image.color = Color.clear;
+            // 검은 배경은 제거하되 투명 영역을 통한 월드 클릭은 차단한다.
             image.raycastTarget = true;
         }
 

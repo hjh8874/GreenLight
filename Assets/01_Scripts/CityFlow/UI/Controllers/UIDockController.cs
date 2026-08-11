@@ -8,6 +8,8 @@ namespace CityFlow.UI
 {
     public sealed class UIDockController : MonoBehaviour
     {
+        private const float SubPanelDockGap = 50f;
+
         public enum MenuType { None, Build, Research, Stats, Settings, Floating }
 
         [Header("Menu Buttons (Dock_Right)")]
@@ -33,6 +35,13 @@ namespace CityFlow.UI
 
         public MenuType CurrentMenu => _currentMenu;
         public bool IsAnyMenuOpen => _currentMenu != MenuType.None;
+        public bool HasExternalUiReferences =>
+            btnFloatingMode != null &&
+            panelBuild != null &&
+            panelResearch != null &&
+            panelStats != null &&
+            panelSettings != null &&
+            panelFloating != null;
 
         public event Action<MenuType> MenuChanged;
 
@@ -65,6 +74,47 @@ namespace CityFlow.UI
         public void RebindResearchPanel(GameObject researchPanel)
         {
             panelResearch = researchPanel;
+        }
+
+        /// <summary>
+        /// Prefab 인스턴스는 Scene 오브젝트 참조를 직렬화할 수 없으므로
+        /// UI_MainCanvasRoot의 런타임 Binder가 배치 컨트롤러를 다시 주입합니다.
+        /// </summary>
+        public void RebindPlacementController(PlacementController placement)
+        {
+            if (placement != null)
+            {
+                placementController = placement;
+            }
+        }
+
+        public void RebindExternalUi(
+            Button floatingButton,
+            GameObject buildPanel,
+            GameObject researchPanel,
+            GameObject statsPanel,
+            GameObject settingsPanel,
+            GameObject floatingPanel)
+        {
+            bool bindFloatingButton =
+                _isBound &&
+                btnFloatingMode == null &&
+                floatingButton != null;
+
+            btnFloatingMode = floatingButton ?? btnFloatingMode;
+            panelBuild = buildPanel ?? panelBuild;
+            panelResearch = researchPanel ?? panelResearch;
+            panelStats = statsPanel ?? panelStats;
+            panelSettings = settingsPanel ?? panelSettings;
+            panelFloating = floatingPanel ?? panelFloating;
+
+            if (bindFloatingButton)
+            {
+                btnFloatingMode.onClick.AddListener(
+                    () => ToggleMenu(MenuType.Floating));
+                SetButtonLabel(btnFloatingMode, "플로팅");
+                MatchButtonStyle(btnFloatingMode, btnResearch);
+            }
         }
 
         private void Awake()
@@ -266,6 +316,7 @@ namespace CityFlow.UI
             if (panelStats != null) panelStats.SetActive(_currentMenu == MenuType.Stats);
             if (panelSettings != null) panelSettings.SetActive(_currentMenu == MenuType.Settings);
             if (panelFloating != null) panelFloating.SetActive(_currentMenu == MenuType.Floating);
+            AlignActiveSubPanelToDock();
             BuildModeCursorFeedback.SetBuilding(
                 this,
                 _currentMenu == MenuType.Build);
@@ -281,6 +332,46 @@ namespace CityFlow.UI
             {
                 placementController.ToggleBuildMode(false);
             }
+        }
+
+        private void AlignActiveSubPanelToDock()
+        {
+            GameObject activePanel = _currentMenu switch
+            {
+                MenuType.Research => panelResearch,
+                MenuType.Stats => panelStats,
+                MenuType.Settings => panelSettings,
+                MenuType.Floating => panelFloating,
+                _ => null
+            };
+
+            if (activePanel == null ||
+                !activePanel.TryGetComponent(out RectTransform panelRect) ||
+                !TryGetComponent(out RectTransform dockRect))
+            {
+                return;
+            }
+
+            Canvas.ForceUpdateCanvases();
+
+            Vector3[] dockCorners = new Vector3[4];
+            Vector3[] panelCorners = new Vector3[4];
+            RectTransform alignmentRect = panelRect;
+            if (_currentMenu == MenuType.Stats &&
+                activePanel.TryGetComponent(out StatsPanelController statsPanel))
+            {
+                alignmentRect = statsPanel.PanelAlignmentRect;
+            }
+
+            dockRect.GetWorldCorners(dockCorners);
+            alignmentRect.GetWorldCorners(panelCorners);
+
+            Vector3 dockLeftCenter = (dockCorners[0] + dockCorners[1]) * 0.5f;
+            Vector3 panelRightCenter = (panelCorners[2] + panelCorners[3]) * 0.5f;
+            Vector3 gap = dockRect.TransformVector(
+                Vector3.left * SubPanelDockGap);
+
+            panelRect.position += dockLeftCenter + gap - panelRightCenter;
         }
 
         private void OnDisable()

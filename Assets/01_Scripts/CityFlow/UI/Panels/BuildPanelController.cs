@@ -44,6 +44,11 @@ namespace CityFlow.UI
         private ISpecialBuildingService _specialBuildings;
         private IResearchUnlockService _research;
         private bool _started;
+        private bool _contentInitialized;
+
+        public bool HasRuntimeReferences =>
+            placementController != null &&
+            tooltipController != null;
 
         public void Initialize(CityFlowServices services)
         {
@@ -69,6 +74,8 @@ namespace CityFlow.UI
                 OnResearchRegistered;
             BindSpecialBuildings(_services.SpecialBuildings);
             BindResearch(_services.Research);
+            ResolvePlacementController();
+            InitializeContentOnce();
             RefreshSpecialBuildingSlots();
             RefreshResearchLockedSlots();
         }
@@ -101,6 +108,33 @@ namespace CityFlow.UI
             if (school != null) school.onClick.AddListener(() => placementController.SetBuildType(TileType.School));
             BindButtons();
         }
+
+        /// <summary>
+        /// Prefab 인스턴스가 Scene의 PlacementController를 수동 Inspector 연결 없이
+        /// 복구할 수 있도록 런타임 Binder가 호출합니다.
+        /// </summary>
+        public void RebindPlacementController(PlacementController placement)
+        {
+            if (placement == null)
+            {
+                return;
+            }
+
+            placementController = placement;
+            InitializeContentOnce();
+        }
+
+        public void RebindTooltipController(TooltipController tooltip)
+        {
+            if (tooltip == null)
+            {
+                return;
+            }
+
+            tooltipController = tooltip;
+            InitializeContentOnce();
+        }
+
         private void Start()
         {
             _started = true;
@@ -115,11 +149,33 @@ namespace CityFlow.UI
                 rect.DOAnchorPosY(originalY, 0.5f).SetEase(Ease.OutBack).SetDelay(0.2f);
             }
 
+            ResolvePlacementController();
             if (placementController == null)
             {
-                Debug.LogError("[BuildPanelController] PlacementController가 할당되지 않았습니다. 인스펙터를 확인해주세요.");
+                Debug.LogError(
+                    "[BuildPanelController] PlacementController를 찾지 못했습니다. " +
+                    "UI_MainCanvasRoot의 GameplayUiRuntimeBinder 구성을 확인해주세요.",
+                    this);
                 return;
             }
+
+            InitializeContentOnce();
+        }
+
+        private void ResolvePlacementController()
+        {
+            placementController ??= FindAnyObjectByType<PlacementController>(
+                FindObjectsInactive.Include);
+        }
+
+        private void InitializeContentOnce()
+        {
+            if (!_started || _contentInitialized || placementController == null)
+            {
+                return;
+            }
+
+            _contentInitialized = true;
             ConfigureInfrastructureSlots();
             EnsureBusStopSlot();
             EnsureHighwaySlot();

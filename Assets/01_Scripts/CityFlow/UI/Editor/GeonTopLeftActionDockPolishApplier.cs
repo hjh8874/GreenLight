@@ -105,16 +105,15 @@ namespace CityFlow.UI.Editor
             if (created)
             {
                 RectTransform rect = dockObject.GetComponent<RectTransform>();
-                rect.anchorMin = new Vector2(1f, 0.5f);
-                rect.anchorMax = new Vector2(1f, 0.5f);
-                rect.pivot = new Vector2(1f, 0.5f);
+                rect.anchorMin = new Vector2(0f, 0f);
+                rect.anchorMax = new Vector2(0f, 0f);
+                rect.pivot = new Vector2(0f, 1f);
                 rect.anchoredPosition = new Vector2(
-                    -HudTopBarLayout.ActionDockRightInset,
-                    0f);
+                    HudTopBarLayout.ActionDockLeftInset,
+                    -HudTopBarLayout.ActionDockTopGap);
                 rect.sizeDelta = new Vector2(
                     HudTopBarLayout.ActionDockWidth,
-                    HudTopBarLayout.TopBarHeight -
-                    HudTopBarLayout.VerticalInset * 2f);
+                    HudTopBarLayout.ActionDockHeight);
             }
 
             Image background =
