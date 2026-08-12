@@ -13,7 +13,10 @@ namespace CityFlow.Contracts
         SpecialBuilding,
         // 공사 중. 완성 시 CityGrid.Promote()가 실제 타입으로 교체한다.
         // 실제 점유 크기는 공사 대상 건물의 풋프린트를 그대로 유지한다.
-        UnderConstruction
+        UnderConstruction,
+        // 약국·커피숍처럼 뒤 1x1 건물과 앞 1x1 주차장을 사용하는 특수건물.
+        // 기존 저장의 enum 값을 보존하기 위해 항상 마지막에 추가한다.
+        CompactSpecialBuilding
     }
 
     /// <summary>
@@ -37,12 +40,37 @@ namespace CityFlow.Contracts
         public static bool IsBuilding(TileType type) =>
             type != TileType.Empty && type != TileType.Road;
 
+        public static bool IsSpecialBuilding(TileType type) =>
+            type == TileType.SpecialBuilding ||
+            type == TileType.CompactSpecialBuilding;
+
         public static Vector2Int GetSize(TileType type) =>
-            type == TileType.House
+            type == TileType.House ||
+            type == TileType.CompactSpecialBuilding
                 ? ResidentialBuilding
                 : IsBuilding(type)
                     ? StandardBuilding
                     : SingleTile;
+
+        public static bool TryGetSpecialBuildingType(
+            Vector2Int footprint,
+            out TileType type)
+        {
+            if (footprint == ResidentialBuilding)
+            {
+                type = TileType.CompactSpecialBuilding;
+                return true;
+            }
+
+            if (footprint == StandardBuilding)
+            {
+                type = TileType.SpecialBuilding;
+                return true;
+            }
+
+            type = TileType.Empty;
+            return false;
+        }
 
         /// <summary>
         /// 회전 방향을 고려한 풋프린트 크기를 반환합니다.
@@ -50,7 +78,13 @@ namespace CityFlow.Contracts
         /// </summary>
         public static Vector2Int GetRotatedSize(TileType type, PlacementDirection direction)
         {
-            Vector2Int size = GetSize(type);
+            return GetRotatedSize(GetSize(type), direction);
+        }
+
+        public static Vector2Int GetRotatedSize(
+            Vector2Int size,
+            PlacementDirection direction)
+        {
             bool isSwapped = direction == PlacementDirection.East || direction == PlacementDirection.West;
             return isSwapped ? new Vector2Int(size.y, size.x) : size;
         }

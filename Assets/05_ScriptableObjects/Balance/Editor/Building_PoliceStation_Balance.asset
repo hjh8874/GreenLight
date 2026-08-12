@@ -34,7 +34,7 @@ MonoBehaviour:
   fallbackHeight: 0.9
   footprint: {x: 2, y: 2}
   requiredResearchId: research_building_police_station
-  canReceiveVisitors: 1
+  canReceiveVisitors: 0
   visitCadence:
     visitsPerPeriod: 1
     periodDays: 7

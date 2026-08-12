@@ -31,7 +31,7 @@ namespace CityFlow.EditorTools
         private const string FontPath =
             ExternalKoreanFontAsset.FontAssetPath;
         private const string BusVisualPrefabPath =
-            "Assets/99_Download/SimpleTown/Prefabs/Vehicles/bus_blue.prefab";
+            "Assets/02_Prefabs/Vehicles/CityBus_Blue.prefab";
         private const string BusMaterialPath =
             "Assets/03_Art/Materials/Vehicles/CityBus_URP.mat";
 
@@ -342,8 +342,12 @@ namespace CityFlow.EditorTools
                     cityBus);
                 SetObjectReference(
                     busWorldView,
+                    "busVisualPrefab",
+                    busDefinition.VehicleVisualPrefab);
+                SetObjectReference(
+                    busWorldView,
                     "busMaterial",
-                    busMaterial);
+                    null);
                 SetObjectReference(
                     busStopWorldView,
                     "stopRegistry",

@@ -249,6 +249,13 @@ namespace CityFlow.Sim
         }
     }
 
+    internal enum SpecialTripJourneyPhase
+    {
+        DrivingToVisit,
+        Dwelling,
+        Returning
+    }
+
     internal sealed class SpecialTripJourney
     {
         private List<UnityEngine.Vector2Int> firstRoute;
@@ -262,6 +269,9 @@ namespace CityFlow.Sim
             UnityEngine.Vector2Int origin,
             UnityEngine.Vector2Int finalDestination,
             CarState finalRoutineState,
+            int originSlot,
+            int visitorSlot,
+            int finalSlot,
             List<UnityEngine.Vector2Int> firstRoute,
             List<UnityEngine.Vector2Int> secondRoute,
             float startAbsoluteHour)
@@ -272,10 +282,14 @@ namespace CityFlow.Sim
             Origin = origin;
             FinalDestination = finalDestination;
             FinalRoutineState = finalRoutineState;
+            OriginSlot = Math.Max(0, originSlot);
+            VisitorSlot = Math.Max(0, visitorSlot);
+            FinalSlot = Math.Max(0, finalSlot);
             this.firstRoute = firstRoute ?? throw new ArgumentNullException(nameof(firstRoute));
             this.secondRoute = secondRoute;
             this.startAbsoluteHour = startAbsoluteHour;
             CurrentLegIndex = 0;
+            Phase = SpecialTripJourneyPhase.DrivingToVisit;
             CurrentTrip = CreateTrip(
                 0,
                 origin,
@@ -290,12 +304,19 @@ namespace CityFlow.Sim
         public UnityEngine.Vector2Int Origin { get; }
         public UnityEngine.Vector2Int FinalDestination { get; }
         public CarState FinalRoutineState { get; }
+        public int OriginSlot { get; }
+        public int VisitorSlot { get; }
+        public int FinalSlot { get; }
         public int CurrentLegIndex { get; private set; }
+        public SpecialTripJourneyPhase Phase { get; private set; }
         public VehicleTrip CurrentTrip { get; private set; }
         public int ViewRouteIndex { get; set; } = -1;
         public List<UnityEngine.Vector2Int> CurrentRoute =>
             CurrentLegIndex == 0 ? firstRoute : secondRoute;
         public bool HasContinuation => secondRoute != null && secondRoute.Count > 0;
+        public List<UnityEngine.Vector2Int> ContinuationRoute => secondRoute;
+        public bool IsDwelling => Phase == SpecialTripJourneyPhase.Dwelling;
+        public float DwellUntilAbsoluteHour { get; private set; }
         internal float StartAbsoluteHour => startAbsoluteHour;
 
         // 테스트 전용 seam: 스테일 여정 워치독의 시간 경과를 결정론적으로 재현한다.
@@ -310,14 +331,36 @@ namespace CityFlow.Sim
             return CurrentTrip.CreateSnapshot();
         }
 
+        public void BeginDwell(float arrivalAbsoluteHour)
+        {
+            if (CurrentLegIndex != 0 ||
+                Phase != SpecialTripJourneyPhase.DrivingToVisit)
+            {
+                return;
+            }
+
+            Phase = SpecialTripJourneyPhase.Dwelling;
+            DwellUntilAbsoluteHour = arrivalAbsoluteHour +
+                Request.VisitDwellHours;
+            Vehicle.State = CarState.ParkedWork;
+            Vehicle.Distance = 0f;
+        }
+
+        public bool IsDwellComplete(float currentAbsoluteHour) =>
+            IsDwelling &&
+            currentAbsoluteHour >= DwellUntilAbsoluteHour;
+
         public bool TryBeginContinuation()
         {
-            if (CurrentLegIndex != 0 || !HasContinuation)
+            if (CurrentLegIndex != 0 ||
+                Phase != SpecialTripJourneyPhase.Dwelling ||
+                !HasContinuation)
             {
                 return false;
             }
 
             CurrentLegIndex = 1;
+            Phase = SpecialTripJourneyPhase.Returning;
             CurrentTrip = CreateTrip(
                 1,
                 Request.Destination,

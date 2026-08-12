@@ -164,6 +164,71 @@ namespace CityFlow.Sim
             StablePrioritizeOrdinaryRoads(buffer, firstAdded);
         }
 
+        // Drive-through facilities must use the road tiles that are physically
+        // adjacent to their authored front edge. In particular, the legacy
+        // North fallback in CollectAccessRoads must not select a side or rear
+        // road, because its lane offset would no longer lead into the driveway.
+        internal void CollectFrontageAccessRoads(
+            Vector2Int building,
+            List<Vector2Int> buffer)
+        {
+            int firstAdded = buffer.Count;
+            Vector2Int size = GetBuildingFootprintSize(building);
+            CollectPreferredFrontRoads(building, size, buffer);
+            StablePrioritizeOrdinaryRoads(buffer, firstAdded);
+        }
+
+        // Right-hand traffic places a vehicle to the right of its travel
+        // direction. Choose the frontage travel direction whose right side
+        // points from the road back toward the building.
+        internal bool TryGetFrontageTravelDirection(
+            Vector2Int building,
+            out Vector2Int direction)
+        {
+            TileType type = _grid.GetTile(building);
+            if (!TileFootprint.IsBuilding(type))
+            {
+                direction = default;
+                return false;
+            }
+
+            Vector2Int front = TileFootprint.GetFrontOffset(
+                _grid.GetDirection(building));
+            direction = new Vector2Int(front.y, -front.x);
+            return true;
+        }
+
+        internal bool IsFrontageAccessRoad(
+            Vector2Int building,
+            Vector2Int road)
+        {
+            TileType type = _grid.GetTile(building);
+            if (!TileFootprint.IsBuilding(type) || !IsRoad(road))
+            {
+                return false;
+            }
+
+            Vector2Int size = GetBuildingFootprintSize(building);
+            Vector2Int front = TileFootprint.GetFrontOffset(
+                _grid.GetDirection(building));
+            if (front.x != 0)
+            {
+                int frontageX = front.x > 0
+                    ? building.x + size.x
+                    : building.x - 1;
+                return road.x == frontageX &&
+                    road.y >= building.y &&
+                    road.y < building.y + size.y;
+            }
+
+            int frontageY = front.y > 0
+                ? building.y + size.y
+                : building.y - 1;
+            return road.y == frontageY &&
+                road.x >= building.x &&
+                road.x < building.x + size.x;
+        }
+
         // 차고 진출 방향: 건물 풋프린트 셀 중 진입로와 직교 인접한 셀에서 도로로 향하는 진행 방향.
         // 직사각형 풋프린트라 후보는 최대 1개다(둘이면 사이 칸까지 덮어야 해 모순).
         // 대각으로만 닿으면 false — 호출자가 exit 방향 폴백을 쓴다(설계 D2-2).

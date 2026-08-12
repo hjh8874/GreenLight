@@ -15,7 +15,13 @@ namespace CityFlow.Editor
             "Assets/05_ScriptableObjects/Resources/CityFlow/VehicleVisualCatalog.asset";
         private const string SchoolBusDefinitionPath =
             "Assets/05_ScriptableObjects/CityFlow/Transit/SchoolBusDefinition.asset";
-        private const int CurrentGenerationVersion = 2;
+        private const string PoliceConfigPath =
+            "Assets/05_ScriptableObjects/CityFlow/Police/" +
+            "PoliceDispatchConfig.asset";
+        private const string DustMaterialPath =
+            "Assets/99_Download/JMO Assets/Cartoon FX Remaster/" +
+            "CFXR Assets/Graphics/cfxr smoke cloud x4 ab.mat";
+        private const int CurrentGenerationVersion = 3;
 
         private static readonly
             (string Name, string Source, bool ReverseForward)[]
@@ -66,6 +72,12 @@ namespace CityFlow.Editor
                 "Assets/99_Download/Pack_Cars/Prefabs/Ambulance.prefab",
                 false);
         private static readonly
+            (string Name, string Source, bool ReverseForward)
+            Police =
+            ("PoliceVehicleVisual",
+                "Assets/99_Download/Pack_Cars/Prefabs/Police.prefab",
+                false);
+        private static readonly
             (string Name, string Source, bool ReverseForward)[]
             CityBuses =
         {
@@ -107,6 +119,11 @@ namespace CityFlow.Editor
                 Ambulance.Source,
                 Ambulance.ReverseForward,
                 true);
+            BuildWrapper(
+                Police.Name,
+                Police.Source,
+                Police.ReverseForward,
+                true);
             for (int i = 0; i < CityBuses.Length; i++)
             {
                 BuildWrapper(
@@ -117,6 +134,7 @@ namespace CityFlow.Editor
             }
             CreateOrUpdateCatalog();
             UpdateSchoolBusDefinition();
+            UpdatePoliceConfig();
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
         }
@@ -133,6 +151,8 @@ namespace CityFlow.Editor
                 existingCatalog.CityBusPrefabs == null ||
                 existingCatalog.CityBusPrefabs.Length !=
                     CityBuses.Length;
+            bool rebuildPolice =
+                PoliceVisualNeedsRebuild();
             bool changed = false;
             for (int i = 0; i < NormalVehicles.Length; i++)
             {
@@ -153,6 +173,11 @@ namespace CityFlow.Editor
                 Ambulance.Source,
                 Ambulance.ReverseForward,
                 rebuildExisting);
+            changed |= BuildWrapper(
+                Police.Name,
+                Police.Source,
+                Police.ReverseForward,
+                rebuildExisting || rebuildPolice);
             for (int i = 0; i < CityBuses.Length; i++)
             {
                 changed |= BuildWrapper(
@@ -168,11 +193,62 @@ namespace CityFlow.Editor
             {
                 CreateOrUpdateCatalog();
                 UpdateSchoolBusDefinition();
+                UpdatePoliceConfig();
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
             }
+            else if (UpdatePoliceConfig())
+            {
+                AssetDatabase.SaveAssets();
+            }
 
             ValidateGeneratedAssets();
+        }
+
+        internal static GameObject RebuildPoliceVisual()
+        {
+            return BuildWrapper(
+                    Police.Name,
+                    Police.Source,
+                    Police.ReverseForward,
+                    true)
+                ? LoadWrapper(Police.Name)
+                : null;
+        }
+
+        private static bool PoliceVisualNeedsRebuild()
+        {
+            GameObject prefab = LoadWrapper(Police.Name);
+            Material dustMaterial =
+                AssetDatabase.LoadAssetAtPath<Material>(
+                    DustMaterialPath);
+            if (prefab == null || dustMaterial == null)
+            {
+                return true;
+            }
+
+            string path = AssetDatabase.GetAssetPath(prefab);
+            GameObject root =
+                PrefabUtility.LoadPrefabContents(path);
+            try
+            {
+                Bounds bounds =
+                    CalculateLocalRendererBounds(root.transform);
+                float groundContact =
+                    CalculateGroundContactZ(
+                        root.transform,
+                        bounds.max.z);
+                VehicleWheelDustSource dustSource =
+                    root.GetComponent<VehicleWheelDustSource>();
+                return Mathf.Abs(bounds.size.x - 1f) > 0.001f ||
+                       Mathf.Abs(groundContact) > 0.001f ||
+                       dustSource == null ||
+                       dustSource.ParticleMaterial != dustMaterial;
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(root);
+            }
         }
 
         private static bool BuildWrapper(
@@ -244,6 +320,16 @@ namespace CityFlow.Editor
                     root.AddComponent<BoxCollider>();
                 collider.center = bounds.center;
                 collider.size = bounds.size;
+
+                Material dustMaterial =
+                    AssetDatabase.LoadAssetAtPath<Material>(
+                        DustMaterialPath);
+                if (dustMaterial != null)
+                {
+                    VehicleWheelDustSource dustSource =
+                        root.AddComponent<VehicleWheelDustSource>();
+                    dustSource.Configure(dustMaterial);
+                }
 
                 PrefabUtility.SaveAsPrefabAsset(
                     root,
@@ -418,6 +504,32 @@ namespace CityFlow.Editor
             EditorUtility.SetDirty(definition);
         }
 
+        private static bool UpdatePoliceConfig()
+        {
+            Object config =
+                AssetDatabase.LoadMainAssetAtPath(
+                    PoliceConfigPath);
+            GameObject visual = LoadWrapper(Police.Name);
+            if (config == null || visual == null)
+            {
+                return false;
+            }
+
+            var serialized = new SerializedObject(config);
+            SerializedProperty property =
+                serialized.FindProperty("vehicleVisualPrefab");
+            if (property == null ||
+                property.objectReferenceValue == visual)
+            {
+                return false;
+            }
+
+            property.objectReferenceValue = visual;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(config);
+            return true;
+        }
+
         private static GameObject LoadWrapper(string name)
         {
             return AssetDatabase.LoadAssetAtPath<GameObject>(
@@ -435,6 +547,7 @@ namespace CityFlow.Editor
                     NormalVehicles.Length ||
                 catalog.SchoolBusPrefab == null ||
                 catalog.AmbulancePrefab == null ||
+                LoadWrapper(Police.Name) == null ||
                 catalog.CityBusPrefabs == null ||
                 catalog.CityBusPrefabs.Length !=
                     CityBuses.Length)
@@ -448,7 +561,8 @@ namespace CityFlow.Editor
                 catalog.NormalVehiclePrefabs)
             {
                 catalog.SchoolBusPrefab,
-                catalog.AmbulancePrefab
+                catalog.AmbulancePrefab,
+                LoadWrapper(Police.Name)
             };
             prefabs.AddRange(
                 catalog.CityBusPrefabs);
@@ -474,7 +588,7 @@ namespace CityFlow.Editor
                             0.001f)
                     {
                         Debug.LogError(
-                            $"[VehicleVisualPrefabBaker] Invalid normalized bounds: {path} " +
+                            $"[VehicleVisualPrefabBaker] Invalid generated vehicle: {path} " +
                             $"(length={bounds.size.x:F4}, ground={groundContact:F4})");
                         return;
                     }

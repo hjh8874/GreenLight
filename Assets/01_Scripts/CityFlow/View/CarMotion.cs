@@ -11,6 +11,10 @@ namespace CityFlow.View
     // 튜닝 노브([SerializeField])는 인스펙터 헤더 그룹 유지를 위해 MainCityView.cs에 남아 있다.
     public sealed partial class MainCityView
     {
+        // 로터리 중심에서 두 타일 떨어진 접근로의 차선 오프셋까지 포함한다.
+        private const float RoundaboutPresentationSpacingRadiusTiles = 2.5f;
+        private const float ParkingPresentationScaleRate = 0.28f;
+
         private int ComputeDisplayRouteHash(List<Vector2Int> route)
         {
             unchecked
@@ -87,6 +91,31 @@ namespace CityFlow.View
             return ContainsSignal(intersectionFacility.RoundaboutTiles, tile);   // 선형 목록 검색 헬퍼 공용
         }
 
+        private bool IsWithinRoundaboutPresentationArea(
+            Vector3 localPosition)
+        {
+            if (intersectionFacility == null) return false;
+
+            IReadOnlyList<Vector2Int> roundabouts =
+                intersectionFacility.RoundaboutTiles;
+            float radius = Mathf.Max(
+                0.0001f,
+                tileSize * RoundaboutPresentationSpacingRadiusTiles);
+            float radiusSquared = radius * radius;
+            for (int index = 0; index < roundabouts.Count; index++)
+            {
+                Vector3 center = GridToLocal(roundabouts[index], 0f);
+                float deltaX = localPosition.x - center.x;
+                float deltaY = localPosition.y - center.y;
+                if (deltaX * deltaX + deltaY * deltaY <= radiusSquared)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private void RefreshCommuteVehicles()
         {
             if (simEngine == null)
@@ -111,11 +140,20 @@ namespace CityFlow.View
                 CommuteCar car = carSimMirrors[i];
                 CarSnapshot snapshot = simEngine.GetCarSnapshot(i);
                 car.State = snapshot.State;
-                car.ApplyViewVisibility(snapshot.IsVisible);
+                bool showVehicle = ShouldShowCommuteVehicle(snapshot);
+                car.ApplyViewVisibility(showVehicle);
                 if (carVehicles.TryGetValue(car, out RouteVehicle vehicle)
                     && vehicle != null
                     && vehicle.Object.activeSelf)
                 {
+                    if (!showVehicle)
+                    {
+                        RemoveVehiclePresentation(car);
+                        ReleaseCommuteParkingReservation(vehicle);
+                        SetVehiclePresentationEnabled(vehicle, false);
+                        vehicle.ViewRecovery.Reset();
+                        continue;
+                    }
                     MoveCarSimVehicle(i, car, snapshot, vehicle);
                 }
             }
@@ -174,6 +212,7 @@ namespace CityFlow.View
                 CarSnapshot snapshot = simEngine.GetCarSnapshot(i);
                 bool inbound = snapshot.State == CarState.Inbound;
                 if (snapshot.State != CarState.Outbound && !inbound) continue;
+                if (!ShouldShowCommuteVehicle(snapshot)) continue;
                 if (!bakedRoutes.TryGetValue(carSimMirrors[i].RouteIndex, out BakedRoutePair pair)) continue;
 
                 RoutePolyline poly = inbound ? pair.Inbound : pair.Outbound;
@@ -285,6 +324,7 @@ namespace CityFlow.View
         private bool TryGetLaneHeadway(
             int carIndex,
             RouteVehicle vehicle,
+            bool includeCarPresentationCandidates,
             out float headway,
             out float leaderSpeed,
             out float minimumHeadway)
@@ -336,13 +376,18 @@ namespace CityFlow.View
                 }
             }
 
+            // 일반 도로는 위의 경로 기반 선두차 관계를 사용한다. 로터리 진입·이탈 곡선은
+            // 서로 다른 논리 큐가 같은 진행 방향으로 합류하므로 그 구간에서만 다른 승용차도 본다.
             if (TryGetVehiclePresentationLeader(
                     carSimMirrors[carIndex],
                     RoadTrafficAgentKind.Car,
                     standardFootprint,
                     vehicle.Pos,
                     vehicle.Dir,
-                    includeCarCandidates: false,
+                    includeCarCandidates:
+                        includeCarPresentationCandidates,
+                    useConvergingCarEnvelope:
+                        includeCarPresentationCandidates,
                     out VehiclePresentationLeader externalLeader) &&
                 (!found || externalLeader.Headway < headway))
             {
@@ -417,6 +462,8 @@ namespace CityFlow.View
                     hash = hash * 31 + car.RouteIndex;
                     hash = hash * 31 + car.Home.GetHashCode();
                     hash = hash * 31 + car.Work.GetHashCode();
+                    hash = hash * 31 + car.HomeSlot;
+                    hash = hash * 31 + car.WorkSlot;
                     List<Vector2Int> route = car.RouteIndex >= 0 && car.RouteIndex < routes.Count
                         ? routes[car.RouteIndex]
                         : null;
@@ -431,13 +478,24 @@ namespace CityFlow.View
             }
         }
 
-        // 로터리 라이브 노브 3종의 해시 — 재생 중 슬라이더 조정 감지용(QA G).
+        // 로터리 라이브 노브와 배치 위상의 해시. 로터리는 경로 타일 자체를 바꾸지 않으므로
+        // 배치/철거를 포함하지 않으면 기존 차량이 일반 교차로 폴리라인을 계속 사용한다.
         private int ComputeRoundaboutTuningHash()
         {
             int hash = 17;
-            hash = hash * 31 + roundaboutOrbitRadius.GetHashCode();
+            hash = hash * 31 +
+                   RoundaboutVehicleOrbitRadiusTiles.GetHashCode();
             hash = hash * 31 + roundaboutEntryExitDeg.GetHashCode();
             hash = hash * 31 + roundaboutTransitionTiles.GetHashCode();
+            IReadOnlyList<Vector2Int> roundabouts =
+                intersectionFacility?.RoundaboutTiles
+                ?? simEngine.RoundaboutTiles;
+            hash = hash * 31 + roundabouts.Count;
+            for (int i = 0; i < roundabouts.Count; i++)
+            {
+                hash = hash * 31 + roundabouts[i].x;
+                hash = hash * 31 + roundabouts[i].y;
+            }
             return hash;
         }
 
@@ -458,7 +516,7 @@ namespace CityFlow.View
             }
 
             BakeAllRoutes(routes);
-            SyncCommuteVehicleBindings(previousBakes);
+            SyncCommuteVehicleBindings(previousBakes, false);
             RebuildParkingVisuals();
         }
 
@@ -476,7 +534,7 @@ namespace CityFlow.View
             }
 
             BakeAllRoutes(routes);
-            SyncCommuteVehicleBindings(previousBakes);
+            SyncCommuteVehicleBindings(previousBakes, true);
         }
 
         // bakedRoutes를 현재 스케줄러 차량·라이브 로터리 노브로 다시 채운다(RebuildCommute·RebakeCommuteGeometry 공용).
@@ -498,7 +556,7 @@ namespace CityFlow.View
                 }
 
                 List<Vector2Int> source = routes[car.RouteIndex];
-                if (source == null || source.Count <= 1)
+                if (source == null || source.Count == 0)
                 {
                     continue;
                 }
@@ -506,7 +564,7 @@ namespace CityFlow.View
                 // 각 폴리라인은 자기 타일 리스트를 참조 보관(RoutePolyline._tiles) — 공유·재사용 금지.
                 List<Vector2Int> outboundTiles = new List<Vector2Int>(source.Count);
                 BuildBridgedRoute(source, outboundTiles);
-                if (outboundTiles.Count <= 1)
+                if (outboundTiles.Count == 0)
                 {
                     continue;
                 }
@@ -530,7 +588,7 @@ namespace CityFlow.View
                     inboundTiles = new List<Vector2Int>(outboundTiles);
                     inboundTiles.Reverse();
                 }
-                if (inboundTiles.Count <= 1) continue;
+                if (inboundTiles.Count == 0) continue;
 
                 Vector3 workExit = GetParkingAnchor(
                     car.Work,
@@ -598,7 +656,7 @@ namespace CityFlow.View
                 TileSize = tileSize,
                 LaneOffset = laneOffset,
                 CornerRadiusFraction = GetCornerTurnRadiusFraction(),   // 베이커는 클램프 안 함 — 여기서 해석해 전달(리뷰 #2)
-                OrbitRadius = roundaboutOrbitRadius,
+                OrbitRadius = RoundaboutVehicleOrbitRadiusTiles,
                 EntryExitOffsetRad = roundaboutEntryExitDeg * Mathf.Deg2Rad,   // α (QA G)
                 TransitionLength = roundaboutTransitionTiles,
                 Z = z,
@@ -627,14 +685,13 @@ namespace CityFlow.View
         // slotCount = 건물 타입별 칸 수(회사=officeSlots, 집=homeSlots).
         private Vector3 GetParkingAnchor(Vector2Int building, Vector2Int frontageRoad, int slotIndex, int slotCount)
         {
-            if (tileVisuals.TryGetValue(building, out TileVisual visual))
+            if (TryGetBuildingParkingPose(
+                    building,
+                    Mathf.Max(0, slotIndex),
+                    out Vector3 authoredPosition,
+                    out _))
             {
-                Transform named = visual.Object.transform.Find($"ParkingSlot_{slotIndex}");
-                if (named != null)
-                {
-                    // 폴리라인/차량 로컬 좌표계(transform 기준)와 정합 — world→view-local 변환.
-                    return transform.InverseTransformPoint(named.position);
-                }
+                return authoredPosition;
             }
 
             Vector3 center = GridToLocal(building, VehicleGroundZ);
@@ -649,7 +706,9 @@ namespace CityFlow.View
         // 경로 타일이 바뀐 이동 차는 Sim 논리 위치를 새 아크렝스에 재투영한다. 새 왕복 경로
         // 자체가 베이크되지 않는 진짜 소실만 숨기고, 같은 타일의 노브 재베이크는 무접촉이다.
         // 총 인구 상한 = SimConfig.MaxSimCars = 풀 크기.
-        private void SyncCommuteVehicleBindings(Dictionary<CommuteCar, BakedRoutePair> previousBakes)
+        private void SyncCommuteVehicleBindings(
+            Dictionary<CommuteCar, BakedRoutePair> previousBakes,
+            bool forceGeometryReprojection)
         {
             IReadOnlyList<CommuteCar> cars = CurrentCommuteCars();
             var alive = new HashSet<CommuteCar>();
@@ -694,16 +753,18 @@ namespace CityFlow.View
                     if (!hasBake)
                     {
                         // 새 위상에서 경로 소실(미연결 등): 페이드 후 다음 리빌드에서 재배치.
-                        SetVehicleRenderersEnabled(vehicle, false);
+                        ReleaseCommuteParkingReservation(vehicle);
+                        SetVehiclePresentationEnabled(vehicle, false);
                         continue;
                     }
 
                     bool moving = car.State == CarState.Outbound || car.State == CarState.Inbound;
                     if (moving
                         && previousBakes.TryGetValue(car, out BakedRoutePair old)
-                        && !SamePolylineTiles(
-                            car.State == CarState.Inbound ? old.Inbound : old.Outbound,
-                            car.State == CarState.Inbound ? pair.Inbound : pair.Outbound))
+                        && (forceGeometryReprojection
+                            || !SamePolylineTiles(
+                                car.State == CarState.Inbound ? old.Inbound : old.Outbound,
+                                car.State == CarState.Inbound ? pair.Inbound : pair.Outbound)))
                     {
                         CarSnapshot snapshot = simEngine.GetCarSnapshot(i);
                         RoutePolyline newPolyline = snapshot.State == CarState.Inbound
@@ -821,6 +882,7 @@ namespace CityFlow.View
 
         private void ResetVehicleForCommute(RouteVehicle vehicle, int routeIndex)
         {
+            ReleaseCommuteParkingReservation(vehicle);
             intersectionMotionStates.Remove(vehicle);
             vehicle.RouteIndex = routeIndex;
             vehicle.CurrentSpeed = 0f;
@@ -842,13 +904,14 @@ namespace CityFlow.View
                 vehicle.BrakeLight.SetActive(false);   // 하드 리셋(캐시 가드 우회) — 풀 재사용 desync 방지
             }
             HideJamMarks(vehicle);
-            SetVehicleRenderersEnabled(vehicle, true);
+            SetVehiclePresentationEnabled(vehicle, true);
 
             vehicle.Object.SetActive(true);
         }
 
         private void DeactivateCommuteVehicle(RouteVehicle vehicle)
         {
+            ReleaseCommuteParkingReservation(vehicle);
             intersectionMotionStates.Remove(vehicle);
             // 선택 추적 중인 차가 stale 처리되면 드라이브 뷰를 먼저 종료한다(#103 방어 이식).
             // 비활성화 직후 같은 풀 오브젝트가 TakeFreeVehicle()로 신규 통근차에 재사용되면
@@ -885,7 +948,8 @@ namespace CityFlow.View
             if (!bakedRoutes.TryGetValue(car.RouteIndex, out BakedRoutePair pair))
             {
                 RemoveVehiclePresentation(car);
-                SetVehicleRenderersEnabled(vehicle, false);
+                ReleaseCommuteParkingReservation(vehicle);
+                SetVehiclePresentationEnabled(vehicle, false);
                 return;
             }
 
@@ -893,9 +957,76 @@ namespace CityFlow.View
             bool moving = snapshot.State == CarState.Outbound || inbound;
             CarState previous = vehicle.LastState;
             bool hadPrevious = vehicle.HasLastState;
+            if (moving)
+            {
+                UpdateParkingPresentationScale(vehicle, 1f);
+                Vector2Int destinationBuilding = inbound
+                    ? car.Home
+                    : car.Work;
+                int destinationSlot = inbound
+                    ? snapshot.HomeSlot
+                    : snapshot.WorkSlot;
+                bool hasAuthoredDestination =
+                    TryGetBuildingParkingPose(
+                        destinationBuilding,
+                        Mathf.Max(0, destinationSlot),
+                        out _,
+                        out _);
+                if (!hasAuthoredDestination ||
+                    !TryReserveCommuteParkingPose(
+                        vehicle,
+                        destinationBuilding,
+                        destinationSlot))
+                {
+                    ReleaseCommuteParkingReservation(vehicle);
+                }
+            }
             if (!moving)
             {
                 intersectionMotionStates.Remove(vehicle);
+                Vector2Int parkingBuilding =
+                    snapshot.State == CarState.ParkedWork
+                        ? car.Work
+                        : car.Home;
+                int parkingSlot = snapshot.State == CarState.ParkedWork
+                    ? snapshot.WorkSlot
+                    : snapshot.HomeSlot;
+                float parkingPresentationScale = 1f;
+                bool hasAuthoredParkingPose =
+                    TryGetBuildingParkingPose(
+                        parkingBuilding,
+                        Mathf.Max(0, parkingSlot),
+                        out _,
+                        out _,
+                        out parkingPresentationScale);
+                UpdateParkingPresentationScale(
+                    vehicle,
+                    hasAuthoredParkingPose
+                        ? parkingPresentationScale
+                        : 1f);
+                if (hasAuthoredParkingPose &&
+                    !TryReserveCommuteParkingPose(
+                        vehicle,
+                        parkingBuilding,
+                        parkingSlot))
+                {
+                    vehicle.Settling = false;
+                    vehicle.SettleRate = 0f;
+                    vehicle.TravelSpeed = 0f;
+                    vehicle.HasCurrentTile = false;
+                    vehicle.NightLighting?.SetMoving(false);
+                    RemoveVehiclePresentation(car);
+                    SetVehiclePresentationEnabled(vehicle, false);
+                    vehicle.LastState = snapshot.State;
+                    vehicle.HasLastState = true;
+                    return;
+                }
+
+                if (!hasAuthoredParkingPose)
+                {
+                    ReleaseCommuteParkingReservation(vehicle);
+                }
+
                 bool arrivedAtWork = hadPrevious
                     && previous == CarState.Outbound
                     && snapshot.State == CarState.ParkedWork;
@@ -1005,7 +1136,13 @@ namespace CityFlow.View
                     && (snapshot.State == CarState.ParkedHome || snapshot.State == CarState.ParkedWork))
                 {
                     Vector2Int building = snapshot.State == CarState.ParkedWork ? car.Work : car.Home;
-                    SetForwardBuildingParkingRotation(vehicle, building);
+                    int finalParkingSlot = snapshot.State == CarState.ParkedWork
+                        ? snapshot.WorkSlot
+                        : snapshot.HomeSlot;
+                    SetForwardBuildingParkingRotation(
+                        vehicle,
+                        building,
+                        finalParkingSlot);
                 }
                 vehicle.CurrentTile = vehicle.Settling
                     ? parkingPolyline.TileAt(
@@ -1017,7 +1154,7 @@ namespace CityFlow.View
                         ? car.Work
                         : car.Home;
                 vehicle.HasCurrentTile = true;
-                SetVehicleRenderersEnabled(vehicle, true);
+                SetVehiclePresentationEnabled(vehicle, true);
                 SetBrakeLight(vehicle, parkingBlocked);
                 HideJamMarks(vehicle);
                 if (vehicle.Settling)
@@ -1068,6 +1205,11 @@ namespace CityFlow.View
                     tileIndex,
                     vehicle,
                     out roundaboutStopDistance);
+            bool usesRoundaboutPresentationSpacing =
+                hasRoundaboutAuthorization ||
+                roundaboutEntryLimited ||
+                IsWithinRoundaboutPresentationArea(
+                    poly.SampleAt(car.Distance).Pos);
             // 접근 외곽·arm은 roundaboutEntryLimited가 진입 간격을, 링은 로터리 권한이
             // 위치를 책임진다. 이 구간에 일반 타일 슬롯까지 적용하면 같은 거리를 이중 제한한다.
             float targetQueueOffset = isRoundaboutTile || roundaboutEntryLimited
@@ -1138,6 +1280,12 @@ namespace CityFlow.View
                     poly.DistanceAtTile(tileIndex),
                     poly.DistanceAtTile(tileIndex + 1),
                     snapshot.LinkProgress01);
+            }
+            if (roundaboutEntryLimited)
+            {
+                // 일반 큐 목표는 현재 타일 중심이다. 로터리 진입 대기 중에는 전용 정지선까지
+                // 접근할 수 있어야 하므로 더 앞쪽의 안전 경계를 이번 틱 목표로 사용한다.
+                targetDistance = Mathf.Max(targetDistance, roundaboutStopDistance);
             }
             float previousDistance = car.Distance;
             // QueueSlot 자체가 아니라 그 결과인 목표 거리의 방향을 본다. 슬롯 감소로 목표가
@@ -1284,18 +1432,20 @@ namespace CityFlow.View
                 float hardMinimumHeadway = 0f;
                 float hardLeaderSpeed = 0f;
 
-                // 정지 사유 둘 중 나머지: 같은 차선 앞차와의 간격. 교차 차선 차량은 후보에
-                // 들어오지 않으므로 정지 관계는 선형이고 사이클(=데드락)이 생기지 않는다.
+                // 정지 사유 둘 중 나머지: 같은 차선 앞차와의 간격. 로터리 합류 차량 쌍은
+                // 대칭인 공유 진행축으로 순서를 정하므로 서로를 동시에 앞차로 보지 않는다.
                 float headway;
                 float leaderSpeed;
                 float minimumHeadway;
                 if (TryGetLaneHeadway(
                         carIndex,
                         vehicle,
+                        usesRoundaboutPresentationSpacing,
                         out headway,
                         out leaderSpeed,
                         out minimumHeadway))
                 {
+                    float desiredBeforeFollowing = desired;
                     // 상한 없이 노브 그대로 쓴다. 슬롯은 더 이상 위치의 주인이 아니므로
                     // Sim 슬롯 간격(0.250)으로 누를 이유가 없다.
                     hardHeadway = headway;
@@ -1319,6 +1469,18 @@ namespace CityFlow.View
                         follow = Mathf.Min(follow, leaderSpeed * recover);
                     }
                     desired = Mathf.Min(desired, follow);
+                    // 권위 위치보다 뒤처진 차량을 복구할 때 실제로 속도를 제한 중인 앞차를
+                    // 건너뛰면 정지 직후 순간이동하며 관통한다. 제안 이동량이 이미 0이어도
+                    // 최소 간격 안이거나 추종 속도가 더 낮으면 복구 스냅을 계속 금지한다.
+                    if (IsVehicleViewRecoveryBlockedByLeader(
+                            headway,
+                            minimumHeadway,
+                            follow,
+                            desiredBeforeFollowing,
+                            Mathf.Max(0f, corridor - car.Distance)))
+                    {
+                        spacingBlocked = true;
+                    }
                 }
 
                 bool decelerating = desired < vehicle.TravelSpeed - 0.01f;
@@ -1372,7 +1534,7 @@ namespace CityFlow.View
                 float angle = Mathf.Atan2(sample.Dir.y, sample.Dir.x) * Mathf.Rad2Deg;
                 vehicle.Object.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
             }
-            SetVehicleRenderersEnabled(vehicle, true);
+            SetVehiclePresentationEnabled(vehicle, true);
             // 브레이크등은 '순항보다 확연히 느린가'로 판정한다. desired 순간값으로 켜면
             // 따라잡기 여유가 매 프레임 흔들려 고속 주행 중에도 깜빡인다(계측: 토글 256회).
             // 점등/소등 문턱을 벌려(히스테리시스) 경계에서 떨지 않게 한다.
@@ -1385,6 +1547,61 @@ namespace CityFlow.View
             vehicle.LastState = snapshot.State;
             vehicle.HasLastState = true;
         }
+
+        internal static bool IsVehicleViewRecoveryBlockedByLeader(
+            float headway,
+            float minimumHeadway,
+            float followingSpeed,
+            float unconstrainedSpeed,
+            float authoritativeAdvance) =>
+            headway <= minimumHeadway + 0.0001f ||
+            followingSpeed < unconstrainedSpeed - 0.0001f ||
+            authoritativeAdvance >
+            Mathf.Max(0f, headway - minimumHeadway) + 0.0001f;
+
+        internal static bool ShouldShowCommuteVehicle(CarSnapshot snapshot) =>
+            ShouldShowCommuteVehicle(
+                snapshot.IsVisible,
+                snapshot.State,
+                snapshot.QueueSlot,
+                snapshot.IntersectionProgress01,
+                snapshot.LinkProgress01,
+                snapshot.RoundaboutProgress01);
+
+        internal static bool ShouldShowCommuteVehicle(
+            bool isVisible,
+            CarState state,
+            int queueSlot,
+            float intersectionProgress,
+            float linkProgress,
+            float roundaboutProgress)
+        {
+            if (!isVisible) return false;
+            bool moving = state == CarState.Outbound ||
+                state == CarState.Inbound;
+            if (!moving) return true;
+
+            // 스케줄은 출발 시각에 먼저 Moving 상태가 되지만 실제 도로 큐 입장은
+            // 수용량이 빌 때까지 지연될 수 있다. 이 구간을 route[0]에 그리면 아직
+            // 입장하지 않은 차량이 도로 위에서 멈춘 것처럼 보이므로 위치가 확인된
+            // 차량만 주행 비주얼과 간격 후보에 포함한다.
+            return queueSlot >= 0 ||
+                intersectionProgress >= 0f ||
+                linkProgress > 0f ||
+                roundaboutProgress >= 0f;
+        }
+
+        internal static float ResolveVehicleViewRecoveryDistance(
+            float previousDistance,
+            float recoveredDistance,
+            float authoritativeDistance,
+            float polylineLength) =>
+            Mathf.Clamp(
+                Mathf.Max(
+                    previousDistance,
+                    Mathf.Min(recoveredDistance, authoritativeDistance)),
+                0f,
+                polylineLength);
 
         private bool TryRecoverCommuteVehicleView(
             CommuteCar car,
@@ -1420,9 +1637,10 @@ namespace CityFlow.View
                 snapshot.QueueOffsetTiles);
             car.Distance = spacingBlocked
                 ? previousDistance
-                : Mathf.Clamp(
-                    Mathf.Max(previousDistance, recoveredDistance),
-                    0f,
+                : ResolveVehicleViewRecoveryDistance(
+                    previousDistance,
+                    recoveredDistance,
+                    authoritativeDistance,
                     polyline.Length);
             vehicle.CurrentSpeed = 0f;
             vehicle.TravelSpeed = 0f;
@@ -1445,8 +1663,126 @@ namespace CityFlow.View
             return true;
         }
 
-        private void SetForwardBuildingParkingRotation(RouteVehicle vehicle, Vector2Int building)
+        private static void UpdateParkingPresentationScale(
+            RouteVehicle vehicle,
+            float multiplier)
         {
+            if (vehicle?.Object == null)
+            {
+                return;
+            }
+
+            if (vehicle.NominalLocalScale.sqrMagnitude <= 0.000001f)
+            {
+                vehicle.NominalLocalScale =
+                    vehicle.Object.transform.localScale;
+            }
+
+            Vector3 nominalScale = vehicle.NominalLocalScale;
+            float nominalMagnitude = nominalScale.magnitude;
+            if (nominalMagnitude <= 0.0001f)
+            {
+                return;
+            }
+
+            float currentMultiplier =
+                vehicle.Object.transform.localScale.magnitude /
+                nominalMagnitude;
+            float nextMultiplier =
+                MoveParkingPresentationScaleMultiplier(
+                    currentMultiplier,
+                    multiplier,
+                    Time.deltaTime);
+            vehicle.Object.transform.localScale =
+                nominalScale * nextMultiplier;
+        }
+
+        internal static float MoveParkingPresentationScaleMultiplier(
+            float current,
+            float target,
+            float deltaTime)
+        {
+            return Mathf.MoveTowards(
+                current,
+                Mathf.Clamp(target, 0.5f, 1f),
+                ParkingPresentationScaleRate * Mathf.Max(0f, deltaTime));
+        }
+
+        private bool TryReserveCommuteParkingPose(
+            RouteVehicle vehicle,
+            Vector2Int building,
+            int slotIndex)
+        {
+            if (vehicle?.Object == null || slotIndex < 0)
+            {
+                return false;
+            }
+
+            if (vehicle.HasParkingReservation &&
+                vehicle.ReservedParkingBuilding == building &&
+                vehicle.ReservedParkingSlot == slotIndex)
+            {
+                return true;
+            }
+
+            ReleaseCommuteParkingReservation(vehicle);
+            if (!TryReserveBuildingParkingPose(
+                    building,
+                    slotIndex,
+                    vehicle.Object.transform,
+                    out _,
+                    out _))
+            {
+                return false;
+            }
+
+            vehicle.ReservedParkingBuilding = building;
+            vehicle.ReservedParkingSlot = slotIndex;
+            vehicle.HasParkingReservation = true;
+            return true;
+        }
+
+        private void ReleaseCommuteParkingReservation(
+            RouteVehicle vehicle)
+        {
+            if (vehicle == null || !vehicle.HasParkingReservation)
+            {
+                return;
+            }
+
+            if (vehicle.Object != null)
+            {
+                ReleaseBuildingParkingReservation(
+                    vehicle.ReservedParkingBuilding,
+                    vehicle.ReservedParkingSlot,
+                    vehicle.Object.transform);
+            }
+
+            vehicle.ReservedParkingBuilding = default;
+            vehicle.ReservedParkingSlot = -1;
+            vehicle.HasParkingReservation = false;
+        }
+
+        private void SetForwardBuildingParkingRotation(
+            RouteVehicle vehicle,
+            Vector2Int building,
+            int slotIndex)
+        {
+            if (TryGetBuildingParkingPose(
+                    building,
+                    Mathf.Max(0, slotIndex),
+                    out _,
+                    out Vector3 authoredForward) &&
+                authoredForward.sqrMagnitude >= 0.001f)
+            {
+                float authoredAngle = Mathf.Atan2(
+                    authoredForward.y,
+                    authoredForward.x) * Mathf.Rad2Deg;
+                vehicle.Object.transform.localRotation =
+                    Quaternion.Euler(0f, 0f, authoredAngle);
+                return;
+            }
+
             if (!tileVisuals.TryGetValue(building, out TileVisual buildingVisual))
             {
                 return;
@@ -1466,9 +1802,11 @@ namespace CityFlow.View
         private void ResetCommuteState()
         {
             bakedRoutes.Clear();
-            foreach (CommuteCar car in carVehicles.Keys)
+            foreach (KeyValuePair<CommuteCar, RouteVehicle> entry in
+                     carVehicles)
             {
-                RemoveVehiclePresentation(car);
+                RemoveVehiclePresentation(entry.Key);
+                ReleaseCommuteParkingReservation(entry.Value);
             }
 
             carVehicles.Clear();

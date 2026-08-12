@@ -1462,7 +1462,8 @@ namespace CityFlow.Content
                 TileType.House => config.HouseWeight,
                 TileType.Office => config.OfficeWeight,
                 TileType.School => config.SchoolWeight,
-                TileType.SpecialBuilding =>
+                TileType.SpecialBuilding or
+                TileType.CompactSpecialBuilding =>
                     config.SpecialBuildingWeight,
                 _ => 0f
             };
@@ -1474,7 +1475,8 @@ namespace CityFlow.Content
             return type is TileType.House
                 or TileType.Office
                 or TileType.School
-                or TileType.SpecialBuilding;
+                or TileType.SpecialBuilding
+                or TileType.CompactSpecialBuilding;
         }
 
         private static int Manhattan(

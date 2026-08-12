@@ -10,6 +10,7 @@ namespace CityFlow.View
         private readonly Dictionary<
             (Vector2Int BuildingTile, int SlotIndex),
             Transform> parkingReservations = new();
+        private SpecialBuildingView specialBuildingParkingView;
 
         public bool TryGetBuildingParkingPose(
             Vector2Int buildingTile,
@@ -17,8 +18,24 @@ namespace CityFlow.View
             out Vector3 localPosition,
             out Vector3 localForward)
         {
+            return TryGetBuildingParkingPose(
+                buildingTile,
+                slotIndex,
+                out localPosition,
+                out localForward,
+                out _);
+        }
+
+        public bool TryGetBuildingParkingPose(
+            Vector2Int buildingTile,
+            int slotIndex,
+            out Vector3 localPosition,
+            out Vector3 localForward,
+            out float presentationScale)
+        {
             localPosition = default;
             localForward = default;
+            presentationScale = 1f;
 
             if (tileData != null &&
                 tileData.TryGetFootprintAnchor(
@@ -33,7 +50,12 @@ namespace CityFlow.View
                     out TileVisual visual) ||
                 visual?.Object == null)
             {
-                return false;
+                return TryGetSpecialBuildingParkingPose(
+                    buildingTile,
+                    slotIndex,
+                    out localPosition,
+                    out localForward,
+                    out presentationScale);
             }
 
             BuildingParkingLayout layout =
@@ -44,18 +66,11 @@ namespace CityFlow.View
                     Mathf.Max(0, slotIndex),
                     out BuildingParkingPose authoredPose))
             {
-                localPosition = transform.InverseTransformPoint(
-                    authoredPose.WorldPosition);
-                localForward = transform.InverseTransformDirection(
-                    authoredPose.WorldForward);
-                localForward.z = 0f;
-                if (localForward.sqrMagnitude <= 0.0001f)
-                {
-                    return false;
-                }
-
-                localForward.Normalize();
-                return true;
+                presentationScale = authoredPose.PresentationScale;
+                return TryConvertParkingPose(
+                    authoredPose,
+                    out localPosition,
+                    out localForward);
             }
 
             Transform slot = visual.Object.transform.Find(
@@ -68,6 +83,58 @@ namespace CityFlow.View
             localPosition = transform.InverseTransformPoint(slot.position);
             localForward = transform.InverseTransformDirection(
                 visual.Object.transform.TransformDirection(Vector3.up));
+            localForward.z = 0f;
+            if (localForward.sqrMagnitude <= 0.0001f)
+            {
+                return false;
+            }
+
+            localForward.Normalize();
+            return true;
+        }
+
+        private bool TryGetSpecialBuildingParkingPose(
+            Vector2Int buildingTile,
+            int slotIndex,
+            out Vector3 localPosition,
+            out Vector3 localForward,
+            out float presentationScale)
+        {
+            localPosition = default;
+            localForward = default;
+            presentationScale = 1f;
+            if (specialBuildingParkingView == null)
+            {
+                specialBuildingParkingView =
+                    FindAnyObjectByType<SpecialBuildingView>();
+            }
+
+            if (specialBuildingParkingView == null ||
+                !specialBuildingParkingView.TryGetParkingPose(
+                    buildingTile,
+                    Mathf.Max(0, slotIndex),
+                    out BuildingParkingPose pose) ||
+                !TryConvertParkingPose(
+                    pose,
+                    out localPosition,
+                    out localForward))
+            {
+                return false;
+            }
+
+            presentationScale = pose.PresentationScale;
+            return true;
+        }
+
+        private bool TryConvertParkingPose(
+            BuildingParkingPose pose,
+            out Vector3 localPosition,
+            out Vector3 localForward)
+        {
+            localPosition = transform.InverseTransformPoint(
+                pose.WorldPosition);
+            localForward = transform.InverseTransformDirection(
+                pose.WorldForward);
             localForward.z = 0f;
             if (localForward.sqrMagnitude <= 0.0001f)
             {
@@ -292,7 +359,8 @@ namespace CityFlow.View
             {
                 Transform candidate = vehicleLight.transform;
                 if (!candidate.gameObject.activeInHierarchy ||
-                    IsSameVehicle(candidate, requestingVehicle))
+                    IsSameVehicle(candidate, requestingVehicle) ||
+                    !HasVisibleVehicleRenderer(candidate))
                 {
                     continue;
                 }
@@ -303,6 +371,26 @@ namespace CityFlow.View
                     candidatePosition.x - localPosition.x,
                     candidatePosition.y - localPosition.y);
                 if (separation.sqrMagnitude <= occupancyRadiusSqr)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasVisibleVehicleRenderer(
+            Transform vehicle)
+        {
+            Renderer[] renderers =
+                vehicle.GetComponentsInChildren<Renderer>(true);
+            for (int index = 0; index < renderers.Length; index++)
+            {
+                Renderer renderer = renderers[index];
+                if (renderer != null &&
+                    renderer.enabled &&
+                    renderer.gameObject.activeInHierarchy &&
+                    !renderer.forceRenderingOff)
                 {
                     return true;
                 }

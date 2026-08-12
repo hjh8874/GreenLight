@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using CityFlow.Contracts;
@@ -348,6 +349,60 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(arrived, "재개 큐가 비면 정상 교차로 중재로 진입해 유한 틱 안에 도착한다");
         }
 
+        [Test]
+        public void RebuildResume_PreservesIncomingQueueDirection()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(5, 5);
+            Vector2Int resumeTile = V(2, 2);
+            Assert.IsTrue(grid.Place(resumeTile, TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var route = new[] { resumeTile, V(2, 1) };
+            bool hasResume = true;
+
+            Assert.IsTrue(CarSim.TryEnqueueRouteStart(
+                route,
+                resumeTile,
+                ref hasResume,
+                net,
+                10,
+                out int start,
+                roadNetwork: null,
+                originBuilding: null,
+                resumeIncomingDirection: Vector2Int.right));
+
+            Assert.AreEqual(0, start);
+            Assert.IsFalse(hasResume);
+            Assert.AreEqual(10, net.CarAtHead(resumeTile, Dir.E));
+            Assert.AreNotEqual(10, net.CarAtHead(resumeTile, Dir.S));
+        }
+
+        [Test]
+        public void RebuildResume_RepeatedTileSearchStartsAtLogicalCursor()
+        {
+            SimConfig cfg = Cfg();
+            var grid = new CityGrid(4, 3);
+            Assert.IsTrue(grid.Place(V(0, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 1), TileType.Road));
+            Assert.IsTrue(grid.Place(V(2, 1), TileType.Road));
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid);
+            var route = new[]
+            {
+                V(0, 1), V(1, 1), V(2, 1), V(1, 1), V(0, 1)
+            };
+
+            Assert.AreEqual(
+                3,
+                CarSim.FindResumeStart(
+                    route,
+                    V(1, 1),
+                    net,
+                    minimumRouteIndex: 2));
+        }
+
         // 설계 변경 2026-08-03: 교차로 원점에서도 스테이지를 부여해 정식 진입한다.
         // 옛 계약("신규 출발도 오프네트워크 대기")은 진입로가 교차로뿐인 건물의 통근차를
         // 영구 스톨시켰다. 재개(resume) 경로는 그대로 보수적이다 — RebuildResume_* 참조.
@@ -410,6 +465,198 @@ namespace CityFlow.Sim.Tests
             Assert.IsFalse(hasResume, "안전한 이전 타일이 없으면 중간 재개를 포기한다");
             Assert.AreEqual(0, TotalQueued(net, grid.Width, grid.Height),
                 "재개는 교차로 스폰을 쓰지 않는다 — 출발 경로와 분리돼 있어야 한다");
+        }
+
+        [Test]
+        public void Departure_RoundaboutArmRouteOrigin_EntersAndArrives()
+        {
+            SimConfig cfg = Cfg();
+            CityGrid grid = BuildRoundaboutCrossGrid();
+            Vector2Int center = V(2, 2);
+            Vector2Int northArm = V(2, 3);
+            Vector2Int westArm = V(1, 2);
+            Vector2Int westApproach = V(0, 2);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid, devices);
+            var routes = new ResumeRouteProvider();
+            routes.Add(40, northArm, center, westArm, westApproach);
+            bool hasResume = false;
+
+            Assert.IsTrue(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(40),
+                default,
+                ref hasResume,
+                net,
+                40,
+                out int start));
+            Assert.AreEqual(0, start);
+            Assert.AreEqual(40, net.CarAtHead(northArm, Dir.S));
+
+            bool arrived = false;
+            for (int tick = 0; tick < 8 && !arrived; tick++)
+            {
+                net.Step(routes);
+                for (int index = 0; index < net.ArrivalCount; index++)
+                {
+                    arrived |= net.GetArrival(index).CarId == 40;
+                }
+            }
+
+            Assert.IsTrue(arrived,
+                "로터리 arm이 출발 원점이어도 실제 큐와 링 예약을 거쳐 도착해야 한다.");
+        }
+
+        [Test]
+        public void Departure_RoundaboutArmFull_RetriesAfterRingClears()
+        {
+            SimConfig cfg = Cfg();
+            CityGrid grid = BuildRoundaboutCrossGrid();
+            Vector2Int center = V(2, 2);
+            Vector2Int northArm = V(2, 3);
+            Vector2Int westArm = V(1, 2);
+            Vector2Int westApproach = V(0, 2);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid, devices);
+            var routes = new ResumeRouteProvider();
+            routes.Add(41, northArm, center, westArm, westApproach);
+            routes.Add(42, northArm, center, westArm, westApproach);
+            bool firstResume = false;
+            bool secondResume = false;
+
+            Assert.IsTrue(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(41), default, ref firstResume, net, 41, out _));
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(42), default, ref secondResume, net, 42, out _),
+                "arm의 물리 수용량은 방향 큐 전체에서 한 대여야 한다.");
+
+            net.Step(routes);
+
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(42), default, ref secondResume, net, 42, out _),
+                "arm이 비어도 앞차가 링을 점유하는 동안 새 출발차를 같은 전이에 만들면 안 된다.");
+
+            bool secondQueued = false;
+            for (int tick = 0; tick < 8 && !secondQueued; tick++)
+            {
+                net.Step(routes);
+                secondQueued = CarSim.TryEnqueueRouteStart(
+                    routes.RouteFor(42),
+                    default,
+                    ref secondResume,
+                    net,
+                    42,
+                    out _);
+            }
+
+            Assert.IsTrue(secondQueued,
+                "앞차가 링과 출구 전이를 비우면 대기 출발차가 유한 틱 안에 등록돼야 한다.");
+        }
+
+        [Test]
+        public void Departure_DifferentRoundaboutArms_SpawnOneAtATime()
+        {
+            SimConfig cfg = Cfg();
+            CityGrid grid = BuildRoundaboutCrossGrid();
+            Vector2Int center = V(2, 2);
+            Vector2Int northArm = V(2, 3);
+            Vector2Int westArm = V(1, 2);
+            Vector2Int westApproach = V(0, 2);
+            Vector2Int eastArm = V(3, 2);
+            Vector2Int southArm = V(2, 1);
+            Vector2Int southApproach = V(2, 0);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid, devices);
+            var routes = new ResumeRouteProvider();
+            routes.Add(45, northArm, center, westArm, westApproach);
+            routes.Add(46, eastArm, center, southArm, southApproach);
+            bool firstResume = false;
+            bool secondResume = false;
+
+            Assert.IsTrue(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(45), default, ref firstResume, net, 45, out _));
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(46), default, ref secondResume, net, 46, out _),
+                "같은 중심의 다른 arm도 첫 출발차가 footprint를 비울 때까지 대기해야 합니다.");
+
+            bool secondQueued = false;
+            for (int tick = 0; tick < 10 && !secondQueued; tick++)
+            {
+                net.Step(routes);
+                secondQueued = CarSim.TryEnqueueRouteStart(
+                    routes.RouteFor(46),
+                    default,
+                    ref secondResume,
+                    net,
+                    46,
+                    out _);
+            }
+
+            Assert.IsTrue(secondQueued,
+                "첫 arm 출발차가 빠진 뒤 다른 arm 출발차도 유한 틱 안에 등록돼야 합니다.");
+        }
+
+        [Test]
+        public void Departure_RoundaboutArmSingleTileRoute_Arrives()
+        {
+            SimConfig cfg = Cfg();
+            CityGrid grid = BuildRoundaboutCrossGrid();
+            Vector2Int center = V(2, 2);
+            Vector2Int northArm = V(2, 3);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid, devices);
+            var routes = new ResumeRouteProvider();
+            routes.Add(44, northArm);
+            bool hasResume = false;
+
+            Assert.IsTrue(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(44),
+                default,
+                ref hasResume,
+                net,
+                44,
+                out int start));
+            Assert.AreEqual(0, start);
+
+            net.Step(routes);
+
+            Assert.AreEqual(1, net.ArrivalCount);
+            Assert.AreEqual(44, net.GetArrival(0).CarId,
+                "출발지와 목적지가 같은 로터리 arm이어도 큐에 등록된 뒤 도착해야 한다.");
+        }
+
+        [Test]
+        public void RebuildResume_RoundaboutArmOrigin_DoesNotUseDepartureSpawn()
+        {
+            SimConfig cfg = Cfg();
+            CityGrid grid = BuildRoundaboutCrossGrid();
+            Vector2Int center = V(2, 2);
+            Vector2Int northArm = V(2, 3);
+            var devices = new FakeDeviceState();
+            devices.AddRoundabout(center);
+            var net = new RoadQueueNetwork(grid.Width, grid.Height, cfg);
+            net.RebuildTopology(grid, devices);
+            var routes = new ResumeRouteProvider();
+            routes.Add(43, northArm, center, V(1, 2));
+            bool hasResume = true;
+
+            Assert.IsFalse(CarSim.TryEnqueueRouteStart(
+                routes.RouteFor(43),
+                northArm,
+                ref hasResume,
+                net,
+                43,
+                out _));
+            Assert.IsFalse(hasResume);
+            Assert.AreEqual(0, TotalQueued(net, grid.Width, grid.Height),
+                "중간 재개는 로터리 arm에 직접 생성되지 않아야 한다.");
         }
 
         [Test]
@@ -957,6 +1204,428 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void SpecialVisit_UsesConfiguredParkingSlotsAndQueuesOverflow()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 16;
+            config.MaxPendingVehicleTrips = 16;
+            config.MaxConcurrentSpecialTrips = 3;
+            BuildSpecialVisitCity(
+                config,
+                out CityGrid grid,
+                out RoadNetwork roads,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork queues);
+            var sim = new CarSim(config);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+            var events = new SimEventBuffer(new SimEventHub());
+
+            for (int visitIndex = 0; visitIndex < 3; visitIndex++)
+            {
+                Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                    new SpecialBuildingVisitTripRequest(
+                        "coffee-shop",
+                        V(6, 0),
+                        1L,
+                        visitIndex,
+                        1f,
+                        rewardCoins: 0,
+                        visitorParkingSlotStart: 4,
+                        visitorParkingSlotCount: 2,
+                        visitDwellHours: 2f)));
+            }
+
+            int tick = 0;
+            List<CarSnapshot> parkedVisitors = null;
+            for (; tick < 200; tick++)
+            {
+                sim.Step(1L, 1f, queues, events, null, tick);
+                events.Drain();
+                parkedVisitors = ActiveSpecialSnapshots(sim).FindAll(
+                    snapshot => snapshot.State == CarState.ParkedWork);
+                if (parkedVisitors.Count == 2)
+                {
+                    break;
+                }
+            }
+
+            Assert.NotNull(parkedVisitors);
+            Assert.AreEqual(2, parkedVisitors.Count);
+            Assert.AreEqual(
+                new[] { 4, 5 },
+                parkedVisitors
+                    .ConvertAll(snapshot => snapshot.WorkSlot)
+                    .OrderBy(slot => slot)
+                    .ToArray());
+            Assert.AreEqual(2, sim.ReservedVisitorParkingCount);
+            Assert.AreEqual(
+                1,
+                sim.PendingTripCount,
+                "슬롯 수를 넘는 방문은 슬롯이 풀릴 때까지 대기해야 한다.");
+        }
+
+        [Test]
+        public void MallVisit_UsesAllFiveParkingSlotsAndQueuesSixthVisitor()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 16;
+            config.MaxPendingVehicleTrips = 16;
+            config.MaxConcurrentSpecialTrips = 6;
+            BuildSpecialVisitCity(
+                config,
+                out CityGrid grid,
+                out RoadNetwork roads,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork queues);
+            var sim = new CarSim(config);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+            var hub = new SimEventHub();
+            var events = new SimEventBuffer(hub);
+            var completed = new List<VehicleTripSnapshot>();
+            hub.VehicleTripArrived += message =>
+            {
+                if (message.Trip.Purpose ==
+                    VehicleTripPurpose.SpecialBuildingVisit)
+                {
+                    completed.Add(message.Trip);
+                }
+            };
+
+            for (int visitIndex = 0; visitIndex < 6; visitIndex++)
+            {
+                Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                    new SpecialBuildingVisitTripRequest(
+                        "mall",
+                        V(6, 0),
+                        1L,
+                        visitIndex,
+                        1f,
+                        rewardCoins: 0,
+                        visitorParkingSlotStart: 0,
+                        visitorParkingSlotCount: 5,
+                        visitDwellHours: 2f)));
+            }
+
+            int tick = 0;
+            List<CarSnapshot> parkedVisitors = null;
+            for (; tick < 300; tick++)
+            {
+                sim.Step(1L, 1f, queues, events, null, tick);
+                events.Drain();
+                parkedVisitors = ActiveSpecialSnapshots(sim).FindAll(
+                    snapshot => snapshot.State == CarState.ParkedWork);
+                if (parkedVisitors.Count == 5)
+                {
+                    break;
+                }
+            }
+
+            Assert.NotNull(parkedVisitors);
+            Assert.AreEqual(5, parkedVisitors.Count);
+            Assert.AreEqual(
+                new[] { 0, 1, 2, 3, 4 },
+                parkedVisitors
+                    .ConvertAll(snapshot => snapshot.WorkSlot)
+                    .OrderBy(slot => slot)
+                    .ToArray());
+            Assert.AreEqual(5, completed.Count);
+            Assert.AreEqual(5, sim.ReservedVisitorParkingCount);
+            Assert.AreEqual(1, sim.PendingTripCount);
+
+            sim.Step(1L, 2f, queues, events, null, ++tick);
+            events.Drain();
+            sim.Step(1L, 2.99f, queues, events, null, ++tick);
+            events.Drain();
+            Assert.AreEqual(
+                5,
+                ActiveSpecialSnapshots(sim).FindAll(
+                    snapshot => snapshot.State == CarState.ParkedWork).Count,
+                "Mall visitors must remain in their authored bays until dwell completes.");
+
+            CarSnapshot sixthVisitor = default;
+            bool sixthVisitorParked = false;
+            for (tick++; tick < 900; tick++)
+            {
+                sim.Step(1L, 3.1f, queues, events, null, tick);
+                events.Drain();
+                List<CarSnapshot> active = ActiveSpecialSnapshots(sim);
+                if (completed.Count == 11 &&
+                    active.Count == 1 &&
+                    active[0].State == CarState.ParkedWork)
+                {
+                    sixthVisitor = active[0];
+                    sixthVisitorParked = true;
+                    break;
+                }
+            }
+
+            Assert.IsTrue(
+                sixthVisitorParked,
+                "The queued sixth visitor must enter after an authored bay is released.");
+            Assert.That(sixthVisitor.WorkSlot, Is.InRange(0, 4));
+            Assert.AreEqual(0, sim.PendingTripCount);
+            Assert.AreEqual(1, sim.ReservedVisitorParkingCount);
+
+            sim.Step(1L, 4.1f, queues, events, null, ++tick);
+            events.Drain();
+            sim.Step(1L, 5.09f, queues, events, null, ++tick);
+            events.Drain();
+            Assert.AreEqual(
+                1,
+                ActiveSpecialSnapshots(sim).FindAll(
+                    snapshot => snapshot.State == CarState.ParkedWork).Count);
+
+            for (tick++; tick < 1400 && completed.Count < 12; tick++)
+            {
+                sim.Step(1L, 5.2f, queues, events, null, tick);
+                events.Drain();
+            }
+
+            Assert.AreEqual(12, completed.Count);
+            Assert.AreEqual(0, sim.PendingTripCount);
+            Assert.AreEqual(0, ActiveSpecialSnapshots(sim).Count);
+            Assert.AreEqual(0, sim.ReservedVisitorParkingCount);
+        }
+
+        [Test]
+        public void SpecialVisit_DwellExpiryKeepsCarParkedWhenExitQueueIsFull()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 16;
+            config.MaxPendingVehicleTrips = 16;
+            config.MaxConcurrentSpecialTrips = 2;
+            config.QueueCapacityPerTile = 1;
+            BuildSpecialVisitCity(
+                config,
+                out CityGrid grid,
+                out RoadNetwork roads,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork queues);
+            var sim = new CarSim(config);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+            var hub = new SimEventHub();
+            var events = new SimEventBuffer(hub);
+            var completed = new List<VehicleTripSnapshot>();
+            hub.VehicleTripArrived += message => completed.Add(message.Trip);
+
+            for (int visitIndex = 0; visitIndex < 2; visitIndex++)
+            {
+                Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                    new SpecialBuildingVisitTripRequest(
+                        "coffee-shop",
+                        V(6, 0),
+                        1L,
+                        visitIndex,
+                        1f,
+                        rewardCoins: 0,
+                        visitorParkingSlotStart: 2,
+                        visitorParkingSlotCount: 2,
+                        visitDwellHours: 0.5f)));
+            }
+
+            int tick = 0;
+            for (; tick < 200; tick++)
+            {
+                sim.Step(1L, 1f, queues, events, null, tick);
+                events.Drain();
+                int parkedCount = ActiveSpecialSnapshots(sim).FindAll(
+                    snapshot => snapshot.State == CarState.ParkedWork).Count;
+                if (parkedCount == 2)
+                {
+                    break;
+                }
+            }
+
+            Assert.Less(tick, 200, "두 방문 차량이 dwell 상태에 도달해야 한다.");
+            Assert.AreEqual(2, completed.Count);
+            sim.Step(1L, 1.49f, queues, events, null, ++tick);
+            events.Drain();
+            Assert.AreEqual(
+                2,
+                ActiveSpecialSnapshots(sim).FindAll(
+                    snapshot => snapshot.State == CarState.ParkedWork).Count);
+
+            sim.Step(1L, 1.5f, queues, events, null, ++tick);
+            events.Drain();
+            List<CarSnapshot> afterExpiry = ActiveSpecialSnapshots(sim);
+            Assert.AreEqual(
+                1,
+                afterExpiry.FindAll(
+                    snapshot => snapshot.State == CarState.ParkedWork).Count,
+                "출차 큐를 얻지 못한 차량은 authored 슬롯에 남아야 한다.");
+            Assert.AreEqual(
+                2,
+                sim.ReservedVisitorParkingCount,
+                "출차 큐에 들어간 차량도 화면에서 슬롯을 완전히 떠나기 전까지 예약을 유지해야 한다.");
+
+            for (tick++; tick < 400 && completed.Count < 4; tick++)
+            {
+                sim.Step(1L, 1.5f, queues, events, null, tick);
+                events.Drain();
+            }
+
+            Assert.AreEqual(4, completed.Count);
+            Assert.AreEqual(0, sim.ReservedVisitorParkingCount);
+            Assert.AreEqual(0, sim.ActiveTripCount);
+        }
+
+        [Test]
+        public void PetrolVisit_UsesFrontageLaneAfterRebuildAndCompletesReturn()
+        {
+            SimConfig config = Cfg();
+            config.MaxSimCars = 16;
+            config.MaxPendingVehicleTrips = 8;
+            config.MaxConcurrentSpecialTrips = 2;
+            BuildPetrolDriveThroughCity(
+                config,
+                out CityGrid grid,
+                out RoadNetwork roads,
+                out DemandMap demands,
+                out RoutePlanner planner,
+                out RoadQueueNetwork queues);
+            var sim = new CarSim(config);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+            var hub = new SimEventHub();
+            var events = new SimEventBuffer(hub);
+            var completed = new List<VehicleTripSnapshot>();
+            hub.VehicleTripArrived += message =>
+            {
+                if (message.Trip.Purpose ==
+                    VehicleTripPurpose.SpecialBuildingVisit)
+                {
+                    completed.Add(message.Trip);
+                }
+            };
+
+            Vector2Int petrol = V(5, 4);
+            Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
+                new SpecialBuildingVisitTripRequest(
+                    "petrol_station",
+                    petrol,
+                    1L,
+                    0,
+                    1f,
+                    rewardCoins: 0,
+                    visitorParkingSlotStart: 0,
+                    visitorParkingSlotCount: 2,
+                    visitDwellHours: 0.5f)));
+
+            int tick = 0;
+            sim.Step(1L, 1f, queues, events, null, tick++);
+            events.Drain();
+            CarSnapshot outbound = ActiveSpecialSnapshots(sim).Single();
+            AssertRouteDirection(
+                sim.ActiveRoutes[outbound.RouteIndex],
+                expectedFirst: null,
+                expectedLast: Vector2Int.left);
+
+            for (int index = 0; index < 3; index++)
+            {
+                sim.Step(1L, 1f, queues, events, null, tick++);
+                events.Drain();
+            }
+
+            planner.Plan(demands, roads, grid, config);
+            queues.RebuildTopology(grid);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+            outbound = ActiveSpecialSnapshots(sim).Single();
+            AssertRouteDirection(
+                sim.ActiveRoutes[outbound.RouteIndex],
+                expectedFirst: null,
+                expectedLast: Vector2Int.left);
+
+            CarSnapshot parked = default;
+            bool reachedDwell = false;
+            for (; tick < 300; tick++)
+            {
+                sim.Step(1L, 1f, queues, events, null, tick);
+                events.Drain();
+                List<CarSnapshot> active = ActiveSpecialSnapshots(sim);
+                if (active.Count == 1 &&
+                    active[0].State == CarState.ParkedWork)
+                {
+                    parked = active[0];
+                    reachedDwell = true;
+                    break;
+                }
+            }
+
+            Assert.IsTrue(reachedDwell, "주유소 dwell 상태에 도달해야 한다.");
+            Assert.AreEqual(petrol, parked.Work);
+            Assert.AreEqual(1, completed.Count);
+
+            planner.Plan(demands, roads, grid, config);
+            queues.RebuildTopology(grid);
+            sim.Rebuild(
+                demands,
+                planner,
+                queues,
+                grid: grid,
+                roadNetwork: roads);
+
+            CarSnapshot returning = default;
+            bool beganReturn = false;
+            for (tick++; tick < 340; tick++)
+            {
+                sim.Step(1L, 1.5f, queues, events, null, tick);
+                events.Drain();
+                List<CarSnapshot> active = ActiveSpecialSnapshots(sim);
+                if (active.Count == 1 &&
+                    active[0].State == CarState.Outbound)
+                {
+                    returning = active[0];
+                    beganReturn = true;
+                    break;
+                }
+            }
+
+            Assert.IsTrue(beganReturn, "dwell 이후 출차가 시작되어야 한다.");
+            Assert.AreEqual(petrol, returning.Home);
+            AssertRouteDirection(
+                sim.ActiveRoutes[returning.RouteIndex],
+                expectedFirst: Vector2Int.left,
+                expectedLast: null);
+
+            for (tick++; tick < 500 && sim.ActiveTripCount > 0; tick++)
+            {
+                sim.Step(1L, 1.5f, queues, events, null, tick);
+                events.Drain();
+            }
+
+            Assert.AreEqual(0, sim.ActiveTripCount);
+            Assert.AreEqual(2, completed.Count);
+            Assert.AreEqual(0, sim.ReservedVisitorParkingCount);
+        }
+
+        [Test]
         public void SpecialVisit_DuringWorkWindow_DoesNotDelayDirectCommute()
         {
             SimConfig config = Cfg();
@@ -1242,10 +1911,10 @@ namespace CityFlow.Sim.Tests
             config.MaxPendingVehicleTrips = 8;
             config.MaxConcurrentSpecialTrips = 2;
             var grid = new CityGrid(6, 3);
-            Assert.IsTrue(grid.Place(V(2, 0), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 0), TileType.Road));
             Assert.IsTrue(grid.Place(V(0, 0), TileType.House));
             Assert.IsTrue(
-                grid.Place(V(3, 0), TileType.SpecialBuilding));
+                grid.Place(V(2, 0), TileType.SpecialBuilding));
             var roads = new RoadNetwork(grid);
             var demands = new DemandMap(config);
             demands.Reassign(grid, roads);
@@ -1271,7 +1940,7 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(sim.TryScheduleSpecialBuildingVisit(
                 new SpecialBuildingVisitTripRequest(
                     "coffee-shop",
-                    V(3, 0),
+                    V(2, 0),
                     1L,
                     0,
                     1f,
@@ -1284,7 +1953,7 @@ namespace CityFlow.Sim.Tests
             }
 
             Assert.AreEqual(2, completed.Count);
-            Assert.AreEqual(V(3, 0), completed[0].Destination);
+            Assert.AreEqual(V(2, 0), completed[0].Destination);
             Assert.AreEqual(V(0, 0), completed[1].Destination);
             Assert.AreEqual(0, sim.PendingTripCount);
             Assert.AreEqual(0, sim.ActiveTripCount);
@@ -1356,6 +2025,87 @@ namespace CityFlow.Sim.Tests
             Assert.AreEqual(1, sim.ActiveTripCount);
         }
 
+        private static void BuildPetrolDriveThroughCity(
+            SimConfig config,
+            out CityGrid grid,
+            out RoadNetwork roads,
+            out DemandMap demands,
+            out RoutePlanner planner,
+            out RoadQueueNetwork queues)
+        {
+            grid = new CityGrid(12, 7);
+            for (int x = 1; x <= 9; x++)
+            {
+                Assert.IsTrue(grid.Place(V(x, 3), TileType.Road));
+            }
+
+            for (int x = 3; x <= 9; x++)
+            {
+                Assert.IsTrue(grid.Place(V(x, 1), TileType.Road));
+            }
+
+            Assert.IsTrue(grid.Place(V(3, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(9, 2), TileType.Road));
+            Assert.IsTrue(grid.Place(V(1, 4), TileType.House));
+            Assert.IsTrue(grid.Place(
+                V(5, 4),
+                TileType.SpecialBuilding,
+                PlacementDirection.North));
+            Assert.IsTrue(grid.Place(V(9, 4), TileType.Office));
+
+            roads = new RoadNetwork(grid);
+            demands = new DemandMap(config);
+            demands.Reassign(grid, roads);
+            planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demands, roads, grid, config);
+            queues = new RoadQueueNetwork(
+                grid.Width,
+                grid.Height,
+                config);
+            queues.RebuildTopology(grid);
+
+            Assert.AreEqual(1, demands.Demands.Count);
+        }
+
+        private static void AssertRouteDirection(
+            IReadOnlyList<Vector2Int> route,
+            Vector2Int? expectedFirst,
+            Vector2Int? expectedLast)
+        {
+            Assert.NotNull(route);
+            Assert.GreaterOrEqual(route.Count, 2);
+            if (expectedFirst.HasValue)
+            {
+                Assert.AreEqual(
+                    expectedFirst.Value,
+                    route[1] - route[0]);
+            }
+
+            if (expectedLast.HasValue)
+            {
+                Assert.AreEqual(
+                    expectedLast.Value,
+                    route[route.Count - 1] -
+                    route[route.Count - 2]);
+                Vector2Int goal = route[route.Count - 1];
+                for (int index = 0; index < route.Count - 1; index++)
+                {
+                    Assert.AreNotEqual(
+                        goal,
+                        route[index],
+                        "도착 타일은 잘못된 방향의 중간 경유지가 될 수 없다.");
+                }
+            }
+
+            for (int index = 1; index < route.Count - 1; index++)
+            {
+                Assert.AreNotEqual(
+                    route[index - 1],
+                    route[index + 1],
+                    $"Immediate reverse at route index {index}.");
+            }
+        }
+
         internal static void BuildSpecialVisitCity(
             SimConfig config,
             out CityGrid grid,
@@ -1386,6 +2136,24 @@ namespace CityFlow.Sim.Tests
             queues.RebuildTopology(grid);
 
             Assert.AreEqual(1, demands.Demands.Count);
+        }
+
+        private static List<CarSnapshot> ActiveSpecialSnapshots(CarSim sim)
+        {
+            var snapshots = new List<CarSnapshot>();
+            for (int index = 0; index < sim.CarCount; index++)
+            {
+                CarSnapshot snapshot = sim.GetCar(index);
+                if (snapshot.Purpose ==
+                        VehicleTripPurpose.SpecialBuildingVisit &&
+                    snapshot.State != CarState.Inactive &&
+                    snapshot.IsVisible)
+                {
+                    snapshots.Add(snapshot);
+                }
+            }
+
+            return snapshots;
         }
 
         private static void BuildRetirementCity(
@@ -1584,6 +2352,21 @@ namespace CityFlow.Sim.Tests
                 List<Vector2Int> route = _routes[carId];
                 return route[route.Count - 1] == tile;
             }
+        }
+
+        private static CityGrid BuildRoundaboutCrossGrid()
+        {
+            var grid = new CityGrid(5, 5);
+            for (int coordinate = 0; coordinate < 5; coordinate++)
+            {
+                Assert.IsTrue(grid.Place(V(coordinate, 2), TileType.Road));
+                if (coordinate != 2)
+                {
+                    Assert.IsTrue(grid.Place(V(2, coordinate), TileType.Road));
+                }
+            }
+
+            return grid;
         }
 
         private static int TotalQueued(RoadQueueNetwork net, int width, int height)

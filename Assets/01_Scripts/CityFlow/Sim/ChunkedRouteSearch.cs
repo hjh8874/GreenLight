@@ -65,10 +65,39 @@ namespace CityFlow.Sim
             IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
             IReadOnlyList<HighwayLink> highways,
             int[] rampPartner,
-            float[] load)
+            float[] load,
+            Vector2Int? requiredFirstDirection = null,
+            Vector2Int? requiredArrivalDirection = null,
+            Vector2Int? initialIncomingDirection = null)
         {
             localSearchCount = 0;
             maxLocalTileCount = 0;
+
+            if (!TryResolveDirection(
+                    requiredFirstDirection,
+                    out int? requiredFirstDirectionIndex) ||
+                !TryResolveDirection(
+                    requiredArrivalDirection,
+                    out int? requiredArrivalDirectionIndex) ||
+                !TryResolveDirection(
+                    initialIncomingDirection,
+                    out int? initialIncomingDirectionIndex))
+            {
+                SetDiagnostics(0, 0, 0);
+                return null;
+            }
+
+            bool forbidImmediateReverse =
+                requiredFirstDirectionIndex.HasValue ||
+                requiredArrivalDirectionIndex.HasValue ||
+                initialIncomingDirectionIndex.HasValue;
+            bool hasDirectionConstraint = forbidImmediateReverse;
+            Vector2Int? forbiddenReentryTile =
+                hasDirectionConstraint
+                    ? from
+                    : null;
+            Vector2Int? forbiddenTransitTile =
+                hasDirectionConstraint ? to : null;
 
             int startRegion = layout.GetRegionIndex(from);
             int goalRegion = layout.GetRegionIndex(to);
@@ -92,9 +121,14 @@ namespace CityFlow.Sim
                 startRegion,
                 from,
                 to,
-                null,
+                initialIncomingDirectionIndex,
                 null,
                 false,
+                requiredFirstDirectionIndex,
+                requiredArrivalDirectionIndex,
+                forbidImmediateReverse,
+                forbiddenReentryTile,
+                forbiddenTransitTile,
                 config,
                 oneways,
                 turnSigns,
@@ -124,14 +158,32 @@ namespace CityFlow.Sim
             {
                 int portalId = startPortals[i];
                 RoutePortal portal = portals[portalId];
+                if (portal.From == to)
+                {
+                    continue;
+                }
+
+                if (IsWrongGoalPortal(
+                        portal,
+                        to,
+                        requiredArrivalDirection))
+                {
+                    continue;
+                }
+
                 BoundedPathResult segment = FindLocalPath(
                     grid,
                     startRegion,
                     from,
                     portal.From,
-                    null,
+                    initialIncomingDirectionIndex,
                     portal.To,
                     portal.IsHighway,
+                    requiredFirstDirectionIndex,
+                    null,
+                    forbidImmediateReverse,
+                    forbiddenReentryTile,
+                    forbiddenTransitTile,
                     config,
                     oneways,
                     turnSigns,
@@ -173,6 +225,14 @@ namespace CityFlow.Sim
 
                 if (currentRegion == goalRegion)
                 {
+                    if (arrival.To == to &&
+                        requiredArrivalDirection.HasValue &&
+                        arrival.To - arrival.From !=
+                        requiredArrivalDirection.Value)
+                    {
+                        continue;
+                    }
+
                     BoundedPathResult finish = FindLocalPath(
                         grid,
                         currentRegion,
@@ -181,6 +241,11 @@ namespace CityFlow.Sim
                         incomingDirection,
                         null,
                         false,
+                        null,
+                        requiredArrivalDirectionIndex,
+                        forbidImmediateReverse,
+                        forbiddenReentryTile,
+                        forbiddenTransitTile,
                         config,
                         oneways,
                         turnSigns,
@@ -195,6 +260,11 @@ namespace CityFlow.Sim
                     }
                 }
 
+                if (arrival.To == to)
+                {
+                    continue;
+                }
+
                 IReadOnlyList<int> outgoing =
                     portalIndex.GetOutgoing(currentRegion);
                 for (int i = 0; i < outgoing.Count; i++)
@@ -206,6 +276,19 @@ namespace CityFlow.Sim
                     }
 
                     RoutePortal nextPortal = portals[nextPortalId];
+                    if (nextPortal.From == to)
+                    {
+                        continue;
+                    }
+
+                    if (IsWrongGoalPortal(
+                            nextPortal,
+                            to,
+                            requiredArrivalDirection))
+                    {
+                        continue;
+                    }
+
                     BoundedPathResult segment = FindLocalPath(
                         grid,
                         currentRegion,
@@ -214,6 +297,11 @@ namespace CityFlow.Sim
                         incomingDirection,
                         nextPortal.To,
                         nextPortal.IsHighway,
+                        null,
+                        null,
+                        forbidImmediateReverse,
+                        forbiddenReentryTile,
+                        forbiddenTransitTile,
                         config,
                         oneways,
                         turnSigns,
@@ -234,13 +322,22 @@ namespace CityFlow.Sim
                 portalCount,
                 CountVisitedRegions(visitedRegions),
                 localSearchCount);
-            return goalSegment == null
+            List<Vector2Int> result = goalSegment == null
                 ? null
                 : ComposePath(
                     goalPreviousPortal,
                     goalSegment,
                     previousPortal,
                     segmentToPortal);
+            return IsValidConstrainedPath(
+                result,
+                from,
+                to,
+                requiredFirstDirection,
+                requiredArrivalDirection,
+                initialIncomingDirection)
+                ? result
+                : null;
         }
 
         private BoundedPathResult FindLocalPath(
@@ -251,6 +348,11 @@ namespace CityFlow.Sim
             int? incomingDirection,
             Vector2Int? requiredNext,
             bool requiredNextIsHighway,
+            int? requiredFirstDirection,
+            int? requiredArrivalDirection,
+            bool forbidImmediateReverse,
+            Vector2Int? forbiddenReentryTile,
+            Vector2Int? forbiddenTransitTile,
             in SimConfig config,
             IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
             IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
@@ -270,11 +372,111 @@ namespace CityFlow.Sim
                 incomingDirection,
                 requiredNext,
                 requiredNextIsHighway,
+                requiredFirstDirection,
+                requiredArrivalDirection,
+                forbidImmediateReverse,
+                forbiddenReentryTile,
+                forbiddenTransitTile,
                 config,
                 oneways,
                 turnSigns,
                 rampPartner,
                 load);
+        }
+
+        private static bool TryResolveDirection(
+            Vector2Int? direction,
+            out int? resolved)
+        {
+            resolved = null;
+            if (!direction.HasValue)
+            {
+                return true;
+            }
+
+            Vector2Int value = direction.Value;
+            if (Mathf.Abs(value.x) + Mathf.Abs(value.y) != 1)
+            {
+                return false;
+            }
+
+            resolved = BoundedRouteSearch.DirectionFromDelta(value);
+            return true;
+        }
+
+        private static bool IsWrongGoalPortal(
+            RoutePortal portal,
+            Vector2Int goal,
+            Vector2Int? requiredArrivalDirection) =>
+            requiredArrivalDirection.HasValue &&
+            portal.To == goal &&
+            portal.To - portal.From != requiredArrivalDirection.Value;
+
+        private static bool IsValidConstrainedPath(
+            IReadOnlyList<Vector2Int> path,
+            Vector2Int from,
+            Vector2Int to,
+            Vector2Int? requiredFirstDirection,
+            Vector2Int? requiredArrivalDirection,
+            Vector2Int? initialIncomingDirection)
+        {
+            if (path == null)
+            {
+                return false;
+            }
+
+            if (!requiredFirstDirection.HasValue &&
+                !requiredArrivalDirection.HasValue &&
+                !initialIncomingDirection.HasValue)
+            {
+                return true;
+            }
+
+            if (path.Count == 1 && path[0] == from && from == to)
+            {
+                return !requiredFirstDirection.HasValue &&
+                    (!requiredArrivalDirection.HasValue ||
+                     (initialIncomingDirection.HasValue &&
+                      initialIncomingDirection.Value ==
+                      requiredArrivalDirection.Value));
+            }
+
+            if (path.Count < 2 || path[0] != from ||
+                path[path.Count - 1] != to)
+            {
+                return false;
+            }
+
+            if (requiredFirstDirection.HasValue &&
+                path[1] - path[0] != requiredFirstDirection.Value)
+            {
+                return false;
+            }
+
+            if (requiredArrivalDirection.HasValue &&
+                path[path.Count - 1] - path[path.Count - 2] !=
+                requiredArrivalDirection.Value)
+            {
+                return false;
+            }
+
+            if (initialIncomingDirection.HasValue &&
+                path[1] - path[0] == -initialIncomingDirection.Value)
+            {
+                return false;
+            }
+
+            for (int index = 1; index < path.Count - 1; index++)
+            {
+                if (path[index - 1] == path[index + 1] ||
+                    path[index] == from ||
+                    path[index] == to)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private void TryRelaxPortal(

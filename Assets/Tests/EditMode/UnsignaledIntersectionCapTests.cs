@@ -154,10 +154,10 @@ namespace CityFlow.Sim.Tests
             int arrivalsAtSixTicks = RunRoundaboutTraffic(Config(cap: 1), ticks: 6);
             int arrivalsAtFourteenTicks = RunRoundaboutTraffic(Config(cap: 1), ticks: 14);
 
-            // 로터리 버프는 후속 밸런스 결정(설계 Q4)이다. 이 테스트가 깨지면
-            // 로터리가 빨라진 것이므로 서열 테스트로 승격하라.
+            // 로터리 내부를 한 대씩 직렬화해 시각 경로 교차를 막는다. 다음 차량은
+            // 선행 차량이 출구 전이까지 마친 뒤 진입하므로 14틱 처리량은 2대다.
             Assert.AreEqual(0, arrivalsAtSixTicks, "실측: 로터리 첫 도착은 t8 이후");
-            Assert.AreEqual(4, arrivalsAtFourteenTicks, "실측: 로터리 완주는 t14");
+            Assert.AreEqual(2, arrivalsAtFourteenTicks, "직렬화된 로터리 완주량 t14");
         }
 
         private static readonly Vector2Int Center = new(1, 1);

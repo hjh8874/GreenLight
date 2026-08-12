@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using CityFlow.Contracts;
@@ -79,6 +80,319 @@ namespace CityFlow.Sim.Tests
             Assert.IsNull(Fresh(g).Search(g, V(0, 0), V(2, 0), Cfg()));   // 끝점이 도로 아님
         }
 
+        [Test]
+        public void PlanVehicleTrip_DirectionConstraintsUseLoopWithoutImmediateReverse()
+        {
+            CityGrid grid = DirectionConstraintLoop();
+            RoutePlanner planner = PrepareVehicleTripPlanner(grid);
+
+            List<Vector2Int> route = planner.PlanVehicleTrip(
+                V(1, 2),
+                V(5, 2),
+                requiredFirstDirection: Vector2Int.right,
+                requiredArrivalDirection: Vector2Int.left);
+
+            Assert.NotNull(route);
+            Assert.GreaterOrEqual(route.Count, 3);
+            Assert.AreEqual(Vector2Int.right, route[1] - route[0]);
+            Assert.AreEqual(
+                Vector2Int.left,
+                route[route.Count - 1] - route[route.Count - 2]);
+            Assert.AreEqual(route.Count - 1, route.LastIndexOf(V(5, 2)));
+            AssertNoImmediateReverse(route);
+        }
+
+        [Test]
+        public void PlanVehicleTrip_WrongWayOnlyStraightRoadReturnsNullInsteadOfUTurn()
+        {
+            CityGrid grid = GridWithRoads(
+                8,
+                4,
+                V(1, 2), V(2, 2), V(3, 2),
+                V(4, 2), V(5, 2), V(6, 2));
+            RoutePlanner planner = PrepareVehicleTripPlanner(grid);
+
+            Assert.IsNull(planner.PlanVehicleTrip(
+                V(1, 2),
+                V(5, 2),
+                requiredFirstDirection: Vector2Int.right,
+                requiredArrivalDirection: Vector2Int.left));
+        }
+
+        [Test]
+        public void PlanVehicleTrip_DirectionConstraintsPreserveOnewayAndTurnSigns()
+        {
+            CityGrid grid = DirectionConstraintLoop();
+            SimConfig config = Cfg();
+            var network = new RoadNetwork(grid);
+            var demand = new DemandMap(config);
+            demand.Reassign(grid, network);
+
+            var onewayPlanner = Fresh(grid);
+            var oneways = new Dictionary<Vector2Int, Vector2Int>
+            {
+                [V(6, 2)] = Vector2Int.right
+            };
+            onewayPlanner.Plan(
+                demand,
+                network,
+                grid,
+                config,
+                oneways);
+            Assert.IsNull(onewayPlanner.PlanVehicleTrip(
+                V(1, 2),
+                V(5, 2),
+                Vector2Int.right,
+                Vector2Int.left));
+
+            var turnPlanner = Fresh(grid);
+            var turnSigns = new Dictionary<Vector2Int, TurnMode>
+            {
+                [V(6, 2)] = TurnMode.RightOnly
+            };
+            turnPlanner.Plan(
+                demand,
+                network,
+                grid,
+                config,
+                oneways: null,
+                turnSigns: turnSigns);
+            Assert.IsNull(turnPlanner.PlanVehicleTrip(
+                V(1, 2),
+                V(5, 2),
+                Vector2Int.right,
+                Vector2Int.left));
+        }
+
+        [Test]
+        public void PlanVehicleTrip_InitialIncomingDirectionRejectsImmediateReverse()
+        {
+            CityGrid grid = GridWithRoads(
+                4,
+                3,
+                V(1, 1),
+                V(2, 1));
+            RoutePlanner planner = PrepareVehicleTripPlanner(grid);
+
+            Assert.IsNull(planner.PlanVehicleTrip(
+                V(2, 1),
+                V(1, 1),
+                requiredFirstDirection: null,
+                requiredArrivalDirection: null,
+                initialIncomingDirection: Vector2Int.right));
+        }
+
+        [Test]
+        public void PlanVehicleTrip_NullDirectionConstraintsPreserveLegacyRoute()
+        {
+            CityGrid grid = GridWithRoads(
+                4,
+                4,
+                V(1, 1), V(2, 1), V(1, 2), V(2, 2));
+            RoutePlanner planner = PrepareVehicleTripPlanner(grid);
+
+            CollectionAssert.AreEqual(
+                planner.PlanVehicleTrip(V(1, 1), V(2, 2)),
+                planner.PlanVehicleTrip(
+                    V(1, 1),
+                    V(2, 2),
+                    requiredFirstDirection: null,
+                    requiredArrivalDirection: null,
+                    initialIncomingDirection: null));
+        }
+
+        [Test]
+        public void PlanVehicleTrip_SameTileAcceptsMatchingIncomingHeading()
+        {
+            CityGrid grid = GridWithRoads(3, 3, V(1, 1));
+            RoutePlanner planner = PrepareVehicleTripPlanner(grid);
+
+            CollectionAssert.AreEqual(
+                new[] { V(1, 1) },
+                planner.PlanVehicleTrip(
+                    V(1, 1),
+                    V(1, 1),
+                    requiredFirstDirection: null,
+                    requiredArrivalDirection: null,
+                    initialIncomingDirection: Vector2Int.right));
+            CollectionAssert.AreEqual(
+                new[] { V(1, 1) },
+                planner.PlanVehicleTrip(
+                    V(1, 1),
+                    V(1, 1),
+                    requiredFirstDirection: null,
+                    requiredArrivalDirection: Vector2Int.right,
+                    initialIncomingDirection: Vector2Int.right));
+            Assert.IsNull(planner.PlanVehicleTrip(
+                V(1, 1),
+                V(1, 1),
+                requiredFirstDirection: null,
+                requiredArrivalDirection: Vector2Int.left,
+                initialIncomingDirection: Vector2Int.right));
+            Assert.IsNull(planner.PlanVehicleTrip(
+                V(1, 1),
+                V(1, 1),
+                requiredFirstDirection: Vector2Int.right,
+                requiredArrivalDirection: null,
+                initialIncomingDirection: Vector2Int.right));
+        }
+
+        [Test]
+        public void PlanVehicleTrip_InitialIncomingDirectionAppliesStartTurnSign()
+        {
+            CityGrid grid = GridWithRoads(
+                5,
+                5,
+                V(2, 1),
+                V(2, 2),
+                V(2, 3));
+            SimConfig config = Cfg();
+            var network = new RoadNetwork(grid);
+            var demand = new DemandMap(config);
+            demand.Reassign(grid, network);
+            var turnSigns = new Dictionary<Vector2Int, TurnMode>
+            {
+                [V(2, 2)] = TurnMode.RightOnly
+            };
+            RoutePlanner planner = Fresh(grid);
+            planner.Plan(
+                demand,
+                network,
+                grid,
+                config,
+                oneways: null,
+                turnSigns: turnSigns);
+
+            CollectionAssert.AreEqual(
+                new[] { V(2, 2), V(2, 1) },
+                planner.PlanVehicleTrip(
+                    V(2, 2),
+                    V(2, 1),
+                    requiredFirstDirection: null,
+                    requiredArrivalDirection: null,
+                    initialIncomingDirection: Vector2Int.right));
+            Assert.IsNull(planner.PlanVehicleTrip(
+                V(2, 2),
+                V(2, 3),
+                requiredFirstDirection: null,
+                requiredArrivalDirection: null,
+                initialIncomingDirection: Vector2Int.right));
+        }
+
+        [Test]
+        public void PlanVehicleTrip_RequiredFirstAndInitialIncomingBothApply()
+        {
+            CityGrid grid = GridWithRoads(
+                5,
+                5,
+                V(1, 2),
+                V(2, 1),
+                V(2, 2));
+            RoutePlanner planner = PrepareVehicleTripPlanner(grid);
+
+            CollectionAssert.AreEqual(
+                new[] { V(2, 2), V(2, 1) },
+                planner.PlanVehicleTrip(
+                    V(2, 2),
+                    V(2, 1),
+                    requiredFirstDirection: Vector2Int.down,
+                    requiredArrivalDirection: null,
+                    initialIncomingDirection: Vector2Int.right));
+            Assert.IsNull(planner.PlanVehicleTrip(
+                V(2, 2),
+                V(1, 2),
+                requiredFirstDirection: Vector2Int.left,
+                requiredArrivalDirection: null,
+                initialIncomingDirection: Vector2Int.right));
+        }
+
+        [Test]
+        public void PlanVehicleTrip_RepeatedIntersectionUsesMonotonicRouteCursor()
+        {
+            Vector2Int start = V(2, 2);
+            Vector2Int repeatedIntersection = V(3, 2);
+            Vector2Int goal = V(1, 1);
+            CityGrid grid = GridWithRoads(
+                5,
+                5,
+                V(0, 0), V(0, 1), V(1, 0), goal,
+                V(1, 2), V(1, 3), V(1, 4), V(2, 0),
+                start, V(2, 4), V(3, 0), V(3, 1),
+                repeatedIntersection, V(3, 3), V(3, 4),
+                V(4, 2), V(4, 3));
+            SimConfig config = Cfg();
+            var network = new RoadNetwork(grid);
+            var demand = new DemandMap(config);
+            demand.Reassign(grid, network);
+            var turnSigns = new Dictionary<Vector2Int, TurnMode>
+            {
+                [repeatedIntersection] = TurnMode.LeftOnly
+            };
+            RoutePlanner planner = Fresh(grid);
+            planner.Plan(
+                demand,
+                network,
+                grid,
+                config,
+                oneways: null,
+                turnSigns: turnSigns);
+
+            List<Vector2Int> route = planner.PlanVehicleTrip(
+                start,
+                goal,
+                requiredFirstDirection: null,
+                requiredArrivalDirection: Vector2Int.right);
+
+            Assert.NotNull(route);
+            Assert.AreEqual(
+                2,
+                route.FindAll(
+                    tile => tile == repeatedIntersection).Count);
+            var routeWithRepeatedIntersection = new[]
+            {
+                start,
+                repeatedIntersection,
+                V(3, 3),
+                V(4, 3),
+                V(4, 2),
+                repeatedIntersection,
+                V(3, 1),
+                goal
+            };
+            int firstVisit = CarSim.FindRouteIndexAtOrAfter(
+                routeWithRepeatedIntersection,
+                repeatedIntersection,
+                cursor: 0);
+            int secondVisit = CarSim.FindRouteIndexAtOrAfter(
+                routeWithRepeatedIntersection,
+                repeatedIntersection,
+                cursor: firstVisit + 1);
+            Assert.AreEqual(1, firstVisit);
+            Assert.AreEqual(5, secondVisit);
+            Assert.AreEqual(
+                -1,
+                CarSim.FindRouteIndexAtOrAfter(
+                    routeWithRepeatedIntersection,
+                    repeatedIntersection,
+                    cursor: 6));
+            var repeatedDestination = new[] { start, goal, start };
+            Assert.AreEqual(
+                0,
+                CarSim.FindRouteIndexAtOrAfter(
+                    repeatedDestination,
+                    start,
+                    cursor: 0));
+            Assert.AreEqual(
+                2,
+                CarSim.FindRouteIndexAtOrAfter(
+                    repeatedDestination,
+                    start,
+                    cursor: 1));
+            Assert.AreEqual(
+                Vector2Int.right,
+                route[route.Count - 1] - route[route.Count - 2]);
+        }
+
         // ── 창발(신규): 분산·흡수·결정론 ──
 
         // 평행 도시: 서 접점 (1,1) ─ 북로 y=0 / 남로 y=2 (같은 물리 길이) ─ 동 접점 (6,1) ─ Office(7,1).
@@ -146,6 +460,47 @@ namespace CityFlow.Sim.Tests
             var planner = Fresh(g);
             planner.Plan(dm, net, g, cfg);
             Assert.IsNull(planner.Routes[0]);
+        }
+
+        private static CityGrid DirectionConstraintLoop()
+        {
+            var grid = new CityGrid(9, 4);
+            for (int x = 1; x <= 7; x++)
+            {
+                grid.Place(V(x, 2), TileType.Road);
+            }
+
+            for (int x = 3; x <= 7; x++)
+            {
+                grid.Place(V(x, 0), TileType.Road);
+            }
+
+            grid.Place(V(3, 1), TileType.Road);
+            grid.Place(V(7, 1), TileType.Road);
+            return grid;
+        }
+
+        private static RoutePlanner PrepareVehicleTripPlanner(CityGrid grid)
+        {
+            SimConfig config = Cfg();
+            var network = new RoadNetwork(grid);
+            var demand = new DemandMap(config);
+            demand.Reassign(grid, network);
+            RoutePlanner planner = Fresh(grid);
+            planner.Plan(demand, network, grid, config);
+            return planner;
+        }
+
+        private static void AssertNoImmediateReverse(
+            IReadOnlyList<Vector2Int> route)
+        {
+            for (int index = 1; index < route.Count - 1; index++)
+            {
+                Assert.AreNotEqual(
+                    route[index - 1],
+                    route[index + 1],
+                    $"Immediate reverse at route index {index}.");
+            }
         }
     }
 }

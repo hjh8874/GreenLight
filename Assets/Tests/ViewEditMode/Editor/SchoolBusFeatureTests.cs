@@ -357,6 +357,7 @@ namespace CityFlow.Sim.Tests
                 parkedVehicle.transform.localPosition =
                     new Vector3(1f, 0f, 0f);
                 parkedVehicle.AddComponent<VehicleNightLighting>();
+                parkedVehicle.AddComponent<MeshRenderer>();
 
                 requestingVehicle.transform.SetParent(
                     cityObject.transform,
@@ -505,6 +506,7 @@ namespace CityFlow.Sim.Tests
             vehicle.transform.SetParent(parent, false);
             vehicle.transform.localPosition = localPosition;
             vehicle.AddComponent<VehicleNightLighting>();
+            vehicle.AddComponent<MeshRenderer>();
             return vehicle;
         }
 

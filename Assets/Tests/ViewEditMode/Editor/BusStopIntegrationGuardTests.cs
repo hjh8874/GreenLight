@@ -255,6 +255,111 @@ namespace Tests.EditMode
             {
                 AssertProjectOwnedPrefab(prefab);
             }
+
+            BusDefinitionSO cityBusBalance =
+                AssetDatabase.LoadAssetAtPath<BusDefinitionSO>(
+                    "Assets/05_ScriptableObjects/Balance/Editor/" +
+                    "CityBusDefinition_Balance.asset");
+            BusDefinitionSO schoolBusBalance =
+                AssetDatabase.LoadAssetAtPath<BusDefinitionSO>(
+                    "Assets/05_ScriptableObjects/Balance/Editor/" +
+                    "SchoolBusDefinition_Balance.asset");
+            Assert.That(cityBusBalance, Is.Not.Null);
+            Assert.That(schoolBusBalance, Is.Not.Null);
+            AssertProjectOwnedPrefab(
+                cityBusBalance.VehicleVisualPrefab);
+            AssertProjectOwnedPrefab(
+                schoolBusBalance.VehicleVisualPrefab);
+
+            PoliceDispatchConfigSO policeConfig =
+                AssetDatabase.LoadAssetAtPath<PoliceDispatchConfigSO>(
+                    "Assets/05_ScriptableObjects/CityFlow/Police/" +
+                    "PoliceDispatchConfig.asset");
+            Assert.That(policeConfig, Is.Not.Null);
+            AssertProjectOwnedPrefab(policeConfig.VehicleVisualPrefab);
+            Assert.That(
+                AssetDatabase.GetAssetPath(
+                    policeConfig.VehicleVisualPrefab),
+                Is.EqualTo(
+                    "Assets/02_Prefabs/Vehicles/" +
+                    "PoliceVehicleVisual.prefab"));
+        }
+
+        [Test]
+        public void ProjectOwnedVehicleVisuals_AlignGroundContactToOrigin()
+        {
+            VehicleVisualCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<VehicleVisualCatalogSO>(
+                    "Assets/05_ScriptableObjects/Resources/CityFlow/" +
+                    "VehicleVisualCatalog.asset");
+            PoliceDispatchConfigSO policeConfig =
+                AssetDatabase.LoadAssetAtPath<PoliceDispatchConfigSO>(
+                    "Assets/05_ScriptableObjects/CityFlow/Police/" +
+                    "PoliceDispatchConfig.asset");
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(policeConfig, Is.Not.Null);
+
+            var prefabs = new List<GameObject>(
+                catalog.NormalVehiclePrefabs)
+            {
+                catalog.SchoolBusPrefab,
+                catalog.AmbulancePrefab,
+                policeConfig.VehicleVisualPrefab
+            };
+            prefabs.AddRange(catalog.CityBusPrefabs);
+
+            foreach (GameObject prefab in prefabs)
+            {
+                AssertVehicleGroundContact(prefab);
+            }
+        }
+
+        [Test]
+        public void VehicleWheelDustSystem_BoostsOnlyItsSoftParticleFade()
+        {
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(
+                "Assets/99_Download/JMO Assets/Cartoon FX Remaster/" +
+                "CFXR Assets/Graphics/cfxr smoke cloud x4 ab.mat");
+            Assert.That(material, Is.Not.Null);
+            int fadeDistanceId = Shader.PropertyToID(
+                "_SoftParticlesFadeDistanceFar");
+            Assert.That(material.HasProperty(fadeDistanceId), Is.True);
+            float sharedFadeDistance = material.GetFloat(fadeDistanceId);
+            VehicleWheelDustSystem system =
+                VehicleWheelDustSystem.GetOrCreate(material, default);
+
+            try
+            {
+                Assert.That(system, Is.Not.Null);
+                ParticleSystem particles =
+                    system.GetComponent<ParticleSystem>();
+                ParticleSystemRenderer renderer =
+                    system.GetComponent<ParticleSystemRenderer>();
+                Assert.That(particles, Is.Not.Null);
+                Assert.That(renderer, Is.Not.Null);
+
+                var rendererProperties = new MaterialPropertyBlock();
+                renderer.GetPropertyBlock(rendererProperties);
+                Assert.That(
+                    rendererProperties.GetFloat(fadeDistanceId),
+                    Is.EqualTo(
+                        VehicleWheelDustSystem
+                            .SoftParticleFadeDistanceFar));
+                Assert.That(
+                    material.GetFloat(fadeDistanceId),
+                    Is.EqualTo(sharedFadeDistance),
+                    "The shared external smoke material must stay unchanged.");
+                Assert.That(
+                    particles.main.simulationSpace,
+                    Is.EqualTo(ParticleSystemSimulationSpace.World));
+            }
+            finally
+            {
+                if (system != null)
+                {
+                    Object.DestroyImmediate(system.gameObject);
+                }
+            }
         }
 
         [Test]
@@ -1444,6 +1549,82 @@ namespace Tests.EditMode
                 path.Replace('\\', '/'),
                 Does.StartWith("Assets/02_Prefabs/"),
                 $"Catalogs must reference a project-owned prefab copy, not {path}.");
+        }
+
+        private static void AssertVehicleGroundContact(
+            GameObject prefab)
+        {
+            Assert.That(prefab, Is.Not.Null);
+            VehicleWheelDustSource dustSource =
+                prefab.GetComponent<VehicleWheelDustSource>();
+            Assert.That(dustSource, Is.Not.Null);
+            Assert.That(
+                AssetDatabase.GetAssetPath(
+                    dustSource.ParticleMaterial),
+                Is.EqualTo(
+                    "Assets/99_Download/JMO Assets/" +
+                    "Cartoon FX Remaster/CFXR Assets/Graphics/" +
+                    "cfxr smoke cloud x4 ab.mat"));
+            GameObject instance = Object.Instantiate(prefab);
+            try
+            {
+                Renderer[] renderers =
+                    instance.GetComponentsInChildren<Renderer>(true);
+                Assert.That(renderers, Is.Not.Empty);
+                bool foundWheel = false;
+                float wheelContact = float.NegativeInfinity;
+                float fallbackContact = float.NegativeInfinity;
+
+                foreach (Renderer renderer in renderers)
+                {
+                    fallbackContact = Mathf.Max(
+                        fallbackContact,
+                        renderer.bounds.max.z);
+                    if (!renderer.name.Contains(
+                            "wheel",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    foundWheel = true;
+                    wheelContact = Mathf.Max(
+                        wheelContact,
+                        renderer.bounds.max.z);
+                }
+
+                float contact = foundWheel
+                    ? wheelContact
+                    : fallbackContact;
+                Assert.That(
+                    contact,
+                    Is.EqualTo(0f).Within(0.001f),
+                    $"{AssetDatabase.GetAssetPath(prefab)} must place its " +
+                    "wheel/renderer ground contact at the wrapper origin.");
+
+                VehicleWheelDustSource instanceDustSource =
+                    instance.GetComponent<VehicleWheelDustSource>();
+                Assert.That(instanceDustSource, Is.Not.Null);
+                InvokePrivate(instanceDustSource, "Awake");
+                instanceDustSource.GetRearWheelPositions(
+                    out Vector3 leftDust,
+                    out Vector3 rightDust);
+                float expectedDustHeight = contact - 0.01f;
+                Assert.That(
+                    leftDust.z,
+                    Is.EqualTo(expectedDustHeight).Within(0.001f),
+                    $"{AssetDatabase.GetAssetPath(prefab)} left wheel dust " +
+                    "must start immediately above the road contact.");
+                Assert.That(
+                    rightDust.z,
+                    Is.EqualTo(expectedDustHeight).Within(0.001f),
+                    $"{AssetDatabase.GetAssetPath(prefab)} right wheel dust " +
+                    "must start immediately above the road contact.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(instance);
+            }
         }
 
         private static void InvokePrivate(

@@ -16,11 +16,16 @@ namespace CityFlow.View
         [SerializeField]
         private Transform exit;
 
+        [SerializeField, Range(0.5f, 1f)]
+        private float parkedVehicleScale = 1f;
+
         public int ParkingSlotCount =>
             parkingSlots?.Length ?? 0;
 
         public Transform Entrance => entrance;
         public Transform Exit => exit;
+        public float ParkedVehicleScale =>
+            Mathf.Clamp(parkedVehicleScale, 0.5f, 1f);
 
         public bool TryGetParkingPose(
             int slotIndex,
@@ -44,7 +49,8 @@ namespace CityFlow.View
 
             pose = new BuildingParkingPose(
                 slot.position,
-                forward);
+                forward,
+                ParkedVehicleScale);
             return true;
         }
 

@@ -126,6 +126,183 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void TryGetLeader_ConvergingCarsCannotMutuallyBlock()
+        {
+            var coordinator =
+                new VehiclePresentationSpacingCoordinator();
+            object first = new();
+            object second = new();
+            Vector3 firstDirection = Quaternion.Euler(0f, 0f, 20f) *
+                                     Vector3.right;
+            Vector3 secondDirection = Quaternion.Euler(0f, 0f, -20f) *
+                                      Vector3.right;
+            Vector3 firstPosition = Vector3.zero;
+            Vector3 secondPosition = new(0.02f, 0.2f, 0f);
+
+            coordinator.Publish(
+                first,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                firstPosition,
+                firstDirection,
+                speed: 0f,
+                frame: 35);
+            coordinator.Publish(
+                second,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                secondPosition,
+                secondDirection,
+                speed: 0f,
+                frame: 35);
+
+            bool firstSeesSecond = coordinator.TryGetLeader(
+                first,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                firstPosition,
+                firstDirection,
+                tileSize: 1f,
+                frame: 35,
+                includeCarCandidates: true,
+                useConvergingCarEnvelope: true,
+                out _);
+            bool secondSeesFirst = coordinator.TryGetLeader(
+                second,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                secondPosition,
+                secondDirection,
+                tileSize: 1f,
+                frame: 35,
+                includeCarCandidates: true,
+                useConvergingCarEnvelope: true,
+                out _);
+
+            Assert.IsTrue(firstSeesSecond);
+            Assert.IsFalse(secondSeesFirst,
+                "A converging car pair must not classify each other as leaders.");
+        }
+
+        [Test]
+        public void TryGetLeader_ConvergingCarsUseProjectedFootprintEnvelope()
+        {
+            var coordinator =
+                new VehiclePresentationSpacingCoordinator();
+            object follower = new();
+            object leader = new();
+            Vector3 followerDirection = Quaternion.Euler(0f, 0f, 28f) *
+                                        Vector3.right;
+            Vector3 leaderDirection = Quaternion.Euler(0f, 0f, -28f) *
+                                      Vector3.right;
+            Vector3 followerPosition = Vector3.zero;
+            Vector3 leaderPosition = new(0.05f, 0.3f, 0f);
+
+            coordinator.Publish(
+                follower,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                followerPosition,
+                followerDirection,
+                speed: 0f,
+                frame: 36);
+            coordinator.Publish(
+                leader,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                leaderPosition,
+                leaderDirection,
+                speed: 0f,
+                frame: 36);
+
+            Assert.IsTrue(coordinator.TryGetLeader(
+                follower,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                followerPosition,
+                followerDirection,
+                tileSize: 1f,
+                frame: 36,
+                includeCarCandidates: true,
+                useConvergingCarEnvelope: true,
+                out VehiclePresentationLeader found));
+            Assert.AreSame(leader, found.Owner);
+            Assert.IsFalse(coordinator.TryGetLeader(
+                leader,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                leaderPosition,
+                leaderDirection,
+                tileSize: 1f,
+                frame: 36,
+                includeCarCandidates: true,
+                useConvergingCarEnvelope: true,
+                out _));
+        }
+
+        [Test]
+        public void TryGetLeader_ParallelAdjacentLaneKeepsNormalEnvelope()
+        {
+            var coordinator =
+                new VehiclePresentationSpacingCoordinator();
+            object subject = new();
+            object adjacent = new();
+            coordinator.Publish(
+                adjacent,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                new Vector3(0.4f, 0.23f, 0f),
+                Vector3.right,
+                speed: 0f,
+                frame: 37);
+
+            Assert.IsFalse(coordinator.TryGetLeader(
+                subject,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                Vector3.zero,
+                Vector3.right,
+                tileSize: 1f,
+                frame: 37,
+                includeCarCandidates: true,
+                useConvergingCarEnvelope: true,
+                out _));
+        }
+
+        [Test]
+        public void TryGetLeader_ConvergingCarsOutsideProjectedEnvelopeAreIgnored()
+        {
+            var coordinator =
+                new VehiclePresentationSpacingCoordinator();
+            object subject = new();
+            object outside = new();
+            Vector3 subjectDirection = Quaternion.Euler(0f, 0f, 20f) *
+                                       Vector3.right;
+            Vector3 outsideDirection = Quaternion.Euler(0f, 0f, -20f) *
+                                       Vector3.right;
+            coordinator.Publish(
+                outside,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                new Vector3(0.05f, 0.38f, 0f),
+                outsideDirection,
+                speed: 0f,
+                frame: 38);
+
+            Assert.IsFalse(coordinator.TryGetLeader(
+                subject,
+                RoadTrafficAgentKind.Car,
+                Standard,
+                Vector3.zero,
+                subjectDirection,
+                tileSize: 1f,
+                frame: 38,
+                includeCarCandidates: true,
+                useConvergingCarEnvelope: true,
+                out _));
+        }
+
+        [Test]
         public void TryGetCrossFlowCarBlocker_BlocksLargeVehicleAtCorner()
         {
             var coordinator =

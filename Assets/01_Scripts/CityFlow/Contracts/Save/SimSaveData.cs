@@ -20,6 +20,9 @@ namespace CityFlow.Contracts.Save
         public bool HasCarSimStats;
         public float CarTripSuccessRate;
         public int CarDayArrivalCount;
+        // 구 세이브는 false다. 오늘 누적치를 어제 확정치로 오인하지 않게 구분한다.
+        public bool HasCarLastDayArrivalCount;
+        public int CarLastDayArrivalCount;
         public bool CarSkipCurrentDay;
     }
 }

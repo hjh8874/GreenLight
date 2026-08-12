@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.Environment;
@@ -126,6 +127,8 @@ namespace CityFlow.Tests.ViewEditMode
         {
             var vehicle =
                 GameObject.CreatePrimitive(PrimitiveType.Cube);
+            vehicle.GetComponent<BoxCollider>().center =
+                new Vector3(0f, 0f, -0.5f);
             var calendar = new TestGameCalendar(17);
             var services = new CityFlowServices(
                 new SimEventHub(),
@@ -137,15 +140,46 @@ namespace CityFlow.Tests.ViewEditMode
             {
                 VehicleNightLighting lighting =
                     VehicleNightLighting.Attach(vehicle, services);
+                Assert.That(
+                    VehicleNightLighting.Attach(vehicle, services),
+                    Is.SameAs(lighting));
                 Light[] headlights =
                     vehicle.GetComponentsInChildren<Light>(true);
 
                 Assert.That(headlights.Length, Is.EqualTo(2));
                 Assert.That(headlights[0].type, Is.EqualTo(LightType.Spot));
+                Assert.That(headlights[0].intensity, Is.EqualTo(0.75f));
+                Assert.That(headlights[0].spotAngle, Is.EqualTo(60f));
+                Assert.That(headlights[0].innerSpotAngle, Is.EqualTo(20f));
+                Assert.That(
+                    headlights[0].range,
+                    Is.EqualTo(6f).Within(0.0001f));
                 Assert.That(headlights[0].enabled, Is.False);
                 Assert.That(
                     headlights[0].transform.localPosition.z,
-                    Is.GreaterThan(0f));
+                    Is.EqualTo(-0.30f).Within(0.0001f));
+                Renderer leftLens = vehicle.transform.Find(
+                    "NightHeadlights/HeadlightLens_Left")
+                    ?.GetComponent<Renderer>();
+                Renderer rightLens = vehicle.transform.Find(
+                    "NightHeadlights/HeadlightLens_Right")
+                    ?.GetComponent<Renderer>();
+                Assert.That(leftLens, Is.Not.Null);
+                Assert.That(rightLens, Is.Not.Null);
+                int lensCount = 0;
+                foreach (Renderer renderer in
+                         vehicle.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (renderer.name.StartsWith(
+                            "HeadlightLens_",
+                            StringComparison.Ordinal))
+                    {
+                        lensCount++;
+                    }
+                }
+                Assert.That(lensCount, Is.EqualTo(2));
+                Assert.That(leftLens.forceRenderingOff, Is.True);
+                Assert.That(rightLens.forceRenderingOff, Is.True);
 
                 calendar.SetHour(18);
                 Assert.That(headlights[0].enabled, Is.False);
@@ -153,12 +187,26 @@ namespace CityFlow.Tests.ViewEditMode
                 lighting.SetMoving(true);
                 Assert.That(headlights[0].enabled, Is.True);
                 Assert.That(headlights[1].enabled, Is.True);
+                Assert.That(leftLens.forceRenderingOff, Is.False);
+                Assert.That(rightLens.forceRenderingOff, Is.False);
 
                 calendar.SetHour(5);
                 Assert.That(headlights[0].enabled, Is.True);
 
                 calendar.SetHour(6);
                 Assert.That(headlights[0].enabled, Is.False);
+                Assert.That(leftLens.forceRenderingOff, Is.True);
+                Assert.That(rightLens.forceRenderingOff, Is.True);
+                leftLens.enabled = true;
+                rightLens.enabled = true;
+                Assert.That(
+                    leftLens.forceRenderingOff,
+                    Is.True,
+                    "Vehicle presentation must not override the daytime lens state.");
+                Assert.That(
+                    rightLens.forceRenderingOff,
+                    Is.True,
+                    "Vehicle presentation must not override the daytime lens state.");
 
                 calendar.SetHour(23);
                 lighting.SetMoving(false);
@@ -213,16 +261,33 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
-        public void VehicleHeadlights_TallVehicleProfileKeepsLightCloserToRoad()
+        public void VehicleHeadlights_UseBodyRelativeLampHeightForAllProfiles()
         {
+            var cityObject = new GameObject("Headlight Height City");
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
             var regularVehicle =
                 GameObject.CreatePrimitive(PrimitiveType.Cube);
+            regularVehicle.transform.SetParent(
+                cityObject.transform,
+                false);
+            regularVehicle.transform.localPosition =
+                new Vector3(0f, 0f, cityView.RoadSurfaceZ);
             regularVehicle.transform.localScale =
                 new Vector3(0.4f, 1f, 0.2f);
+            regularVehicle.GetComponent<BoxCollider>().center =
+                new Vector3(0f, 0f, -0.5f);
             var bus =
                 GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bus.transform.SetParent(
+                cityObject.transform,
+                false);
+            bus.transform.localPosition =
+                new Vector3(1f, 0f, cityView.RoadSurfaceZ);
             bus.transform.localScale =
-                new Vector3(0.4f, 1f, 0.4f);
+                new Vector3(0.4f, 1f, 0.2f);
+            bus.GetComponent<BoxCollider>().center =
+                new Vector3(0f, 0f, -0.5f);
 
             try
             {
@@ -243,14 +308,426 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(regularHeadlight, Is.Not.Null);
                 Assert.That(busHeadlight, Is.Not.Null);
                 Assert.That(
+                    regularHeadlight.transform.localPosition.z,
+                    Is.EqualTo(-0.30f).Within(0.0001f));
+                Assert.That(
                     busHeadlight.transform.localPosition.z,
-                    Is.GreaterThan(regularHeadlight.transform.localPosition.z),
-                    "Tall vehicles must mount headlights lower so their road light begins closer to the vehicle.");
+                    Is.EqualTo(-0.30f).Within(0.0001f));
+                float regularRoadDistance = Mathf.Abs(
+                    cityView.RoadSurfaceZ -
+                    cityObject.transform.InverseTransformPoint(
+                        regularHeadlight.transform.position).z);
+                float busRoadDistance = Mathf.Abs(
+                    cityView.RoadSurfaceZ -
+                    cityObject.transform.InverseTransformPoint(
+                        busHeadlight.transform.position).z);
+                Assert.That(
+                    busRoadDistance,
+                    Is.EqualTo(regularRoadDistance).Within(0.0001f),
+                    "All vehicle profiles must place their lamps at the authored body-relative height.");
+                Transform regularLens = regularVehicle.transform.Find(
+                    "NightHeadlights/HeadlightLens_Left");
+                Transform busLens = bus.transform.Find(
+                    "NightHeadlights/HeadlightLens_Left");
+                Assert.That(regularLens, Is.Not.Null);
+                Assert.That(busLens, Is.Not.Null);
+                Assert.That(
+                    regularLens.localPosition.z,
+                    Is.EqualTo(-0.30f).Within(0.0001f));
+                Assert.That(
+                    busLens.localPosition.z,
+                    Is.EqualTo(-0.30f).Within(0.0001f));
             }
             finally
             {
-                UnityEngine.Object.DestroyImmediate(regularVehicle);
-                UnityEngine.Object.DestroyImmediate(bus);
+                UnityEngine.Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
+        public void TallVehicleHeadlights_LandAtVisibleRoadAngleAtRuntimeScale()
+        {
+            VehicleVisualCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<VehicleVisualCatalogSO>(
+                    "Assets/05_ScriptableObjects/Resources/CityFlow/" +
+                    "VehicleVisualCatalog.asset");
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(catalog.SchoolBusPrefab, Is.Not.Null);
+
+            var cases = new List<(GameObject Prefab, float Scale)>
+            {
+                (catalog.SchoolBusPrefab, 0.76f)
+            };
+            foreach (GameObject cityBusPrefab in catalog.CityBusPrefabs)
+            {
+                cases.Add((cityBusPrefab, 0.75f));
+            }
+
+            var cityObject = new GameObject("Tall Headlight Runtime City");
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
+            var calendar = new TestGameCalendar(22);
+            var services = new CityFlowServices(
+                new SimEventHub(),
+                null,
+                null);
+            services.RegisterGameCalendar(calendar);
+
+            try
+            {
+                foreach ((GameObject prefab, float scale) in cases)
+                {
+                    Assert.That(prefab, Is.Not.Null);
+                    GameObject vehicle =
+                        UnityEngine.Object.Instantiate(prefab);
+                    try
+                    {
+                        vehicle.transform.SetParent(
+                            cityObject.transform,
+                            false);
+                        vehicle.transform.localScale =
+                            Vector3.one * scale;
+
+                        BoxCollider body =
+                            vehicle.GetComponent<BoxCollider>();
+                        Assert.That(body, Is.Not.Null);
+                        VehicleNightLighting lighting =
+                            VehicleNightLighting.AttachTallVehicle(
+                                vehicle,
+                                services,
+                                Vector3.right);
+                        lighting.SetMoving(true);
+                        vehicle.transform.localPosition = new Vector3(
+                            0f,
+                            0f,
+                            cityView.RoadSurfaceZ);
+
+                        Light[] headlights =
+                            vehicle.GetComponentsInChildren<Light>(true);
+                        Assert.That(
+                            headlights.Length,
+                            Is.EqualTo(2),
+                            $"{prefab.name} must create two headlights.");
+                        foreach (Light headlight in headlights)
+                        {
+                            Assert.That(headlight.enabled, Is.True);
+                            Vector3 cityOrigin =
+                                cityObject.transform.InverseTransformPoint(
+                                    headlight.transform.position);
+                            Vector3 cityDirection =
+                                cityObject.transform.InverseTransformDirection(
+                                    headlight.transform.forward).normalized;
+                            float hitDistance =
+                                (cityView.RoadSurfaceZ - cityOrigin.z) /
+                                cityDirection.z;
+                            Vector3 cityRoadHit =
+                                cityOrigin + cityDirection * hitDistance;
+                            Vector3 cityVehicleNose =
+                                cityObject.transform.InverseTransformPoint(
+                                    vehicle.transform.TransformPoint(
+                                        new Vector3(
+                                            body.center.x +
+                                            body.size.x * 0.5f,
+                                            body.center.y,
+                                            0f)));
+                            float roadLandingDistance =
+                                cityRoadHit.x - cityVehicleNose.x;
+                            float pitchDegrees = Mathf.Atan2(
+                                Mathf.Abs(cityDirection.z),
+                                new Vector2(
+                                    cityDirection.x,
+                                    cityDirection.y).magnitude) *
+                                Mathf.Rad2Deg;
+
+                            Assert.That(
+                                cityOrigin.z,
+                                Is.LessThan(cityView.RoadSurfaceZ),
+                                $"{prefab.name} headlights must stay above " +
+                                "the road after the bus receives its road pose.");
+                            Assert.That(hitDistance, Is.GreaterThan(0f));
+                            Assert.That(
+                                roadLandingDistance,
+                                Is.EqualTo(body.size.x * scale * 0.25f)
+                                    .Within(0.001f),
+                                $"{prefab.name} must light the road close to its nose.");
+                            Assert.That(
+                                pitchDegrees,
+                                Is.InRange(22f, 26f),
+                                $"{prefab.name} must project an elongated road beam from its body-height lamps.");
+                            Assert.That(
+                                pitchDegrees,
+                                Is.GreaterThan(headlight.innerSpotAngle * 0.5f),
+                                $"{prefab.name} must keep the complete inner cone directed toward the road.");
+                            Assert.That(
+                                headlight.intensity,
+                                Is.EqualTo(3.4f).Within(0.0001f));
+                            Assert.That(
+                                headlight.innerSpotAngle,
+                                Is.EqualTo(20f).Within(0.0001f));
+                            Assert.That(
+                                headlight.range,
+                                Is.EqualTo(body.size.x * scale * 6f)
+                                    .Within(0.001f));
+
+                            float roadHeight = Mathf.Abs(
+                                cityView.RoadSurfaceZ - cityOrigin.z);
+                            float planarDistance = new Vector2(
+                                cityRoadHit.x - cityOrigin.x,
+                                cityRoadHit.y - cityOrigin.y).magnitude;
+                            float lightDistance = Mathf.Sqrt(
+                                planarDistance * planarDistance +
+                                roadHeight * roadHeight);
+                            float roadIlluminationProxy =
+                                headlight.intensity * roadHeight /
+                                Mathf.Pow(lightDistance, 3f);
+                            Assert.That(
+                                roadIlluminationProxy,
+                                Is.InRange(32f, 38f),
+                                $"{prefab.name} must preserve the intended " +
+                                "tall-vehicle road brightness at runtime scale.");
+                        }
+
+                        Transform leftLens = vehicle.transform.Find(
+                            "NightHeadlights/HeadlightLens_Left");
+                        Transform rightLens = vehicle.transform.Find(
+                            "NightHeadlights/HeadlightLens_Right");
+                        Transform leftLight = vehicle.transform.Find(
+                            "NightHeadlights/Headlight_Left");
+                        Transform rightLight = vehicle.transform.Find(
+                            "NightHeadlights/Headlight_Right");
+                        Assert.That(leftLens, Is.Not.Null);
+                        Assert.That(rightLens, Is.Not.Null);
+                        Assert.That(leftLight, Is.Not.Null);
+                        Assert.That(rightLight, Is.Not.Null);
+                        Assert.That(
+                            leftLens.GetComponent<Renderer>()
+                                .forceRenderingOff,
+                            Is.False);
+                        Assert.That(
+                            rightLens.GetComponent<Renderer>()
+                                .forceRenderingOff,
+                            Is.False);
+                        Assert.That(
+                            leftLens.localPosition.z,
+                            Is.EqualTo(
+                                body.center.z +
+                                body.size.z * 0.5f -
+                                body.size.z * 0.30f)
+                                .Within(0.0001f));
+                        Assert.That(
+                            rightLens.localPosition.z,
+                            Is.EqualTo(leftLens.localPosition.z)
+                                .Within(0.0001f));
+                        Assert.That(
+                            leftLens.localPosition.x,
+                            Is.EqualTo(leftLight.localPosition.x)
+                                .Within(0.0001f));
+                        Assert.That(
+                            leftLens.localPosition.y,
+                            Is.EqualTo(leftLight.localPosition.y)
+                                .Within(0.0001f));
+                        Assert.That(
+                            rightLens.localPosition.x,
+                            Is.EqualTo(rightLight.localPosition.x)
+                                .Within(0.0001f));
+                        Assert.That(
+                            rightLens.localPosition.y,
+                            Is.EqualTo(rightLight.localPosition.y)
+                                .Within(0.0001f));
+                        Assert.That(
+                            leftLens.localScale.x,
+                            Is.EqualTo(body.size.x * 0.015f)
+                                .Within(0.0001f));
+                        Assert.That(
+                            leftLens.localScale.y,
+                            Is.EqualTo(body.size.y * 0.12f)
+                                .Within(0.0001f));
+                        Assert.That(
+                            leftLens.localScale.z,
+                            Is.EqualTo(body.size.z * 0.08f)
+                                .Within(0.0001f));
+                        Assert.That(
+                            leftLens.GetComponent<Collider>(),
+                            Is.Null);
+                        Assert.That(
+                            leftLens.GetComponent<Renderer>()
+                                .shadowCastingMode,
+                            Is.EqualTo(ShadowCastingMode.Off));
+
+                        float spacing = Mathf.Abs(
+                            headlights[0].transform.localPosition.y -
+                            headlights[1].transform.localPosition.y);
+                        Assert.That(
+                            spacing,
+                            Is.EqualTo(body.size.y * 0.36f)
+                                .Within(0.0001f));
+                    }
+                    finally
+                    {
+                        UnityEngine.Object.DestroyImmediate(vehicle);
+                    }
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
+        public void StandardVehicleHeadlights_UseBodyHeightAtRuntimeScale()
+        {
+            VehicleVisualCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<VehicleVisualCatalogSO>(
+                    "Assets/05_ScriptableObjects/Resources/CityFlow/" +
+                    "VehicleVisualCatalog.asset");
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(catalog.NormalVehiclePrefabs, Is.Not.Empty);
+
+            var cityObject = new GameObject("Standard Headlight Runtime City");
+            MainCityView cityView =
+                cityObject.AddComponent<MainCityView>();
+            var calendar = new TestGameCalendar(22);
+            var services = new CityFlowServices(
+                new SimEventHub(),
+                null,
+                null);
+            services.RegisterGameCalendar(calendar);
+
+            try
+            {
+                foreach (GameObject prefab in catalog.NormalVehiclePrefabs)
+                {
+                    Assert.That(prefab, Is.Not.Null);
+                    GameObject vehicle =
+                        UnityEngine.Object.Instantiate(prefab);
+                    try
+                    {
+                        vehicle.transform.SetParent(
+                            cityObject.transform,
+                            false);
+                        const float runtimeScale = 0.38f;
+                        vehicle.transform.localScale =
+                            Vector3.one * runtimeScale;
+
+                        BoxCollider body =
+                            vehicle.GetComponent<BoxCollider>();
+                        Assert.That(body, Is.Not.Null);
+                        VehicleNightLighting lighting =
+                            VehicleNightLighting.Attach(
+                                vehicle,
+                                services,
+                                Vector3.right);
+                        lighting.SetMoving(true);
+                        vehicle.transform.localPosition = new Vector3(
+                            0f,
+                            0f,
+                            cityView.RoadSurfaceZ);
+
+                        Light[] headlights =
+                            vehicle.GetComponentsInChildren<Light>(true);
+                        Assert.That(headlights.Length, Is.EqualTo(2));
+                        foreach (Light headlight in headlights)
+                        {
+                            Assert.That(headlight.enabled, Is.True);
+                            Vector3 cityOrigin =
+                                cityObject.transform.InverseTransformPoint(
+                                    headlight.transform.position);
+                            Vector3 cityDirection =
+                                cityObject.transform
+                                    .InverseTransformDirection(
+                                        headlight.transform.forward)
+                                    .normalized;
+                            float hitDistance =
+                                (cityView.RoadSurfaceZ - cityOrigin.z) /
+                                cityDirection.z;
+                            Vector3 cityRoadHit =
+                                cityOrigin + cityDirection * hitDistance;
+                            Vector3 cityVehicleNose =
+                                cityObject.transform.InverseTransformPoint(
+                                    vehicle.transform.TransformPoint(
+                                        new Vector3(
+                                            body.center.x +
+                                            body.size.x * 0.5f,
+                                            body.center.y,
+                                            0f)));
+                            float roadLandingDistance =
+                                cityRoadHit.x - cityVehicleNose.x;
+                            float pitchDegrees = Mathf.Atan2(
+                                Mathf.Abs(cityDirection.z),
+                                new Vector2(
+                                    cityDirection.x,
+                                    cityDirection.y).magnitude) *
+                                Mathf.Rad2Deg;
+
+                            Assert.That(
+                                cityOrigin.z,
+                                Is.LessThan(cityView.RoadSurfaceZ));
+                            Assert.That(hitDistance, Is.GreaterThan(0f));
+                            Assert.That(
+                                roadLandingDistance,
+                                Is.EqualTo(
+                                    body.size.x * runtimeScale * 0.25f)
+                                    .Within(0.001f));
+                            Assert.That(
+                                pitchDegrees,
+                                Is.InRange(20f, 32f),
+                                $"{prefab.name} must aim from its actual " +
+                                "body-height lamp position.");
+                            Assert.That(
+                                headlight.intensity,
+                                Is.EqualTo(0.75f).Within(0.0001f));
+                            Assert.That(
+                                headlight.innerSpotAngle,
+                                Is.EqualTo(20f).Within(0.0001f));
+                            Assert.That(
+                                headlight.range,
+                                Is.EqualTo(
+                                    body.size.x * runtimeScale * 6f)
+                                    .Within(0.001f));
+
+                            float roadHeight = Mathf.Abs(
+                                cityView.RoadSurfaceZ - cityOrigin.z);
+                            float planarDistance = new Vector2(
+                                cityRoadHit.x - cityOrigin.x,
+                                cityRoadHit.y - cityOrigin.y).magnitude;
+                            float lightDistance = Mathf.Sqrt(
+                                planarDistance * planarDistance +
+                                roadHeight * roadHeight);
+                            float roadIlluminationProxy =
+                                headlight.intensity * roadHeight /
+                                Mathf.Pow(lightDistance, 3f);
+                            Assert.That(
+                                roadIlluminationProxy,
+                                Is.InRange(27f, 35f),
+                                $"{prefab.name} must preserve the accepted " +
+                                "normal-vehicle road brightness.");
+                        }
+
+                        Transform leftLens = vehicle.transform.Find(
+                            "NightHeadlights/HeadlightLens_Left");
+                        Transform rightLens = vehicle.transform.Find(
+                            "NightHeadlights/HeadlightLens_Right");
+                        Assert.That(leftLens, Is.Not.Null);
+                        Assert.That(rightLens, Is.Not.Null);
+                        Assert.That(
+                            leftLens.GetComponent<Renderer>()
+                                .forceRenderingOff,
+                            Is.False);
+                        Assert.That(
+                            rightLens.GetComponent<Renderer>()
+                                .forceRenderingOff,
+                            Is.False);
+                    }
+                    finally
+                    {
+                        UnityEngine.Object.DestroyImmediate(vehicle);
+                    }
+                }
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(cityObject);
             }
         }
 
@@ -261,6 +738,8 @@ namespace CityFlow.Tests.ViewEditMode
                 GameObject.CreatePrimitive(PrimitiveType.Cube);
             vehicle.transform.localScale =
                 new Vector3(0.4f, 1f, 0.2f);
+            vehicle.GetComponent<BoxCollider>().center =
+                new Vector3(0f, 0f, -0.5f);
 
             try
             {
@@ -273,23 +752,24 @@ namespace CityFlow.Tests.ViewEditMode
 
                 Assert.That(headlight, Is.Not.Null);
                 Vector3 rayOrigin =
-                    headlight.transform.localPosition;
+                    headlight.transform.position;
                 Vector3 rayDirection =
-                    vehicle.transform.InverseTransformDirection(
-                        headlight.transform.forward).normalized;
-                const float roadHeight = 0.5f;
+                    headlight.transform.forward.normalized;
+                float roadHeight = vehicle.transform.position.z;
                 float hitDistance =
                     (roadHeight - rayOrigin.z) /
                     rayDirection.z;
                 Vector3 roadHit =
                     rayOrigin + rayDirection * hitDistance;
-                const float vehicleFront = 0.5f;
+                Vector3 vehicleNose = vehicle.transform.TransformPoint(
+                    new Vector3(0.5f, 0f, 0f));
 
                 Assert.That(rayDirection.z, Is.GreaterThan(0f));
                 Assert.That(
-                    roadHit.x - vehicleFront,
-                    Is.InRange(0.25f, 0.35f),
-                    "The spotlight center must reach the road immediately ahead of the vehicle nose.");
+                    roadHit.x - vehicleNose.x,
+                    Is.InRange(0.096f, 0.104f),
+                    "Non-uniform vehicle scaling must keep the world-space " +
+                    "road landing immediately ahead of the vehicle nose.");
             }
             finally
             {
@@ -310,11 +790,13 @@ namespace CityFlow.Tests.ViewEditMode
                 GameObject.CreatePrimitive(PrimitiveType.Cube);
             vehicle.transform.SetParent(cityObject.transform, false);
             vehicle.transform.localPosition =
-                new Vector3(2f, -1f, -0.18f);
+                new Vector3(2f, -1f, cityView.RoadSurfaceZ);
             vehicle.transform.localRotation =
                 Quaternion.Euler(0f, 0f, 31f);
             vehicle.transform.localScale =
-                new Vector3(0.4f, 1f, 0.2f);
+                Vector3.one * 0.4f;
+            vehicle.GetComponent<BoxCollider>().center =
+                new Vector3(0f, 0f, -0.5f);
 
             try
             {
@@ -347,7 +829,7 @@ namespace CityFlow.Tests.ViewEditMode
                     Is.EqualTo(cityView.RoadSurfaceZ).Within(0.0001f));
                 Assert.That(
                     vehicleRoadHit.x - 0.5f,
-                    Is.InRange(0.25f, 0.35f),
+                    Is.InRange(0.23f, 0.27f),
                     "The rotated world must keep the light landing immediately ahead of the vehicle nose.");
             }
             finally
@@ -376,6 +858,10 @@ namespace CityFlow.Tests.ViewEditMode
                 float initialSpacing = Mathf.Abs(
                     headlights[0].transform.localPosition.y -
                     headlights[1].transform.localPosition.y);
+                Assert.That(
+                    initialSpacing,
+                    Is.EqualTo(0.36f).Within(0.0001f),
+                    "The two headlights must use 36 percent of the vehicle width.");
 
                 vehicle.transform.rotation =
                     Quaternion.Euler(0f, 0f, 45f);
@@ -391,6 +877,184 @@ namespace CityFlow.Tests.ViewEditMode
             }
             finally
             {
+                UnityEngine.Object.DestroyImmediate(vehicle);
+            }
+        }
+
+        [Test]
+        public void CatalogVehicleHeadlights_UseNarrowBodyRelativeSpacing()
+        {
+            VehicleVisualCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<VehicleVisualCatalogSO>(
+                    "Assets/05_ScriptableObjects/Resources/CityFlow/" +
+                    "VehicleVisualCatalog.asset");
+            Assert.That(catalog, Is.Not.Null);
+
+            var prefabs = new List<GameObject>(
+                catalog.NormalVehiclePrefabs)
+            {
+                catalog.SchoolBusPrefab,
+                catalog.AmbulancePrefab
+            };
+            prefabs.AddRange(catalog.CityBusPrefabs);
+            prefabs.Add(
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    "Assets/02_Prefabs/Vehicles/" +
+                    "PoliceVehicleVisual.prefab"));
+
+            foreach (GameObject prefab in prefabs)
+            {
+                Assert.That(prefab, Is.Not.Null);
+                GameObject instance =
+                    UnityEngine.Object.Instantiate(prefab);
+                try
+                {
+                    BoxCollider bodyBounds =
+                        instance.GetComponent<BoxCollider>();
+                    Assert.That(bodyBounds, Is.Not.Null);
+
+                    VehicleNightLighting.Attach(
+                        instance,
+                        null,
+                        Vector3.right);
+                    Light[] headlights =
+                        instance.GetComponentsInChildren<Light>(true);
+
+                    Assert.That(
+                        headlights.Length,
+                        Is.EqualTo(2),
+                        $"{prefab.name} must always create two headlights.");
+                    float spacing = Mathf.Abs(
+                        headlights[0].transform.localPosition.y -
+                        headlights[1].transform.localPosition.y);
+                    Assert.That(
+                        spacing,
+                        Is.EqualTo(bodyBounds.size.y * 0.36f)
+                            .Within(0.0001f),
+                        $"{prefab.name} must keep its light centers at " +
+                        "36 percent of the rendered body width.");
+                    float localGround =
+                        bodyBounds.center.z +
+                        bodyBounds.size.z * 0.5f;
+                    Assert.That(
+                        localGround,
+                        Is.EqualTo(0f).Within(0.0001f),
+                        $"{prefab.name} must keep its wrapper-local ground at Z=0.");
+                    for (int index = 0; index < headlights.Length; index++)
+                    {
+                        Assert.That(
+                            headlights[index].transform.localPosition.z,
+                            Is.EqualTo(
+                                localGround -
+                                bodyBounds.size.z * 0.30f)
+                                .Within(0.0001f),
+                            $"{prefab.name} headlights must not depend on " +
+                            "the root pose assigned after initialization.");
+                    }
+
+                    Transform leftLens = instance.transform.Find(
+                        "NightHeadlights/HeadlightLens_Left");
+                    Transform rightLens = instance.transform.Find(
+                        "NightHeadlights/HeadlightLens_Right");
+                    Assert.That(leftLens, Is.Not.Null);
+                    Assert.That(rightLens, Is.Not.Null);
+                    Assert.That(
+                        leftLens.localPosition.z,
+                        Is.EqualTo(
+                            localGround -
+                            bodyBounds.size.z * 0.30f)
+                            .Within(0.0001f));
+                    Assert.That(
+                        rightLens.localPosition.z,
+                        Is.EqualTo(leftLens.localPosition.z)
+                            .Within(0.0001f));
+                    Material lensMaterial =
+                        leftLens.GetComponent<Renderer>().sharedMaterial;
+                    Assert.That(lensMaterial, Is.Not.Null);
+                    Assert.That(
+                        lensMaterial.shader.name,
+                        Is.EqualTo("GreenLight/CityFlow Headlight Lens"));
+                    Assert.That(
+                        lensMaterial.HasProperty("_LensColor"),
+                        Is.True);
+                    Assert.That(
+                        lensMaterial.HasProperty("_BaseColor"),
+                        Is.False,
+                        "Vehicle tint effects must not recolor the warm-white lens.");
+                    Assert.That(
+                        lensMaterial.HasProperty("_Color"),
+                        Is.False,
+                        "Legacy vehicle tint effects must not recolor the lens.");
+                }
+                finally
+                {
+                    UnityEngine.Object.DestroyImmediate(instance);
+                }
+            }
+        }
+
+        [Test]
+        public void VehicleHeadlights_IgnoreChildVfxRendererBounds()
+        {
+            VehicleVisualCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<VehicleVisualCatalogSO>(
+                    "Assets/05_ScriptableObjects/Resources/CityFlow/" +
+                    "VehicleVisualCatalog.asset");
+            FreeFlowStreakVfxProfileSO vfxProfile =
+                AssetDatabase.LoadAssetAtPath<FreeFlowStreakVfxProfileSO>(
+                    "Assets/05_ScriptableObjects/Resources/CityFlow/" +
+                    "FreeFlowStreakVfxProfile.asset");
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(catalog.NormalVehiclePrefabs, Is.Not.Empty);
+            Assert.That(vfxProfile, Is.Not.Null);
+            Assert.That(vfxProfile.StageThreeStarsPrefab, Is.Not.Null);
+
+            GameObject vehicle = UnityEngine.Object.Instantiate(
+                catalog.NormalVehiclePrefabs[0]);
+            GameObject effect = PrefabUtility.InstantiatePrefab(
+                vfxProfile.StageThreeStarsPrefab) as GameObject;
+            try
+            {
+                Assert.That(effect, Is.Not.Null);
+                effect.transform.SetParent(vehicle.transform, false);
+                effect.transform.localScale =
+                    Vector3.one * vfxProfile.VfxScale;
+
+                BoxCollider bodyBounds =
+                    vehicle.GetComponent<BoxCollider>();
+                Assert.That(bodyBounds, Is.Not.Null);
+                VehicleNightLighting.Attach(
+                    vehicle,
+                    null,
+                    Vector3.right);
+
+                Light[] headlights =
+                    vehicle.GetComponentsInChildren<Light>(true);
+                Assert.That(headlights.Length, Is.EqualTo(2));
+                float expectedFront =
+                    bodyBounds.center.x +
+                    bodyBounds.size.x * 0.5f +
+                    bodyBounds.size.x * 0.01f;
+                for (int index = 0; index < headlights.Length; index++)
+                {
+                    Assert.That(
+                        headlights[index].transform.localPosition.x,
+                        Is.EqualTo(expectedFront).Within(0.0001f),
+                        "Child particle, trail, and text renderers must " +
+                        "not move the headlights away from the vehicle nose.");
+                }
+
+                float spacing = Mathf.Abs(
+                    headlights[0].transform.localPosition.y -
+                    headlights[1].transform.localPosition.y);
+                Assert.That(
+                    spacing,
+                    Is.EqualTo(bodyBounds.size.y * 0.36f)
+                        .Within(0.0001f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(effect);
                 UnityEngine.Object.DestroyImmediate(vehicle);
             }
         }

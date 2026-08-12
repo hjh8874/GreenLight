@@ -84,14 +84,13 @@ namespace CityFlow.View
         [SerializeField] private float turnSignZ = -0.5f;           // 표지판 마커 z(신호와 분리 — 공존 타일 겹침 회피)
 
         [Header("Roundabout Tuning")]   // 재생 중 슬라이더 조정 → 통근 폴리라인 즉시 리베이크(QA G)
-        // 궤도 반경(타일 비율) = 차도 정중앙. 차도는 섬 0.45(Island scale 0.9)와 링 1.1(Ring scale 2.2)
-        // 사이의 고리이므로 중앙은 (0.45+1.1)/2 = 0.775 — 섬 스침·바깥 이탈 양쪽에 여유 0.325로 균등.
-        // 2026-07-21 전 씬 통일. 씬에 0.3(섬 내부 = 관통)이 5개 있었다. Range는 인스펙터만 막고
-        // 직렬화 값은 그대로 쓰이므로, 값을 바꿀 때는 반드시 7개 씬을 함께 맞출 것.
-        [SerializeField, Range(0.5f, 1.1f)] private float roundaboutOrbitRadius = 0.775f;
+        // 궤도 반경(타일 비율) = 차도 정중앙. 차도는 섬 0.365(Island scale 0.73)와
+        // 외곽 0.89 사이의 고리이므로 중앙은 약 0.625다. 외곽 0.89는 인접 도로의
+        // 마지막 중앙선(중심 1타일, 반길이 0.11)의 안쪽 끝과 정확히 맞닿는다.
+        private const float RoundaboutVehicleOrbitRadiusTiles = 0.625f;
         [SerializeField, Range(10f, 80f)] private float roundaboutEntryExitDeg = 45f;      // α — 진입/이탈을 링 둘레로 미는 각. 클수록 링 체류 짧아짐
         [SerializeField, Range(RoutePolyline.MinTransitionSpan, RoutePolyline.MaxTransitionSpan)]
-        private float roundaboutTransitionTiles = RoutePolyline.MinTransitionSpan; // 전이 곡선 길이(타일). R=0.775·α=45°·λ=0.26 재측정에서 비우회전 최소 이격 0.654(섬 하한 0.62)
+        private float roundaboutTransitionTiles = RoutePolyline.MinTransitionSpan;
 
         [Header("Commute (2차 빌드)")]
         [SerializeField] private float parkingSlotInset = 0.32f;   // 건물 타일 내 칸 오프셋(타일 비율)
@@ -120,6 +119,14 @@ namespace CityFlow.View
         private const float VehicleBodyLengthTiles = 0.38f;
         private const float VehicleBodyWidthTiles = 0.2f;
         private const float VehicleBodyHeightTiles = 0.28f;
+        private const float RoadPerimeterWidthRatio = 0.075f;
+        private const float RoadDetailDepthRatio = 0.018f;
+        private const float RoadDecorationSurfaceOffsetRatio = 0.01f;
+        private const float RoundaboutSurfaceOverlayOffsetRatio = 0.006f;
+        private const float RoundaboutOuterRadiusTiles = 0.89f;
+        private const float RoundaboutVisualDiameterTiles =
+            RoundaboutOuterRadiusTiles * 2f;
+        private const int RoundaboutArcSubdivisions = 24;
 
         [Header("Colors")]
         [SerializeField] private Color boardColor = new Color(0.78f, 0.82f, 0.78f);
@@ -146,6 +153,8 @@ namespace CityFlow.View
         private readonly Dictionary<Vector2Int, GridCellView> gridCells = new();
         private readonly Dictionary<Vector2Int, SignalVisual> signalVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> roundaboutVisuals = new();
+        private readonly Dictionary<Vector2Int, int>
+            roundaboutVisualSignatures = new();
         private readonly Dictionary<Vector2Int, GameObject> overpassVisuals = new();
         private readonly Dictionary<Vector2Int, GameObject> onewayVisuals = new();
         private readonly Dictionary<Vector2Int, TurnSignVisual> turnSignVisuals = new();
@@ -247,13 +256,12 @@ namespace CityFlow.View
         public float CornerTurnRadiusFraction =>
             GetCornerTurnRadiusFraction();
         public float RoundaboutOrbitRadiusTiles =>
-            Mathf.Max(0f, roundaboutOrbitRadius);
+            RoundaboutVehicleOrbitRadiusTiles;
         public float RoundaboutEntryExitRadians =>
             roundaboutEntryExitDeg * Mathf.Deg2Rad;
         public float RoundaboutTransitionSpanTiles =>
             RoundaboutTransitionSpan();
-        public float VehicleGroundZ =>
-            GetRoadSurfaceZ() - tileSize * 0.05f;
+        public float VehicleGroundZ => GetRoadSurfaceZ();
         public float RoadSurfaceZ => GetRoadSurfaceZ();
         public float FieldTileZ => fieldTileZ;
         public GameObject FieldTilePrefab => fieldTilePrefab;
@@ -472,6 +480,7 @@ namespace CityFlow.View
             public GameObject Object;
             public Renderer Renderer;
             public Renderer[] Renderers;
+            public Collider[] Colliders;
             public Renderer DetailRenderer;
             public bool UsesAuthoredVisual;
             public float CurrentSpeed;
@@ -496,7 +505,11 @@ namespace CityFlow.View
             public float TravelSpeed;      // 현재 주행 속도(월드유닛/초) — 가감속으로 수렴시킨다
             public GameObject BrakeLight;  // 후방 제동등(기본 off) — CreateDetailCube 패턴
             public bool BrakeOn;           // 제동등 상태 캐시(매 프레임 SetActive 금지)
+            public Vector3 NominalLocalScale;
             public VehicleNightLighting NightLighting;
+            public Vector2Int ReservedParkingBuilding;
+            public int ReservedParkingSlot = -1;
+            public bool HasParkingReservation;
             public readonly VehicleViewRecoveryMonitor ViewRecovery = new();
         }
 
@@ -585,14 +598,27 @@ namespace CityFlow.View
             {
                 if (placementController != null)
                 {
-                    placementController.IsBuildMenuOpen = () => dockController.CurrentMenu == UIDockController.MenuType.Build;
-                    placementController.BuildingPlacementCompleted -= dockController.CloseAllPanels;
-                    placementController.BuildingPlacementCompleted += dockController.CloseAllPanels;
+                    BindPlacementBuildMenuState(
+                        placementController,
+                        dockController);
                 }
                 if (infrastructurePlacementCoordinator != null) infrastructurePlacementCoordinator.IsBuildMenuOpen = () => dockController.CurrentMenu == UIDockController.MenuType.Build;
             }
 
             gameObject.AddComponent<FloatingWindowService>().Init(width * tileSize, height * tileSize, false);
+        }
+
+        internal static void BindPlacementBuildMenuState(
+            PlacementController controller,
+            UIDockController dock)
+        {
+            if (controller == null || dock == null)
+            {
+                return;
+            }
+
+            controller.IsBuildMenuOpen = () =>
+                dock.CurrentMenu == UIDockController.MenuType.Build;
         }
 
         public void ApplyCoordinateSpace(
@@ -632,12 +658,6 @@ namespace CityFlow.View
 
         private void OnDestroy()
         {
-            if (placementController != null && dockController != null)
-            {
-                placementController.BuildingPlacementCompleted -=
-                    dockController.CloseAllPanels;
-            }
-
             if (driveViewCamera != null)
             {
                 ExitDriveView();
@@ -1440,6 +1460,7 @@ namespace CityFlow.View
             ClearChildren(signalRoot);
             signalVisuals.Clear();
             roundaboutVisuals.Clear();
+            roundaboutVisualSignatures.Clear();
             overpassVisuals.Clear();
             onewayVisuals.Clear();
             turnSignVisuals.Clear();
@@ -1474,7 +1495,7 @@ namespace CityFlow.View
                 return;
             }
 
-            if (type == TileType.SpecialBuilding)
+            if (TileFootprint.IsSpecialBuilding(type))
             {
                 RemoveTileVisual(tile);
                 return;
@@ -1724,11 +1745,15 @@ namespace CityFlow.View
 
             SimpleTownRoadConnections perimeterSides =
                 SimpleTownRoadTopology.GetPerimeterSides(connections);
-            float borderWidth = roadVisualSize * 0.075f;
+            float borderWidth =
+                roadVisualSize * RoadPerimeterWidthRatio;
             float borderOffset =
                 roadVisualSize * 0.5f - borderWidth * 0.5f;
-            float detailDepth = roadVisualSize * 0.018f;
-            float roadSurfaceZ = -roadVisualSize * 0.01f;
+            float detailDepth =
+                roadVisualSize * RoadDetailDepthRatio;
+            float roadSurfaceZ =
+                -roadVisualSize *
+                RoadDecorationSurfaceOffsetRatio;
             float detailZ =
                 roadSurfaceZ - detailDepth * 0.5f;
 
@@ -2205,7 +2230,7 @@ namespace CityFlow.View
         {
             preview = null;
             if (type == TileType.Empty ||
-                type == TileType.SpecialBuilding)
+                TileFootprint.IsSpecialBuilding(type))
             {
                 return false;
             }
@@ -2305,7 +2330,8 @@ namespace CityFlow.View
                     break;
                 case InfrastructureKind.Roundabout:
                     visual =
-                        CreateRoundaboutVisual(Vector2Int.zero);
+                        CreateRoundaboutPlacementPreviewVisual(
+                            cursor);
                     break;
                 case InfrastructureKind.Overpass:
                     visual =
@@ -2817,13 +2843,13 @@ namespace CityFlow.View
             float drivewayWidth,
             float drivewayFrontZ)
         {
-            if (drivewayCount <= 1)
+            if (drivewayCount <= 0 || lotWidth <= 0f)
             {
                 return;
             }
 
-            float dividerWidth =
-                tileSize * 0.015f;
+            float dividerWidth = tileSize *
+                DrivewayBoundaryLayout.LineWidthTiles;
             float dividerLength =
                 tileSize * 0.9f;
             if (float.IsPositiveInfinity(
@@ -2835,6 +2861,31 @@ namespace CityFlow.View
             }
             Color dividerColor =
                 new Color32(122, 118, 113, 255);
+            float boundaryZ = drivewayFrontZ -
+                tileSize *
+                DrivewayBoundaryLayout.SurfaceOffsetTiles;
+
+            DrivewayBoundarySegment[] perimeter =
+                DrivewayBoundaryLayout.CreatePerimeter(
+                    tileSize,
+                    lotWidth,
+                    tileSize,
+                    new Vector2(0f, tileSize * -0.5f));
+            for (int index = 0; index < perimeter.Length; index++)
+            {
+                DrivewayBoundarySegment segment = perimeter[index];
+                Renderer boundary = CreateFlatRoadDecoration(
+                    root,
+                    segment.Name,
+                    new Vector3(
+                        segment.Center.x,
+                        segment.Center.y,
+                        boundaryZ),
+                    segment.Size);
+                ApplyRendererColor(
+                    boundary,
+                    dividerColor);
+            }
 
             for (int boundary = 1;
                  boundary < drivewayCount;
@@ -2850,8 +2901,7 @@ namespace CityFlow.View
                         new Vector3(
                             boundaryX,
                             tileSize * -0.5f,
-                            drivewayFrontZ -
-                            tileSize * 0.001f),
+                            boundaryZ),
                         new Vector2(
                             dividerWidth,
                             dividerLength));
@@ -3492,10 +3542,37 @@ namespace CityFlow.View
 
             for (int i = 0; i < tiles.Count; i++)
             {
-                if (!roundaboutVisuals.ContainsKey(tiles[i]))
+                Vector2Int tile = tiles[i];
+                int signature =
+                    GetRoundaboutVisualSignature(tile);
+                if (roundaboutVisuals.TryGetValue(
+                        tile,
+                        out GameObject existing) &&
+                    (!roundaboutVisualSignatures.TryGetValue(
+                         tile,
+                         out int previousSignature) ||
+                     previousSignature != signature))
                 {
-                    roundaboutVisuals.Add(tiles[i], CreateRoundaboutVisual(tiles[i]));
+                    SetRoundaboutRoadPerimetersVisible(tile, true);
+                    existing.SetActive(false);
+                    DestroyRoundaboutVisual(existing);
+                    roundaboutVisuals.Remove(tile);
+                    roundaboutVisualSignatures.Remove(tile);
                 }
+
+                if (!roundaboutVisuals.ContainsKey(tile))
+                {
+                    roundaboutVisuals.Add(
+                        tile,
+                        CreateRoundaboutVisual(tile));
+                    roundaboutVisualSignatures[tile] = signature;
+                }
+
+                SetRoundaboutCenterRoadSurfaceVisible(tile, false);
+                SetRoadCenterLinesVisible(tile, false);
+                SetRoundaboutRoadPerimetersVisible(
+                    tile,
+                    false);
             }
 
             foreach (Vector2Int tile in new List<Vector2Int>(roundaboutVisuals.Keys))
@@ -3505,41 +3582,1454 @@ namespace CityFlow.View
                     continue;
                 }
 
-                Destroy(roundaboutVisuals[tile]);
+                DestroyRoundaboutVisual(roundaboutVisuals[tile]);
                 roundaboutVisuals.Remove(tile);
+                roundaboutVisualSignatures.Remove(tile);
+                SetRoundaboutCenterRoadSurfaceVisible(tile, true);
+                SetRoadCenterLinesVisible(tile, true);
+                SetRoundaboutRoadPerimetersVisible(tile, true);
+            }
+
+            // 로터리 내부 중앙선만 숨긴다. 인접 도로의 마지막 중앙선은 유지해
+            // 안쪽 끝이 로터리 외곽과 정확히 맞닿게 한다.
+            for (int i = 0; i < tiles.Count; i++)
+            {
+                SetRoadCenterLinesVisible(tiles[i], false);
+                SetRoundaboutRoadPerimetersVisible(
+                    tiles[i],
+                    false);
             }
         }
 
-        // 풋프린트 로터리(스펙 2026-07-15): 도로색 회전 차도(링) + 초록 중앙 섬.
-        //   접근 도로와 이어져 보이게 링을 도로색·도로 표면(z=0)에 깔고, 섬만 그 위로 살짝 띄운다.
-        //   저장·흐름은 center 1타일 그대로 — 순수 뷰. v1은 차량이 center 직진 통과(도는 애니 = v2).
+        private void SetRoadCenterLinesVisible(
+            Vector2Int tile,
+            bool visible)
+        {
+            if (!tileVisuals.TryGetValue(
+                    tile,
+                    out TileVisual visual) ||
+                visual.Type != TileType.Road)
+            {
+                return;
+            }
+
+            Transform centerLines =
+                visual.Object.transform.Find("RoadCenterLines");
+            if (centerLines != null &&
+                centerLines.gameObject.activeSelf != visible)
+            {
+                centerLines.gameObject.SetActive(visible);
+            }
+        }
+
+        private void SetRoundaboutCenterRoadSurfaceVisible(
+            Vector2Int tile,
+            bool visible)
+        {
+            if (!tileVisuals.TryGetValue(tile, out TileVisual visual) ||
+                visual.Type != TileType.Road ||
+                visual.Renderer == null)
+            {
+                return;
+            }
+
+            visual.Renderer.enabled = visible;
+        }
+
+        private static void DestroyRoundaboutVisual(GameObject visual)
+        {
+            if (visual == null)
+            {
+                return;
+            }
+
+            visual.GetComponent<RoundaboutGeneratedMeshOwner>()?.Release();
+            if (Application.IsPlaying(visual))
+            {
+                UnityEngine.Object.Destroy(visual);
+            }
+            else
+            {
+                UnityEngine.Object.DestroyImmediate(visual);
+            }
+        }
+
+        private void SetRoundaboutRoadPerimetersVisible(
+            Vector2Int tile,
+            bool visible)
+        {
+            SetRoadPerimeterVisible(tile, visible);
+            SimpleTownRoadConnections connections =
+                visible
+                    ? SimpleTownRoadTopology.All
+                    : GetRoadConnections(tile);
+            if ((connections & SimpleTownRoadConnections.East) != 0)
+            {
+                SetRoadApproachPerimeterVisible(
+                    tile + Vector2Int.right,
+                    horizontal: true,
+                    innerSide: SimpleTownRoadConnections.West,
+                    visible: visible);
+            }
+            if ((connections & SimpleTownRoadConnections.West) != 0)
+            {
+                SetRoadApproachPerimeterVisible(
+                    tile + Vector2Int.left,
+                    horizontal: true,
+                    innerSide: SimpleTownRoadConnections.East,
+                    visible: visible);
+            }
+            if ((connections & SimpleTownRoadConnections.North) != 0)
+            {
+                SetRoadApproachPerimeterVisible(
+                    tile + Vector2Int.up,
+                    horizontal: false,
+                    innerSide: SimpleTownRoadConnections.South,
+                    visible: visible);
+            }
+            if ((connections & SimpleTownRoadConnections.South) != 0)
+            {
+                SetRoadApproachPerimeterVisible(
+                    tile + Vector2Int.down,
+                    horizontal: false,
+                    innerSide: SimpleTownRoadConnections.North,
+                    visible: visible);
+            }
+        }
+
+        private void SetRoadApproachPerimeterVisible(
+            Vector2Int tile,
+            bool horizontal,
+            SimpleTownRoadConnections innerSide,
+            bool visible)
+        {
+            if (!TryGetRoadPerimeter(tile, out Transform perimeter))
+            {
+                return;
+            }
+
+            if (horizontal)
+            {
+                SetRoadPerimeterChildVisible(
+                    perimeter,
+                    "Perimeter_North",
+                    visible);
+                SetRoadPerimeterChildVisible(
+                    perimeter,
+                    "Perimeter_South",
+                    visible);
+            }
+            else
+            {
+                SetRoadPerimeterChildVisible(
+                    perimeter,
+                    "Perimeter_East",
+                    visible);
+                SetRoadPerimeterChildVisible(
+                    perimeter,
+                    "Perimeter_West",
+                    visible);
+            }
+
+            string[] innerCorners = innerSide switch
+            {
+                SimpleTownRoadConnections.North => new[]
+                {
+                    "PerimeterCorner_North_East",
+                    "PerimeterCorner_West_North"
+                },
+                SimpleTownRoadConnections.East => new[]
+                {
+                    "PerimeterCorner_North_East",
+                    "PerimeterCorner_East_South"
+                },
+                SimpleTownRoadConnections.South => new[]
+                {
+                    "PerimeterCorner_East_South",
+                    "PerimeterCorner_South_West"
+                },
+                _ => new[]
+                {
+                    "PerimeterCorner_South_West",
+                    "PerimeterCorner_West_North"
+                }
+            };
+            for (int i = 0; i < innerCorners.Length; i++)
+            {
+                SetRoadPerimeterChildVisible(
+                    perimeter,
+                    innerCorners[i],
+                    visible);
+            }
+        }
+
+        private static void SetRoadPerimeterChildVisible(
+            Transform perimeter,
+            string childName,
+            bool visible)
+        {
+            Transform child = perimeter.Find(childName);
+            if (child != null &&
+                child.gameObject.activeSelf != visible)
+            {
+                child.gameObject.SetActive(visible);
+            }
+        }
+
+        private void SetRoadPerimeterVisible(
+            Vector2Int tile,
+            bool visible)
+        {
+            if (!TryGetRoadPerimeter(tile, out Transform perimeter))
+            {
+                return;
+            }
+
+            if (perimeter.gameObject.activeSelf != visible)
+            {
+                perimeter.gameObject.SetActive(visible);
+            }
+        }
+
+        private bool TryGetRoadPerimeter(
+            Vector2Int tile,
+            out Transform perimeter)
+        {
+            perimeter = null;
+            if (!tileVisuals.TryGetValue(
+                    tile,
+                    out TileVisual visual) ||
+                visual.Type != TileType.Road)
+            {
+                return false;
+            }
+
+            perimeter =
+                visual.Object.transform.Find("RoadPerimeter");
+            return perimeter != null;
+        }
+
+        private int GetRoundaboutVisualSignature(Vector2Int tile)
+        {
+            SimpleTownRoadConnections connections =
+                GetRoadConnections(tile);
+            int signature = (int)connections;
+            int bit = 1 << 4;
+
+            AddRoundaboutPerimeterSignature(
+                tile + Vector2Int.right,
+                "Perimeter_North",
+                (connections & SimpleTownRoadConnections.East) != 0,
+                ref signature,
+                ref bit);
+            AddRoundaboutPerimeterSignature(
+                tile + Vector2Int.right,
+                "Perimeter_South",
+                (connections & SimpleTownRoadConnections.East) != 0,
+                ref signature,
+                ref bit);
+            AddRoundaboutPerimeterSignature(
+                tile + Vector2Int.up,
+                "Perimeter_East",
+                (connections & SimpleTownRoadConnections.North) != 0,
+                ref signature,
+                ref bit);
+            AddRoundaboutPerimeterSignature(
+                tile + Vector2Int.up,
+                "Perimeter_West",
+                (connections & SimpleTownRoadConnections.North) != 0,
+                ref signature,
+                ref bit);
+            AddRoundaboutPerimeterSignature(
+                tile + Vector2Int.left,
+                "Perimeter_North",
+                (connections & SimpleTownRoadConnections.West) != 0,
+                ref signature,
+                ref bit);
+            AddRoundaboutPerimeterSignature(
+                tile + Vector2Int.left,
+                "Perimeter_South",
+                (connections & SimpleTownRoadConnections.West) != 0,
+                ref signature,
+                ref bit);
+            AddRoundaboutPerimeterSignature(
+                tile + Vector2Int.down,
+                "Perimeter_East",
+                (connections & SimpleTownRoadConnections.South) != 0,
+                ref signature,
+                ref bit);
+            AddRoundaboutPerimeterSignature(
+                tile + Vector2Int.down,
+                "Perimeter_West",
+                (connections & SimpleTownRoadConnections.South) != 0,
+                ref signature,
+                ref bit);
+
+            return signature;
+        }
+
+        private void AddRoundaboutPerimeterSignature(
+            Vector2Int tile,
+            string childName,
+            bool connected,
+            ref int signature,
+            ref int bit)
+        {
+            if (connected &&
+                HasRoadPerimeterChild(tile, childName))
+            {
+                signature |= bit;
+            }
+
+            bit <<= 1;
+        }
+
+        // 십자 도로가 이미 제공하는 직선 표면은 그대로 사용한다. 원 밖으로
+        // 빠지는 네 코너만 같은 도로 재질로 채워 별도 원판의 높이와 두께가
+        // 생기지 않게 한다.
         private GameObject CreateRoundaboutVisual(Vector2Int tile)
+        {
+            return CreateRoundaboutVisualAtSurface(
+                tile,
+                GetRoadSurfaceZ());
+        }
+
+        private GameObject CreateRoundaboutPlacementPreviewVisual(
+            Vector2Int tile)
+        {
+            return CreateRoundaboutVisualAtSurface(tile, 0f);
+        }
+
+        private GameObject CreateRoundaboutVisualAtSurface(
+            Vector2Int tile,
+            float roadSurfaceZ)
         {
             GameObject root = new GameObject($"Roundabout_{tile.x}_{tile.y}");
             root.transform.SetParent(signalRoot, false);
-            root.transform.localPosition = GridToLocal(tile, 0f);           // 도로 평면에 정렬
+            root.transform.localPosition = GridToLocal(tile, 0f);
+            root.AddComponent<RoundaboutGeneratedMeshOwner>();
 
-            // 회전 차도(링): 도로색 원형 판 — 반경 ~1.1타일로 상하좌우 접근 도로와 겹쳐 이어져 보인다.
-            GameObject pad = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            pad.name = "Ring";
-            Destroy(pad.GetComponent<Collider>());                          // 장식 마커 — 물리 불필요
-            pad.transform.SetParent(root.transform, false);
-            pad.transform.localPosition = new Vector3(0f, 0f, -0.05f);      // 도로 슬래브 바로 앞(z-fight 방지)
-            pad.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);    // 원반을 보드(XY)와 평행하게
-            pad.transform.localScale = new Vector3(tileSize * 2.2f, 0.02f, tileSize * 2.2f);
-            ApplyRendererColor(PrepareRenderer(pad.GetComponent<Renderer>()), roadFreeColor);   // 도로색 = 이어짐
+            SimpleTownRoadConnections connections =
+                GetRoadConnections(tile);
+            CreateRoundaboutRoadSurface(
+                root.transform,
+                tile,
+                roadSurfaceZ,
+                connections);
+            CreateRoundaboutRoadPerimeter(
+                root.transform,
+                tile,
+                roadSurfaceZ,
+                connections);
 
-            // 중앙 섬(잔디): 링 위로 살짝 띄워 초록으로 — "차도 링 + 섬" 로터리 형태.
-            GameObject island = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            island.name = "Island";
-            Destroy(island.GetComponent<Collider>());
-            island.transform.SetParent(root.transform, false);
-            island.transform.localPosition = new Vector3(0f, 0f, -0.14f);
-            island.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            island.transform.localScale = new Vector3(tileSize * 0.9f, 0.03f, tileSize * 0.9f);
-            ApplyRendererColor(PrepareRenderer(island.GetComponent<Renderer>()), roundaboutColor);   // 초록 섬
+            GameObject prefab =
+                ResolveSimpleTownRoadVisualSet()?.RoundaboutPrefab;
+            if (prefab != null)
+            {
+                GameObject model =
+                    Instantiate(prefab, root.transform, false);
+                model.name = "RoundaboutModel";
+                Transform roadSurface =
+                    model.transform.Find("RoadSurface");
+                FitRoundaboutPrefab(
+                    model.transform,
+                    root.transform,
+                    tileSize * RoundaboutVisualDiameterTiles);
+                AlignRoundaboutRoadSurface(
+                    model.transform,
+                    roadSurface,
+                    root.transform,
+                    roadSurfaceZ);
+                PrepareAuthoredRenderers(model);
+                ApplyRoundaboutPalette(model.transform);
+                DisableAuthoredRoundaboutRoadParts(model.transform);
+                CreateRoundaboutIslandDetails(
+                    root.transform,
+                    roadSurfaceZ - tileSize * 0.11f);
+                return root;
+            }
+
+            float islandCurbDepth = tileSize * 0.035f;
+            float islandGrassDepth = tileSize * 0.04f;
+            CreateRoundaboutDisc(
+                root.transform,
+                "IslandCurb",
+                tileSize * 0.73f,
+                islandCurbDepth,
+                roadSurfaceZ - islandCurbDepth * 0.5f,
+                roadPerimeterColor);
+            CreateRoundaboutDisc(
+                root.transform,
+                "IslandGrass",
+                tileSize * 0.62f,
+                islandGrassDepth,
+                roadSurfaceZ - islandCurbDepth -
+                    islandGrassDepth * 0.5f,
+                roundaboutColor);
+            CreateRoundaboutIslandDetails(
+                root.transform,
+                roadSurfaceZ - tileSize * 0.11f);
 
             return root;
+        }
+
+        private void CreateRoundaboutRoadSurface(
+            Transform parent,
+            Vector2Int tile,
+            float surfaceZ,
+            SimpleTownRoadConnections connections)
+        {
+            GameObject surface =
+                new GameObject("RoundaboutRoadSurface");
+            surface.transform.SetParent(parent, false);
+
+            MeshFilter filter = surface.AddComponent<MeshFilter>();
+            Mesh mesh = CreateRoundaboutCornerPatchMesh(
+                tileSize,
+                surfaceZ,
+                connections);
+            filter.sharedMesh = mesh;
+            TrackRoundaboutMesh(parent, mesh);
+
+            Renderer renderer =
+                surface.AddComponent<MeshRenderer>();
+            ConfigureRoundaboutRoadRenderer(
+                tile,
+                renderer,
+                ResolveRoundaboutRoadSourceRenderer(tile));
+        }
+
+        private static Mesh CreateRoundaboutCornerPatchMesh(
+            float roadVisualSize,
+            float surfaceZ,
+            SimpleTownRoadConnections connections)
+        {
+            float radius =
+                roadVisualSize * RoundaboutOuterRadiusTiles;
+            float halfRoad = roadVisualSize * 0.5f;
+            float cornerRadius =
+                halfRoad * Mathf.Sqrt(2f);
+            float startDegrees = Mathf.Asin(
+                Mathf.Clamp01(halfRoad / radius)) *
+                Mathf.Rad2Deg;
+            float endDegrees = 90f - startDegrees;
+            // 코너 패치는 대각선 건물 기초 상판과 같은 영역을 덮는다. 기초와 겹치는
+            // 원호 내부만 아주 조금 위로 올리되, 일반 도로와 맞닿는 끝점은 원래 도로
+            // 높이로 되돌려 낮은 시점에서도 V자 틈이 생기지 않게 한다.
+            float cornerSurfaceZ = surfaceZ -
+                roadVisualSize * RoundaboutSurfaceOverlayOffsetRatio;
+            List<Vector3> vertices = new List<Vector3>();
+            List<Vector3> normals = new List<Vector3>();
+            List<Vector2> uvs = new List<Vector2>();
+            List<int> triangles = new List<int>();
+
+            int centerStart = vertices.Count;
+            AddRoundaboutSurfaceVertex(
+                vertices,
+                normals,
+                uvs,
+                new Vector2(-halfRoad, -halfRoad),
+                surfaceZ);
+            AddRoundaboutSurfaceVertex(
+                vertices,
+                normals,
+                uvs,
+                new Vector2(-halfRoad, halfRoad),
+                surfaceZ);
+            AddRoundaboutSurfaceVertex(
+                vertices,
+                normals,
+                uvs,
+                new Vector2(halfRoad, halfRoad),
+                surfaceZ);
+            AddRoundaboutSurfaceVertex(
+                vertices,
+                normals,
+                uvs,
+                new Vector2(halfRoad, -halfRoad),
+                surfaceZ);
+            triangles.Add(centerStart);
+            triangles.Add(centerStart + 1);
+            triangles.Add(centerStart + 2);
+            triangles.Add(centerStart);
+            triangles.Add(centerStart + 2);
+            triangles.Add(centerStart + 3);
+
+            for (int quadrant = 0; quadrant < 4; quadrant++)
+            {
+                float rotation = quadrant * 90f;
+                GetRoundaboutQuadrantSides(
+                    quadrant,
+                    out SimpleTownRoadConnections startSide,
+                    out SimpleTownRoadConnections endSide);
+                float quadrantStartDegrees =
+                    (connections & startSide) != 0
+                        ? startDegrees
+                        : 0f;
+                float quadrantEndDegrees =
+                    (connections & endSide) != 0
+                        ? endDegrees
+                        : 90f;
+                float cornerRadians =
+                    (45f + rotation) * Mathf.Deg2Rad;
+                Vector2 corner = new Vector2(
+                    Mathf.Cos(cornerRadians),
+                    Mathf.Sin(cornerRadians)) *
+                    cornerRadius;
+                int cornerIndex = vertices.Count;
+                AddRoundaboutSurfaceVertex(
+                    vertices,
+                    normals,
+                    uvs,
+                    corner,
+                    surfaceZ);
+
+                List<Vector2> boundary = new List<Vector2>();
+                List<float> boundaryZ = new List<float>();
+                bool hasStartConnection =
+                    (connections & startSide) != 0;
+                bool hasEndConnection =
+                    (connections & endSide) != 0;
+                if (!hasStartConnection)
+                {
+                    float axisRadians =
+                        rotation * Mathf.Deg2Rad;
+                    boundary.Add(new Vector2(
+                        Mathf.Cos(axisRadians),
+                        Mathf.Sin(axisRadians)) * halfRoad);
+                    boundaryZ.Add(surfaceZ);
+                }
+
+                for (int i = 0;
+                     i <= RoundaboutArcSubdivisions;
+                     i++)
+                {
+                    float t =
+                        i / (float)RoundaboutArcSubdivisions;
+                    float angle = Mathf.Lerp(
+                        quadrantStartDegrees,
+                        quadrantEndDegrees,
+                        t) + rotation;
+                    float radians = angle * Mathf.Deg2Rad;
+                    boundary.Add(new Vector2(
+                        Mathf.Cos(radians),
+                        Mathf.Sin(radians)) * radius);
+                    bool roadContactEndpoint =
+                        (i == 0 && hasStartConnection) ||
+                        (i == RoundaboutArcSubdivisions &&
+                         hasEndConnection);
+                    boundaryZ.Add(
+                        roadContactEndpoint
+                            ? surfaceZ
+                            : cornerSurfaceZ);
+                }
+
+                if (!hasEndConnection)
+                {
+                    float axisRadians =
+                        (rotation + 90f) * Mathf.Deg2Rad;
+                    boundary.Add(new Vector2(
+                        Mathf.Cos(axisRadians),
+                        Mathf.Sin(axisRadians)) * halfRoad);
+                    boundaryZ.Add(surfaceZ);
+                }
+
+                int firstBoundaryIndex = vertices.Count;
+                for (int i = 0; i < boundary.Count; i++)
+                {
+                    AddRoundaboutSurfaceVertex(
+                        vertices,
+                        normals,
+                        uvs,
+                        boundary[i],
+                        boundaryZ[i]);
+                }
+
+                for (int i = 0; i < boundary.Count - 1; i++)
+                {
+                    triangles.Add(cornerIndex);
+                    triangles.Add(firstBoundaryIndex + i + 1);
+                    triangles.Add(firstBoundaryIndex + i);
+                }
+            }
+
+            Mesh mesh = new Mesh
+            {
+                name = "RoundaboutRoadCornerPatches",
+                vertices = vertices.ToArray(),
+                normals = normals.ToArray(),
+                uv = uvs.ToArray(),
+                triangles = triangles.ToArray()
+            };
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static void AddRoundaboutSurfaceVertex(
+            List<Vector3> vertices,
+            List<Vector3> normals,
+            List<Vector2> uvs,
+            Vector2 point,
+            float surfaceZ)
+        {
+            vertices.Add(new Vector3(point.x, point.y, surfaceZ));
+            normals.Add(Vector3.back);
+            // Road.png의 차도 내부 픽셀을 그대로 사용한다. 재질은
+            // 일반도로와 공유하면서 보도·횡단보도 UV 유입만 막는다.
+            uvs.Add(new Vector2(0.75f, 0.1f));
+        }
+
+        private Renderer ResolveRoundaboutRoadSourceRenderer(
+            Vector2Int tile)
+        {
+            Vector2Int[] candidates =
+            {
+                tile,
+                tile + Vector2Int.up,
+                tile + Vector2Int.right,
+                tile + Vector2Int.down,
+                tile + Vector2Int.left
+            };
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                if (tileVisuals.TryGetValue(
+                        candidates[i],
+                        out TileVisual tileVisual) &&
+                    tileVisual.Type == TileType.Road &&
+                    tileVisual.Renderer != null)
+                {
+                    return tileVisual.Renderer;
+                }
+            }
+
+            return null;
+        }
+
+        private void ConfigureRoundaboutRoadRenderer(
+            Vector2Int tile,
+            Renderer renderer,
+            Renderer sourceRenderer)
+        {
+            bool usesAuthoredRoadMaterial = false;
+            if (sourceRenderer != null &&
+                sourceRenderer.sharedMaterial != null)
+            {
+                renderer.sharedMaterial =
+                    sourceRenderer.sharedMaterial;
+                renderer.enabled = true;
+                renderer.forceRenderingOff = false;
+                renderer.allowOcclusionWhenDynamic =
+                    sourceRenderer.allowOcclusionWhenDynamic;
+                renderer.shadowCastingMode =
+                    sourceRenderer.shadowCastingMode;
+                renderer.receiveShadows =
+                    sourceRenderer.receiveShadows;
+                renderer.lightProbeUsage =
+                    sourceRenderer.lightProbeUsage;
+                renderer.reflectionProbeUsage =
+                    sourceRenderer.reflectionProbeUsage;
+
+                MaterialPropertyBlock sourceBlock =
+                    new MaterialPropertyBlock();
+                sourceRenderer.GetPropertyBlock(sourceBlock);
+                renderer.SetPropertyBlock(sourceBlock);
+                usesAuthoredRoadMaterial = true;
+            }
+            else
+            {
+                Renderer prefabRenderer =
+                    ResolveSimpleTownRoadVisualSet()
+                        ?.RoadSurfacePrefab
+                        ?.GetComponentInChildren<Renderer>(true);
+                if (prefabRenderer != null &&
+                    prefabRenderer.sharedMaterial != null)
+                {
+                    renderer.sharedMaterial =
+                        prefabRenderer.sharedMaterial;
+                    VehicleVisualUtility.PrepareLit(
+                        renderer.gameObject);
+                    usesAuthoredRoadMaterial = true;
+                }
+                else
+                {
+                    PrepareRenderer(renderer);
+                    TrackRoundaboutMaterial(
+                        renderer.transform,
+                        renderer.sharedMaterial);
+                    ApplyRendererColor(renderer, roadFreeColor);
+                }
+            }
+
+            RoadCongestionView congestionView =
+                renderer.gameObject
+                    .AddComponent<RoadCongestionView>();
+            congestionView.Configure(
+                tile,
+                renderer,
+                usesAuthoredRoadMaterial
+                    ? Color.white
+                    : roadFreeColor,
+                roadSlowColor,
+                roadJamColor);
+            if (services != null)
+            {
+                congestionView.Initialize(services);
+            }
+        }
+
+        private static void FitRoundaboutPrefab(
+            Transform model,
+            Transform relativeTo,
+            float targetDiameter)
+        {
+            model.localPosition = Vector3.zero;
+            model.localRotation = Quaternion.identity;
+            model.localScale = Vector3.one;
+
+            if (!TryGetRendererBounds(
+                    model.gameObject,
+                    relativeTo,
+                    out Bounds sourceBounds))
+            {
+                return;
+            }
+
+            float scale = Mathf.Min(
+                targetDiameter /
+                    Mathf.Max(0.0001f, sourceBounds.size.x),
+                targetDiameter /
+                    Mathf.Max(0.0001f, sourceBounds.size.y));
+            model.localScale = Vector3.one * scale;
+
+            if (!TryGetRendererBounds(
+                    model.gameObject,
+                    relativeTo,
+                    out Bounds fittedBounds))
+            {
+                return;
+            }
+
+            model.localPosition = new Vector3(
+                -fittedBounds.center.x,
+                -fittedBounds.center.y,
+                0f);
+        }
+
+        private static void AlignRoundaboutRoadSurface(
+            Transform model,
+            Transform roadSurface,
+            Transform relativeTo,
+            float surfaceZ)
+        {
+            GameObject anchor = roadSurface != null
+                ? roadSurface.gameObject
+                : model.gameObject;
+            if (!TryGetRendererBounds(
+                    anchor,
+                    relativeTo,
+                    out Bounds bounds))
+            {
+                return;
+            }
+
+            Vector3 position = model.localPosition;
+            position.z += surfaceZ - bounds.min.z;
+            model.localPosition = position;
+        }
+
+        private void ApplyRoundaboutPalette(Transform model)
+        {
+            ApplyRoundaboutPartColor(
+                model.Find("IslandCurb"),
+                roadPerimeterColor);
+            ApplyRoundaboutPartColor(
+                model.Find("IslandGrass"),
+                roundaboutColor);
+        }
+
+        private static void DisableAuthoredRoundaboutRoadParts(
+            Transform model)
+        {
+            string[] partNames =
+            {
+                "RoadSurface",
+                "OuterCurb"
+            };
+            for (int i = 0; i < partNames.Length; i++)
+            {
+                Transform part = model.Find(partNames[i]);
+                Renderer renderer = part != null
+                    ? part.GetComponent<Renderer>()
+                    : null;
+                if (renderer != null)
+                {
+                    renderer.enabled = false;
+                }
+            }
+        }
+
+        private static void ApplyRoundaboutPartColor(
+            Transform part,
+            Color color)
+        {
+            if (part == null)
+            {
+                return;
+            }
+
+            Renderer renderer = part.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                ApplyRendererColor(renderer, color);
+            }
+        }
+
+        private void CreateRoundaboutRoadPerimeter(
+            Transform parent,
+            Vector2Int tile,
+            float roadSurfaceZ,
+            SimpleTownRoadConnections connections)
+        {
+            float outerRadius =
+                tileSize * RoundaboutOuterRadiusTiles;
+            float perimeterWidth =
+                tileSize * RoadPerimeterWidthRatio;
+            float innerRadius = outerRadius - perimeterWidth;
+            float roadOuterEdge = tileSize * 0.5f;
+            float roadInnerEdge = roadOuterEdge - perimeterWidth;
+            float detailDepth =
+                tileSize * RoadDetailDepthRatio;
+            float detailBottomZ =
+                roadSurfaceZ +
+                tileSize * RoadDecorationSurfaceOffsetRatio;
+            float detailTopZ = detailBottomZ - detailDepth;
+            float outerGapDegrees = Mathf.Asin(
+                Mathf.Clamp01(roadOuterEdge / outerRadius)) *
+                Mathf.Rad2Deg;
+            float innerGapDegrees = Mathf.Asin(
+                Mathf.Clamp01(roadInnerEdge / innerRadius)) *
+                Mathf.Rad2Deg;
+
+            GameObject perimeter = new GameObject("RoadPerimeter");
+            perimeter.transform.SetParent(parent, false);
+
+            for (int quadrant = 0; quadrant < 4; quadrant++)
+            {
+                GetRoundaboutQuadrantSides(
+                    quadrant,
+                    out SimpleTownRoadConnections startSide,
+                    out SimpleTownRoadConnections endSide);
+                float outerStartDegrees =
+                    (connections & startSide) != 0
+                        ? outerGapDegrees
+                        : 0f;
+                float outerEndDegrees =
+                    (connections & endSide) != 0
+                        ? 90f - outerGapDegrees
+                        : 90f;
+                float innerStartDegrees =
+                    (connections & startSide) != 0
+                        ? innerGapDegrees
+                        : 0f;
+                float innerEndDegrees =
+                    (connections & endSide) != 0
+                        ? 90f - innerGapDegrees
+                        : 90f;
+
+                Mesh arcMesh = CreateRoundaboutPerimeterArcMesh(
+                    $"RoundaboutPerimeterArc_{quadrant}",
+                    outerRadius,
+                    innerRadius,
+                    outerStartDegrees + quadrant * 90f,
+                    outerEndDegrees + quadrant * 90f,
+                    innerStartDegrees + quadrant * 90f,
+                    innerEndDegrees + quadrant * 90f,
+                    detailTopZ,
+                    detailBottomZ);
+                CreateRoundaboutPerimeterSection(
+                    perimeter.transform,
+                    $"PerimeterArc_{quadrant}",
+                    arcMesh);
+            }
+
+            CreateRoundaboutApproachPerimeters(
+                perimeter.transform,
+                tile,
+                connections,
+                outerRadius,
+                innerRadius,
+                roadOuterEdge,
+                roadInnerEdge,
+                detailTopZ,
+                detailBottomZ);
+        }
+
+        private void CreateRoundaboutApproachPerimeters(
+            Transform parent,
+            Vector2Int tile,
+            SimpleTownRoadConnections connections,
+            float outerRadius,
+            float innerRadius,
+            float roadOuterEdge,
+            float roadInnerEdge,
+            float topZ,
+            float bottomZ)
+        {
+            SimpleTownRoadConnections[] sides =
+            {
+                SimpleTownRoadConnections.East,
+                SimpleTownRoadConnections.North,
+                SimpleTownRoadConnections.West,
+                SimpleTownRoadConnections.South
+            };
+            Vector2[] directions =
+            {
+                Vector2.right,
+                Vector2.up,
+                Vector2.left,
+                Vector2.down
+            };
+            Vector2Int[] tileDirections =
+            {
+                Vector2Int.right,
+                Vector2Int.up,
+                Vector2Int.left,
+                Vector2Int.down
+            };
+            float outerApproach = Mathf.Sqrt(Mathf.Max(
+                0f,
+                outerRadius * outerRadius -
+                roadOuterEdge * roadOuterEdge));
+            float innerApproach = Mathf.Sqrt(Mathf.Max(
+                0f,
+                innerRadius * innerRadius -
+                roadInnerEdge * roadInnerEdge));
+            float farDistance = tileSize * 1.5f;
+
+            for (int directionIndex = 0;
+                 directionIndex < sides.Length;
+                 directionIndex++)
+            {
+                if ((connections & sides[directionIndex]) == 0)
+                {
+                    continue;
+                }
+
+                Vector2 direction = directions[directionIndex];
+                Vector2 leftNormal = new Vector2(
+                    -direction.y,
+                    direction.x);
+                Vector2Int approachTile =
+                    tile + tileDirections[directionIndex];
+                for (int sideIndex = -1;
+                     sideIndex <= 1;
+                     sideIndex += 2)
+                {
+                    Vector2 outward =
+                        leftNormal * sideIndex;
+                    string sourceName =
+                        GetRoadPerimeterSideName(outward);
+                    if (!HasRoadPerimeterChild(
+                            approachTile,
+                            sourceName))
+                    {
+                        continue;
+                    }
+
+                    List<Vector2> polygon = new List<Vector2>
+                    {
+                        direction * innerApproach +
+                            outward * roadInnerEdge,
+                        direction * farDistance +
+                            outward * roadInnerEdge,
+                        direction * farDistance +
+                            outward * roadOuterEdge,
+                        direction * outerApproach +
+                            outward * roadOuterEdge
+                    };
+                    EnsureCounterClockwise(polygon);
+                    Mesh mesh =
+                        CreateExtrudedRoundaboutPolygonMesh(
+                            $"RoundaboutApproach_{directionIndex}_{sideIndex}",
+                            polygon,
+                            topZ,
+                            bottomZ,
+                            omitClosingSide: true);
+                    CreateRoundaboutPerimeterSection(
+                        parent,
+                        $"Approach_{directionIndex}_{sideIndex}",
+                        mesh);
+                }
+            }
+        }
+
+        private bool HasRoadPerimeterChild(
+            Vector2Int tile,
+            string childName)
+        {
+            return TryGetRoadPerimeter(
+                       tile,
+                       out Transform perimeter) &&
+                   perimeter.Find(childName) != null;
+        }
+
+        private static string GetRoadPerimeterSideName(
+            Vector2 outward)
+        {
+            if (Mathf.Abs(outward.x) > Mathf.Abs(outward.y))
+            {
+                return outward.x > 0f
+                    ? "Perimeter_East"
+                    : "Perimeter_West";
+            }
+
+            return outward.y > 0f
+                ? "Perimeter_North"
+                : "Perimeter_South";
+        }
+
+        private static void GetRoundaboutQuadrantSides(
+            int quadrant,
+            out SimpleTownRoadConnections startSide,
+            out SimpleTownRoadConnections endSide)
+        {
+            switch (quadrant & 3)
+            {
+                case 0:
+                    startSide = SimpleTownRoadConnections.East;
+                    endSide = SimpleTownRoadConnections.North;
+                    return;
+                case 1:
+                    startSide = SimpleTownRoadConnections.North;
+                    endSide = SimpleTownRoadConnections.West;
+                    return;
+                case 2:
+                    startSide = SimpleTownRoadConnections.West;
+                    endSide = SimpleTownRoadConnections.South;
+                    return;
+                default:
+                    startSide = SimpleTownRoadConnections.South;
+                    endSide = SimpleTownRoadConnections.East;
+                    return;
+            }
+        }
+
+        private static Mesh CreateRoundaboutPerimeterArcMesh(
+            string name,
+            float outerRadius,
+            float innerRadius,
+            float outerStartDegrees,
+            float outerEndDegrees,
+            float innerStartDegrees,
+            float innerEndDegrees,
+            float topZ,
+            float bottomZ)
+        {
+            Vector2[] outerPoints =
+                new Vector2[RoundaboutArcSubdivisions + 1];
+            Vector2[] innerPoints =
+                new Vector2[RoundaboutArcSubdivisions + 1];
+            for (int i = 0;
+                 i <= RoundaboutArcSubdivisions;
+                 i++)
+            {
+                float t =
+                    i / (float)RoundaboutArcSubdivisions;
+                float outerRadians = Mathf.Lerp(
+                    outerStartDegrees,
+                    outerEndDegrees,
+                    t) * Mathf.Deg2Rad;
+                float innerRadians = Mathf.Lerp(
+                    innerStartDegrees,
+                    innerEndDegrees,
+                    t) * Mathf.Deg2Rad;
+                outerPoints[i] = new Vector2(
+                    Mathf.Cos(outerRadians),
+                    Mathf.Sin(outerRadians)) * outerRadius;
+                innerPoints[i] = new Vector2(
+                    Mathf.Cos(innerRadians),
+                    Mathf.Sin(innerRadians)) * innerRadius;
+            }
+
+            List<Vector3> vertices = new List<Vector3>();
+            List<Vector3> normals = new List<Vector3>();
+            List<Vector2> uvs = new List<Vector2>();
+            List<int> triangles = new List<int>();
+            for (int i = 0;
+                 i < RoundaboutArcSubdivisions;
+                 i++)
+            {
+                Vector3 outerTopA =
+                    ToRoundaboutVertex(outerPoints[i], topZ);
+                Vector3 outerTopB =
+                    ToRoundaboutVertex(outerPoints[i + 1], topZ);
+                Vector3 innerTopA =
+                    ToRoundaboutVertex(innerPoints[i], topZ);
+                Vector3 innerTopB =
+                    ToRoundaboutVertex(innerPoints[i + 1], topZ);
+                Vector3 outerBottomA =
+                    ToRoundaboutVertex(outerPoints[i], bottomZ);
+                Vector3 outerBottomB =
+                    ToRoundaboutVertex(outerPoints[i + 1], bottomZ);
+                Vector3 innerBottomA =
+                    ToRoundaboutVertex(innerPoints[i], bottomZ);
+                Vector3 innerBottomB =
+                    ToRoundaboutVertex(innerPoints[i + 1], bottomZ);
+                Vector3 outerNormal =
+                    ((Vector3)(outerPoints[i] +
+                               outerPoints[i + 1])).normalized;
+                Vector3 innerNormal =
+                    -((Vector3)(innerPoints[i] +
+                                innerPoints[i + 1])).normalized;
+
+                AddRoundaboutMeshQuad(
+                    vertices,
+                    normals,
+                    uvs,
+                    triangles,
+                    outerTopA,
+                    outerTopB,
+                    innerTopB,
+                    innerTopA,
+                    Vector3.back);
+                AddRoundaboutMeshQuad(
+                    vertices,
+                    normals,
+                    uvs,
+                    triangles,
+                    outerBottomA,
+                    innerBottomA,
+                    innerBottomB,
+                    outerBottomB,
+                    Vector3.forward);
+                AddRoundaboutMeshQuad(
+                    vertices,
+                    normals,
+                    uvs,
+                    triangles,
+                    outerTopA,
+                    outerBottomA,
+                    outerBottomB,
+                    outerTopB,
+                    outerNormal);
+                AddRoundaboutMeshQuad(
+                    vertices,
+                    normals,
+                    uvs,
+                    triangles,
+                    innerTopA,
+                    innerTopB,
+                    innerBottomB,
+                    innerBottomA,
+                    innerNormal);
+            }
+
+            return CreateRoundaboutMesh(
+                name,
+                vertices,
+                normals,
+                uvs,
+                triangles);
+        }
+
+        private static Mesh CreateExtrudedRoundaboutPolygonMesh(
+            string name,
+            IReadOnlyList<Vector2> polygon,
+            float topZ,
+            float bottomZ,
+            bool omitClosingSide)
+        {
+            List<Vector3> vertices = new List<Vector3>();
+            List<Vector3> normals = new List<Vector3>();
+            List<Vector2> uvs = new List<Vector2>();
+            List<int> triangles = new List<int>();
+
+            Vector3 top0 = ToRoundaboutVertex(polygon[0], topZ);
+            Vector3 top1 = ToRoundaboutVertex(polygon[1], topZ);
+            Vector3 top2 = ToRoundaboutVertex(polygon[2], topZ);
+            Vector3 top3 = ToRoundaboutVertex(polygon[3], topZ);
+            Vector3 bottom0 =
+                ToRoundaboutVertex(polygon[0], bottomZ);
+            Vector3 bottom1 =
+                ToRoundaboutVertex(polygon[1], bottomZ);
+            Vector3 bottom2 =
+                ToRoundaboutVertex(polygon[2], bottomZ);
+            Vector3 bottom3 =
+                ToRoundaboutVertex(polygon[3], bottomZ);
+            AddRoundaboutMeshQuad(
+                vertices,
+                normals,
+                uvs,
+                triangles,
+                top0,
+                top1,
+                top2,
+                top3,
+                Vector3.back);
+            AddRoundaboutMeshQuad(
+                vertices,
+                normals,
+                uvs,
+                triangles,
+                bottom0,
+                bottom3,
+                bottom2,
+                bottom1,
+                Vector3.forward);
+
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                // polygon의 닫는 변은 원호와 맞닿는 내부 seam이다. 이 면을 수직 cap으로
+                // 닫으면 야간 조명에서 얇은 삼각형 선으로 드러난다.
+                if (omitClosingSide && i == polygon.Count - 1)
+                {
+                    continue;
+                }
+
+                int next = (i + 1) % polygon.Count;
+                Vector2 edge = polygon[next] - polygon[i];
+                Vector3 outwardNormal = new Vector3(
+                    edge.y,
+                    -edge.x,
+                    0f).normalized;
+                AddRoundaboutMeshQuad(
+                    vertices,
+                    normals,
+                    uvs,
+                    triangles,
+                    ToRoundaboutVertex(polygon[i], topZ),
+                    ToRoundaboutVertex(polygon[next], topZ),
+                    ToRoundaboutVertex(polygon[next], bottomZ),
+                    ToRoundaboutVertex(polygon[i], bottomZ),
+                    outwardNormal);
+            }
+
+            return CreateRoundaboutMesh(
+                name,
+                vertices,
+                normals,
+                uvs,
+                triangles);
+        }
+
+        private void CreateRoundaboutPerimeterSection(
+            Transform parent,
+            string name,
+            Mesh mesh)
+        {
+            GameObject section = new GameObject(name);
+            section.transform.SetParent(parent, false);
+            MeshFilter filter = section.AddComponent<MeshFilter>();
+            filter.sharedMesh = mesh;
+            TrackRoundaboutMesh(parent, mesh);
+            Renderer renderer = PrepareRenderer(
+                section.AddComponent<MeshRenderer>());
+            TrackRoundaboutMaterial(
+                section.transform,
+                renderer.sharedMaterial);
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            ApplyRendererColor(renderer, roadPerimeterColor);
+        }
+
+        private static void TrackRoundaboutMesh(
+            Transform ownerTransform,
+            Mesh mesh)
+        {
+            ownerTransform
+                .GetComponentInParent<RoundaboutGeneratedMeshOwner>()
+                ?.Track(mesh);
+        }
+
+        private static void TrackRoundaboutMaterial(
+            Transform ownerTransform,
+            Material material)
+        {
+            ownerTransform
+                .GetComponentInParent<RoundaboutGeneratedMeshOwner>()
+                ?.Track(material);
+        }
+
+        private static void AddRoundaboutMeshQuad(
+            List<Vector3> vertices,
+            List<Vector3> normals,
+            List<Vector2> uvs,
+            List<int> triangles,
+            Vector3 first,
+            Vector3 second,
+            Vector3 third,
+            Vector3 fourth,
+            Vector3 normal)
+        {
+            if (Vector3.Dot(
+                    Vector3.Cross(
+                        second - first,
+                        third - first),
+                    normal) < 0f)
+            {
+                (second, fourth) = (fourth, second);
+            }
+
+            int start = vertices.Count;
+            vertices.Add(first);
+            vertices.Add(second);
+            vertices.Add(third);
+            vertices.Add(fourth);
+            Vector3 normalizedNormal = normal.normalized;
+            normals.Add(normalizedNormal);
+            normals.Add(normalizedNormal);
+            normals.Add(normalizedNormal);
+            normals.Add(normalizedNormal);
+            uvs.Add(Vector2.zero);
+            uvs.Add(Vector2.zero);
+            uvs.Add(Vector2.zero);
+            uvs.Add(Vector2.zero);
+            triangles.Add(start);
+            triangles.Add(start + 1);
+            triangles.Add(start + 2);
+            triangles.Add(start);
+            triangles.Add(start + 2);
+            triangles.Add(start + 3);
+        }
+
+        private static Mesh CreateRoundaboutMesh(
+            string name,
+            List<Vector3> vertices,
+            List<Vector3> normals,
+            List<Vector2> uvs,
+            List<int> triangles)
+        {
+            Mesh mesh = new Mesh
+            {
+                name = name,
+                vertices = vertices.ToArray(),
+                normals = normals.ToArray(),
+                uv = uvs.ToArray(),
+                triangles = triangles.ToArray()
+            };
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static Vector3 ToRoundaboutVertex(
+            Vector2 point,
+            float z)
+        {
+            return new Vector3(point.x, point.y, z);
+        }
+
+        private static void EnsureCounterClockwise(
+            List<Vector2> polygon)
+        {
+            float signedArea = 0f;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                Vector2 current = polygon[i];
+                Vector2 next = polygon[(i + 1) % polygon.Count];
+                signedArea +=
+                    current.x * next.y - next.x * current.y;
+            }
+
+            if (signedArea < 0f)
+            {
+                polygon.Reverse();
+            }
+        }
+
+        private void CreateRoundaboutIslandDetails(
+            Transform parent,
+            float surfaceZ)
+        {
+            GameObject details =
+                new GameObject("IslandLandscaping");
+            details.transform.SetParent(parent, false);
+
+            Vector2[] offsets =
+            {
+                new Vector2(-0.2f, 0.08f),
+                new Vector2(0.18f, 0.12f),
+                new Vector2(-0.06f, -0.2f),
+                new Vector2(0.24f, -0.14f)
+            };
+            for (int i = 0; i < offsets.Length; i++)
+            {
+                GameObject shrub =
+                    GameObject.CreatePrimitive(PrimitiveType.Cube);
+                shrub.name = $"Shrub_{i:00}";
+                shrub.transform.SetParent(details.transform, false);
+                shrub.transform.localPosition = new Vector3(
+                    offsets[i].x * tileSize,
+                    offsets[i].y * tileSize,
+                    surfaceZ);
+                float size = tileSize * (i % 2 == 0 ? 0.12f : 0.1f);
+                shrub.transform.localScale =
+                    new Vector3(size, size, size);
+
+                Collider collider = shrub.GetComponent<Collider>();
+                if (collider != null)
+                {
+                    if (Application.isPlaying)
+                    {
+                        Destroy(collider);
+                    }
+                    else
+                    {
+                        DestroyImmediate(collider);
+                    }
+                }
+
+                Renderer renderer =
+                    PrepareRenderer(shrub.GetComponent<Renderer>());
+                TrackRoundaboutMaterial(
+                    shrub.transform,
+                    renderer.sharedMaterial);
+                ApplyRendererColor(
+                    renderer,
+                    Color.Lerp(roundaboutColor, Color.black, 0.18f));
+            }
+        }
+
+        private static Renderer CreateRoundaboutDisc(
+            Transform parent,
+            string name,
+            float diameter,
+            float depth,
+            float localZ,
+            Color color)
+        {
+            GameObject disc =
+                GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            disc.name = name;
+            disc.transform.SetParent(parent, false);
+            disc.transform.localPosition =
+                new Vector3(0f, 0f, localZ);
+            disc.transform.localRotation =
+                Quaternion.Euler(90f, 0f, 0f);
+            disc.transform.localScale =
+                new Vector3(diameter, depth, diameter);
+
+            Collider collider = disc.GetComponent<Collider>();
+            if (collider != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(collider);
+                }
+                else
+                {
+                    DestroyImmediate(collider);
+                }
+            }
+
+            Renderer renderer =
+                PrepareRenderer(disc.GetComponent<Renderer>());
+            TrackRoundaboutMaterial(
+                disc.transform,
+                renderer.sharedMaterial);
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            ApplyRendererColor(renderer, color);
+            return renderer;
         }
 
         // 우선도로 마커: PriorityRoadTiles 폴링 — 로터리/입체/일방과 동일 수명 규약(생성/제거).
@@ -4033,12 +5523,17 @@ namespace CityFlow.View
                     brakeLight.SetActive(false);
                 }
 
+                renderers =
+                    vehicle.GetComponentsInChildren<Renderer>(true);
+                Collider[] colliders =
+                    vehicle.GetComponentsInChildren<Collider>(true);
                 vehicle.SetActive(false);
                 vehicles.Add(new RouteVehicle
                 {
                     Object = vehicle,
                     Renderer = renderer,
                     Renderers = renderers,
+                    Colliders = colliders,
                     DetailRenderer = detailRenderer,
                     BrakeLight = brakeLight,
                     NightLighting = nightLighting,
@@ -4157,6 +5652,9 @@ namespace CityFlow.View
                         tileSize *
                         VehicleBodyHeightTiles);
 
+            vehicle.NominalLocalScale =
+                vehicle.Object.transform.localScale;
+
             Color body = CarStyle.Palette[style.ColorIndex];
             if (!vehicle.UsesAuthoredVisual &&
                 vehicle.Renderer != null)
@@ -4182,7 +5680,7 @@ namespace CityFlow.View
             vehicle.BrakeLight.SetActive(on);
         }
 
-        private static void SetVehicleRenderersEnabled(RouteVehicle vehicle, bool enabled)
+        private static void SetVehiclePresentationEnabled(RouteVehicle vehicle, bool enabled)
         {
             if (vehicle.Renderers != null)
             {
@@ -4193,9 +5691,7 @@ namespace CityFlow.View
                         vehicle.Renderers[i].enabled = enabled;
                     }
                 }
-                return;
             }
-
             if (vehicle.Renderer != null)
             {
                 vehicle.Renderer.enabled = enabled;
@@ -4205,6 +5701,27 @@ namespace CityFlow.View
             {
                 vehicle.DetailRenderer.enabled = enabled;
             }
+
+            if (vehicle.Colliders != null)
+            {
+                for (int i = 0; i < vehicle.Colliders.Length; i++)
+                {
+                    if (vehicle.Colliders[i] != null)
+                    {
+                        vehicle.Colliders[i].enabled = enabled;
+                    }
+                }
+            }
+
+            if (enabled) return;
+
+            vehicle.NightLighting?.SetMoving(false);
+            vehicle.BrakeOn = false;
+            if (vehicle.BrakeLight != null)
+            {
+                vehicle.BrakeLight.SetActive(false);
+            }
+            HideJamMarks(vehicle);
         }
 
         private static void HideJamMarks(RouteVehicle vehicle)

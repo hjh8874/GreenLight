@@ -33,6 +33,7 @@ MonoBehaviour:
   fallbackColor: {r: 0.64, g: 0.34, b: 0.74, a: 1}
   fallbackHeight: 0.75
   footprint: {x: 2, y: 2}
+  hideInBuildMenu: 1
   requiredResearchId: research_building_video_store
   canReceiveVisitors: 1
   visitCadence:

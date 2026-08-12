@@ -62,6 +62,21 @@ namespace CityFlow.View
             RefreshStateVisuals(force: true);
         }
 
+        internal void RebindContentReferences(
+            Canvas canvas,
+            RectTransform root)
+        {
+            if (canvas == null || root == null)
+            {
+                return;
+            }
+
+            contentCanvas = canvas;
+            contentRoot = root;
+            SynchronizeCanvasScaling();
+            ApplyContentInset();
+        }
+
         private void Update()
         {
             SynchronizeCanvasScaling();

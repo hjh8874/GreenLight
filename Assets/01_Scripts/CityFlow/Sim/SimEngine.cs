@@ -672,7 +672,9 @@ namespace CityFlow.Sim
                 TileType.Office          => _config.ConstructionHoursOffice,
                 TileType.School          => _config.ConstructionHoursSchool,
                 TileType.Hospital        => _config.ConstructionHoursHospital,
-                TileType.SpecialBuilding => _config.ConstructionHoursSpecial,
+                TileType.SpecialBuilding or
+                TileType.CompactSpecialBuilding =>
+                    _config.ConstructionHoursSpecial,
                 _ => 0f
             };
             if (hours <= 0f || _config.DayLengthSeconds <= 0f) return 0d;
@@ -1444,6 +1446,8 @@ namespace CityFlow.Sim
                 HasCarSimStats = true,
                 CarTripSuccessRate = _stats.TripSuccessRate,
                 CarDayArrivalCount = _stats.DayArrivalCount,
+                HasCarLastDayArrivalCount = true,
+                CarLastDayArrivalCount = _stats.LastDayArrivalCount,
                 CarSkipCurrentDay = _stats.SkipCurrentDay,
             };
         }
@@ -1475,8 +1479,10 @@ namespace CityFlow.Sim
             _stats.RestoreCarSim(
                 snapshot.CarTripSuccessRate,
                 snapshot.CarDayArrivalCount,
+                snapshot.CarLastDayArrivalCount,
                 snapshot.CarSkipCurrentDay,
-                snapshot.HasCarSimStats);
+                snapshot.HasCarSimStats,
+                snapshot.HasCarLastDayArrivalCount);
 
             if (snapshot.PlacedTiles != null)
                 foreach (var t in snapshot.PlacedTiles)

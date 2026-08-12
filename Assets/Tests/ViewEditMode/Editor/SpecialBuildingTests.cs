@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using CityFlow.Bootstrap;
@@ -29,6 +30,9 @@ namespace CityFlow.Tests
             "Assets/02_Prefabs/Buildings/SpecialBuildingSystem.prefab";
         private const string FallbackPrefabPath =
             "Assets/02_Prefabs/Buildings/SpecialBuildingFallback.prefab";
+        private const string PoliceVisualPrefabPath =
+            "Assets/02_Prefabs/Buildings/" +
+            "PoliceStationVisual_StudioHorizon.prefab";
 
         [Test]
         public void Catalog_ContainsEightDefinitionsWithExpectedCadences()
@@ -38,14 +42,201 @@ namespace CityFlow.Tests
 
             Assert.NotNull(catalog);
             Assert.AreEqual(8, catalog.Count);
-            AssertCadence(catalog, "mall", 1, 7);
-            AssertCadence(catalog, "petrol_station", 1, 7);
-            AssertCadence(catalog, "police_station", 1, 7);
-            AssertCadence(catalog, "video_store", 1, 7);
-            AssertCadence(catalog, "pharmacy", 1, 7);
-            AssertCadence(catalog, "coffee_shop", 1, 2);
-            AssertCadence(catalog, "cinema", 1, 7);
-            AssertCadence(catalog, "auto_repair", 1, 7);
+            AssertCadence(catalog, "mall", 1, 7, new Vector2Int(2, 2));
+            AssertCadence(
+                catalog,
+                "petrol_station",
+                1,
+                7,
+                new Vector2Int(2, 2));
+            AssertCadence(
+                catalog,
+                "police_station",
+                1,
+                7,
+                new Vector2Int(2, 2));
+            AssertCadence(
+                catalog,
+                "video_store",
+                1,
+                7,
+                new Vector2Int(2, 2));
+            AssertCadence(
+                catalog,
+                "pharmacy",
+                1,
+                7,
+                new Vector2Int(1, 2));
+            AssertCadence(
+                catalog,
+                "coffee_shop",
+                1,
+                2,
+                new Vector2Int(1, 2));
+            AssertCadence(catalog, "cinema", 1, 7, new Vector2Int(2, 2));
+            AssertCadence(
+                catalog,
+                "auto_repair",
+                1,
+                7,
+                new Vector2Int(2, 2));
+        }
+
+        [Test]
+        public void HiddenGym_IsNotOfferedButRemainsResolvable()
+        {
+            BuildingCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<BuildingCatalogSO>(CatalogPath);
+            GameObject serviceObject = new("Hidden Gym Build Option Test");
+
+            try
+            {
+                Assert.NotNull(catalog);
+                SpecialBuildingService service =
+                    serviceObject.AddComponent<SpecialBuildingService>();
+                SetPrivateField(service, "catalog", catalog);
+
+                SpecialBuildingBuildOption[] visible =
+                    service.CreateBuildOptionSnapshot();
+                for (int index = 0; index < visible.Length; index++)
+                {
+                    Assert.AreNotEqual("video_store", visible[index].BuildingId);
+                }
+
+                Assert.IsTrue(
+                    service.TryGetBuildOption(
+                        "video_store",
+                        out SpecialBuildingBuildOption hidden));
+                Assert.AreEqual("video_store", hidden.BuildingId);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(serviceObject);
+            }
+        }
+
+        [Test]
+        public void BuildOptions_RejectUnsupportedFootprintAndKeepCompact()
+        {
+            BuildingDefinitionSO compact =
+                ScriptableObject.CreateInstance<BuildingDefinitionSO>();
+            BuildingDefinitionSO unsupported =
+                ScriptableObject.CreateInstance<BuildingDefinitionSO>();
+            BuildingCatalogSO catalog =
+                ScriptableObject.CreateInstance<BuildingCatalogSO>();
+            GameObject serviceObject = new("Special Building Option Test");
+
+            try
+            {
+                compact.buildingId = "compact";
+                compact.buildingName = "Compact";
+                compact.unlockedByDefault = true;
+                SetPrivateField(
+                    compact,
+                    "footprint",
+                    new Vector2Int(1, 2));
+
+                unsupported.buildingId = "unsupported";
+                unsupported.buildingName = "Unsupported";
+                unsupported.unlockedByDefault = true;
+                SetPrivateField(
+                    unsupported,
+                    "footprint",
+                    new Vector2Int(1, 1));
+
+                SetPrivateField(
+                    catalog,
+                    "buildings",
+                    new List<BuildingDefinitionSO>
+                    {
+                        compact,
+                        unsupported
+                    });
+                SpecialBuildingService service =
+                    serviceObject.AddComponent<SpecialBuildingService>();
+                SetPrivateField(service, "catalog", catalog);
+
+                SpecialBuildingBuildOption[] options =
+                    service.CreateBuildOptionSnapshot();
+
+                Assert.AreEqual(1, options.Length);
+                Assert.AreEqual("compact", options[0].BuildingId);
+                Assert.AreEqual(new Vector2Int(1, 2), options[0].Footprint);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(serviceObject);
+                UnityEngine.Object.DestroyImmediate(catalog);
+                UnityEngine.Object.DestroyImmediate(unsupported);
+                UnityEngine.Object.DestroyImmediate(compact);
+            }
+        }
+
+        [Test]
+        public void UnderConstructionVisual_UsesConstructionTargetFootprint()
+        {
+            Vector2Int anchor = new(3, 6);
+            BuildingDefinitionSO definition =
+                ScriptableObject.CreateInstance<BuildingDefinitionSO>();
+            BuildingCatalogSO catalog =
+                ScriptableObject.CreateInstance<BuildingCatalogSO>();
+            GameObject fallbackPrefab = new("Special Building Fallback Test");
+            GameObject viewObject = new("Construction Special Building View");
+
+            try
+            {
+                definition.buildingId = "compact";
+                definition.buildingName = "Compact";
+                SetPrivateField(
+                    definition,
+                    "footprint",
+                    new Vector2Int(1, 2));
+                SetPrivateField(
+                    catalog,
+                    "buildings",
+                    new List<BuildingDefinitionSO> { definition });
+
+                var tileData = new ConstructionTileData(
+                    anchor,
+                    TileType.SpecialBuilding,
+                    PlacementDirection.East);
+                var services = new CityFlowServices(
+                    new SimEventHub(),
+                    tileData,
+                    null);
+                var coordinates = new TestCoordinateSpace();
+                var buildingService = new TestSpecialBuildingService();
+                buildingService.SetBuilding(new SpecialBuildingInstance(
+                    "compact",
+                    anchor,
+                    PlacementDirection.East));
+                SpecialBuildingView view =
+                    viewObject.AddComponent<SpecialBuildingView>();
+                SetPrivateField(view, "catalog", catalog);
+                SetPrivateField(view, "fallbackPrefab", fallbackPrefab);
+                Assert.IsTrue(services.RegisterWorldCoordinates(coordinates));
+                Assert.IsTrue(
+                    services.RegisterSpecialBuildings(buildingService));
+
+                view.Initialize(services);
+
+                Dictionary<Vector2Int, GameObject> visuals =
+                    ReadPrivateField<Dictionary<Vector2Int, GameObject>>(
+                        view,
+                        "visuals");
+                Assert.IsTrue(visuals.TryGetValue(anchor, out GameObject visual));
+                Assert.That(visual.transform.position.x,
+                    Is.EqualTo(anchor.x + 1f).Within(0.0001f));
+                Assert.That(visual.transform.position.z,
+                    Is.EqualTo(anchor.y + 1f).Within(0.0001f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(viewObject);
+                UnityEngine.Object.DestroyImmediate(fallbackPrefab);
+                UnityEngine.Object.DestroyImmediate(catalog);
+                UnityEngine.Object.DestroyImmediate(definition);
+            }
         }
 
         [Test]
@@ -68,6 +259,273 @@ namespace CityFlow.Tests
             Assert.NotNull(
                 fallbackPrefab.GetComponent<
                     SpecialBuildingFallbackPresenter>());
+        }
+
+        [Test]
+        public void PoliceStation_UsesProjectOwnedTwoByTwoVisualWithParking()
+        {
+            BuildingCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<BuildingCatalogSO>(
+                    CatalogPath);
+            GameObject visualPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    PoliceVisualPrefabPath);
+
+            Assert.NotNull(catalog);
+            Assert.NotNull(visualPrefab);
+            Assert.IsTrue(catalog.TryGet(
+                "police_station",
+                out BuildingDefinitionSO definition));
+            Assert.AreEqual(
+                new Vector2Int(2, 2),
+                definition.Footprint);
+            Assert.AreSame(visualPrefab, definition.VisualPrefab);
+            Assert.AreEqual(
+                PoliceVisualPrefabPath,
+                AssetDatabase.GetAssetPath(definition.VisualPrefab));
+
+            Transform buildingSurface =
+                visualPrefab.transform.Find("BuildingSurface");
+            Transform parkingLot =
+                visualPrefab.transform.Find("ParkingLot");
+            Assert.NotNull(buildingSurface);
+            Assert.NotNull(parkingLot);
+            Assert.That(
+                buildingSurface.localPosition.y,
+                Is.EqualTo(0.5f).Within(0.0001f));
+            Assert.That(
+                buildingSurface.localScale.x,
+                Is.EqualTo(2f).Within(0.0001f));
+            Assert.That(
+                buildingSurface.localScale.y,
+                Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(
+                parkingLot.localPosition.y,
+                Is.EqualTo(-0.5f).Within(0.0001f));
+            Assert.That(
+                parkingLot.localScale.x,
+                Is.EqualTo(2f).Within(0.0001f));
+            Assert.That(
+                parkingLot.localScale.y,
+                Is.EqualTo(1f).Within(0.0001f));
+
+            GameObject visualInstance =
+                UnityEngine.Object.Instantiate(visualPrefab);
+            try
+            {
+                Transform model =
+                    visualInstance.transform.Find("Model");
+                Assert.NotNull(model);
+                Assert.IsTrue(TryGetLocalRendererBounds(
+                    model,
+                    visualInstance.transform,
+                    out Bounds modelBounds));
+                Assert.That(
+                    modelBounds.center.x,
+                    Is.EqualTo(0f).Within(0.001f));
+                Assert.That(
+                    modelBounds.center.y,
+                    Is.EqualTo(0.5f).Within(0.001f));
+                Assert.That(
+                    modelBounds.size.x,
+                    Is.EqualTo(1.9f).Within(0.001f));
+                Assert.That(
+                    modelBounds.size.y,
+                    Is.LessThanOrEqualTo(0.901f));
+                Assert.That(
+                    modelBounds.max.z,
+                    Is.EqualTo(0f).Within(0.001f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(visualInstance);
+            }
+
+            BuildingParkingLayout layout =
+                visualPrefab.GetComponent<BuildingParkingLayout>();
+            Assert.NotNull(layout);
+            Assert.AreEqual(2, layout.ParkingSlotCount);
+            for (int slotIndex = 0;
+                 slotIndex < layout.ParkingSlotCount;
+                 slotIndex++)
+            {
+                Transform slot = visualPrefab.transform.Find(
+                    $"ParkingSlot_{slotIndex}");
+                Assert.NotNull(slot);
+                Assert.Less(slot.localPosition.y, 0f);
+                Assert.Greater(
+                    Vector3.Dot(slot.forward, Vector3.down),
+                    0.999f);
+                Assert.IsTrue(layout.TryGetParkingPose(
+                    slotIndex,
+                    out BuildingParkingPose pose));
+                Assert.That(
+                    Vector3.Distance(pose.WorldPosition, slot.position),
+                    Is.LessThan(0.0001f));
+                Assert.That(
+                    Vector3.Dot(pose.WorldForward, slot.forward),
+                    Is.GreaterThan(0.999f));
+            }
+        }
+
+        [Test]
+        public void SpecialBuildingParking_IsExposedToMainCityView()
+        {
+            BuildingCatalogSO catalog =
+                AssetDatabase.LoadAssetAtPath<BuildingCatalogSO>(
+                    CatalogPath);
+            GameObject fallbackPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    FallbackPrefabPath);
+            GameObject cityObject = new("Police Parking City");
+            GameObject viewObject = new("Special Building View");
+            GameObject vehicleObject = null;
+
+            try
+            {
+                Assert.NotNull(catalog);
+                Assert.NotNull(fallbackPrefab);
+                SimConfig config = SimConfig.Default();
+                var events = new SimEventHub();
+                var engine = new SimEngine(config, events);
+                var services = new CityFlowServices(
+                    events,
+                    engine,
+                    engine,
+                    stats: engine);
+                var coordinates = new TestCoordinateSpace();
+                var buildingService = new TestSpecialBuildingService();
+                MainCityView cityView =
+                    cityObject.AddComponent<MainCityView>();
+                SpecialBuildingView specialView =
+                    viewObject.AddComponent<SpecialBuildingView>();
+
+                cityObject.transform.SetPositionAndRotation(
+                    coordinates.Origin,
+                    coordinates.CoordinateRotation);
+                SetPrivateField(specialView, "catalog", catalog);
+                SetPrivateField(
+                    specialView,
+                    "fallbackPrefab",
+                    fallbackPrefab);
+                SetPrivateField(
+                    cityView,
+                    "specialBuildingParkingView",
+                    specialView);
+                Assert.IsTrue(services.RegisterWorldCoordinates(coordinates));
+                Assert.IsTrue(
+                    services.RegisterSpecialBuildings(buildingService));
+                specialView.Initialize(services);
+                Assert.AreEqual(0, specialView.VisualCount);
+
+                Vector2Int anchor = new(8, 12);
+                buildingService.SetBuilding(new SpecialBuildingInstance(
+                    "police_station",
+                    anchor,
+                    PlacementDirection.North));
+                Assert.IsTrue(cityView.TryGetBuildingParkingPose(
+                    anchor,
+                    0,
+                    out _,
+                    out _));
+                Assert.AreEqual(1, specialView.VisualCount);
+                Assert.IsTrue(services.RegisterWorldCoordinateRoot(cityView));
+
+                Assert.IsTrue(cityView.TryGetBuildingParkingPose(
+                    anchor,
+                    0,
+                    out Vector3 firstPosition,
+                    out Vector3 firstForward));
+                Assert.IsTrue(cityView.TryGetBuildingParkingPose(
+                    anchor,
+                    1,
+                    out Vector3 secondPosition,
+                    out Vector3 secondForward));
+                Assert.AreEqual(1, specialView.VisualCount);
+                Assert.That(
+                    firstPosition.z,
+                    Is.EqualTo(cityView.RoadSurfaceZ).Within(0.0001f));
+                Assert.That(
+                    secondPosition.z,
+                    Is.EqualTo(cityView.RoadSurfaceZ).Within(0.0001f));
+                Assert.That(
+                    Vector3.Distance(firstPosition, secondPosition),
+                    Is.GreaterThan(0.5f));
+                Assert.Greater(
+                    Vector3.Dot(firstForward, Vector3.down),
+                    0.999f);
+                Assert.Greater(
+                    Vector3.Dot(secondForward, Vector3.down),
+                    0.999f);
+
+                MethodInfo getParkingAnchor =
+                    typeof(MainCityView).GetMethod(
+                        "GetParkingAnchor",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                Assert.NotNull(getParkingAnchor);
+                Vector3 consumedPosition = (Vector3)getParkingAnchor.Invoke(
+                    cityView,
+                    new object[]
+                    {
+                        anchor,
+                        new Vector2Int(8, 14),
+                        1,
+                        4
+                    });
+                Assert.That(
+                    Vector3.Distance(
+                        consumedPosition,
+                        secondPosition),
+                    Is.LessThan(0.0001f),
+                    "CarMotion은 절차 폴백보다 authored 슬롯 pose를 우선해야 한다.");
+
+                Type routeVehicleType =
+                    typeof(MainCityView).GetNestedType(
+                        "RouteVehicle",
+                        BindingFlags.NonPublic);
+                Assert.NotNull(routeVehicleType);
+                object routeVehicle = Activator.CreateInstance(
+                    routeVehicleType,
+                    nonPublic: true);
+                vehicleObject = new GameObject(
+                    "Authored Parking Rotation Vehicle");
+                FieldInfo routeVehicleObjectField =
+                    routeVehicleType.GetField(
+                        "Object",
+                        BindingFlags.Instance |
+                        BindingFlags.Public);
+                Assert.NotNull(routeVehicleObjectField);
+                routeVehicleObjectField.SetValue(
+                    routeVehicle,
+                    vehicleObject);
+                MethodInfo setParkingRotation =
+                    typeof(MainCityView).GetMethod(
+                        "SetForwardBuildingParkingRotation",
+                        BindingFlags.Instance |
+                        BindingFlags.NonPublic);
+                Assert.NotNull(setParkingRotation);
+                setParkingRotation.Invoke(
+                    cityView,
+                    new object[] { routeVehicle, anchor, 1 });
+                Vector3 consumedForward =
+                    vehicleObject.transform.localRotation * Vector3.right;
+                Assert.Greater(
+                    Vector3.Dot(
+                        consumedForward.normalized,
+                        secondForward.normalized),
+                    0.999f,
+                    "주차 완료 회전도 authored 슬롯 forward를 사용해야 한다.");
+            }
+            finally
+            {
+                if (vehicleObject != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(vehicleObject);
+                }
+                UnityEngine.Object.DestroyImmediate(viewObject);
+                UnityEngine.Object.DestroyImmediate(cityObject);
+            }
         }
 
         [Test]
@@ -827,15 +1285,27 @@ namespace CityFlow.Tests
             BuildingCatalogSO catalog,
             string buildingId,
             int visits,
-            int days)
+            int days,
+            Vector2Int footprint)
         {
             Assert.IsTrue(catalog.TryGet(buildingId, out BuildingDefinitionSO definition));
             Assert.AreEqual(visits, definition.VisitCadence.VisitsPerPeriod);
             Assert.AreEqual(days, definition.VisitCadence.PeriodDays);
-            Assert.AreEqual(Vector2Int.one * 2, definition.Footprint);
+            Assert.AreEqual(footprint, definition.Footprint);
             Assert.IsFalse(string.IsNullOrEmpty(
                 definition.HappinessEffectKey));
             Assert.Greater(definition.FallbackHeight, 0f);
+        }
+
+        private static T ReadPrivateField<T>(
+            object target,
+            string fieldName)
+        {
+            FieldInfo field = target.GetType().GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field, fieldName);
+            return (T)field.GetValue(target);
         }
 
         private static void SetPrivateField<T>(
@@ -848,6 +1318,237 @@ namespace CityFlow.Tests
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(field, fieldName);
             field.SetValue(target, value);
+        }
+
+        private static bool TryGetLocalRendererBounds(
+            Transform contentRoot,
+            Transform relativeTo,
+            out Bounds bounds)
+        {
+            bounds = default;
+            bool hasBounds = false;
+            Renderer[] renderers =
+                contentRoot.GetComponentsInChildren<Renderer>(true);
+            for (int rendererIndex = 0;
+                 rendererIndex < renderers.Length;
+                 rendererIndex++)
+            {
+                Bounds rendererBounds = renderers[rendererIndex].bounds;
+                Vector3 min = rendererBounds.min;
+                Vector3 max = rendererBounds.max;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 world = new(
+                        (corner & 1) == 0 ? min.x : max.x,
+                        (corner & 2) == 0 ? min.y : max.y,
+                        (corner & 4) == 0 ? min.z : max.z);
+                    Vector3 local =
+                        relativeTo.InverseTransformPoint(world);
+                    if (!hasBounds)
+                    {
+                        bounds = new Bounds(local, Vector3.zero);
+                        hasBounds = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(local);
+                    }
+                }
+            }
+
+            return hasBounds;
+        }
+
+        private sealed class TestCoordinateSpace : IWorldCoordinateSpace
+        {
+            public WorldCoordinatePlane Plane => WorldCoordinatePlane.XZ;
+            public float TileSize => 1f;
+            public Vector3 Origin => Vector3.zero;
+            public Vector3 GridXAxis => Vector3.right;
+            public Vector3 GridYAxis => Vector3.forward;
+            public Vector3 GroundNormal => Vector3.up;
+            public Quaternion CoordinateRotation =>
+                Quaternion.Euler(90f, 0f, 0f);
+
+            public Vector3 GridToWorld(
+                Vector2Int tile,
+                float surfaceOffset = 0f) =>
+                new(
+                    tile.x + 0.5f,
+                    surfaceOffset,
+                    tile.y + 0.5f);
+
+            public Vector3 GridPointToWorld(
+                Vector2 gridPoint,
+                float surfaceOffset = 0f) =>
+                new(gridPoint.x, surfaceOffset, gridPoint.y);
+
+            public Vector2 WorldToGridPoint(Vector3 worldPosition) =>
+                new(worldPosition.x, worldPosition.z);
+
+            public Vector2Int WorldToGrid(Vector3 worldPosition) =>
+                Vector2Int.FloorToInt(WorldToGridPoint(worldPosition));
+
+            public bool TryRayToGrid(
+                Ray ray,
+                out Vector2Int tile,
+                out Vector3 worldHitPoint)
+            {
+                tile = default;
+                worldHitPoint = default;
+                return false;
+            }
+        }
+
+        private sealed class ConstructionTileData : IReadOnlyTileData
+        {
+            private readonly Vector2Int anchor;
+            private readonly TileType targetType;
+            private readonly PlacementDirection direction;
+
+            public ConstructionTileData(
+                Vector2Int anchor,
+                TileType targetType,
+                PlacementDirection direction)
+            {
+                this.anchor = anchor;
+                this.targetType = targetType;
+                this.direction = direction;
+            }
+
+            public CongestionLevel GetCongestion(Vector2Int tile) =>
+                CongestionLevel.Free;
+
+            public float GetDensity01(Vector2Int tile) => 0f;
+
+            public int GetQueueCount(Vector2Int tile, Dir entryDir) => 0;
+
+            public TileType GetTileType(Vector2Int tile) =>
+                tile == anchor
+                    ? TileType.UnderConstruction
+                    : TileType.Empty;
+
+            public PlacementDirection GetDirection(Vector2Int tile) =>
+                direction;
+
+            public Vector2Int GetFootprintSize(TileType type) =>
+                TileFootprint.GetSize(type);
+
+            public bool TryGetFootprintAnchor(
+                Vector2Int tile,
+                out Vector2Int footprintAnchor)
+            {
+                footprintAnchor = anchor;
+                return tile == anchor;
+            }
+
+            public bool IsFootprintAnchor(Vector2Int tile) =>
+                tile == anchor;
+
+            public bool TryGetConstructionProgress01(
+                Vector2Int tile,
+                out float progress01)
+            {
+                progress01 = tile == anchor ? 0.5f : 0f;
+                return tile == anchor;
+            }
+
+            public bool TryGetConstructionTargetType(
+                Vector2Int tile,
+                out TileType constructionTargetType)
+            {
+                constructionTargetType = targetType;
+                return tile == anchor;
+            }
+        }
+
+        private sealed class TestSpecialBuildingService :
+            ISpecialBuildingService
+        {
+            private SpecialBuildingInstance? building;
+
+            public int BuildingCount => building.HasValue ? 1 : 0;
+
+            public event Action<SpecialBuildingChangedEvent> BuildingChanged
+            {
+                add { }
+                remove { }
+            }
+
+            public event Action BuildingsRestored
+            {
+                add { }
+                remove { }
+            }
+
+            public event Action BuildOptionsChanged
+            {
+                add { }
+                remove { }
+            }
+
+            public event Action<HappinessEffectChangedEvent>
+                HappinessEffectChanged
+            {
+                add { }
+                remove { }
+            }
+
+            public void SetBuilding(SpecialBuildingInstance nextBuilding)
+            {
+                building = nextBuilding;
+            }
+
+            public bool CanPlace(
+                string buildingId,
+                Vector2Int anchor,
+                PlacementDirection direction = PlacementDirection.North) =>
+                false;
+
+            public bool TryPlace(
+                string buildingId,
+                Vector2Int anchor,
+                PlacementDirection direction = PlacementDirection.North) =>
+                false;
+
+            public bool TryRemove(Vector2Int tile) => false;
+
+            public bool TryGetBuilding(
+                Vector2Int tile,
+                out SpecialBuildingInstance foundBuilding)
+            {
+                if (building.HasValue &&
+                    tile == building.Value.Anchor)
+                {
+                    foundBuilding = building.Value;
+                    return true;
+                }
+
+                foundBuilding = default;
+                return false;
+            }
+
+            public bool IsBuildingUnlocked(string buildingId) => false;
+
+            public bool TryGetBuildOption(
+                string buildingId,
+                out SpecialBuildingBuildOption option)
+            {
+                option = default;
+                return false;
+            }
+
+            public SpecialBuildingInstance[] CreateBuildingSnapshot() =>
+                building.HasValue
+                    ? new[] { building.Value }
+                    : Array.Empty<SpecialBuildingInstance>();
+
+            public SpecialBuildingBuildOption[] CreateBuildOptionSnapshot() =>
+                Array.Empty<SpecialBuildingBuildOption>();
+
+            public HappinessEffectDescriptor[]
+                CreateActiveHappinessEffectSnapshot() =>
+                Array.Empty<HappinessEffectDescriptor>();
         }
 
         private readonly struct RuntimeContext

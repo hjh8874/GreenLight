@@ -1,3 +1,4 @@
+using CityFlow.Contracts;
 using CityFlow.ViewKit;
 using UnityEngine;
 
@@ -36,11 +37,36 @@ namespace CityFlow.View
             float entryBoundary = enteringRing
                 ? polyline.DistanceAtPhase(next - RoundaboutTransitionSpan())
                 : polyline.DistanceAtPhase(next - 0.5f);
-            stopDistance = Mathf.Max(
-                polyline.DistanceAtTile(current),
-                entryBoundary - vehicleLength * 0.5f - tileSize * RoundaboutStopMarginTiles);
+            VehicleFootprint standardFootprint =
+                simEngine.StandardVehicleFootprint;
+            float requiredCenterSpacing =
+                GetRequiredVehiclePresentationHeadway(
+                    RoadTrafficAgentKind.Car,
+                    standardFootprint,
+                    RoadTrafficAgentKind.Car,
+                    standardFootprint);
+            float entryClearance = ResolveRoundaboutEntryClearance(
+                requiredCenterSpacing,
+                vehicleLength,
+                tileSize);
+            // 접근 타일 중심을 하한으로 두면 arm에서 중심까지 남은 길이보다
+            // 안전 간격이 큰 경우 정지선이 다시 arm 중심으로 밀려난다. 경로 시작까지
+            // 후퇴할 수 있게 해야 로터리 경계와 실제 중심 간격을 확보할 수 있다.
+            stopDistance = Mathf.Clamp(
+                entryBoundary - entryClearance,
+                0f,
+                polyline.Length);
             return true;
         }
+
+        internal static float ResolveRoundaboutEntryClearance(
+            float requiredCenterSpacing,
+            float vehicleLength,
+            float tileSize) =>
+            Mathf.Max(
+                requiredCenterSpacing,
+                vehicleLength * 0.5f +
+                tileSize * RoundaboutStopMarginTiles);
 
         private float GetRoundaboutAuthorizedDistance(
             RoutePolyline polyline,

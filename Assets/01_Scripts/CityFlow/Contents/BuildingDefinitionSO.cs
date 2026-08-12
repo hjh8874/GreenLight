@@ -114,6 +114,10 @@ namespace CityFlow.Content
         [SerializeField]
         private Vector2Int footprint = new Vector2Int(2, 2);
 
+        [SerializeField]
+        [Tooltip("기존 저장 복원은 유지하면서 건설 메뉴에서만 숨깁니다.")]
+        private bool hideInBuildMenu;
+
         [Header("Future Research")]
 
         [SerializeField]
@@ -140,6 +144,21 @@ namespace CityFlow.Content
         private int coinPerVisit;
 
         [SerializeField]
+        [Min(0)]
+        [Tooltip("방문 차량이 사용하는 첫 번째 authored 주차 슬롯 인덱스")]
+        private int visitorParkingSlotStart;
+
+        [SerializeField]
+        [Min(1)]
+        [Tooltip("방문 차량이 동시에 사용할 수 있는 authored 주차 슬롯 수")]
+        private int visitorParkingSlotCount = 1;
+
+        [SerializeField]
+        [Min(0f)]
+        [Tooltip("방문 차량이 목적지 주차 슬롯에 머무르는 게임 시간")]
+        private float visitDwellHours;
+
+        [SerializeField]
         [Tooltip("방문 차량이 몰리는 시간대. AllDay = 24시간 균등(기존 동작).")]
         private VisitTimeProfile visitTimeProfile = VisitTimeProfile.AllDay;
 
@@ -159,12 +178,18 @@ namespace CityFlow.Content
         public Vector2Int Footprint => new Vector2Int(
             Mathf.Max(1, footprint.x),
             Mathf.Max(1, footprint.y));
+        public bool HideInBuildMenu => hideInBuildMenu;
         public string RequiredResearchId => requiredResearchId;
         public bool CanReceiveVisitors => canReceiveVisitors;
         public VisitCadence VisitCadence => visitCadence;
         public int VisitorCapacity => Mathf.Max(0, visitorCapacity);
         public float AttractionWeight => Mathf.Max(0f, attractionWeight);
         public int CoinPerVisit => Mathf.Max(0, coinPerVisit);
+        public int VisitorParkingSlotStart =>
+            Mathf.Max(0, visitorParkingSlotStart);
+        public int VisitorParkingSlotCount =>
+            Mathf.Max(1, visitorParkingSlotCount);
+        public float VisitDwellHours => Mathf.Max(0f, visitDwellHours);
         public VisitTimeProfile VisitTimeProfile => visitTimeProfile;
         public string HappinessEffectKey => happinessEffectKey;
 
@@ -270,6 +295,11 @@ namespace CityFlow.Content
             visitorCapacity = Mathf.Max(0, visitorCapacity);
             attractionWeight = Mathf.Max(0f, attractionWeight);
             coinPerVisit = Mathf.Max(0, coinPerVisit);
+            visitorParkingSlotStart =
+                Mathf.Max(0, visitorParkingSlotStart);
+            visitorParkingSlotCount =
+                Mathf.Max(1, visitorParkingSlotCount);
+            visitDwellHours = Mathf.Max(0f, visitDwellHours);
             happinessEffectKey = happinessEffectKey?.Trim();
 
             schoolCoverageCapacity =

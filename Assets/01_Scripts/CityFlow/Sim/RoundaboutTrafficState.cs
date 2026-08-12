@@ -24,6 +24,7 @@ namespace CityFlow.Sim
 
         public int OccupiedCount { get; private set; }
         public bool EntriesBlocked { get; private set; }
+        public bool HasActiveEntry => _activeEntryNode != NoNode;
 
         public RoundaboutTrafficState()
         {
@@ -59,7 +60,14 @@ namespace CityFlow.Sim
             {
                 if (_entryDemand[(int)_servingEntrySide])
                 {
-                    SelectEntry(_servingEntrySide);
+                    if (CanReserveMergeCells(_servingEntrySide))
+                    {
+                        SelectEntry(_servingEntrySide);
+                    }
+                    else
+                    {
+                        _hasSelectedEntry = false;
+                    }
                     return;
                 }
 
@@ -74,7 +82,14 @@ namespace CityFlow.Sim
                 {
                     _servingEntrySide = candidate;
                     _hasServingEntrySide = true;
-                    SelectEntry(candidate);
+                    if (CanReserveMergeCells(candidate))
+                    {
+                        SelectEntry(candidate);
+                    }
+                    else
+                    {
+                        _hasSelectedEntry = false;
+                    }
                     return;
                 }
 
@@ -143,7 +158,11 @@ namespace CityFlow.Sim
 
             _nodes[(int)target] = node;
             _activeEntryNode = NoNode;
+            _activeEntrySide = default;
             OccupiedCount++;
+            _preferredEntry = NextCounterClockwise(approachSide);
+            _hasServingEntrySide = false;
+            _hasSelectedEntry = false;
             return true;
         }
 
@@ -174,8 +193,11 @@ namespace CityFlow.Sim
 
             if (_activeEntryNode == node)
             {
+                _preferredEntry = NextCounterClockwise(_activeEntrySide);
                 _activeEntryNode = NoNode;
                 _activeEntrySide = default;
+                _hasServingEntrySide = false;
+                _hasSelectedEntry = false;
                 removed = true;
             }
 
@@ -221,17 +243,22 @@ namespace CityFlow.Sim
             _blockedEntryException = approachSide;
         }
 
-        public bool CanHandoffBlockedExit(
+        public bool TryPrepareBlockedExitHandoff(
             Dir exitSide,
             int exitingNode,
-            out int activeEntryNode)
+            int waitingEntryNode)
         {
-            activeEntryNode = _activeEntryNode;
+            bool ownsEntry =
+                _activeEntryNode == waitingEntryNode &&
+                _activeEntrySide == exitSide;
+            bool canAdoptArmOrigin =
+                _activeEntryNode == NoNode &&
+                waitingEntryNode != NoNode;
             if (!IsValid(exitSide)
                 || exitingNode < 0
+                || waitingEntryNode < 0
                 || _nodes[(int)exitSide] != exitingNode
-                || _activeEntryNode == NoNode
-                || _activeEntrySide != exitSide
+                || (!ownsEntry && !canAdoptArmOrigin)
                 || EntriesBlocked
                 || _admittedThisTick)
             {
@@ -241,7 +268,19 @@ namespace CityFlow.Sim
             // The exiting car owns exitSide until RoadQueueNetwork moves it to
             // the arm. The adjacent upstream cell must still satisfy the normal
             // mouth-clearance rule for the waiting arm car to enter immediately.
-            return IsAvailable(UpstreamOf(exitSide));
+            if (!IsAvailable(UpstreamOf(exitSide))
+                || !IsAvailable(DownstreamOf(exitSide)))
+            {
+                return false;
+            }
+
+            if (canAdoptArmOrigin)
+            {
+                _activeEntryNode = waitingEntryNode;
+                _activeEntrySide = exitSide;
+            }
+
+            return true;
         }
 
         public bool IsReserved(Dir cell) => IsValid(cell) && _reservations[(int)cell];
@@ -290,17 +329,31 @@ namespace CityFlow.Sim
         {
             bool blocked = EntriesBlocked
                 && (!_hasBlockedEntryException || approachSide != _blockedEntryException);
-            if (!IsValid(approachSide) || blocked || _admittedThisTick) return false;
+            // 논리적으로 반대편인 두 셀도 실제 베지어 주행 경로에서는 서로 교차할 수 있다.
+            // 차량 한 대가 출구 전이까지 끝내기 전에 다음 차량을 들이면 화면에서 관통하므로,
+            // 로터리 내부 소유권은 중심당 한 대로 직렬화한다. 같은 팔 handoff는 기존 차를
+            // 먼저 arm으로 이동시켜 OccupiedCount가 0이 된 뒤 이 예외를 소비한다.
+            if (!IsValid(approachSide)
+                || blocked
+                || _admittedThisTick
+                || OccupiedCount != 0)
+            {
+                return false;
+            }
             Dir immediateUpstream = UpstreamOf(approachSide);
+            Dir immediateDownstream = DownstreamOf(approachSide);
             return IsAvailable(approachSide)
-                && IsAvailable(immediateUpstream);
+                && IsAvailable(immediateUpstream)
+                && IsAvailable(immediateDownstream);
         }
 
         private void ReserveMergeCells(Dir approachSide)
         {
             Dir immediateUpstream = UpstreamOf(approachSide);
+            Dir immediateDownstream = DownstreamOf(approachSide);
             Reserve(approachSide);
             Reserve(immediateUpstream);
+            Reserve(immediateDownstream);
         }
 
         private bool IsAvailable(Dir cell)
@@ -320,6 +373,9 @@ namespace CityFlow.Sim
         private static Dir Opposite(Dir direction) => (Dir)(((int)direction + 2) % CellCount);
 
         private static Dir UpstreamOf(Dir target) => (Dir)(((int)target + 1) % CellCount);
+
+        private static Dir DownstreamOf(Dir target) =>
+            (Dir)(((int)target + CellCount - 1) % CellCount);
 
         private static Dir NextCounterClockwise(Dir direction) =>
             (Dir)(((int)direction + CellCount - 1) % CellCount);

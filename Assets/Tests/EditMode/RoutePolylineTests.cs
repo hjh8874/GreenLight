@@ -12,7 +12,7 @@ namespace CityFlow.Sim.Tests
         {
             Tiles = new List<Vector2Int> { new(0, 0), new(1, 0), new(2, 0) },
             TileSize = 1f, LaneOffset = 0.25f, CornerRadiusFraction = 0.75f,
-            OrbitRadius = 0.775f,                            // 풋프린트 차도 중앙(QA F — 뷰 기본값과 일치)
+            OrbitRadius = 0.625f,                            // 축소된 로터리 차도 중앙(QA F — 뷰 기본값과 일치)
             EntryExitOffsetRad = 45f * Mathf.Deg2Rad,       // α — 뷰 기본값(QA G)
             TransitionLength = 0.66f,                        // 전이 창(뷰 기본값·내부 하한)
             Z = 0f, IsRoundabout = _ => false,
@@ -409,6 +409,7 @@ namespace CityFlow.Sim.Tests
             Vector3 center = new Vector3(2.5f, 1.5f, 0f);
 
             const float step = 0.01f;
+            const float clampRadius = 0.625f;
             const float clearanceTolerance = 0.005f; // 원호 정점 사이 현 보간의 sagitta 허용
             float minDist = float.MaxValue;
 
@@ -437,15 +438,15 @@ namespace CityFlow.Sim.Tests
             {
                 Vector3 pos = (Vector3)posField.GetValue(vertices.GetValue(i));
                 float centerDistance = Vector3.Distance(pos, center);
-                Assert.GreaterOrEqual(centerDistance, 0.62f - 1e-4f,
+                Assert.GreaterOrEqual(centerDistance, clampRadius - 1e-4f,
                     $"정점 {i}가 섬 하한을 침범");
 
                 if (i + 1 < vertices.Length)
                 {
                     Vector3 entryNextPos = (Vector3)posField.GetValue(vertices.GetValue(i + 1));
                     float nextCenterDistance = Vector3.Distance(entryNextPos, center);
-                    if (centerDistance > 0.62f + 1e-4f &&
-                        nextCenterDistance <= 0.62f + 1e-4f)
+                    if (centerDistance > clampRadius + 1e-4f &&
+                        nextCenterDistance <= clampRadius + 1e-4f)
                     {
                         Vector3 entryChord = entryNextPos - pos;
                         if (entryChord.sqrMagnitude > 1e-8f)
@@ -460,7 +461,7 @@ namespace CityFlow.Sim.Tests
                     }
                 }
 
-                if (centerDistance > 0.62f + 1e-4f || i + 1 >= vertices.Length)
+                if (centerDistance > clampRadius + 1e-4f || i + 1 >= vertices.Length)
                 {
                     continue;
                 }
@@ -477,7 +478,8 @@ namespace CityFlow.Sim.Tests
 
             Assert.Greater(clampedVertices, 0, "우회전 클램프 정점 존재");
             Assert.Greater(clampedEntrySegments, 0, "우회전 클램프 진입 구간 존재");
-            Assert.LessOrEqual(minDist, 0.62f + clearanceTolerance, "회귀 케이스가 클램프 경로를 통과해야 함");
+            Assert.LessOrEqual(minDist, clampRadius + clearanceTolerance,
+                "회귀 케이스가 클램프 경로를 통과해야 함");
         }
     }
 }

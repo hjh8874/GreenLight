@@ -668,7 +668,7 @@ namespace CityFlow.Content
                 return false;
             }
 
-            if (type != TileType.SpecialBuilding)
+            if (!TileFootprint.IsSpecialBuilding(type))
             {
                 return true;
             }

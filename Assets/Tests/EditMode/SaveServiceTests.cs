@@ -102,6 +102,52 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void SimulationJsonRoundTrip_PreservesLastDayArrivalCount()
+        {
+            var source = new GameSaveData
+            {
+                SaveVersion = SaveConstants.CurrentSaveVersion,
+                Simulation = new SimSaveData
+                {
+                    HasCarSimStats = true,
+                    CarDayArrivalCount = 24,
+                    HasCarLastDayArrivalCount = true,
+                    CarLastDayArrivalCount = 83
+                }
+            };
+
+            string json = UnityEngine.JsonUtility.ToJson(source);
+            GameSaveData restored =
+                UnityEngine.JsonUtility.FromJson<GameSaveData>(json);
+
+            Assert.NotNull(restored);
+            Assert.NotNull(restored.Simulation);
+            Assert.AreEqual(24, restored.Simulation.CarDayArrivalCount);
+            Assert.IsTrue(restored.Simulation.HasCarLastDayArrivalCount);
+            Assert.AreEqual(83, restored.Simulation.CarLastDayArrivalCount);
+        }
+
+        [Test]
+        public void LegacySimulationJson_MissingLastDayFields_UsesSafeDefaults()
+        {
+            const string legacyJson =
+                "{\"SaveVersion\":1,\"Simulation\":{" +
+                "\"HasCarSimStats\":true," +
+                "\"CarDayArrivalCount\":24}}";
+
+            GameSaveData restored =
+                UnityEngine.JsonUtility.FromJson<GameSaveData>(legacyJson);
+
+            Assert.NotNull(restored);
+            Assert.NotNull(restored.Simulation);
+            Assert.IsTrue(restored.Simulation.HasCarSimStats);
+            Assert.AreEqual(24, restored.Simulation.CarDayArrivalCount);
+            Assert.IsFalse(
+                restored.Simulation.HasCarLastDayArrivalCount);
+            Assert.AreEqual(0, restored.Simulation.CarLastDayArrivalCount);
+        }
+
+        [Test]
         public void Save_RoundTripsQuestAndDeliveredProgress()
         {
             var calls = new List<string>();

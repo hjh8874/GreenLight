@@ -43,6 +43,40 @@ namespace CityFlow.View
             return renderers.Length > 0;
         }
 
+        public bool TryGetParkingPose(
+            Vector2Int anchor,
+            int slotIndex,
+            out BuildingParkingPose pose)
+        {
+            pose = default;
+            if ((!visuals.TryGetValue(
+                     anchor,
+                     out GameObject visual) ||
+                 visual == null) &&
+                buildingService != null &&
+                services?.WorldCoordinates != null &&
+                buildingService.TryGetBuilding(
+                    anchor,
+                    out SpecialBuildingInstance building))
+            {
+                CreateOrReplaceVisual(building);
+                visuals.TryGetValue(
+                    building.Anchor,
+                    out visual);
+            }
+
+            if (visual == null)
+            {
+                return false;
+            }
+
+            BuildingParkingLayout layout =
+                visual.GetComponentInChildren<BuildingParkingLayout>(
+                    true);
+            return layout != null &&
+                   layout.TryGetParkingPose(slotIndex, out pose);
+        }
+
         public bool TryCreatePlacementPreview(
             string buildingId,
             out GameObject preview)
@@ -94,6 +128,8 @@ namespace CityFlow.View
             services = cityServices;
             services.SpecialBuildingsRegistered += OnServiceRegistered;
             services.WorldCoordinatesRegistered += OnCoordinatesRegistered;
+            services.WorldCoordinateRootRegistered +=
+                OnWorldCoordinateRootRegistered;
             initialized = true;
             EnsureVisualRoot();
             BindService(services.SpecialBuildings);
@@ -106,6 +142,8 @@ namespace CityFlow.View
             {
                 services.SpecialBuildingsRegistered -= OnServiceRegistered;
                 services.WorldCoordinatesRegistered -= OnCoordinatesRegistered;
+                services.WorldCoordinateRootRegistered -=
+                    OnWorldCoordinateRootRegistered;
             }
 
             BindService(null);
@@ -120,6 +158,11 @@ namespace CityFlow.View
         }
 
         private void OnCoordinatesRegistered(IWorldCoordinateSpace _)
+        {
+            RebuildAll();
+        }
+
+        private void OnWorldCoordinateRootRegistered(IWorldCoordinateRoot _)
         {
             RebuildAll();
         }
@@ -193,6 +236,25 @@ namespace CityFlow.View
 
             IWorldCoordinateSpace coordinates = services.WorldCoordinates;
             Vector2Int footprint = definition.Footprint;
+            TileType placedType = services.TileData != null
+                ? services.TileData.GetTileType(building.Anchor)
+                : TileType.Empty;
+            if (placedType == TileType.UnderConstruction &&
+                services.TileData != null &&
+                services.TileData.TryGetConstructionTargetType(
+                    building.Anchor,
+                    out TileType constructionTargetType))
+            {
+                placedType = constructionTargetType;
+            }
+            if (TileFootprint.IsSpecialBuilding(placedType))
+            {
+                // 구 저장의 2x2 약국·커피숍은 기존 점유 중심을 유지한다.
+                footprint = TileFootprint.GetSize(placedType);
+            }
+            footprint = TileFootprint.GetRotatedSize(
+                footprint,
+                building.Direction);
             Vector2 center = new Vector2(
                 building.Anchor.x + footprint.x * 0.5f,
                 building.Anchor.y + footprint.y * 0.5f);
@@ -211,7 +273,7 @@ namespace CityFlow.View
             root.transform.SetPositionAndRotation(
                 coordinates.GridPointToWorld(
                     center,
-                    surfaceOffset),
+                    ResolveSurfaceOffset()),
                 rootRotation);
             CreateConfiguredVisual(
                 definition,
@@ -219,6 +281,14 @@ namespace CityFlow.View
                 "BuildingVisual");
 
             visuals.Add(building.Anchor, root);
+        }
+
+        private float ResolveSurfaceOffset()
+        {
+            // Coordinate offsets follow GroundNormal, opposite MainCityView +Z.
+            return services?.WorldCoordinateRoot is MainCityView cityView
+                ? -cityView.RoadSurfaceZ
+                : surfaceOffset;
         }
 
         private GameObject CreateConfiguredVisual(
@@ -263,8 +333,12 @@ namespace CityFlow.View
                 (definition.category == BuildingCategory.Medical ||
                  definition.category == BuildingCategory.Civic))
             {
+                Transform authoredModel =
+                    instance.transform.Find("Model");
                 BuildingNightLighting.Attach(
-                    instance,
+                    authoredModel != null
+                        ? authoredModel.gameObject
+                        : instance,
                     services,
                     BuildingNightLightProfile.StudioHorizonCivic);
             }
