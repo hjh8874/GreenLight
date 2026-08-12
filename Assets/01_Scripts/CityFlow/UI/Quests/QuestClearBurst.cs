@@ -1,3 +1,4 @@
+using CityFlow.Audio;
 using CityFlow.Managers;
 using DG.Tweening;
 using UnityEngine;
@@ -14,7 +15,7 @@ namespace CityFlow.UI.Quests
     {
         private const string ConfettiResourcePath =
             "CityFlow/FX_QuestClearConfetti";
-        private const string ClearSfxId = "quest_clear";
+        private const string ClearSfxId = SoundIds.PositiveNotification;
         private const float ShakeDuration = 0.22f;
         // 멀미 방지 — FlowBurstJuice.MaxShakeStrength(0.4)보다 약하게 잡는다.
         // 퀘스트 클리어는 자주 일어나므로 더 조심해야 한다.
@@ -56,7 +57,7 @@ namespace CityFlow.UI.Quests
         {
             SpawnConfetti();
             ShakeCamera();
-            // 카탈로그에 클립이 없으면 SoundManager 가 조용히 no-op 한다(에셋 없어도 무사고).
+            // 공용 긍정 알림음을 사용해 별도 오디오 에셋 없이도 완료 피드백을 보장한다.
             SoundManager.Instance?.PlaySfx(ClearSfxId, 0.7f);
         }
 

@@ -67,6 +67,13 @@ namespace CityFlow.UI
         private string defaultIncomeLabel;
         private string defaultDelayLabel;
         private bool metricLabelsCached;
+        private RectTransform incomeMetricRow;
+        private RectTransform delayMetricRow;
+        private Vector2 defaultIncomeMetricPosition;
+        private Vector2 defaultDelayMetricPosition;
+        private RectTransform cardRect;
+        private Vector2 defaultCardSizeDelta;
+        private float incomeMetricRowSpacing;
         private bool visibilityPublished;
 
         // UI 플로팅 좌표 변환용 캐싱
@@ -509,11 +516,11 @@ namespace CityFlow.UI
             // 플레이어가 "+120"을 보고 기대해도 그 돈은 들어오지 않는다.
             // 없는 정보를 보여주느니 행을 접는다. 슬롯 자체는 특수 건물(방문 수용량)과
             // 공사 중(주변 교통)이 재사용하므로 지우지 않는다.
-            SetMetricRowVisible(txtIncomePerMin, false);
+            SetIncomeMetricRowVisible(false);
 
             if (txtDelaySeconds != null)
             {
-                string delayText = $"(테스트) 지연: +{data.DelaySeconds:F1}초";
+                string delayText = $"지연: +{data.DelaySeconds:F1}초";
 
                 if (congestion == CongestionLevel.Jam)
                 {
@@ -584,7 +591,7 @@ namespace CityFlow.UI
             }
 
             // 일반 건물 경로가 접어둔 행을 특수 건물에서는 다시 편다(방문 수용량).
-            SetMetricRowVisible(txtIncomePerMin, true);
+            SetIncomeMetricRowVisible(true);
             if (txtIncomePerMin != null)
             {
                 txtIncomePerMin.text = option.VisitorCapacity > 0
@@ -714,6 +721,29 @@ namespace CityFlow.UI
             defaultTardyStaffLabel = labelTardyStaff?.text;
             defaultIncomeLabel = labelIncomePerMin?.text;
             defaultDelayLabel = labelDelaySeconds?.text;
+            incomeMetricRow = ResolveMetricRow(txtIncomePerMin);
+            delayMetricRow = ResolveMetricRow(txtDelaySeconds);
+            if (incomeMetricRow != null)
+            {
+                defaultIncomeMetricPosition =
+                    incomeMetricRow.anchoredPosition;
+            }
+            if (delayMetricRow != null)
+            {
+                defaultDelayMetricPosition =
+                    delayMetricRow.anchoredPosition;
+            }
+            cardRect = transform as RectTransform;
+            if (cardRect != null)
+            {
+                defaultCardSizeDelta = cardRect.sizeDelta;
+            }
+            if (incomeMetricRow != null && delayMetricRow != null)
+            {
+                incomeMetricRowSpacing = Mathf.Abs(
+                    defaultDelayMetricPosition.y -
+                    defaultIncomeMetricPosition.y);
+            }
             metricLabelsCached = true;
         }
 
@@ -753,7 +783,7 @@ namespace CityFlow.UI
         {
             CacheMetricLabels();
             // 일반 건물 경로가 접어둔 행을 공사 중 표시에서는 다시 편다(주변 교통).
-            SetMetricRowVisible(txtIncomePerMin, true);
+            SetIncomeMetricRowVisible(true);
             if (labelTotalStaff != null)
             {
                 labelTotalStaff.text = "공사 진행률";
@@ -819,6 +849,40 @@ namespace CityFlow.UI
             {
                 row.SetActive(visible);
             }
+        }
+
+        private void SetIncomeMetricRowVisible(bool visible)
+        {
+            CacheMetricLabels();
+            SetMetricRowVisible(txtIncomePerMin, visible);
+
+            if (incomeMetricRow == null || delayMetricRow == null)
+            {
+                return;
+            }
+
+            delayMetricRow.anchoredPosition = visible
+                ? defaultDelayMetricPosition
+                : new Vector2(
+                    defaultDelayMetricPosition.x,
+                    defaultIncomeMetricPosition.y);
+
+            if (cardRect != null)
+            {
+                cardRect.sizeDelta = visible
+                    ? defaultCardSizeDelta
+                    : new Vector2(
+                        defaultCardSizeDelta.x,
+                        Mathf.Max(
+                            0f,
+                            defaultCardSizeDelta.y -
+                            incomeMetricRowSpacing));
+            }
+        }
+
+        private static RectTransform ResolveMetricRow(TMP_Text valueText)
+        {
+            return valueText?.transform.parent as RectTransform;
         }
 
         private static TMP_Text ResolveMetricLabel(TMP_Text valueText)

@@ -4,6 +4,7 @@ using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Contracts;
 using CityFlow.Contracts.Save;
+using CityFlow.Gameplay.Research;
 using CityFlow.Sim.Quests;
 using CityFlow.WorldGrid;
 using UnityEngine;
@@ -26,6 +27,9 @@ namespace CityFlow.Gameplay.Quests
     {
         private const float EvaluationInterval = 0.5f;
         private const int TutorialQuestCount = 5;
+        private const int QuestSaveVersion = 1;
+        private const string SchoolResearchId = "research_building_school";
+        private const string HospitalResearchId = "research_building_hospital";
 
         private static readonly string[] TutorialObjectiveIds =
         {
@@ -59,7 +63,11 @@ namespace CityFlow.Gameplay.Quests
         private int houseCount;
         private int officeCount;
         private int schoolCount;
+        private int hospitalCount;
+        private CityBusService cityBusService;
         private bool gridStateRebuildPending;
+        private IReadOnlyList<ResearchEntry> researchEntries =
+            Array.Empty<ResearchEntry>();
 
         public event Action<CityQuestViewState> ViewStateChanged;
         // 퀘스트가 실제로 달성된 순간만 울린다. ViewStateChanged 와 구분해야 하는 이유는
@@ -73,7 +81,7 @@ namespace CityFlow.Gameplay.Quests
         {
             if (director == null)
             {
-                ReplaceDirector(new CityQuestDirector());
+                ReplaceDirector(new CityQuestDirector(showShortcutGuide: true));
             }
         }
 
@@ -87,7 +95,7 @@ namespace CityFlow.Gameplay.Quests
 
             UnbindServices();
             services = cityFlowServices;
-            ReplaceDirector(new CityQuestDirector());
+            ReplaceDirector(new CityQuestDirector(showShortcutGuide: true));
             evaluationElapsed = EvaluationInterval;
             totalArrivals = 0L;
             pendingCoins = 0L;
@@ -100,6 +108,10 @@ namespace CityFlow.Gameplay.Quests
             trackedQuestTiles.Clear();
             ResetGridCounts();
             gridStateRebuildPending = false;
+            ResearchCatalogSO researchCatalog = ResearchCatalogSO.LoadDefault();
+            researchEntries = researchCatalog != null
+                ? researchCatalog.ValidEntries()
+                : Array.Empty<ResearchEntry>();
 
             if (services == null)
             {
@@ -146,6 +158,9 @@ namespace CityFlow.Gameplay.Quests
 
             return new ProgressionSaveData
             {
+                QuestSaveVersion = QuestSaveVersion,
+                ShortcutGuideStage = director.ShortcutGuideStage,
+                ShortcutGuideCompleted = director.IsShortcutGuideComplete,
                 CurrentStage = safeStage,
                 CompletedObjectiveIds = completedObjectiveIds,
                 TutorialCompleted = safeStage >= TutorialQuestCount,
@@ -161,6 +176,8 @@ namespace CityFlow.Gameplay.Quests
         {
             int restoredStage = GetRestoredTutorialStage(snapshot);
             director.SetResumeMode(true);
+            director.RestoreShortcutGuideStage(
+                GetRestoredShortcutGuideStage(snapshot));
             director.RestoreTutorialStage(restoredStage);
             hasHarvested = snapshot?.HasHarvested == true
                 || restoredStage >= TutorialQuestCount;
@@ -198,6 +215,15 @@ namespace CityFlow.Gameplay.Quests
         {
             if (director.Restore())
             {
+                PublishViewState();
+            }
+        }
+
+        public void AcknowledgeCurrentQuest()
+        {
+            if (director.Acknowledge())
+            {
+                Evaluate(0f);
                 PublishViewState();
             }
         }
@@ -274,6 +300,10 @@ namespace CityFlow.Gameplay.Quests
         private CityQuestSnapshot CaptureSnapshot()
         {
             long deliveredTotal = deliveredProgress?.LifetimeDeliveredTotal ?? totalArrivals;
+            IIntersectionFacilityService intersectionFacilities =
+                services?.Placement as IIntersectionFacilityService;
+            IBusStopInfrastructureService busStops =
+                services?.Placement as IBusStopInfrastructureService;
 
             return new CityQuestSnapshot(
                 roadCount,
@@ -284,7 +314,116 @@ namespace CityFlow.Gameplay.Quests
                 pendingCoins,
                 hasHarvested,
                 jamTiles.Count,
-                HasConnectedCommute());
+                HasConnectedCommute(),
+                hospitalCount,
+                GetReadyResearchId(),
+                services?.Research?.ActiveResearchId,
+                GetUnbuiltSpecialBuildingId(),
+                services?.Research?.IsUnlocked(SchoolResearchId) == true,
+                services?.Research?.IsUnlocked(HospitalResearchId) == true,
+                intersectionFacilities?.SignalTiles?.Count ?? 0,
+                intersectionFacilities?.RoundaboutTiles?.Count ?? 0,
+                busStops?.BusStopTiles?.Count ?? 0,
+                intersectionFacilities != null,
+                busStops != null,
+                IsCityBusOperating());
+        }
+
+        private bool IsCityBusOperating()
+        {
+            if (cityBusService == null)
+            {
+                cityBusService = FindAnyObjectByType<CityBusService>(
+                    FindObjectsInactive.Include);
+            }
+
+            IReadOnlyList<CityBusVehicleAgent> activeVehicles =
+                cityBusService?.ActiveVehicles;
+            if (activeVehicles == null)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < activeVehicles.Count; index++)
+            {
+                CityBusVehicleAgent vehicle = activeVehicles[index];
+                if (vehicle != null && vehicle.IsOperating)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private string GetReadyResearchId()
+        {
+            IResearchUnlockService research = services?.Research;
+            if (research == null || researchEntries == null)
+            {
+                return string.Empty;
+            }
+
+            for (int index = 0; index < researchEntries.Count; index++)
+            {
+                string researchId = researchEntries[index]?.researchId?.Trim();
+                if (!string.IsNullOrEmpty(researchId) &&
+                    research.IsReady(researchId))
+                {
+                    return researchId;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private string GetUnbuiltSpecialBuildingId()
+        {
+            ISpecialBuildingService specialBuildings =
+                services?.SpecialBuildings;
+            if (specialBuildings == null)
+            {
+                return string.Empty;
+            }
+
+            SpecialBuildingBuildOption[] options =
+                specialBuildings.CreateBuildOptionSnapshot();
+            SpecialBuildingInstance[] instances =
+                specialBuildings.CreateBuildingSnapshot();
+
+            for (int optionIndex = 0;
+                 optionIndex < options.Length;
+                 optionIndex++)
+            {
+                SpecialBuildingBuildOption option = options[optionIndex];
+                if (!option.IsUnlocked ||
+                    string.IsNullOrWhiteSpace(option.RequiredResearchId))
+                {
+                    continue;
+                }
+
+                bool isBuilt = false;
+                for (int instanceIndex = 0;
+                     instanceIndex < instances.Length;
+                     instanceIndex++)
+                {
+                    if (string.Equals(
+                            instances[instanceIndex].BuildingId,
+                            option.BuildingId,
+                            StringComparison.Ordinal))
+                    {
+                        isBuilt = true;
+                        break;
+                    }
+                }
+
+                if (!isBuilt)
+                {
+                    return option.BuildingId;
+                }
+            }
+
+            return string.Empty;
         }
 
         private bool HasConnectedCommute()
@@ -395,6 +534,9 @@ namespace CityFlow.Gameplay.Quests
                 case TileType.School:
                     schoolCount = Math.Max(0, schoolCount + delta);
                     break;
+                case TileType.Hospital:
+                    hospitalCount = Math.Max(0, hospitalCount + delta);
+                    break;
             }
         }
 
@@ -404,6 +546,7 @@ namespace CityFlow.Gameplay.Quests
             houseCount = 0;
             officeCount = 0;
             schoolCount = 0;
+            hospitalCount = 0;
         }
 
         private static bool IsTrackedType(TileType type) =>
@@ -412,7 +555,8 @@ namespace CityFlow.Gameplay.Quests
         private static bool IsTrackedBuilding(TileType type) =>
             type == TileType.House ||
             type == TileType.Office ||
-            type == TileType.School;
+            type == TileType.School ||
+            type == TileType.Hospital;
 
         private void OnPlaced(PlacedEvent placed)
         {
@@ -606,6 +750,29 @@ namespace CityFlow.Gameplay.Quests
             return restoredStage;
         }
 
+        private static int GetRestoredShortcutGuideStage(
+            ProgressionSaveData snapshot)
+        {
+            if (snapshot == null)
+            {
+                return 0;
+            }
+
+            // 이 필드가 없던 저장은 이미 시작된 게임이다. 새 안내를 뒤늦게
+            // 끼워 넣지 않고 완료 상태로 마이그레이션한다.
+            if (snapshot.QuestSaveVersion < QuestSaveVersion ||
+                snapshot.ShortcutGuideCompleted)
+            {
+                return CityQuestDirector.ShortcutGuideCount;
+            }
+
+            return Math.Max(
+                0,
+                Math.Min(
+                    CityQuestDirector.ShortcutGuideCount,
+                    snapshot.ShortcutGuideStage));
+        }
+
         private void TryMigrateLegacyProgression()
         {
             if (!needsLegacyProgressionMigration || services == null)
@@ -657,6 +824,7 @@ namespace CityFlow.Gameplay.Quests
             services = null;
             weeklyEconomy = null;
             deliveredProgress = null;
+            cityBusService = null;
         }
 
         private void PublishViewState()

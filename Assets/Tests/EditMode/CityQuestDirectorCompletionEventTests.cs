@@ -58,6 +58,21 @@ namespace CityFlow.Sim.Tests
                 "목표를 못 채운 동안에는 한 번도 울리면 안 된다");
         }
 
+        [Test]
+        public void ShortcutGuideAcknowledgement_DoesNotPlayQuestClearCelebration()
+        {
+            var director = new CityQuestDirector(showShortcutGuide: true);
+            var fired = new List<CityQuestId>();
+            director.QuestCompleted += id => fired.Add(id);
+
+            director.Tick(Empty(), 0.5f);
+            Assert.IsTrue(director.Acknowledge());
+
+            CollectionAssert.IsEmpty(
+                fired,
+                "안내 페이지를 넘길 때는 퀘스트 달성 연출이 울리면 안 된다");
+        }
+
         // 세이브 복원은 활성 퀘스트를 갈아끼운다. 이건 "달성"이 아니므로
         // 축하 연출이 터지면 안 된다 — ViewStateChanged 를 쓰면 여기서 오작동한다.
         [Test]

@@ -5,6 +5,9 @@ namespace CityFlow.Contracts.Save
     [Serializable]
     public sealed class ProgressionSaveData
     {
+        public int QuestSaveVersion;
+        public int ShortcutGuideStage;
+        public bool ShortcutGuideCompleted;
         public int CurrentStage;
         public string[] CompletedObjectiveIds;
         public bool TutorialCompleted;

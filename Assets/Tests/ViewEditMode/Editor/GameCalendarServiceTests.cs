@@ -1,5 +1,6 @@
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
+using CityFlow.Contracts.Save;
 using CityFlow.Gameplay.Progression;
 using NUnit.Framework;
 using UnityEditor;
@@ -10,7 +11,7 @@ namespace CityFlow.Tests
     public sealed class GameCalendarServiceTests
     {
         [Test]
-        public void DefaultSettings_UseTwelveMinuteDay()
+        public void DefaultSettings_UseThreeMinuteDay()
         {
             GameTimeSettingsSO settings =
                 Resources.Load<GameTimeSettingsSO>(
@@ -19,17 +20,17 @@ namespace CityFlow.Tests
             Assert.That(settings, Is.Not.Null);
             Assert.That(
                 settings.RealMinutesPerGameDay,
-                Is.EqualTo(12f));
+                Is.EqualTo(3f));
             Assert.That(
                 settings.RealSecondsPerGameDay,
-                Is.EqualTo(720f));
+                Is.EqualTo(180f));
             Assert.That(
                 settings.RealSecondsPerGameHour,
-                Is.EqualTo(30f));
+                Is.EqualTo(7.5f));
         }
 
         [Test]
-        public void TimeOfDay01_StartsAtBeginningOfHour()
+        public void NewGame_StartsAtSevenInTheMorning()
         {
             GameObject owner = new GameObject("GameCalendarProgressTest");
 
@@ -39,10 +40,10 @@ namespace CityFlow.Tests
                     owner.AddComponent<GameCalendarService>();
                 calendar.Initialize(CreateServices());
 
-                Assert.That(calendar.Hour, Is.EqualTo(0));
+                Assert.That(calendar.Hour, Is.EqualTo(7));
                 Assert.That(
                     calendar.TimeOfDay01,
-                    Is.EqualTo(0f)
+                    Is.EqualTo(7f / 24f)
                         .Within(0.000001f));
             }
             finally
@@ -74,13 +75,48 @@ namespace CityFlow.Tests
                     calendar.RealSecondsPerGameDay,
                     Is.EqualTo(1440f));
                 Assert.That(calendar.HoursPerDay, Is.EqualTo(24));
-                Assert.That(calendar.Hour, Is.EqualTo(0));
-                Assert.That(calendar.TimeOfDay01, Is.EqualTo(0f));
+                Assert.That(calendar.Hour, Is.EqualTo(7));
+                Assert.That(
+                    calendar.TimeOfDay01,
+                    Is.EqualTo(7f / 24f).Within(0.000001f));
             }
             finally
             {
                 Object.DestroyImmediate(owner);
                 Object.DestroyImmediate(settings);
+            }
+        }
+
+        [Test]
+        public void RestoreSnapshot_KeepsSavedHour()
+        {
+            GameObject owner = new GameObject("GameCalendarRestoreTest");
+
+            try
+            {
+                GameCalendarService calendar =
+                    owner.AddComponent<GameCalendarService>();
+                calendar.Initialize(CreateServices());
+
+                calendar.RestoreSnapshot(new GameCalendarSaveData
+                {
+                    Year = 2,
+                    Month = 3,
+                    Day = 4,
+                    Hour = 21,
+                    TotalMonths = 15,
+                    TotalDays = 400,
+                    AccumulatedRealSeconds = 0f
+                });
+
+                Assert.That(calendar.Hour, Is.EqualTo(21));
+                Assert.That(
+                    calendar.TimeOfDay01,
+                    Is.EqualTo(21f / 24f).Within(0.000001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(owner);
             }
         }
 

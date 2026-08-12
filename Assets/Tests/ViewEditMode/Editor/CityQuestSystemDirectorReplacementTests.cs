@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using CityFlow.Content;
 using CityFlow.Gameplay.Quests;
+using CityFlow.Contracts.Save;
 using CityFlow.Sim.Quests;
 using NUnit.Framework;
 using UnityEngine;
@@ -128,6 +130,90 @@ namespace CityFlow.Tests.ViewEditMode
                 fired.Count,
                 "교체 전 director 는 구독이 끊겨 더 이상 중계되면 안 된다 " +
                 "(안 끊으면 여기서 2가 되어 연출이 두 번 터진다)");
+        }
+
+        [Test]
+        public void LegacySave_SkipsNewShortcutGuide()
+        {
+            MethodInfo restoreGuide = typeof(CityQuestSystem).GetMethod(
+                "GetRestoredShortcutGuideStage",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.IsNotNull(restoreGuide);
+
+            int stage = (int)restoreGuide.Invoke(
+                null,
+                new object[] { new ProgressionSaveData() });
+
+            Assert.AreEqual(CityQuestDirector.ShortcutGuideCount, stage);
+        }
+
+        [Test]
+        public void CurrentSave_RestoresIncompleteShortcutGuidePage()
+        {
+            MethodInfo restoreGuide = typeof(CityQuestSystem).GetMethod(
+                "GetRestoredShortcutGuideStage",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.IsNotNull(restoreGuide);
+
+            int stage = (int)restoreGuide.Invoke(
+                null,
+                new object[]
+                {
+                    new ProgressionSaveData
+                    {
+                        QuestSaveVersion = 1,
+                        ShortcutGuideStage = 2,
+                        ShortcutGuideCompleted = false
+                    }
+                });
+
+            Assert.AreEqual(2, stage);
+        }
+
+        [Test]
+        public void BusQuestSnapshot_UsesActualOperatingVehicleState()
+        {
+            CityBusService busService =
+                host.AddComponent<CityBusService>();
+            CityBusVehicleAgent vehicle =
+                host.AddComponent<CityBusVehicleAgent>();
+            FieldInfo activeVehiclesField =
+                typeof(CityBusService).GetField(
+                    "activeVehicles",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo operatingField =
+                typeof(CityBusVehicleAgent).GetField(
+                    "<IsOperating>k__BackingField",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo busServiceField =
+                typeof(CityQuestSystem).GetField(
+                    "cityBusService",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo isOperatingMethod =
+                typeof(CityQuestSystem).GetMethod(
+                    "IsCityBusOperating",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.IsNotNull(activeVehiclesField);
+            Assert.IsNotNull(operatingField);
+            Assert.IsNotNull(busServiceField);
+            Assert.IsNotNull(isOperatingMethod);
+
+            var activeVehicles =
+                (List<CityBusVehicleAgent>)activeVehiclesField.GetValue(
+                    busService);
+            activeVehicles.Add(vehicle);
+            busServiceField.SetValue(system, busService);
+
+            Assert.IsFalse(
+                (bool)isOperatingMethod.Invoke(system, null),
+                "차량 인스턴스만 있고 운행 전이면 퀘스트가 완료되면 안 된다");
+
+            operatingField.SetValue(vehicle, true);
+
+            Assert.IsTrue(
+                (bool)isOperatingMethod.Invoke(system, null),
+                "실제로 운행을 시작한 버스가 있을 때만 완료 상태여야 한다");
         }
     }
 }
