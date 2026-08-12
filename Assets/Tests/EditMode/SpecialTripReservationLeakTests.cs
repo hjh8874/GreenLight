@@ -175,6 +175,20 @@ namespace CityFlow.Sim.Tests
             int tick = StepUntilReserved(sim, queues, events);
             SpecialTripJourney journey = ActiveSpecialJourney(sim);
             Assert.IsNotNull(journey, "전제 실패: 활성 특수 여정이 없다");
+            var scheduler = (CommuteScheduler)SchedulerField.GetValue(sim);
+            int transientCarId = -1;
+            for (int index = 0; index < scheduler.Cars.Count; index++)
+            {
+                if (ReferenceEquals(scheduler.Cars[index], journey.Vehicle))
+                {
+                    transientCarId = index;
+                    break;
+                }
+            }
+            Assert.GreaterOrEqual(
+                transientCarId,
+                0,
+                "The active special-trip vehicle must belong to the scheduler.");
             journey.BackdateStartForTest(25f);
 
             LogAssert.Expect(
@@ -189,6 +203,9 @@ namespace CityFlow.Sim.Tests
                 ActiveSpecialJourney(sim), "스테일 여정이 취소되지 않았다");
             Assert.AreEqual(
                 0, ReservedOwners(sim).Count, "예약이 해제되지 않았다");
+            Assert.IsFalse(
+                queues.TryRemoveCarForRescue(transientCarId),
+                "A cancelled special-trip vehicle must not remain in the road network.");
         }
 
         [Test]

@@ -32,7 +32,7 @@ MonoBehaviour:
   visualScale: {x: 1, y: 1, z: 1}
   fallbackColor: {r: 0.3, g: 0.74, b: 0.44, a: 1}
   fallbackHeight: 0.7
-  footprint: {x: 2, y: 2}
+  footprint: {x: 1, y: 2}
   requiredResearchId: research_building_pharmacy
   canReceiveVisitors: 1
   visitCadence:
@@ -41,6 +41,9 @@ MonoBehaviour:
   visitorCapacity: 0
   attractionWeight: 1
   coinPerVisit: 10
+  visitorParkingSlotStart: 0
+  visitorParkingSlotCount: 2
+  visitDwellHours: 0.5
   visitTimeProfile: 2
   happinessEffectKey: happiness_building_pharmacy
   schoolCoverageCapacity: 0

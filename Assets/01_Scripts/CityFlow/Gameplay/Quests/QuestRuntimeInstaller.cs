@@ -1,6 +1,7 @@
 using CityFlow.Bootstrap;
 using CityFlow.Content;
 using CityFlow.Sim.Quests;
+using CityFlow.UI.Controllers;
 using CityFlow.UI.Quests;
 using UnityEngine;
 
@@ -151,9 +152,21 @@ namespace CityFlow.Gameplay.Quests
         {
             Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include);
 
+            return SelectTargetCanvas(canvases);
+        }
+
+        internal static Canvas SelectTargetCanvas(Canvas[] canvases)
+        {
+            if (canvases == null)
+            {
+                return null;
+            }
+
             foreach (Canvas canvas in canvases)
             {
-                if (canvas.name == "UI_MainCanvas")
+                if (canvas != null &&
+                    canvas.isRootCanvas &&
+                    canvas.GetComponent<GameplayUiRuntimeBinder>() != null)
                 {
                     return canvas;
                 }
@@ -161,7 +174,17 @@ namespace CityFlow.Gameplay.Quests
 
             foreach (Canvas canvas in canvases)
             {
-                if (canvas.isRootCanvas)
+                if (canvas != null &&
+                    (canvas.name == "UI_MainCanvasRoot" ||
+                     canvas.name == "UI_MainCanvas"))
+                {
+                    return canvas;
+                }
+            }
+
+            foreach (Canvas canvas in canvases)
+            {
+                if (canvas != null && canvas.isRootCanvas)
                 {
                     return canvas;
                 }

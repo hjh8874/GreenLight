@@ -25,7 +25,7 @@ namespace CityFlow.UI.Controllers.Placement
             string specialBuildingId = null,
             CityFlowServices services = null)
         {
-            if (type == TileType.SpecialBuilding &&
+            if (TileFootprint.IsSpecialBuilding(type) &&
                 services?.SpecialBuildings != null &&
                 services.SpecialBuildings.TryGetBuildOption(
                     specialBuildingId,
@@ -49,7 +49,7 @@ namespace CityFlow.UI.Controllers.Placement
             if (_useFakeMode ||
                 type == TileType.Empty ||
                 type == TileType.Road ||
-                type == TileType.SpecialBuilding)
+                TileFootprint.IsSpecialBuilding(type))
             {
                 return true;
             }
@@ -88,7 +88,7 @@ namespace CityFlow.UI.Controllers.Placement
                 if (!isAccessible) return false;
                 if (currentType == TileType.Empty) return true;
 
-                if (currentType == TileType.SpecialBuilding)
+                if (TileFootprint.IsSpecialBuilding(currentType))
                 {
                     return services.SpecialBuildings?.CanPlace(
                         specialBuildingId,
@@ -135,7 +135,7 @@ namespace CityFlow.UI.Controllers.Placement
                         previousType,
                         services);
                     bool ownsSpecialBuilding =
-                        previousType == TileType.SpecialBuilding ||
+                        TileFootprint.IsSpecialBuilding(previousType) ||
                         services.SpecialBuildings?.TryGetBuilding(
                             previousAnchor,
                             out _) == true;
@@ -178,7 +178,7 @@ namespace CityFlow.UI.Controllers.Placement
                         return false;
                     }
 
-                    bool placed = currentType == TileType.SpecialBuilding
+                    bool placed = TileFootprint.IsSpecialBuilding(currentType)
                         ? services.SpecialBuildings?.TryPlace(
                             specialBuildingId,
                             coord,
@@ -237,7 +237,7 @@ namespace CityFlow.UI.Controllers.Placement
                 previousType,
                 services);
             bool ownsSpecialBuilding =
-                previousType == TileType.SpecialBuilding ||
+                TileFootprint.IsSpecialBuilding(previousType) ||
                 services.SpecialBuildings?.TryGetBuilding(
                     targetCoord,
                     out _) == true;
@@ -305,7 +305,7 @@ namespace CityFlow.UI.Controllers.Placement
                 refundType = targetType;
             }
 
-            if (refundType == TileType.SpecialBuilding &&
+            if (TileFootprint.IsSpecialBuilding(refundType) &&
                 services?.SpecialBuildings != null &&
                 services.SpecialBuildings.TryGetBuilding(
                     anchor,

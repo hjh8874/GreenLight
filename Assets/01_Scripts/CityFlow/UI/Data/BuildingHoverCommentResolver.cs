@@ -41,7 +41,7 @@ namespace CityFlow.UI.Data
                 return catalog.ConstructionProfile;
             }
 
-            if (context.TileType == TileType.SpecialBuilding &&
+            if (TileFootprint.IsSpecialBuilding(context.TileType) &&
                 catalog.TryGetSpecialBuildingProfile(
                     context.SpecialBuildingId,
                     out BuildingHoverCommentProfile specialProfile))

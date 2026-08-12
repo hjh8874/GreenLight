@@ -672,6 +672,29 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void LastDayArrivalCount_PersistsAcrossSaveRestore()
+        {
+            var engine = new SimEngine(Cfg(), new SimEventHub());
+            engine.RestoreSnapshot(new SimSaveData
+            {
+                HasCarSimStats = true,
+                CarTripSuccessRate = 1f,
+                HasCarLastDayArrivalCount = true,
+                CarLastDayArrivalCount = 83
+            });
+
+            Assert.AreEqual(83, engine.LastDayArrivalCount);
+
+            SimSaveData save = engine.CreateSnapshot();
+            Assert.IsTrue(save.HasCarLastDayArrivalCount);
+            Assert.AreEqual(83, save.CarLastDayArrivalCount);
+
+            var restored = new SimEngine(Cfg(), new SimEventHub());
+            restored.RestoreSnapshot(save);
+            Assert.AreEqual(83, restored.LastDayArrivalCount);
+        }
+
+        [Test]
         public void Snapshot_RestoresRotatedBuildingDirection()
         {
             var engine = new SimEngine(Cfg(), new SimEventHub());

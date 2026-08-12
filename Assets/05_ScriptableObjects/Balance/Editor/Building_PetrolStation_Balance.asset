@@ -41,6 +41,9 @@ MonoBehaviour:
   visitorCapacity: 0
   attractionWeight: 1
   coinPerVisit: 10
+  visitorParkingSlotStart: 0
+  visitorParkingSlotCount: 2
+  visitDwellHours: 0.5
   visitTimeProfile: 4
   happinessEffectKey: happiness_building_petrol_station
   schoolCoverageCapacity: 0

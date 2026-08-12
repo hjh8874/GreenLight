@@ -140,6 +140,57 @@ namespace CityFlow.Sim
             return ReplanFrom(from, to);
         }
 
+        // Drive-through destinations such as the petrol station must enter and
+        // leave on the road lane adjacent to the building. Keep this separate
+        // from the legacy planner so ordinary commute tie-breaking is unchanged.
+        internal List<Vector2Int> PlanVehicleTrip(
+            Vector2Int from,
+            Vector2Int to,
+            Vector2Int? requiredFirstDirection,
+            Vector2Int? requiredArrivalDirection)
+        {
+            return PlanVehicleTrip(
+                from,
+                to,
+                requiredFirstDirection,
+                requiredArrivalDirection,
+                initialIncomingDirection: null);
+        }
+
+        internal List<Vector2Int> PlanVehicleTrip(
+            Vector2Int from,
+            Vector2Int to,
+            Vector2Int? requiredFirstDirection,
+            Vector2Int? requiredArrivalDirection,
+            Vector2Int? initialIncomingDirection)
+        {
+            if (!requiredFirstDirection.HasValue &&
+                !requiredArrivalDirection.HasValue &&
+                !initialIncomingDirection.HasValue)
+            {
+                return ReplanFrom(from, to);
+            }
+
+            if (_latestGrid == null)
+            {
+                return null;
+            }
+
+            return _chunkedSearch.Search(
+                _latestGrid,
+                from,
+                to,
+                _latestConfig,
+                _latestOneways,
+                _latestTurnSigns,
+                _activeHighways,
+                _rampPartner,
+                _load,
+                requiredFirstDirection,
+                requiredArrivalDirection,
+                initialIncomingDirection);
+        }
+
         // 현재 _load 기준 최소 비용 경로(내부 + 테스트 seam). 미연결/비도로 끝점 = null.
         internal List<Vector2Int> Search(CityGrid grid, Vector2Int from, Vector2Int to, in SimConfig cfg)
             => Search(grid, from, to, cfg, (IReadOnlyDictionary<Vector2Int, Vector2Int>)null);

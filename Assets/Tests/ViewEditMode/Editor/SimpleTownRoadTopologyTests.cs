@@ -198,18 +198,18 @@ namespace CityFlow.Tests.ViewEditMode
         }
 
         [Test]
-        public void RoadPrefabCopies_UseProjectOwnedUnlitMaterial()
+        public void RoadPrefabCopies_UseProjectOwnedLitMaterial()
         {
             const string roadMaterialPath =
                 "Assets/02_Prefabs/Environment/Roads/Materials/" +
                 "SimpleTownRoad_URP_Unlit.mat";
             SimpleTownRoadVisualSetSO visualSet = LoadVisualSet();
 
-            AssertPrefabUsesUnlitMaterial(
+            AssertPrefabUsesLitMaterial(
                 visualSet.RoadSurfacePrefab,
                 roadMaterialPath,
                 "CommonSurface");
-            AssertPrefabUsesUnlitMaterial(
+            AssertPrefabUsesLitMaterial(
                 visualSet.DrivewayPrefab,
                 roadMaterialPath,
                 "Driveway");
@@ -412,7 +412,7 @@ namespace CityFlow.Tests.ViewEditMode
                 SimpleTownRoadVisualSetSO>(visualSetPath);
         }
 
-        private static void AssertPrefabUsesUnlitMaterial(
+        private static void AssertPrefabUsesLitMaterial(
             GameObject prefab,
             string expectedMaterialPath,
             string context)
@@ -428,7 +428,7 @@ namespace CityFlow.Tests.ViewEditMode
                     AssetDatabase.GetAssetPath(renderer.sharedMaterial),
                     context);
                 Assert.AreEqual(
-                    "Universal Render Pipeline/Unlit",
+                    "Universal Render Pipeline/Lit",
                     renderer.sharedMaterial.shader.name,
                     context);
                 Assert.AreEqual(

@@ -6,6 +6,10 @@ namespace CityFlow.View
     internal sealed class VehicleWheelDustSystem : MonoBehaviour
     {
         private const int MaximumParticles = 512;
+        internal const float SoftParticleFadeDistanceFar = 20f;
+
+        private static readonly int SoftParticleFadeDistanceFarId =
+            Shader.PropertyToID("_SoftParticlesFadeDistanceFar");
 
         private static VehicleWheelDustSystem instance;
 
@@ -77,6 +81,14 @@ namespace CityFlow.View
             particles.Emit(emit, 1);
         }
 
+        private void OnDestroy()
+        {
+            if (instance == this)
+            {
+                instance = null;
+            }
+        }
+
         private void Initialize(Material material)
         {
             particles = gameObject.AddComponent<ParticleSystem>();
@@ -128,6 +140,12 @@ namespace CityFlow.View
                     AnimationCurve.Linear(0f, 0f, 1f, 0.999f));
 
             particleRenderer.sharedMaterial = material;
+            var rendererProperties = new MaterialPropertyBlock();
+            particleRenderer.GetPropertyBlock(rendererProperties);
+            rendererProperties.SetFloat(
+                SoftParticleFadeDistanceFarId,
+                SoftParticleFadeDistanceFar);
+            particleRenderer.SetPropertyBlock(rendererProperties);
             particleRenderer.renderMode =
                 ParticleSystemRenderMode.Billboard;
             particleRenderer.alignment =

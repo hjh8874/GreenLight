@@ -22,11 +22,26 @@ namespace CityFlow.View
         private const float StandardHeadlightHeight = 0.65f;
         private const float TallVehicleHeadlightHeight = 0.8f;
         private const float HeadlightFrontClearance = 0.01f;
-        private const float HeadlightAimDistance = 0.3f;
-        private const float StandardRoadClearance = 0.12f;
-        private const float TallVehicleRoadClearance = 0.08f;
+        private const float HeadlightSideOffset = 0.18f;
+        private const float HeadlightAimDistance = 0.24f;
+        private const float TallVehicleHeadlightAimDistance = 0.24f;
+        private const float StandardHeadlightIntensity = 0.75f;
+        private const float TallVehicleHeadlightIntensity = 3.40f;
+        private const float StandardHeadlightInnerSpotAngle = 20f;
+        private const float TallVehicleHeadlightInnerSpotAngle = 20f;
+        private const float StandardRoadClearance = 0.30f;
+        private const float TallVehicleRoadClearance = 0.30f;
+        private const float HeadlightLensRoadClearance = 0.30f;
+        private const float HeadlightLensDepth = 0.015f;
+        private const float HeadlightLensWidth = 0.12f;
+        private const float HeadlightLensHeight = 0.08f;
+        private static readonly Color HeadlightColor =
+            new(1f, 0.9f, 0.72f, 1f);
+        private static Mesh headlightLensMesh;
+        private static Material headlightLensMaterial;
 
         private readonly List<Light> headlights = new();
+        private readonly List<Renderer> headlightLenses = new();
         private CityFlowServices services;
         private IGameCalendarService calendar;
         private bool isMoving;
@@ -147,6 +162,7 @@ namespace CityFlow.View
             {
                 var lightRootObject =
                     new GameObject("NightHeadlights");
+                lightRootObject.layer = gameObject.layer;
                 lightRootObject.transform.SetParent(transform, false);
                 lightRoot = lightRootObject.transform;
             }
@@ -168,37 +184,44 @@ namespace CityFlow.View
                 Mathf.Abs(side.y) * bounds.extents.y;
             float length = Mathf.Max(0.01f, halfLength * 2f);
             float width = Mathf.Max(0.01f, halfWidth * 2f);
+            bool usesTallVehicleProfile =
+                headlightHeight >= TallVehicleHeadlightHeight;
             float worldLength = transform.TransformVector(
                 forward * length).magnitude;
             Vector3 front =
                 bounds.center +
                 forward *
                 (halfLength + length * HeadlightFrontClearance);
-            float sideOffset = width * 0.3f;
+            float sideOffset = width * HeadlightSideOffset;
             float aimDistance = Mathf.Max(
                 0.05f,
-                length * HeadlightAimDistance);
-            bool hasRoadSurface =
-                TryResolveRoadHeight(out float roadHeight);
-            float heightZ = Mathf.Lerp(
-                bounds.min.z,
-                bounds.max.z,
-                headlightHeight);
-            if (hasRoadSurface)
-            {
-                float clearance =
-                    headlightHeight >= TallVehicleHeadlightHeight
-                        ? TallVehicleRoadClearance
-                        : StandardRoadClearance;
-                heightZ =
-                    roadHeight - bounds.size.z * clearance;
-            }
+                length * (usesTallVehicleProfile
+                    ? TallVehicleHeadlightAimDistance
+                    : HeadlightAimDistance));
+            float headlightIntensity = usesTallVehicleProfile
+                ? TallVehicleHeadlightIntensity
+                : StandardHeadlightIntensity;
+            float innerSpotAngle = usesTallVehicleProfile
+                ? TallVehicleHeadlightInnerSpotAngle
+                : StandardHeadlightInnerSpotAngle;
+            // Vehicle roots are placed on the sampled road surface. Generated
+            // wrappers normalize their ground contact to local Z=0, and the
+            // procedural fallback uses the same root-ground contract. Keeping
+            // this plane local makes initialization independent of road pose.
+            const float roadHeight = 0f;
+            float clearance =
+                usesTallVehicleProfile
+                    ? TallVehicleRoadClearance
+                    : StandardRoadClearance;
+            float heightZ =
+                roadHeight - bounds.size.z * clearance;
 
             front.z = heightZ;
-            if (!hasRoadSurface)
-            {
-                roadHeight = bounds.max.z;
-            }
+            float lensHeight =
+                roadHeight -
+                bounds.size.z * HeadlightLensRoadClearance;
+            float headlightRange =
+                Mathf.Max(1.2f, worldLength * 6f);
 
             if (headlights.Count == 0)
             {
@@ -206,7 +229,9 @@ namespace CityFlow.View
                     lightRoot,
                     "Headlight_Left",
                     front + side * sideOffset,
-                    worldLength,
+                    headlightRange,
+                    headlightIntensity,
+                    innerSpotAngle,
                     forward,
                     aimDistance,
                     roadHeight);
@@ -214,13 +239,23 @@ namespace CityFlow.View
                     lightRoot,
                     "Headlight_Right",
                     front - side * sideOffset,
-                    worldLength,
+                    headlightRange,
+                    headlightIntensity,
+                    innerSpotAngle,
                     forward,
                     aimDistance,
                     roadHeight);
             }
             else
             {
+                headlights[0].intensity = headlightIntensity;
+                headlights[1].intensity = headlightIntensity;
+                headlights[0].range = headlightRange;
+                headlights[1].range = headlightRange;
+                headlights[0].spotAngle = 60f;
+                headlights[1].spotAngle = 60f;
+                headlights[0].innerSpotAngle = innerSpotAngle;
+                headlights[1].innerSpotAngle = innerSpotAngle;
                 ConfigureHeadlight(
                     headlights[0],
                     front + side * sideOffset,
@@ -234,13 +269,26 @@ namespace CityFlow.View
                     aimDistance,
                     roadHeight);
             }
+
+            EnsureHeadlightLenses(
+                lightRoot,
+                front,
+                side,
+                sideOffset,
+                forward,
+                length,
+                width,
+                bounds.size.z,
+                lensHeight);
         }
 
         private void CreateHeadlight(
             Transform parent,
             string lightName,
             Vector3 localPosition,
-            float worldLength,
+            float range,
+            float intensity,
+            float innerSpotAngle,
             Vector3 forward,
             float aimDistance,
             float roadHeight)
@@ -253,11 +301,11 @@ namespace CityFlow.View
 
             Light headlight = lightObject.AddComponent<Light>();
             headlight.type = LightType.Spot;
-            headlight.color = new Color(1f, 0.9f, 0.72f);
-            headlight.intensity = 1.55f;
-            headlight.range = Mathf.Max(1.2f, worldLength * 6f);
+            headlight.color = HeadlightColor;
+            headlight.intensity = intensity;
+            headlight.range = range;
             headlight.spotAngle = 60f;
-            headlight.innerSpotAngle = 32f;
+            headlight.innerSpotAngle = innerSpotAngle;
             headlight.shadows = LightShadows.None;
             headlight.renderMode = LightRenderMode.Auto;
             headlights.Add(headlight);
@@ -267,6 +315,162 @@ namespace CityFlow.View
                 forward,
                 aimDistance,
                 roadHeight);
+        }
+
+        private void EnsureHeadlightLenses(
+            Transform parent,
+            Vector3 front,
+            Vector3 side,
+            float sideOffset,
+            Vector3 forward,
+            float length,
+            float width,
+            float height,
+            float lensHeight)
+        {
+            while (headlightLenses.Count < 2)
+            {
+                string lensName = headlightLenses.Count == 0
+                    ? "HeadlightLens_Left"
+                    : "HeadlightLens_Right";
+                headlightLenses.Add(
+                    CreateHeadlightLens(parent, lensName));
+            }
+
+            Vector3 leftPosition = front + side * sideOffset;
+            Vector3 rightPosition = front - side * sideOffset;
+            leftPosition.z = lensHeight;
+            rightPosition.z = lensHeight;
+            ConfigureHeadlightLens(
+                headlightLenses[0],
+                leftPosition,
+                forward,
+                length,
+                width,
+                height);
+            ConfigureHeadlightLens(
+                headlightLenses[1],
+                rightPosition,
+                forward,
+                length,
+                width,
+                height);
+        }
+
+        private static Renderer CreateHeadlightLens(
+            Transform parent,
+            string lensName)
+        {
+            var lensObject = new GameObject(lensName);
+            lensObject.hideFlags =
+                HideFlags.HideInHierarchy |
+                HideFlags.DontSave;
+            lensObject.layer = parent.gameObject.layer;
+            lensObject.transform.SetParent(parent, false);
+
+            MeshFilter lensFilter =
+                lensObject.AddComponent<MeshFilter>();
+            lensFilter.sharedMesh = GetHeadlightLensMesh();
+            Renderer lensRenderer =
+                lensObject.AddComponent<MeshRenderer>();
+            lensRenderer.sharedMaterial = GetHeadlightLensMaterial();
+            lensRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            lensRenderer.receiveShadows = false;
+            lensRenderer.lightProbeUsage = LightProbeUsage.Off;
+            lensRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            lensRenderer.motionVectorGenerationMode =
+                MotionVectorGenerationMode.ForceNoMotion;
+            return lensRenderer;
+        }
+
+        private static Mesh GetHeadlightLensMesh()
+        {
+            if (headlightLensMesh != null)
+            {
+                return headlightLensMesh;
+            }
+
+            headlightLensMesh = new Mesh
+            {
+                name = "Vehicle Headlight Lens Cube (Runtime)",
+                hideFlags = HideFlags.HideAndDontSave,
+                vertices = new[]
+                {
+                    new Vector3(-0.5f, -0.5f, -0.5f),
+                    new Vector3(0.5f, -0.5f, -0.5f),
+                    new Vector3(0.5f, 0.5f, -0.5f),
+                    new Vector3(-0.5f, 0.5f, -0.5f),
+                    new Vector3(-0.5f, -0.5f, 0.5f),
+                    new Vector3(0.5f, -0.5f, 0.5f),
+                    new Vector3(0.5f, 0.5f, 0.5f),
+                    new Vector3(-0.5f, 0.5f, 0.5f)
+                },
+                triangles = new[]
+                {
+                    0, 2, 1, 0, 3, 2,
+                    4, 5, 6, 4, 6, 7,
+                    0, 4, 7, 0, 7, 3,
+                    1, 2, 6, 1, 6, 5,
+                    0, 1, 5, 0, 5, 4,
+                    3, 7, 6, 3, 6, 2
+                }
+            };
+            headlightLensMesh.RecalculateBounds();
+            return headlightLensMesh;
+        }
+
+        private static void ConfigureHeadlightLens(
+            Renderer lensRenderer,
+            Vector3 localPosition,
+            Vector3 forward,
+            float length,
+            float width,
+            float height)
+        {
+            if (lensRenderer == null)
+            {
+                return;
+            }
+
+            Transform lensTransform = lensRenderer.transform;
+            lensTransform.localPosition = localPosition;
+            lensTransform.localRotation = Quaternion.AngleAxis(
+                Mathf.Atan2(forward.y, forward.x) * Mathf.Rad2Deg,
+                Vector3.forward);
+            lensTransform.localScale = new Vector3(
+                Mathf.Max(0.001f, length * HeadlightLensDepth),
+                Mathf.Max(0.001f, width * HeadlightLensWidth),
+                Mathf.Max(0.001f, height * HeadlightLensHeight));
+        }
+
+        private static Material GetHeadlightLensMaterial()
+        {
+            if (headlightLensMaterial != null)
+            {
+                return headlightLensMaterial;
+            }
+
+            Shader lensShader =
+                Resources.Load<Shader>("CityFlowHeadlightLens") ??
+                Shader.Find("GreenLight/CityFlow Headlight Lens");
+            if (lensShader == null)
+            {
+                return null;
+            }
+
+            headlightLensMaterial = new Material(lensShader)
+            {
+                name = "Vehicle Headlight Lens (Runtime)",
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            if (headlightLensMaterial.HasProperty("_LensColor"))
+            {
+                headlightLensMaterial.SetColor(
+                    "_LensColor",
+                    HeadlightColor);
+            }
+
+            return headlightLensMaterial;
         }
 
         private static void ConfigureHeadlight(
@@ -280,33 +484,31 @@ namespace CityFlow.View
             Vector3 localAimPoint =
                 localPosition + forward * aimDistance;
             localAimPoint.z = roadHeight;
-            headlight.transform.localRotation =
+            Transform parent = headlight.transform.parent;
+            Vector3 worldOrigin =
+                parent.TransformPoint(localPosition);
+            Vector3 worldAimPoint =
+                parent.TransformPoint(localAimPoint);
+            headlight.transform.rotation =
                 Quaternion.LookRotation(
-                    localAimPoint - localPosition,
-                    Vector3.back);
-        }
-
-        private bool TryResolveRoadHeight(out float roadHeight)
-        {
-            MainCityView cityView =
-                GetComponentInParent<MainCityView>();
-            if (cityView == null)
-            {
-                roadHeight = 0f;
-                return false;
-            }
-
-            Vector3 roadPoint = cityView.transform.InverseTransformPoint(
-                transform.position);
-            roadPoint.z = cityView.RoadSurfaceZ;
-            roadPoint = cityView.transform.TransformPoint(roadPoint);
-            roadHeight =
-                transform.InverseTransformPoint(roadPoint).z;
-            return true;
+                    worldAimPoint - worldOrigin,
+                    parent.TransformDirection(Vector3.back));
         }
 
         private bool TryCalculateLocalBounds(out Bounds bounds)
         {
+            BoxCollider bodyCollider = GetComponent<BoxCollider>();
+            if (bodyCollider != null &&
+                bodyCollider.size.x > 0.0001f &&
+                bodyCollider.size.y > 0.0001f &&
+                bodyCollider.size.z > 0.0001f)
+            {
+                bounds = new Bounds(
+                    bodyCollider.center,
+                    bodyCollider.size);
+                return true;
+            }
+
             Renderer[] renderers =
                 GetComponentsInChildren<Renderer>(true);
             bool found = false;
@@ -314,9 +516,14 @@ namespace CityFlow.View
 
             for (int rendererIndex = 0;
                  rendererIndex < renderers.Length;
-                 rendererIndex++)
+                rendererIndex++)
             {
                 Renderer renderer = renderers[rendererIndex];
+                if (!IsVehicleGeometryRenderer(renderer))
+                {
+                    continue;
+                }
+
                 Bounds rendererBounds = renderer.localBounds;
                 for (int corner = 0; corner < 8; corner++)
                 {
@@ -349,6 +556,22 @@ namespace CityFlow.View
             }
 
             return found;
+        }
+
+        private static bool IsVehicleGeometryRenderer(Renderer renderer)
+        {
+            if (renderer == null ||
+                (renderer.gameObject.hideFlags & HideFlags.DontSave) != 0 ||
+                renderer is ParticleSystemRenderer ||
+                renderer is TrailRenderer ||
+                renderer is LineRenderer ||
+                renderer.GetComponent<TextMesh>() != null)
+            {
+                return false;
+            }
+
+            return renderer is MeshRenderer ||
+                   renderer is SkinnedMeshRenderer;
         }
 
         private void OnGameCalendarRegistered(
@@ -390,6 +613,13 @@ namespace CityFlow.View
                 if (headlights[index] != null)
                 {
                     headlights[index].enabled = isOn;
+                }
+            }
+            for (int index = 0; index < headlightLenses.Count; index++)
+            {
+                if (headlightLenses[index] != null)
+                {
+                    headlightLenses[index].forceRenderingOff = !isOn;
                 }
             }
         }

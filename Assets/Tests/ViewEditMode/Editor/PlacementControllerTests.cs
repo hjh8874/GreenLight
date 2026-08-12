@@ -461,6 +461,69 @@ namespace Tests.EditMode
         }
 
         [Test]
+        public void SpecialBuildingPreview_UsesRoadSurfaceHeight()
+        {
+            var services = new CityFlow.Bootstrap.CityFlowServices(
+                new SimEventHub(),
+                null,
+                null);
+            var coordinates = new TestCoordinateSpace();
+            services.RegisterWorldCoordinates(coordinates);
+            services.RegisterSpecialBuildings(
+                new TestSpecialBuildingService(isUnlocked: true));
+
+            var cityObject = new GameObject(
+                "SpecialBuildingPreviewCity");
+            var controllerObject = new GameObject(
+                "SpecialBuildingPreviewController");
+
+            try
+            {
+                MainCityView cityView =
+                    cityObject.AddComponent<MainCityView>();
+                cityObject.transform.SetPositionAndRotation(
+                    coordinates.Origin,
+                    coordinates.CoordinateRotation);
+                PlacementController controller =
+                    controllerObject.AddComponent<PlacementController>();
+                controller.Initialize(services);
+                SetPrivateField(controller, "_cityView", cityView);
+                Assert.IsTrue(controller.SetSpecialBuilding("mall"));
+
+                MethodInfo getPreviewPosition =
+                    typeof(PlacementController).GetMethod(
+                        "GetBuildingPreviewPosition",
+                        BindingFlags.NonPublic |
+                        BindingFlags.Instance);
+                Assert.That(getPreviewPosition, Is.Not.Null);
+                Vector2Int anchor = new(4, 6);
+                Vector2Int footprint = new(2, 2);
+                Vector3 previewPosition =
+                    (Vector3)getPreviewPosition.Invoke(
+                        controller,
+                        new object[] { anchor, footprint });
+                Vector3 ghostPosition = controller.GetGhostPosition(
+                    anchor,
+                    footprint);
+                Vector3 localPosition =
+                    cityView.transform.InverseTransformPoint(
+                        previewPosition);
+
+                Assert.That(
+                    Vector3.Distance(previewPosition, ghostPosition),
+                    Is.LessThan(0.0001f));
+                Assert.That(
+                    localPosition.z,
+                    Is.EqualTo(cityView.RoadSurfaceZ).Within(0.0001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(controllerObject);
+                Object.DestroyImmediate(cityObject);
+            }
+        }
+
+        [Test]
         public void HandleRotate_DoesNotRotateRoad()
         {
             var services =
@@ -2028,6 +2091,66 @@ namespace Tests.EditMode
             }
         }
 
+        [Test]
+        public void CompactSpecialBuilding_UsesOneByTwoFrontParkingAnchor()
+        {
+            var services = new CityFlow.Bootstrap.CityFlowServices(
+                new SimEventHub(),
+                null,
+                null);
+            services.RegisterSpecialBuildings(
+                new TestSpecialBuildingService(
+                    isUnlocked: true,
+                    footprint: new Vector2Int(1, 2)));
+
+            var controllerObject = new GameObject(
+                "CompactSpecialBuildingPlacementTest");
+            var controller =
+                controllerObject.AddComponent<PlacementController>();
+
+            try
+            {
+                controller.Initialize(services);
+
+                Assert.IsTrue(controller.SetSpecialBuilding("mall"));
+                Assert.AreEqual(
+                    TileType.CompactSpecialBuilding,
+                    ReadPrivateField<TileType>(controller, "_currentType"));
+
+                MethodInfo anchorMethod =
+                    typeof(PlacementController).GetMethod(
+                        "ResolvePlacementAnchor",
+                        BindingFlags.NonPublic | BindingFlags.Static);
+                Assert.That(anchorMethod, Is.Not.Null);
+                Vector2Int cursor = new(5, 6);
+
+                Assert.AreEqual(
+                    new Vector2Int(4, 6),
+                    (Vector2Int)anchorMethod.Invoke(
+                        null,
+                        new object[]
+                        {
+                            cursor,
+                            TileType.CompactSpecialBuilding,
+                            PlacementDirection.East
+                        }));
+                Assert.AreEqual(
+                    new Vector2Int(5, 5),
+                    (Vector2Int)anchorMethod.Invoke(
+                        null,
+                        new object[]
+                        {
+                            cursor,
+                            TileType.CompactSpecialBuilding,
+                            PlacementDirection.South
+                        }));
+            }
+            finally
+            {
+                Object.DestroyImmediate(controllerObject);
+            }
+        }
+
         private static T ReadPrivateField<T>(
             PlacementController controller,
             string fieldName)
@@ -2488,6 +2611,7 @@ namespace Tests.EditMode
             var go = new GameObject("Controller");
             var controller = go.AddComponent<PlacementController>();
             CityFlow.Configs.TileDataSO tileData = null;
+            GameObject preview = null;
 
             try
             {
@@ -2517,6 +2641,15 @@ namespace Tests.EditMode
                 controller.ToggleBuildMode(true);
                 controller.SetBuildType(TileType.Hospital);
 
+                PlacementVisualManager visualManager =
+                    GetPrivateField<PlacementVisualManager>(
+                        controller,
+                        "_visualManager");
+                preview = GameObject.CreatePrimitive(
+                    PrimitiveType.Cube);
+                visualManager.SetBuildingPreview(preview);
+                visualManager.SetGhostActive(true);
+
                 MethodInfo updateMethod = typeof(PlacementController).GetMethod(
                     "HandlePlace",
                     BindingFlags.NonPublic | BindingFlags.Instance);
@@ -2524,13 +2657,26 @@ namespace Tests.EditMode
 
                 Assert.IsFalse(
                     controller.IsBuildingMode,
-                    "Building placement must exit placement mode after success.");
+                    "A completed building must leave placement mode while the build tab remains available.");
                 Assert.IsTrue(
                     buildingPlacementCompleted,
-                    "Building placement must request closing the build menu.");
+                    "Building placement completion observers must still be notified.");
+                Assert.That(
+                    visualManager.BuildingPreviewObject,
+                    Is.Null,
+                    "The model preview must be removed immediately so it cannot flash over the placed building.");
+                Assert.That(
+                    preview == null || !preview.activeSelf,
+                    Is.True,
+                    "A preview awaiting destruction must already be inactive in the placement frame.");
+
             }
             finally
             {
+                if (preview != null)
+                {
+                    Object.DestroyImmediate(preview);
+                }
                 Object.DestroyImmediate(tileData);
                 Object.DestroyImmediate(go);
             }
@@ -2632,6 +2778,56 @@ namespace Tests.EditMode
             finally
             {
                 Object.DestroyImmediate(tileData);
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void BuildingDrag_DoesNotQueueAdditionalPlacements()
+        {
+            var go = new GameObject("BuildingDragController");
+            var controller = go.AddComponent<PlacementController>();
+            var placement = new CountingPlacementService();
+
+            try
+            {
+                controller.SetFakeMode(false);
+                controller.Initialize(new CityFlowServices(
+                    new SimEventHub(),
+                    new TestTileData(),
+                    placement));
+                controller.SetBuildType(TileType.Hospital);
+
+                MethodInfo handlePlace = typeof(PlacementController).GetMethod(
+                    "HandlePlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo handleDrag = typeof(PlacementController).GetMethod(
+                    "HandleDragPlace",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                MethodInfo processQueue = typeof(PlacementController).GetMethod(
+                    "ProcessPendingPlacements",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+
+                handlePlace.Invoke(
+                    controller,
+                    new object[] { new Vector2Int(0, 0) });
+                handleDrag.Invoke(
+                    controller,
+                    new object[]
+                    {
+                        new Vector2Int(0, 0),
+                        new Vector2Int(0, 3)
+                    });
+                SetPrivateField(controller, "_nextPlacementTime", 0f);
+                processQueue.Invoke(controller, null);
+
+                CollectionAssert.AreEqual(
+                    new[] { new Vector2Int(0, 0) },
+                    placement.PlacedTiles,
+                    "건물은 선택을 유지하되 좌클릭 한 번에 한 채만 배치해야 한다.");
+            }
+            finally
+            {
                 Object.DestroyImmediate(go);
             }
         }
@@ -2869,10 +3065,16 @@ namespace Tests.EditMode
             ISpecialBuildingService
         {
             private readonly bool _isUnlocked;
+            private readonly Vector2Int _footprint;
 
-            public TestSpecialBuildingService(bool isUnlocked)
+            public TestSpecialBuildingService(
+                bool isUnlocked,
+                Vector2Int footprint = default)
             {
                 _isUnlocked = isUnlocked;
+                _footprint = footprint.x > 0 && footprint.y > 0
+                    ? footprint
+                    : new Vector2Int(2, 2);
             }
 
             public int BuildingCount => 0;
@@ -2916,8 +3118,35 @@ namespace Tests.EditMode
                 string buildingId,
                 out SpecialBuildingBuildOption option)
             {
-                option = default;
-                return false;
+                if (!string.Equals(
+                        buildingId,
+                        "mall",
+                        StringComparison.Ordinal))
+                {
+                    option = default;
+                    return false;
+                }
+
+                option = new SpecialBuildingBuildOption(
+                    buildingId,
+                    "Mall",
+                    "Commercial",
+                    string.Empty,
+                    null,
+                    Color.white,
+                    SpecialBuildingMenuCategory.Commercial,
+                    100,
+                    _isUnlocked,
+                    string.Empty,
+                    false,
+                    0,
+                    1,
+                    0,
+                    0f,
+                    0,
+                    VisitTimeProfile.AllDay,
+                    _footprint);
+                return true;
             }
 
             public SpecialBuildingInstance[] CreateBuildingSnapshot() =>

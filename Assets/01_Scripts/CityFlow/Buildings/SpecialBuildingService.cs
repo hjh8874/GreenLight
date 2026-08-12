@@ -98,9 +98,12 @@ namespace CityFlow.Buildings
                        buildingId,
                        out BuildingDefinitionSO definition) &&
                    IsDefinitionUnlocked(definition) &&
+                   TileFootprint.TryGetSpecialBuildingType(
+                       definition.Footprint,
+                       out TileType placementType) &&
                    services.Placement.CanPlace(
                        anchor,
-                       TileType.SpecialBuilding,
+                       placementType,
                        direction);
         }
 
@@ -110,6 +113,12 @@ namespace CityFlow.Buildings
             PlacementDirection direction = PlacementDirection.North)
         {
             if (!CanPlace(buildingId, anchor, direction) ||
+                !TryResolveDefinition(
+                    buildingId,
+                    out BuildingDefinitionSO definition) ||
+                !TileFootprint.TryGetSpecialBuildingType(
+                    definition.Footprint,
+                    out TileType placementType) ||
                 !state.TryAdd(buildingId, anchor, direction))
             {
                 return false;
@@ -117,7 +126,7 @@ namespace CityFlow.Buildings
 
             if (!services.Placement.Place(
                     anchor,
-                    TileType.SpecialBuilding,
+                    placementType,
                     direction))
             {
                 state.TryRemove(anchor, out _);
@@ -217,8 +226,12 @@ namespace CityFlow.Buildings
                 SpecialBuildingBuildOption>(catalog.Count);
             for (int index = 0; index < catalog.Buildings.Count; index++)
             {
-                if (TryCreateBuildOption(
-                        catalog.Buildings[index],
+                BuildingDefinitionSO definition =
+                    catalog.Buildings[index];
+                if (definition != null &&
+                    !definition.HideInBuildMenu &&
+                    TryCreateBuildOption(
+                        definition,
                         out SpecialBuildingBuildOption option))
                 {
                     options.Add(option);
@@ -331,7 +344,7 @@ namespace CityFlow.Buildings
                     TileType restoredType = services?.TileData != null
                         ? services.TileData.GetTileType(anchor)
                         : TileType.Empty;
-                    if ((restoredType != TileType.SpecialBuilding &&
+                    if ((!TileFootprint.IsSpecialBuilding(restoredType) &&
                          restoredType != TileType.UnderConstruction) ||
                         !services.TileData.IsFootprintAnchor(anchor))
                     {
@@ -385,7 +398,7 @@ namespace CityFlow.Buildings
             }
 
             if (placed.IsRemove ||
-                placed.Type != TileType.SpecialBuilding)
+                !TileFootprint.IsSpecialBuilding(placed.Type))
             {
                 return;
             }
@@ -417,14 +430,14 @@ namespace CityFlow.Buildings
                 return false;
             }
 
-            Vector2Int supported =
-                TileFootprint.GetSize(TileType.SpecialBuilding);
-            if (definition.Footprint != supported)
+            if (!TileFootprint.TryGetSpecialBuildingType(
+                    definition.Footprint,
+                    out _))
             {
                 Debug.LogWarning(
                     $"[SpecialBuildingService] {definition.buildingId} uses " +
                     $"unsupported footprint {definition.Footprint}. " +
-                    $"Current special buildings require {supported}.",
+                    "Current special buildings require 1x2 or 2x2.",
                     definition);
                 definition = null;
                 return false;
@@ -452,7 +465,10 @@ namespace CityFlow.Buildings
         {
             option = default;
             if (definition == null ||
-                string.IsNullOrWhiteSpace(definition.buildingId))
+                string.IsNullOrWhiteSpace(definition.buildingId) ||
+                !TileFootprint.TryGetSpecialBuildingType(
+                    definition.Footprint,
+                    out _))
             {
                 return false;
             }
@@ -475,7 +491,11 @@ namespace CityFlow.Buildings
                 definition.VisitorCapacity,
                 definition.AttractionWeight,
                 definition.CoinPerVisit,
-                definition.VisitTimeProfile);
+                definition.VisitTimeProfile,
+                definition.Footprint,
+                definition.VisitorParkingSlotStart,
+                definition.VisitorParkingSlotCount,
+                definition.VisitDwellHours);
             return true;
         }
 

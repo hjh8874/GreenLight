@@ -157,11 +157,15 @@ namespace CityFlow.EditorTools.Balance
             "dailyCoinValue",
             "prosperityValue",
             "footprint",
+            "hideInBuildMenu",
             "canReceiveVisitors",
             "visitCadence",
             "visitorCapacity",
             "attractionWeight",
             "coinPerVisit",
+            "visitorParkingSlotStart",
+            "visitorParkingSlotCount",
+            "visitDwellHours",
             "visitTimeProfile",
             "schoolCoverageCapacity",
             "coveredPopulationCapBonus",
@@ -2596,6 +2600,7 @@ namespace CityFlow.EditorTools.Balance
                     TileType.School => "학교",
                     TileType.Hospital => "병원",
                     TileType.SpecialBuilding => "특수 건물",
+                    TileType.CompactSpecialBuilding => "소형 특수 건물",
                     TileType.UnderConstruction => "건설 중",
                     _ => type.ToString()
                 })

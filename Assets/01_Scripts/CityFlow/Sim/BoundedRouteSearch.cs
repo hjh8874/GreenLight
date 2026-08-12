@@ -49,6 +49,11 @@ namespace CityFlow.Sim
             int? incomingDirection,
             Vector2Int? requiredNext,
             bool requiredNextIsHighway,
+            int? requiredFirstDirection,
+            int? requiredArrivalDirection,
+            bool forbidImmediateReverse,
+            Vector2Int? forbiddenReentryTile,
+            Vector2Int? forbiddenTransitTile,
             in SimConfig config,
             IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
             IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
@@ -57,6 +62,17 @@ namespace CityFlow.Sim
         {
             if (!bounds.Contains(from) || !bounds.Contains(to) ||
                 !IsRoad(grid, from) || !IsRoad(grid, to))
+            {
+                return null;
+            }
+
+            // Route consumers use tile identity as their cursor. Do not let a
+            // portal land on the destination with the wrong heading and then
+            // revisit that same tile, because the first visit would be treated
+            // as the actual arrival.
+            if (from == to && incomingDirection.HasValue &&
+                requiredArrivalDirection.HasValue &&
+                incomingDirection.Value != requiredArrivalDirection.Value)
             {
                 return null;
             }
@@ -92,12 +108,20 @@ namespace CityFlow.Sim
 
                 Vector2Int current = ToTile(bounds, currentState);
                 int currentDirection = currentState % DirectionCount;
-                if (current == to && TryComplete(
+                bool isSearchStart = currentState == startState;
+                if (current == to &&
+                    (!requiredArrivalDirection.HasValue ||
+                     currentDirection == requiredArrivalDirection.Value) &&
+                    TryComplete(
                         grid,
                         current,
                         currentDirection,
                         requiredNext,
                         requiredNextIsHighway,
+                        requiredFirstDirection,
+                        isSearchStart,
+                        forbidImmediateReverse,
+                        forbiddenReentryTile,
                         oneways,
                         turnSigns,
                         load,
@@ -120,6 +144,14 @@ namespace CityFlow.Sim
                     current,
                     currentDirection,
                     currentState,
+                    from,
+                    to,
+                    requiredFirstDirection,
+                    requiredArrivalDirection,
+                    isSearchStart,
+                    forbidImmediateReverse,
+                    forbiddenReentryTile,
+                    forbiddenTransitTile,
                     config,
                     oneways,
                     turnSigns,
@@ -131,6 +163,14 @@ namespace CityFlow.Sim
                     current,
                     currentDirection,
                     currentState,
+                    from,
+                    to,
+                    requiredFirstDirection,
+                    requiredArrivalDirection,
+                    isSearchStart,
+                    forbidImmediateReverse,
+                    forbiddenReentryTile,
+                    forbiddenTransitTile,
                     turnSigns,
                     rampPartner);
             }
@@ -154,6 +194,14 @@ namespace CityFlow.Sim
             Vector2Int current,
             int currentDirection,
             int currentState,
+            Vector2Int routeStart,
+            Vector2Int routeGoal,
+            int? requiredFirstDirection,
+            int? requiredArrivalDirection,
+            bool isSearchStart,
+            bool forbidImmediateReverse,
+            Vector2Int? forbiddenReentryTile,
+            Vector2Int? forbiddenTransitTile,
             in SimConfig config,
             IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
             IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
@@ -171,6 +219,48 @@ namespace CityFlow.Sim
                 }
 
                 int nextDirection = CardinalToDirection[cardinal];
+                if (forbiddenReentryTile.HasValue &&
+                    current != forbiddenReentryTile.Value &&
+                    next == forbiddenReentryTile.Value)
+                {
+                    continue;
+                }
+
+                if (forbiddenTransitTile.HasValue &&
+                    next == forbiddenTransitTile.Value &&
+                    routeGoal != forbiddenTransitTile.Value)
+                {
+                    continue;
+                }
+
+                if (isSearchStart &&
+                    requiredFirstDirection.HasValue &&
+                    nextDirection != requiredFirstDirection.Value)
+                {
+                    continue;
+                }
+
+                if (requiredFirstDirection.HasValue &&
+                    current != routeStart &&
+                    next == routeStart)
+                {
+                    continue;
+                }
+
+                if (requiredArrivalDirection.HasValue &&
+                    next == routeGoal &&
+                    nextDirection != requiredArrivalDirection.Value)
+                {
+                    continue;
+                }
+
+                if (forbidImmediateReverse &&
+                    currentDirection != NoIncomingDirection &&
+                    IsOppositeDirection(currentDirection, nextDirection))
+                {
+                    continue;
+                }
+
                 if (!CanTraverseRoad(
                         current,
                         next,
@@ -198,6 +288,14 @@ namespace CityFlow.Sim
             Vector2Int current,
             int currentDirection,
             int currentState,
+            Vector2Int routeStart,
+            Vector2Int routeGoal,
+            int? requiredFirstDirection,
+            int? requiredArrivalDirection,
+            bool isSearchStart,
+            bool forbidImmediateReverse,
+            Vector2Int? forbiddenReentryTile,
+            Vector2Int? forbiddenTransitTile,
             IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
             int[] rampPartner)
         {
@@ -223,6 +321,50 @@ namespace CityFlow.Sim
             }
 
             int nextDirection = DirectionFromDelta(partner - current);
+            if (forbiddenReentryTile.HasValue &&
+                current != forbiddenReentryTile.Value &&
+                partner == forbiddenReentryTile.Value)
+            {
+                return;
+            }
+
+            if (forbiddenTransitTile.HasValue &&
+                partner == forbiddenTransitTile.Value &&
+                routeGoal != forbiddenTransitTile.Value)
+            {
+                return;
+            }
+
+            if (isSearchStart &&
+                requiredFirstDirection.HasValue &&
+                partner - current !=
+                DeltaFromDirection(requiredFirstDirection.Value))
+            {
+                return;
+            }
+
+            if (requiredFirstDirection.HasValue &&
+                current != routeStart &&
+                partner == routeStart)
+            {
+                return;
+            }
+
+            if (requiredArrivalDirection.HasValue &&
+                partner == routeGoal &&
+                partner - current !=
+                DeltaFromDirection(requiredArrivalDirection.Value))
+            {
+                return;
+            }
+
+            if (forbidImmediateReverse &&
+                currentDirection != NoIncomingDirection &&
+                IsOppositeDirection(currentDirection, nextDirection))
+            {
+                return;
+            }
+
             if (!CanLeaveTurnSign(
                     current,
                     currentDirection,
@@ -245,6 +387,10 @@ namespace CityFlow.Sim
             int currentDirection,
             Vector2Int? requiredNext,
             bool requiredNextIsHighway,
+            int? requiredFirstDirection,
+            bool isSearchStart,
+            bool forbidImmediateReverse,
+            Vector2Int? forbiddenReentryTile,
             IReadOnlyDictionary<Vector2Int, Vector2Int> oneways,
             IReadOnlyDictionary<Vector2Int, TurnMode> turnSigns,
             float[] load,
@@ -265,7 +411,31 @@ namespace CityFlow.Sim
                 return false;
             }
 
+            if (forbiddenReentryTile.HasValue &&
+                current != forbiddenReentryTile.Value &&
+                next == forbiddenReentryTile.Value)
+            {
+                return false;
+            }
+
             int nextDirection = DirectionFromDelta(next - current);
+            if (isSearchStart &&
+                requiredFirstDirection.HasValue &&
+                (nextDirection != requiredFirstDirection.Value ||
+                 (requiredNextIsHighway &&
+                  next - current !=
+                  DeltaFromDirection(requiredFirstDirection.Value))))
+            {
+                return false;
+            }
+
+            if (forbidImmediateReverse &&
+                currentDirection != NoIncomingDirection &&
+                IsOppositeDirection(currentDirection, nextDirection))
+            {
+                return false;
+            }
+
             if (requiredNextIsHighway)
             {
                 if (!CanLeaveTurnSign(
@@ -351,6 +521,20 @@ namespace CityFlow.Sim
                 : (currentDirection + 1) % 4;
             return nextDirection == expected;
         }
+
+        private static bool IsOppositeDirection(
+            int currentDirection,
+            int nextDirection) =>
+            nextDirection == (currentDirection + 2) % 4;
+
+        private static Vector2Int DeltaFromDirection(int direction) =>
+            direction switch
+            {
+                0 => Vector2Int.right,
+                1 => Vector2Int.down,
+                2 => Vector2Int.left,
+                _ => Vector2Int.up
+            };
 
         private void Relax(int currentState, int nextState, float stepCost)
         {

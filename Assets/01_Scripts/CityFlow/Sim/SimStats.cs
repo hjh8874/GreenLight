@@ -56,10 +56,19 @@ namespace CityFlow.Sim
             return wrapped;
         }
 
-        internal void RestoreCarSim(float successRate, int dayArrivals, bool skipCurrentDay, bool hasData)
+        internal void RestoreCarSim(
+            float successRate,
+            int dayArrivals,
+            int lastDayArrivals,
+            bool skipCurrentDay,
+            bool hasData,
+            bool hasLastDayArrivals)
         {
             TripSuccessRate = hasData ? Mathf.Clamp01(successRate) : 1f;
             _dayArrivals = hasData ? Mathf.Max(0, dayArrivals) : 0;
+            _lastDayArrivals = hasData && hasLastDayArrivals
+                ? Mathf.Max(0, lastDayArrivals)
+                : 0;
             _skipCurrentDay = hasData && skipCurrentDay;
             _hasLastHour = false;
         }

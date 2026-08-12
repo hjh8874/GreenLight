@@ -166,8 +166,7 @@ namespace CityFlow.UI
             EnsureFloatingCanvas();
             if (Camera.main == null) return;
 
-            Vector2Int size = TileFootprint.GetSize(
-                ResolveFootprintType());
+            Vector2Int size = ResolveFootprintSize();
             Vector2 center = new Vector2(
                 currentTile.x + size.x * 0.5f,
                 currentTile.y + size.y * 0.5f);
@@ -320,6 +319,17 @@ namespace CityFlow.UI
                 : currentType;
         }
 
+        private Vector2Int ResolveFootprintSize()
+        {
+            TileType footprintType = ResolveFootprintType();
+            PlacementDirection direction = services?.TileData != null
+                ? services.TileData.GetDirection(currentTile)
+                : PlacementDirection.North;
+            return TileFootprint.GetRotatedSize(
+                footprintType,
+                direction);
+        }
+
         private void EnsureFloatingCanvas()
         {
             if (rootCanvas == null)
@@ -398,7 +408,7 @@ namespace CityFlow.UI
                     continue;
                 }
 
-                if (currentType == TileType.SpecialBuilding &&
+                if (TileFootprint.IsSpecialBuilding(currentType) &&
                     TryBindSpecialBuilding(congestion))
                 {
                     yield return wait;
@@ -664,7 +674,7 @@ namespace CityFlow.UI
 
         private string ResolveConstructionTargetName(TileType targetType)
         {
-            if (targetType == TileType.SpecialBuilding &&
+            if (TileFootprint.IsSpecialBuilding(targetType) &&
                 services?.SpecialBuildings != null &&
                 services.SpecialBuildings.TryGetBuilding(
                     currentTile,
@@ -845,8 +855,7 @@ namespace CityFlow.UI
 
             // 건물 크기에 따른 외곽 타일 순회
             float maxNeighborDensity = 0f;
-            Vector2Int size = TileFootprint.GetSize(
-                ResolveFootprintType());
+            Vector2Int size = ResolveFootprintSize();
 
             // 상, 하 외곽 도로 검사
             for (int x = 0; x < size.x; x++)
@@ -874,8 +883,7 @@ namespace CityFlow.UI
 
             // 인접 도로 중 가장 심각한 혼잡도 채택
             CongestionLevel worstLevel = CongestionLevel.Free;
-            Vector2Int size = TileFootprint.GetSize(
-                ResolveFootprintType());
+            Vector2Int size = ResolveFootprintSize();
 
             for (int x = 0; x < size.x; x++)
             {

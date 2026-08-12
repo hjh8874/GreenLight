@@ -1101,13 +1101,21 @@ namespace CityFlow.View
 
             bool stopPresentationPending =
                 busRoute.IsStopPresentationPending;
-            bool eligible = snapshot.IsVisible &&
-                            snapshot.State !=
-                            RoadTrafficAgentState.Paused &&
-                            snapshot.State !=
-                            RoadTrafficAgentState.RouteUnavailable &&
-                            (!spacingBlocked ||
-                             stopPresentationPending);
+            // An off-road stop keeps the destination queue occupied until the
+            // road visual reaches its exit pose. A stale visual leader must not
+            // turn that presentation gate into a permanent traffic blockage.
+            bool offRoadExitPresentationPending =
+                hasPendingOffRoadExit &&
+                pendingOffRoadForward.sqrMagnitude > 0.5f;
+            bool presentationDeadlinePending =
+                stopPresentationPending ||
+                offRoadExitPresentationPending;
+            bool eligible = IsRoadPresentationRecoveryEligible(
+                snapshot.IsVisible,
+                snapshot.State,
+                spacingBlocked,
+                stopPresentationPending,
+                offRoadExitPresentationPending);
             VehicleViewRecoveryReason reason =
                 viewRecovery.Observe(
                     currentDistance,
@@ -1116,7 +1124,7 @@ namespace CityFlow.View
                     Time.unscaledDeltaTime,
                     busRoute.RoadSegmentVersion,
                     eligible,
-                    stopPresentationPending,
+                    presentationDeadlinePending,
                     cityView.VehicleViewRecoveryProfile);
             if (reason == VehicleViewRecoveryReason.None)
             {
@@ -1176,6 +1184,22 @@ namespace CityFlow.View
                 $"tile={snapshot.CurrentTile}.",
                 this);
             return true;
+        }
+
+        internal static bool IsRoadPresentationRecoveryEligible(
+            bool isVisible,
+            RoadTrafficAgentState state,
+            bool spacingBlocked,
+            bool stopPresentationPending,
+            bool offRoadExitPresentationPending)
+        {
+            bool presentationDeadlinePending =
+                stopPresentationPending ||
+                offRoadExitPresentationPending;
+            return isVisible &&
+                   state != RoadTrafficAgentState.Paused &&
+                   state != RoadTrafficAgentState.RouteUnavailable &&
+                   (!spacingBlocked || presentationDeadlinePending);
         }
 
         private bool TryGetRoadTargetDistance(

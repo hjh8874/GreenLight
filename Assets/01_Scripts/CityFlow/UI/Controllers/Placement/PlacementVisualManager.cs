@@ -763,6 +763,10 @@ namespace CityFlow.UI.Controllers.Placement
 
         private void ClearBuildingPreview()
         {
+            if (_buildingPreviewObject != null)
+            {
+                _buildingPreviewObject.SetActive(false);
+            }
             SafeDestroy(_buildingPreviewObject);
             _buildingPreviewObject = null;
             for (int index = 0;

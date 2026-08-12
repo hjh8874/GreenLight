@@ -510,7 +510,7 @@ namespace CityFlow.ViewKit
         // 로 통째로 재구성한다. 전이 베지어(양끝 접선 일치)가 접근 차선↔링 사이 C1을 만든다.
         // 전이 창 = ci ± transitionSpan(노브 TransitionLength; 옛 √(R²−λ²) 대체, 클수록 완만·길다).
         // sweep<0.1(우회전) → 링 없이 일반 코너 베지어로 스치듯 통과(entry/exit 포즈 직결).
-        // ClampIslandIntrusion(섬 하한 0.62타일)은 두 경로 모두에 적용 — 섬 침범 절대 금지.
+        // ClampIslandIntrusion(정점 하한 0.625타일)은 두 경로 모두에 적용 — 섬 침범 절대 금지.
         private static void ApplyRoundaboutGeometry(
             in BakeInput input,
             IReadOnlyList<Vector2Int> tiles,
@@ -595,10 +595,12 @@ namespace CityFlow.ViewKit
         }
 
         // 섬 침범 절대 금지(QA F): 풋프린트 섬 반경 0.45 + 차 반폭 ~0.15 + 여유 = 0.62타일.
-        // 2026-07-21 재측정(R=0.775·α=45°·span=0.66·λ=0.26): 직진·좌회전·U턴 최저
+        // 정점 사이 직선 보간의 chord가 반경보다 미세하게 안쪽으로 들어오므로 정점은
+        // 기본 링 반경과 같은 0.625까지 밀어 실제 샘플도 0.62 밖에 남긴다.
+        // 로터리 반경·진출입 각·전이 길이에서 경로를 계산한다.
         // 0.654타일로 통과. 링을 생략하는 우회전 베지어는 클램프 전 0.485라 상시 보정 대상이다.
         // 위치 보정 뒤 Dir도 실제 현 방향으로 갱신하며, 둘 다 위상 배정 전에 적용한다.
-        private const float IslandClearance = 0.62f;
+        private const float IslandClearance = 0.625f;
 
         // 전이 창 최소 반폭(타일). 현재 차선 오프셋 λ=0.26에서 √(span²+λ²)가 섬 하한 0.62를
         // 넘도록 0.66을 유지한다. 위 조건의 2026-07-21 수치 재현에서 비우회전 최저 0.654.
@@ -632,7 +634,7 @@ namespace CityFlow.ViewKit
                 return;
             }
 
-            // 클램프는 베지어를 반경 0.62의 호로 성형한다. 원래 베지어 접선을 그대로 두면
+            // 클램프는 베지어를 반경 0.625의 호로 성형한다. 원래 베지어 접선을 그대로 두면
             // 차 헤딩과 실제 진행 현이 어긋나므로, 보정 정점과 그 직전 정점의 방향을
             // 모든 위치 보정이 끝난 뒤 실제 전방 현으로 갱신한다.
             for (int j = 0; j < built.Count; j++)

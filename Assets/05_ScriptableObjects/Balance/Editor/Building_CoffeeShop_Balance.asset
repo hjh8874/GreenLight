@@ -32,7 +32,7 @@ MonoBehaviour:
   visualScale: {x: 1, y: 1, z: 1}
   fallbackColor: {r: 0.76, g: 0.45, b: 0.2, a: 1}
   fallbackHeight: 0.75
-  footprint: {x: 2, y: 2}
+  footprint: {x: 1, y: 2}
   requiredResearchId: research_building_coffee_shop
   canReceiveVisitors: 1
   visitCadence:
@@ -41,6 +41,9 @@ MonoBehaviour:
   visitorCapacity: 0
   attractionWeight: 1
   coinPerVisit: 10
+  visitorParkingSlotStart: 0
+  visitorParkingSlotCount: 2
+  visitDwellHours: 0.5
   visitTimeProfile: 1
   happinessEffectKey: happiness_building_coffee_shop
   schoolCoverageCapacity: 0

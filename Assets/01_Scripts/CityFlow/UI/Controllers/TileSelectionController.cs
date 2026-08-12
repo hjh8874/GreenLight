@@ -59,6 +59,12 @@ namespace CityFlow.UI
             DisableLegacyHighlight();
         }
 
+        internal void RebindAnalysisCard(
+            AnalysisCardController controller)
+        {
+            analysisCard = controller;
+        }
+
         public void SetUseXYPlane(bool isOn)
         {
             useXYPlane = isOn;
@@ -593,7 +599,7 @@ namespace CityFlow.UI
         {
             Vector2Int visualAnchor = ResolveVisualAnchor(coord);
             Renderer[] renderers = null;
-            if (type == TileType.SpecialBuilding)
+            if (TileFootprint.IsSpecialBuilding(type))
             {
                 SpecialBuildingView specialView =
                     FindAnyObjectByType<SpecialBuildingView>(

@@ -109,6 +109,31 @@ namespace CityFlow.View
             bool includeCarCandidates,
             out VehiclePresentationLeader leader)
         {
+            return TryGetLeader(
+                subjectOwner,
+                subjectKind,
+                subjectFootprint,
+                subjectPosition,
+                subjectDirection,
+                tileSize,
+                frame,
+                includeCarCandidates,
+                useConvergingCarEnvelope: false,
+                out leader);
+        }
+
+        public bool TryGetLeader(
+            object subjectOwner,
+            RoadTrafficAgentKind subjectKind,
+            VehicleFootprint subjectFootprint,
+            Vector3 subjectPosition,
+            Vector3 subjectDirection,
+            float tileSize,
+            int frame,
+            bool includeCarCandidates,
+            bool useConvergingCarEnvelope,
+            out VehiclePresentationLeader leader)
+        {
             leader = default;
             PurgeStale(frame);
 
@@ -120,7 +145,6 @@ namespace CityFlow.View
 
             float safeTileSize = Mathf.Max(0.0001f, tileSize);
             Vector3 forward = subjectDirection.normalized;
-            Vector3 lateralAxis = new(-forward.y, forward.x, 0f);
             float laneTolerance = ResolveLaneToleranceTiles() *
                                   safeTileSize;
             float heightTolerance = ResolveHeightToleranceTiles() *
@@ -131,32 +155,70 @@ namespace CityFlow.View
 
             foreach (Entry candidate in entries.Values)
             {
+                bool convergingCarPair =
+                    useConvergingCarEnvelope &&
+                    subjectKind == RoadTrafficAgentKind.Car &&
+                    candidate.Kind == RoadTrafficAgentKind.Car;
+                float minimumDirectionDot = convergingCarPair
+                    ? Mathf.Min(ResolveMinimumDirectionDot(), 0.5f)
+                    : ResolveMinimumDirectionDot();
                 if (ReferenceEquals(candidate.Owner, subjectOwner) ||
                     (!includeCarCandidates &&
                      candidate.Kind == RoadTrafficAgentKind.Car) ||
                     !VehicleSpacingMath.IsSameFlowDirection(
                         forward,
                         candidate.Direction,
-                        ResolveMinimumDirectionDot()))
+                        minimumDirectionDot))
                 {
                     continue;
                 }
 
+                Vector3 comparisonForward = forward;
+                if (convergingCarPair)
+                {
+                    // 합류 곡선에서는 각 차량의 접선으로 상대를 투영하면 두 차가 서로를
+                    // 동시에 앞차로 볼 수 있다. 승용차 쌍은 대칭인 평균 진행축을 공유해
+                    // 한 쌍에서 오직 뒤쪽 차량만 양보하게 한다.
+                    Vector3 sharedFlowAxis =
+                        forward + candidate.Direction;
+                    if (sharedFlowAxis.sqrMagnitude > 0.0001f)
+                    {
+                        comparisonForward = sharedFlowAxis.normalized;
+                    }
+                }
+
                 Vector3 separation = candidate.Position - subjectPosition;
-                float headway = Vector3.Dot(separation, forward);
+                float headway = Vector3.Dot(
+                    separation,
+                    comparisonForward);
                 if (headway <= 0f ||
                     Mathf.Abs(separation.z) > heightTolerance)
                 {
                     continue;
                 }
 
+                Vector3 lateralAxis = new(
+                    -comparisonForward.y,
+                    comparisonForward.x,
+                    0f);
                 float lateralDistance = Mathf.Abs(Vector3.Dot(
                     separation,
                     lateralAxis));
-                float laneHalfWidth = (
-                    subjectFootprint.WidthTiles +
-                    candidate.Footprint.WidthTiles) * 0.5f *
-                    safeTileSize + laneTolerance;
+                float laneHalfWidth = convergingCarPair
+                    ? ProjectFootprintHalfExtent(
+                          subjectFootprint,
+                          forward,
+                          lateralAxis,
+                          safeTileSize) +
+                      ProjectFootprintHalfExtent(
+                          candidate.Footprint,
+                          candidate.Direction,
+                          lateralAxis,
+                          safeTileSize) +
+                      laneTolerance
+                    : (subjectFootprint.WidthTiles +
+                       candidate.Footprint.WidthTiles) * 0.5f *
+                      safeTileSize + laneTolerance;
                 if (lateralDistance > laneHalfWidth ||
                     headway >= nearestHeadway)
                 {
@@ -185,6 +247,21 @@ namespace CityFlow.View
                 nearestRequiredHeadway,
                 nearest.Speed);
             return true;
+        }
+
+        private static float ProjectFootprintHalfExtent(
+            VehicleFootprint footprint,
+            Vector3 vehicleForward,
+            Vector3 projectionAxis,
+            float tileSize)
+        {
+            Vector3 forward = vehicleForward.normalized;
+            Vector3 lateral = new(-forward.y, forward.x, 0f);
+            return 0.5f * tileSize * (
+                footprint.LengthTiles *
+                Mathf.Abs(Vector3.Dot(forward, projectionAxis)) +
+                footprint.WidthTiles *
+                Mathf.Abs(Vector3.Dot(lateral, projectionAxis)));
         }
 
         public float LimitAdvance(

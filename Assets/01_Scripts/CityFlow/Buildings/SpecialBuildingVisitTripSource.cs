@@ -166,12 +166,20 @@ namespace CityFlow.Buildings
 
             int rewardCoins = 0;
             VisitTimeProfile profile = VisitTimeProfile.AllDay;
+            int visitorParkingSlotStart = 0;
+            int visitorParkingSlotCount = 1;
+            float visitDwellHours = 0f;
             if (buildings != null &&
                 buildings.TryGetBuildOption(statistics.BuildingId,
                     out SpecialBuildingBuildOption option))
             {
                 rewardCoins = option.CoinPerVisit;
                 profile = option.VisitTimeProfile;
+                visitorParkingSlotStart =
+                    option.VisitorParkingSlotStart;
+                visitorParkingSlotCount =
+                    option.VisitorParkingSlotCount;
+                visitDwellHours = option.VisitDwellHours;
             }
 
             int tripCount = maximumVisualTripsPerBuildingPerDay <= 0
@@ -198,7 +206,10 @@ namespace CityFlow.Buildings
                             statistics.Day,
                             visitIndex,
                             scheduledHour,
-                            rewardCoins)))
+                            rewardCoins,
+                            visitorParkingSlotStart,
+                            visitorParkingSlotCount,
+                            visitDwellHours)))
                 {
                     scheduledCount++;
                 }

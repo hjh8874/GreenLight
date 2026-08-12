@@ -10,6 +10,8 @@ namespace CityFlow.View
         [SerializeField, Min(0f)] private float movementThreshold = 0.01f;
         [SerializeField, Min(0.1f)] private float teleportDistance = 1.5f;
 
+        private const float RoadSurfaceClearance = 0.01f;
+
         private Bounds localBounds;
         private Vector3 previousPosition;
         private float accumulatedDistance;
@@ -98,14 +100,15 @@ namespace CityFlow.View
             }
         }
 
-        private void GetRearWheelPositions(
+        internal void GetRearWheelPositions(
             out Vector3 left,
             out Vector3 right)
         {
             float rearX =
                 localBounds.min.x + localBounds.size.x * 0.14f;
             float halfTrack = localBounds.size.y * 0.3f;
-            float surfaceZ = localBounds.min.z + 0.01f;
+            float surfaceZ =
+                localBounds.max.z - RoadSurfaceClearance;
 
             left = transform.TransformPoint(
                 new Vector3(rearX, halfTrack, surfaceZ));

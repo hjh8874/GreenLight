@@ -1012,6 +1012,7 @@ namespace CityFlow.Feed
                 case TileType.School:
                 case TileType.Hospital:
                 case TileType.SpecialBuilding:
+                case TileType.CompactSpecialBuilding:
                     return true;
                 default:
                     return false;

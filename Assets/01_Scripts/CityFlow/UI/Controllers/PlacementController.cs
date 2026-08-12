@@ -177,6 +177,24 @@ namespace CityFlow.UI
 
         }
 
+        internal void RebindConfirmPopup(
+            ConfirmPopupController popup)
+        {
+            if (ReferenceEquals(confirmPopup, popup))
+            {
+                return;
+            }
+
+            confirmPopup = popup;
+            if (!_managersInitialized)
+            {
+                return;
+            }
+
+            ReleaseManagers();
+            EnsureManagers();
+        }
+
         public void SetBuildType(TileType type)
         {
             EnsureManagers();
@@ -243,7 +261,13 @@ namespace CityFlow.UI
 
             if (normalizedId.Length == 0 ||
                 _services?.SpecialBuildings == null ||
-                !_services.SpecialBuildings.IsBuildingUnlocked(normalizedId))
+                !_services.SpecialBuildings.TryGetBuildOption(
+                    normalizedId,
+                    out SpecialBuildingBuildOption option) ||
+                !option.IsUnlocked ||
+                !TileFootprint.TryGetSpecialBuildingType(
+                    option.Footprint,
+                    out _currentType))
             {
                 ToggleBuildMode(false);
                 Debug.LogWarning(
@@ -463,6 +487,14 @@ namespace CityFlow.UI
             _inputHandler.UpdatePlacementInput(canPlace, gridCoord);
             ProcessPendingPlacements();
 
+            if (!_isBuildingMode)
+            {
+                _visualManager.SetGhostActive(false);
+                _costLabelManager.SetCostLabelActive(false);
+                _visualManager.HideBenefitHighlights();
+                return;
+            }
+
             _visualManager.SetGhostActive(true);
 
             Vector2Int rotatedSize = TileFootprint.GetRotatedSize(_currentType, _currentDirection);
@@ -556,8 +588,13 @@ namespace CityFlow.UI
 
         private void HandleDragPlace(Vector2Int from, Vector2Int to)
         {
+            if (_currentType != TileType.Road)
+            {
+                _lastModelPreviewCoord = null;
+                return;
+            }
+
             Vector2Int cursor =
-                _currentType == TileType.Road &&
                 _roadStrokeLastAcceptedCoord.HasValue
                     ? _roadStrokeLastAcceptedCoord.Value
                     : from;
@@ -883,7 +920,8 @@ namespace CityFlow.UI
             type == TileType.House ||
             type == TileType.Office ||
             type == TileType.School ||
-            type == TileType.Hospital;
+            type == TileType.Hospital ||
+            type == TileType.CompactSpecialBuilding;
 
         private static Vector2Int ResolvePlacementAnchor(
             Vector2Int cursorCoord,
@@ -957,7 +995,7 @@ namespace CityFlow.UI
         private void UpdateGhostSprite()
         {
             Sprite overrideSprite = null;
-            if (_currentType == TileType.SpecialBuilding &&
+            if (TileFootprint.IsSpecialBuilding(_currentType) &&
                 _services?.SpecialBuildings != null &&
                 _services.SpecialBuildings.TryGetBuildOption(
                     _currentSpecialBuildingId,
@@ -984,7 +1022,7 @@ namespace CityFlow.UI
             }
 
             GameObject preview = null;
-            if (_currentType == TileType.SpecialBuilding)
+            if (TileFootprint.IsSpecialBuilding(_currentType))
             {
                 SpecialBuildingView specialView =
                     FindAnyObjectByType<SpecialBuildingView>(
@@ -1068,7 +1106,7 @@ namespace CityFlow.UI
             Vector2Int gridCoord,
             Vector2Int footprintSize)
         {
-            if (_currentType != TileType.SpecialBuilding)
+            if (!TileFootprint.IsSpecialBuilding(_currentType))
             {
                 _cityView ??=
                     FindAnyObjectByType<MainCityView>(
@@ -1099,26 +1137,10 @@ namespace CityFlow.UI
                 }
             }
 
-            Vector2Int size = new Vector2Int(
-                Mathf.Max(1, footprintSize.x),
-                Mathf.Max(1, footprintSize.y));
-            float centerX =
-                gridCoord.x + size.x * 0.5f;
-            float centerY =
-                gridCoord.y + size.y * 0.5f;
-
-            IWorldCoordinateSpace coordinateSpace =
-                _services?.WorldCoordinates;
-            if (coordinateSpace != null)
-            {
-                return coordinateSpace.GridPointToWorld(
-                    new Vector2(centerX, centerY),
-                    0.02f);
-            }
-
-            return useXYPlane
-                ? new Vector3(centerX, centerY, -0.02f)
-                : new Vector3(centerX, 0.02f, centerY);
+            return GetGhostPosition(
+                gridCoord,
+                footprintSize,
+                GetSurfaceMarkerZ(gridCoord));
         }
 
         private bool DoesPreviewOverlapExistingTiles(
@@ -1152,7 +1174,7 @@ namespace CityFlow.UI
         private Quaternion? GetBuildingPreviewRotation(
             Vector2Int gridCoord)
         {
-            if (_currentType == TileType.SpecialBuilding)
+            if (TileFootprint.IsSpecialBuilding(_currentType))
             {
                 return null;
             }

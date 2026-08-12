@@ -1,5 +1,6 @@
 using CityFlow.Content;
 using CityFlow.Content.Transit;
+using CityFlow.Editor;
 using CityFlow.View;
 using UnityEditor;
 using UnityEngine;
@@ -8,16 +9,12 @@ namespace CityFlow.EditorTools
 {
     public static class PoliceVehiclePrototypeBaker
     {
-        private const string SourceVisualPrefabPath =
-            "Assets/99_Download/Pack_Cars/Prefabs/Police.prefab";
         private const string StandardFootprintPath =
             "Assets/05_ScriptableObjects/CityFlow/Traffic/StandardVehicleFootprint.asset";
         private const string ConfigFolder =
             "Assets/05_ScriptableObjects/CityFlow/Police";
         private const string ConfigPath =
             ConfigFolder + "/PoliceDispatchConfig.asset";
-        private const string VisualPrefabPath =
-            "Assets/02_Prefabs/Vehicles/PoliceVehicleVisual.prefab";
         private const string VehiclePrefabPath =
             "Assets/02_Prefabs/Vehicles/PoliceVehicle.prefab";
         private const string ContentPrefabPath =
@@ -27,24 +24,27 @@ namespace CityFlow.EditorTools
             "Tools/GreenLight/Content/Build Police Vehicle Prototype")]
         public static void Build()
         {
-            GameObject sourceVisual =
-                AssetDatabase.LoadAssetAtPath<GameObject>(
-                    SourceVisualPrefabPath);
             VehicleFootprintProfileSO standardFootprint =
                 AssetDatabase.LoadAssetAtPath<
                     VehicleFootprintProfileSO>(
                     StandardFootprintPath);
 
-            if (sourceVisual == null || standardFootprint == null)
+            if (standardFootprint == null)
             {
                 Debug.LogError(
-                    "[PoliceVehiclePrototypeBaker] Pack_Cars Police prefab or StandardVehicleFootprint asset is missing.");
+                    "[PoliceVehiclePrototypeBaker] StandardVehicleFootprint asset is missing.");
                 return;
             }
 
             EnsureFolder(ConfigFolder);
             GameObject visualPrefab =
-                CreateOrUpdateVisualPrefab(sourceVisual);
+                VehicleVisualPrefabBaker.RebuildPoliceVisual();
+            if (visualPrefab == null)
+            {
+                Debug.LogError(
+                    "[PoliceVehiclePrototypeBaker] Pack_Cars Police prefab is missing.");
+                return;
+            }
             PoliceDispatchConfigSO config =
                 CreateOrUpdateConfig(
                     visualPrefab,
@@ -59,58 +59,6 @@ namespace CityFlow.EditorTools
             AssetDatabase.Refresh();
             Debug.Log(
                 "[PoliceVehiclePrototypeBaker] Police config and prefabs are ready. Place PoliceContent.prefab in a feature test scene.");
-        }
-
-        private static GameObject CreateOrUpdateVisualPrefab(
-            GameObject sourceVisual)
-        {
-            GameObject root = new("PoliceVehicleVisual");
-            try
-            {
-                GameObject model = PrefabUtility.InstantiatePrefab(
-                    sourceVisual) as GameObject;
-                if (model == null)
-                {
-                    throw new System.InvalidOperationException(
-                        "Could not instantiate the Pack_Cars Police prefab.");
-                }
-
-                model.name = "Model";
-                model.transform.SetParent(root.transform, false);
-                model.transform.localPosition = Vector3.zero;
-                model.transform.localRotation =
-                    Quaternion.LookRotation(
-                        Vector3.right,
-                        Vector3.back);
-                model.transform.localScale = Vector3.one;
-
-                if (TryGetLocalBounds(root.transform, out Bounds bounds))
-                {
-                    model.transform.localPosition = new Vector3(
-                        -bounds.center.x,
-                        -bounds.center.y,
-                        -bounds.max.z);
-
-                    if (TryGetLocalBounds(
-                            root.transform,
-                            out Bounds alignedBounds))
-                    {
-                        BoxCollider collider =
-                            root.AddComponent<BoxCollider>();
-                        collider.center = alignedBounds.center;
-                        collider.size = alignedBounds.size;
-                    }
-                }
-
-                root.AddComponent<VehicleWheelDustSource>();
-                return PrefabUtility.SaveAsPrefabAsset(
-                    root,
-                    VisualPrefabPath);
-            }
-            finally
-            {
-                Object.DestroyImmediate(root);
-            }
         }
 
         private static PoliceDispatchConfigSO CreateOrUpdateConfig(
@@ -236,51 +184,6 @@ namespace CityFlow.EditorTools
             {
                 Object.DestroyImmediate(root);
             }
-        }
-
-        private static bool TryGetLocalBounds(
-            Transform root,
-            out Bounds bounds)
-        {
-            bounds = default;
-            Renderer[] renderers =
-                root.GetComponentsInChildren<Renderer>(true);
-            bool found = false;
-
-            for (int rendererIndex = 0;
-                 rendererIndex < renderers.Length;
-                 rendererIndex++)
-            {
-                Renderer renderer = renderers[rendererIndex];
-                Bounds local = renderer.localBounds;
-                for (int corner = 0; corner < 8; corner++)
-                {
-                    Vector3 localCorner = new(
-                        (corner & 1) == 0
-                            ? local.min.x
-                            : local.max.x,
-                        (corner & 2) == 0
-                            ? local.min.y
-                            : local.max.y,
-                        (corner & 4) == 0
-                            ? local.min.z
-                            : local.max.z);
-                    Vector3 point = root.InverseTransformPoint(
-                        renderer.transform.TransformPoint(
-                            localCorner));
-                    if (!found)
-                    {
-                        bounds = new Bounds(point, Vector3.zero);
-                        found = true;
-                    }
-                    else
-                    {
-                        bounds.Encapsulate(point);
-                    }
-                }
-            }
-
-            return found;
         }
 
         private static void EnsureFolder(string folderPath)

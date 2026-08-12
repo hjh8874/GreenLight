@@ -9,12 +9,14 @@ namespace CityFlow.View
     {
         [Header("Road Prefabs")]
         [SerializeField] private GameObject roadSurfacePrefab;
+        [SerializeField] private GameObject roundaboutPrefab;
 
         [Header("Parking Prefab")]
         [SerializeField] private GameObject drivewayPrefab;
 
         public GameObject DrivewayPrefab => drivewayPrefab;
         public GameObject RoadSurfacePrefab => roadSurfacePrefab;
+        public GameObject RoundaboutPrefab => roundaboutPrefab;
 
         public GameObject GetRoadPrefab(SimpleTownRoadShape _)
         {

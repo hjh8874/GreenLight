@@ -26,7 +26,7 @@ namespace CityFlow.EditorTools
         private const string DebugTimeSettingsPath =
             "Assets/05_ScriptableObjects/CityFlow/Transit/SchoolBusDebugGameTimeSettings.asset";
         private const string VisualPrefabPath =
-            "Assets/99_Download/SimpleTown/Prefabs/Vehicles/bus_brown.prefab";
+            "Assets/02_Prefabs/Vehicles/SchoolBusVisual.prefab";
         private const string MaterialPath =
             "Assets/03_Art/Materials/Vehicles/SchoolBus_URP.mat";
 
@@ -239,14 +239,18 @@ namespace CityFlow.EditorTools
                     worldView,
                     "busRoute",
                     route);
+                SetReference(
+                    worldView,
+                    "busVisualPrefab",
+                    definition.VehicleVisualPrefab);
                 SetValue(
                     worldView,
                     "visualScale",
-                    1f);
+                    0.76f);
                 SetReference(
                     worldView,
                     "busMaterial",
-                    material);
+                    null);
                 SetValue(
                     worldView,
                     "movementDuration",

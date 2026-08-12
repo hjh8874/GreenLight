@@ -554,6 +554,66 @@ namespace CityFlow.Sim
             && UsesSharedBudget(TileIndex(tile))
             && !IsRoundaboutArm(TileIndex(tile));
 
+        internal bool TryGetRoundaboutArmSpawnDirection(
+            Vector2Int tile,
+            out Dir direction)
+        {
+            direction = default;
+            if (!InBounds(tile)) return false;
+
+            int tileIndex = TileIndex(tile);
+            int side = _roundaboutArmSides[tileIndex];
+            if (side < 0 || side >= DirectionCount) return false;
+
+            direction = (Dir)side;
+            return true;
+        }
+
+        internal bool TryEnqueueRoundaboutArmSpawn(
+            Vector2Int tile,
+            Dir direction,
+            int carId)
+        {
+            if (!InBounds(tile)) return false;
+            int tileIndex = TileIndex(tile);
+            int centerIndex = _roundaboutCenters[tileIndex];
+            if (!IsRoundaboutArm(tileIndex) || centerIndex == NoNode)
+            {
+                return false;
+            }
+
+            // 경로가 arm에서 시작하는 차량은 이전 타일에 대기할 공간이 없다. 중심,
+            // 진입 전이, 네 arm 중 하나라도 사용 중이면 새 차를 화면 footprint 안에
+            // 만들지 않는다. 검사와 enqueue를 같은 호출에서 수행해 한 departure pass에
+            // 서로 다른 arm 출발차가 동시에 들어오는 것도 막는다.
+            RoundaboutTrafficState state = _roundaboutStates[centerIndex];
+            if (state.OccupiedCount != 0 || state.HasActiveEntry)
+            {
+                return false;
+            }
+
+            Vector2Int center = TileAt(centerIndex);
+            for (int side = 0; side < DirectionCount; side++)
+            {
+                Vector2Int arm = center + DirectionVector((Dir)side);
+                if (!InBounds(arm)) continue;
+                int armIndex = TileIndex(arm);
+                if (_roundaboutCenters[armIndex] != centerIndex ||
+                    !IsRoundaboutArm(armIndex))
+                {
+                    continue;
+                }
+
+                int firstQueue = armIndex * DirectionCount;
+                for (int entry = 0; entry < DirectionCount; entry++)
+                {
+                    if (_counts[firstQueue + entry] != 0) return false;
+                }
+            }
+
+            return TryEnqueue(tile, direction, carId);
+        }
+
         internal bool TryLocateCar(int carId, out Vector2Int tile, out Dir direction, out int slot)
             => TryLocateCar(carId, out tile, out direction, out slot, out _, out _);
 
@@ -902,6 +962,7 @@ namespace CityFlow.Sim
             for (int serviceRound = 0; serviceRound < _servicePerTick; serviceRound++)
             {
                 ServiceRoundaboutRings(routes, ref result);
+                if (serviceRound == 0) SelectRoundaboutEntrySides();
                 RebuildIntersectionOccupancy(routes);
                 int intentCount = CollectIntents(routes, signalGate, tick);
                 ResolveIntents(intentCount, signalGate, ref result);
@@ -1198,6 +1259,12 @@ namespace CityFlow.Sim
                 }
             }
 
+        }
+
+        private void SelectRoundaboutEntrySides()
+        {
+            // 링 이동과 출구 처리를 먼저 반영한 뒤 실제로 비어 있는 합류부에서 선택한다.
+            // 한 번 선택된 방향은 안전해질 때까지 순서를 보존하고, 진입 완료 뒤 다음 방향으로 넘긴다.
             for (int tile = 0; tile < _roundabouts.Length; tile++)
             {
                 if (_roundabouts[tile]) _roundaboutStates[tile].SelectEntrySide();
@@ -1637,11 +1704,16 @@ namespace CityFlow.Sim
                         || (int)exit != cell || !TryQueueIndex(next, exit, out int toQueue)) continue;
                     if (!CanAcceptNormally(toQueue, _occupancyUnits[node]))
                     {
-                        bool sameArmHandoff = state.CanHandoffBlockedExit(
+                        int waitingEntryNode =
+                            FindRoundaboutArmEntryHead(
+                                routes,
+                                TileIndex(next),
+                                tile);
+                        bool sameArmHandoff =
+                            state.TryPrepareBlockedExitHandoff(
                                 (Dir)cell,
                                 node,
-                                out int activeEntryNode)
-                            && IsNodeAtTileHead(activeEntryNode, TileIndex(next));
+                                waitingEntryNode);
                         if (!sameArmHandoff)
                         {
                             _blockedTicks[node]++;
@@ -1701,16 +1773,44 @@ namespace CityFlow.Sim
             }
         }
 
-        private bool IsNodeAtTileHead(int node, int tileIndex)
+        private int FindRoundaboutArmEntryHead(
+            ICarRouteProvider routes,
+            int armTileIndex,
+            int centerTileIndex)
         {
-            if (node == NoNode || tileIndex < 0 || tileIndex >= _roundabouts.Length)
-                return false;
-            int firstQueue = tileIndex * DirectionCount;
+            if (armTileIndex < 0 ||
+                armTileIndex >= _roundabouts.Length ||
+                centerTileIndex < 0 ||
+                centerTileIndex >= _roundabouts.Length)
+            {
+                return NoNode;
+            }
+
+            Vector2Int arm = TileAt(armTileIndex);
+            int firstQueue = armTileIndex * DirectionCount;
             for (int direction = 0; direction < DirectionCount; direction++)
             {
-                if (_heads[firstQueue + direction] == node) return true;
+                int node = _heads[firstQueue + direction];
+                if (node == NoNode || _movedThisTick[node])
+                {
+                    continue;
+                }
+
+                int carId = _cars[node];
+                if (!routes.IsDestination(carId, arm) &&
+                    routes.TryGetNextTile(
+                        carId,
+                        arm,
+                        out Vector2Int next,
+                        out _) &&
+                    InBounds(next) &&
+                    TileIndex(next) == centerTileIndex)
+                {
+                    return node;
+                }
             }
-            return false;
+
+            return NoNode;
         }
 
         private void ServiceHighwayLinks(ref StepResult result)

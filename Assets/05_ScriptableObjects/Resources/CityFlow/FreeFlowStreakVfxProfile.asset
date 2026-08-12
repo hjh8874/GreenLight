@@ -16,11 +16,11 @@ MonoBehaviour:
   stageTwoTint: {r: 0.55, g: 1, b: 0.58, a: 1}
   stageThreeTint: {r: 0.18, g: 1, b: 0.28, a: 1}
   vfxScale: 0.45
-  stageTwoPrefab: {fileID: 100000, guid: 5b8e4d6003c345844ba510013ead9315, type: 3}
-  stageThreeGlowPrefab: {fileID: 9144393426468053557, guid: 50534ff883a833e4e8070d3105087d27, type: 3}
-  stageThreeStarsPrefab: {fileID: 100000, guid: a8bc4c8952534334bbfcf03c2547fdb3, type: 3}
+  stageTwoPrefab: {fileID: 8219737716015654316, guid: b83f04447818825438a229ea4aec7099, type: 3}
+  stageThreeGlowPrefab: {fileID: 6295724538569622084, guid: 85c51ba445dce774093c7decbaaa60c9, type: 3}
+  stageThreeStarsPrefab: {fileID: 1600529904505136026, guid: 49dd6d1e19f41ff40b183423054ab4ef, type: 3}
   bottleneckMarkerColor: {r: 1, g: 0.72, b: 0.28, a: 1}
   bottleneckMarkerScale: 0.35
   bottleneckMarkerFadeSeconds: 1.5
   bottleneckMarkerThreshold: 0.1
-  bottleneckMarkerPrefab: {fileID: 9144393426468053557, guid: 50534ff883a833e4e8070d3105087d27, type: 3}
+  bottleneckMarkerPrefab: {fileID: 6295724538569622084, guid: 85c51ba445dce774093c7decbaaa60c9, type: 3}

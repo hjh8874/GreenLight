@@ -53,8 +53,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 4.6715164, y: 2.3774698, z: 2.2899435}
-  m_Center: {x: 0, y: 0, z: -1.1449717}
+  m_Size: {x: 1, y: 0.5089289, z: 0.4901927}
+  m_Center: {x: 0, y: 0, z: -0.24509636}
 --- !u!114 &444504529165000545
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -67,7 +67,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: debfec37d9bec6045ade3710e7e1e47f, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::CityFlow.View.VehicleWheelDustSource
-  particleMaterial: {fileID: 0}
+  particleMaterial: {fileID: 2100000, guid: 7840d900dc0a4ed4dbcd26e23f064dd8, type: 2}
   emissionDistance: 0.14
   movementThreshold: 0.01
   teleportDistance: 1.5
@@ -84,16 +84,28 @@ PrefabInstance:
       value: Model
       objectReference: {fileID: 0}
     - target: {fileID: 4212494380691028343, guid: de1de08f346a4644da9d6e760367d0f9, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0.21406326
+      objectReference: {fileID: 0}
+    - target: {fileID: 4212494380691028343, guid: de1de08f346a4644da9d6e760367d0f9, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0.21406326
+      objectReference: {fileID: 0}
+    - target: {fileID: 4212494380691028343, guid: de1de08f346a4644da9d6e760367d0f9, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.21406326
+      objectReference: {fileID: 0}
+    - target: {fileID: 4212494380691028343, guid: de1de08f346a4644da9d6e760367d0f9, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0.22728777
+      value: 0.04865396
       objectReference: {fileID: 0}
     - target: {fileID: 4212494380691028343, guid: de1de08f346a4644da9d6e760367d0f9, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -0.000002026558
+      value: -0.00000044703484
       objectReference: {fileID: 0}
     - target: {fileID: 4212494380691028343, guid: de1de08f346a4644da9d6e760367d0f9, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -0.019504547
+      value: -0.004175186
       objectReference: {fileID: 0}
     - target: {fileID: 4212494380691028343, guid: de1de08f346a4644da9d6e760367d0f9, type: 3}
       propertyPath: m_LocalRotation.w

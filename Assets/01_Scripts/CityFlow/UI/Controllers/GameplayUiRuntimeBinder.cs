@@ -1,5 +1,6 @@
 using CityFlow.Bootstrap;
 using CityFlow.UI.Feed;
+using CityFlow.View;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -20,6 +21,7 @@ namespace CityFlow.UI.Controllers
         private PlacementController placementController;
         private TileSelectionController tileSelectionController;
         private TooltipController tooltipController;
+        private FloatingWindowTitleBarController titleBarController;
 
         public bool IsPlacementBound =>
             placementController != null &&
@@ -82,22 +84,50 @@ namespace CityFlow.UI.Controllers
             buildPanelController ??=
                 GetComponentInChildren<BuildPanelController>(true);
             placementController ??=
-                FindAnyObjectByType<PlacementController>(
-                    FindObjectsInactive.Include);
+                FindSceneComponent<PlacementController>();
             tileSelectionController ??=
-                FindAnyObjectByType<TileSelectionController>(
-                    FindObjectsInactive.Include);
+                FindSceneComponent<TileSelectionController>();
             greenFeedController ??=
                 GetComponentInChildren<GreenFeedPanelController>(true);
             tooltipController ??=
                 GetComponentInChildren<TooltipController>(true);
+            titleBarController ??=
+                FindSceneComponent<FloatingWindowTitleBarController>();
+
+            ConfirmPopupController confirmPopup =
+                GetComponentInChildren<ConfirmPopupController>(true);
+            AnalysisCardController analysisCard =
+                GetComponentInChildren<AnalysisCardController>(true);
+            Canvas contentCanvas = GetComponent<Canvas>();
+            RectTransform contentRoot =
+                transform.Find("FloatingWindowContentRoot")
+                    as RectTransform;
 
             if (placementController != null)
             {
+                if (confirmPopup != null)
+                {
+                    placementController.RebindConfirmPopup(confirmPopup);
+                }
+
                 dockController?.RebindPlacementController(
                     placementController);
                 buildPanelController?.RebindPlacementController(
                     placementController);
+            }
+
+            if (tileSelectionController != null && analysisCard != null)
+            {
+                tileSelectionController.RebindAnalysisCard(analysisCard);
+            }
+
+            if (titleBarController != null &&
+                contentCanvas != null &&
+                contentRoot != null)
+            {
+                titleBarController.RebindContentReferences(
+                    contentCanvas,
+                    contentRoot);
             }
 
             buildPanelController?.RebindTooltipController(
@@ -174,6 +204,27 @@ namespace CityFlow.UI.Controllers
             {
                 greenFeedController.RebindTicker(ticker);
             }
+        }
+
+        private T FindSceneComponent<T>() where T : Component
+        {
+            if (!gameObject.scene.IsValid() || !gameObject.scene.isLoaded)
+            {
+                return null;
+            }
+
+            GameObject[] roots = gameObject.scene.GetRootGameObjects();
+            for (int rootIndex = 0; rootIndex < roots.Length; rootIndex++)
+            {
+                T[] candidates =
+                    roots[rootIndex].GetComponentsInChildren<T>(true);
+                if (candidates.Length > 0)
+                {
+                    return candidates[0];
+                }
+            }
+
+            return null;
         }
     }
 }

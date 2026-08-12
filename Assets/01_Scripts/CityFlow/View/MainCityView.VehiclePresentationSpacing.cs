@@ -48,6 +48,25 @@ namespace CityFlow.View
             Vector3 localDirection,
             bool includeCarCandidates,
             out VehiclePresentationLeader leader) =>
+            TryGetVehiclePresentationLeader(
+                owner,
+                kind,
+                footprint,
+                localPosition,
+                localDirection,
+                includeCarCandidates,
+                useConvergingCarEnvelope: false,
+                out leader);
+
+        internal bool TryGetVehiclePresentationLeader(
+            object owner,
+            RoadTrafficAgentKind kind,
+            VehicleFootprint footprint,
+            Vector3 localPosition,
+            Vector3 localDirection,
+            bool includeCarCandidates,
+            bool useConvergingCarEnvelope,
+            out VehiclePresentationLeader leader) =>
             ResolveVehiclePresentationSpacingCoordinator().TryGetLeader(
                 owner,
                 kind,
@@ -57,6 +76,7 @@ namespace CityFlow.View
                 tileSize,
                 Time.frameCount,
                 includeCarCandidates,
+                useConvergingCarEnvelope,
                 out leader);
 
         internal float GetRequiredVehiclePresentationHeadway(

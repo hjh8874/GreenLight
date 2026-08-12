@@ -199,6 +199,160 @@ namespace CityFlow.Sim.Tests
         }
 
         [Test]
+        public void PlanVehicleTrip_DirectionConstraintsCrossRegionsWithoutUTurn()
+        {
+            var grid = new CityGrid(45, 4);
+            for (int x = 0; x < 45; x++)
+            {
+                grid.Place(V(x, 2), TileType.Road);
+            }
+
+            for (int x = 39; x < 45; x++)
+            {
+                grid.Place(V(x, 0), TileType.Road);
+            }
+
+            grid.Place(V(39, 1), TileType.Road);
+            grid.Place(V(44, 1), TileType.Road);
+
+            SimConfig config = Config();
+            var network = new RoadNetwork(grid);
+            var demand = new DemandMap(config);
+            demand.Reassign(grid, network);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demand, network, grid, config);
+
+            List<Vector2Int> route = planner.PlanVehicleTrip(
+                V(0, 2),
+                V(42, 2),
+                requiredFirstDirection: Vector2Int.right,
+                requiredArrivalDirection: Vector2Int.left);
+
+            Assert.NotNull(route);
+            Assert.AreEqual(Vector2Int.right, route[1] - route[0]);
+            Assert.AreEqual(
+                Vector2Int.left,
+                route[route.Count - 1] - route[route.Count - 2]);
+            for (int index = 1; index < route.Count - 1; index++)
+            {
+                Assert.AreNotEqual(route[index - 1], route[index + 1]);
+            }
+
+            AssertBoundedDiagnostics(planner, expectedRegionCount: 3);
+        }
+
+        [Test]
+        public void PlanVehicleTrip_StartPortalAppliesRequiredFirstAndIncomingDirection()
+        {
+            var grid = new CityGrid(40, 5);
+            for (int x = 18; x <= 22; x++)
+            {
+                Assert.IsTrue(grid.Place(V(x, 2), TileType.Road));
+            }
+
+            SimConfig config = Config();
+            var network = new RoadNetwork(grid);
+            var demand = new DemandMap(config);
+            demand.Reassign(grid, network);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demand, network, grid, config);
+
+            CollectionAssert.AreEqual(
+                new[] { V(19, 2), V(20, 2), V(21, 2), V(22, 2) },
+                planner.PlanVehicleTrip(
+                    V(19, 2),
+                    V(22, 2),
+                    requiredFirstDirection: Vector2Int.right,
+                    requiredArrivalDirection: Vector2Int.right,
+                    initialIncomingDirection: Vector2Int.right));
+            Assert.IsNull(planner.PlanVehicleTrip(
+                V(19, 2),
+                V(22, 2),
+                requiredFirstDirection: Vector2Int.right,
+                requiredArrivalDirection: Vector2Int.right,
+                initialIncomingDirection: Vector2Int.left));
+        }
+
+        [Test]
+        public void PlanVehicleTrip_DirectionConstraintsSkipLongHighwayAtEndpoint()
+        {
+            CityGrid grid = CreateHorizontalRoad(6, 4, 1);
+            Vector2Int start = V(0, 1);
+            Vector2Int goal = V(4, 1);
+
+            SimConfig config = Config();
+            var network = new RoadNetwork(grid);
+            var demand = new DemandMap(config);
+            demand.Reassign(grid, network);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            var highways = new[] { new HighwayLink(start, V(3, 1)) };
+            planner.Plan(
+                demand,
+                network,
+                grid,
+                config,
+                oneways: null,
+                turnSigns: null,
+                highways: highways);
+
+            List<Vector2Int> route = planner.PlanVehicleTrip(
+                start,
+                goal,
+                requiredFirstDirection: Vector2Int.right,
+                requiredArrivalDirection: Vector2Int.right);
+
+            CollectionAssert.AreEqual(
+                new[]
+                {
+                    V(0, 1), V(1, 1), V(2, 1), V(3, 1), V(4, 1)
+                },
+                route);
+        }
+
+        [Test]
+        public void PlanVehicleTrip_ArrivalOnly_GoalPortalRepeatDoesNotHideValidCrossRegionRoute()
+        {
+            var grid = new CityGrid(40, 5);
+            Vector2Int[] roads =
+            {
+                V(17, 1), V(18, 1), V(19, 1), V(19, 0),
+                V(17, 2), V(17, 3), V(18, 3), V(19, 3),
+                V(20, 0), V(20, 1), V(20, 2), V(20, 3)
+            };
+            for (int index = 0; index < roads.Length; index++)
+            {
+                Assert.IsTrue(grid.Place(roads[index], TileType.Road));
+            }
+
+            SimConfig config = Config();
+            var network = new RoadNetwork(grid);
+            var demand = new DemandMap(config);
+            demand.Reassign(grid, network);
+            var planner = new RoutePlanner(grid.Width, grid.Height);
+            planner.Plan(demand, network, grid, config);
+
+            List<Vector2Int> route = planner.PlanVehicleTrip(
+                V(17, 1),
+                V(19, 1),
+                requiredFirstDirection: null,
+                requiredArrivalDirection: Vector2Int.up);
+
+            CollectionAssert.AreEqual(
+                new[]
+                {
+                    V(17, 1), V(17, 2), V(17, 3), V(18, 3),
+                    V(19, 3), V(20, 3), V(20, 2), V(20, 1),
+                    V(20, 0), V(19, 0), V(19, 1)
+                },
+                route);
+            Assert.AreEqual(
+                Vector2Int.up,
+                route[route.Count - 1] - route[route.Count - 2]);
+            Assert.AreEqual(1, route.FindAll(tile => tile == V(19, 1)).Count);
+            AssertBoundedDiagnostics(planner, expectedRegionCount: 2);
+        }
+
+        [Test]
         public void Search_HighwayAcrossRegions_IsAHighLevelPortal()
         {
             var grid = new CityGrid(60, 5);

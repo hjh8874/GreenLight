@@ -27,7 +27,11 @@ namespace CityFlow.Contracts
             int visitorCapacity,
             float attractionWeight,
             int coinPerVisit,
-            VisitTimeProfile visitTimeProfile = VisitTimeProfile.AllDay)
+            VisitTimeProfile visitTimeProfile = VisitTimeProfile.AllDay,
+            Vector2Int footprint = default,
+            int visitorParkingSlotStart = 0,
+            int visitorParkingSlotCount = 1,
+            float visitDwellHours = 0f)
         {
             BuildingId = buildingId ?? string.Empty;
             DisplayName = displayName ?? string.Empty;
@@ -46,6 +50,16 @@ namespace CityFlow.Contracts
             AttractionWeight = Mathf.Max(0f, attractionWeight);
             CoinPerVisit = Mathf.Max(0, coinPerVisit);
             VisitTimeProfile = visitTimeProfile;
+            Footprint = footprint.x > 0 && footprint.y > 0
+                ? footprint
+                : new Vector2Int(2, 2);
+            VisitorParkingSlotStart = Mathf.Max(
+                0,
+                visitorParkingSlotStart);
+            VisitorParkingSlotCount = Mathf.Max(
+                1,
+                visitorParkingSlotCount);
+            VisitDwellHours = Mathf.Max(0f, visitDwellHours);
         }
 
         public string BuildingId { get; }
@@ -65,5 +79,9 @@ namespace CityFlow.Contracts
         public float AttractionWeight { get; }
         public int CoinPerVisit { get; }
         public VisitTimeProfile VisitTimeProfile { get; }
+        public Vector2Int Footprint { get; }
+        public int VisitorParkingSlotStart { get; }
+        public int VisitorParkingSlotCount { get; }
+        public float VisitDwellHours { get; }
     }
 }

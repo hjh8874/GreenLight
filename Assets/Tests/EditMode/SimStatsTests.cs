@@ -32,5 +32,60 @@ namespace CityFlow.Sim.Tests
             Assert.IsTrue(stats.UpdateCarSim(1f, 0, 1, false, 0f, in cfg));
             Assert.IsFalse(stats.UpdateCarSim(2f, 0, 1, false, 0f, in cfg));
         }
+
+        [Test]
+        public void RestoreCarSim_RestoresLastCompletedDayArrivalCount()
+        {
+            var stats = new SimStats();
+
+            stats.RestoreCarSim(
+                successRate: 0.75f,
+                dayArrivals: 7,
+                lastDayArrivals: 83,
+                skipCurrentDay: false,
+                hasData: true,
+                hasLastDayArrivals: true);
+
+            Assert.AreEqual(7, stats.DayArrivalCount);
+            Assert.AreEqual(83, stats.LastDayArrivalCount);
+        }
+
+        [Test]
+        public void RestoreCarSim_LegacySnapshotWithoutLastDayField_UsesSafeDefault()
+        {
+            var stats = new SimStats();
+            SimConfig cfg = SimConfig.Default();
+
+            stats.RestoreCarSim(
+                successRate: 0.75f,
+                dayArrivals: 24,
+                lastDayArrivals: 83,
+                skipCurrentDay: false,
+                hasData: true,
+                hasLastDayArrivals: false);
+
+            Assert.AreEqual(24, stats.DayArrivalCount);
+            Assert.AreEqual(0, stats.LastDayArrivalCount);
+
+            stats.UpdateCarSim(
+                gameHour: 20f,
+                arrivals: 3,
+                carCount: 20,
+                jumped: false,
+                jamRatio: 0f,
+                in cfg);
+            stats.UpdateCarSim(
+                gameHour: 1f,
+                arrivals: 0,
+                carCount: 20,
+                jumped: false,
+                jamRatio: 0f,
+                in cfg);
+
+            Assert.AreEqual(
+                27,
+                stats.LastDayArrivalCount,
+                "구 세이브의 오늘 누적치는 다음 정상 하루 경계에서 확정값이 된다");
+        }
     }
 }

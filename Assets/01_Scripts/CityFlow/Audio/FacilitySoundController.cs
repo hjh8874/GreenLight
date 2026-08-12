@@ -181,7 +181,7 @@ namespace CityFlow.Audio
                 return true;
             }
 
-            if (type != TileType.SpecialBuilding ||
+            if (!TileFootprint.IsSpecialBuilding(type) ||
                 services?.SpecialBuildings == null ||
                 !services.SpecialBuildings.TryGetBuilding(
                     tile,
