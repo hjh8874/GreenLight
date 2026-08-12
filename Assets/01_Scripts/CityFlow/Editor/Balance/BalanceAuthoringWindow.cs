@@ -592,6 +592,7 @@ namespace CityFlow.EditorTools.Balance
                 ["School"] = "학교",
                 ["Hospital"] = "병원",
                 ["SpecialBuilding"] = "특수 건물",
+                ["CompactSpecialBuilding"] = "소형 특수 건물",
                 ["UnderConstruction"] = "건설 중",
                 ["Signal"] = "신호등",
                 ["Roundabout"] = "회전교차로",

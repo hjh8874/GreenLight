@@ -861,14 +861,22 @@ namespace CityFlow.Sim
         {
             Vector2Int? incomingDirection =
                 ResumeIncomingDirection(FindCarIndex(car));
-            return incomingDirection.HasValue
-                ? _planner.PlanVehicleTrip(
+            if (!incomingDirection.HasValue)
+            {
+                return _planner.ReplanFrom(from, to);
+            }
+
+            List<Vector2Int> headingPreservingRoute =
+                _planner.PlanVehicleTrip(
                     from,
                     to,
                     requiredFirstDirection: null,
                     requiredArrivalDirection: null,
-                    initialIncomingDirection: incomingDirection)
-                : _planner.ReplanFrom(from, to);
+                    initialIncomingDirection: incomingDirection);
+            // 방향 제약 경로를 찾지 못해도 최신 도로 규칙을 무시한 기존 경로를
+            // 유지하지 않고, 현재 위치 기준 일반 재계획으로 안전하게 폴백한다.
+            return headingPreservingRoute ??
+                _planner.ReplanFrom(from, to);
         }
 
         private static void UpdateFallbackResumeState(
