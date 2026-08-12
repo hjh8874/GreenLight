@@ -873,7 +873,7 @@ MonoBehaviour:
   startYear: 1
   startMonth: 1
   startDay: 1
-  startHour: 0
+  startHour: 7
 --- !u!114 &559808187
 MonoBehaviour:
   m_ObjectHideFlags: 0

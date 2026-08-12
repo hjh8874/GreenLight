@@ -1,11 +1,44 @@
+using System.Reflection;
+using CityFlow.Audio;
+using CityFlow.Managers;
 using CityFlow.UI.Quests;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace CityFlow.Tests.ViewEditMode
 {
     public sealed class QuestBubbleUITests
     {
+        [Test]
+        public void QuestCompletionFeedback_HasConfettiAndConfiguredSound()
+        {
+            GameObject confetti = Resources.Load<GameObject>(
+                "CityFlow/FX_QuestClearConfetti");
+            Assert.IsNotNull(
+                confetti,
+                "퀘스트 완료 컨페티 Resources 프리팹이 필요하다");
+
+            FieldInfo clearSfxId = typeof(QuestClearBurst).GetField(
+                "ClearSfxId",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.IsNotNull(clearSfxId);
+            Assert.AreEqual(
+                SoundIds.PositiveNotification,
+                clearSfxId.GetRawConstantValue());
+
+            SoundCatalog catalog = AssetDatabase.LoadAssetAtPath<SoundCatalog>(
+                "Assets/04_Audio/Configs/SoundCatalog.asset");
+            Assert.IsNotNull(catalog);
+            Assert.IsTrue(
+                catalog.TryGetSound(
+                    SoundIds.PositiveNotification,
+                    out SoundCatalog.SoundEntry sound));
+            Assert.IsNotNull(
+                sound.Clip,
+                "퀘스트 완료음으로 사용할 긍정 알림 클립이 연결돼야 한다");
+        }
+
         [Test]
         public void Create_AttachesExpandedAndMinimizedControlsToTopBar()
         {
@@ -28,6 +61,9 @@ namespace CityFlow.Tests.ViewEditMode
                     .GetComponent<RectTransform>();
                 RectTransform close = bubble
                     .Find("CloseButton")
+                    .GetComponent<RectTransform>();
+                RectTransform action = bubble
+                    .Find("ActionButton")
                     .GetComponent<RectTransform>();
                 RectTransform minimized = controller.transform
                     .Find("QuestMinimizedButton")
@@ -59,6 +95,10 @@ namespace CityFlow.Tests.ViewEditMode
                 Assert.That(
                     close.sizeDelta,
                     Is.EqualTo(minimized.sizeDelta));
+                Assert.That(action.sizeDelta, Is.EqualTo(new Vector2(92f, 34f)));
+                Assert.IsFalse(
+                    action.gameObject.activeSelf,
+                    "일반 퀘스트에서는 안내 넘기기 버튼이 기본으로 숨겨져야 한다");
 
                 RectTransform forwardLine = close
                     .Find("XLineForward")

@@ -12,6 +12,8 @@ namespace CityFlow.Gameplay.Progression
         IGameCalendarService,
         IGameCalendarSaveSource
     {
+        private const int DefaultNewGameStartHour = 7;
+
         [Header("Time Balance")]
         [Tooltip("Optional scene override. When empty, the default Resources game time settings are used.")]
         [SerializeField] private GameTimeSettingsSO timeSettings;
@@ -24,7 +26,8 @@ namespace CityFlow.Gameplay.Progression
         [SerializeField] private int startYear = 1;
         [SerializeField] private int startMonth = 1;
         [SerializeField] private int startDay = 1;
-        [SerializeField] private int startHour;
+        [SerializeField]
+        private int startHour = DefaultNewGameStartHour;
 
         private bool initialized;
         private float accumulatedRealSeconds;

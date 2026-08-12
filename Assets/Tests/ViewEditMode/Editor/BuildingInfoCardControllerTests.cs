@@ -2,7 +2,9 @@ using System.Reflection;
 using CityFlow.Bootstrap;
 using CityFlow.Contracts;
 using CityFlow.UI;
+using CityFlow.UI.Data;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -53,6 +55,95 @@ public sealed class BuildingInfoCardControllerTests
         }
     }
 
+    [Test]
+    public void NormalBuildingMetrics_RemoveTestLabelAndCloseHiddenRowGap()
+    {
+        GameObject owner = new GameObject(
+            "BuildingInfoCardLayoutTest",
+            typeof(RectTransform));
+        GameObject incomeRow = new GameObject(
+            "IncomeRow",
+            typeof(RectTransform));
+        GameObject delayRow = new GameObject(
+            "DelayRow",
+            typeof(RectTransform));
+        GameObject incomeValue = new GameObject(
+            "IncomeValue",
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(TextMeshProUGUI));
+        GameObject delayValue = new GameObject(
+            "DelayValue",
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(TextMeshProUGUI));
+
+        try
+        {
+            incomeRow.transform.SetParent(owner.transform, false);
+            delayRow.transform.SetParent(owner.transform, false);
+            incomeValue.transform.SetParent(incomeRow.transform, false);
+            delayValue.transform.SetParent(delayRow.transform, false);
+
+            RectTransform incomeRect =
+                incomeRow.GetComponent<RectTransform>();
+            RectTransform delayRect =
+                delayRow.GetComponent<RectTransform>();
+            RectTransform cardRect =
+                owner.GetComponent<RectTransform>();
+            cardRect.sizeDelta = new Vector2(430f, 286f);
+            incomeRect.anchoredPosition = new Vector2(0f, -181f);
+            delayRect.anchoredPosition = new Vector2(0f, -219f);
+
+            BuildingInfoCardController controller =
+                owner.AddComponent<BuildingInfoCardController>();
+            TMP_Text incomeText =
+                incomeValue.GetComponent<TextMeshProUGUI>();
+            TMP_Text delayText =
+                delayValue.GetComponent<TextMeshProUGUI>();
+            SetPrivate(controller, "txtIncomePerMin", incomeText);
+            SetPrivate(controller, "txtDelaySeconds", delayText);
+
+            InvokePrivate(
+                controller,
+                "BindDataToUI",
+                new BuildingStoryData(
+                    "테스트 건물",
+                    "테스트 설명",
+                    6,
+                    2,
+                    0.7f),
+                0f,
+                CongestionLevel.Free);
+
+            Assert.IsFalse(incomeRow.activeSelf);
+            Assert.That(
+                delayRect.anchoredPosition.y,
+                Is.EqualTo(-181f).Within(0.001f));
+            Assert.That(
+                cardRect.sizeDelta.y,
+                Is.EqualTo(248f).Within(0.001f));
+            Assert.AreEqual("지연: +0.7초", delayText.text);
+            StringAssert.DoesNotContain("(테스트)", delayText.text);
+
+            InvokePrivate(
+                controller,
+                "SetIncomeMetricRowVisible",
+                true);
+            Assert.IsTrue(incomeRow.activeSelf);
+            Assert.That(
+                delayRect.anchoredPosition.y,
+                Is.EqualTo(-219f).Within(0.001f));
+            Assert.That(
+                cardRect.sizeDelta.y,
+                Is.EqualTo(286f).Within(0.001f));
+        }
+        finally
+        {
+            Object.DestroyImmediate(owner);
+        }
+    }
+
     private static bool RefreshCurrentTileState(
         BuildingInfoCardController controller)
     {
@@ -83,6 +174,18 @@ public sealed class BuildingInfoCardControllerTests
             PrivateInstance);
         Assert.IsNotNull(field);
         field.SetValue(controller, value);
+    }
+
+    private static object InvokePrivate(
+        BuildingInfoCardController controller,
+        string methodName,
+        params object[] arguments)
+    {
+        MethodInfo method = typeof(BuildingInfoCardController).GetMethod(
+            methodName,
+            PrivateInstance);
+        Assert.IsNotNull(method);
+        return method.Invoke(controller, arguments);
     }
 
     private sealed class MutableTileData : IReadOnlyTileData

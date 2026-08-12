@@ -126,6 +126,7 @@ namespace CityFlow.View
             }
 
             services = cityServices;
+            services.Events.Placed += OnPlaced;
             services.SpecialBuildingsRegistered += OnServiceRegistered;
             services.WorldCoordinatesRegistered += OnCoordinatesRegistered;
             services.WorldCoordinateRootRegistered +=
@@ -140,6 +141,7 @@ namespace CityFlow.View
         {
             if (services != null)
             {
+                services.Events.Placed -= OnPlaced;
                 services.SpecialBuildingsRegistered -= OnServiceRegistered;
                 services.WorldCoordinatesRegistered -= OnCoordinatesRegistered;
                 services.WorldCoordinateRootRegistered -=
@@ -204,6 +206,21 @@ namespace CityFlow.View
             RebuildAll();
         }
 
+        private void OnPlaced(PlacedEvent placed)
+        {
+            if (placed.IsRemove ||
+                !TileFootprint.IsSpecialBuilding(placed.Type) ||
+                buildingService == null ||
+                !buildingService.TryGetBuilding(
+                    placed.Tile,
+                    out SpecialBuildingInstance building))
+            {
+                return;
+            }
+
+            CreateOrReplaceVisual(building);
+        }
+
         private void RebuildAll()
         {
             ClearVisuals();
@@ -232,21 +249,19 @@ namespace CityFlow.View
             }
 
             RemoveVisual(building.Anchor);
+
+            TileType placedType = services.TileData != null
+                ? services.TileData.GetTileType(building.Anchor)
+                : TileType.Empty;
+            if (placedType == TileType.UnderConstruction)
+            {
+                return;
+            }
+
             EnsureVisualRoot();
 
             IWorldCoordinateSpace coordinates = services.WorldCoordinates;
             Vector2Int footprint = definition.Footprint;
-            TileType placedType = services.TileData != null
-                ? services.TileData.GetTileType(building.Anchor)
-                : TileType.Empty;
-            if (placedType == TileType.UnderConstruction &&
-                services.TileData != null &&
-                services.TileData.TryGetConstructionTargetType(
-                    building.Anchor,
-                    out TileType constructionTargetType))
-            {
-                placedType = constructionTargetType;
-            }
             if (TileFootprint.IsSpecialBuilding(placedType))
             {
                 // 구 저장의 2x2 약국·커피숍은 기존 점유 중심을 유지한다.

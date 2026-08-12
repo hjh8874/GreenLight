@@ -39,6 +39,9 @@ namespace CityFlow.UI.Quests
         private GameObject minimizedButtonObject;
         private Button closeButton;
         private Button minimizedButton;
+        private GameObject actionButtonObject;
+        private Button actionButton;
+        private TextMeshProUGUI actionButtonLabel;
         private TextMeshProUGUI titleText;
         private TextMeshProUGUI messageText;
         private TextMeshProUGUI categoryText;
@@ -134,9 +137,11 @@ namespace CityFlow.UI.Quests
 
             closeButton.onClick.AddListener(OnCloseClicked);
             minimizedButton.onClick.AddListener(OnMinimizedButtonClicked);
+            actionButton.onClick.AddListener(OnActionButtonClicked);
 
             bubble.SetActive(false);
             minimizedButtonObject.SetActive(false);
+            actionButtonObject.SetActive(false);
         }
 
         private GameObject CreateBubble(TMP_FontAsset font)
@@ -215,6 +220,33 @@ namespace CityFlow.UI.Quests
             messageText.alignment = TextAlignmentOptions.TopLeft;
             messageText.textWrappingMode = TextWrappingModes.Normal;
             messageText.overflowMode = TextOverflowModes.Ellipsis;
+
+            actionButtonObject = CreateUiObject(
+                "ActionButton",
+                panel.transform,
+                typeof(Image),
+                typeof(Button));
+            RectTransform actionRect =
+                actionButtonObject.GetComponent<RectTransform>();
+            actionRect.anchorMin = new Vector2(1f, 0f);
+            actionRect.anchorMax = new Vector2(1f, 0f);
+            actionRect.pivot = new Vector2(1f, 0f);
+            actionRect.anchoredPosition = new Vector2(-18f, 14f);
+            actionRect.sizeDelta = new Vector2(92f, 34f);
+
+            Image actionImage = actionButtonObject.GetComponent<Image>();
+            actionImage.color = AccentColor;
+            actionButton = actionButtonObject.GetComponent<Button>();
+            actionButton.targetGraphic = actionImage;
+            actionButtonLabel = CreateCenteredText(
+                "Label",
+                actionButtonObject.transform,
+                font,
+                "다음",
+                15f,
+                Color.white);
+            actionButtonLabel.fontStyle = FontStyles.Bold;
+            actionButtonLabel.raycastTarget = false;
 
             GameObject close = CreateUiObject("CloseButton", panel.transform, typeof(Image), typeof(Button));
             RectTransform closeRect = close.GetComponent<RectTransform>();
@@ -439,6 +471,7 @@ namespace CityFlow.UI.Quests
         {
             if (hasLatestOutcome)
             {
+                SetActionVisible(false);
                 SetVisible(
                     visible: true,
                     minimized: false);
@@ -456,6 +489,7 @@ namespace CityFlow.UI.Quests
                     out EmergencyIncidentAlertEvent
                         alert))
             {
+                SetActionVisible(false);
                 SetVisible(
                     visible: true,
                     minimized: emergencyMinimized);
@@ -477,6 +511,7 @@ namespace CityFlow.UI.Quests
 
             if (!hasQuest)
             {
+                SetActionVisible(false);
                 return;
             }
 
@@ -485,6 +520,29 @@ namespace CityFlow.UI.Quests
             messageText.text =
                 questViewState.Quest.Message;
             minimizedLabel.text = "!";
+            SetActionVisible(
+                questViewState.Quest.CanAcknowledge &&
+                !questViewState.IsMinimized,
+                questViewState.Quest.ActionLabel);
+        }
+
+        private void SetActionVisible(
+            bool visible,
+            string label = "")
+        {
+            actionButtonObject?.SetActive(visible);
+            if (actionButtonLabel != null && visible)
+            {
+                actionButtonLabel.text = string.IsNullOrWhiteSpace(label)
+                    ? "확인"
+                    : label;
+            }
+
+            if (messageText != null)
+            {
+                messageText.rectTransform.sizeDelta =
+                    new Vector2(visible ? 270f : 368f, 72f);
+            }
         }
 
         private void SetVisible(
@@ -571,10 +629,16 @@ namespace CityFlow.UI.Quests
             }
         }
 
+        private void OnActionButtonClicked()
+        {
+            questSystem?.AcknowledgeCurrentQuest();
+        }
+
         private void OnDestroy()
         {
             closeButton?.onClick.RemoveListener(OnCloseClicked);
             minimizedButton?.onClick.RemoveListener(OnMinimizedButtonClicked);
+            actionButton?.onClick.RemoveListener(OnActionButtonClicked);
 
             if (questSystem != null)
             {

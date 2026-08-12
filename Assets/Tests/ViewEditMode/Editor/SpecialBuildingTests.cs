@@ -172,8 +172,10 @@ namespace CityFlow.Tests
             }
         }
 
-        [Test]
-        public void UnderConstructionVisual_UsesConstructionTargetFootprint()
+        [TestCase(TileType.SpecialBuilding)]
+        [TestCase(TileType.CompactSpecialBuilding)]
+        public void UnderConstructionVisual_IsHiddenUntilBuildingCompletes(
+            TileType targetType)
         {
             Vector2Int anchor = new(3, 6);
             BuildingDefinitionSO definition =
@@ -190,7 +192,7 @@ namespace CityFlow.Tests
                 SetPrivateField(
                     definition,
                     "footprint",
-                    new Vector2Int(1, 2));
+                    TileFootprint.GetSize(targetType));
                 SetPrivateField(
                     catalog,
                     "buildings",
@@ -198,7 +200,7 @@ namespace CityFlow.Tests
 
                 var tileData = new ConstructionTileData(
                     anchor,
-                    TileType.SpecialBuilding,
+                    targetType,
                     PlacementDirection.East);
                 var services = new CityFlowServices(
                     new SimEventHub(),
@@ -224,11 +226,28 @@ namespace CityFlow.Tests
                     ReadPrivateField<Dictionary<Vector2Int, GameObject>>(
                         view,
                         "visuals");
+                Assert.IsFalse(
+                    visuals.ContainsKey(anchor),
+                    "공사 중에는 완공된 특수 건물 모델이 생성되면 안 된다");
+
+                tileData.CompleteConstruction();
+                services.Events.Publish(new PlacedEvent(
+                    anchor,
+                    targetType,
+                    isRemove: false,
+                    PlacementDirection.East));
+
                 Assert.IsTrue(visuals.TryGetValue(anchor, out GameObject visual));
+                Vector2Int rotatedFootprint =
+                    TileFootprint.GetRotatedSize(
+                        targetType,
+                        PlacementDirection.East);
                 Assert.That(visual.transform.position.x,
-                    Is.EqualTo(anchor.x + 1f).Within(0.0001f));
+                    Is.EqualTo(anchor.x + rotatedFootprint.x * 0.5f)
+                        .Within(0.0001f));
                 Assert.That(visual.transform.position.z,
-                    Is.EqualTo(anchor.y + 1f).Within(0.0001f));
+                    Is.EqualTo(anchor.y + rotatedFootprint.y * 0.5f)
+                        .Within(0.0001f));
             }
             finally
             {
@@ -1405,6 +1424,7 @@ namespace CityFlow.Tests
             private readonly Vector2Int anchor;
             private readonly TileType targetType;
             private readonly PlacementDirection direction;
+            private bool underConstruction = true;
 
             public ConstructionTileData(
                 Vector2Int anchor,
@@ -1419,13 +1439,20 @@ namespace CityFlow.Tests
             public CongestionLevel GetCongestion(Vector2Int tile) =>
                 CongestionLevel.Free;
 
+            public void CompleteConstruction()
+            {
+                underConstruction = false;
+            }
+
             public float GetDensity01(Vector2Int tile) => 0f;
 
             public int GetQueueCount(Vector2Int tile, Dir entryDir) => 0;
 
             public TileType GetTileType(Vector2Int tile) =>
                 tile == anchor
-                    ? TileType.UnderConstruction
+                    ? underConstruction
+                        ? TileType.UnderConstruction
+                        : targetType
                     : TileType.Empty;
 
             public PlacementDirection GetDirection(Vector2Int tile) =>
@@ -1449,8 +1476,10 @@ namespace CityFlow.Tests
                 Vector2Int tile,
                 out float progress01)
             {
-                progress01 = tile == anchor ? 0.5f : 0f;
-                return tile == anchor;
+                progress01 = tile == anchor && underConstruction
+                    ? 0.5f
+                    : 0f;
+                return tile == anchor && underConstruction;
             }
 
             public bool TryGetConstructionTargetType(
@@ -1458,7 +1487,7 @@ namespace CityFlow.Tests
                 out TileType constructionTargetType)
             {
                 constructionTargetType = targetType;
-                return tile == anchor;
+                return tile == anchor && underConstruction;
             }
         }
 
